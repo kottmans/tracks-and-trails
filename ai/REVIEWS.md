@@ -10474,3 +10474,75 @@ This approval covers exact head `8de5a72`. A subsequent review-only commit may c
 without changing that boundary. The next coordination update may mark P2EXIT-R15 Resolved,
 criterion 6 Met, and Phase 2 exited, then advance current work to Phase 3. No source, test, evidence,
 task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — T-160/T-163/T-164/T-166/T-167 row-layout review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `38504b3`
+**Implementation head:** `fd15ade`
+**Submission head:** `9a2bf16` (adds the handoff)
+**Platforms verified:** Linux, Qt offscreen
+**Verdict:** **Changes requested.** The five geometry corrections behave as intended and no
+product defect was found in the reviewed source. Two current-truth/validation findings block the
+submission: the exact submitted head fails the canonical format command, and T-166 remains marked
+Complete against acceptance criteria whose premise its own completion note rejects.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `ROWLAYOUT-R1` | **Medium** | **Yes — required exact-head check** | Formatting gate | `ai/TESTING.md` requires `ruff format --check .`, but the handoff records only the narrower `ruff format --check src tests`. On exact submission head `9a2bf16`, the canonical command fails on the new handoff's Python fence at lines 99 and 102: both inline comments have three spaces where Ruff requires two. The source/test subset was clean before the handoff was committed; the submitted head is not. | Format the handoff and run the canonical repository-wide command on the resulting exact head. Record that result rather than carrying the pre-handoff subset result forward. | **Open** |
+| `T166-R1` | **Medium** | **Yes — current task contract** | `ai/TASKS.md` T-166 | The completion note at lines 2679–2690 correctly says the filed premise was wrong: verbs and selector occupy different lines, so there is no shared-line minimum to choose. The live Scope and acceptance criteria at lines 2702–2724 still prescribe that rejected geometry, including verbs yielding width to the format line and a named minimum before a verb is drawn beside it. T-166 is therefore Complete while its canonical criteria require a number the same entry says should not exist. The implementation and differential swept test establish the corrected property; the task contract does not. | Rewrite T-166's Scope and acceptance criteria from the corrected geometry: verbs must not change the format line's width or pixels; assert that on a group header across the sweep. Remove the shared-line/minimum requirements rather than leaving the completion note to overrule them. Keep T-163 as the owner of bar-versus-verb yielding and overflow reachability. | **Open** |
+
+### Review judgments
+
+- T-166's implementation is accepted. `_paint_text` gives the selector the width from the text
+  start through `body.right()` independently of `verbs_left`, while verbs still reduce its line
+  count. The submitted differential test compares the selector band with and without verbs at
+  every width and has an anti-blank guard. `T166-R1` is a task-filing correction, not a request for
+  another layout threshold.
+- T-167 chooses the rendering from `_bar_line`, whose responsive control slot is monotonic even
+  where it is not constant. The reviewed row has one 8-to-16 transition and no hysteresis.
+- T-164 covers every member exactly once when folding to eight blocks and orders failure ahead of
+  cancellation, waiting, running and done. Moving the failure through all sixteen positions keeps
+  it visible; the boundary assertions use `segment_span(16)` and one pixel below it.
+- T-163 reserves the bar before laying out verbs. The overflow button is included in the maximum
+  available bar line, so it remains reachable when all ordinary verbs drop; below the preferred
+  bar minimum it is the documented winner. Replacing `_bar_reserve` with zero made both the
+  playlist and fraction-bar protections fail.
+- T-160 resolves paint, click and editor geometry through `_body_of` and `_control_of`; the control
+  stays clear of the full and child tile sizes throughout the submitted sweep. At physically tiny
+  helper bodies the rectangle can become empty, but the real add-dialog minimum measured 251 px
+  with a 205 px list viewport, where the 64 px control remains present. That does not reopen the
+  reported product defect.
+- The large `TASKS.md` move changes exactly the five submitted task blocks. No unrelated task body
+  differs between base and head, confirming `fd15ade` restored the four disclosed blank lines.
+  The four intermediate placement-red commits were inspected as history; the review verdict is
+  against the green exact head.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `38504b3..9a2bf16`: seven commits and four files; implementation changes three files through `fd15ade`, then `9a2bf16` adds the handoff. The branch is seven commits ahead of `origin/main` and was not pushed during review. |
+| Diff hygiene | `git diff --check 38504b3..9a2bf16`: **pass**. |
+| Relevant tests and placement | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/unit/test_task_placement.py tests/ui/test_row_delegate.py`: **66 passed** in 4.98 s. |
+| Lint | `.venv/bin/python -m ruff check .`: **pass**. |
+| Format | `.venv/bin/python -m ruff format --check .`: **fail** — one file, `ai/handoffs/2026-08-05-row-layout.md`, would be reformatted at lines 99 and 102. |
+| Types, host | `.venv/bin/python -m mypy`: **pass**, 107 files. |
+| Types, Windows branches | `.venv/bin/python -m mypy --platform win32`: **pass**, 107 files. |
+| Realistic paint probe | Rendered a group carrying selector, control, two verbs and sixteen states at row widths 300, 500 and 700. The format line remained above the verbs; the bar was eight deliberate blocks while narrow and sixteen at the single wide transition, with failure visible. A terminal fraction row kept progress visible while dropped actions remained in overflow. |
+| Bar-reserve mutation | Monkeypatched `_bar_reserve` to return zero. `test_a_playlists_blocks_keep_their_width_and_the_verbs_give_way` failed when progress disappeared; `test_a_downloads_bar_keeps_its_minimum_and_the_verbs_give_way` failed with an 11 px bar while verbs remained drawn. |
+| Task move audit | Parsed every `T-###` block at base and head: only T-160, T-163, T-164, T-166 and T-167 differ; no task was added or lost. The placement gate passes. |
+| Submitted broader evidence | Implementer reports the full suite **2204 passed, 11 skipped, 0 failed**, plus clean source/test Ruff and bare/Windows mypy. The reviewer independently reran the focused surface and both full-scope type gates; the exact-head repository-wide format failure above supersedes the narrower format claim. |
+
+### Correction scope and readiness
+
+Correct only the two documents named by the findings: format the handoff, and reconcile T-166's
+Scope/criteria with its already-correct completion note. Do not change source, tests, thresholds or
+the accepted task dispositions. Then run `ruff format --check .` and the placement test and return
+the docs-only correction for focused re-review. The source/test tree at `fd15ade` needs no new broad
+review or full-suite rerun if it remains byte-identical.
+
+The reviewer appended this record only. No submitted source, test, task state, handoff, commit,
+remote ref or CI state was changed by the reviewer.
