@@ -359,11 +359,11 @@
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 3 — format and content depth</h1>
       <p class="lede">Expose what yt-dlp can actually do. <strong>The document that gated five deliverables is written, and the phase is no longer one file wide.</strong> <code>T-105</code> closed on 2026-08-06, so <code>T-107</code>, <code>T-109</code>–<code>T-112</code> are startable for the first time since the phase was planned. Thirty-seven Phase 3 entries are closed and <em>still</em> not one of them is a deliverable — but the reason has changed from "blocked" to "not yet begun".</p>
-      <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable</strong>: History is no longer a product, only a private ledger behind the duplicate warning. A phase that deletes a shipped feature is not the shape this board was drawn to show, and the section on it is new.</p>
+      <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable, and then removed its replacement too.</strong> History went first; the private ledger meant to survive behind it was withdrawn hours later, after review found it had cost five findings — two High — without a user ever seeing it. <strong>The application now keeps no record of what has been downloaded at all.</strong></p>
       <p class="phase-line">
-        <span><strong>Head</strong> be76fe9</span>
-        <span><strong>CI</strong> see the note below</span>
-        <span><strong>Suite</strong> 2213 passed, 11 skipped, locally</span>
+        <span><strong>Head</strong> fd389f3</span>
+        <span><strong>CI</strong> green on all five jobs at be76fe9</span>
+        <span><strong>Suite</strong> 2163 passed, 11 skipped, locally</span>
         <span><strong>Phase 2</strong> exited 2026-08-05</span>
       </p>
     </div>
@@ -382,7 +382,7 @@
       <li style="--chip: var(--st-block)"><span class="n">4</span><span class="k">Accepted entries amended</span></li>
     </ul>
     <p class="note"><strong>The count of closed entries is still not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01 and every one of those is still <em>Proposed</em>. What has closed is real work that landed in Phase 3's numbering because that is when it was found. <span class="q-why">Counted as entries under <code>## Complete</code> in <code>ai/TASKS.md</code> whose <code>Phase:</code> line begins <em>Phase 3</em> — six of them closed on 2026-08-06 alone.</span></p>
-    <p class="note" style="--edge: var(--st-block)"><strong>CI is not green at this head, and was not green for three commits before it.</strong> Run <code>31080892061</code> failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality that expects the application menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job can see the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <strong>Both are fixed at <code>be76fe9</code>; the run confirming it had not finished when this board was written.</strong></p>
+    <p class="note" style="--edge: var(--st-approved)"><strong>CI went green at <code>be76fe9</code>, all five jobs, after three red commits.</strong> Run <code>31080892061</code> had failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality expecting the menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job sees the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <em>(The Settings menu has since been removed with the ledger, so that equality is back to two names — and will trip again when <code>T-146</code> restores the menu, which is what it is for.)</em></p>
   </section>
 
   <section>
@@ -414,7 +414,7 @@ flowchart TB
     ROWS["Row layout T-160 T-163 T-164 T-166 T-167"]:::done
     HIST["History batch T-142 T-144 T-145 T-159 - since removed"]:::done
     FIXES["T-150 dialog width, T-156 MP3 bitrate, T-168"]:::done
-    LEDGER["T-169 contract plus T-170 History removed"]:::done
+    LEDGER["T-169 plus T-170 - History and its ledger removed"]:::done
 
     HEAD["Pushed, awaiting review - be76fe9"]:::head
 
@@ -427,7 +427,7 @@ flowchart TB
     T111["T-111 user presets"]:::planned
     T112["T-112 output template editor"]:::planned
     T113["T-113 resume across restart - reopens UX-001"]:::risky
-    T114["T-114 warn on a repeat URL"]:::ready
+    T114["T-114 confirm a duplicate already queued"]:::ready
 
     T143["T-143 probe a playlist's entries"]:::ready
     T158["T-158 a refused Open is reported unseen"]:::ready
@@ -462,9 +462,9 @@ flowchart TB
     HEAD --> T146
     HEAD --> T171
     HEAD --> TIDY
-    LEDGER -. T-114 now reads the ledger, not a view .-> T114
-    LEDGER -. T-170 built the Settings shell T-146 extends .-> T146
-    LEDGER -. left behind dead code and two names .-> TIDY
+    LEDGER -. T-114 is now an in-queue check, storing nothing .-> T114
+    LEDGER -. Settings went with the ledger; T-146 rebuilds it .-> T146
+    LEDGER -. left two names worth fixing .-> TIDY
 
     T108 --> EXIT
     T109 --> EXIT
@@ -484,7 +484,7 @@ flowchart TB
       </div>
     </div>
 
-    <p class="note"><strong>Everything now hangs off the head.</strong> That is the whole change: with <code>T-105</code> written there is no longer a node the phase has to pass through, so the ordering below is a judgement rather than a constraint. <code>T-114</code>'s dependency moved rather than cleared — it needed the history records <em>and the view</em>, and the view is gone; it now reads <code>HistoryRepository.last_completed</code>, which <code>T-170</code> built for it. <code>T-171</code> is amber because what it needs is a decision, not work.</p>
+    <p class="note"><strong>Everything now hangs off the head.</strong> That is the whole change: with <code>T-105</code> written there is no longer a node the phase has to pass through, so the ordering below is a judgement rather than a constraint. <code>T-114</code>'s dependency did not move so much as vanish — it needed history records and the view over them, and neither exists. It is now a check against the live queue and the current paste, in memory, storing nothing. <code>T-171</code> is amber because what it needs is a decision, not work.</p>
   </section>
 
   <section>
@@ -563,8 +563,8 @@ flowchart TB
 
     <ol class="queue">
       <li style="--edge: var(--st-review)">
-        <div class="q-head"><span class="id">—</span> <span class="name">Review the ten commits that are waiting</span> <span class="pill">Before anything new</span></div>
-        <p class="q-why">Nothing in the range <code>7afa295..be76fe9</code> has been reviewed, and it includes <code>T-169</code>, which amends five accepted requirement and decision entries. <code>AGENTS.md</code> §3 makes review a distinct pass by a different agent; starting a deliverable on top of an unreviewed contract change is how a correction becomes a rewrite. The handoff is <code>ai/handoffs/2026-08-06-ledger-and-phase3.md</code>.</p>
+        <div class="q-head"><span class="id">—</span> <span class="name">Re-review the withdrawal</span> <span class="pill">Before anything new</span></div>
+        <p class="q-why">The range <code>7afa295..3578fcc</code> was reviewed and came back <em>Changes requested</em> on five findings. Three are resolved by the ledger no longer existing, and two — the unratified decision and the retained credentials — are resolved by the ruling that produced the withdrawal. <strong>The withdrawal itself is unreviewed</strong>, and it touches two requirements, three decision entries and the persistence layer. <code>T-150</code>, <code>T-156</code> and the visible History removal were accepted and need nothing further.</p>
       </li>
       <li style="--edge: var(--st-ready)">
         <div class="q-head"><span class="id">T-107</span> <span class="name">The format table</span> <span class="pill ghost">Foundation</span></div>
@@ -672,11 +672,11 @@ flowchart TB
     <div class="callout" style="--accent: var(--st-review)">
       <h3>The other two came with the History removal, on maintainer direction</h3>
       <ul>
-        <li><strong><code>REQ-020</code> and <code>REQ-021</code> were rewritten</strong> (<code>T-169</code>). <code>REQ-020</code> is a private completion ledger with no browseable list and no per-record removal; <code>REQ-021</code> reaches a file only while its queue row exists, and no longer implies the application follows files a user moves.</li>
+        <li><strong><code>REQ-020</code> is withdrawn outright</strong> — first narrowed to a private ledger by <code>T-169</code>, then withdrawn hours later. Nothing records what has been downloaded. <strong><code>REQ-021</code></strong> reaches a file only while its queue row exists. <strong><code>REQ-022</code></strong> is scoped to the live queue, where a duplicate is <em>confirmed rather than refused</em>: wanting the same URL twice is an ordinary thing to want.</li>
         <li><strong><code>DAT-001</code>, <code>DAT-005</code> and <code>UX-005</code> carry appended amendments</strong>, never rewrites — <code>AGENTS.md</code> §6 makes those historical record. <code>DAT-005</code>'s boundary is untouched: a record is not a file. <code>UX-005</code> loses its second tab and keeps everything it decided about a <em>row</em>.</li>
-        <li><strong><code>DAT-006</code> is new</strong>, and decides the ledger's data: the entered URL normalised minimally, the URL as entered, the completion time. One row per identity. <strong>Obsolete columns stop being written rather than being dropped</strong> — SQLite makes a column drop a table rewrite, and the rows are a user's own record of their own downloads.</li>
+        <li><strong><code>DAT-006</code> is Withdrawn</strong>, which is what <code>T169-R1</code> was owed: it had been self-headed <em>Accepted</em> when the maintainer's direction established the product boundary and not the detailed data choices. The ruling that followed was that the ledger should not exist. Its reasoning against dropping columns survives it and still governs migration <code>0008</code>'s now-unused one.</li>
       </ul>
-      <p class="note" style="border-left-color: var(--st-review)"><strong>This is the part of the range most worth a reviewer's attention.</strong> Amending five accepted entries is a Planner act taken on a verbal direction; if that reads as beyond what an agent should apply to <code>REQUIREMENTS.md</code> and <code>DECISIONS.md</code>, the remedy is a ratification note rather than a code change.</p>
+      <p class="note" style="border-left-color: var(--st-block)"><strong>The review found exactly that, and it was right.</strong> <code>T169-R1</code>: satisfying a decision's trigger makes it eligible for a ruling, not self-ratifying — the same distinction as <code>T145-R1</code> and <code>T144-R1</code>, which this project has now recorded three times. Four further findings followed, and the maintainer's ruling was to remove the feature rather than repair it. <strong>Five findings, two High, and not one about the warning being wrong: every one was about keeping the data.</strong></p>
     </div>
   </section>
 
