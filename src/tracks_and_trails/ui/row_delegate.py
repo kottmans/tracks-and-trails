@@ -765,11 +765,28 @@ class RowDelegate(QStyledItemDelegate):
 
         Measured off `area`, which is the row's whole text line, so this answer does not depend on
         what happened to fit — `_verb_rects` and `_paint_text` both ask it and must agree.
+
+        **What the bar asks for is its *widest* rendering, never the one this width chose**
+        (`T-168`). Asking `segment_blocks` here was the defect: the merge is a step, so the reserve
+        fell 271 px to 135 px as the row crossed the threshold and handed the verbs 136 px back for
+        being made *smaller*. A sixteen-entry playlist's `Remove` therefore vanished at 496 px,
+        returned at 432 px and vanished again at 360 px — measured.
+
+        Taking `segment_span(entries)` makes the space left for the verbs
+        `max(0, area.width() - span - VERB_GAP)`, which is **continuous and non-decreasing** in the
+        row's width: there is no width at which narrowing the window gives a verb back. Below the
+        threshold the whole line goes to the bar and `⋯` is all that is left, which is the reported
+        expectation.
+
+        **The bar is not made narrower by this.** It is drawn into whatever the verbs leave, and
+        `_paint_segments` still chooses its block count from `_bar_line` — so a merged bar spends
+        the freed width on eight wider blocks instead of surrendering it, which is more of `T-164`
+        rather than less.
         """
         room = self._bar_line(metrics, area, index)
         entries = len(_segments(index))
         if entries:
-            keep = segment_span(segment_blocks(entries, room))
+            keep = segment_span(entries)
         elif _fraction(index) is not None:
             keep = MIN_FRACTION_BAR
         else:

@@ -1098,91 +1098,6 @@ beats designing it against an imagined one.
 
 ## Proposed — Phase 3
 
-### T-168 — A group's `Remove` comes back as the window gets smaller
-
-**Status:** Proposed — **found by the maintainer, 2026-08-06**, narrowing the window on a
-sixteen-entry playlist. Reported as *"the remove button disappears and then reappears, and then
-disappears again as it gets smaller. Once it disappears it should stay gone and `⋯` should be the
-only thing displayed there."*
-**Owner:** Implementer
-**Priority:** Medium — nothing is unreachable (`⋯` holds the verb throughout), but a control that
-returns when you take space away teaches the user that the row is arbitrary
-**Phase:** Phase 3
-**Depends on:** nothing. It is `T-163`, `T-164` and `T-167` meeting
-**Relevant context:** `T-167` (the bar changing shape twice, the same property one field over),
-`T-163` (the bar's share of the last line), `T-164` (the eight-block merge), `T-135` (`⋯` holds what
-was dropped), `UX-005` §4, `ui/row_delegate.py` (`_bar_reserve`, `_bar_line`, `_verb_rects`)
-**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`
-**Risk:** Low to fix, Medium to fix *without* reopening what `T-163` and `T-164` each decided
-
-#### Scope
-
-**Measured on this build**, a sixteen-entry playlist header in the Queue tab, all members
-`COMPLETED`, narrowing 560 px → 300 px in 4 px steps:
-
-| Window | Dropped into `⋯` |
-|---|---|
-| 560 px | `reveal` |
-| **496 px** | `reveal`, **`remove`** — the button goes |
-| **432 px** | `reveal` — **the button comes back** |
-| **360 px** | `reveal`, `remove` — it goes again |
-
-**Neither feature is wrong on its own; the composition is.** `T-163` gave the progress bar a share
-of the last line and made the **verbs** the half that yields, because a dropped verb is still
-reachable through `⋯` and a squeezed bar has no overflow. `T-164` merges a narrow bar from sixteen
-blocks to eight, because sixteen blocks at 15 px are one bar rather than sixteen. Both are right.
-
-Together they make the bar's demand a **step function of the row's width**, and the step is larger
-than a button:
-
-```
-room for the bar   blocks   the bar reserves
-   280 px            16          271 px      <- verbs get 9 px, `Remove` does not fit
-   270 px             8          135 px      <- verbs get 135 px, `Remove` fits again
-```
-
-**136 px is handed back to the verbs by making the window smaller.** That is the whole defect.
-
-**`T-167`'s monotonicity claim is narrowly true and does not cover this.** `_bar_line`'s docstring
-says *"Monotonic in the window's width … everything subtracted here is fixed for a given row rather
-than a function of what fit on this paint"* — true of `_bar_line`, which subtracts only the `⋯`.
-What is not monotonic is `_bar_reserve`, which is `segment_span(segment_blocks(entries, room))`, and
-therefore what is left for the verbs. The property a user experiences was never the one asserted.
-
-#### Acceptance criteria
-
-- **A verb dropped at some width stays dropped at every narrower width**, for a row of any entry
-  count — asserted by sweeping the width and requiring the dropped set to grow monotonically, not
-  by checking two or three chosen widths
-- The sweep covers the **merge threshold**, since that is where the step is, and a test that steps
-  in coarse increments can pass straight over it
-- `⋯` still holds every verb the row could not draw (`T-135`), so nothing becomes unreachable at
-  any width
-- Whatever the bar does instead, a completed playlist's bar is still legible at a narrow window —
-  `T-164`'s finding is not reopened by fixing this
-- The queue's ordinary rows and History's group header, which has no bar, are unaffected
-
-#### Candidate directions, none of them ruled
-
-1. **The bar takes the room rather than a fixed span.** Reserve `min(room, span(16))` and let the
-   merged bar draw wider blocks into the space it already has. Verb space becomes monotone by
-   construction; the cost is that below the threshold the bar takes the whole line and `⋯` really is
-   all that is left — which is what the report asks for.
-2. **Choose the block count from the row's width alone**, independent of what the verbs want, so the
-   two decisions stop feeding each other.
-3. **Make the drop sticky per row.** Rejected on sight and recorded so nobody re-proposes it: it
-   makes what a row shows depend on the widths it has previously been drawn at, which is the
-   paint-time-state defect `T-135` already had to correct once.
-
-#### Out of scope
-
-- Changing which verbs a group offers (`T-140`, `T-142`)
-- The bar's colours or block states (`T-165`)
-
----
-
----
-
 ### T-158 — A refused Open is reported where nobody is looking
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, pressing *Open* on a download whose
@@ -2299,6 +2214,95 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-168 — A group's `Remove` comes back as the window gets smaller
+
+**Status:** **Complete — 2026-08-06, awaiting review.** Found by the maintainer, 2026-08-06,
+narrowing the window on a sixteen-entry playlist. **Direction 1 was taken**: the bar asks for its
+*widest* rendering rather than the one this width chose, so the space left for the verbs is
+`max(0, width - segment_span(entries) - VERB_GAP)` — continuous and non-decreasing, with no width
+at which narrowing the row gives a verb back. The bar loses nothing: it is drawn into whatever the
+verbs leave and still picks its block count from `_bar_line`, so a merged bar spends the freed
+width on eight wider blocks. Swept every pixel from 300 to 1200; the mutation restoring the old
+reserve fails at the threshold.
+**Owner:** Implementer
+**Priority:** Medium — nothing is unreachable (`⋯` holds the verb throughout), but a control that
+returns when you take space away teaches the user that the row is arbitrary
+**Phase:** Phase 3
+**Depends on:** nothing. It is `T-163`, `T-164` and `T-167` meeting
+**Relevant context:** `T-167` (the bar changing shape twice, the same property one field over),
+`T-163` (the bar's share of the last line), `T-164` (the eight-block merge), `T-135` (`⋯` holds what
+was dropped), `UX-005` §4, `ui/row_delegate.py` (`_bar_reserve`, `_bar_line`, `_verb_rects`)
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`
+**Risk:** Low to fix, Medium to fix *without* reopening what `T-163` and `T-164` each decided
+
+#### Scope
+
+**Measured on this build**, a sixteen-entry playlist header in the Queue tab, all members
+`COMPLETED`, narrowing 560 px → 300 px in 4 px steps:
+
+| Window | Dropped into `⋯` |
+|---|---|
+| 560 px | `reveal` |
+| **496 px** | `reveal`, **`remove`** — the button goes |
+| **432 px** | `reveal` — **the button comes back** |
+| **360 px** | `reveal`, `remove` — it goes again |
+
+**Neither feature is wrong on its own; the composition is.** `T-163` gave the progress bar a share
+of the last line and made the **verbs** the half that yields, because a dropped verb is still
+reachable through `⋯` and a squeezed bar has no overflow. `T-164` merges a narrow bar from sixteen
+blocks to eight, because sixteen blocks at 15 px are one bar rather than sixteen. Both are right.
+
+Together they make the bar's demand a **step function of the row's width**, and the step is larger
+than a button:
+
+```
+room for the bar   blocks   the bar reserves
+   280 px            16          271 px      <- verbs get 9 px, `Remove` does not fit
+   270 px             8          135 px      <- verbs get 135 px, `Remove` fits again
+```
+
+**136 px is handed back to the verbs by making the window smaller.** That is the whole defect.
+
+**`T-167`'s monotonicity claim is narrowly true and does not cover this.** `_bar_line`'s docstring
+says *"Monotonic in the window's width … everything subtracted here is fixed for a given row rather
+than a function of what fit on this paint"* — true of `_bar_line`, which subtracts only the `⋯`.
+What is not monotonic is `_bar_reserve`, which is `segment_span(segment_blocks(entries, room))`, and
+therefore what is left for the verbs. The property a user experiences was never the one asserted.
+
+#### Acceptance criteria
+
+- **A verb dropped at some width stays dropped at every narrower width**, for a row of any entry
+  count — asserted by sweeping the width and requiring the dropped set to grow monotonically, not
+  by checking two or three chosen widths
+- The sweep covers the **merge threshold**, since that is where the step is, and a test that steps
+  in coarse increments can pass straight over it
+- `⋯` still holds every verb the row could not draw (`T-135`), so nothing becomes unreachable at
+  any width
+- Whatever the bar does instead, a completed playlist's bar is still legible at a narrow window —
+  `T-164`'s finding is not reopened by fixing this
+- The queue's ordinary rows and History's group header, which has no bar, are unaffected
+
+#### Candidate directions, none of them ruled
+
+1. **The bar takes the room rather than a fixed span.** Reserve `min(room, span(16))` and let the
+   merged bar draw wider blocks into the space it already has. Verb space becomes monotone by
+   construction; the cost is that below the threshold the bar takes the whole line and `⋯` really is
+   all that is left — which is what the report asks for.
+2. **Choose the block count from the row's width alone**, independent of what the verbs want, so the
+   two decisions stop feeding each other.
+3. **Make the drop sticky per row.** Rejected on sight and recorded so nobody re-proposes it: it
+   makes what a row shows depend on the widths it has previously been drawn at, which is the
+   paint-time-state defect `T-135` already had to correct once.
+
+#### Out of scope
+
+- Changing which verbs a group offers (`T-140`, `T-142`)
+- The bar's colours or block states (`T-165`)
+
+---
+
+---
 
 ### T-105 — Write `docs/UX_SPEC.md` before Phase 3 starts
 

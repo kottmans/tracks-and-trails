@@ -1562,6 +1562,51 @@ def test_a_downloads_bar_keeps_its_minimum_and_the_verbs_give_way(
             )
 
 
+def test_a_verb_dropped_at_one_width_never_returns_at_a_narrower_one(
+    qapp: QApplication,
+) -> None:
+    """`T-168`: the maintainer narrowed the window and `Remove` came back.
+
+    Measured before the fix, on a sixteen-entry playlist: the button was drawn at 560 px, gone at
+    496 px, **drawn again at 432 px**, and gone at 360 px. Nothing was unreachable — `⋯` held it
+    throughout — but a control that returns when you take space away teaches the user that the row
+    is arbitrary.
+
+    **`T-163` and `T-164` are each right and their composition was not.** The verbs yield to the
+    bar, and a narrow bar merges sixteen blocks into eight; so the bar's demand was a step function
+    of the width, and the step was bigger than a button. Crossing the merge threshold handed the
+    verbs 136 px back — `segment_span(16)` is 271 px and `segment_span(8)` is 135 px — which is
+    exactly enough to fit a verb that had just been dropped.
+
+    **Swept rather than sampled.** The step is one threshold wide; a test checking three chosen
+    widths passes straight over it, which is how the defect survived `T-167`'s own monotonicity
+    claim. `SWEEP_WIDTHS` is every pixel from 300 to 1200, and the assertion is on the *shape* of
+    the sequence — the dropped set only ever grows as the row narrows — rather than on any width's
+    value, so it keeps holding when a font or a label changes.
+    """
+    row = a_playlist({SEGMENTS_ROLE: [SegmentState.DONE] * 16})
+    delegate = RowDelegate()
+    previous: frozenset[Verb] | None = None
+    previous_width = 0
+
+    for width in reversed(SWEEP_WIDTHS):
+        paint_rows(RowsModel([row]), delegate, 0, width=width)
+        dropped = frozenset(delegate.overflowing("playlist-1"))
+        if previous is not None:
+            returned = previous - dropped
+            assert not returned, (
+                f"{sorted(v.value for v in returned)} was in the overflow at {previous_width}px "
+                f"and is drawn again at {width}px — narrowing the row gave a verb back. The bar "
+                "merges at this threshold and hands the verbs more space than it took"
+            )
+        previous, previous_width = dropped, width
+
+    assert previous, (
+        "at the narrowest swept width every verb is still drawn, so this never exercised the "
+        "crowding it exists to check"
+    )
+
+
 def test_the_overflow_still_holds_exactly_what_the_row_dropped(qapp: QApplication) -> None:
     """`T-135`, re-asserted because `T-163` changed what makes a verb drop.
 
