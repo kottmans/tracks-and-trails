@@ -5,7 +5,7 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-30
+**Last updated:** 2026-08-06
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -1107,7 +1107,7 @@ file had moved and reporting that **nothing happened at all**.
 **Phase:** Phase 3. A defect in `T-086`'s route (`REQ-021`), which is an approved Phase 2
 deliverable rather than one of criterion 8's ten
 **Depends on:** nothing
-**Relevant context:** `REQ-021`, `NFR-006`, `T-086`, `UX-001`, `ui/reveal.py`
+**Relevant context:** `REQ-021`, `NFR-006`, `T-086`, `T-169`, `UX-001`, `ui/reveal.py`
 (`_refuse_unless_usable`), `ui/file_actions.py`, `ui/main_window.py` (`_report_transiently`)
 **Affected surfaces:** `ui/main_window.py`, possibly `ui/file_actions.py`
 **Risk:** Low
@@ -1137,90 +1137,18 @@ clicked — several hundred pixels away.
   on**, without a modal dialog for an ordinary case
 - The existing sentence is reused, not rewritten — `Refusal.reason` already says the right thing,
   and a second wording is a second thing to keep true
-- Both surfaces behave the same: the queue's completed row and History's, since both route through
-  `FileActions`
+- The Queue's completed row reports through the same `FileActions` path for pointer, keyboard and
+  overflow-menu activation; `T-169` removes the second History surface rather than requiring it to
+  grow another feedback treatment
 - The transient status-bar report **stays**, or its removal is deliberate. It is the record for a
   user who looked away
 - `NFR-005`: whatever carries it is announced, not colour or motion alone
 
 #### Out of scope
 
-- What happens to the history record for a file that has moved. `DAT-005` settles that a record is
-  not a file, and `UX-001` that nothing here deletes anything
+- What happens after the completed Queue row has been cleared. `T-169` deliberately stops claiming
+  a durable file-location surface at that boundary
 - Re-locating a moved file, or offering to. That is a feature, not this defect
-
----
-
-### T-156 — The MP3 preset does not say which bitrate it means
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, reading the queue row's format
-dropdown. **New scope: Phase 3**, and not a criterion 8 defect — nothing in `T-132`–`T-141` or the
-mockups covers what a preset's name discloses.
-**Owner:** Implementer
-**Priority:** Medium — the disclosure half is small; the control half is a product question
-**Phase:** Phase 3
-**Depends on:** nothing for the disclosure. The control half is adjacent to `T-111` (user presets)
-and `REQ-010`
-**Moved here from `T-159` by maintainer ruling, 2026-08-05** (`T159-R2`): that task's criterion
-*"the row says what it converted to, including the bitrate for MP3"* is now **this task's own**,
-and `T-159`'s copy is struck through rather than deleted so the move stays legible. `T159-R2` is
-why the ruling was needed at all — a task cannot delegate an unmet acceptance criterion to a later
-one on its own authority, however good the reason.
-
-The reason was good: disclosing the bitrate on a row without deciding what the **control** says
-would put *Audio only (MP3), 192 kbps* beside a dropdown reading *Audio only (MP3)* — `T140-R3`'s
-defect one field over. `ui/format_text.format_name` is now the one place the wording lives, so
-whatever this task rules applies to the queue, History and the add dialog together rather than to
-one of them.
-**Relevant context:** `REQ-006`, `REQ-009`, `REQ-010`, `T-076`, `T-139`, `core/presets.py`
-(`MP3_QUALITY`, `MP3_BITRATES`), `ui/add_dialog.py`, `ui/queue_view.py`
-**Affected surfaces:** `core/presets.py` or `ui/`, depending on the ruling below
-**Risk:** Low
-
-#### Scope
-
-**`Audio only (MP3)` converts at 192 kbps and never says so.** `MP3_QUALITY` is `"192"`, chosen
-deliberately — *"over VBR 0 because a preset named for a codec should be predictable in size, and
-over 128 because the difference is audible on music"* — and its own comment already says the right
-thing: *"the preset states a default, it does not decide policy for anyone."*
-
-**The two surfaces disagree about how much of that a user sees.** The add dialog offers the whole
-`MP3_BITRATES` range — `320` down to `128` — as a control. The **queue row's** dropdown offers
-preset *names* only, from `BUILT_IN_PRESETS`. So a download's bitrate is choosable before it is
-queued and invisible afterwards, and the queue row is where a user looks when deciding whether to
-retarget.
-
-Two separable answers, and they are not alternatives:
-
-- **Disclose it.** The name reads `Audio only (MP3)`; it could read the bitrate. `REQ-009`'s
-  principle is that the row says what the download actually is, and `_effective_format_text`
-  already prefers a preset's name over raw syntax for exactly that reason — a name that omits the
-  one number a user cares about is the same gap one step smaller.
-- **Offer it on the row.** A second control, or a bitrate-bearing entry in the same one. This is
-  the larger question: it multiplies the dropdown, it interacts with `T-111`'s user presets, and
-  `T-139` already found the bitrate control needs to *disable* where bitrate does not apply.
-
-**Recommendation: disclose first, and decide the control with `T-111`.** The disclosure is cheap
-and strictly improves what the row says; the control is a design question that user presets may
-answer better than a second dropdown would.
-
-#### Acceptance criteria
-
-- The MP3 preset's user-visible name states its bitrate, derived from `MP3_QUALITY` rather than
-  typed — a literal in the name and a constant in the code are two sources that will drift
-- The queue row, the add dialog and History all show the same text for the same request, asserted
-  together rather than one at a time
-- Presets with **no** bitrate say nothing about one: `Audio only (original)` converts nothing, and
-  a name implying otherwise is worse than the omission this fixes
-- If a per-row control lands, `T-139`'s rule holds — it disables where bitrate does not apply, and
-  is not merely hidden
-
-#### Out of scope
-
-- Which bitrates are offered. `T-076` settled `MP3_BITRATES` and why it stops at 128
-- Bitrate for codecs other than MP3. `presets.py` already refuses a kbps for `FLAC`, `WAV` and
-  `ALAC`, and that reasoning stands
-- Changing the default away from 192
 
 ---
 
@@ -1233,9 +1161,11 @@ already names every setting asked for. **The phase is an open question — see b
 user reaches for first
 **Phase:** **Phase 4 as the plan stands.** `ARC-007` deferred the full dialog there deliberately,
 and moving it is a maintainer call rather than this task's to make
-**Depends on:** `T-105` (`docs/UX_SPEC.md`) for the screen's layout, if it lands after that task
-**Relevant context:** `REQ-023`, `ARC-007`, `ARC-008`, `DAT-001`, `ARCHITECTURE.md` §5 and §8,
-`core/settings.py`, `ui/theme.py`, `ui/main_window.py`, `app.default_output_directory`
+**Depends on:** `T-105` (`docs/UX_SPEC.md`) for the screen's layout and `T-170` for the minimal
+Settings shell introduced with the download-record control
+**Relevant context:** `REQ-023`, `ARC-007`, `ARC-008`, `DAT-001`, `T-170`, `ARCHITECTURE.md` §5
+and §8, `core/settings.py`, `ui/theme.py`, `ui/main_window.py`,
+`app.default_output_directory`
 **Affected surfaces:** `core/settings.py`, `ui/main_window.py`, a new settings dialog module,
 `ui/theme.py`'s selection path, `app.py`
 **Risk:** Medium — it adds persisted state, and `ARC-008` governs what a bad value does
@@ -1249,9 +1179,9 @@ and moving it is a maintainer call rather than this task's to make
 > source, and **theme**.
 
 Both settings named in the request — the download directory and light/dark — are in that list
-verbatim. What `REQ-023` does **not** say is *how the screen is reached*, and that is the genuinely
-new decision: a **`Settings` menu in the menu bar**, between `&File` (`main_window.py:1106`) and
-`&Help` (`main_window.py:1139`).
+verbatim. `T-170` now owns the smallest coherent route to the screen: a **`Settings` menu in the
+menu bar** and a data section containing *Clear download records*. This task extends that shell
+rather than building a second settings surface.
 
 **Three things already exist, so this is smaller than it looks.**
 
@@ -1277,15 +1207,15 @@ new decision: a **`Settings` menu in the menu bar**, between `&File` (`main_wind
 
 **The phase question, stated rather than assumed.** `ARC-007` and `IMPLEMENTATION_PLAN.md` §Phase 4
 both put the full dialog in Phase 4, after Phase 3. The request did not ask to re-phase it and this
-entry does not do so. **If the maintainer wants the theme toggle and the download directory sooner,
-that is a plan amendment** of the same kind as criterion 8 — recorded in `IMPLEMENTATION_PLAN.md`
-with the ruling named, not inferred from a task being filed. A defensible middle option exists: the
-menu plus those two settings early, with the remaining six staying in Phase 4.
+entry does not do so. `T-170`'s one data action does not pull this task's persisted settings into
+Phase 3. **If the maintainer wants the theme toggle and the download directory sooner, that is a
+plan amendment** of the same kind as criterion 8 — recorded in `IMPLEMENTATION_PLAN.md` with the
+ruling named, not inferred from the shell existing.
 
 #### Acceptance criteria
 
-- A `Settings` menu sits between `File` and `Help`, opens the screen, and is reachable by keyboard
-  with a mnemonic that does not collide with the existing two
+- The `Settings` route and shell from `T-170` remain one screen and are extended rather than
+  replaced; its keyboard route and download-record action keep working
 - The screen sets the **default download directory**; a chosen directory survives a restart and is
   what a new job actually uses — asserted against a real job, not against the stored value
 - The screen switches **light and dark**; the change applies to the running window without a
@@ -1301,6 +1231,8 @@ menu plus those two settings early, with the remaining six staying in Phase 4.
 
 - The other five `REQ-023` settings — default preset, output template, ffmpeg location, network
   options, cookie source. Each has its own Phase 3 or Phase 4 owner
+- Download-record retention and the one action that clears those records. `T-170` owns that
+  vertical slice and the minimal shell this task extends; the action is not a persisted setting
 - **Following the OS theme automatically.** Worth wanting and not requested; it is a third state
   beyond light and dark and needs its own decision
 - Window geometry, which `ARC-007` deliberately keeps out of this layer (`window.toml`)
@@ -1686,35 +1618,216 @@ Neither is this task's to decide alone; both need an entry.
 **Owner:** Implementer
 **Priority:** Low — the smallest item in the phase
 **Phase:** Phase 3
-**Depends on:** `T-085` (history records, approved) and `T-100` (the history view)
-**Relevant context:** `docs/UX_SPEC.md` §9.3 (a staging-row state, never a modal), `REQ-022`, `T-085`, `persistence/repositories.py` (`HistoryRepository`)
+**Depends on:** `T-085` (completed-download records, approved) and `T-169` (the narrowed
+record contract)
+**Relevant context:** `docs/UX_SPEC.md` §9.3 (a staging-row state, never a modal), `REQ-022`,
+`T-085`, `T-169`, the completion-ledger repository settled there
 **Affected surfaces:** `persistence/`, `ui/add_dialog.py`
 **Risk:** Low
 
 #### Scope
 
-`REQ-022`: detect that a URL has been downloaded before and warn, **with an override**. The history
-table already stores the source URL (`T-085`), so this is a lookup and a prompt rather than new
-state.
+`REQ-022`: detect that a URL has been downloaded before and warn, **with an override**. The
+internal completion ledger stores the identity `T-169` settles, so this is a lookup and a staging
+state rather than a user-facing history feature or new library surface.
 
 **The override is the requirement, not a concession.** Re-downloading at a different quality, or
 because the file was deleted, is an ordinary thing to want.
 
 #### Acceptance criteria
 
-- A URL present in history **warns before enqueueing** — `REQ-022`'s own words, and the part that
-  is not gated. **What the warning names** (the date, and a link to the History record) is
-  `docs/UX_SPEC.md`'s `P-11` and is unruled: build the warning, and take the contents from that
-  ruling rather than from this line
+- A URL present in the completion ledger **warns before enqueueing** — `REQ-022`'s own words, and
+  the part that is not gated. The warning follows `T-169`'s amended UX contract and offers no link
+  to a History surface that no longer exists
 - The override enqueues it anyway, asserted on the stored queue
-- A URL **not** in history enqueues with no prompt — the silent case, which an over-eager
+- A URL **not** in the ledger enqueues with no prompt — the silent case, which an over-eager
   implementation breaks
-- The lookup is indexed, not a scan of history on the GUI thread (`T079-R2`'s rule)
-- A cleared queue does not clear history, so the warning survives clear-finished (`T-081`)
+- The lookup is indexed, not a scan of completed records on the GUI thread (`T079-R2`'s rule)
+- Clearing finished queue rows does not clear the ledger, so the warning survives clear-finished
+  (`T-081`); explicitly clearing download records in Settings removes the warning
 
 #### Out of scope
 
 - Detecting the same *video* at a different URL
+- Restoring a browseable History view. The ledger is infrastructure, not another name for the
+  removed product surface
+
+---
+
+### T-169 — Make completion history an internal ledger
+
+**Status:** Proposed — **maintainer direction, 2026-08-06.** Tracks & Trails is a lightweight
+downloader, not a media-library tracker. Reconcile the product contract before deleting a widget,
+so the old feature is not recreated by a still-live requirement.
+**Owner:** Planner
+**Priority:** High — `REQ-020`, `REQ-021`, `DAT-005`, `UX-005` and the plan currently require the
+opposite product
+**Phase:** Phase 3, before any remaining History work or `T-170`
+**Depends on:** nothing
+**Relevant context:** `REQ-020`, `REQ-021`, `REQ-022`, `DAT-001`, `DAT-005`, `UX-005`,
+`IMPLEMENTATION_PLAN.md` Phase 2 and Phase 3, `T-085`, `T-100`, `T-114`, `T-144`
+**Affected surfaces:** `ai/REQUIREMENTS.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`,
+`ai/TASKS.md`, `ai/STATUS.md`, `docs/UX_SPEC.md`
+**Risk:** High — removing only the tab either breaks duplicate detection or leaves an accepted
+contract that requires the tab to return
+
+#### Scope
+
+Separate two ideas that the current word *History* conflates:
+
+- The application keeps a **small internal completion ledger** so `REQ-022` can warn before a
+  repeat download. It is infrastructure, not a browseable catalogue of files.
+- The **Queue is the only visible download list**. A completed row can still open or reveal its
+  file until the user clears that row. After the row is cleared, or the file is moved elsewhere,
+  the application does not claim to know the file's current location.
+- Clearing the ledger is a single data-management action in Settings. It never deletes media.
+- Provenance written into a downloaded file is a separate, optional question owned by `T-171`.
+  It is not a prerequisite for removing History.
+
+This is an amendment, not an erasure. The Phase 2 records that say History was implemented and
+approved remain historically true. Append amendments to accepted decisions and rewrite only the
+current-truth documents.
+
+#### Acceptance criteria
+
+- `REQ-020` specifies the private ledger and its purpose, retention and user-controlled clearing;
+  it no longer promises a browseable list or selected-record removal
+- `REQ-021` promises Open and Show in folder only where the application still has a live queue
+  row; it does not imply that Tracks & Trails follows files after users move or process them
+- `DAT-001`, `DAT-005` and `UX-005` are amended explicitly: one Queue surface, no History tab,
+  History count, history rows, history groups or history-row verbs, and one Settings action named
+  **Clear download records**
+- The ledger's minimum identity and fields are decided before implementation. The decision covers
+  repeated overrides, URL normalization, upgrade of existing databases and whether obsolete
+  path, format, size, thumbnail and playlist fields are migrated away or merely stop being written
+- The retained identity does not broaden secret storage: cookies, authorization material, proxy
+  credentials and transient signed query data are not made durable merely to detect duplicates
+- `IMPLEMENTATION_PLAN.md`, `STATUS.md`, `docs/UX_SPEC.md` and every open task agree with the new
+  contract. Completed History tasks remain completed historical work, not silently relabelled
+- `T-114` depends on the ledger rather than the view, and no open task still proposes new History
+  grouping, thumbnails, row formatting or verbs
+
+#### Out of scope
+
+- Source or schema changes. `T-170` implements the reconciled contract
+- File metadata or sidecars. `T-171` decides whether either is useful and safe
+- Search, filters, favourites, watched folders or any replacement library surface
+
+---
+
+### T-170 — Replace the History tab with a small ledger
+
+**Status:** Proposed — **maintainer direction, 2026-08-06.** This is the implementation slice
+after `T-169` makes the product contract say what is now intended.
+**Owner:** Implementer
+**Priority:** Medium-High — it removes a substantial UI and runtime surface while preserving the
+one durable behaviour that still earns its cost
+**Phase:** Phase 3
+**Depends on:** `T-169`. This task supplies the minimal Settings shell; `T-146` extends it later
+with the persisted settings already assigned there
+**Relevant context:** `T-169`, `T-114`, `T-146`, `T-085`, `T-100`, `T-124`, `T-138`, `T-142`,
+`T-144`, `T-145`, `REQ-022`, `ui/history_view.py`, `ui/main_window.py`,
+`persistence/repositories.py`
+**Affected surfaces:** `persistence/`, `ui/main_window.py`, `ui/history_view.py`,
+`ui/row_verbs.py`, `app.py`, History-specific tests and the Settings screen from `T-146`
+**Risk:** Medium-High — the visible deletion is easy; preserving upgrade data, duplicate
+detection and the never-delete-files boundary is the real work
+
+#### Scope
+
+Remove the full History product surface and the machinery that exists only to feed it. The main
+window becomes a Queue, not a one-tab tab widget. History thumbnails, grouping, row formatting,
+selection removal, refresh subscriptions and file-location checks leave the runtime path.
+
+Keep a minimal completion ledger behind the UI. A successful completion still updates the job and
+ledger atomically, and an existing installation retains enough old data for `T-114` after upgrade.
+Do not keep obsolete presentation fields or abstractions merely because the old table was named
+`history`; equally, do not force a destructive schema rewrite without the migration decision from
+`T-169`.
+
+Move the one remaining user action to Settings as **Clear download records**. Introduce only the
+smallest Settings shell needed to hold that data/privacy control; `T-146` extends the same screen
+with ordinary settings later. The action is not a list-management verb and clears only the ledger.
+
+#### Acceptance criteria
+
+- The main window contains one Queue surface and no History tab, History count, history list,
+  history empty state, history group or history-row context menu
+- Open and Show in folder still work on a completed Queue row until that row is cleared; a moved or
+  missing file still reports honestly while the row exists
+- Completing a job writes the ledger record atomically with the completed job, and an upgraded
+  database preserves the identity needed by `T-114`
+- New completions persist only the fields `T-169` kept. No thumbnail fetch, filesystem probe or
+  view refresh is performed for an invisible ledger
+- A keyboard-reachable `Settings` menu opens one screen with a data section. It offers **Clear
+  download records** by pointer and keyboard; the confirmation names the exact count and says that
+  downloaded files are not deleted, and the empty action is disabled or asks no question
+- Clearing records is one transaction and works above SQLite's placeholder ceiling. Clearing
+  finished Queue rows does not clear records; clearing records makes `T-114` stop warning
+- History-only source and tests are removed or narrowed. Tests remain for completion atomicity,
+  database upgrade, indexed duplicate lookup, record clearing and the never-delete-files boundary
+- The application starts against both a fresh database and the last released History schema
+
+#### Out of scope
+
+- Deleting, moving, indexing or watching downloaded files
+- A per-record browser, recovery screen, search box or hidden route back to History
+- Writing provenance into files (`T-171`)
+- The other settings in `T-146`
+
+---
+
+### T-171 — Decide whether files carry provenance
+
+**Status:** Proposed — **maintainer direction, 2026-08-06.** File details are a better candidate
+for answering *what settings produced this file* than a permanent in-app library, but this is not
+yet permission to write private download context into every output.
+**Owner:** Planner
+**Priority:** Low — useful if it survives the user's later processing, and unnecessary for the
+History removal
+**Phase:** Phase 4 or later
+**Depends on:** `T-169` for the boundary between the ledger and file-owned provenance
+**Relevant context:** `REQ-020`, `REQ-022`, `REQ-026`, `OPS-002`, the built-in presets,
+`downloader/ytdlp_adapter.py`, yt-dlp metadata/postprocessor options
+**Affected surfaces:** `ai/REQUIREMENTS.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`, and a
+new implementation task only if the decision adopts the feature
+**Risk:** Medium — embedded metadata travels when a file is shared and support differs by
+container and post-processing path
+
+#### Scope
+
+Measure before choosing a storage mechanism. Inventory what yt-dlp and the current postprocessors
+already write for every built-in audio and video preset, and which fields survive the remux,
+conversion and ordinary file-moving workflow this feature is meant to serve.
+
+Compare three honest outcomes: keep the existing file metadata unchanged; add a small opt-in set
+of embedded tags where the container supports them; or write an explicit sidecar. Filesystem
+extended attributes are not equivalent to embedded metadata — they often disappear on copy — and
+must not be treated as the same option.
+
+#### Acceptance criteria
+
+- A recorded matrix says, per built-in output family, what provenance exists now, what can be
+  added without another runtime dependency, and what survives the application's own processing
+- The decision names the user question each field answers. Candidate fields include the chosen
+  preset/format and completion time; no field is retained merely because the old History row had it
+- A strict privacy allowlist is part of any adopted design. Cookies, authorization headers, proxy
+  details, local configuration paths and unredacted signed/private URLs are never embedded or put
+  in a sidecar
+- The default and control are explicit: opt-in versus opt-out, whether the choice is global or
+  per-download, and what happens when a container cannot carry the requested field
+- Metadata failure semantics are decided. A successful media download must not become an
+  unexplained failure because an optional provenance tag could not be written
+- The decision accounts for users processing the file afterwards and does not claim metadata will
+  survive tools or containers for which it was not tested
+- If adopted, requirements and a separate Implementer task define the supported formats, exact
+  schema and tests. If rejected, the decision records why and no dormant UI is added
+
+#### Out of scope
+
+- Replacing the completion ledger required by `REQ-022`
+- Reconstructing a History tab by scanning users' download directories
+- Media-library features such as ratings, play counts, tagging, organisation or file watching
 
 ---
 
@@ -2152,6 +2265,104 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-156 — The MP3 preset does not say which bitrate it means
+
+**Status:** **Complete — 2026-08-06, the disclosure half only**, which is what this entry's own
+recommendation asked for: *"disclose first, and decide the control with `T-111`"*. Every surface
+now reads `Audio only (MP3), 192 kbps`, rendered by `format_text.format_name` from the choice's own
+`audio_quality`. **The control half is not done and is not claimed** — see below. *(Was: Proposed —
+**found by the maintainer, 2026-08-05**, reading the queue row's format dropdown. **New scope:
+Phase 3**, and not a criterion 8 defect — nothing in `T-132`–`T-141` or the mockups covers what a
+preset's name discloses.)*
+
+**Two things the implementation found, both worth reading before the next pass:**
+
+1. **The bitrate could not go in the catalogue name**, which is the obvious reading of the first
+   criterion. `with_audio_quality` derives a preset at another bitrate with `replace(...)` and
+   **copies the name across**, so `name=f"Audio only (MP3, {MP3_QUALITY} kbps)"` would have named a
+   320 kbps download 192 — and put that name beside the add dialog's bitrate control reading 320.
+   The suffix is read from the choice instead, so it cannot outlive the fact it describes.
+2. **Naming and identifying had to be separated.** `preset_name_for` feeds `PRESET_ROLE`, which is
+   what the queue row's *dropdown* shows as selected, and `setData` compares against it to refuse a
+   no-op retarget. Relaxing it to match MP3 at any bitrate would make a 320 kbps row's control
+   claim the 192 kbps preset — `T126-R4` exactly. It stays strict; `_converting_preset_for`
+   describes, and only the row uses it. **This fixed a gap on the way**: a non-default bitrate used
+   to have no name at all on any surface, reading `bestaudio/best` in the queue and History.
+
+**What is still open, deliberately:** the dropdowns offer `preset.name`, which does not carry the
+bitrate, so a row reading *Audio only (MP3), 192 kbps* sits beside a control reading
+*Audio only (MP3)*. That is the pairing this entry's preamble warns about, and it is the accepted
+cost of disclosing first — naming the catalogue entry instead would trade the gap for a
+contradiction (192 in the name beside a control set to 320). **`T-111` owns it.**
+**Owner:** Implementer
+**Priority:** Medium — the disclosure half is small; the control half is a product question
+**Phase:** Phase 3
+**Depends on:** nothing for the disclosure. The control half is adjacent to `T-111` (user presets)
+and `REQ-010`
+**Moved here from `T-159` by maintainer ruling, 2026-08-05** (`T159-R2`): that task's criterion
+*"the row says what it converted to, including the bitrate for MP3"* is now **this task's own**,
+and `T-159`'s copy is struck through rather than deleted so the move stays legible. `T159-R2` is
+why the ruling was needed at all — a task cannot delegate an unmet acceptance criterion to a later
+one on its own authority, however good the reason.
+
+The reason was good: disclosing the bitrate on a row without deciding what the **control** says
+would put *Audio only (MP3), 192 kbps* beside a dropdown reading *Audio only (MP3)* — `T140-R3`'s
+defect one field over. `ui/format_text.format_name` is now the one place the wording lives, so
+whatever this task rules applies to the queue, History and the add dialog together rather than to
+one of them.
+**Relevant context:** `REQ-006`, `REQ-009`, `REQ-010`, `T-076`, `T-139`, `core/presets.py`
+(`MP3_QUALITY`, `MP3_BITRATES`), `ui/add_dialog.py`, `ui/queue_view.py`
+**Affected surfaces:** `core/presets.py` or `ui/`, depending on the ruling below
+**Risk:** Low
+
+#### Scope
+
+**`Audio only (MP3)` converts at 192 kbps and never says so.** `MP3_QUALITY` is `"192"`, chosen
+deliberately — *"over VBR 0 because a preset named for a codec should be predictable in size, and
+over 128 because the difference is audible on music"* — and its own comment already says the right
+thing: *"the preset states a default, it does not decide policy for anyone."*
+
+**The two surfaces disagree about how much of that a user sees.** The add dialog offers the whole
+`MP3_BITRATES` range — `320` down to `128` — as a control. The **queue row's** dropdown offers
+preset *names* only, from `BUILT_IN_PRESETS`. So a download's bitrate is choosable before it is
+queued and invisible afterwards, and the queue row is where a user looks when deciding whether to
+retarget.
+
+Two separable answers, and they are not alternatives:
+
+- **Disclose it.** The name reads `Audio only (MP3)`; it could read the bitrate. `REQ-009`'s
+  principle is that the row says what the download actually is, and `_effective_format_text`
+  already prefers a preset's name over raw syntax for exactly that reason — a name that omits the
+  one number a user cares about is the same gap one step smaller.
+- **Offer it on the row.** A second control, or a bitrate-bearing entry in the same one. This is
+  the larger question: it multiplies the dropdown, it interacts with `T-111`'s user presets, and
+  `T-139` already found the bitrate control needs to *disable* where bitrate does not apply.
+
+**Recommendation: disclose first, and decide the control with `T-111`.** The disclosure is cheap
+and strictly improves what the row says; the control is a design question that user presets may
+answer better than a second dropdown would.
+
+#### Acceptance criteria
+
+- The MP3 preset's user-visible name states its bitrate, derived from `MP3_QUALITY` rather than
+  typed — a literal in the name and a constant in the code are two sources that will drift
+- The queue row, the add dialog and History all show the same text for the same request, asserted
+  together rather than one at a time
+- Presets with **no** bitrate say nothing about one: `Audio only (original)` converts nothing, and
+  a name implying otherwise is worse than the omission this fixes
+- If a per-row control lands, `T-139`'s rule holds — it disables where bitrate does not apply, and
+  is not merely hidden
+
+#### Out of scope
+
+- Which bitrates are offered. `T-076` settled `MP3_BITRATES` and why it stops at 128
+- Bitrate for codecs other than MP3. `presets.py` already refuses a kbps for `FLAC`, `WAV` and
+  `ALAC`, and that reasoning stands
+- Changing the default away from 192
+
+---
+
 
 ### T-150 — The add dialog opens narrower than the rows it holds
 
