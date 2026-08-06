@@ -359,11 +359,11 @@
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 3 — format and content depth</h1>
       <p class="lede">Expose what yt-dlp can actually do. <strong>The document that gated five deliverables is written, and the phase is no longer one file wide.</strong> <code>T-105</code> closed on 2026-08-06, so <code>T-107</code>, <code>T-109</code>–<code>T-112</code> are startable for the first time since the phase was planned. Thirty-seven Phase 3 entries are closed and <em>still</em> not one of them is a deliverable — but the reason has changed from "blocked" to "not yet begun".</p>
-      <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable, and then removed its replacement too.</strong> History went first; the private ledger meant to survive behind it was withdrawn hours later, after review found it had cost five findings — two High — without a user ever seeing it. <strong>The application now keeps no record of what has been downloaded at all.</strong></p>
+      <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable, and then removed its replacement too.</strong> History went first; the private ledger meant to survive behind it was withdrawn hours later, after review found it had cost five findings — two High — without a user ever seeing it. <strong>The application now keeps no record of what has been downloaded at all</strong> — and as of migration <code>0009</code> that is true of an upgraded database too, not only a fresh one.</p>
       <p class="phase-line">
-        <span><strong>Head</strong> b652db5</span>
-        <span><strong>CI</strong> green on all five jobs at 6c90cf7</span>
-        <span><strong>Suite</strong> 2163 passed, 11 skipped, locally</span>
+        <span><strong>Head</strong> c03f7d4, plus this board</span>
+        <span><strong>CI</strong> green on all five jobs at 6c90cf7; the purge is not yet on a run</span>
+        <span><strong>Suite</strong> 2173 passed, 11 skipped, locally</span>
         <span><strong>Phase 2</strong> exited 2026-08-05</span>
       </p>
     </div>
@@ -377,12 +377,12 @@
       <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Deliverables gated by a doc</span></li>
       <li style="--chip: var(--st-block)"><span class="n">3</span><span class="k">High-risk deliverables</span></li>
       <li style="--chip: var(--st-ready)"><span class="n">8</span><span class="k">Of 8 deliverables startable</span></li>
-      <li style="--chip: var(--st-review)"><span class="n">10</span><span class="k">Commits awaiting review</span></li>
+      <li style="--chip: var(--st-review)"><span class="n">2</span><span class="k">Blocking findings answered</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 6 exit criteria met</span></li>
-      <li style="--chip: var(--st-block)"><span class="n">4</span><span class="k">Accepted entries amended</span></li>
+      <li style="--chip: var(--st-block)"><span class="n">6</span><span class="k">Accepted entries amended</span></li>
     </ul>
     <p class="note"><strong>The count of closed entries is still not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01 and every one of those is still <em>Proposed</em>. What has closed is real work that landed in Phase 3's numbering because that is when it was found. <span class="q-why">Counted as entries under <code>## Complete</code> in <code>ai/TASKS.md</code> whose <code>Phase:</code> line begins <em>Phase 3</em> — six of them closed on 2026-08-06 alone.</span></p>
-    <p class="note" style="--edge: var(--st-approved)"><strong>CI is green: all five jobs at <code>be76fe9</code>, and again at <code>6c90cf7</code> after the ledger came out.</strong> Run <code>31080892061</code> had failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality expecting the menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job sees the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <em>(The Settings menu has since been removed with the ledger, so that equality is back to two names — and will trip again when <code>T-146</code> restores the menu, which is what it is for.)</em></p>
+    <p class="note" style="--edge: var(--st-approved)"><strong>CI is green: all five jobs at <code>be76fe9</code>, and again at <code>6c90cf7</code> after the ledger came out.</strong> Run <code>31080892061</code> had failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality expecting the menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job sees the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <em>(The Settings menu has since been removed with the ledger, so that equality is back to two names — and will trip again when <code>T-146</code> restores the menu, which is what it is for.)</em> The purge and the document sweep after it have not been on a CI run yet.</p>
   </section>
 
   <section>
@@ -415,8 +415,9 @@ flowchart TB
     HIST["History batch T-142 T-144 T-145 T-159 - since removed"]:::done
     FIXES["T-150 dialog width, T-156 MP3 bitrate, T-168"]:::done
     LEDGER["T-169 plus T-170 - History and its ledger removed"]:::done
+    PURGE["Migration 0009 - the rows an upgrade kept, purged"]:::done
 
-    HEAD["Pushed, awaiting review - be76fe9"]:::head
+    HEAD["Pushed - answering a Blocked verdict"]:::head
 
     UXSPEC["T-105 - docs/UX_SPEC.md WRITTEN"]:::done
 
@@ -431,9 +432,9 @@ flowchart TB
 
     T143["T-143 probe a playlist's entries"]:::ready
     T158["T-158 a refused Open is reported unseen"]:::ready
-    T146["T-146 the rest of the Settings screen"]:::ready
+    T146["T-146 the whole Settings screen, from nothing"]:::ready
     T171["T-171 provenance - measured, undecided"]:::gate
-    TIDY["T-172 T-173 T-174 - simplification"]:::ready
+    TIDY["T-173 T-175 - simplification"]:::ready
 
     EXIT(["PHASE 3 EXIT - 6 criteria"]):::exit
 
@@ -464,7 +465,8 @@ flowchart TB
     HEAD --> TIDY
     LEDGER -. T-114 is now an in-queue check, storing nothing .-> T114
     LEDGER -. Settings went with the ledger; T-146 rebuilds it .-> T146
-    LEDGER -. left two names worth fixing .-> TIDY
+    LEDGER --> PURGE
+    PURGE -. left three things with no caller .-> TIDY
 
     T108 --> EXIT
     T109 --> EXIT
@@ -544,15 +546,15 @@ flowchart TB
           </tr>
           <tr>
             <td class="id">T-114</td>
-            <td>Warn when a URL has been downloaded before <span class="state-note">REQ-022</span></td>
-            <td><span class="state met">nothing — both are approved</span></td>
-            <td><span class="state unmet">Low</span><span class="state-note">The smallest item in the phase</span></td>
+            <td>Confirm a duplicate the queue already holds <span class="state-note">REQ-022, rescoped</span></td>
+            <td><span class="state met">nothing at all</span></td>
+            <td><span class="state unmet">Low</span><span class="state-note">The smallest item in the phase, and smaller than it was</span></td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <p class="note"><strong>All eight are startable, and <code>T-114</code>'s dependency changed rather than cleared.</strong> It recorded "history records and the history view"; <code>T-170</code> deleted the view and gave it <code>HistoryRepository.last_completed</code> instead — an indexed lookup built for exactly this. The warning it shows also lost half its content: <code>docs/UX_SPEC.md</code> <code>P-11</code> asked it to name the date <em>and link to the History record</em>, and there is no record to open.</p>
+    <p class="note"><strong>All eight are startable, and <code>T-114</code> lost its dependencies entirely rather than having them cleared.</strong> It recorded "history records and the history view", then an indexed ledger lookup; all three are deleted. What is left is a comparison against the live queue and the paste being staged, in memory, storing nothing — and the answer is a <em>confirmation</em>, since a duplicate is allowed. <span class="q-why">Its Scope and acceptance criteria still demanded the ledger until <code>T169-R4</code> caught them: the status line had been rescoped and the body left behind, which is the same defect <code>T166-R1</code> found a day earlier.</span></p>
   </section>
 
   <section>
@@ -563,8 +565,8 @@ flowchart TB
 
     <ol class="queue">
       <li style="--edge: var(--st-review)">
-        <div class="q-head"><span class="id">—</span> <span class="name">Re-review the withdrawal</span> <span class="pill">Before anything new</span></div>
-        <p class="q-why">The range <code>7afa295..3578fcc</code> was reviewed and came back <em>Changes requested</em> on five findings. Three are resolved by the ledger no longer existing, and two — the unratified decision and the retained credentials — are resolved by the ruling that produced the withdrawal. <strong>The withdrawal itself is unreviewed</strong>, and it touches two requirements, three decision entries and the persistence layer. <code>T-150</code>, <code>T-156</code> and the visible History removal were accepted and need nothing further.</p>
+        <div class="q-head"><span class="id">—</span> <span class="name">Re-review the purge and the sweep</span> <span class="pill">Before anything new</span></div>
+        <p class="q-why">The withdrawal came back <strong>Blocked</strong> on two High findings, and neither was about what the withdrawal removed. <code>T169-R3</code>: it left the <code>history</code> table populated, so an upgraded database still held every row with no route to reach it — the contract was true of the code and false of the disk. <code>T169-R4</code>: the document sweep missed by <em>authority</em> rather than by vocabulary, leaving open tasks whose live contracts would have rebuilt the feature. Both are answered here. <strong>Migration <code>0009</code> is the project's only destructive migration</strong> and is the thing on this board most worth a careful read.</p>
       </li>
       <li style="--edge: var(--st-ready)">
         <div class="q-head"><span class="id">T-107</span> <span class="name">The format table</span> <span class="pill ghost">Foundation</span></div>
@@ -627,10 +629,10 @@ flowchart TB
             <td><span class="state met">Approved</span><span class="state-note">Two migrations, one Critical corrected. <strong>The surface these built was removed on 2026-08-06</strong></span></td>
           </tr>
           <tr>
-            <td><strong>Removing History</strong> — the contract, then the surface</td>
+            <td><strong>Removing History</strong> — the contract, the surface, then the rows</td>
             <td class="n">2</td>
             <td><code>T-169</code> <code>T-170</code></td>
-            <td><span class="state part">Unreviewed</span><span class="state-note">Five accepted entries amended; <code>DAT-006</code> added; ~2,500 lines deleted</span></td>
+            <td><span class="state blocked">Blocked, answered</span><span class="state-note">Six accepted entries amended; <code>DAT-006</code> added then withdrawn; ~2,500 lines deleted; migration <code>0009</code> purges what the deletion left</span></td>
           </tr>
           <tr>
             <td>The spec the phase was planned around, and three defects found by running it</td>
@@ -657,7 +659,7 @@ flowchart TB
 
   <section>
     <div class="section-head">
-      <h2>Four accepted entries have been amended to get here</h2>
+      <h2>Six accepted entries have been amended to get here</h2>
     </div>
 
     <div class="callout" style="--accent: var(--st-block)">
@@ -674,7 +676,8 @@ flowchart TB
       <ul>
         <li><strong><code>REQ-020</code> is withdrawn outright</strong> — first narrowed to a private ledger by <code>T-169</code>, then withdrawn hours later. Nothing records what has been downloaded. <strong><code>REQ-021</code></strong> reaches a file only while its queue row exists. <strong><code>REQ-022</code></strong> is scoped to the live queue, where a duplicate is <em>confirmed rather than refused</em>: wanting the same URL twice is an ordinary thing to want.</li>
         <li><strong><code>DAT-001</code>, <code>DAT-005</code> and <code>UX-005</code> carry appended amendments</strong>, never rewrites — <code>AGENTS.md</code> §6 makes those historical record. <code>DAT-005</code>'s boundary is untouched: a record is not a file. <code>UX-005</code> loses its second tab and keeps everything it decided about a <em>row</em>.</li>
-        <li><strong><code>DAT-006</code> is Withdrawn</strong>, which is what <code>T169-R1</code> was owed: it had been self-headed <em>Accepted</em> when the maintainer's direction established the product boundary and not the detailed data choices. The ruling that followed was that the ledger should not exist. Its reasoning against dropping columns survives it and still governs migration <code>0008</code>'s now-unused one.</li>
+        <li><strong><code>DAT-006</code> is Withdrawn</strong>, which is what <code>T169-R1</code> was owed: it had been self-headed <em>Accepted</em> when the maintainer's direction established the product boundary and not the detailed data choices. The ruling that followed was that the ledger should not exist. <em>Its reasoning against dropping columns has now been superseded too</em> — it refused a column drop because SQLite rewrites the table to keep every row, and migration <code>0009</code> keeps nothing.</li>
+        <li><strong><code>ARCHITECTURE.md</code> §10 gained an exception</strong>, and it is the judgement on this board most worth challenging. §10 forbade a destructive migration without a pre-migration backup. A backup here would leave the purged URLs in a second file beside the database — unreachable, unmanaged, removed by nothing — so the rule that protects data from a change which did not intend to touch it is inverted by one that does. <strong>The purge was the maintainer's ruling; reading it as also waiving the backup is a Planner judgement</strong> and is flagged as one in the document.</li>
       </ul>
       <p class="note" style="border-left-color: var(--st-block)"><strong>The review found exactly that, and it was right.</strong> <code>T169-R1</code>: satisfying a decision's trigger makes it eligible for a ruling, not self-ratifying — the same distinction as <code>T145-R1</code> and <code>T144-R1</code>, which this project has now recorded three times. Four further findings followed, and the maintainer's ruling was to remove the feature rather than repair it. <strong>Five findings, two High, and not one about the warning being wrong: every one was about keeping the data.</strong></p>
     </div>
