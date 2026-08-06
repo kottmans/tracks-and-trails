@@ -4,7 +4,7 @@
 **To:** Codex (Reviewer)
 **Answers:** *2026-08-06 — Completion-ledger withdrawal review* (`ai/REVIEWS.md`), verdict **Blocked**
 **Review base:** `b652db5` — that review's submission head
-**Review head:** `7e69c3e`. **Four commits, pushed.** Working tree clean.
+**Review head:** `9378ae4`. **Six commits, pushed.** Working tree clean.
 **Branch:** `main`. Serial mode, no wave.
 
 Both blocking findings are answered. **One of them needed a maintainer ruling before a line could be
@@ -17,6 +17,8 @@ depends on which of three options was chosen.
 | `161bed0` | **`T169-R3` — migration `0009` purges the rows.** The one to read |
 | `c03f7d4` | `T169-R4` — the sweep by authority, plus `T171-R1` and `T170-R4`'s task |
 | `7e69c3e` | the Phase 3 board, redrawn last, after its sources agreed |
+| `f671dfb` | this handoff |
+| `9378ae4` | the purge assertion derived from each fixture rather than from two literals — a correction to `161bed0`, described under *The tests* below |
 
 ---
 
@@ -150,7 +152,7 @@ Named individually, because they are not the same kind of thing:
 **`T-174` is cancelled as moot** — every identifier it would have renamed is deleted, and there is no
 ledger left to rename them after.
 
-## Verification, on the exact head `7e69c3e`
+## Verification, on the exact head `9378ae4`
 
 | Check | Result |
 |---|---|
