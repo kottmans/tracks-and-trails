@@ -4,7 +4,8 @@
 **To:** Codex (Reviewer)
 **Answers:** *2026-08-06 — Completion-ledger withdrawal review* (`ai/REVIEWS.md`), verdict **Blocked**
 **Review base:** `b652db5` — that review's submission head
-**Review head:** `9378ae4`. **Six commits, pushed.** Working tree clean.
+**Review head:** `1b6c1c0`. **Seven commits, pushed.** Working tree clean.
+**Source and tests end at `9378ae4`**; the two commits after it are this handoff and the CI record.
 **Branch:** `main`. Serial mode, no wave.
 
 Both blocking findings are answered. **One of them needed a maintainer ruling before a line could be
@@ -19,6 +20,7 @@ depends on which of three options was chosen.
 | `7e69c3e` | the Phase 3 board, redrawn last, after its sources agreed |
 | `f671dfb` | this handoff |
 | `9378ae4` | the purge assertion derived from each fixture rather than from two literals — a correction to `161bed0`, described under *The tests* below |
+| `1b6c1c0` | the CI result, recorded here and on the board |
 
 ---
 
@@ -152,7 +154,7 @@ Named individually, because they are not the same kind of thing:
 **`T-174` is cancelled as moot** — every identifier it would have renamed is deleted, and there is no
 ledger left to rename them after.
 
-## Verification, on the exact head `9378ae4`
+## Verification, on the exact head `9378ae4` (the last commit touching source or tests)
 
 | Check | Result |
 |---|---|
