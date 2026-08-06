@@ -1064,7 +1064,12 @@ channel and hands over; it does not attempt to become a server.
 
 ### T-048 — Verify the first real data migration when one is written
 
-**Status:** Proposed — **not schedulable yet.** No migration transforms data
+**Status:** Proposed — **not schedulable yet.** No migration transforms data.
+*(Premise re-checked 2026-08-06 after `T169-R5`. Still true, and narrower than it was: `0009`
+**destroys** data rather than transforming it. That is a different problem with a different answer
+— it needs a test proving the rows are gone, which it has, not an allowance for values that
+legitimately changed, which is what this task is for. What did move is the strict per-column rule
+below: it now covers `jobs` only, because `history` no longer exists to compare.)*
 **Owner:** Implementer, when the first data migration is authored
 **Priority:** Medium at that point; nothing to do before
 **Phase:** unassigned
@@ -1074,9 +1079,15 @@ channel and hands over; it does not attempt to become a server.
 
 #### Scope
 
-`T-014`'s migration test asserts strict per-column equality, which is correct while every
-migration is pure DDL and any change is loss. It will be **wrong** the day a migration
-legitimately transforms values.
+`T-014`'s migration test asserts strict per-column equality **for the tables in
+`_MIGRATED_TABLES`**, which since 2026-08-06 means `jobs` alone. That is correct while every
+migration either leaves a table's values alone or removes the table outright, and any unasked-for
+change is loss. It will be **wrong** the day a migration legitimately transforms values.
+
+**A destructive migration is not the case this task covers**, and `0009` is the reason to say so:
+it removes rows on an explicit ruling and proves it with its own regression. This task is about the
+opposite situation — values that change and are still correct — where equality has no way to tell a
+good transformation from a corrupt one.
 
 A `TRANSFORMED_BY_MIGRATION` allowance was written and then removed: `T014-R4` established that
 an allowance can conceal a corrupt-but-readable migration, and an empty allowance protects
@@ -1775,56 +1786,6 @@ must not be treated as the same option.
 
 ---
 
-### T-173 — One `_now()`, not one per module that needs the same clock
-
-**Status:** Proposed — **found by the Implementer, 2026-08-06.** **Simplification only.**
-**Owner:** Implementer
-**Priority:** Low — the smallest item filed today
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `persistence/store.py` (`_now`), `downloader/manager.py` (`_now`), `T-014`
-**Affected surfaces:** `core/`, `persistence/store.py`, `downloader/manager.py`
-**Risk:** Low
-
-#### Scope
-
-Two modules define the same three-line function, and **each documents that it must agree with the
-other**:
-
-```python
-# persistence/store.py
-def _now() -> datetime:
-    """Timezone-aware, matching what the manager stamps onto `finished_at`."""
-    return datetime.now().astimezone()
-
-
-# downloader/manager.py
-def _now() -> datetime:
-    """Timezone-aware local time, matching what `persistence` stores (`T-014`)."""
-    return datetime.now().astimezone()
-```
-
-A comment saying *"this matches the other one"* is the shape that survives right up until somebody
-changes one of them. The agreement is a real requirement — a completion's `finished_at` and the
-ledger's `completed_at` are compared in `test_a_completed_download_writes_exactly_one_history_row`
-— so it should be a shared function rather than a promise maintained by reading.
-
-**`core/` is the home.** Both callers may import from it, neither may import the other, and the
-layering test already forbids Qt there.
-
-#### Acceptance criteria
-
-- One definition, in `core/`, with the reasoning the two docstrings currently split between them
-- Both call sites use it; neither keeps a local copy
-- The layering test still passes — this must not give `core/` a new dependency
-
-#### Out of scope
-
-- Injecting a clock for testability. Nothing here is asking for that, and it is a larger change
-  than the duplication it would fix
-
----
-
 ### T-175 — Remove the machinery the withdrawal left with no caller
 
 **Status:** Proposed — **filed 2026-08-06 in response to `T170-R4`** (Low, non-blocking), which
@@ -1857,7 +1818,13 @@ log where that distinction is exactly what a user debugging a format needs. Remo
 protocol field is a change to the worker boundary, so this needs a look at `T-050`'s reasoning
 before it is deleted, not after.
 
-**3. The completion seam** — `store.complete`, `writer.complete` and the `_complete` signal.
+**3. `persistence/store._now` — dead, and cancelled `T-173` is why it is named here.** It has no
+callers: the completion write that used it is gone. `T-173` proposed centralising it into `core/`
+alongside `manager._now`, which would have promoted a dead function into the shared layer and made
+removing it harder. Delete it, and with it `store.py`'s `datetime` import, which exists for nothing
+else. **`manager._now` stays** — seven callers, and no second definition left to disagree with.
+
+**4. The completion seam** — `store.complete`, `writer.complete` and the `_complete` signal.
 `T050-R1` created a distinct path so a job row and its record committed together. There is no
 second row now, and a completion is a job-row update like any other, so the seam may collapse into
 `revise`. **This is the load-bearing one.** `T050-R2` removed a silent-failure path by making the
@@ -1874,6 +1841,8 @@ as live. Read every hunk; do not find-and-replace.
 #### Acceptance criteria
 
 - `history_group_verbs` is gone, with its tests, and `__all__` no longer names it
+- `store._now` is gone, and `store.py` no longer imports `datetime`. `manager._now` is untouched
+  and stays where it is
 - `Succeeded.format_used` is either removed across the worker boundary **or** kept with a stated
   consumer, and the choice is recorded in the task's completion note
 - The completion seam is collapsed **or** kept, and either way `T050-R2`'s persistence-first
@@ -2326,6 +2295,32 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-173 — One `_now()`, not one per module that needs the same clock
+
+**Status:** **Cancelled 2026-08-06 — the premise was wrong** (`T169-R5`). It proposed centralising a
+clock that two modules defined identically. **There are not two clocks in use.** `manager._now` has
+seven callers; `persistence/store._now` has none, and has had none since the withdrawal removed the
+completion write that used it.
+
+**The agreement it existed to protect no longer exists either.** Its argument named
+`test_a_completed_download_writes_exactly_one_history_row` as the place where a completion's
+`finished_at` and the record's `completed_at` were compared. That test is deleted with the record,
+so there are no two timestamps to keep in step.
+
+**Centralising a dead function into `core/` would have been the worst available outcome**: it would
+give the shared layer a definition with one real caller, and make deleting the dead one harder by
+promoting it first. `T-175` deletes it instead, along with `store.py`'s now-sole use of the
+`datetime` import.
+
+*(Filed by the Implementer on 2026-08-06 during the simplification sweep, hours before the
+withdrawal made half of it untrue. The sweep read the code correctly; what it could not know was
+that one of the two callers was about to go.)*
+**Owner:** Implementer
+**Phase:** Phase 3
+**Risk:** —
+
+---
 
 ### T-174 — Say "ledger" where the code still says "history"
 

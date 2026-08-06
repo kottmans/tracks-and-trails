@@ -267,10 +267,8 @@ def test_the_completion_record_is_purged_upgrading_from_every_version_that_kept_
     different URLs, both retained by nothing more than the rule that job rows stay. What the two
     genuinely share is the title `Track one`, which survives as a job's title and must.
 
-    What this does not assert, because `0009` cannot promise it: that the bytes are unrecoverable
-    from the file. Dropped pages go to SQLite's freelist unzeroed and WAL keeps the old content
-    until a checkpoint. The migration says so in its own prose; a test that claimed otherwise would
-    be transcribing a wish.
+    This asserts nothing about the raw bytes; the test below it does that, and `0009`'s
+    `secure_delete` is what makes it possible.
     """
     database = tmp_path / f"purge_from_v{version}.sqlite3"
     connection = sqlite3.connect(database)
@@ -318,6 +316,51 @@ def test_the_completion_record_is_purged_upgrading_from_every_version_that_kept_
         f"{len(leaked)} value(s) from v{version}'s completion record survived the migration "
         f"somewhere in the database: {leaked[:3]}. The ruling was to purge the record, not to "
         "relocate it."
+    )
+    connection.close()
+
+
+def test_the_purged_bytes_are_zeroed_and_not_merely_unlinked(tmp_path: Path) -> None:
+    """`T169-R6`: the dropped pages are overwritten, on every build rather than on lucky ones.
+
+    Dropping a table normally moves its pages to the freelist **without zeroing them**, so every
+    purged URL stays legible in the file until something happens to reuse the page. `0009` sets
+    `PRAGMA secure_delete = ON` to prevent that, and this reads the raw file to prove it — the
+    one property here that no query can demonstrate, because the whole point is bytes no query
+    would return.
+
+    **The connection is forced to `OFF` first, and that is what makes this test mean anything.**
+    `secure_delete` is a compile option, and the build this was written on has it on by default:
+    without the `OFF`, the assertion would pass on this machine whether or not the migration set
+    anything, and fail only for whoever later ran it on a build that defaults off. Forcing it off
+    reproduces the unlucky build everywhere, so removing the pragma from `0009` fails here.
+
+    Checkpointed on both sides because in WAL mode the rows would otherwise still be in the `-wal`
+    sidecar rather than the database, and an assertion about a file the data never reached proves
+    nothing in either direction. The sidecar is a real residue path and `0009`'s prose says so; it
+    is not what this test is about.
+    """
+    needle = b"https://example.invalid/v7-one"
+    database = tmp_path / "zeroed.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    db.configure(connection)
+    connection.execute("PRAGMA secure_delete = OFF")
+    connection.executescript((HISTORICAL_FIXTURES / "v7.sql").read_text(encoding="utf-8"))
+    connection.commit()
+    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    assert database.read_bytes().count(needle) > 0, (
+        "the fixture's URL is not in the database file before migrating, so this test could not "
+        "tell a zeroed page from a page that never held it"
+    )
+
+    db.migrate(connection)
+    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    assert database.read_bytes().count(needle) == 0, (
+        "a purged URL is still legible in the database file. The rows are unreachable by query, "
+        "but `0009` sets secure_delete precisely so that they are also overwritten rather than "
+        "left on the freelist for whatever reads the file next."
     )
     connection.close()
 

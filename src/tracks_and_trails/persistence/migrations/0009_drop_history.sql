@@ -22,13 +22,29 @@
 -- half-copied state to be interrupted in, and the risk §5 weighed against a tidiness benefit is
 -- not present when removal is the benefit.
 --
--- **What this cannot promise.** The rows become unreachable by every query and the table stops
--- existing; that is what makes `REQ-020` true. It is *not* a secure erase of the bytes. SQLite puts
--- the freed pages on the file's freelist without zeroing them by default, and in WAL mode the old
--- content also sits in the `-wal` file until a checkpoint retires it. Neither can be fixed from
--- inside a migration: `VACUUM` cannot run in a transaction, and this script runs inside the one
--- that carries its version bump. A user who needs the bytes gone should delete the database file,
--- and no prose here should suggest otherwise.
+-- **`secure_delete` is set here on purpose, and it is not decoration** (`T169-R6`). Without it
+-- SQLite moves the dropped pages to the freelist *without zeroing them*, so every purged URL stays
+-- legible in the file until something happens to overwrite it. With it, they are zeroed as the
+-- pages are freed — measured at 200 occurrences before and 0 after.
+--
+-- **The reason it is set explicitly is that the default is not ours to rely on.** It is a compile
+-- option: the Fedora build this was written on has `SQLITE_SECURE_DELETE` on, so the drop already
+-- zeroed without asking, while a Windows Python or a bundled SQLite may well default off. Leaving
+-- it implicit makes the erasure a property of whoever built the library rather than of this
+-- migration, and the same upgrade would then behave differently on two of a user's machines.
+--
+-- **It is deliberately not restored afterwards.** There is no way to capture and put back the prior
+-- value in pure SQL, so restoring would mean writing `OFF` — which on a build like the one above
+-- would leave the connection *less* safe than it was found. The cost of leaving it on is bounded to
+-- nothing: `migrate` only runs a script for a version above the database's own, so this executes on
+-- the single connection performing the single upgrade, and never again.
+--
+-- **What this still cannot promise.** In WAL mode the old content also lives in the `-wal` sidecar
+-- until a checkpoint retires it, and a hard exit before that leaves it there. `secure_delete` does
+-- not reach it and neither can this script: `VACUUM` cannot run in a transaction, and this one runs
+-- inside the transaction carrying its version bump. So a user who wants no trace should delete the
+-- database **together with its `-wal` and `-shm` siblings** — deleting `library.sqlite3` alone can
+-- leave a `library.sqlite3-wal` holding exactly what they meant to remove.
 --
 -- **Irreversible, like every migration here.** Forward-only (`T-014`): there is no down-migration
 -- to restore the table, and restoring a backup is the honest recovery path. Unlike the other eight,
@@ -37,5 +53,7 @@
 -- The `history_completed_at` and `history_normalised_url` indexes are not dropped separately —
 -- SQLite drops a table's indexes with it, and naming them would only invite a later reader to
 -- wonder which of the two statements did the work.
+
+PRAGMA secure_delete = ON;
 
 DROP TABLE history;

@@ -3862,12 +3862,25 @@ and both were declined:
 | Preserve the rows, amend `REQ-020` to admit them | No data loss and no migration risk — but the application would then durably hold download URLs it promises not to keep, unreachable and unclearable. That is the shape of `T169-R2`, which is the finding this whole arc began with. |
 
 **What the purge is, exactly, and what it is not.** The rows become unreachable by every query and
-the table stops existing, which is what makes `REQ-020` true. It is **not** a secure erase: dropped
-pages go to SQLite's freelist unzeroed, and in WAL mode the old content sits in the `-wal` file
-until a checkpoint retires it. Neither is fixable from inside a migration — `VACUUM` cannot run in a
-transaction, and the migration runs inside the one carrying its version bump. A user who needs the
-bytes gone should delete the database file. The migration says this in its own prose so that nobody
-later reads a stronger promise into it.
+the table stops existing, which is what makes `REQ-020` true. **The bytes in the database file are
+overwritten as well**, because `0009` sets `PRAGMA secure_delete = ON` before the drop — without it
+SQLite frees the pages without zeroing them and every purged URL stays legible in the file. The
+pragma is set explicitly rather than relied on: it is a compile option, on by default in the build
+this was written against and quite possibly off in a bundled or Windows SQLite, and an erasure that
+depends on who compiled the library is not an erasure the application can claim.
+
+**What it still is not is a guarantee about the whole of a user's disk.** In WAL mode the old
+content also lives in the `-wal` sidecar until a checkpoint retires it, and a hard exit before that
+leaves it there; `secure_delete` does not reach it, and neither can a migration, since `VACUUM`
+cannot run inside the transaction carrying the version bump. **A user who wants no trace must
+delete the database together with its `-wal` and `-shm` siblings** — deleting `library.sqlite3`
+alone can leave a `library.sqlite3-wal` holding exactly what they meant to remove.
+
+*(Corrected 2026-08-06 after `T169-R6`. This first said the purge was "not a secure erase" and that
+nothing could be done from inside a migration, which was wrong twice: `secure_delete` is settable
+in the migration script and does zero the freed pages, and the advice to "delete the database file"
+omitted the sidecars that are the actual residue. The mistake was assuming a limit instead of
+measuring one.)*
 
 **One consequence worth naming.** `0009` is the only destructive migration in the project, and it
 inverted a test that had been correct since `T-014`: `ai/TESTING.md` §7's rule that every seeded row
