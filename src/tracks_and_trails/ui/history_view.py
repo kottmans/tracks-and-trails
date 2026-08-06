@@ -508,8 +508,17 @@ class HistoryModel(QAbstractTableModel):
         than papered over with the first member's answer, which is `T140-R3`'s rule for the queue
         header's format line.
 
-        `PurePath` rather than `Path`: these are recorded strings, possibly written on the other
-        platform, and nothing here should touch a filesystem to render a row.
+        `PurePath` rather than `Path`: these are recorded strings and nothing here should touch a
+        filesystem to render a row.
+
+        **It reads them with the *running* platform's rules, which is an assumption worth naming.**
+        `PurePath` is `PureWindowsPath` on Windows and `PurePosixPath` elsewhere, so a POSIX path
+        read on Windows comes back reshaped with backslashes and a Windows path read on POSIX comes
+        back as `.`. That is correct here because `DAT-001` puts the database under `platformdirs`,
+        beside the machine that wrote the paths — the recorded shape and the reading platform always
+        agree in production. A database carried to the other platform is the case it would not
+        serve, and it is not one this project supports. Recorded because the Windows CI job proved
+        the coupling exists rather than because it is currently wrong.
         """
         folders = {
             str(PurePath(member.output_path).parent) for member in members if member.output_path

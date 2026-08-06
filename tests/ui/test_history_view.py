@@ -5,6 +5,7 @@ read-only over a table `T-085` already gates, so what is tested here is what rea
 every criterion asserts a rendered string rather than the record behind it.
 """
 
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -802,21 +803,34 @@ def test_a_groups_folder_is_the_one_its_entries_share(qapp: QApplication) -> Non
     A playlist's entries share a folder, which is what makes one line meaningful on the header —
     but a user who changed the download folder mid-playlist has records that disagree, and the
     header says so rather than picking the first member's answer.
+
+    **The paths are the running platform's shape, and the Windows desktop job is why.**
+    `_common_folder` reads a recorded path with that platform's rules, which is right — `DAT-001`
+    puts the database beside the machine that wrote the paths, so the two always agree in
+    production. A POSIX literal does not agree: on Windows `PurePath("/downloads/x/01.mp3").parent`
+    comes back as `\\downloads\\x`, and this test asserted the slashes it happened to be typed
+    with, so it failed on Windows CI while passing on Linux.
+
+    **Built from a bare separator rather than through `Path`**, deliberately: composing the
+    expectation with the same API `_common_folder` uses would be production checking itself. The
+    folder is a written-out literal in both shapes.
     """
+    slash = "\\" if sys.platform == "win32" else "/"
+    folder = f"{slash}downloads{slash}Trail Sounds"
+    elsewhere = f"{slash}elsewhere"
+
     together = view_over(
         [
-            a_member("m-1", index=0, output_path="/downloads/Trail Sounds/01.mp3"),
-            a_member("m-2", index=1, output_path="/downloads/Trail Sounds/02.mp3"),
+            a_member("m-1", index=0, output_path=f"{folder}{slash}01.mp3"),
+            a_member("m-2", index=1, output_path=f"{folder}{slash}02.mp3"),
         ]
     )
-    assert together.model.data(together.model.index(0, 0), SELECTOR_ROLE) == (
-        "/downloads/Trail Sounds"
-    )
+    assert together.model.data(together.model.index(0, 0), SELECTOR_ROLE) == folder
 
     apart = view_over(
         [
-            a_member("m-1", index=0, output_path="/downloads/Trail Sounds/01.mp3"),
-            a_member("m-2", index=1, output_path="/elsewhere/02.mp3"),
+            a_member("m-1", index=0, output_path=f"{folder}{slash}01.mp3"),
+            a_member("m-2", index=1, output_path=f"{elsewhere}{slash}02.mp3"),
         ]
     )
     assert apart.model.data(apart.model.index(0, 0), SELECTOR_ROLE) == UNKNOWN_TEXT, (
@@ -1272,9 +1286,14 @@ def test_a_history_group_keeps_its_verbs_on_a_narrow_row(qapp: QApplication) -> 
     carries none — `UX-005`'s amendment refuses the segmented bar because every member succeeded.
     So the two features meet in `_bar_reserve`, which each was tested without.
 
-    A group therefore reserves nothing and its two verbs survive at a width where a queue playlist
-    of the same size would be giving space to sixteen blocks. **631 px is `T-167`'s own width**, the
-    one where the queue row decided on sixteen blocks and drew them 15 px wide.
+    A group therefore reserves **nothing** of that line, where a queue playlist of the same size
+    would be keeping room for its blocks. **631 px is `T-167`'s own width**, the one where a queue
+    row decided on sixteen blocks and drew them 15 px wide.
+
+    **Asserted on the reserve rather than on which verbs survived**, deliberately: how many verbs
+    fit in a given width depends on the platform's font, so a `overflowing() == ()` assertion would
+    be a font measurement wearing a layout claim — which is the shape that just failed this file on
+    Windows CI for a different reason. The reserve is the number the two features actually share.
     """
     from PySide6.QtCore import QRect
     from PySide6.QtGui import QPainter, QPixmap
@@ -1292,19 +1311,24 @@ def test_a_history_group_keeps_its_verbs_on_a_narrow_row(qapp: QApplication) -> 
 
     delegate = view.table.itemDelegate()
     assert isinstance(delegate, RowDelegate)
+    metrics = view.table.fontMetrics()
     for width in (631, 400):
+        # Reaching into `_bar_reserve` on purpose: it is the one function the two features
+        # share, and every public route to it is filtered through font-dependent layout.
+        reserved = delegate._bar_reserve(metrics, QRect(0, 0, width, 66), header)
+        assert reserved == 0, (
+            f"at {width}px a history group reserved {reserved}px for a progress bar it has no "
+            "segments and no fraction to draw, taking the space from its verbs"
+        )
+
+        # And it still paints: the reserve is a number, and a row is what a user sees.
         pixmap = QPixmap(width, 80)
         pixmap.fill()
         painter = QPainter(pixmap)
         option = QStyleOptionViewItem()
         option.rect = QRect(0, 0, width, 66)
         option.font = view.table.font()
-        option.fontMetrics = view.table.fontMetrics()
+        option.fontMetrics = metrics
         option.palette = view.table.palette()
         delegate.paint(painter, option, header)
         painter.end()
-
-        assert delegate.overflowing("pl-1") == (), (
-            f"at {width}px the group dropped {delegate.overflowing('pl-1')} into the overflow; it "
-            "has no bar to make room for, so its two verbs fit"
-        )
