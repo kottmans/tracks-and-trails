@@ -22,6 +22,7 @@ window size that CI does not have.
 import threading
 import time
 from collections.abc import Callable, Iterator
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final
 
@@ -34,6 +35,7 @@ from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
 from tracks_and_trails.ui import row_delegate
 from tracks_and_trails.ui.row_delegate import (
+    BAR_HEIGHT,
     CHILD_THUMBNAIL,
     DEPTH_ROLE,
     DETAIL_ROLE,
@@ -43,6 +45,11 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     INDENT,
+    JOB_ID_ROLE,
+    MERGED_BLOCKS,
+    MIN_BLOCK_WIDTH,
+    MIN_CONTROL_WIDTH,
+    MIN_FRACTION_BAR,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
@@ -55,9 +62,15 @@ from tracks_and_trails.ui.row_delegate import (
     STATE_ROLE,
     TEXT_LINES,
     THUMBNAIL_URL_ROLE,
+    TWISTY_WIDTH,
+    VERBS_ROLE,
     RowDelegate,
     SegmentState,
+    _merge,
+    segment_blocks,
+    segment_span,
 )
+from tracks_and_trails.ui.row_verbs import Verb
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE, ThumbnailStore
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
@@ -68,6 +81,19 @@ IMAGE_SOURCE: Final = REPO_ROOT / "src" / "tracks_and_trails" / "resources" / "i
 
 #: The width a row is rendered at here. Wide enough that nothing under test is elided.
 RENDER_WIDTH: Final = 700
+
+#: The widths every layout claim is swept across, one pixel at a time (`T-155`, `T-167`).
+#:
+#: **Swept rather than sampled, and that is `T-155`'s lesson rather than a preference.** Its blocks
+#: merged at most widths and not at 800 px, so a test rendering one width drew the defect correctly
+#: and would have passed. Every collision on this row — the verbs against the bar, the verbs
+#: against the format line, the control against the tile — appears over a *range* and disappears
+#: again, so a range is what has to be asserted.
+#:
+#: The low end is a window narrower than any this application opens at, because a user can drag one
+#: there and `T-160` is the record of what was drawn when they did. It was 380 until `T-160`: below
+#: that the control took the whole width beside the tile and the row had no last line to measure.
+SWEEP_WIDTHS: Final = range(300, 1201)
 
 #: `NFR-001` budgets ~100 ms for an interaction. Half a second here for the same reason the add
 #: dialog's tests use that figure: the property is that the call **does not wait**, which a
@@ -193,20 +219,29 @@ def holds(store: ThumbnailStore, url: str) -> Callable[[], bool]:
 
 
 def paint_rows(
-    model: RowsModel, delegate: RowDelegate, *indices: int, width: int = RENDER_WIDTH
+    model: RowsModel,
+    delegate: RowDelegate,
+    *indices: int,
+    width: int = RENDER_WIDTH,
+    height: int = ROW_HEIGHT,
 ) -> QImage:
     """Paint the named rows exactly as a view paints its visible ones.
 
     **The only route to a thumbnail**, which is what makes "row 900 was never painted" a statement
     about this call list rather than about a scroll position.
+
+    `height` is `ROW_HEIGHT` by default, which is what a row with nothing on its third line gets.
+    A row that draws a format line needs what `sizeHint` would give it — see `FULL_ROW_HEIGHT`,
+    and note that painting such a row at `ROW_HEIGHT` silently squeezes the last line to a couple
+    of pixels rather than failing.
     """
-    image = QImage(width, ROW_HEIGHT * max(len(indices), 1), QImage.Format.Format_ARGB32)
+    image = QImage(width, height * max(len(indices), 1), QImage.Format.Format_ARGB32)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
     try:
         for slot, index in enumerate(indices):
             option = QStyleOptionViewItem()
-            option.rect = QRect(0, slot * ROW_HEIGHT, width, ROW_HEIGHT)
+            option.rect = QRect(0, slot * height, width, height)
             option.fontMetrics = QFontMetrics(option.font)
             delegate.paint(painter, option, model.index(index, 0))
     finally:
@@ -1245,7 +1280,14 @@ def test_a_groups_bar_keeps_every_gap_at_every_width(qapp: QApplication) -> None
         painter = QPainter(image)
         try:
             RowDelegate()._paint_segments(
-                painter, QRect(0, 0, width, 8), states, QColor("#666666"), QPalette()
+                painter,
+                QRect(0, 0, width, 8),
+                states,
+                QColor("#666666"),
+                QPalette(),
+                # Every width here is above the merge threshold, so this stays a claim about the
+                # one-block-per-entry rendering `T-155` fixed rather than about `T-164`'s.
+                line_width=width,
             )
         finally:
             painter.end()
@@ -1256,6 +1298,508 @@ def test_a_groups_bar_keeps_every_gap_at_every_width(qapp: QApplication) -> None
             f"at {width}px the bar draws {gaps} gaps between blocks; sixteen entries need fifteen, "
             "and blocks that merge under-report a playlist to the user"
         )
+
+
+def a_playlist(extra: dict[int, Any] | None = None) -> dict[int, Any]:
+    """A group header carrying everything that competes for its last line (`T-163`, `T-167`).
+
+    Verbs, a segmented bar and a format control at once, because the collisions this sweeps for
+    only exist when all three are on the row — a group with no verbs cannot have them take the
+    bar's width.
+
+    `extra` is a dict for `a_row`'s reason: the roles are integers, and `**{ROLE: value}` is a
+    `TypeError`.
+    """
+    row: dict[int, Any] = {
+        HEADLINE_ROLE: "Trail Sounds",
+        EXPANDED_ROLE: False,
+        HUE_ROLE: 0,
+        JOB_ID_ROLE: "playlist-1",
+        VERBS_ROLE: [Verb.CANCEL_ALL, Verb.RETRY_FAILED],
+        PRESET_CHOICES_ROLE: ["Best video available", "Audio only (MP3)"],
+        SEGMENTS_ROLE: [SegmentState.DONE] * 4
+        + [SegmentState.FAILED]
+        + [SegmentState.WAITING] * 11,
+    }
+    row.update(extra or {})
+    return row
+
+
+def a_download(extra: dict[int, Any] | None = None) -> dict[int, Any]:
+    """A running queue row: a plain fraction bar, and the verbs that were crowding it (`T-163`).
+
+    `Open` and `Show in folder` are the pair the maintainer reported keeping their full width while
+    the bar was squeezed to a stub, so they are the ones swept here.
+    """
+    row: dict[int, Any] = {
+        HEADLINE_ROLE: "Ridgeline in 4K",
+        DETAIL_ROLE: "412 MB of 640 MB",
+        HUE_ROLE: 0,
+        JOB_ID_ROLE: "job-1",
+        PROGRESS_ROLE: 0.62,
+        VERBS_ROLE: [Verb.OPEN, Verb.REVEAL, Verb.REMOVE],
+        PRESET_CHOICES_ROLE: ["Best video available", "Audio only (MP3)"],
+    }
+    row.update(extra or {})
+    return row
+
+
+def bar_runs(row: dict[int, Any], width: int, delegate: RowDelegate | None = None) -> list[int]:
+    """The widths of the ink runs on the row's progress bar, left to right.
+
+    One run per block for a segmented bar, one run for a plain one, and `[]` when no bar was drawn
+    at all — a real thing a narrow row does, and `T-163`'s defect rather than a measurement
+    failure.
+
+    **Read from the drawn row rather than from the delegate's arithmetic**, because the claim is
+    about what a user sees as they drag the window edge. The scanline is the bar's own, and the
+    count starts at the text line's left edge because the tile shares that scanline.
+    """
+    image = paint_rows(RowsModel([row]), delegate or RowDelegate(), 0, width=width)
+    # Held rather than inlined: a temporary `QStyleOptionViewItem` takes its `font` with it, and
+    # `QFontMetrics` then reads a deleted C++ object.
+    option = QStyleOptionViewItem()
+    line = QFontMetrics(option.font).height()
+    scanline = PADDING + 2 * line + 2 + BAR_HEIGHT // 2
+    indent = TWISTY_WIDTH if EXPANDED_ROLE in row else 0
+    first = PADDING + indent + THUMBNAIL_SIZE[0] + GAP
+    runs: list[int] = []
+    for x in range(first, width):
+        if image.pixelColor(x, scanline).alpha() <= 0:
+            continue
+        if runs and image.pixelColor(x - 1, scanline).alpha() > 0:
+            runs[-1] += 1
+        else:
+            runs.append(1)
+    return runs
+
+
+def bar_blocks(row: dict[int, Any], width: int) -> int:
+    """How many blocks the row's bar draws at `width`. `0` when it drew none."""
+    return len(bar_runs(row, width))
+
+
+def test_the_bar_changes_shape_at_most_once_across_a_drag(qapp: QApplication) -> None:
+    """`T-167`: narrowing the window merged the blocks, and narrowing it further un-merged them.
+
+    **The input was wrong, not the threshold.** The rendering was chosen from the space left over
+    after the verbs, and the verbs' width is not monotonic in the window's — at the moment one
+    drops into `⋯` (`T-135`) the leftover *grows*. Measured on this row before the fix, the bar's
+    own width ran 76 px at a 440 px window, 12 px at 460, 32 px at 480 and 9 px at 500, so the
+    rendering reversed twice while the user dragged one edge one way.
+
+    **Swept one pixel at a time, and in both directions by construction.** The rendering is a pure
+    function of the width — nothing about it is carried between paints — so a single transition
+    across the sweep is exactly the property that no drag direction can reverse it, and that it
+    un-merges at the width it merged at rather than at a second one.
+
+    **Widths where the row draws no bar at all are left out, and that is deliberate.** They exist:
+    the verbs take their full width and can leave the bar nothing, which is `T-163`, a different
+    defect with its own criterion and its own test. Asserting it here would make this test fail for
+    a reason it is not about. The guard below is what stops that exclusion from emptying the sweep.
+    """
+    row = a_playlist()
+    measured = [(width, bar_blocks(row, width)) for width in SWEEP_WIDTHS]
+    drawn = [(width, blocks) for width, blocks in measured if blocks]
+
+    assert len(drawn) > len(SWEEP_WIDTHS) // 2, (
+        f"the row drew a bar at only {len(drawn)} of {len(SWEEP_WIDTHS)} widths, so this sweep is "
+        "not measuring a rendering often enough to say anything about how often it changes"
+    )
+
+    changes = [
+        (width, before, after) for (_, before), (width, after) in pairwise(drawn) if before != after
+    ]
+
+    assert len(changes) <= 1, (
+        f"the bar takes {len({blocks for _, blocks in drawn})} shapes across "
+        f"{SWEEP_WIDTHS[0]}-{SWEEP_WIDTHS[-1]}px, changing at "
+        f"{[width for width, _, _ in changes]}; a user dragging one edge steadily sees it change, "
+        "change back and change again"
+    )
+
+
+def test_a_narrow_bar_merges_to_a_fixed_count_rather_than_thinner_blocks(
+    qapp: QApplication,
+) -> None:
+    """`T-164` and `UX-005` row 9b-i: what the bar draws once its entries no longer each fit.
+
+    Sixteen blocks in a 200 px bar are twelve pixels each and read as noise. The maintainer's first
+    suggestion — one solid *done of total* bar — was **rejected**, because a solid bar cannot show
+    that one of the four finished entries failed, which is the whole of row 9b. So the entries
+    merge into a fixed count instead, and the two renderings are the only two there are.
+    """
+    row = a_playlist()
+    drawn = [(width, bar_blocks(row, width)) for width in SWEEP_WIDTHS]
+    drawn = [(width, blocks) for width, blocks in drawn if blocks]
+
+    assert {blocks for _, blocks in drawn} == {MERGED_BLOCKS, 16}, (
+        f"the bar draws {sorted({blocks for _, blocks in drawn})} blocks across the sweep; row "
+        f"9b-i has exactly two renderings, one per entry and a merged {MERGED_BLOCKS}"
+    )
+    narrow = [width for width, blocks in drawn if blocks == MERGED_BLOCKS]
+    wide = [width for width, blocks in drawn if blocks == 16]
+    assert max(narrow) < min(wide), (
+        "the merged rendering is not confined to the narrow end, so it is not the narrow window "
+        "that decides it"
+    )
+
+
+def test_the_merge_threshold_is_the_stated_block_minimum(qapp: QApplication) -> None:
+    """`T-164`: the threshold is derived from a minimum legible block width, not tuned by eye.
+
+    **Asserted at its own boundary rather than sampled either side of it.** One pixel decides it,
+    and a test that checked 400 px and 900 px would pass for a threshold anywhere between them.
+    """
+    assert segment_blocks(16, segment_span(16)) == 16, (
+        "a line exactly wide enough for sixteen legible blocks does not draw them, so the "
+        "threshold is not the one MIN_BLOCK_WIDTH states"
+    )
+    assert segment_blocks(16, segment_span(16) - 1) == MERGED_BLOCKS, (
+        "one pixel below the stated minimum the bar still draws one block per entry, which is the "
+        "twelve-pixel noise T-164 exists to stop"
+    )
+    assert segment_blocks(MERGED_BLOCKS, 0) == MERGED_BLOCKS, (
+        "a playlist with no more entries than the merged count invents blocks by merging"
+    )
+
+
+def test_a_failed_entry_stays_visible_at_every_width(qapp: QApplication) -> None:
+    """`UX-005` row 9b's guarantee, which is what merging had to keep (`T-164`).
+
+    **A covered failure must not be outvoted by three successes.** Two playlists identical but for
+    one entry — waiting in the first, failed in the second — must never draw the same row. Under a
+    merged block that covers two entries, taking the *worst* is what keeps them apart; taking the
+    commonest or the first would collapse them at exactly the widths the merge exists for.
+
+    **The failed entry is deliberately not the first of its merged block.** Written with it at
+    index 4 this test passed against a fold that took each block's *first* state, because that
+    happened to be the failure — the rule was never exercised. At index 5 the block covers a
+    waiting entry and then the failure, so only taking the worst keeps the two rows apart.
+    `test_a_merged_block_takes_the_worst_state_it_covers` checks the remaining positions directly,
+    which is cheaper than sweeping sixteen of these.
+
+    Widths drawing no bar at all are excluded for `T-163`'s reason, and the guard is that they are
+    the minority.
+    """
+    healthy = a_playlist({SEGMENTS_ROLE: [SegmentState.DONE] * 4 + [SegmentState.WAITING] * 12})
+    broken = a_playlist(
+        {
+            SEGMENTS_ROLE: [SegmentState.DONE] * 4
+            + [SegmentState.WAITING]
+            + [SegmentState.FAILED]
+            + [SegmentState.WAITING] * 10
+        }
+    )
+
+    compared = 0
+    for width in SWEEP_WIDTHS:
+        if not bar_blocks(healthy, width):
+            continue
+        compared += 1
+        fine = paint_rows(RowsModel([healthy]), RowDelegate(), 0, width=width)
+        failed = paint_rows(RowsModel([broken]), RowDelegate(), 0, width=width)
+        assert fine != failed, (
+            f"at {width}px a playlist that skipped a track draws exactly like one that got "
+            "everything, which is the lie row 9b exists to prevent"
+        )
+
+    assert compared > len(SWEEP_WIDTHS) // 2, (
+        f"only {compared} of {len(SWEEP_WIDTHS)} widths drew a bar to compare"
+    )
+
+
+def test_a_playlists_blocks_keep_their_width_and_the_verbs_give_way(
+    qapp: QApplication,
+) -> None:
+    """`T-163`: the verbs held their ground until the progress bar had none.
+
+    What decided "fit" was the verbs' own width against the space left over, and the bar was not in
+    that calculation — so the verbs took what they needed and the bar took the remainder, which at
+    a narrow window was a stub. `T-135` already built the mechanism for the other answer: a dropped
+    verb is still reachable through `⋯` and through the context menu, and there is no overflow menu
+    for *progress*.
+
+    **The stated floor, and where it stops applying.** Blocks stay at `MIN_BLOCK_WIDTH` until the
+    line cannot hold even the merged bar beside the `⋯`. Past that the button wins, because a row
+    that kept its bar and dropped the button would leave the pointer no route to its verbs at all —
+    so the assertion is the rule, not an absolute: a bar under its minimum is only allowed on a row
+    that has already given up every verb it has.
+    """
+    row = a_playlist()
+    for width in SWEEP_WIDTHS:
+        delegate = RowDelegate()
+        runs = bar_runs(row, width, delegate)
+        assert runs, (
+            f"at {width}px the verbs took the whole line and the row draws no progress at all, "
+            "which is the row's only answer to how far along a playlist is"
+        )
+        if min(runs) < MIN_BLOCK_WIDTH:
+            assert set(delegate.overflowing("playlist-1")) == set(row[VERBS_ROLE]), (
+                f"at {width}px a block is {min(runs)}px while a verb is still drawn beside it; "
+                "the verbs are the half that can give and they have not given"
+            )
+
+
+def test_a_downloads_bar_keeps_its_minimum_and_the_verbs_give_way(
+    qapp: QApplication,
+) -> None:
+    """`T-163` on a plain fraction bar, which is the row the maintainer reported.
+
+    `Open` and `Show in folder` kept their full width while the bar was squeezed to nothing. Its
+    minimum is smaller than a sixteen-entry bar's, because it has one position to show rather than
+    sixteen endings — that difference is the criterion's "derived from what it has to show".
+    """
+    row = a_download()
+    for width in SWEEP_WIDTHS:
+        delegate = RowDelegate()
+        runs = bar_runs(row, width, delegate)
+        assert runs, f"at {width}px the verbs took the whole line and the bar was not drawn"
+        if sum(runs) < MIN_FRACTION_BAR:
+            assert set(delegate.overflowing("job-1")) == set(row[VERBS_ROLE]), (
+                f"at {width}px the bar is {sum(runs)}px, under the stated {MIN_FRACTION_BAR}, "
+                "while a verb is still drawn beside it"
+            )
+
+
+def test_the_overflow_still_holds_exactly_what_the_row_dropped(qapp: QApplication) -> None:
+    """`T-135`, re-asserted because `T-163` changed what makes a verb drop.
+
+    A verb is now dropped for crowding the bar as well as for running off the row. The menu must
+    still hold exactly what the row could not show — not one fewer, and nothing it did show.
+    """
+    row = a_download()
+    dropped_somewhere = False
+    for width in SWEEP_WIDTHS:
+        delegate = RowDelegate()
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, width, ROW_HEIGHT)
+        option.fontMetrics = QFontMetrics(option.font)
+        model = RowsModel([row])
+        paint_rows(model, delegate, 0, width=width)
+
+        body, area = delegate._verb_area(option, model.index(0, 0))
+        drawn = {
+            verb
+            for verb, _ in delegate._verb_rects(
+                QFontMetrics(option.font), area, body, model.index(0, 0)
+            )
+            if verb is not None
+        }
+        dropped = set(delegate.overflowing("job-1"))
+        dropped_somewhere = dropped_somewhere or bool(dropped)
+
+        assert drawn | dropped == set(row[VERBS_ROLE]), (
+            f"at {width}px the row shows {sorted(drawn)} and the menu offers {sorted(dropped)}, "
+            f"which is not the {sorted(row[VERBS_ROLE])} the model offered"
+        )
+        assert not drawn & dropped, (
+            f"at {width}px the menu repeats {sorted(drawn & dropped)}, which the row already shows"
+        )
+
+    assert dropped_somewhere, (
+        "no width in the sweep dropped a verb, so this proves nothing about the overflow"
+    )
+
+
+#: What a playlist header says it will download as (`UX-005` row 13). Long enough that a narrowed
+#: line loses words rather than a character — the maintainer saw this drawn as `Download`.
+FORMAT_LINE: Final = "Download as: Best video available"
+
+
+def format_line(row: dict[int, Any], width: int) -> QImage:
+    """Just the row's format line, cropped out of the painted row (`T-166`).
+
+    The band is line three of four, which is where `_paint_text` puts the selector and is a whole
+    line above the verbs. Cropping rather than scanning because the claim is that the line is drawn
+    *identically*, and comparing images says that exactly.
+    """
+    option = QStyleOptionViewItem()
+    line = QFontMetrics(option.font).height()
+    # **What `sizeHint` gives a row that draws all four of its lines.** Painted at `ROW_HEIGHT`
+    # instead, the last line is squeezed into whatever pixels remain — a fair rendering of a row
+    # with nothing on line three and a misleading one of a row carrying a format line.
+    height = TEXT_LINES * line + 2 * PADDING
+    image = paint_rows(RowsModel([row]), RowDelegate(), 0, width=width, height=height)
+    return image.copy(QRect(0, PADDING + 2 * line, width, line))
+
+
+def test_the_verbs_do_not_narrow_the_format_line_above_them(qapp: QApplication) -> None:
+    """`T-166`: `Download as: Best video available` became `Download` as the window narrowed.
+
+    **The verbs were spending the same width twice.** They are laid out on the last line, and
+    `_paint_text` already gives them that line by dropping the selector to a single line above it —
+    and then it also stopped the selector's *width* at the leftmost button, which sits a whole line
+    below. So as the window narrowed the buttons advanced leftward across a line they do not
+    occupy, until the format line was a stump.
+
+    **Asserted as: the verbs change nothing about the line above them.** The same row with and
+    without verbs must draw that line identically at every width. That is stronger than measuring
+    how much of it survives, and it cannot pass by both rows being equally truncated — the row
+    without verbs is not narrowed by anything.
+
+    `T118-R8` is the rule underneath: the selector is the half that cannot give, because a
+    truncated format is one the user can neither read nor copy, and there is no overflow menu for a
+    sentence. The verbs have one, and `T-163` is where they use it.
+    """
+    with_verbs = a_playlist({SELECTOR_ROLE: FORMAT_LINE})
+    without_verbs = a_playlist({SELECTOR_ROLE: FORMAT_LINE, VERBS_ROLE: []})
+
+    inked = 0
+    for width in SWEEP_WIDTHS:
+        crowded = format_line(with_verbs, width)
+        alone = format_line(without_verbs, width)
+        inked += crowded != format_line(a_playlist({VERBS_ROLE: []}), width)
+        assert crowded == alone, (
+            f"at {width}px the format line is drawn differently once the row has verbs, so the "
+            "buttons on the line below are taking width from the line above them"
+        )
+
+    assert inked > len(SWEEP_WIDTHS) // 2, (
+        f"the format line drew nothing at {len(SWEEP_WIDTHS) - inked} of {len(SWEEP_WIDTHS)} "
+        "widths, so comparing it proves little"
+    )
+
+
+def a_staging_row(extra: dict[int, Any] | None = None) -> dict[int, Any]:
+    """An add-dialog row: the tile, the control and the selector all present at once (`T-160`).
+
+    No verbs and no job behind it, which is what a staged row is — and the surface the maintainer
+    found this on, at the size the dialog opens at.
+    """
+    return a_row(
+        0,
+        extra={
+            SELECTOR_ROLE: FORMAT_LINE,
+            PRESET_ROLE: "Best video available",
+            PRESET_CHOICES_ROLE: ["Best video available", "Audio only (MP3)"],
+            **(extra or {}),
+        },
+    )
+
+
+def test_the_format_control_never_covers_the_thumbnail(qapp: QApplication) -> None:
+    """`T-160`, and checklist row 2.7's property, inherited 2026-08-05.
+
+    The control was anchored to the right edge and clamped to `body.left()`, with nothing between
+    it and the picture — so on a row narrower than roughly 300 px *Same as all* was drawn across
+    the thumbnail. `EDITOR_WIDTH` is 190 and the tile is 96 plus a 10 px gap, which is where that
+    number comes from.
+
+    **All three surfaces, because `_control_rect` is shared** and this was reported on the add
+    dialog and then confirmed on a queue row the same day. A playlist header is included because
+    its body is indented by the disclosure, which is exactly the arithmetic that used to differ
+    between the paint and the click.
+
+    **Swept, and asserted as geometry**: one width is what let `T-155` through.
+    """
+    for name, row in (
+        ("staging row", a_staging_row()),
+        ("queue row", a_download()),
+        ("playlist header", a_playlist({SELECTOR_ROLE: FORMAT_LINE})),
+    ):
+        delegate = RowDelegate()
+        model = RowsModel([row])
+        for width in SWEEP_WIDTHS:
+            option = QStyleOptionViewItem()
+            option.rect = QRect(0, 0, width, ROW_HEIGHT)
+            option.fontMetrics = QFontMetrics(option.font)
+            index = model.index(0, 0)
+
+            body, size = delegate._body_of(option, index)
+            tile = QRect(body.left(), body.top(), *size)
+            control = delegate._control_of(option, index)
+
+            assert control.intersected(tile).isEmpty(), (
+                f"on a {width}px {name} the control {control} is drawn over the thumbnail {tile}"
+            )
+            assert control.width() >= MIN_CONTROL_WIDTH, (
+                f"on a {width}px {name} the control is {control.width()}px, under the stated "
+                f"{MIN_CONTROL_WIDTH}; it narrows to that and no further, and is never withheld"
+            )
+            assert control.right() <= body.right(), (
+                f"on a {width}px {name} the control runs off the row's right edge"
+            )
+
+
+@pytest.mark.parametrize("tile", [THUMBNAIL_SIZE[0], CHILD_THUMBNAIL[0]])
+def test_the_control_stays_clear_of_the_tile_at_any_body_width(
+    qapp: QApplication, tile: int
+) -> None:
+    """`T-160`, below the widths a window reaches, and for a child row's smaller picture.
+
+    **The clamp is the guarantee; the text minimum is only what usually keeps them apart.**
+    Subtracting `MIN_TEXT_WIDTH` happens to hold the control clear of a 96 px tile down to about a
+    186 px row, which is narrower than the swept range — so without this the clamp would be
+    untested code that two unrelated constants were standing in for. Here the body is driven down
+    until only the clamp can be doing the work.
+
+    A child's tile is smaller and its body is indented, so the two sizes are checked rather than
+    assuming the full one is the harder case.
+    """
+    delegate = RowDelegate()
+    option = QStyleOptionViewItem()
+    line = QFontMetrics(option.font).height()
+
+    for body_width in range(60, 500):
+        body = QRect(PADDING, PADDING, body_width, ROW_HEIGHT - 2 * PADDING)
+        picture = QRect(body.left(), body.top(), tile, tile)
+        control = delegate._control_rect(body, line, tile=tile)
+        assert control.intersected(picture).isEmpty(), (
+            f"with a {body_width}px body and a {tile}px tile the control {control} is drawn over "
+            f"the picture {picture}"
+        )
+
+
+def test_the_thumbnail_is_drawn_the_same_with_a_control_and_without(
+    qapp: QApplication,
+) -> None:
+    """`T-160` from the pixels, which is where the maintainer saw it.
+
+    The geometry above says the rectangles do not meet; this says nothing was painted over the
+    picture, which is the claim a user could check. The row with no choices draws no control at
+    all, so its tile is what an uncovered one looks like.
+    """
+    covered = a_download()
+    bare = a_download({PRESET_CHOICES_ROLE: None})
+    tile = QRect(PADDING, PADDING, *THUMBNAIL_SIZE)
+
+    for width in SWEEP_WIDTHS:
+        with_control = paint_rows(RowsModel([covered]), RowDelegate(), 0, width=width)
+        without = paint_rows(RowsModel([bare]), RowDelegate(), 0, width=width)
+        assert with_control.copy(tile) == without.copy(tile), (
+            f"at {width}px the row's picture is drawn differently once the row has a format "
+            "control, so the control is being painted over the thumbnail"
+        )
+
+
+def test_a_merged_block_takes_the_worst_state_it_covers() -> None:
+    """`UX-005` row 9b-i, at every position a failure can occupy.
+
+    The swept test above can only afford one position; this covers the rest, and it is the one
+    that fails when the fold takes a block's first, commonest or last state instead of its worst.
+
+    **Below the two endings the order is least-advanced first**, so a block never claims more
+    progress than the slowest entry under it. Over-reporting is the lie a merged bar is most able
+    to tell: a block covering one finished entry and one still queued that read *done* would let a
+    half-finished playlist draw itself complete.
+    """
+    for position in range(16):
+        states = [SegmentState.DONE] * 16
+        states[position] = SegmentState.FAILED
+        assert SegmentState.FAILED in _merge(states, MERGED_BLOCKS), (
+            f"a failure at entry {position} vanishes when the bar merges, so a playlist that "
+            "skipped a track draws like one that got everything"
+        )
+
+    assert _merge([SegmentState.DONE, SegmentState.WAITING], 1) == (SegmentState.WAITING,), (
+        "a block covering a finished entry and a queued one reports the finished one, so a "
+        "half-done playlist can draw itself as complete"
+    )
+    assert _merge([SegmentState.CANCELLED, SegmentState.FAILED], 1) == (SegmentState.FAILED,), (
+        "a failure is outranked by an abandonment, so the entry a user must act on is the one "
+        "that disappears"
+    )
 
 
 def test_an_abandoned_block_is_not_drawn_like_a_finished_one(qapp: QApplication) -> None:
@@ -1297,7 +1841,12 @@ def test_an_abandoned_block_is_not_drawn_like_a_finished_one(qapp: QApplication)
             painter = QPainter(image)
             try:
                 RowDelegate()._paint_segments(
-                    painter, QRect(0, 0, 40, 8), [state], QColor(dressing.muted), palette
+                    painter,
+                    QRect(0, 0, 40, 8),
+                    [state],
+                    QColor(dressing.muted),
+                    palette,
+                    line_width=40,
                 )
             finally:
                 painter.end()

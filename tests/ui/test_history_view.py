@@ -1262,3 +1262,49 @@ def test_the_queue_history_and_add_dialog_name_one_download_the_same_way(
     finally:
         manager.shutdown()
         drain(qapp, [manager])
+
+
+def test_a_history_group_keeps_its_verbs_on_a_narrow_row(qapp: QApplication) -> None:
+    """The merge of `T-145`'s History groups with `T-163`/`T-167`'s row layout.
+
+    Neither side's suite covered the pair: the row-layout work reserves part of the last line for a
+    **progress bar**, sized from the segments the row carries, and a History group deliberately
+    carries none — `UX-005`'s amendment refuses the segmented bar because every member succeeded.
+    So the two features meet in `_bar_reserve`, which each was tested without.
+
+    A group therefore reserves nothing and its two verbs survive at a width where a queue playlist
+    of the same size would be giving space to sixteen blocks. **631 px is `T-167`'s own width**, the
+    one where the queue row decided on sixteen blocks and drew them 15 px wide.
+    """
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QPainter, QPixmap
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    from tracks_and_trails.ui.row_delegate import PROGRESS_ROLE, SEGMENTS_ROLE
+
+    view = view_over([a_member(f"m-{index}", index=index) for index in range(3)])
+    header = view.model.index(0, 0)
+
+    assert view.model.data(header, SEGMENTS_ROLE) is None, (
+        "a history group grew a segmented bar, which UX-005's amendment refuses"
+    )
+    assert view.model.data(header, PROGRESS_ROLE) is None, "a finished group reported progress"
+
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    for width in (631, 400):
+        pixmap = QPixmap(width, 80)
+        pixmap.fill()
+        painter = QPainter(pixmap)
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, width, 66)
+        option.font = view.table.font()
+        option.fontMetrics = view.table.fontMetrics()
+        option.palette = view.table.palette()
+        delegate.paint(painter, option, header)
+        painter.end()
+
+        assert delegate.overflowing("pl-1") == (), (
+            f"at {width}px the group dropped {delegate.overflowing('pl-1')} into the overflow; it "
+            "has no bar to make room for, so its two verbs fit"
+        )

@@ -238,8 +238,79 @@ ROW_HEIGHT: Final = THUMBNAIL_SIZE[1] + 2 * PADDING
 #: How wide the row's editor is drawn. Wide enough for the longest preset name plus its arrow.
 EDITOR_WIDTH: Final = 190
 
+#: The narrowest the format control is drawn before it stops narrowing (`T-160`).
+#:
+#: **The control narrows; it is never withheld and never drawn over the picture.** That is the
+#: promise, stated because a control that silently shrinks and one that silently vanishes are
+#: different ones. Withholding was the alternative and was rejected: the `⋯` exists so a dropped
+#: verb is still reachable, and there is no equivalent for the format — `EDIT_KEY` opens an editor
+#: in this very rectangle, so a row that withheld it would have no route to the format at all.
+#:
+#: The number is the combo's arrow plus enough of the name to tell one choice from another. Below
+#: it the control reads as a button with no label, which looks broken rather than narrow.
+MIN_CONTROL_WIDTH: Final = 64
+
+#: What the row's first two lines keep before the control stops taking width from them (`T-160`).
+#:
+#: The headline is the row's identity and `HEADLINE_ROLE` is the one thing every surface answers —
+#: "a row nobody can identify is worse than a long URL". This is enough for a recognisable prefix
+#: of one. It is a preference, not a floor: `MIN_CONTROL_WIDTH` wins on a row too narrow for both,
+#: because a control that has shrunk out of existence is worse than a title that has been elided.
+MIN_TEXT_WIDTH: Final = 120
+
 #: The height of the painted progress bar.
 BAR_HEIGHT: Final = 4
+
+#: The gap between two blocks of a group's segmented bar (`T-155`, `T-167`).
+#:
+#: **Uniform at every width, and a constant rather than a calculation.** It used to collapse to
+#: zero on a narrow bar, and sixteen blocks touching are one bar to the eye — which is what the
+#: maintainer reported as the bar "becoming a single bar" as the window narrowed. `T-155` was
+#: blocks merging *by accident*; `UX-005` row 9b-i's constraint is that a bar which merges on
+#: purpose must not be mistakable for that defect returning, so the gap does not vary.
+SEGMENT_GAP: Final = 1
+
+#: The narrowest a block may be drawn and still read as an entry rather than as noise (`T-164`).
+#:
+#: **The number is the decision** (`T118-R8`), so it is stated here rather than tuned by eye. It
+#: is anchored to the measurement that opened `T-164`: sixteen blocks in a 200 px bar are twelve
+#: pixels each, and at that size the segmentation "reads as noise rather than as information". So
+#: the floor sits above twelve rather than at it.
+#:
+#: Everything the last line decides is derived from this one number — when the blocks merge
+#: (`T-164`), and how much of the line the bar keeps from the verbs (`T-163`).
+MIN_BLOCK_WIDTH: Final = 16
+
+#: How many blocks a bar draws once its entries no longer each fit (`UX-005` row 9b-i, `T-164`).
+#:
+#: **What this gives up is stated rather than glossed: a block stops meaning an entry.** The
+#: maintainer's first suggestion was one solid *done of total* bar and was **rejected**, because it
+#: moves the failure out of the drawing and into the text — which is the shape row 9b was adopted
+#: against. Merging keeps the failure visible and spends the weaker guarantee instead, and it is
+#: only affordable because the count is carried exactly elsewhere: the chip reads `4 of 16`
+#: (row 9a) and the second line names each ending.
+MERGED_BLOCKS: Final = 8
+
+#: The narrowest a plain fraction bar may be drawn (`T-163`).
+#:
+#: **Less than a segmented bar needs, because it has less to show** — one position along its length
+#: rather than sixteen endings. Derived rather than picked: a quarter is the coarsest reading
+#: anybody takes off a progress bar, and a quarter of this is one legible block.
+MIN_FRACTION_BAR: Final = 4 * MIN_BLOCK_WIDTH
+
+#: Which state a merged block takes when it covers several entries, worst first (`T-164`).
+#:
+#: **A covered failure must not be outvoted by three successes** — that is row 9b's whole
+#: guarantee and it does not bend at a narrow window. Below the two endings, the order is
+#: least-advanced first, so a block never claims more progress than the slowest entry it covers:
+#: over-reporting is the lie a merged bar is most able to tell.
+_WORST_FIRST: Final = (
+    SegmentState.FAILED,
+    SegmentState.CANCELLED,
+    SegmentState.WAITING,
+    SegmentState.RUNNING,
+    SegmentState.DONE,
+)
 
 #: How far one level of nesting indents a row, and the width reserved for the disclosure
 #: triangle (`T-140`). The triangle sits in the indent a group's own children get, so a group and
@@ -298,6 +369,59 @@ def _segments(index: QModelIndex | _PersistentIndex) -> tuple[SegmentState, ...]
             # with fewer blocks than the playlist has entries would misreport the size of the work.
             states.append(SegmentState.WAITING)
     return tuple(states)
+
+
+def segment_span(blocks: int) -> int:
+    """The narrowest a bar of `blocks` blocks may be drawn (`T-164`, `T-167`).
+
+    One arithmetic, so the width the bar asks the verbs for and the width its rendering is chosen
+    against cannot disagree — the same rule `_control_rect` and `_verb_rects` follow about a thing
+    drawn in one place and measured in another.
+    """
+    return max(blocks, 0) * MIN_BLOCK_WIDTH + max(blocks - 1, 0) * SEGMENT_GAP
+
+
+def segment_blocks(entries: int, line_width: int) -> int:
+    """How many blocks a bar of `entries` entries draws on a line this wide (`T-164`, `T-167`).
+
+    **One threshold, one number, and the input moves one way.** Below it the entries merge into
+    `MERGED_BLOCKS`; above it there is one block per entry, which is what `T-155` guards. Merging
+    is skipped where it would not help — a playlist of six drawing eight blocks would invent two.
+    """
+    if entries <= MERGED_BLOCKS or segment_span(entries) <= line_width:
+        return entries
+    return MERGED_BLOCKS
+
+
+def _fraction(index: QModelIndex | _PersistentIndex) -> float | None:
+    """The row's completion, or `None` when there is nothing honest to draw.
+
+    `None` is not zero: an unknown total is not "0%", which is a confident lie `Job.progress`
+    already refuses. `bool` is excluded because it is an `int` in Python and `True` would draw a
+    full bar.
+    """
+    value = index.data(PROGRESS_ROLE)
+    if isinstance(value, bool) or not isinstance(value, float | int):
+        return None
+    return float(value)
+
+
+def _merge(states: Sequence[SegmentState], blocks: int) -> tuple[SegmentState, ...]:
+    """Fold `states` into `blocks`, each taking the worst state it covers (`UX-005` row 9b-i).
+
+    **Each block ends where the next begins**, the same arithmetic `_paint_segments` uses on the
+    pixels and for the same reason: two independent roundings would let one entry be covered twice
+    or by nothing, and an entry no block covers is a failure with nowhere to be seen.
+    """
+    if blocks >= len(states) or blocks <= 0:
+        return tuple(states)
+    return tuple(
+        min(
+            states[position * len(states) // blocks : (position + 1) * len(states) // blocks],
+            key=_WORST_FIRST.index,
+        )
+        for position in range(blocks)
+    )
 
 
 class RowDelegate(QStyledItemDelegate):
@@ -419,37 +543,30 @@ class RowDelegate(QStyledItemDelegate):
         muted = QColor(primary)
         muted.setAlpha(170)
 
-        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
-
         # **A playlist and its entries** (`T-140`, `UX-005` rows 9 and 9c). The disclosure sits in
         # the same indent the children get, so a group and its entries share a left edge instead
         # of stepping twice; and a child's tile is smaller, because an entry inherits its group's
         # format and has two lines to say rather than four.
-        depth = _depth(index)
+        #
+        # Drawn against the *unindented* body, which is where `_twisty_rect` hit-tests it.
         expanded = index.data(EXPANDED_ROLE)
         if isinstance(expanded, bool):
-            self._paint_twisty(painter, body, muted, opened=expanded)
-        if depth:
+            self._paint_twisty(
+                painter,
+                option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING),
+                muted,
+                opened=expanded,
+            )
+        if _depth(index):
             self._paint_rail(painter, option.rect, muted)
-            body = QRect(
-                body.left() + depth * INDENT,
-                body.top(),
-                max(body.width() - depth * INDENT, 0),
-                body.height(),
-            )
-        elif isinstance(expanded, bool):
-            body = QRect(
-                body.left() + TWISTY_WIDTH,
-                body.top(),
-                max(body.width() - TWISTY_WIDTH, 0),
-                body.height(),
-            )
 
-        tile = CHILD_THUMBNAIL if depth else THUMBNAIL_SIZE
+        # **The same body and the same text area the click and the hover resolve** (`T-160`). The
+        # two were computed separately and disagreed about the indent, which did not show while
+        # the control was anchored to the right edge alone and would have the moment it started
+        # measuring from the row's left.
+        body, text_area = self._verb_area(option, index)
+        _, tile = self._body_of(option, index)
         self._paint_tile(painter, body, index, size=tile)
-
-        text_left = body.left() + tile[0] + GAP
-        text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
 
         # **The control is drawn on every row that has one** (`UX-004` §1, `T118-R12`). Reserving
         # the slot and painting nothing in it was the defect: an empty 190 px gap is not a visible
@@ -459,12 +576,11 @@ class RowDelegate(QStyledItemDelegate):
         # `QComboBox` still exists only for the row being edited, so the widget-per-row cost that
         # `T118-R10` measured does not come back. What the user sees is identical either way,
         # because both are drawn by the same style.
-        if self._editable(index):
-            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
-            if not self._is_being_edited(index):
-                # Suppressed only under the live editor, which occupies the same rectangle —
-                # otherwise the painted affordance shows through the real control's edges.
-                self._paint_control(painter, body, option, index)
+        #
+        # Suppressed only under the live editor, which occupies the same rectangle — otherwise the
+        # painted affordance shows through the real control's edges.
+        if self._editable(index) and not self._is_being_edited(index):
+            self._paint_control(painter, option, index)
 
         verbs_left = self._paint_verbs(painter, text_area, body, option, index)
         self._paint_text(
@@ -472,7 +588,7 @@ class RowDelegate(QStyledItemDelegate):
         )
         painter.restore()
 
-    def _control_rect(self, body: QRect, line: int = 0) -> QRect:
+    def _control_rect(self, body: QRect, line: int = 0, *, tile: int = THUMBNAIL_SIZE[0]) -> QRect:
         """Where the row's format control sits. One definition, so the painted affordance, the
         live editor and the click target cannot disagree about where it is.
 
@@ -489,17 +605,71 @@ class RowDelegate(QStyledItemDelegate):
         into uselessness — so the control moved instead, which also makes the older comment true
         rather than leaving two correct halves that contradict each other.
 
+        **It narrows before the picture; it never crosses it** (`T-160`). The left edge was clamped
+        to `body.left()`, which is where `_paint_tile` draws the thumbnail — so a row narrower than
+        roughly 300 px drew *Same as all* across the picture. Visible at the size the add dialog
+        opens at, so every user met it before they met anything else.
+
+        **This is `T-136`'s family, one collision over**, and it gets the same answer from the
+        other side: there the control moved because the selector could not give, and here it
+        narrows because the picture cannot. What it gives up is `MIN_TEXT_WIDTH` first and then its
+        own width down to `MIN_CONTROL_WIDTH` — stated at those constants, because a control that
+        silently shrinks and one that silently vanishes are different promises and this one shrinks.
+
         `line` is the font's line height; `0` keeps the old centring for a caller that has no
-        metrics to hand, and every caller in this module has them.
+        metrics to hand, and every caller in this module has them. `tile` is the picture it must
+        stay clear of, which is smaller on a playlist's entry than on an ordinary row.
         """
         height = min(CONTROL_HEIGHT, body.height())
         band = min(2 * line, body.height()) if line else body.height()
+        beside = max(body.right() - (body.left() + tile + GAP), 0)
+        width = min(
+            max(min(beside - MIN_TEXT_WIDTH - GAP, EDITOR_WIDTH), MIN_CONTROL_WIDTH), beside
+        )
         return QRect(
-            max(body.right() - EDITOR_WIDTH, body.left()),
+            body.right() - width,
             body.top() + max(band - height, 0) // 2,
-            min(EDITOR_WIDTH, body.width()),
+            width,
             height,
         )
+
+    def _body_of(
+        self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
+    ) -> tuple[QRect, tuple[int, int]]:
+        """The row's body once its indent is taken out, and the tile that sits at its left edge.
+
+        **One definition, because two of them disagreed** (`T-160`). `paint` indented the body for
+        a group's disclosure and for a child's nesting; `_verb_area`, which the click and the hover
+        resolve against, did not. Nothing showed while every rectangle was measured from the row's
+        *right* edge — the indent does not move that — and the first thing measured from the left
+        would have been drawn in one place and clicked in another.
+        """
+        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        depth = _depth(index)
+        indent = (
+            depth * INDENT
+            if depth
+            else (TWISTY_WIDTH if isinstance(index.data(EXPANDED_ROLE), bool) else 0)
+        )
+        if indent:
+            body = QRect(
+                body.left() + indent,
+                body.top(),
+                max(body.width() - indent, 0),
+                body.height(),
+            )
+        return body, (CHILD_THUMBNAIL if depth else THUMBNAIL_SIZE)
+
+    def _control_of(
+        self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
+    ) -> QRect:
+        """Where this row's control sits, resolved from the row itself (`T-160`).
+
+        The paint, the click and the editor's geometry all come through here, so none of them can
+        hold a different idea of the row's indent or of the tile the control has to clear.
+        """
+        body, tile = self._body_of(option, index)
+        return self._control_rect(body, option.fontMetrics.height(), tile=tile[0])
 
     def _verbs_of(self, index: QModelIndex | _PersistentIndex) -> tuple[Verb, ...]:
         """What the model says this row offers. Empty on a surface that offers nothing."""
@@ -551,14 +721,84 @@ class RowDelegate(QStyledItemDelegate):
         if height <= 0:
             return []
 
+        # **The bar's share of the line is taken out first** (`T-163`). The verbs used to be laid
+        # out against the whole of `area` and the bar took whatever was left, which at a narrow
+        # window was a stub — `Open` and `Show in folder` at full width above a bar of nine pixels.
+        #
+        # The gap is part of the limit rather than of the reserve: `_paint_verbs` stops the bar
+        # `VERB_GAP` short of the leftmost button, so a limit without it hands the bar four pixels
+        # less than it asked for and its blocks come out one under `MIN_BLOCK_WIDTH`. Measured at
+        # a 758 px window before this was added — sixteen blocks, three of them 15 px.
+        reserve = self._bar_reserve(metrics, area, index)
+        limit = area.left() + reserve + (VERB_GAP if reserve else 0)
+        whole = self._lay_out(offered, metrics, area, top, height, limit, overflow=False)
         # **Tried twice, because reserving the overflow costs width that might be what made it
         # necessary.** Laying out with `⋯` always present would drop the leftmost verb on a row
         # where all of them would have fitted without it — the button would then be needed only
         # because it was there.
-        whole = self._lay_out(offered, metrics, area, top, height, overflow=False)
         if len(whole) == len(offered):
             return whole
-        return self._lay_out(offered, metrics, area, top, height, overflow=True)
+        return self._lay_out(offered, metrics, area, top, height, limit, overflow=True)
+
+    def _bar_reserve(
+        self,
+        metrics: QFontMetrics,
+        area: QRect,
+        index: QModelIndex | _PersistentIndex,
+    ) -> int:
+        """How much of the last line the progress bar keeps from the verbs (`T-163`).
+
+        **The verbs are the half that can give, and `T-135` already built the mechanism.** A
+        dropped verb is still reachable through `⋯` and through the context menu, so nothing is
+        lost by dropping one sooner. A squeezed bar has no equivalent: there is no overflow menu
+        for *progress*, and `T126-R2` already ruled that a row must not stop saying one true thing
+        in order to say another.
+
+        **What the bar needs depends on what it has to show** — a segmented bar for sixteen
+        entries needs more than a single fraction does — so the figure comes from the same
+        `MIN_BLOCK_WIDTH` the merge threshold does rather than from a second number.
+
+        **The `⋯` outranks the reserve, and that is the one place the bar gives way.** On a line
+        too narrow for both, a row that kept its bar and dropped the button would leave the
+        pointer no route to its verbs at all. So the bar takes what is left under that, honestly
+        below its minimum, rather than the row losing the only thing that can restore the rest.
+
+        Measured off `area`, which is the row's whole text line, so this answer does not depend on
+        what happened to fit — `_verb_rects` and `_paint_text` both ask it and must agree.
+        """
+        room = self._bar_line(metrics, area, index)
+        entries = len(_segments(index))
+        if entries:
+            keep = segment_span(segment_blocks(entries, room))
+        elif _fraction(index) is not None:
+            keep = MIN_FRACTION_BAR
+        else:
+            return 0
+        return min(keep, room)
+
+    def _bar_line(
+        self,
+        metrics: QFontMetrics,
+        area: QRect,
+        index: QModelIndex | _PersistentIndex,
+    ) -> int:
+        """The most of the last line the bar can be given, and so what it decides its shape from.
+
+        **One number for both, because two would let them disagree** (`T-163`, `T-167`). The
+        rendering used to be chosen against the whole text line while the bar was only ever handed
+        what remained under the `⋯`, so at a 631 px window the row decided on sixteen blocks and
+        then drew them 15 px wide — the merge threshold reasoning about space the bar never had.
+
+        Monotonic in the window's width, which is `T-167`'s requirement: everything subtracted here
+        is fixed for a given row rather than a function of what fit on this paint.
+        """
+        room = max(area.width(), 0)
+        if self._verbs_of(index):
+            overflow = metrics.horizontalAdvance(MORE_LABEL) + 2 * VERB_PADDING
+            # `-1` because `area.right()` is the last pixel rather than one past it, and the gap
+            # because the bar stops `VERB_GAP` short of the leftmost button.
+            room = max(room - overflow - VERB_GAP - 1, 0)
+        return room
 
     def _lay_out(
         self,
@@ -567,10 +807,11 @@ class RowDelegate(QStyledItemDelegate):
         area: QRect,
         top: int,
         height: int,
+        limit: int,
         *,
         overflow: bool,
     ) -> list[tuple[Verb | None, QRect]]:
-        """Place as many verbs as fit, right to left, optionally reserving the overflow first."""
+        """Place as many verbs as fit right of `limit`, right to left, `⋯` first when asked."""
         placed: list[tuple[Verb | None, QRect]] = []
         right = area.right()
         wanted: tuple[Verb | None, ...] = (
@@ -580,10 +821,13 @@ class RowDelegate(QStyledItemDelegate):
             label = MORE_LABEL if verb is None else LABELS[verb]
             width = metrics.horizontalAdvance(label) + 2 * VERB_PADDING
             left = right - width
-            if left < area.left():
+            if left < limit:
                 # **Silently dropped rather than drawn overlapping the message.** `NFR-006` gives
                 # the extractor's message the full width above; a verb that will not fit is what
                 # the overflow is for, and the overflow is placed first so it always survives.
+                #
+                # `limit` is the row's left edge plus whatever the progress bar keeps (`T-163`),
+                # so a verb is now dropped for crowding the bar as well as for running off the row.
                 break
             placed.append((verb, QRect(left, top, width, height)))
             right = left - VERB_GAP
@@ -679,6 +923,8 @@ class RowDelegate(QStyledItemDelegate):
         states: Sequence[SegmentState],
         muted: QColor,
         palette: QPalette,
+        *,
+        line_width: int,
     ) -> None:
         """One block per entry, filled by what that entry has done (`UX-005` row 9b, `T-140`).
 
@@ -687,11 +933,26 @@ class RowDelegate(QStyledItemDelegate):
         while it runs and a bar that goes *backwards*. It also gives a **failed** entry somewhere
         to be seen: under one continuous bar a playlist that quietly skipped a track looks exactly
         like one that got everything.
+
+        **`line_width` is the row's own line, not `area`** (`T-167`). What the bar looks like used
+        to be decided from `area`, which is the space left over *after* the verbs — and the verbs'
+        width is not monotonic in the window's: at the moment one drops into `⋯` (`T-135`) the
+        leftover grows. So dragging one edge steadily made the bar change, change back and change
+        again. A rendering decided from leftover space inherits every discontinuity of everything
+        else sharing the line. The line's own width moves one way only, so the same threshold is
+        stable by construction, and the bar is still *drawn* into whatever `area` it was given.
+
+        **Below the threshold the entries merge into `MERGED_BLOCKS`** (`UX-005` row 9b-i,
+        `T-164`), each block taking the worst state it covers. The gap does not vary with it: the
+        previous narrow rendering dropped the gap to zero, and sixteen touching blocks are one bar
+        to the eye — indistinguishable from `T-155`, where blocks merged *by accident*. Row 9b-i's
+        constraint is that a deliberate merge must not look like that defect returning, so what
+        changes at the threshold is the block count and nothing else.
         """
         if not states or area.width() <= 0:
             return
-        gap = 1 if len(states) < area.width() // 2 else 0
-        span = (area.width() - gap * (len(states) - 1)) / len(states)
+        states = _merge(states, segment_blocks(len(states), line_width))
+        span = (area.width() - SEGMENT_GAP * (len(states) - 1)) / len(states)
         if span < 1:
             return
         # **A finished entry is the brand** (`T-140`, corrected twice). Every segment was drawn in
@@ -743,8 +1004,8 @@ class RowDelegate(QStyledItemDelegate):
         # lost at 600 px, 6 at 617, 2 at 733, none at 800 — deterministic per width, which is why
         # it looked intermittent to somebody resizing a window.
         for position, state in enumerate(states):
-            left = area.left() + round(position * (span + gap))
-            right = area.left() + round((position + 1) * (span + gap)) - gap
+            left = area.left() + round(position * (span + SEGMENT_GAP))
+            right = area.left() + round((position + 1) * (span + SEGMENT_GAP)) - SEGMENT_GAP
             block = QRect(left, area.top(), max(right - left, 1), area.height())
             painter.setBrush(QColor(colours[state]))
             painter.drawRect(block)
@@ -814,7 +1075,6 @@ class RowDelegate(QStyledItemDelegate):
     def _paint_control(
         self,
         painter: QPainter,
-        body: QRect,
         option: QStyleOptionViewItem,
         index: QModelIndex | _PersistentIndex,
     ) -> None:
@@ -846,7 +1106,7 @@ class RowDelegate(QStyledItemDelegate):
             label = INHERITED_TEXT if index.data(PRESET_INHERITABLE_ROLE) else ""
 
         box = QStyleOptionComboBox()
-        box.rect = self._control_rect(body, option.fontMetrics.height())
+        box.rect = self._control_of(option, index)
         box.palette = option.palette
         box.currentText = label
         box.state = QStyle.StateFlag.State_Enabled
@@ -1003,17 +1263,26 @@ class RowDelegate(QStyledItemDelegate):
             # beside the first two lines, and nothing needs the third line's right-hand end.
             # `SELECTOR_LINES` of room, which holds every built-in at the default font and is
             # explicitly *not* a promise at larger ones — see that constant, and `T118-R15`.
-            # **The verbs own the last line, so the selector gives it up** (`UX-005` §4). Without
-            # this the selector wraps across lines 2 and 3 and the buttons are drawn over its
-            # second line — which is the history row's shape exactly, since the saved path is
+            # **The verbs own the last line, so the selector gives up that line** (`UX-005` §4).
+            # Without this the selector wraps across lines 2 and 3 and the buttons are drawn over
+            # its second line — which is the history row's shape exactly, since the saved path is
             # long. A row with no verbs keeps both lines, which is the add dialog's case and the
             # one `T118-R15` sized `SELECTOR_LINES` for.
             selector_lines = max(SELECTOR_LINES - (0 if verbs_left is None else 1), 1)
+            # **The line it keeps is at the full width, whatever the verbs are doing** (`T-166`).
+            # This used to stop at `verbs_left` as well, and the verbs are on the line *below*: the
+            # height above already gave them their line, so narrowing this one as well spent the
+            # same width twice. As the window narrowed the buttons advanced leftward across a line
+            # they do not occupy, and `Download as: Best video available` was drawn as `Download`.
+            #
+            # **The format line is the half that cannot give** (`T118-R8`): a truncated selector is
+            # one the user can neither read nor copy, and there is no overflow menu for a sentence.
+            # The verbs have one, and `T-163` is where they give way.
             painter.drawText(
                 QRect(
                     area.left(),
                     area.top() + 2 * line,
-                    max((body.right() if verbs_left is None else verbs_left) - area.left(), 0),
+                    max(body.right() - area.left(), 0),
                     selector_lines * line,
                 ),
                 int(
@@ -1028,8 +1297,8 @@ class RowDelegate(QStyledItemDelegate):
         # Tested before `PROGRESS_ROLE` because a group answers no fraction at all — there is no
         # honest one to answer, which is the finding row 9b records.
         segments = _segments(index)
-        fraction = index.data(PROGRESS_ROLE)
-        if not segments and (not isinstance(fraction, float | int) or isinstance(fraction, bool)):
+        fraction = _fraction(index)
+        if not segments and fraction is None:
             return
         # **The bar goes under the selector rather than instead of it** (`T126-R2`). This used to
         # return outright when a selector was present, on the reading that no model answers both
@@ -1053,14 +1322,27 @@ class RowDelegate(QStyledItemDelegate):
         if bar.bottom() > area.bottom():
             return
         if segments:
-            self._paint_segments(painter, bar, segments, muted, palette)
-            return
-        track = QColor(muted)
-        track.setAlpha(60)
-        painter.fillRect(bar, track)
-        done = QRect(bar)
-        done.setWidth(int(bar.width() * min(max(float(fraction), 0.0), 1.0)))
-        painter.fillRect(done, muted)
+            # **The line's width, not the bar's** (`T-167`). `_bar_line` differs from the row's own
+            # width by the padding, the indent, the tile, the control's slot and the overflow
+            # button — all fixed for a given row, so it moves one way as the user drags. `bar` is
+            # what the verbs left of it, and that is exactly the input whose reversals made the
+            # bar change shape twice on one drag. The same call decides the reserve `_verb_rects`
+            # laid the buttons out against, so the two cannot disagree about the block count.
+            self._paint_segments(
+                painter,
+                bar,
+                segments,
+                muted,
+                palette,
+                line_width=self._bar_line(metrics, area, index),
+            )
+        elif fraction is not None:
+            track = QColor(muted)
+            track.setAlpha(60)
+            painter.fillRect(bar, track)
+            done = QRect(bar)
+            done.setWidth(int(bar.width() * min(max(fraction, 0.0), 1.0)))
+            painter.fillRect(done, muted)
 
     # --- the one editor -------------------------------------------------------------------
 
@@ -1071,17 +1353,22 @@ class RowDelegate(QStyledItemDelegate):
     def _verb_area(
         self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
     ) -> tuple[QRect, QRect]:
-        """The row's body and the area the verbs are laid out in — one definition, three readers.
+        """The row's body and the area its text and verbs are laid out in — one definition.
 
         Extracted at `T-134`, when hover became the third thing that had to agree with the paint
         and the click about where the buttons are. Two copies of this arithmetic were already one
-        more than `_verb_rects`' own rule allows.
+        more than `_verb_rects`' own rule allows, and at `T-160` `paint` stopped keeping a fourth.
+
+        **The slot taken out is the control's real width, not `EDITOR_WIDTH`** (`T-160`). The
+        control narrows on a row that cannot hold all of it, and reserving the full width there
+        would leave a gap the row has no way to spend.
         """
-        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
-        text_left = body.left() + THUMBNAIL_SIZE[0] + GAP
+        body, tile = self._body_of(option, index)
+        text_left = body.left() + tile[0] + GAP
         text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
         if self._editable(index):
-            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
+            control = self._control_of(option, index)
+            text_area.setWidth(max(text_area.width() - control.width() - GAP, 0))
         return body, text_area
 
     def watch_hover(self, view: QAbstractItemView) -> None:
@@ -1192,7 +1479,7 @@ class RowDelegate(QStyledItemDelegate):
 
         if not self._editable(index):
             return False
-        if not self._control_rect(body, QFontMetrics(option.font).height()).contains(where):
+        if not self._control_of(option, index).contains(where):
             return False
         view = cast("QAbstractItemView | None", self.parent())
         if view is None:
@@ -1325,10 +1612,9 @@ class RowDelegate(QStyledItemDelegate):
         index: QModelIndex | _PersistentIndex,
     ) -> None:
         """Put the editor in the slot `paint` already reserved for it, on the row it belongs to."""
-        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
         # **The same rectangle the affordance was painted in** (`T118-R12`). One definition, so the
         # control does not move at the moment the user clicks it.
-        editor.setGeometry(self._control_rect(body, option.fontMetrics.height()))
+        editor.setGeometry(self._control_of(option, index))
 
 
 def _text(index: QModelIndex | _PersistentIndex, role: int) -> str:
