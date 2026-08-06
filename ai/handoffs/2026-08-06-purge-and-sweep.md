@@ -66,14 +66,24 @@ worth your attention:
   omission. Narrowing a rule to accommodate a change is how a gate quietly stops gating.
 - **The purge has its own regression**, parametrized over all eight history-bearing fixtures —
   discovered by reading the fixture text, so a fixture added later is covered. Three assertions: the
-  fixture really held rows; the table does not exist afterwards; and **the plaintext is absent from
-  every table in the database**, which is the one that catches a migration answering `REQ-020` by
-  relocating the record rather than removing it.
+  fixture really held rows; the table does not exist afterwards; and **every string those rows held
+  is absent from every table in the database**, which is the one that catches a migration answering
+  `REQ-020` by relocating the record rather than removing it.
+- **That third assertion is derived from each fixture, not hardcoded**, and I got it wrong first.
+  It named two literal values, one of which was one of v7's *three* history URLs — satisfied while
+  two survived. It now traces every distinctive string in the fixture's own history rows: 3 to 14
+  values per version. Two subtleties are in the code comments because both cost me a false
+  result — a value the `jobs` table also held is excluded, since `REQ-012` requires the queue to
+  survive and the two tables legitimately share text; and that exclusion tests **containment, not
+  equality**, because `bestvideo+bestaudio/best` sits in a history column of its own and *inside*
+  the queue's serialized `DownloadRequest`, so comparing cells reported the queue's own request as
+  a leak.
 - **A second test proves the purge was narrow** — v8's two job rows and their queue positions across
   the same run. A destructive migration that also took the queue would pass every assertion above.
-- **Three mutants killed**: a no-op migration, `DELETE FROM history` leaving the table, and
-  `CREATE TABLE completions AS SELECT * FROM history` before the drop. The third is the one the
-  plaintext assertion exists for, and it is the only one the other two assertions let through.
+- **Four mutants killed**: a no-op migration; `DELETE FROM history` leaving the table; a copy to
+  `completions` before the drop; and `ALTER TABLE history RENAME TO completions`. The last two are
+  what the plaintext assertion exists for — the rename in particular passes both other assertions,
+  since the table named `history` genuinely stops existing.
 - `ai/TESTING.md` §7 records the exception and the two conditions that travel with it: a ruling
   recorded before the migration, never inferred from a feature removal, and a companion test proving
   the destruction was narrow.
@@ -150,7 +160,7 @@ ledger left to rename them after.
 | `mypy` / `mypy --platform win32` | Success, 107 source files each |
 | Mutation | Three mutants on `0009`, all killed — see above |
 | Fresh database | schema **v9**, tables `jobs` only |
-| Legacy upgrade | v7 fixture through `connect()`: **3 history rows before, 0 tables named `history` after**, and neither plaintext value present anywhere |
+| Legacy upgrade | v7 fixture through `connect()`: **3 history rows before; afterwards schema v9 and one table, `jobs`.** All three purged URLs absent. `example.invalid` and `Track one` *do* still appear — as the surviving job rows' own URL and title, which is `REQ-012` working, and is why the regression excludes text the queue also held |
 
 **CI was still running when this was written.** The last full green was `6c90cf7`. Everything since
 is either documentation or this range, and this range is the first source change since — so

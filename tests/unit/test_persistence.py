@@ -106,15 +106,10 @@ def test_migrations_are_discovered_from_the_directory_not_a_list() -> None:
 #: weakens nothing: it moves the table from "must be preserved" to "must be gone".
 _MIGRATED_TABLES: Final = ("jobs",)
 
-#: Plaintext a `history` row held that no later schema may still be carrying. Two of the fixtures'
-#: own values, chosen because they are the two kinds `T169-R2` and `T169-R3` were about: a source
-#: URL and a path into a user's filesystem. Asserted absent from **every** table after migration,
-#: not just from `history`, so a future migration that "preserved" the record by copying it
-#: somewhere else fails this rather than passing it.
-_PURGED_PLAINTEXT: Final = (
-    "https://example.invalid/v7-one",
-    "/downloads/Trail Sounds/Track one.mp3",
-)
+#: The shortest string worth chasing through a database. Below this, a coincidence between a
+#: purged value and surviving text is likelier than a leak: `"0"`, a status word, or a shared
+#: date prefix would make the assertion below fail on nothing that matters.
+_MEANINGFUL_PLAINTEXT: Final = 12
 
 
 def _rows_by_id(connection: sqlite3.Connection, table: str) -> dict[str, dict[str, Any]]:
@@ -257,8 +252,20 @@ def test_the_completion_record_is_purged_upgrading_from_every_version_that_kept_
     1. The fixture really did hold rows, or the rest of the test proves nothing about a purge.
     2. The table does not exist afterwards — not empty, gone, so no later code can find it and no
        reader has to wonder whether something still writes to it.
-    3. **The plaintext is absent from every table**, which is the assertion that would catch a
-       migration that answered `REQ-020` by moving the record somewhere less obvious.
+    3. **Every string the fixture's own history rows held is absent from every table**, which is
+       the assertion that catches a migration answering `REQ-020` by moving the record somewhere
+       less obvious rather than removing it.
+
+    The third assertion is **derived from the fixture rather than hardcoded**, and the difference
+    matters: v7 holds three history URLs, and a list naming one of them would have been satisfied
+    while two survived.
+
+    **A value that the `jobs` table also held before the migration is excluded**, because the queue
+    is required to survive (`REQ-012`) and the two tables legitimately share text. v7 is the case
+    that proves this is not a loophole: its purged rows carried
+    `https://example.invalid/v7-one`, and its *job* rows carry `https://example.invalid/v7-era` —
+    different URLs, both retained by nothing more than the rule that job rows stay. What the two
+    genuinely share is the title `Track one`, which survives as a job's title and must.
 
     What this does not assert, because `0009` cannot promise it: that the bytes are unrecoverable
     from the file. Dropped pages go to SQLite's freelist unzeroed and WAL keeps the old content
@@ -275,6 +282,29 @@ def test_the_completion_record_is_purged_upgrading_from_every_version_that_kept_
     seeded = _rows_by_id(connection, "history")
     assert seeded, f"v{version}'s fixture seeds no history rows, so this asserts nothing"
 
+    # Captured *before* the migration, because afterwards there is nothing left to read it from.
+    #
+    # **Containment, not equality.** An earlier version compared whole cell values and failed on
+    # `bestvideo+bestaudio/best`: a format selector the history row stored in a column of its own
+    # and the queue stores *inside* its serialized `DownloadRequest`. That is text the queue is
+    # entitled to keep, appearing as a substring rather than as a cell, so equality did not
+    # exclude it and the test reported the queue's own request as a leak.
+    kept_by_the_queue = "\x00".join(
+        value
+        for row in _rows_by_id(connection, "jobs").values()
+        for value in row.values()
+        if isinstance(value, str)
+    )
+    purged = {
+        value
+        for row in seeded.values()
+        for value in row.values()
+        if isinstance(value, str)
+        and len(value) >= _MEANINGFUL_PLAINTEXT
+        and value not in kept_by_the_queue
+    }
+    assert purged, f"v{version}'s history rows hold no distinctive text to trace"
+
     db.migrate(connection)
 
     assert not _table_exists(connection, "history"), (
@@ -283,11 +313,12 @@ def test_the_completion_record_is_purged_upgrading_from_every_version_that_kept_
         "record that still exists, whatever reads it."
     )
     surviving = _every_text_value(connection)
-    for plaintext in _PURGED_PLAINTEXT:
-        assert not any(plaintext in value for value in surviving), (
-            f"{plaintext!r} survived the migration from v{version} somewhere in the database. The "
-            "ruling was to purge the completion record, not to relocate it."
-        )
+    leaked = sorted(value for value in purged if any(value in text for text in surviving))
+    assert not leaked, (
+        f"{len(leaked)} value(s) from v{version}'s completion record survived the migration "
+        f"somewhere in the database: {leaked[:3]}. The ruling was to purge the record, not to "
+        "relocate it."
+    )
     connection.close()
 
 
