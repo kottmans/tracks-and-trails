@@ -10776,3 +10776,69 @@ No finding or source/test correction is required. The merge may be treated as in
 reviewed, but not as CI-green until run `31065421037` reaches a successful conclusion for the two
 remaining Windows jobs. The reviewer appended this record only; no source, test, task, commit,
 remote ref, workflow run or CI state was changed.
+
+## 2026-08-06 — T-105 UX specification review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `c5fc26b`
+**Implementation head:** `aed907a`
+**Submission head:** `9fd5542` (handoff only)
+**Task:** `T-105`
+**Verdict:** **Changes requested.** The authority transfer from UX-003/004/005 is coherent, the
+built-window transcription is sound, and keeping unresolved product choices explicitly gated is a
+valid completion shape for a specification task. The submitted classification does not yet achieve
+that separation: one proposed question was already decided, one derived rule reverses its cited
+finding, several material UI choices are labelled derived or left unlabelled, and the downstream
+task entries already disagree with the proposed gates.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction |
+|---|---|---:|---|---|
+| `T105-R1` | **High** | **Yes** | P-8 asks the implementer or maintainer to choose SQLite versus `settings.toml`, but accepted `DAT-001` already says **TOML for settings and user presets**, and `ARCHITECTURE.md` §5 fixes both the owner and exact location as `core/settings.py` / `user_config_dir/tracksandtrails/settings.toml`. `ARC-007` implements that boundary; it does not reopen it. The changed T-111 entry compounds the contradiction by proposing a sibling file or new store. Following the spec could therefore implement persisted data against an already accepted data decision. | Remove P-8 from the open questions and transcribe the existing TOML/`settings.toml` boundary. Correct T-111 and the Phase 3 trigger text so they do not claim a new `DAT-` decision or migration is owed. A decision about the TOML schema may be raised only if implementation exposes a durable trade-off not already settled. |
+| `T105-R2` | **Medium** | **Yes** | Section 5 says the ffmpeg check reads the “resulting selector” and calls that T-061's finding exactly. T-061 removed precisely that rule: `+` in a selector can resolve through `/best` to one progressive format, so the definitive worker gate now reads yt-dlp's resolved `requested_formats` and uses the selector only as a conservative fallback when resolution supplied no answer. The changed T-108 entry simultaneously says a selector-only check is wrong. This is the documented route back to T-061's false refusal for users without ffmpeg. | State the two appropriate facts separately: the table can know that its explicit video+audio pair requires a merge, while the worker's definitive safety gate reads the resolved formats and falls back conservatively only when unresolved. Remove the claim that selector inspection is T-061's accepted rule and reconcile T-108's wording with it. |
+| `T105-R3` | **High** | **Yes** | The document says every clause is marked, but every “Deliberately not offered” list is unmarked, and several substantive interaction choices are presented as `[D]` without authority. `PRESET_OWNED_FIELDS` establishes a data boundary, not that T-109 and T-111 share one screen (§6); NFR-005 does not choose a subtitle multi-select, an unfocusable/debounced preview, or the precise preset-manager controls (§6, §8, §9.1); UX-005's one-anatomy rule applies to Queue and History, not to opening a playlist inside the staging row (§7); and UX-003's placement of probe failures does not decide that a duplicate warning is inline or that ordinary Add constitutes its override (§9.3). These are exactly the product choices the `[P]` gate exists to prevent an implementation task from making. | Audit every normative clause, including every refusal, and either cite authority that actually entails it or mark it Proposed and add it to §10. In particular, separate the preset-owned data model from the screen/widget choice; make the playlist-picker container, duplicate-warning interaction, subtitle control, preview focus/announcement policy, and other unruled control choices explicit proposals. Preserve purely mechanical accessibility derivations only where the accepted rule really determines the interaction. |
+| `T105-R4` | **Medium** | **Yes** | The fourth acceptance criterion says Phase 3 tasks reference this file **rather than duplicate it**, but the change only adds pointers and leaves conflicting copies authoritative-looking. T-109 excludes presets while §6 says T-109/T-111 share one screen; T-111 reopens the settled persistence boundary; and T-114 already requires the warning to name when and where while P-11 says date plus History link remains unruled. A task can therefore implement a supposedly gated clause by following its own acceptance criteria. | Reconcile the eight task entries with the final classification. Keep task-specific engineering and evidence criteria, but remove or defer UI assertions that the UX spec owns, and ensure no task criterion requires a `[P]` before ratification. T-114's date/location/link contract and T-109/T-111's screen boundary need explicit resolution, not parallel wording. |
+
+### Dispositions on the submitted uncertainties
+
+- **T-105 may remain Complete-awaiting-review while proposals remain.** Its deliverable is a
+  truthful, implementable specification that exposes unresolved choices; open choices block their
+  dependent tasks, not completion of the document. The findings above block because the current
+  document does not yet identify those choices reliably.
+- **The authority transfer and §2 restatement are accepted.** UX-004 and UX-005 explicitly name
+  this file as their destination. Keeping the accepted decisions as historical reasoning and this
+  file as current surface truth is preferable to a pointer-only document, provided later decision
+  amendments are reflected here.
+- **No mockup is required by T-105.** Its scope excludes visual design beyond the palette. Mockups
+  may be useful evidence before ratifying P-1/P-2/P-5, but their absence is not a task defect.
+- **The owner label is not a defect.** Claude Code has both Planner and Implementer capabilities
+  under `AGENTS.md` §3; performing this bounded prose task in the Planner role is allowed. The
+  handoff should simply avoid treating the Implementer role as authority for product rulings.
+
+### Recommendations for the three requested product questions
+
+These are reviewer recommendations, not entries attributed to the maintainer:
+
+- **P-8 is already answered:** user presets belong in the existing TOML settings store at the
+  architecture's `settings.toml` path. No new SQLite table or sibling persistence store.
+- **P-10: keep pause queue-level.** Cross-restart recovery gives an interrupted partial file a
+  meaning; it does not require an interactive per-job pause. Do not restore `JobStatus.PAUSED`, and
+  treat playlist `Pause all` as absent rather than indefinitely deferred. A later request for a
+  per-job/group hold would be a separate reopening with its own interaction semantics.
+- **P-12: use typed fields.** Remux/recode need validated optional container choices and the three
+  embed options need booleans (with subtitle mode kept explicit). Raw post-processor class names
+  are an adapter representation, not a safe user-preset schema, and conflict with §6's own refusal
+  to expose arbitrary yt-dlp post-processors.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check c5fc26b..aed907a`: **pass**. `aed907a` contains the specification/task/plan changes; `9fd5542` adds the handoff only. |
+| Proposal inventory | P-1 through P-12 each appear in §10, but the claimed inventory is incomplete because normative unmarked clauses remain outside it. |
+| Task placement | `tests/unit/test_task_placement.py`: **14 passed**. |
+| Source/tests | Not run; the reviewed implementation is documents only. The submitted unit result is **1396 passed, 9 skipped**. |
+
+The reviewer appended this record only. No specification, task, decision, source, test, commit,
+remote ref or CI state was changed.

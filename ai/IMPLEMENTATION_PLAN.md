@@ -507,11 +507,20 @@ made urgent while Phase 2 was finishing.
 phase starts without the document it is supposed to start with.
 
 **Fired 2026-08-06.** `docs/UX_SPEC.md` exists and is the authority for the built window; the eight
-deliverables below each point at their section of it rather than restating it. **Twelve of its
-clauses are marked Proposed and await a maintainer ruling** (§10 of that file), three of which are
-not layout questions: where user presets persist is a `DAT-` decision, `REQ-017` reopening per-job
-pause is `UX-001`'s, and typing `REQ-010`'s five undedicated options would widen `Preset`. The
-deliverables gated on those cannot start past them.
+deliverables below each point at their section of it rather than restating it, and each names the
+questions gating it.
+
+**Twenty-seven of its clauses are marked Proposed and await a maintainer ruling** (§10 of that
+file). That count rose from twelve under review: `T105-R3` found real choices presented as
+*derived* and every refusal unmarked, so the first number measured what had been marked rather than
+what was open. **Four decide more than a layout** — `P-10` reopens `UX-001`'s per-job pause,
+`P-12` would widen a model frozen since Phase 1, `P-16` decides whether `T-109` has a screen of its
+own, and `P-22` is an accessibility trade-off `NFR-005` does not settle. The deliverables gated on
+those cannot start past them.
+
+*(A thirteenth question was withdrawn rather than ruled: `T105-R1` found that where user presets
+persist was **already decided** — TOML at `settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5.
+No new store and no migration is owed.)*
 
 **Decomposed 2026-08-01** into `T-107`–`T-114`. Before that this phase had **zero** tasks against
 seven deliverables, so any statement of its size came from prose rather than from work anybody had

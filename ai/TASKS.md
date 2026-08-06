@@ -1098,6 +1098,89 @@ beats designing it against an imagined one.
 
 ## Proposed — Phase 3
 
+### T-168 — A group's `Remove` comes back as the window gets smaller
+
+**Status:** Proposed — **found by the maintainer, 2026-08-06**, narrowing the window on a
+sixteen-entry playlist. Reported as *"the remove button disappears and then reappears, and then
+disappears again as it gets smaller. Once it disappears it should stay gone and `⋯` should be the
+only thing displayed there."*
+**Owner:** Implementer
+**Priority:** Medium — nothing is unreachable (`⋯` holds the verb throughout), but a control that
+returns when you take space away teaches the user that the row is arbitrary
+**Phase:** Phase 3
+**Depends on:** nothing. It is `T-163`, `T-164` and `T-167` meeting
+**Relevant context:** `T-167` (the bar changing shape twice, the same property one field over),
+`T-163` (the bar's share of the last line), `T-164` (the eight-block merge), `T-135` (`⋯` holds what
+was dropped), `UX-005` §4, `ui/row_delegate.py` (`_bar_reserve`, `_bar_line`, `_verb_rects`)
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`
+**Risk:** Low to fix, Medium to fix *without* reopening what `T-163` and `T-164` each decided
+
+#### Scope
+
+**Measured on this build**, a sixteen-entry playlist header in the Queue tab, all members
+`COMPLETED`, narrowing 560 px → 300 px in 4 px steps:
+
+| Window | Dropped into `⋯` |
+|---|---|
+| 560 px | `reveal` |
+| **496 px** | `reveal`, **`remove`** — the button goes |
+| **432 px** | `reveal` — **the button comes back** |
+| **360 px** | `reveal`, `remove` — it goes again |
+
+**Neither feature is wrong on its own; the composition is.** `T-163` gave the progress bar a share
+of the last line and made the **verbs** the half that yields, because a dropped verb is still
+reachable through `⋯` and a squeezed bar has no overflow. `T-164` merges a narrow bar from sixteen
+blocks to eight, because sixteen blocks at 15 px are one bar rather than sixteen. Both are right.
+
+Together they make the bar's demand a **step function of the row's width**, and the step is larger
+than a button:
+
+```
+room for the bar   blocks   the bar reserves
+   280 px            16          271 px      <- verbs get 9 px, `Remove` does not fit
+   270 px             8          135 px      <- verbs get 135 px, `Remove` fits again
+```
+
+**136 px is handed back to the verbs by making the window smaller.** That is the whole defect.
+
+**`T-167`'s monotonicity claim is narrowly true and does not cover this.** `_bar_line`'s docstring
+says *"Monotonic in the window's width … everything subtracted here is fixed for a given row rather
+than a function of what fit on this paint"* — true of `_bar_line`, which subtracts only the `⋯`.
+What is not monotonic is `_bar_reserve`, which is `segment_span(segment_blocks(entries, room))`, and
+therefore what is left for the verbs. The property a user experiences was never the one asserted.
+
+#### Acceptance criteria
+
+- **A verb dropped at some width stays dropped at every narrower width**, for a row of any entry
+  count — asserted by sweeping the width and requiring the dropped set to grow monotonically, not
+  by checking two or three chosen widths
+- The sweep covers the **merge threshold**, since that is where the step is, and a test that steps
+  in coarse increments can pass straight over it
+- `⋯` still holds every verb the row could not draw (`T-135`), so nothing becomes unreachable at
+  any width
+- Whatever the bar does instead, a completed playlist's bar is still legible at a narrow window —
+  `T-164`'s finding is not reopened by fixing this
+- The queue's ordinary rows and History's group header, which has no bar, are unaffected
+
+#### Candidate directions, none of them ruled
+
+1. **The bar takes the room rather than a fixed span.** Reserve `min(room, span(16))` and let the
+   merged bar draw wider blocks into the space it already has. Verb space becomes monotone by
+   construction; the cost is that below the threshold the bar takes the whole line and `⋯` really is
+   all that is left — which is what the report asks for.
+2. **Choose the block count from the row's width alone**, independent of what the verbs want, so the
+   two decisions stop feeding each other.
+3. **Make the drop sticky per row.** Rejected on sight and recorded so nobody re-proposes it: it
+   makes what a row shows depend on the widths it has previously been drawn at, which is the
+   paint-time-state defect `T-135` already had to correct once.
+
+#### Out of scope
+
+- Changing which verbs a group offers (`T-140`, `T-142`)
+- The bar's colours or block states (`T-165`)
+
+---
+
 ---
 
 ### T-158 — A refused Open is reported where nobody is looking
@@ -1438,7 +1521,8 @@ proposes.
 **Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
 **Phase:** Phase 3
 **Depends on:** `T-105` (the UX spec), Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §4 (the format table's columns, sorting, keyboard path and refusals), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
+**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **`P-1` — where the
+table opens from — and `P-14`'s refusals are unruled**), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
 `downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
 **Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
 `ui/`
@@ -1483,7 +1567,9 @@ class of defect `T-075` was.
 **Priority:** High
 **Phase:** Phase 3
 **Depends on:** `T-107`
-**Relevant context:** `docs/UX_SPEC.md` §5 (the two selection modes and the ffmpeg rule), `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
+**Relevant context:** `docs/UX_SPEC.md` §5 (the selection modes, and the ffmpeg rule stated the
+right way round: the worker's gate reads the **resolved** formats and falls back to the selector
+only when nothing resolved — the criterion below already had this right), `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
 (`effective_selector`, `custom_preset`), `T-061` (the ffmpeg gate reads the selector, not the
 chosen format), `T-075`
 **Affected surfaces:** `core/presets.py`, `ui/`, `downloader/ytdlp_adapter.py`
@@ -1523,7 +1609,9 @@ merge it could not perform. The check here must read the user's actual selection
 **Priority:** High — the largest single item in the phase
 **Phase:** Phase 3
 **Depends on:** `T-105`; `T-108` for the ffmpeg-presence rule it shares
-**Relevant context:** `docs/UX_SPEC.md` §6 (the editor is the preset editor's screen; **P-12 must be ruled on first**), `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
+**Relevant context:** `docs/UX_SPEC.md` §6 (**`P-16` decides whether this shares `T-111`'s screen
+or has its own — unruled, so the out-of-scope line below is engineering scope, not a UI ruling**;
+**`P-12` must be ruled first**, since typed fields and one free list are different screens), `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
 produced a file), `T-076`, `T-089`, `downloader/ytdlp_adapter.py`
 **Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`, `ui/`
 **Risk:** **High** — seven independent options, each of which can be wired to produce no effect
@@ -1563,7 +1651,9 @@ on a guess, because `docs/UX_SPEC.md` may draw the line differently.
 
 #### Out of scope
 
-- Presets that bundle these (`T-111`)
+- **Building `T-111`'s CRUD** — creating, renaming and deleting saved presets is that task. Whether
+  the two share one *screen* is `docs/UX_SPEC.md`'s `P-16` and is **not** answered here: this line
+  divides the work, not the window.
 
 ---
 
@@ -1574,7 +1664,8 @@ on a guess, because `docs/UX_SPEC.md` may draw the line differently.
 **Priority:** High — it changes what a *job* is, which reaches `core/`
 **Phase:** Phase 3
 **Depends on:** `T-105`
-**Relevant context:** `docs/UX_SPEC.md` §7 (the picker is the staging row opened, not a third playlist shape), `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
+**Relevant context:** `docs/UX_SPEC.md` §7 (**`P-19` decides the container and `P-5` the checkbox
+model — both unruled**; the criteria below are `REQ-004`'s and hold whichever way they go), `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
 `persistence/repositories.py` (`append` allocates positions in one transaction), `T-078`
 **Affected surfaces:** `core/models.py`, `downloader/ytdlp_adapter.py`, `ui/add_dialog.py`,
 `persistence/`
@@ -1616,7 +1707,9 @@ playlist is a long extraction, and the dialog has to stay responsive and cancell
 **Priority:** Medium
 **Phase:** Phase 3
 **Depends on:** `T-105`; `T-109` for the option set a preset can carry
-**Relevant context:** `docs/UX_SPEC.md` §8 (**P-8, where presets persist, is a `DAT-` decision**), `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
+**Relevant context:** `docs/UX_SPEC.md` §8 (**where presets persist is already decided** — TOML at
+`settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5; no new store, no migration owed. `P-20`,
+the manager's layout, is unruled), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
 `to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
 **Affected surfaces:** `core/presets.py`, `core/settings.py` or a new store, `ui/`
 **Risk:** Medium — user presets are persisted state with a name-collision problem
@@ -1653,7 +1746,9 @@ not an implementation choice, and it needs an entry.
 **Priority:** Medium
 **Phase:** Phase 3
 **Depends on:** `T-105`
-**Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
+**Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function; **`P-22`, the
+preview's focus and announcement policy, is unruled**, and `P-23` is this task's own
+report-as-you-type criterion — one ruling covers both), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
 atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
 **Affected surfaces:** `core/paths.py`, `ui/`
 **Risk:** Medium — the preview must be the same function the download uses, or it lies
@@ -1695,7 +1790,8 @@ must not reimplement any of it.
 **Priority:** Medium — and the highest *uncertainty* in the phase
 **Phase:** Phase 3
 **Depends on:** Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §9.2 (**P-10 reopens `UX-001`'s per-job pause**), `REQ-017`, `UX-001` (this is its named reopening condition), `T-080`
+**Relevant context:** `docs/UX_SPEC.md` §9.2 (**`P-10` reopens `UX-001`'s per-job pause** — the
+last criterion below is that same question, and answering one answers both), `REQ-017`, `UX-001` (this is its named reopening condition), `T-080`
 (removed `JobStatus.PAUSED`), `ARCHITECTURE.md` §5, `NFR-003`
 **Affected surfaces:** `core/job_state.py`, `downloader/`, `persistence/`
 **Risk:** **High** — it is the one Phase 3 item whose feasibility depends on the site and format
@@ -1753,7 +1849,10 @@ because the file was deleted, is an ordinary thing to want.
 
 #### Acceptance criteria
 
-- A URL present in history warns before enqueueing, naming when it was downloaded and where it went
+- A URL present in history **warns before enqueueing** — `REQ-022`'s own words, and the part that
+  is not gated. **What the warning names** (the date, and a link to the History record) is
+  `docs/UX_SPEC.md`'s `P-11` and is unruled: build the warning, and take the contents from that
+  ruling rather than from this line
 - The override enqueues it anyway, asserted on the stored queue
 - A URL **not** in history enqueues with no prompt — the silent case, which an over-eager
   implementation breaks
@@ -2208,13 +2307,18 @@ trigger `DOC-002` scheduled and `IMPLEMENTATION_PLAN.md` §Phase 3 carried has f
 window `UX-003`, `UX-004` and `UX-005` settled — both of the latter name this file as their
 destination — and specifies the eight Phase 3 surfaces that do not exist yet.
 
-**Twelve clauses are marked Proposed and are not decided** (§10). That is the document doing its
-job rather than falling short of it: `T145-R1` and `T144-R1` were an implementer recording his own
-choices as maintainer rulings, and this file separates transcribed, derived and proposed so the
+**Twenty-seven clauses are marked Proposed and are not decided** (§10). That is the document doing
+its job rather than falling short of it: `T145-R1` and `T144-R1` were an implementer recording his
+own choices as maintainer rulings, and this file separates transcribed, derived and proposed so the
 same thing cannot happen across eight tasks at once. **No task may build a `[P]` clause until it is
-ratified**, and three of the twelve are not layout questions — `P-8` (where user presets persist) is
-a `DAT-` decision, `P-10` reopens `UX-001`'s per-job pause, and `P-12` would widen a model frozen
-since Phase 1 and decides what `T-109`'s screen is.
+ratified.**
+
+**The count rose from twelve to twenty-seven under review, and one was withdrawn.** `T105-R3` found
+several real choices marked *derived* and every refusal unmarked — so the first number measured how
+much had been marked, not how much was open. `T105-R1` withdrew `P-8`: where user presets persist
+was **already decided** by `DAT-001` and `ARCHITECTURE.md` §5, and this file had trusted `T-111`'s
+risk line instead of reading the decision. Four of the twenty-seven decide more than a layout —
+`P-10`, `P-12`, `P-16` and `P-22`.
 **Owner:** Planner
 **Priority:** Medium — it gates nothing today and gates the start of Phase 3
 **Phase:** Phase 3 (its opening act)
