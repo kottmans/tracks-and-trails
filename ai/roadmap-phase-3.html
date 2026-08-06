@@ -229,6 +229,27 @@
     max-width: none;
     height: auto;
   }
+  /* Cluster (subgraph) chrome, themed through the page's own tokens.
+     Mermaid renders a cluster's label with a fixed dark fill baked into the SVG, which is
+     invisible on the dark ground -- and its theme runs once, so it cannot answer the viewer's
+     toggle. The node fills stay explicit in the diagram source because they encode state; the
+     cluster is chrome, so it belongs to the page. */
+  .chart-scroll .cluster > rect {
+    fill: color-mix(in srgb, var(--forest) 6%, transparent);
+    stroke: var(--rule);
+    stroke-width: 1px;
+    rx: 4px;
+  }
+  .chart-scroll .cluster .cluster-label,
+  .chart-scroll .cluster .cluster-label p,
+  .chart-scroll .cluster text {
+    fill: var(--ink-mute) !important;
+    color: var(--ink-mute) !important;
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .1em;
+  }
+
   .chart-frame.fit .chart-scroll .mermaid-diagram svg,
   .chart-frame.fit .chart-scroll pre.mermaid svg {
     max-width: 100%;
@@ -244,6 +265,23 @@
     background: var(--sw); display: inline-block;
   }
   .legend i.dashed { background: none; border: 1.5px dashed var(--ink-mute); }
+  /* The chart now carries only real dependency arrows, so the legend needs a mark for an
+     edge rather than for a node fill. Drawn as a short rule with a head, not a coloured
+     square, because it stands for a relationship and the squares stand for states. */
+  .legend i.arrowed {
+    width: 1.5rem; height: .72rem; background: none; border-radius: 0;
+    position: relative;
+  }
+  .legend i.arrowed::before {
+    content: ""; position: absolute; left: 0; top: 50%;
+    width: 100%; height: 1.5px; background: var(--ink-mute);
+  }
+  .legend i.arrowed::after {
+    content: ""; position: absolute; right: 0; top: 50%;
+    width: .4rem; height: .4rem; border-top: 1.5px solid var(--ink-mute);
+    border-right: 1.5px solid var(--ink-mute);
+    transform: translateY(-50%) rotate(45deg); transform-origin: 60% 40%;
+  }
 
   /* --- the ordered run of work ------------------------------------------------- */
 
@@ -361,9 +399,9 @@
       <p class="lede">Expose what yt-dlp can actually do. <strong>The document that gated five deliverables is written, and the phase is no longer one file wide.</strong> <code>T-105</code> closed on 2026-08-06, so <code>T-107</code>, <code>T-109</code>–<code>T-112</code> are startable for the first time since the phase was planned. Thirty-seven Phase 3 entries are closed and <em>still</em> not one of them is a deliverable — but the reason has changed from "blocked" to "not yet begun".</p>
       <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable, and then removed its replacement too.</strong> History went first; the private ledger meant to survive behind it was withdrawn hours later, after review found it had cost five findings — two High — without a user ever seeing it. <strong>The application now keeps no record of what has been downloaded at all</strong> — and as of migration <code>0009</code> that is true of an upgraded database too, not only a fresh one.</p>
       <p class="phase-line">
-        <span><strong>Head</strong> c03f7d4, plus this board</span>
-        <span><strong>CI</strong> green on all five jobs at 9378ae4, purge included</span>
-        <span><strong>Suite</strong> 2173 passed, 11 skipped, locally</span>
+        <span><strong>Head</strong> dc7d301, plus this board</span>
+        <span><strong>CI</strong> green on all five jobs at e70d615</span>
+        <span><strong>Suite</strong> 2174 passed, 11 skipped, locally</span>
         <span><strong>Phase 2</strong> exited 2026-08-05</span>
       </p>
     </div>
@@ -372,17 +410,18 @@
   <section>
     <p class="eyebrow">Where the phase actually stands</p>
     <ul class="tally">
-      <li style="--chip: var(--st-approved)"><span class="n">37</span><span class="k">Entries closed</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">40</span><span class="k">Entries closed</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 8 deliverables started</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Deliverables gated by a doc</span></li>
       <li style="--chip: var(--st-block)"><span class="n">3</span><span class="k">High-risk deliverables</span></li>
       <li style="--chip: var(--st-ready)"><span class="n">8</span><span class="k">Of 8 deliverables startable</span></li>
-      <li style="--chip: var(--st-review)"><span class="n">2</span><span class="k">Blocking findings answered</span></li>
+      <li style="--chip: var(--st-idle)"><span class="n">4</span><span class="k">Of those, cancelled as moot</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 6 exit criteria met</span></li>
       <li style="--chip: var(--st-block)"><span class="n">6</span><span class="k">Accepted entries amended</span></li>
     </ul>
-    <p class="note"><strong>The count of closed entries is still not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01 and every one of those is still <em>Proposed</em>. What has closed is real work that landed in Phase 3's numbering because that is when it was found. <span class="q-why">Counted as entries under <code>## Complete</code> in <code>ai/TASKS.md</code> whose <code>Phase:</code> line begins <em>Phase 3</em> — six of them closed on 2026-08-06 alone.</span></p>
-    <p class="note" style="--edge: var(--st-approved)"><strong>CI is green: all five jobs at <code>be76fe9</code>, and again at <code>6c90cf7</code> after the ledger came out.</strong> Run <code>31080892061</code> had failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality expecting the menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job sees the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <em>(The Settings menu has since been removed with the ledger, so that equality is back to two names — and will trip again when <code>T-146</code> restores the menu, which is what it is for.)</em> <strong>The purge is green too</strong> — run <code>31122446758</code> at <code>9378ae4</code>, all five jobs, <code>windows desktop</code> among them.</p>
+    <p class="note"><strong>The count of closed entries is still not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01 and every one of those is still <em>Proposed</em>. What has closed is real work that landed in Phase 3's numbering because that is when it was found. <span class="q-why">Counted as entries under <code>## Complete</code> in <code>ai/TASKS.md</code> whose <code>Phase:</code> line begins <em>Phase 3</em>. <strong>Four of the forty are cancelled rather than done</strong>, and three of those — <code>T-172</code>, <code>T-173</code>, <code>T-174</code> — are simplification tasks filed against the completion ledger during a sweep on 2026-08-06, cancelled hours later when the ledger itself was withdrawn. A tidy-up outlived by the thing it was tidying.</span></p>
+    <p class="note" style="--edge: var(--st-approved)"><strong>CI is green: all five jobs at <code>be76fe9</code>, and again at <code>6c90cf7</code> after the ledger came out.</strong> Run <code>31080892061</code> had failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality expecting the menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job sees the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <em>(The Settings menu has since been removed with the ledger, so that equality is back to two names — and will trip again when <code>T-146</code> restores the menu, which is what it is for.)</em> <strong>The purge is green too</strong> — run <code>31122446758</code> at <code>9378ae4</code>, and again at <code>e70d615</code> (run <code>31129239797</code>) once <code>secure_delete</code> landed. All five jobs both times, <code>windows desktop</code> among them. <em>(The head is one commit further on at <code>dc7d301</code>, which edits a comment inside a <code>.sql</code> file and nothing else. No run of its own, correctly.)</em></p>
+    <p class="note" style="--edge: var(--st-approved)"><strong>The withdrawal, the purge and the sweep are all approved.</strong> Four review rounds in two days: <code>T169-R1</code> and <code>T169-R2</code> (High) on the ledger, answered by withdrawing it; <code>T169-R3</code> and <code>T169-R4</code> (High) on what the withdrawal missed, answered by migration <code>0009</code> and a sweep by authority; then <code>T169-R5</code> and <code>T169-R6</code> (Low) on two stale task premises and a migration comment that overstated what could not be done. <span class="q-why">The pattern in the Low round is the one worth keeping: three times the migration's prose asserted a limit that had been reasoned about rather than measured — <em>not a secure erase</em>, <em>delete the database file</em>, <em>bounded to nothing</em>. All three were wrong or incomplete, and <code>PRAGMA secure_delete</code> now zeroes the purged pages because the second look measured instead of assuming.</span></p>
   </section>
 
   <section>
@@ -393,80 +432,52 @@
 
     <div class="chart-frame fit" id="chart">
       <div class="chart-bar">
-        <p class="chart-hint">Whole graph, fitted to the page</p>
+        <p class="chart-hint">Grouped by what constrains order — fitted to the page</p>
         <button type="button" class="chart-toggle" id="chart-toggle" aria-pressed="true">Full size</button>
       </div>
       <div class="chart-scroll">
 <pre class="mermaid">
-%%{init: {"theme":"base","themeVariables":{"fontSize":"16px","lineColor":"#8AA095","primaryTextColor":"#ffffff"},"flowchart":{"useMaxWidth":false,"nodeSpacing":24,"rankSpacing":52,"padding":8}}}%%
-flowchart TB
+%%{init: {"theme":"base","themeVariables":{"fontSize":"15px","lineColor":"#8AA095","primaryTextColor":"#ffffff","clusterBkg":"transparent","clusterBorder":"#C3D0C6"},"flowchart":{"useMaxWidth":false,"nodeSpacing":26,"rankSpacing":70,"padding":10,"curve":"basis"}}}%%
+flowchart LR
     classDef done    fill:#1E5E47,stroke:#083122,stroke-width:2px,color:#ffffff
-    classDef head    fill:#0E4433,stroke:#D9A24C,stroke-width:3px,color:#ffffff
     classDef gate    fill:#B07C1F,stroke:#6E4C0F,stroke-width:3px,color:#ffffff
     classDef ready   fill:#31688E,stroke:#1D4058,stroke-width:2px,color:#ffffff
     classDef planned fill:#6E7E75,stroke:#44534B,stroke-width:2px,color:#ffffff
     classDef risky   fill:#A6432B,stroke:#5E2418,stroke-width:3px,color:#ffffff
     classDef exit    fill:#083122,stroke:#D9A24C,stroke-width:3px,color:#D9A24C
 
-    P2["Phase 2 exited - 2026-08-05"]:::done
-    REWORK["UI rework T-116 T-117 T-118 T-120"]:::done
-    CRIT8["Criterion 8 spillover - 10 tasks"]:::done
-    ROWS["Row layout T-160 T-163 T-164 T-166 T-167"]:::done
-    HIST["History batch T-142 T-144 T-145 T-159 - since removed"]:::done
-    FIXES["T-150 dialog width, T-156 MP3 bitrate, T-168"]:::done
-    LEDGER["T-169 plus T-170 - History and its ledger removed"]:::done
-    PURGE["Migration 0009 - the rows an upgrade kept, purged"]:::done
+    subgraph SHIPPED["CLOSED AND APPROVED"]
+      direction TB
+      P2["Phase 2 exited"]:::done
+      UXSPEC["T-105 wrote the UX spec"]:::done
+      REMOVED["T-169 T-170 removed History"]:::done
+      PURGE["0009 purged the legacy rows"]:::done
+    end
 
-    HEAD["Pushed - answering a Blocked verdict"]:::head
+    subgraph CHAIN["THE ONLY CHAIN — four deep"]
+      direction LR
+      T107["T-107 format table"]:::planned
+      T108["T-108 merge video and audio"]:::planned
+      T109["T-109 post-processing"]:::risky
+      T111["T-111 user presets"]:::planned
+      T107 --> T108 --> T109 --> T111
+    end
 
-    UXSPEC["T-105 - docs/UX_SPEC.md WRITTEN"]:::done
+    subgraph FREE["INDEPENDENT — any can start today"]
+      direction TB
+      T113["T-113 resume across restart"]:::risky
+      T110["T-110 playlists"]:::risky
+      T112["T-112 output template editor"]:::planned
+      T171["T-171 provenance — needs a ruling"]:::gate
+      T146["T-146 the Settings screen"]:::ready
+      T114["T-114 confirm a queued duplicate"]:::ready
+      SMALL["T-143 T-158 T-175 — small"]:::ready
+    end
 
-    T107["T-107 format table - the foundation"]:::planned
-    T108["T-108 pick video plus audio, merge"]:::planned
-    T109["T-109 post-processing - largest item"]:::risky
-    T110["T-110 playlists - changes what a job is"]:::risky
-    T111["T-111 user presets"]:::planned
-    T112["T-112 output template editor"]:::planned
-    T113["T-113 resume across restart - reopens UX-001"]:::risky
-    T114["T-114 confirm a duplicate already queued"]:::ready
+    EXIT(["PHASE 3 EXIT — 6 criteria"]):::exit
 
-    T143["T-143 probe a playlist's entries"]:::ready
-    T158["T-158 a refused Open is reported unseen"]:::ready
-    T146["T-146 the whole Settings screen, from nothing"]:::ready
-    T171["T-171 provenance - measured, undecided"]:::gate
-    TIDY["T-173 T-175 - simplification"]:::ready
-
-    EXIT(["PHASE 3 EXIT - 6 criteria"]):::exit
-
-    P2 --> HEAD
-    REWORK --> HEAD
-    CRIT8 --> HEAD
-    ROWS --> HEAD
-    HIST --> LEDGER
-    FIXES --> HEAD
-    LEDGER --> HEAD
-    UXSPEC --> HEAD
-
-    HEAD --> T107
-    HEAD --> T109
-    HEAD --> T110
-    HEAD --> T111
-    HEAD --> T112
-    T107 --> T108
-    T108 --> T109
-    T109 --> T111
-
-    HEAD --> T113
-    HEAD --> T114
-    HEAD --> T143
-    HEAD --> T158
-    HEAD --> T146
-    HEAD --> T171
-    HEAD --> TIDY
-    LEDGER -. T-114 is now an in-queue check, storing nothing .-> T114
-    LEDGER -. Settings went with the ledger; T-146 rebuilds it .-> T146
-    LEDGER --> PURGE
-    PURGE -. left three things with no caller .-> TIDY
+    SHIPPED ==> CHAIN
+    SHIPPED ==> FREE
 
     T108 --> EXIT
     T109 --> EXIT
@@ -477,16 +488,16 @@ flowchart TB
       </div>
 
       <div class="legend">
-        <span><i style="--sw: var(--st-approved)"></i> Done and pushed</span>
+        <span><i style="--sw: var(--st-approved)"></i> Done and approved</span>
         <span><i style="--sw: var(--st-review)"></i> Needs a maintainer decision</span>
-        <span><i style="--sw: var(--st-ready)"></i> Startable now</span>
-        <span><i style="--sw: var(--st-idle)"></i> Startable, not started</span>
+        <span><i style="--sw: var(--st-ready)"></i> Small or well understood</span>
+        <span><i style="--sw: var(--st-idle)"></i> Ordinary deliverable</span>
         <span><i style="--sw: var(--st-block)"></i> High risk</span>
-        <span><i class="dashed"></i> Not a dependency</span>
+        <span><i class="arrowed"></i> An arrow means one must precede the other</span>
       </div>
     </div>
 
-    <p class="note"><strong>Everything now hangs off the head.</strong> That is the whole change: with <code>T-105</code> written there is no longer a node the phase has to pass through, so the ordering below is a judgement rather than a constraint. <code>T-114</code>'s dependency did not move so much as vanish — it needed history records and the view over them, and neither exists. It is now a check against the live queue and the current paste, in memory, storing nothing. <code>T-171</code> is amber because what it needs is a decision, not work.</p>
+    <p class="note"><strong>The phase contains exactly one dependency chain, and this drawing exists to say so.</strong> An earlier version ran every task through a single "head" node — twenty-odd arrows meeting in one place, which drew the fact that the work is <em>unconstrained</em> as though it were a bottleneck. Only four tasks must happen in an order. The other seven can start today in any sequence, and the arrows that remain are the five that reach an exit criterion. <span class="q-why">Arrows removed: eighteen. None of them encoded a dependency — they encoded "has been unblocked", which is true of everything on the board and is better said once, in a sentence, than twenty times in ink.</span></p>
   </section>
 
   <section>
@@ -564,9 +575,9 @@ flowchart TB
     </div>
 
     <ol class="queue">
-      <li style="--edge: var(--st-review)">
-        <div class="q-head"><span class="id">—</span> <span class="name">Re-review the purge and the sweep</span> <span class="pill">Before anything new</span></div>
-        <p class="q-why">The withdrawal came back <strong>Blocked</strong> on two High findings, and neither was about what the withdrawal removed. <code>T169-R3</code>: it left the <code>history</code> table populated, so an upgraded database still held every row with no route to reach it — the contract was true of the code and false of the disk. <code>T169-R4</code>: the document sweep missed by <em>authority</em> rather than by vocabulary, leaving open tasks whose live contracts would have rebuilt the feature. Both are answered here. <strong>Migration <code>0009</code> is the project's only destructive migration</strong> and is the thing on this board most worth a careful read.</p>
+      <li style="--edge: var(--st-approved)">
+        <div class="q-head"><span class="id">—</span> <span class="name">Nothing. The board is clear</span> <span class="pill ghost">Approved 2026-08-06</span></div>
+        <p class="q-why">This slot held <em>re-review the withdrawal</em>, then <em>re-review the purge and the sweep</em>, for two days. Both are approved and no finding is open, so for the first time this phase the next thing to do is a deliverable rather than a correction. Kept as an entry rather than deleted, because "the queue in front of the work is empty" is the fact that changes what the list below means.</p>
       </li>
       <li style="--edge: var(--st-ready)">
         <div class="q-head"><span class="id">T-107</span> <span class="name">The format table</span> <span class="pill ghost">Foundation</span></div>
@@ -632,7 +643,7 @@ flowchart TB
             <td><strong>Removing History</strong> — the contract, the surface, then the rows</td>
             <td class="n">2</td>
             <td><code>T-169</code> <code>T-170</code></td>
-            <td><span class="state blocked">Blocked, answered</span><span class="state-note">Six accepted entries amended; <code>DAT-006</code> added then withdrawn; ~2,500 lines deleted; migration <code>0009</code> purges what the deletion left</span></td>
+            <td><span class="state met">Approved</span><span class="state-note">Six accepted entries amended; <code>DAT-006</code> added then withdrawn; ~2,500 lines deleted; migration <code>0009</code> purges what the deletion left. Four review rounds, six findings</span></td>
           </tr>
           <tr>
             <td>The spec the phase was planned around, and three defects found by running it</td>
