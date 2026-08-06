@@ -159,10 +159,10 @@ ledger left to rename them after.
 | Check | Result |
 |---|---|
 | `pytest tests/` | **2173 passed, 11 skipped, 2 deselected**, 285 s — ten more than the last round, which is the eight purge cases, the narrowness test and v9's fixture |
-| `ruff format --check .` | 182 files already formatted |
+| `ruff format --check .` | 183 files already formatted |
 | `ruff check .` | All checks passed |
 | `mypy` / `mypy --platform win32` | Success, 107 source files each |
-| Mutation | Three mutants on `0009`, all killed — see above |
+| Mutation | Four mutants on `0009`, all killed — see above |
 | Fresh database | schema **v9**, tables `jobs` only |
 | Legacy upgrade | v7 fixture through `connect()`: **3 history rows before; afterwards schema v9 and one table, `jobs`.** All three purged URLs absent. `example.invalid` and `Track one` *do* still appear — as the surviving job rows' own URL and title, which is `REQ-012` working, and is why the regression excludes text the queue also held |
 
