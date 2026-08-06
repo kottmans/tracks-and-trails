@@ -96,10 +96,10 @@ rather than different.
 Every threshold in the range descends from one constant, which is stated rather than tuned:
 
 ```python
-MIN_BLOCK_WIDTH: Final = 16   # above the 12 px the maintainer measured as "noise"
+MIN_BLOCK_WIDTH: Final = 16  # above the 12 px the maintainer measured as "noise"
 SEGMENT_GAP: Final = 1
 MERGED_BLOCKS: Final = 8
-MIN_FRACTION_BAR: Final = 4 * MIN_BLOCK_WIDTH   # a quarter is the coarsest reading of a bar
+MIN_FRACTION_BAR: Final = 4 * MIN_BLOCK_WIDTH  # a quarter is the coarsest reading of a bar
 MIN_CONTROL_WIDTH: Final = 64
 MIN_TEXT_WIDTH: Final = 120
 ```

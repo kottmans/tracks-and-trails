@@ -2683,50 +2683,68 @@ selector to one line above. It then *also* stopped the selector's width at the l
 line below — so the same width was spent twice and the buttons advanced across a line they do not
 occupy. The format line now runs the full body width whatever the verbs are doing.
 
-**So the criterion asking for a stated minimum before a verb is drawn beside it has no number**,
-because no verb is ever beside it. The property it was protecting — the format line is not
-narrowed by the verbs — is asserted directly instead: the same row with and without verbs must
-draw that line identically at every swept width. `T-163` is where the verbs give way to the thing
-they *do* share a line with. *(Was: Proposed — **found by the maintainer, 2026-08-05**, narrowing
-the window at a playlist header.)*
+**Scope and acceptance criteria below were rewritten from the corrected geometry** (`T166-R1`,
+2026-08-05). They had gone on requiring a shared-line minimum that this note says should not exist,
+which left the task Complete against criteria its own entry contradicted — a note is not allowed to
+overrule the contract above it. What they ask for now is the property the implementation actually
+has and the submitted test actually checks. `T-163` keeps ownership of the verbs yielding to the
+*progress bar*, and of the overflow staying reachable when they do. *(Was: Proposed — **found by
+the maintainer, 2026-08-05**, narrowing the window at a playlist header.)*
 **Owner:** Implementer
 **Priority:** Medium — the line it erases is the one saying what the whole playlist will download as
 **Phase:** Phase 3
 **Depends on:** nothing. `T-163` is the same line running out of room against the *progress bar*;
 `T-160` is the format control against the *thumbnail*. Three pairs, one cause
 **Relevant context:** `T-136`, `T118-R8`, `UX-005` rows 9 and 13, `ui/row_delegate.py`
-(`_verb_rects`, `_paint_text`, `_paint_verbs`)
+(`_paint_text`) — **`_verb_rects` and `_paint_verbs` were listed here and are not involved**
+(`T166-R1`); the width came from `_paint_text` alone, and pointing a reader at the verb layout is
+the filed premise again
 **Affected surfaces:** `ui/row_delegate.py`
 **Risk:** Low
 
 #### Scope
 
-**`Download as: Best video` becomes `Download` and the buttons take the rest of the line.** The
-verbs are laid out against the row's width without regard to what is already drawn there, so as the
-window narrows they advance leftward across the format line until it is a stump.
+**`Download as: Best video available` becomes `Download`, and the verbs are on the line below it.**
+That second half is the correction: this was filed as the two sharing a line and they do not.
 
-`T-136` fixed this exact collision on a staged row — the format line ran underneath the format
-control — and `T118-R8` is the lesson it produced: **the selector is the half that could not
-give**, because a truncated format is a format the user cannot read or copy. That ruling was made
-about one pair of things sharing a line. The same argument applies here and was not applied.
+`_paint_text` draws the selector at `area.top() + 2 * line` and the verbs at
+`area.top() + (TEXT_LINES - 1) * line`, and it already keeps them apart by dropping the selector to
+a single line whenever a verb is drawn. It then *also* stopped the selector's **width** at
+`verbs_left` — the leftmost button, a line below — so the row spent the same width twice and the
+buttons advanced across a line they do not occupy. Measured on a group header against
+`Download as: Best video available`, 190 px at the default font: the line was given 13 px at a
+500 px window and 73 px at 560, which draws `Download` and nothing more.
 
-The verbs are the half that *can* give: `T-135` built the `⋯` overflow precisely so a verb can be
-dropped and still be reachable, by pointer and by keyboard. A truncated format line has no
-equivalent — there is no overflow menu for a sentence.
+So the collision is between the format line and **a rectangle from another line**, not between two
+things competing for one. Nothing has to yield, and no width has to be divided: the format line
+runs from the text start to `body.right()` regardless of the verbs, and the height calculation
+above goes on being what keeps the buttons off it.
+
+`T118-R8` is the rule that decides which way this goes if it is ever in question again: **the
+selector is the half that cannot give**, because a truncated format is one the user can neither
+read nor copy, and there is no overflow menu for a sentence. Here it did not have to give at all.
 
 #### Acceptance criteria
 
-- The verbs occupy only what the format line does not need, and drop into `⋯` before overlapping it
-- The format line keeps at least a stated minimum before any verb is drawn beside it — named in
-  source, per `T118-R8`'s rule that the *number* is the decision
-- Asserted across a **swept** range of widths (`T-155`), and on a **group header**, which is where
-  the format line and the group verbs coexist
-- `⋯` still holds exactly what was dropped, and the keyboard route still reaches it
+- **The verbs do not change the format line.** The same row with and without verbs draws that line
+  **identically** — the same pixels, not merely a similar width. This is the property, and it is
+  what replaces the shared-line minimum this entry used to ask for: there is no number to state,
+  because nothing is beside the line to be given one
+- Asserted across a **swept** range of widths (`T-155`) and on a **group header**, which is the row
+  that carries a format line, a control and group verbs at once
+- The verbs keep the last line to themselves: the selector still gives up its *second* line when
+  verbs are drawn, so the two are separated by the height calculation rather than by luck
+- The format line is never elided or narrowed to make room for something that is not on it
+  (`T118-R8`, `REQ-009`)
 
 #### Out of scope
 
-- The progress bar's share of the same line, which is `T-163`
+- **The verbs yielding to anything, and the `⋯` staying reachable when they do** — that is `T-163`,
+  which owns the one pair that genuinely shares this row's last line
+- The progress bar's share of that line, also `T-163`
 - The format control against the thumbnail, which is `T-160`
+- How much of a long selector fits in the line it is given, which is `SELECTOR_LINES` and
+  `T118-R15`
 
 ---
 
