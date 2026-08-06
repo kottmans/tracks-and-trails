@@ -16,24 +16,36 @@
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-## The direction that changed on 2026-08-06: History becomes a private ledger
+## The direction that changed on 2026-08-06: nothing records what has been downloaded
 
 **Maintainer direction: Tracks & Trails is a lightweight downloader, not a media-library tracker.**
 `REQ-020` promised the opposite product and Phase 2 built it — records, a view, groups, removal.
-The contract is now reconciled (`T-169`) and the surface comes out next (`T-170`).
+**It is withdrawn**, and so is the private ledger that briefly replaced it.
 
-- **What survives:** a private completion ledger — normalised URL, the URL as entered, and the
-  completion time — so `REQ-022` can warn before a repeat download. `DAT-006` decides the fields
-  and, importantly, decides **not** to drop the obsolete columns: a table rebuild is the one change
-  in this work that could lose a user's data, and the old rows are the upgrade data `T-114` needs.
-- **What goes:** the History tab, the tab widget itself, history rows, groups, thumbnails and
-  row verbs. `Clear history` leaves the toolbar and becomes **Clear download records** in a minimal
-  Settings shell.
-- **What is unchanged:** a record is not a file. `DAT-005`'s boundary is the part `T-169` does not
-  touch, and *Open* and *Show in folder* still work on a completed queue row until it is cleared.
+- **What there is:** the queue, and nothing behind it. A completed download is visible on its row
+  until the user clears it; after that the application knows nothing about it. There is no list, no
+  ledger, no `history` table — migration `0009` dropped it.
+- **What goes:** the History tab, the tab widget, history rows, groups, thumbnails and row verbs;
+  `HistoryRepository`, `HistoryEntry` and `core/urls.py`; and the Settings shell that existed only
+  to hold *Clear download records*, which has nothing left to clear. `T-146` builds the real
+  Settings screen when there is a setting to put in it.
+- **Duplicates are handled without storage.** `REQ-022` is scoped to the live queue and asks for a
+  **confirmation, not a refusal** — a URL already queued is worth mentioning, and adding it anyway
+  is one action. `T-114` owns it and stores nothing. Beyond the queue there is no warning at all: a
+  repeat lands as `name (1)`, which is what most downloaders do.
+- **What is unchanged:** a record is not a file. `DAT-005`'s boundary holds, and *Open* and *Show
+  in folder* still work on a completed queue row until it is cleared (`REQ-021`).
 - **The Phase 2 records stay true.** `T-085`, `T-100`, `T-144` and `T-145` remain Complete and
-  approved. The plan's Phase 2 rows are annotated as narrowed or removed rather than rewritten —
-  a file that erased them would be claiming the project never built what it is now removing.
+  approved. The plan's Phase 2 rows are annotated as removed rather than rewritten — a file that
+  erased them would be claiming the project never built what it is now removing.
+
+**The arc took one day and reversed twice**, which is worth keeping because the ledger's cost only
+became visible in review: `T-169` narrowed History to a private ledger, `T-170` built it, two review
+rounds returned five blocking findings — **two High, and not one of them about the duplicate warning
+being wrong; every one about keeping the data** — and the maintainer withdrew the ledger rather than
+correct it. `T169-R3` then found that withdrawing it had not removed the rows an upgraded database
+already held, so the maintainer ruled to purge those too (`DAT-006`'s legacy-data note). Work
+implemented against the two superseded rulings was discarded uncommitted.
 
 **Phase 3 work completed since the exit:** `T-167`, `T-164`, `T-163`, `T-166`, `T-160` (the row
 layout range, approved at `fd15ade`/`4799136`), `T-150` and `T-156`.

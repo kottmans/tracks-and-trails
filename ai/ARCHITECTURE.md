@@ -26,7 +26,7 @@
 | GUI | PySide6 6.11 (Qt 6.11), dynamically linked, `abi3` wheels | `ARC-001` |
 | Download engine | yt-dlp, imported **as a library** in isolated child processes | `ARC-002` |
 | Media processing | ffmpeg, external binary invoked by yt-dlp | `OPS-001` |
-| Persistence | SQLite (jobs/history) + TOML (settings) | `DAT-001` |
+| Persistence | SQLite (jobs and queue order) + TOML (settings) | `DAT-001` |
 | Platform dirs | `platformdirs` | `DAT-001` |
 | Test / lint / types | pytest + pytest-qt, ruff, mypy | `ai/TESTING.md` |
 
@@ -161,14 +161,13 @@ src/tracks_and_trails/
     schema.sql
     migrations/
     db.py                connection, WAL, migration runner
-    repositories.py      JobRepository, HistoryRepository
+    repositories.py      JobRepository
   ui/
     main_window.py
     queue_view.py
     add_dialog.py        URL entry, probe results, preset picker
     format_table.py
     job_detail.py        per-job log and progress detail
-    settings_dialog.py
     theme.py             brand palette, light/dark
     widgets/
   resources/
@@ -184,7 +183,7 @@ tests/
 
 | Data | Owner | Location |
 |---|---|---|
-| Jobs, queue state, history | `persistence/` (SQLite) | `user_data_dir/tracksandtrails/library.sqlite3` |
+| Jobs and queue state | `persistence/` (SQLite) | `user_data_dir/tracksandtrails/library.sqlite3` |
 | User settings, presets | `core/settings.py` (TOML) | `user_config_dir/tracksandtrails/settings.toml` |
 | Per-job logs | filesystem, one file per job | `user_cache_dir/tracksandtrails/logs/<job_id>.log` |
 | Managed yt-dlp copy | `downloader/environment.py` | `user_data_dir/tracksandtrails/ytdlp/` |
@@ -221,7 +220,6 @@ diffable by a user — that is TOML's job. Neither is a good substitute for the 
   retry after a settings change reproduces the *original* request, not the current defaults.
 - **MediaInfo / FormatInfo** — projections of yt-dlp's `info_dict`. Declared fields only.
 - **Preset** — a named, user-facing bundle that translates to a `DownloadRequest`.
-- **HistoryEntry** — a completed job's durable record, retained after the job row is cleared.
 
 ### Job state machine (`core/job_state.py`)
 
@@ -406,16 +404,26 @@ classification. Classification is a hint, not a replacement.
   containment check in §8.
 - No inbound network surface (§2). No telemetry (`NFR-007`).
 - Cookie material is passed to the worker by path, used, and never persisted into the
-  database, history, or logs.
+  database or logs.
 
 ## 10. Persistence and migration strategy
 
 - Schema version stored in SQLite `user_version`. Startup runs forward migrations in
   order from `persistence/migrations/`.
-- Migrations are additive-first and never destructive without a pre-migration backup copy
-  of the database file.
-- The DB is user data (`REQ-012`) — a schema change that would lose queue or history without
-  a migration is a defect, not an acceptable simplification.
+- Migrations are additive-first. A migration that would destroy data **as a side effect** of a
+  schema change still requires a pre-migration backup copy of the database file.
+- **A migration whose declared purpose is to remove data takes no backup**, and the exception is
+  narrow: it needs an explicit maintainer ruling recorded before the migration is written, and the
+  ruling has to be about the data rather than about a feature. `0009` is the only one
+  (`DAT-006`'s legacy-data note, `T169-R3`). A backup here would defeat the instruction — it would
+  leave the purged URLs in a second file beside the database, unreachable by the application, not
+  managed by it, and not removed by anything. The rule above exists to protect data from a change
+  that did not intend to touch it; this migration intends to.
+  *(Amended 2026-08-06 as a consequence the purge ruling implies rather than states. The ruling was
+  the maintainer's; reading it as also waiving the backup is a Planner judgement and is flagged as
+  one.)*
+- The DB is user data (`REQ-012`) — a schema change that would lose queue order or job rows
+  without a migration is a defect, not an acceptable simplification.
 - A database from a *newer* app version is refused with a clear message rather than opened.
 
 ## 11. Testing architecture

@@ -1161,11 +1161,16 @@ already names every setting asked for. **The phase is an open question — see b
 user reaches for first
 **Phase:** **Phase 4 as the plan stands.** `ARC-007` deferred the full dialog there deliberately,
 and moving it is a maintainer call rather than this task's to make
-**Depends on:** `T-105` (`docs/UX_SPEC.md`) for the screen's layout and `T-170` for the minimal
-Settings shell introduced with the download-record control
-**Relevant context:** `REQ-023`, `ARC-007`, `ARC-008`, `DAT-001`, `T-170`, `ARCHITECTURE.md` §5
+**Depends on:** `T-105` (`docs/UX_SPEC.md`) for the screen's layout. *(This also read `T-170`,
+"for the minimal Settings shell introduced with the download-record control". **There is no shell**
+— `T-170` built one to hold *Clear download records*, and both went when the records did. This task
+builds the `Settings` menu, the dialog and its keyboard route from nothing. `T169-R4` caught the
+entry still promising an implementer a starting point that had been deleted.)*
+**Relevant context:** `REQ-023`, `ARC-007`, `ARC-008`, `DAT-001`, `ARCHITECTURE.md` §5
 and §8, `core/settings.py`, `ui/theme.py`, `ui/main_window.py`,
-`app.default_output_directory`
+`app.default_output_directory`. `ui/settings_dialog.py` and `tests/ui/test_settings_dialog.py` are
+deleted, but they are in history at `3578fcc` and the menu wiring there is worth reading before
+writing it again
 **Affected surfaces:** `core/settings.py`, `ui/main_window.py`, a new settings dialog module,
 `ui/theme.py`'s selection path, `app.py`
 **Risk:** Medium — it adds persisted state, and `ARC-008` governs what a bad value does
@@ -1179,9 +1184,11 @@ and §8, `core/settings.py`, `ui/theme.py`, `ui/main_window.py`,
 > source, and **theme**.
 
 Both settings named in the request — the download directory and light/dark — are in that list
-verbatim. `T-170` now owns the smallest coherent route to the screen: a **`Settings` menu in the
-menu bar** and a data section containing *Clear download records*. This task extends that shell
-rather than building a second settings surface.
+verbatim. **This task owns the whole route** — the `Settings` menu, the dialog behind it and its
+keyboard path. `T-170` built a minimal version of exactly that to hold *Clear download records*,
+and it was removed on 2026-08-06 when the records were withdrawn: a settings screen whose only
+control does nothing is `UX-005` §5's own objection. So there is no shell to extend, and the menu
+bar is `File` and `Help`.
 
 **Three things already exist, so this is smaller than it looks.**
 
@@ -1207,15 +1214,18 @@ rather than building a second settings surface.
 
 **The phase question, stated rather than assumed.** `ARC-007` and `IMPLEMENTATION_PLAN.md` §Phase 4
 both put the full dialog in Phase 4, after Phase 3. The request did not ask to re-phase it and this
-entry does not do so. `T-170`'s one data action does not pull this task's persisted settings into
-Phase 3. **If the maintainer wants the theme toggle and the download directory sooner, that is a
-plan amendment** of the same kind as criterion 8 — recorded in `IMPLEMENTATION_PLAN.md` with the
-ruling named, not inferred from the shell existing.
+entry does not do so. **If the maintainer wants the theme toggle and the download directory sooner,
+that is a plan amendment** of the same kind as criterion 8 — recorded in `IMPLEMENTATION_PLAN.md`
+with the ruling named. *(This argued the point against `T-170`'s shell, which no longer exists. The
+conclusion is unchanged and now rests on nothing but the plan, which is where it always rested.)*
 
 #### Acceptance criteria
 
-- The `Settings` route and shell from `T-170` remain one screen and are extended rather than
-  replaced; its keyboard route and download-record action keep working
+- The `Settings` menu, its keyboard route and the screen behind it are **built here**, and there
+  is exactly one settings surface when the task is done. The Windows accessibility contract in
+  `tests/ui/test_windows_accessibility.py` names every menu by hand and currently expects
+  `File`/`Help` — it is the gate that caught the last `Settings` menu appearing, on the Windows job
+  alone, after the Linux suite had passed and three commits had been pushed
 - The screen sets the **default download directory**; a chosen directory survives a restart and is
   what a new job actually uses — asserted against a real job, not against the stored value
 - The screen switches **light and dark**; the change applies to the running window without a
@@ -1231,8 +1241,10 @@ ruling named, not inferred from the shell existing.
 
 - The other five `REQ-023` settings — default preset, output template, ffmpeg location, network
   options, cookie source. Each has its own Phase 3 or Phase 4 owner
-- Download-record retention and the one action that clears those records. `T-170` owns that
-  vertical slice and the minimal shell this task extends; the action is not a persisted setting
+- Download-record retention and any action that clears records. **There are no records** —
+  `REQ-020` is withdrawn and migration `0009` dropped the table. This once said `T-170` owned that
+  slice and the shell this task extends; both are gone, and a settings screen must not reintroduce
+  either
 - **Following the OS theme automatically.** Worth wanting and not requested; it is a third state
   beyond light and dark and needs its own decision
 - Window geometry, which `ARC-007` deliberately keeps out of this layer (`window.toml`)
@@ -1625,39 +1637,50 @@ discouraged.
 **Owner:** Implementer
 **Priority:** Low — the smallest item in the phase
 **Phase:** Phase 3
-**Depends on:** `T-085` (completed-download records, approved) and `T-169` (the narrowed
-record contract)
+**Depends on:** nothing. *(This read `T-085` and `T-169` — the completion records and the narrowed
+record contract. Both are withdrawn, and a dependency on a withdrawn contract is how a task
+rebuilds it. `T169-R4` caught this entry still directing an implementer to a ledger that no longer
+exists.)*
 **Relevant context:** `docs/UX_SPEC.md` §9.3 (a staging-row state, never a modal), `REQ-022`,
-`T-085`, `T-169`, the completion-ledger repository settled there
-**Affected surfaces:** `persistence/`, `ui/add_dialog.py`
+`ui/add_dialog.py`'s staging list, `DAT-002`'s collision policy for what happens beyond the queue
+**Affected surfaces:** `ui/add_dialog.py`. **Not `persistence/`** — this task stores nothing and
+adds no table, column or index
 **Risk:** Low
 
 #### Scope
 
-`REQ-022`: detect that a URL has been downloaded before and warn, **with an override**. The
-internal completion ledger stores the identity `T-169` settles, so this is a lookup and a staging
-state rather than a user-facing history feature or new library surface.
+`REQ-022`, as rescoped: **a URL already in the live queue, or repeated within the paste being
+staged, is confirmed rather than refused.** The comparison is in memory against rows that exist
+right now. There is no record of past downloads to consult — `REQ-020` is withdrawn and migration
+`0009` dropped the table — so "downloaded before" is not a question this task can ask or should
+try to.
 
-**The override is the requirement, not a concession.** Re-downloading at a different quality, or
-because the file was deleted, is an ordinary thing to want.
+**Allowed, not prevented.** Proceeding is one action and is not discouraged: the same URL twice, at
+two formats or after a failure, is an ordinary thing to want, and `UX-005` §5's rule that nothing is
+offered which would be refused cuts both ways.
 
 #### Acceptance criteria
 
-- A URL present in the completion ledger **warns before enqueueing** — `REQ-022`'s own words, and
-  the part that is not gated. The warning follows `T-169`'s amended UX contract and offers no link
-  to a History surface that no longer exists
-- The override enqueues it anyway, asserted on the stored queue
-- A URL **not** in the ledger enqueues with no prompt — the silent case, which an over-eager
+- A URL that matches a **job already in the queue** is marked on its staging row before enqueueing,
+  in the row's own state rather than a modal (`docs/UX_SPEC.md` §9.3)
+- A URL repeated **within one paste** is marked the same way — the second occurrence, not the first
+- **Confirming enqueues it**, asserted on the stored queue: the duplicate is added, not skipped
+- A URL matching nothing enqueues with no prompt at all — the silent case, which an over-eager
   implementation breaks
-- The lookup is indexed, not a scan of completed records on the GUI thread (`T079-R2`'s rule)
-- Clearing finished queue rows does not clear the ledger, so the warning survives clear-finished
-  (`T-081`); explicitly clearing download records in Settings removes the warning
+- The comparison runs on the staged set and the live queue with no query added to the GUI thread's
+  path (`T079-R2`'s rule). If a scan is ever too slow it is a scan of the queue, which has a
+  user-visible size
+- **Nothing is written.** A test asserts the schema is unchanged and no new row survives the
+  dialog, because the previous design of this task is exactly what that would drift back toward
 
 #### Out of scope
 
-- Detecting the same *video* at a different URL
-- Restoring a browseable History view. The ledger is infrastructure, not another name for the
-  removed product surface
+- Detecting the same *video* at a different URL, and any URL normalisation. `core/urls.py` was
+  deleted with the ledger; a comparison clever enough to match two spellings is the design that
+  `DAT-006` §2 warned would one day treat two different downloads as one
+- **Any record of past downloads**, in any form, to make the check outlive the queue
+- Warning that a *file* of the same name exists on disk. Declined 2026-08-06: a repeat lands as
+  `name (1)` under `DAT-002`, which is what most downloaders do and what a user can see
 
 ---
 
@@ -1678,7 +1701,10 @@ decision, none of them a satisfied criterion:
 1. **Nothing writes provenance today.** `build_postprocessors` never configures `FFmpegMetadata`
    and the presets pass no `--embed-metadata`, so the honest baseline is *add something*, not
    *replace something*.
-2. **Standard tags survive every path this application takes**, including the MP3 transcode.
+2. **Standard tags survived every ffmpeg shape that was run**, including the transcode. This is
+   the claim `T171-R1` narrowed: it read *"survive every path this application takes"*, and the
+   application's paths are not what was measured. Nothing here ran `FFmpegExtractAudio` or
+   `FFmpegEmbedSubtitle`, so it is encouraging and it is not per-family coverage.
 3. **A custom key is dropped silently by MP4 and M4A** — two of the five built-in presets produce
    exactly those containers — while surviving MKV and MP3. No error, no warning at the default log
    level. That turns this task's "metadata failure semantics" criterion around: the risk is not
@@ -1699,8 +1725,10 @@ permission to write private download context into every output.)*
 **Priority:** Low — useful if it survives the user's later processing, and unnecessary for the
 History removal
 **Phase:** Phase 4 or later
-**Depends on:** `T-169` for the boundary between the ledger and file-owned provenance
-**Relevant context:** `REQ-020`, `REQ-022`, `REQ-026`, `OPS-002`, the built-in presets,
+**Depends on:** nothing. *(This read "`T-169` for the boundary between the ledger and file-owned
+provenance". There is no ledger, so there is no boundary to draw — if provenance is adopted, a file
+is the only place it could go, which strengthens the case rather than removing it.)*
+**Relevant context:** `REQ-026`, `OPS-002`, the built-in presets,
 `downloader/ytdlp_adapter.py`, yt-dlp metadata/postprocessor options
 **Affected surfaces:** `ai/REQUIREMENTS.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`, and a
 new implementation task only if the decision adopts the feature
@@ -1738,7 +1766,10 @@ must not be treated as the same option.
 
 #### Out of scope
 
-- Replacing the completion ledger required by `REQ-022`
+- **Becoming a substitute record of what has been downloaded.** This read "replacing the completion
+  ledger required by `REQ-022`"; there is no ledger and `REQ-022` requires no storage. The exclusion
+  is now the stronger one: provenance in a file is a property of that file, and must not be read
+  back to reconstruct a list of downloads
 - Reconstructing a History tab by scanning users' download directories
 - Media-library features such as ratings, play counts, tagging, organisation or file watching
 
@@ -1794,50 +1825,70 @@ layering test already forbids Qt there.
 
 ---
 
-### T-174 — Say "ledger" where the code still says "history"
+### T-175 — Remove the machinery the withdrawal left with no caller
 
-**Status:** Proposed — **found by the Implementer, 2026-08-06.** **Naming only, no behaviour.**
+**Status:** Proposed — **filed 2026-08-06 in response to `T170-R4`** (Low, non-blocking), which
+found runtime contracts whose only remaining callers are their own tests.
 **Owner:** Implementer
-**Priority:** Low, and **deliberately not urgent** — see the caution below
+**Priority:** Low
 **Phase:** Phase 3
-**Depends on:** `T-172`, so the rename is not applied to code about to be deleted
-**Relevant context:** `T-169`, `T-170`, `DAT-006`, `persistence/repositories.py`,
-`persistence/schema.sql`, `persistence/store.py`, `persistence/writer.py`
-**Affected surfaces:** `persistence/`, its tests
-**Risk:** Low to do, Medium to do *badly* — see below
+**Depends on:** nothing
+**Relevant context:** `T170-R4`, `T-169`, `T-170`, `T-050`, `T050-R1`, `T050-R2`,
+`ui/row_verbs.py`, `downloader/protocol.py`, `persistence/store.py`, `persistence/writer.py`
+**Affected surfaces:** `ui/row_verbs.py`, `downloader/`, `persistence/`, and their tests
+**Risk:** Low to do, Medium to do carelessly — one item is load-bearing and two are not
 
 #### Scope
 
-`REQ-020` is a completion ledger and the code still calls it history: `HistoryRepository`,
-`HistoryEntry`, `complete_job`'s parameter, `store.clear_history`, `writer.clear_history`, and the
-`history` table itself.
+The withdrawal deleted the History surface and the ledger beneath it, but three things it fed are
+still present with nothing above them. `T-172` proposed exactly this kind of cleanup and was
+cancelled when the live ledger went first; nothing has owned the residue since, which is
+`T170-R4`'s actual finding.
 
-**The table keeps its name.** Renaming it is a rewrite, which `DAT-006` §5 refuses for the same
-reason it refuses dropping columns — and a migration that renames a table to improve a word is the
-clearest possible case of risk without benefit. This task is about the **Python** names.
+**1. `history_group_verbs` (`ui/row_verbs.py`).** Returns the verbs for a History *group* row.
+There are no groups and no History; `tests/ui/test_row_verbs.py` is the only caller. Delete it with
+its tests and drop it from `__all__`.
 
-#### The caution, which is why this is filed rather than done
+**2. `Succeeded.format_used` (`downloader/protocol.py`).** The worker still resolves it and
+`__post_init__` still validates it, but no production code reads it — it existed to fill a column
+of the completion record. **Decide rather than assume:** `T-050` chose it deliberately as *what
+yt-dlp resolved, never what the request asked for*, and it may still earn its place in a per-job
+log where that distinction is exactly what a user debugging a format needs. Removing a validated
+protocol field is a change to the worker boundary, so this needs a look at `T-050`'s reasoning
+before it is deleted, not after.
 
-A rename touches every line that mentions the old word, and this repository's source carries a
-great deal of reasoning in prose beside the code. **A mechanical find-and-replace would rewrite
-history in both senses** — comments explaining what History *was*, review findings quoting it, and
-docstrings whose subject is the removed feature are all correct as they stand. Several of them are
-the record of why the feature went.
+**3. The completion seam** — `store.complete`, `writer.complete` and the `_complete` signal.
+`T050-R1` created a distinct path so a job row and its record committed together. There is no
+second row now, and a completion is a job-row update like any other, so the seam may collapse into
+`revise`. **This is the load-bearing one.** `T050-R2` removed a silent-failure path by making the
+completion settle before anything is announced, and `tests/integration/` asserts a real download's
+persistence-first ordering. Collapse it only if that contract stays covered by tests that fail when
+the ordering inverts — and if it cannot be, keep the seam and say why in its docstring.
 
-So: rename identifiers, leave prose that is *about* the old feature alone, and read every hunk.
+#### The prose rule, inherited from cancelled `T-174`
+
+Comments and docstrings *about* the removed feature are correct as they stand and several are the
+record of why it went. Distinguish them from current-tense prose that describes a view or a ledger
+as live. Read every hunk; do not find-and-replace.
 
 #### Acceptance criteria
 
-- The Python identifiers name what they are; the `history` table and its columns are untouched
-- No comment or docstring describing the former History feature is altered to pretend it was
-  always a ledger
-- `git diff` reviewed hunk by hunk rather than by trusting the replacement
-- The full suite passes and both `mypy` scopes are clean
+- `history_group_verbs` is gone, with its tests, and `__all__` no longer names it
+- `Succeeded.format_used` is either removed across the worker boundary **or** kept with a stated
+  consumer, and the choice is recorded in the task's completion note
+- The completion seam is collapsed **or** kept, and either way `T050-R2`'s persistence-first
+  ordering has a test that fails when the announcement moves ahead of the write. Mutation-proven,
+  not asserted by a passing run
+- No behaviour changes. The full suite and both `mypy` scopes are clean
+- **No schema change.** This task does not authorise dropping, renaming or rebuilding anything in
+  the database; `0009` is the last migration and the only destructive one
 
 #### Out of scope
 
-- The table, its columns and its indexes (`DAT-006` §5)
-- `ai/` documents. `DECISIONS.md` and `REVIEWS.md` are historical record and are append-only
+- The database, in every respect
+- `ai/` documents. `DECISIONS.md` and `REVIEWS.md` are historical record and append-only
+- Historical migration files and frozen fixtures, whose prose describes versions that really did
+  have a `history` table
 
 ---
 
@@ -2276,6 +2327,26 @@ Assert, on `windows-latest`:
 
 ## Complete
 
+### T-174 — Say "ledger" where the code still says "history"
+
+**Status:** **Cancelled 2026-08-06 — moot.** It proposed renaming `HistoryRepository`,
+`HistoryEntry`, `store.clear_history` and `writer.clear_history` to say *ledger*. **Every one of
+those identifiers has been deleted**, and there is no ledger for the survivors to be named after:
+`REQ-020` is withdrawn and migration `0009` dropped the table this task promised not to rename.
+
+**What was worth keeping from it is its caution**, which now belongs to `T-175`: a mechanical
+find-and-replace across this repository rewrites history in both senses, because the source carries
+its reasoning in prose beside the code and much of that prose is *about* the removed feature and
+correct as it stands.
+
+*(Filed by the Implementer earlier the same day, before the withdrawal. Its dependency on `T-172`
+outlived it by a few hours; `T-172` was cancelled as moot first.)*
+**Owner:** Implementer
+**Phase:** Phase 3
+**Risk:** —
+
+---
+
 ### T-172 — Delete the ledger's removal API, which nothing calls
 
 **Status:** **Cancelled — 2026-08-06, moot.** It proposed deleting the ledger's unreachable removal
@@ -2329,9 +2400,22 @@ keeping it a separate, explicitly named method is untouched.
 
 ### T-170 — Replace the History tab with a small ledger
 
-**Status:** **Complete — 2026-08-06.** The History view, its tab and the tab widget are gone; the
-window is the Queue. The ledger `T-169` specified is behind it, and `Clear download records` is in a
-minimal Settings shell reached from a `Settings` menu.
+**Status:** **Complete — 2026-08-06.** The History view, its tab and the tab widget are gone and
+the window is the Queue. **What this task built beyond that no longer exists**, and the title above
+names a ledger there is no longer any of:
+
+| What the task shipped | Where it stands |
+|---|---|
+| No History tab, no tab widget, one Queue surface | **Stands.** Accepted in review |
+| Open / reveal on a live completed row (`REQ-021`) | **Stands.** Accepted in review |
+| The completion ledger, migration `0008`'s key, `core/urls.py`, `HistoryRepository` | **Withdrawn** the same day, with `REQ-020` |
+| `Clear download records` and the minimal Settings shell holding it | **Removed** — the control had nothing left to clear, and a settings screen whose only control does nothing is `UX-005` §5's own objection. The menu bar is `File`/`Help`, and `T-146` builds the real screen |
+| The `history` table itself, left populated on upgraded databases | **Dropped** by migration `0009` (`T169-R3`), on the maintainer's purge ruling |
+
+**Read the criteria below as a record of what was asked for, not as instructions.** Four of them
+require the ledger, the Settings shell or the indexed duplicate lookup, and an implementer acting
+on them would rebuild what two rulings removed. They are kept because the review record refers to
+them.
 
 **Landed in two commits, both green**, because the halves decompose and one of them is additive:
 the ledger (migration `0008`, `core/urls.py`, `last_completed`, `count`, the identity collapse) went
@@ -2363,8 +2447,8 @@ brings it back with the settings `REQ-023` names.
 **Priority:** Medium-High — it removes a substantial UI and runtime surface while preserving the
 one durable behaviour that still earns its cost
 **Phase:** Phase 3
-**Depends on:** `T-169`. This task supplies the minimal Settings shell; `T-146` extends it later
-with the persisted settings already assigned there
+**Depends on:** `T-169`. *(This continued "This task supplies the minimal Settings shell; `T-146`
+extends it later" — the shell was removed with the records control, so `T-146` builds it.)*
 **Relevant context:** `T-169`, `T-114`, `T-146`, `T-085`, `T-100`, `T-124`, `T-138`, `T-142`,
 `T-144`, `T-145`, `REQ-022`, `ui/history_view.py`, `ui/main_window.py`,
 `persistence/repositories.py`
@@ -2420,22 +2504,30 @@ with ordinary settings later. The action is not a list-management verb and clear
 
 ### T-169 — Make completion history an internal ledger
 
-**Status:** **Complete — 2026-08-06.** The contract now says what is intended: `REQ-020` is a
-private ledger, `REQ-021` reaches only a live queue row, and `DAT-001`, `DAT-005` and `UX-005` carry
-appended amendments rather than rewrites. **`DAT-006` is the new decision** this task's fourth
-criterion required — the ledger's identity, its three fields, one row per identity, and the ruling
-that obsolete columns **stop being written rather than being dropped**, because a table rebuild is
-the one change here that can lose a user's data. *(Was: Proposed — **maintainer direction,
-2026-08-06.** Tracks & Trails is a lightweight downloader, not a media-library tracker. Reconcile
-the product contract before deleting a widget, so the old feature is not recreated by a still-live
-requirement.)*
+**Status:** **Complete — 2026-08-06, and half of what it decided was superseded the same day.**
 
-**Superseded in part, 2026-08-06.** The boundary this task drew — one Queue surface, no browseable
-History — stands and is implemented. **The ledger it specified does not exist**: `T169-R1` found
-`DAT-006` self-headed as Accepted when the maintainer's direction had established the boundary and
-not the detailed choices, and the ruling that followed was that Tracks & Trails keeps no record of
-what has been downloaded at all. `DAT-006` is **Withdrawn**; `REQ-020` is withdrawn; `REQ-022` is
-scoped to the live queue.
+**The current contract, which is what a reader needs first:** Tracks & Trails keeps **no record of
+what has been downloaded** — not a list, not a private ledger, and as of migration `0009` not a
+table either. `REQ-020` is withdrawn. `REQ-021` reaches a file only through a live queue row.
+`REQ-022` is scoped to the live queue and asks for a confirmation rather than a refusal.
+`DAT-006` is **Withdrawn**.
+
+**What stands from this task:** the boundary — one Queue surface, no browseable History — and the
+principle that the contract is reconciled before a widget is deleted, so a still-live requirement
+cannot recreate the feature. Every amendment it appended to `DAT-001`, `DAT-005` and `UX-005` was
+appended rather than rewritten, which is why they could be amended again hours later instead of
+excavated.
+
+**What did not survive:** the private ledger this task specified and `DAT-006` decided. `T169-R1`
+found `DAT-006` self-headed as Accepted when the maintainer's direction had established the product
+boundary and not the detailed choices — the third instance of that authority error after `T145-R1`
+and `T144-R1`. The ruling that followed was that the ledger should not exist. `T169-R3` then found
+that withdrawing it had not removed the rows already on disk, and the maintainer ruled to purge
+those as well.
+
+**The criteria below are the record of what was asked for.** Several name the ledger; they are not
+instructions to build one. *(Was: Proposed — **maintainer direction, 2026-08-06.** Tracks & Trails
+is a lightweight downloader, not a media-library tracker.)*
 **Owner:** Planner
 **Priority:** High — `REQ-020`, `REQ-021`, `DAT-005`, `UX-005` and the plan currently require the
 opposite product

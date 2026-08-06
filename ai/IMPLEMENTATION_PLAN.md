@@ -392,11 +392,11 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 | 4 | Reordering and clear-completed (`REQ-016`) | `T-081` | **Approved** 2026-08-01 (`eb1bd70`) |
 | 5 | Output-path collision policy against the filesystem (`DAT-002`, `REQ-011`) | `T-046` | **Approved** 2026-08-01 (`9c5745a`). `T046-R1` was **Critical**: a converted download overwrote the user's file |
 | 6 | Bounded retry with backoff for `NETWORK` failures only (`REQ-018`) | `T-083` | **Approved** 2026-08-01 (`97f96c0`). `UX-002` ratifies 3 attempts at 2s/4s/8s |
-| 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30. **Narrowed to a private ledger by `T-169`, 2026-08-06** — the records survive as infrastructure for `REQ-022`; the browseable contract does not |
+| 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30. **Withdrawn entirely, 2026-08-06** — narrowed to a private ledger by `T-169` that morning, then withdrawn with it. `REQ-020` is gone, migration `0009` dropped the table, and nothing records a completed download |
 | 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Approved** 2026-08-01 (`97f96c0`) |
 | 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **Approved** 2026-08-01 (`b1b7cd6`), without follow-up. The recovery always worked; composition threw the recovered ids away, so nobody was ever told |
 | 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Approved** 2026-08-01, implemented at `75f1c32` and **approved at `2a41c5f`**, after `T084-R1` (Critical) and `T084-R2` (High). `T-053`, which gated its approval, is **Approved**. Found that yt-dlp's diagnostics were never captured at all |
-| 11 | History view over those records | `T-100` | **Approved** 2026-08-01 (`c242dd3`), without follow-up. **Removed as a product surface by `T-169`/`T-170`, 2026-08-06.** It was built, approved and shipped; the maintainer's direction is that a downloader should not carry a library, not that this was done badly |
+| 11 | History view over those records | `T-100` | **Approved** 2026-08-01 (`c242dd3`), without follow-up. **Removed by `T-169`/`T-170`, 2026-08-06**, along with the records it viewed. It was built, approved and shipped; the maintainer's direction is that a downloader should not carry a library, not that this was done badly |
 | 12 | Open file / reveal in file manager (`REQ-021`), from both views — **from the queue row alone since `T-169`** | `T-086` | **Approved** 2026-08-01, implemented at `233c5fd` and **approved at `2a41c5f`**, after `T086-R1` (High). Windows Open takes the associated-application route rather than the file manager |
 | 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Approved** 2026-08-01 (`ea9d752`). Linux and hosted Windows both green, including racing starts |
 
@@ -544,8 +544,9 @@ changes only what order the work happens in.
 **What the correction actually produced, because it outlives the finding it answers:**
 `ui/row_delegate.py` is a **shared** row renderer, not a fix to one dialog. The add dialog and the
 queue now draw the same anatomy from the same named roles, which is what made three findings close
-together rather than one at a time — and it is the surface `T-100`'s history view would join if
-that is ever wanted (explicitly out of scope, and its own task if so). `ui/thumbnails.py` and
+together rather than one at a time. *(This added "and it is the surface `T-100`'s history view
+would join if that is ever wanted" — that view was deleted on 2026-08-06 and there is no third
+surface in prospect.)* `ui/thumbnails.py` and
 `core/paths.cache_directory` are the caching half: this repository now has a place for regenerable
 data under `NFR-004`, which nothing before needed and several later tasks will.
 
@@ -564,13 +565,14 @@ work depended on itself. One task is now filed and the other is a tombstone poin
 | User-defined presets (`REQ-007`) | `T-111` | Medium — persisted state, and where it lives needs a decision |
 | Output template editor with live preview (`REQ-011`) | `T-112` | Medium — preview and real path must be one function |
 | Cross-restart resume of partial downloads (`REQ-017`) | `T-113` | **High** — reopens `UX-001` and `T-080`'s `PAUSED` removal |
-| Duplicate-URL detection and warning (`REQ-022`) | `T-114` | Low |
-| **Reconcile the product contract to a private completion ledger** (`REQ-020`, `REQ-021`) | `T-169` | **High** — five accepted entries currently require the opposite product |
-| **Replace the History tab with that ledger** (`REQ-020`, `DAT-006`) | `T-170` | Medium-High — the deletion is easy; upgrade data and the never-delete-files boundary are the work |
+| **In-queue duplicate confirmation** (`REQ-022`, rescoped 2026-08-06) | `T-114` | Low — a live-queue comparison that stores nothing |
+| **Withdraw the completion record** (`REQ-020`, `REQ-021`) | `T-169` | **High** — five accepted entries required the opposite product. **Complete.** Reconciled the contract to a private ledger first, then withdrew that too |
+| **Remove the History tab and the ledger behind it** (`REQ-020`, `DAT-006`) | `T-170` | Medium-High. **Complete.** The deletion was easy; the work was the boundary — and `T169-R3` found the part the deletion missed, the rows an upgraded database already held |
 
 **Two Phase 3 deliverables *remove* a Phase 2 deliverable, and that is deliberate** (maintainer
 direction, 2026-08-06). Phase 2's items 7 and 11 built history persistence and a history view, and
-both were approved; `T-169` and `T-170` narrow the first to infrastructure and delete the second.
+both were approved; `T-169` and `T-170` delete both. The first was narrowed to a private ledger
+before it was withdrawn, and the intermediate design (`DAT-006`) is **Withdrawn**, not current.
 **Their Phase 2 rows stay marked Approved** — they were, and the work happened. A plan that rewrote
 them would be claiming the project never built the thing it is now removing, which is the one fact
 a reader of this file most needs.

@@ -284,7 +284,22 @@ instead of Windows-only bugs surfacing late.
 
 ## DAT-001 — SQLite for queue and history; TOML for settings
 
-### Amended 2026-08-06 — "history" is a private ledger, and the storage choice is unchanged
+### Amended 2026-08-06 (second, and current) — there is no history to store
+
+**Status:** **Accepted**, on the maintainer's withdrawal ruling of the same day.
+
+**This supersedes the amendment below it, which is only hours older.** That one said the word
+*history* had narrowed to a private ledger and that SQLite still held completion records. Both
+halves are now wrong: `REQ-020` is withdrawn, `DAT-006` is Withdrawn, and migration `0009` dropped
+the table. **SQLite holds jobs and queue order. That is the whole of it.**
+
+**The storage choice is still unaffected**, which is the only reason this entry survives at all.
+`DAT-001` chose SQLite for WAL-mode crash safety on frequent transactional row updates during
+downloads (`NFR-003`), and the queue alone justifies every word of that argument. The title says
+*history* and is left as written, because renaming an accepted decision's title erases the trail a
+reader follows from `REQ-020` to here.
+
+### Amended 2026-08-06 (first, superseded) — "history" is a private ledger, and the storage choice is unchanged
 
 **Status:** **Accepted**, on maintainer direction of 2026-08-06 recorded at `T-169`.
 

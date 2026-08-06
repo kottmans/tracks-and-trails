@@ -171,8 +171,11 @@ application is **not**, and the heading was the first place that read otherwise.
 The MVP is a working queue-based downloader on both primary platforms:
 
 `REQ-001`, `REQ-002`, `REQ-003`, `REQ-005`, `REQ-006`, `REQ-008`, `REQ-009`, `REQ-011`,
-`REQ-012`, `REQ-013`, `REQ-014`, `REQ-015`, `REQ-018`, `REQ-019`, `REQ-020`, `REQ-021`,
+`REQ-012`, `REQ-013`, `REQ-014`, `REQ-015`, `REQ-018`, `REQ-019`, `REQ-021`,
 `REQ-023`, `REQ-024`, `REQ-027`, `REQ-028`, and all NFRs.
+
+*(`REQ-020` was in this list until 2026-08-06 and is **withdrawn**. The MVP does not include a
+record of completed downloads, because there is no longer one to include.)*
 
 Plus, from `REQ-010`, the audio-extraction and remux subset only.
 
