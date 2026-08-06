@@ -203,21 +203,16 @@ class Progress(_Message):
 class Succeeded(_Message):
     """The outcome of a download session that produced a file.
 
-    **`format_used` is what yt-dlp resolved, never what the request asked for** (`T-050`,
-    `REQ-020`). It carries the post-download `format_id` — `"137+140"` — because that is a fact
-    about what happened. The request's *selector*, `"bestvideo+bestaudio"`, is a different kind of
-    thing: it describes an intention, and storing it under this name would put a truthful-looking
-    label on the wrong value. `None` means the worker had no resolved format to report, which is
-    not the same as the download having no format and is why the column is nullable.
-
-    Optional and defaulted, so an older recorded fixture deserializes unchanged. `ARC-003` makes
-    the protocol version-controlled rather than version-negotiated, so an additive field needs no
-    handshake — but it does need to not break the fixtures already on disk.
+    **It carried a `format_used` until 2026-08-06** — the resolved `format_id`, `"137+140"`,
+    deliberately not the `"bestvideo+bestaudio"` selector that asked for it (`T-050`). It existed
+    to fill a column of the completion record, and `REQ-020` withdrew the record. Nothing read it
+    at the other end, so it was removed with the rest (`T-175`, `T170-R4`). The distinction it
+    protected is still worth knowing if a resolved format is ever wanted again: an intention and
+    an outcome are different facts, and one must not wear the other's name.
     """
 
     output_path: str
     total_bytes: int | None = None
-    format_used: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -229,14 +224,6 @@ class Succeeded(_Message):
             )
         # `T011-R2`, second round: the other field the first correction missed.
         _require_optional_count("Succeeded", "total_bytes", self.total_bytes)
-        # Absent is a legitimate answer; present-but-empty is not. An empty string would reach
-        # the history column and read as "we know the format and it is nothing".
-        chosen: Any = self.format_used
-        if chosen is not None and (not isinstance(chosen, str) or not chosen):
-            raise ValueError(
-                "Succeeded.format_used must be a non-empty string or None; an empty format "
-                "claims knowledge the worker did not have"
-            )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -520,12 +520,6 @@ def _run(
                 job_id=job_id,
                 output_path=str(written),
                 total_bytes=_int_or_none((result or {}).get("filesize_approx")),
-                # The *resolved* format, read from the post-download info_dict rather than from
-                # the request (`T-050`). `result` is what yt-dlp returned after doing the work, so
-                # `format_id` here is `"137+140"` and not the `"bestvideo+bestaudio"` that asked
-                # for it. `REQ-020` wants the former; the latter would be the selector wearing
-                # this field's name.
-                format_used=_str_or_none((result or {}).get("format_id")),
             )
         )
     except UnsafePathError as error:
@@ -1206,18 +1200,6 @@ def _classify_without_ytdlp(error: BaseException) -> FailureDetail:
         kind=ErrorKind.EXTRACTOR_ERROR,
         message=str(error) or "".join(traceback.format_exception_only(error)).strip(),
     )
-
-
-def _str_or_none(value: object) -> str | None:
-    """A non-empty string, or `None`. Anything else is `None` rather than `str(value)`.
-
-    Coercing would turn yt-dlp's absent `format_id` into the literal `"None"`, which is the class
-    of near-miss `Succeeded.format_used` rejects: a value that looks like knowledge and is not.
-    A `bool` is excluded for the same reason `_int_or_none` excludes it — `True` is not a format.
-    """
-    if isinstance(value, str):
-        return value or None
-    return None
 
 
 def _int_or_none(value: object) -> int | None:

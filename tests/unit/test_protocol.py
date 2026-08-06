@@ -702,37 +702,3 @@ def test_a_failure_preserves_the_extractor_message_exactly() -> None:
 def test_a_probe_result_requires_its_media() -> None:
     with pytest.raises(TypeError):
         Probed(job_id="j")  # type: ignore[call-arg]
-
-
-# --- Succeeded.format_used (T-050, REQ-020) ------------------------------------------------
-
-
-def test_a_success_may_report_no_resolved_format() -> None:
-    """Absent is legitimate: yt-dlp does not always say which format it settled on.
-
-    `None` means *not reported*, which the history column stores as NULL. It is deliberately
-    distinguishable from a format that is somehow empty — see the next test.
-    """
-    assert Succeeded(job_id="j", output_path="/a.mp4").format_used is None
-    assert Succeeded(job_id="j", output_path="/a.mp4", format_used=None).format_used is None
-
-
-def test_a_success_reports_the_resolved_format_verbatim() -> None:
-    """A merged format keeps yt-dlp's own spelling — it is an identifier, not prose."""
-    succeeded = Succeeded(job_id="j", output_path="/a.mp4", format_used="137+140")
-    assert succeeded.format_used == "137+140"
-
-
-def test_an_empty_resolved_format_is_refused() -> None:
-    """`""` would reach the history column and read as "we know it, and it is nothing".
-
-    The distinction this protects is the one `T-050` is about: a nullable column whose null means
-    *unknown* is useful, and one that also holds an empty string means two things at once.
-    """
-    with pytest.raises(ValueError, match="non-empty string or None"):
-        Succeeded(job_id="j", output_path="/a.mp4", format_used="")
-
-
-def test_a_non_string_resolved_format_is_refused() -> None:
-    with pytest.raises(ValueError, match="non-empty string or None"):
-        Succeeded(job_id="j", output_path="/a.mp4", format_used=137)  # type: ignore[arg-type]

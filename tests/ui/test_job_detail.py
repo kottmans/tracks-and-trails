@@ -54,7 +54,6 @@ class FakeStore:
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
         self.writes: list[tuple[str, JobStatus]] = []
-        self.completions: list[str] = []
 
     def add(self, job: Job) -> None:
         self.jobs[job.id] = job
@@ -67,15 +66,6 @@ class FakeStore:
         self.writes.append((job.id, job.status))
         if done is not None:
             done(None)
-
-    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-        """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
-
-        What it preserves is the *shape* — one call, one settlement — so the manager cannot be
-        written against two separate writes and still pass here.
-        """
-        self.completions.append(job.id)
-        self.update(job, done)
 
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.writes if stored_id == job_id]

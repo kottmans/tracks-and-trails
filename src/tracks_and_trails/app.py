@@ -335,9 +335,10 @@ def compose(
     settings = settings_read.settings
     manager = DownloadManager(
         store,
-        # History is no longer a second injected sink (`T050-R1`, `T050-R2`): completion is one
-        # `JobStore.complete` operation writing both rows in one transaction, so there is no
-        # optional collaborator to forget to wire and no partial state to report quietly.
+        # History is no longer a second injected sink (`T050-R1`, `T050-R2`): a completion is an
+        # ordinary `JobStore.update` of one row, so there is no optional collaborator to forget to
+        # wire and no partial state to report quietly. It went through a dedicated
+        # `JobStore.complete` until `T-175`, which was the same write once `REQ-020` was withdrawn.
         concurrency=settings.concurrency,
         ffmpeg_override=ffmpeg.path,
         entry_point=entry_point if entry_point is not None else worker.spawn_session,

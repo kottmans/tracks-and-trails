@@ -330,7 +330,6 @@ class FakeStore:
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
         self.writes: list[tuple[str, JobStatus]] = []
-        self.completions: list[str] = []
         #: Ids deleted, in order (`T-118`): what the dialog withdrew rather than committed.
         self.removals: list[str] = []
         #: Hold write callbacks instead of running them, so an ordering rule can be observed.
@@ -369,15 +368,6 @@ class FakeStore:
         self.defer_updates = False
         for done in held:
             done(None)
-
-    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-        """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
-
-        What it preserves is the *shape* — one call, one settlement — so the manager cannot be
-        written against two separate writes and still pass here.
-        """
-        self.completions.append(job.id)
-        self.update(job, done)
 
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.writes if stored_id == job_id]

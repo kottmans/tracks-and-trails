@@ -30,7 +30,7 @@ from typing import Final
 
 from tracks_and_trails.core.job_state import JobStatus
 
-__all__ = ["LABELS", "MORE_LABEL", "Verb", "group_verbs", "history_group_verbs", "verbs_for"]
+__all__ = ["LABELS", "MORE_LABEL", "Verb", "group_verbs", "verbs_for"]
 
 
 class Verb(StrEnum):
@@ -163,51 +163,6 @@ def group_verbs(members: Iterable[tuple[JobStatus, bool]]) -> tuple[Verb, ...]:
     if any(status is JobStatus.FAILED and retryable for status, retryable in seen):
         offered.append(Verb.RETRY_FAILED)
     if any(status is JobStatus.COMPLETED for status, _ in seen):
-        offered.append(Verb.REVEAL)
-    offered.append(Verb.REMOVE)
-    return tuple(offered)
-
-
-def history_group_verbs(*, has_one_common_folder: bool) -> tuple[Verb, ...]:
-    """What a **History** playlist header offers (`T-142`, `UX-005` §3 and row 9, `DAT-005`).
-
-    **Not `group_verbs`, and the difference is the whole task.** That function answers `Cancel all`,
-    `Retry failed` and `Show in folder` from member statuses. In History every member is terminal by
-    definition — `DAT-005` admits only completed downloads to the list — so there is nothing to
-    cancel, and a record is *not a download to retry*: retrying is `REQ-018`'s edge on a job, and
-    the job is gone. Borrowing the queue's list would offer two verbs that cannot do anything,
-    which is `T-016`'s failure and `UX-005` §5's rule against drawing what would be refused.
-
-    So the list is transcribed from what a terminal group can honestly support:
-
-    - **`Show in folder`**, from `REQ-021` and `UX-005` row 10 — the entries share one folder, so
-      revealing any member reveals the playlist. Offered only while the members identify **one
-      truthful common folder** (`T142-R1`). Two cases fail that and both used to be offered
-      anyway: a group whose records never recorded an output path has no folder to point at, and
-      `FileActions` would refuse for a reason the user cannot act on; and a group written to *two*
-      folders has no folder that is the group's. The second was the worse half — the header already
-      renders the folder as unknown when members disagree, so the row said *there is no common
-      folder* and offered to show one in the same breath, then routed to whichever member happened
-      to be first. An individual member's own reveal is still there once the group is opened.
-    - **`Remove`** always, because a group the user no longer wants is always removable and no file
-      is ever touched (`DAT-005` §2). `DAT-005` §4 makes the confirmation name its own count, which
-      the *view* supplies by reporting the members rather than the header.
-
-    **No `Open`.** There is no one file to open and choosing one would be a decision rather than an
-    implementation — the same reason `group_verbs` gives for the queue.
-
-    **No `Cancel all` and no `Retry failed`**, per above. They are absent rather than disabled:
-    `UX-005` §5 and `T081-R3`'s rule is that a row offers what it permits and says nothing about
-    the rest.
-
-    The caller answers **whether the members share one folder**, rather than passing records, for
-    the reason `group_verbs` takes statuses paired with retryability: what the verb needs is the
-    one fact it turns on, and passing the records would invite this module to start reading the
-    persistence layer. It is deliberately the same question the header's own folder line answers,
-    so the offer and the line cannot disagree — the disagreement being exactly what `T142-R1` was.
-    """
-    offered: list[Verb] = []
-    if has_one_common_folder:
         offered.append(Verb.REVEAL)
     offered.append(Verb.REMOVE)
     return tuple(offered)

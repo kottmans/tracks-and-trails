@@ -129,20 +129,6 @@ class _Worker(QObject):
         """
         self._perform(token, lambda connection: JobRepository(connection).remove(job_id))
 
-    @Slot(int, object)
-    def complete(self, token: int, job: Job) -> None:
-        """Store a completed job. One row, one transaction.
-
-        Here rather than on the GUI thread for the same reason every other write is: `ARC-005` is
-        unqualified, and completion is persisted from `DownloadManager`, on the GUI thread.
-
-        *(This carried a `HistoryEntry` beside the job and wrote both in one transaction, because
-        `T050-R1` found a hard exit between two separate commits leaving a durably completed job
-        with no record of what it obtained. `REQ-020` was withdrawn on 2026-08-06 and there is no
-        second row — the pairing this slot existed to guarantee has nothing left to pair.)*
-        """
-        self._perform(token, lambda connection: JobRepository(connection).update(job))
-
     def _perform(self, token: int, work: Callable[[sqlite3.Connection], object]) -> None:
         """Run `work` against this thread's connection, reporting through `done` either way.
 
@@ -197,10 +183,6 @@ class QueueWriter(QObject):
     #: Internal: carries a single-job revision to the worker.
     _revise = Signal(int, object)
 
-    #: Internal: carries a completed job to the worker. It once carried a completion record with
-    #: it, so the two landed in one transaction (`T050-R1`); there is no second row now.
-    _complete = Signal(int, object)
-
     #: Internal: carries a manual retry's re-queue to the worker, which allocates its tail
     #: position inside the transaction (`T-080`).
     _requeue = Signal(int, object)
@@ -230,7 +212,6 @@ class QueueWriter(QObject):
         self._worker.done.connect(self._on_done)
         self._submit.connect(self._worker.write)
         self._revise.connect(self._worker.revise)
-        self._complete.connect(self._worker.complete)
         self._requeue.connect(self._worker.requeue_at_end)
         self._remove.connect(self._worker.remove)
         self._reorder.connect(self._worker.reorder)
@@ -268,21 +249,6 @@ class QueueWriter(QObject):
             return
         token = self._track(done)
         self._revise.emit(token, job)
-
-    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-        """Persist a completion. **Returns immediately.**
-
-        Refused through the callback after `close()`, like every other submission: a caller waiting
-        to hear whether the completion landed must not wait forever because shutdown got there
-        first.
-
-        A failure is an ordinary failed transition that `DownloadManager._settle` logs, surfaces,
-        and withholds the success announcement for.
-        """
-        if self._closed:
-            done("the queue writer is shutting down; nothing was saved")
-            return
-        self._complete.emit(self._track(done), job)
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
         """Persist a manual retry, re-placed at the tail of the queue. **Returns immediately.**

@@ -122,9 +122,6 @@ class FakeQueue:
         if done is not None:
             done(None)
 
-    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-        self.update(job, done)
-
     def requeue_at_end(self, job: Any, done: Any) -> None:
         """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
         raise NotImplementedError
@@ -184,7 +181,7 @@ def child_downloading_a_known_size(
         )
         time.sleep(0.05)
     output = str(Path(request.output_directory) / f"{job_id}.mp4")
-    queue.put(Succeeded(job_id=job_id, output_path=output, format_used="best"))
+    queue.put(Succeeded(job_id=job_id, output_path=output))
     queue.put(WorkerFinished(job_id=job_id, exit_code=0))
 
 

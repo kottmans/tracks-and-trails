@@ -1786,80 +1786,6 @@ must not be treated as the same option.
 
 ---
 
-### T-175 — Remove the machinery the withdrawal left with no caller
-
-**Status:** Proposed — **filed 2026-08-06 in response to `T170-R4`** (Low, non-blocking), which
-found runtime contracts whose only remaining callers are their own tests.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `T170-R4`, `T-169`, `T-170`, `T-050`, `T050-R1`, `T050-R2`,
-`ui/row_verbs.py`, `downloader/protocol.py`, `persistence/store.py`, `persistence/writer.py`
-**Affected surfaces:** `ui/row_verbs.py`, `downloader/`, `persistence/`, and their tests
-**Risk:** Low to do, Medium to do carelessly — one item is load-bearing and two are not
-
-#### Scope
-
-The withdrawal deleted the History surface and the ledger beneath it, but three things it fed are
-still present with nothing above them. `T-172` proposed exactly this kind of cleanup and was
-cancelled when the live ledger went first; nothing has owned the residue since, which is
-`T170-R4`'s actual finding.
-
-**1. `history_group_verbs` (`ui/row_verbs.py`).** Returns the verbs for a History *group* row.
-There are no groups and no History; `tests/ui/test_row_verbs.py` is the only caller. Delete it with
-its tests and drop it from `__all__`.
-
-**2. `Succeeded.format_used` (`downloader/protocol.py`).** The worker still resolves it and
-`__post_init__` still validates it, but no production code reads it — it existed to fill a column
-of the completion record. **Decide rather than assume:** `T-050` chose it deliberately as *what
-yt-dlp resolved, never what the request asked for*, and it may still earn its place in a per-job
-log where that distinction is exactly what a user debugging a format needs. Removing a validated
-protocol field is a change to the worker boundary, so this needs a look at `T-050`'s reasoning
-before it is deleted, not after.
-
-**3. `persistence/store._now` — dead, and cancelled `T-173` is why it is named here.** It has no
-callers: the completion write that used it is gone. `T-173` proposed centralising it into `core/`
-alongside `manager._now`, which would have promoted a dead function into the shared layer and made
-removing it harder. Delete it, and with it `store.py`'s `datetime` import, which exists for nothing
-else. **`manager._now` stays** — seven callers, and no second definition left to disagree with.
-
-**4. The completion seam** — `store.complete`, `writer.complete` and the `_complete` signal.
-`T050-R1` created a distinct path so a job row and its record committed together. There is no
-second row now, and a completion is a job-row update like any other, so the seam may collapse into
-`revise`. **This is the load-bearing one.** `T050-R2` removed a silent-failure path by making the
-completion settle before anything is announced, and `tests/integration/` asserts a real download's
-persistence-first ordering. Collapse it only if that contract stays covered by tests that fail when
-the ordering inverts — and if it cannot be, keep the seam and say why in its docstring.
-
-#### The prose rule, inherited from cancelled `T-174`
-
-Comments and docstrings *about* the removed feature are correct as they stand and several are the
-record of why it went. Distinguish them from current-tense prose that describes a view or a ledger
-as live. Read every hunk; do not find-and-replace.
-
-#### Acceptance criteria
-
-- `history_group_verbs` is gone, with its tests, and `__all__` no longer names it
-- `store._now` is gone, and `store.py` no longer imports `datetime`. `manager._now` is untouched
-  and stays where it is
-- `Succeeded.format_used` is either removed across the worker boundary **or** kept with a stated
-  consumer, and the choice is recorded in the task's completion note
-- The completion seam is collapsed **or** kept, and either way `T050-R2`'s persistence-first
-  ordering has a test that fails when the announcement moves ahead of the write. Mutation-proven,
-  not asserted by a passing run
-- No behaviour changes. The full suite and both `mypy` scopes are clean
-- **No schema change.** This task does not authorise dropping, renaming or rebuilding anything in
-  the database; `0009` is the last migration and the only destructive one
-
-#### Out of scope
-
-- The database, in every respect
-- `ai/` documents. `DECISIONS.md` and `REVIEWS.md` are historical record and append-only
-- Historical migration files and frozen fixtures, whose prose describes versions that really did
-  have a `history` table
-
----
 
 ## Blocked
 
@@ -2319,6 +2245,63 @@ that one of the two callers was about to go.)*
 **Owner:** Implementer
 **Phase:** Phase 3
 **Risk:** —
+
+---
+
+### T-175 — Remove the machinery the withdrawal left with no caller
+
+**Status:** **Complete — 2026-08-06.** All four items resolved. **The fourth found a hole in the
+suite**, which is the part worth reading.
+
+| | What happened |
+|---|---|
+| `history_group_verbs` | **Deleted**, with its two tests and its `__all__` entry |
+| `store._now` | **Deleted**, with `store.py`'s `datetime` import, which existed for nothing else |
+| `Succeeded.format_used` | **Removed** across the worker boundary — the field, its validation, `_str_or_none` which had no other caller, and seven tests |
+| the completion seam | **Collapsed** into `update`, but only after writing the test that was missing |
+
+**`Succeeded.format_used` was decided, not assumed**, as the criterion required. It carried the
+resolved `format_id` and existed to fill a column of the completion record. Kept, its only honest
+consumer would have been a per-job log — but `T-084` already captures yt-dlp's own output, so a
+second channel for the same fact would be a new feature wearing a cleanup's clothes. Nothing
+serialised it: protocol messages cross a multiprocessing queue as pickled objects and `ARC-003`
+ships both ends together, so no fixture constrained the removal. **The distinction it protected is
+recorded in `Succeeded`'s docstring** — an intention and an outcome are different facts, and one
+must not wear the other's name — because that is the part worth having if a resolved format is
+ever wanted again.
+
+#### The hole, which is the reason this task took as long as it did
+
+`T-175` allowed the seam to be collapsed **only** if `T050-R2`'s persistence-first ordering stayed
+covered by a test that fails when the ordering inverts. Checking that before touching anything:
+
+**It did not.** Emitting `job_succeeded` *before* the completion write settled left the entire
+suite green. The vertical-slice test asserts that ordering for every `job_changed`, and that
+assertion is real — but the success signal is a separate emission on a separate path, and its own
+assertion only compared the payload. So a rule stated in three docstrings, and the reason the seam
+existed at all, was enforced nowhere for the signal a user's "it finished" actually rides on.
+
+`test_a_success_is_announced_only_after_the_row_says_completed` closes it, driven by a scripted
+child so the coverage does not depend on binding a loopback server, and mutation-proven in both
+directions: it fails with the announcement moved ahead of the write and passes with it restored.
+**The gap existed independently of this task** and would have outlived it; collapsing the seam is
+simply what made someone look.
+
+With that in place the collapse is safe, and it was pure duplication: `Worker.revise` and
+`Worker.complete` had identical bodies, as did the facade and store methods above them. Removed —
+`PersistentJobStore.complete`, `QueueWriter.complete`, `_Worker.complete`, the `_complete` signal
+and its connection, `JobStore.complete`, and ten test doubles' implementations. `_persist`'s
+`write` parameter stays: `requeue_at_end` still needs it.
+
+**Verification:** full suite **2166 passed**, 11 skipped, 2 deselected — nine tests removed with
+the dead code they covered, one added for the gap. `ruff format --check .`, `ruff check .`, `mypy`
+and `mypy --platform win32` all clean.
+
+*(Filed 2026-08-06 in response to `T170-R4`, Low and non-blocking.)*
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3
+**Risk:** Low to do, Medium to do carelessly — one item was load-bearing and three were not
 
 ---
 

@@ -1087,9 +1087,6 @@ class _WritableStore:
         self.jobs[job.id] = job
         done(None)
 
-    def complete(self, job: Job, done: Any) -> None:
-        self.update(job, done)
-
     def requeue_at_end(self, job: Job, done: Any) -> None:
         self.update(job, done)
 

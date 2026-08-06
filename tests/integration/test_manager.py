@@ -96,7 +96,6 @@ class FakeRepository:
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
         self.writes: list[tuple[str, JobStatus]] = []
-        self.completions: list[str] = []
         #: Ids removed, in order (`T-080`). A list rather than a count, so a test can assert
         #: *which* job left the queue rather than only that something did.
         self.removals: list[str] = []
@@ -124,15 +123,6 @@ class FakeRepository:
         self.writes.append((job.id, job.status))
         if done is not None:
             done(None)
-
-    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-        """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
-
-        What it preserves is the *shape* — one call, one settlement — so the manager cannot be
-        written against two separate writes and still pass here.
-        """
-        self.completions.append(job.id)
-        self.update(job, done)
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
         """`JobStore.requeue_at_end` — a write that allocates a tail position (`T-080`).
@@ -211,13 +201,22 @@ class Recorder:
         #: What the repository held at the moment each `job_changed` arrived. The acceptance
         #: criterion is about this ordering, so it is captured rather than inferred.
         self.stored_when_told: list[JobStatus | None] = []
+        #: The same, for `job_succeeded`, and it needs its own list (`T-175`).
+        #:
+        #: `T050-R2`'s rule covers both signals, and until 2026-08-06 only one of them was
+        #: watched. A mutant that emitted `job_succeeded` **before** the completion write settled
+        #: left every `job_changed` ordering intact and the whole suite green — the success
+        #: announcement is a separate emission on a separate path, and the change-signal capture
+        #: cannot see past it. Found while collapsing the completion seam, which `T-175` allows
+        #: only if this ordering is covered by something that fails when it inverts.
+        self.stored_when_succeeded: list[JobStatus | None] = []
         self._repository = repository
 
         manager.job_changed.connect(self._on_change)
         manager.progress.connect(self._on_progress)
         manager.media_probed.connect(lambda job_id, media: self.probed.append((job_id, media)))
         manager.resolution_reported.connect(self.resolutions.append)
-        manager.job_succeeded.connect(lambda job_id, path: self.succeeded.append((job_id, path)))
+        manager.job_succeeded.connect(self._on_succeeded)
         manager.job_failed.connect(
             lambda job_id, kind, message: self.failed.append((job_id, kind, message))
         )
@@ -230,6 +229,11 @@ class Recorder:
         stored = self._repository.get(job_id)
         self.stored_when_told.append(stored.status if stored is not None else None)
         self.changes.append((job_id, status))
+
+    def _on_succeeded(self, job_id: str, path: str) -> None:
+        stored = self._repository.get(job_id)
+        self.stored_when_succeeded.append(stored.status if stored is not None else None)
+        self.succeeded.append((job_id, path))
 
     def _on_progress(self, message: Progress) -> None:
         self.threads.add(threading.get_ident())
@@ -446,6 +450,21 @@ def child_reporting_another_jobs_progress(
     """
     queue.put(Progress(job_id="a-different-job", stage=Stage.DOWNLOADING_VIDEO))
     queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def child_reporting_a_clean_success(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """The ordinary happy path, with nothing else in it.
+
+    Every other success in this file carries a second fault for its test to catch. This one is
+    deliberately unremarkable, because the thing being asserted about it is a *timing* property
+    of the parent and any extra message would give the assertion somewhere else to fail.
+    """
+    queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4", total_bytes=10))
     queue.put(WorkerFinished(job_id=job_id, exit_code=0))
     queue.close()
     queue.join_thread()
@@ -998,6 +1017,46 @@ def test_a_real_download_completes_and_every_transition_is_persisted_first(
             f"{job_id} was announced as {announced} while the database still held "
             f"{stored_status}; a crash there leaves the UI ahead of the queue"
         )
+
+
+def test_a_success_is_announced_only_after_the_row_says_completed(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T050-R2`, for `job_succeeded` rather than for `job_changed` (`T-175`).
+
+    **This is the gap the seam cleanup found.** The vertical-slice test above checks that each
+    *status change* was already durable when announced, and that assertion is real — but it says
+    nothing about the success signal, which is a separate emission the manager makes from the
+    completion write's own callback. Emitting it one line earlier, ahead of the write, left every
+    `job_changed` ordering intact and the entire suite green. So the rule was stated in three
+    docstrings and enforced nowhere for the signal the user's "it finished" actually rides on.
+
+    Asserted at the moment of the signal, because that is the only moment it is observable:
+    afterwards the row and the announcement agree no matter which came first. A crash in the gap
+    is what the rule prevents — the UI saying a download finished while the queue still says it
+    is running, and a restart disagreeing with what the user was told.
+
+    Driven by a scripted child rather than a real download, so the coverage does not depend on
+    binding a loopback server. The vertical slice keeps the same assertion against a real one.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_reporting_a_clean_success)
+    recorder = Recorder(download, repository)
+
+    download.start("job-1")
+    assert spin(lambda: download.is_idle, timeout=30)
+
+    assert recorder.succeeded == [("job-1", "/written/clip.mp4")], (
+        f"the success was never announced: {recorder.violations}"
+    )
+    assert recorder.stored_when_succeeded == [JobStatus.COMPLETED], (
+        "job_succeeded was emitted while the stored row said "
+        f"{recorder.stored_when_succeeded}. A crash in that gap leaves the user told their "
+        "download finished and the queue, on restart, saying it never did (T050-R2)."
+    )
 
 
 def test_the_manager_drives_the_real_repository(
@@ -2250,23 +2309,12 @@ def test_no_companion_signal_arrives_before_its_transition_is_durable(
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
             self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
-            self.completions: list[str] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
 
         def update(self, job: Job, done: Callable[[str | None], None]) -> None:
             self.pending.append((job, done))
-
-        def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-            """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
-
-            A fake, so "atomically" is trivial: one dict assignment cannot
-            half-happen. What it preserves is the *shape* — one call, one settlement —
-            so the manager cannot be written against two separate writes.
-            """
-            self.completions.append(job.id)
-            self.update(job, done)
 
         def release(self) -> None:
             pending, self.pending = self.pending, []
@@ -2349,23 +2397,12 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
             self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
-            self.completions: list[str] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
 
         def update(self, job: Job, done: Callable[[str | None], None]) -> None:
             self.pending.append((job, done))
-
-        def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-            """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
-
-            A fake, so "atomically" is trivial: one dict assignment cannot
-            half-happen. What it preserves is the *shape* — one call, one settlement —
-            so the manager cannot be written against two separate writes.
-            """
-            self.completions.append(job.id)
-            self.update(job, done)
 
         def release(self) -> None:
             pending, self.pending = self.pending, []
@@ -2428,7 +2465,6 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
 
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
-            self.completions: list[str] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
@@ -2436,16 +2472,6 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
         def update(self, job: Job, done: Callable[[str | None], None]) -> None:
             self.jobs[job.id] = job  # read-your-writes still holds
             done("OperationalError: database is locked")
-
-        def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-            """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
-
-            A fake, so "atomically" is trivial: one dict assignment cannot
-            half-happen. What it preserves is the *shape* — one call, one settlement —
-            so the manager cannot be written against two separate writes.
-            """
-            self.completions.append(job.id)
-            self.update(job, done)
 
         def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
             """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
@@ -3170,7 +3196,6 @@ class HeldStore:
         self._order: list[str] = []
         self.written: list[tuple[str, JobStatus]] = []
         self.removed: list[str] = []
-        self.completions: list[str] = []
         self.failing = False
 
     def get(self, job_id: str) -> Job | None:
@@ -3179,15 +3204,6 @@ class HeldStore:
     def update(self, job: Job, done: Callable[[str | None], None]) -> None:
         self.pending.append((job, done))
         self._order.append("write")
-
-    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-        """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
-
-        What it preserves is the *shape* — one call, one settlement — so the manager cannot be
-        written against two separate writes and still pass here.
-        """
-        self.completions.append(job.id)
-        self.update(job, done)
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
         """`JobStore.requeue_at_end` — a write that allocates a tail position (`T-080`).
@@ -3621,7 +3637,10 @@ def _completion_probe(tmp_path: Path) -> Path:
                 "    # The statement has committed. Die the way a power cut would.",
                 "    os._exit(0 if error is None else 3)",
                 "",
-                "store.complete(finished, settled)",
+                # `store.update`, not a `store.complete`: the completion seam was collapsed by
+                # `T-175` once it wrote the same single row. What this probe is about -- a
+                # process that stops existing the instant a completion settles -- is unchanged.
+                "store.update(finished, settled)",
                 "application.exec()",
             ]
         )
@@ -3650,7 +3669,8 @@ def test_a_hard_exit_after_a_completion_settles_keeps_the_job_row(tmp_path: Path
 
     *(It asserted "both rows" and checked the ledger beside the job. `REQ-020` was withdrawn on
     2026-08-06 and a completion writes one row, so the atomicity this pair was written to protect
-    has nothing left to be atomic with — `T050-R1`'s reasoning is preserved at `writer.complete`.)*
+    has nothing left to be atomic with — `T050-R1`'s reasoning is preserved at `store.update`,
+    which is where the completion path went when `T-175` collapsed it.)*
     """
     database = tmp_path / "library.sqlite3"
     probe = _completion_probe(tmp_path)

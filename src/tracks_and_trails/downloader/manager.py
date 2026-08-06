@@ -246,8 +246,6 @@ class JobStore(Protocol):
 
     def update(self, job: Job, done: Callable[[str | None], None]) -> None: ...
 
-    def complete(self, job: Job, done: Callable[[str | None], None]) -> None: ...
-
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None: ...
 
     def remove(self, job_id: str, done: Callable[[str | None], None]) -> None: ...
@@ -2326,10 +2324,15 @@ class DownloadManager(QObject):
                         finished_at=_now(),
                     ),
                 ),
-                # One transaction for the job row and its history row (`T050-R1`). The
-                # announcement stays in `then`, so it fires only after that transaction commits —
-                # there is no instant where the user is told it succeeded and the record is missing.
-                write=lambda job, done: self._repository.complete(job, done),
+                # **The announcement stays in `then`**, so it fires only after the write commits:
+                # there is no instant where the user is told it succeeded and the queue disagrees
+                # (`T050-R2`, asserted by
+                # `test_a_success_is_announced_only_after_the_row_says_completed`).
+                #
+                # *(This passed `write=self._repository.complete`, a separate path that existed to
+                # put the job row and its history row in one transaction (`T050-R1`). With the
+                # record withdrawn it wrote the same single row as `update` through three
+                # duplicated layers, so `T-175` collapsed it and this uses the default.)*
                 then=lambda: self.job_succeeded.emit(job_id, outcome.output_path),
             )
         elif isinstance(outcome, Probed):
@@ -2657,12 +2660,18 @@ class DownloadManager(QObject):
         cancelled job whose progress message is still queued behind it, say. That is a normal
         outcome rather than an error, and it runs `otherwise` with its reason.
 
-        **`write` overrides which persistence operation is used** (`T050-R1`). It defaults to
-        `JobStore.update`; the completion branch passes `JobStore.complete`, which writes the job
-        row and its history row in one transaction. It is a parameter rather than a second method
-        here because everything else about the step — computing the revision when its turn comes,
-        settling, chain release, failure handling — is identical, and duplicating that is how the
-        two writes drifted into two transactions in the first place.
+        **`write` overrides which persistence operation is used.** It defaults to
+        `JobStore.update`; `requeue_at_end` is the one caller that needs something else, because
+        it allocates a tail position inside its own transaction (`T-080`). It is a parameter
+        rather than a second method because everything else about the step — computing the
+        revision when its turn comes, settling, chain release, failure handling — is identical,
+        and duplicating that is how two writes once drifted into two transactions.
+
+        *(The completion branch also passed one, `JobStore.complete`, which wrote a job row and a
+        history row together (`T050-R1`). `REQ-020` was withdrawn and it became the same single
+        write as the default, so `T-175` removed it. The ordering rule it is often confused with
+        — announce only after the write settles — lives in `then`, not in `write`, and is
+        unaffected.)*
 
         A failed write is surfaced rather than swallowed, and **the success-side effect does not
         run**. It is deliberately not turned into a job failure: the download itself may be

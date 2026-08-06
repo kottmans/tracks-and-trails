@@ -29,18 +29,12 @@ one the acceptance criterion asked for; only the waiting is gone.
 
 import sqlite3
 from collections.abc import Callable, Sequence
-from datetime import datetime
 
 from PySide6.QtCore import QObject
 
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.persistence.writer import QueueWriter
-
-
-def _now() -> datetime:
-    """Timezone-aware, matching what the manager stamps onto `finished_at`."""
-    return datetime.now().astimezone()
 
 
 class PersistentJobStore(QObject):
@@ -110,6 +104,13 @@ class PersistentJobStore(QObject):
         - **It failed** → it never happened, and the answer is whatever is *still* queued behind
           it, falling through to the row on disk when nothing is.
 
+        **A completion comes through here too**, as of 2026-08-06. There was a separate
+        `complete()` beside this one, because `T050-R1` needed a job row and its history row in a
+        single transaction. `REQ-020` withdrew the record, leaving `complete` writing the same one
+        row as `update` through three duplicated layers, and `T-175` collapsed it. `T050-R2`'s
+        rule that nothing is announced before the write settles is unchanged and is the caller's
+        to keep, which `test_a_success_is_announced_only_after_the_row_says_completed` now checks.
+
         The version this replaces kept the newest value and, on failure, restored the value it
         had displaced. That is right for one failure and wrong for two: with revisions A then B
         both failing, B's rollback restored **A**, which had also failed — the reviewer measured
@@ -135,46 +136,6 @@ class PersistentJobStore(QObject):
             done(error)
 
         self._writer.revise(job, settle)
-
-    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-        """Persist `job` as complete, in one transaction (`T050-R1`).
-
-        Because the write settles before anything is announced, `done` reporting an error means
-        **the completion did not happen** — so the caller can treat it as an ordinary failed
-        transition rather than as a success with a missing record. That is what removed the
-        silent-failure path (`T050-R2`): there is no longer a state to report quietly.
-
-        **Returns immediately** (`ARC-005`).
-
-        **Nothing is recorded beyond the job row** (`REQ-020`, withdrawn 2026-08-06). This wrote a
-        `HistoryEntry` in the same transaction, and `T050-R1` is the record of why it had to be the
-        same one: two transactions can be separated by a hard exit, and a restart once observed
-        `job_status='completed', history=None`. There is no second row now, so there is no gap for
-        a crash to land in — the atomicity requirement is met by there being nothing to be atomic
-        *with*.
-
-        *(`format_used` came from `Succeeded.format_used` and existed only to fill a column of that
-        record. It is gone with it; `T-159`'s naming rule reads the request, which the job
-        already carries.)*
-        """
-        queued = self._pending.setdefault(job.id, [])
-        queued.append(job)
-
-        def settle(error: str | None) -> None:
-            # Identical bookkeeping to `update`: the revision is forgotten the moment it settles,
-            # whichever way it settled (`T016-R1`). A completion that failed never happened, and
-            # `get()` must fall through to whatever is still queued behind it.
-            remaining = self._pending.get(job.id)
-            if remaining is not None:
-                for index, candidate in enumerate(remaining):
-                    if candidate is job:
-                        del remaining[index]
-                        break
-                if not remaining:
-                    del self._pending[job.id]
-            done(error)
-
-        self._writer.complete(job, settle)
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
         """Persist a manual retry at the tail of the queue. **Returns immediately** (`T-080`).

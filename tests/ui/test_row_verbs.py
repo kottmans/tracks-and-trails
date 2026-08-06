@@ -18,7 +18,6 @@ from tracks_and_trails.ui.row_verbs import (
     LABELS,
     MORE_LABEL,
     Verb,
-    history_group_verbs,
     verbs_for,
 )
 
@@ -117,40 +116,3 @@ def test_every_verb_has_a_label() -> None:
     for verb in Verb:
         assert LABELS.get(verb), f"{verb.value} has no label, so it would draw as a blank button"
     assert MORE_LABEL, "the overflow has no label, so the keyboard route has nothing to point at"
-
-
-def test_a_terminal_history_group_offers_only_what_it_can_perform() -> None:
-    """`T-142`, transcribed from `UX-005` §3 and row 9, `REQ-021` and `DAT-005`.
-
-    **Written out by hand rather than derived from `group_verbs`**, which is this file's whole
-    method: the queue's list and History's are independent readings of the same decisions, and a
-    test that computed one from the other would pass while they said the same wrong thing.
-
-    Every member of a History group is terminal, so `Cancel all` has nothing to stop and
-    `Retry failed` has no job to retry — a record is not a download (`DAT-005`). `Open` is out
-    because a group has no single file. What is left is the folder they share (`UX-005` row 10) and
-    a removal that never touches one (`DAT-005` §2).
-    """
-    assert history_group_verbs(has_one_common_folder=True) == (Verb.REVEAL, Verb.REMOVE)
-    assert history_group_verbs(has_one_common_folder=False) == (Verb.REMOVE,), (
-        "the header offered to show a folder it does not have — either because its records name no "
-        "file at all, or because they were written to two folders and neither is the group's "
-        "(T142-R1)"
-    )
-    assert Verb.REMOVE in history_group_verbs(has_one_common_folder=False), (
-        "a group the user no longer wants is always removable, so the header is never left with "
-        "nothing at all"
-    )
-
-
-def test_a_history_group_never_offers_a_queue_verb() -> None:
-    """The trap `T-142` names: assuming History's verbs are the queue's.
-
-    Asserted over the whole of `Verb` rather than a list of the four that matter, so a verb added
-    to the queue's vocabulary later cannot quietly appear on a terminal group.
-    """
-    for shared in (True, False):
-        assert set(history_group_verbs(has_one_common_folder=shared)) <= {
-            Verb.REVEAL,
-            Verb.REMOVE,
-        }, f"a group with has_one_common_folder={shared} offers something a record cannot support"
