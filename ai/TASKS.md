@@ -2532,7 +2532,7 @@ Assert, on `windows-latest`:
 
 ### T-159 — History reports the format as a yt-dlp id
 
-**Status:** **Complete — 2026-08-05, corrected after review, awaiting re-review**, on criteria
+**Status:** **Complete — approved at `cc94371`, 2026-08-05**, after one correction round, on criteria
 **narrowed by maintainer ruling** (2026-08-05, `T159-R2`): the conversion/bitrate criterion is
 moved to `T-156`, which owns the control half it depends on.
 
@@ -2604,7 +2604,7 @@ before it decides what to display.
 
 ### T-144 — History can only be cleared one record at a time
 
-**Status:** **Complete — 2026-08-05, corrected after review, awaiting re-review.** `DAT-005` §1 is
+**Status:** **Complete — approved at `cc94371`, 2026-08-05**, after one correction round. `DAT-005` §1 is
 **reopened and amended by maintainer ruling** (2026-08-05), which `T144-R1` required: the entry
 outranks this task and named its own reopening condition, but that made an amendment eligible for
 a decision rather than self-accepting. The implementation is unchanged — the reviewer found it
@@ -2679,7 +2679,7 @@ narrow signature stays narrow.
 
 ### T-142 — A History playlist has no verbs of its own
 
-**Status:** **Complete — 2026-08-05, corrected after review, awaiting re-review.** `T142-R1` is
+**Status:** **Complete — approved at `cc94371`, 2026-08-05**, after one correction round. `T142-R1` is
 corrected: the header offered *Show in folder* while its own line said the members shared no
 folder, then routed to whichever came first. The offer and the route now ask one function, so the
 row cannot contradict itself, and the check is repeated when the verb is routed.
@@ -2736,7 +2736,7 @@ derived and re-checked the same way.
 
 ### T-145 — History lists a playlist's tracks individually instead of grouping them
 
-**Status:** **Complete — 2026-08-05, corrected after review, awaiting re-review.** `UX-005`'s
+**Status:** **Complete — approved at `cc94371`, 2026-08-05**, after one correction round. `UX-005`'s
 three decisions are **ratified by the maintainer** (2026-08-05), which `T145-R1` required and
 which the first submission wrongly claimed: the chip is a count, there is no segmented bar, and a
 partly-failed playlist counts the members present. Two review findings are corrected —

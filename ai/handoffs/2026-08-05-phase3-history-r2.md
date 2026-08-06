@@ -5,10 +5,14 @@
 **Review base:** `9edf7b6` — the head your first review read
 **Review head:** `4f6f2aa`. Two commits — `b4dc8c8` the corrections, `4f6f2aa` the rulings and
 this handoff. Not pushed.
-**Prior review:** *2026-08-05 — Phase 3 History batch initial review*, **Changes requested**, six
-findings.
+**Prior review:** *2026-08-05 — Phase 3 History batch initial review*, **Changes requested**,
+**seven** findings.
 
-**All six are addressed.** Three needed a maintainer ruling and now have one; three were code.
+**All seven are addressed.** Three needed a maintainer ruling and now have one; four were code.
+
+*(Corrected after the re-review: this said "six", counting `T145-R1` and `T144-R1` as one because
+they are the same mistake twice. They are two findings against two different decisions, and the
+table below always listed seven. Use the IDs, not the count.)*
 Your four regressions are in the tree, unmodified except where `T159-R1`'s own correction renamed
 what one of them reads — see below, because that is the one thing here you should check first.
 

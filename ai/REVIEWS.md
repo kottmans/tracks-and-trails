@@ -10533,3 +10533,67 @@ recorded as maintainer rulings; the task layer cannot grant that authority to it
 
 The reviewer changed only `ai/REVIEWS.md` and the two test files containing the four regressions.
 No reviewed source, decision, task state, commit, remote ref or CI state was changed.
+
+## 2026-08-05 — Phase 3 History batch focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Prior implementation head:** `9edf7b6`
+**Correction boundary:** `79d225c..4f6f2aa`
+**Submission head:** `cc94371` (handoff-only final commit)
+**Tasks:** `T-145`, `T-142`, `T-144`, `T-159`
+**Verdict:** **Approved at `cc94371`.** All seven finding IDs from the initial review are resolved.
+History now persists a structurally narrow `FormatChoice` rather than a `DownloadRequest`; the
+three UI regressions are corrected at their identity/accessibility/routing authorities; and the
+maintainer ratifications now make the two decision amendments and T-159 scope transfer true rather
+than implementer-attributed. Rewriting unpublished migration 0007 is accepted as the safer
+credential-boundary correction, and adapting the raw-database reviewer regression is accepted.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T159-R1` | Critical | No | `HistoryEntry.format_choice` accepts `FormatChoice`, not `DownloadRequest`; persistence has a separate serializer whose field set is derived from that narrow dataclass. `FormatChoice` is exactly the current `PRESET_OWNED_FIELDS`, while cookie source, proxy, rate cap, URL and output directory are unrepresentable in it. Completion narrows with `format_choice_of`; the raw-row regression scans every History column and finds neither a supplied cookie path nor proxy. The dataclass-equality test fails on both missing and added preset-owned fields, and mypy rejects assigning the request directly. Migration/schema/frozen fixture agree on `format_choice`. | **Resolved at `b4dc8c8`** |
+| `T145-R1` | High | No | The UX-005 entry now accurately records that the Implementer proposed the three choices and the maintainer ratified them. It also preserves the initial false attribution and explicitly distinguishes the reviewer's recommendation from the maintainer's ruling. The current maintainer handoff confirms that disposition. | **Resolved at `4f6f2aa`** |
+| `T144-R1` | High | No | DAT-005 now records the reopening and amendment as an explicit maintainer ratification, while preserving that satisfying the reopening condition did not make the proposal self-accepting. The previously conditional clear-history implementation therefore has an authoritative foundation. | **Resolved at `4f6f2aa`** |
+| `T145-R2` | High | No | `THUMBNAIL_URL_ROLE` answers from the already-resolved visible `entry`; it no longer reuses a visible row number against the durable tuple. The distinct member/solo reviewer regression passes. | **Resolved at `b4dc8c8`** |
+| `T145-R3` | High | No | The group accessible text now includes labelled format and saved-folder values obtained through the same `STATE_ROLE` and `SELECTOR_ROLE` branches the delegate draws. Disagreement remains represented identically: no common format is neither drawn nor spoken, while an unknown common folder is both drawn and spoken. | **Resolved at `b4dc8c8`** |
+| `T159-R2` | High | No | The maintainer narrowed T-159 and moved the conversion/MP3-bitrate criterion to T-156, which owns the control vocabulary it depends on. T-159 retains the struck-through criterion and its disposition; T-156 records the inherited criterion and reason. This is an authorized scope transfer rather than the task declaring an unmet criterion complete. | **Resolved at `4f6f2aa`** |
+| `T142-R1` | Medium | No | The header offer and folder line now share `_common_folder`, and `reveal_target` rechecks it when routing. A group whose recorded paths disagree neither offers nor emits Reveal; individual member actions remain available after expansion. | **Resolved at `b4dc8c8`** |
+
+### Reviewer dispositions
+
+- **The migration rewrite is accepted.** Version 0007 was not published or applied to a shipped
+  database. Keeping the unsafe migration and adding an 0008 would make every upgrade materialize
+  the forbidden value before deleting its column; replacing the unpublished migration prevents the
+  boundary crossing entirely and does not violate the repository's published-history rule.
+- **The reviewer-test adaptation is accepted.** The old query named the unsafe column whose removal
+  is the fix. Building the record through production's narrowing and scanning every raw column
+  preserves the original property and strengthens its sink coverage. A duplicate test retaining
+  `SELECT request` would test a schema name that is intentionally gone.
+- **The narrow type belongs at this boundary.** `FormatChoice` carries the exact facts required to
+  compare against a preset and cannot carry request-only network/credential/location fields. Its
+  explicit dataclass plus equality test makes future widening a reviewed source/test change rather
+  than an automatic consequence of adding a request field.
+- No Windows runtime run was added. The corrected source is platform-neutral and both host and
+  win32 static gates pass; the submitted full Linux suite and focused cross-platform logic tests
+  are proportionate for this approval. Network tests remain unrelated.
+
+### Non-blocking record note
+
+The correction handoff says “six findings” while its table—and the initial review—contain seven
+finding IDs. All seven are listed and resolved above, so the stale count does not obscure scope or
+block approval; use the IDs rather than carrying that count into a canonical status summary.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 79d225c..cc94371`: **pass**. `b4dc8c8` carries source/tests and the initial review, `4f6f2aa` carries ratifications/scope records, and `cc94371` corrects the handoff's own head only. |
+| Reviewer regressions and narrowing guards | **6 passed**: the four initial regressions plus exact-field-set and request-narrowing tests. |
+| Focused unit/UI suites | Presets, persistence, History view, row verbs and queue view: **339 passed**. |
+| Completion projection | Both whole-object completion/history projections: **2 passed**. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **173 files formatted**; `mypy --no-incremental` and `mypy --platform win32 --no-incremental`: **success, 109 files**. |
+| Submitted broader evidence | Implementer reports unit/UI/integration **2248 passed, 11 skipped**. Network tests were not run. |
+
+The reviewer appended this record only. No source, test, decision, task state, commit, remote ref or
+CI state was changed during the re-review.
