@@ -329,14 +329,20 @@ class FormatChoice:
     post_processors: tuple[str, ...]
 
 
-def format_choice_of(request: DownloadRequest) -> FormatChoice:
-    """Narrow a request to what describes the download (`T159-R1`).
+def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
+    """Narrow a request **or a preset** to what describes the download (`T159-R1`).
 
     Built by name from `PRESET_OWNED_FIELDS` rather than field by field, so a field that joins the
     intersection is carried the day it appears — and, more to the point, so no field outside it can
     be added here by hand.
+
+    **A preset is accepted for the same reason the fields are named rather than listed** (`T-156`):
+    `PRESET_OWNED_FIELDS` is the intersection of the two dataclasses, so a `Preset` answers every
+    one of them by construction. The add dialog describes a format the user has *chosen* and the
+    queue describes one already *requested*; routing both through here is what lets one function
+    name them, instead of the dialog keeping a second opinion about the same download.
     """
-    return FormatChoice(**{name: getattr(request, name) for name in PRESET_OWNED_FIELDS})
+    return FormatChoice(**{name: getattr(source, name) for name in PRESET_OWNED_FIELDS})
 
 
 class PresetOverrideError(ValueError):

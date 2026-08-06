@@ -112,8 +112,10 @@ from tracks_and_trails.core.models import (
     Preset,
 )
 from tracks_and_trails.core.paths import sanitize_component
+from tracks_and_trails.core.presets import format_choice_of
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import SessionKind
+from tracks_and_trails.ui.format_text import FORMAT_PREFIX, format_name
 from tracks_and_trails.ui.row_delegate import (
     DETAIL_ROLE,
     EDIT_HINT,
@@ -225,17 +227,6 @@ def describe_kind(media: MediaInfo) -> str:
     return f"Playlist ({media.entry_count} items)"
 
 
-def describe_quality(preset: Preset) -> str:
-    """The applicable quality for `preset`, or nothing when it has none.
-
-    Omitted rather than shown as "n/a": a bitrate beside a video download would put a number on
-    screen for something that ignores it, which is `_show_selector`'s reasoning applied per row.
-    """
-    if preset.audio_codec is not AudioCodec.MP3:
-        return ""
-    return f" · {preset.audio_quality} kbps {preset.audio_codec.value.upper()}"
-
-
 def describe_preset(row: Row, effective: Preset) -> str:
     """What `row` will be downloaded as — **literally** — and whether that is its own choice.
 
@@ -253,10 +244,17 @@ def describe_preset(row: Row, effective: Preset) -> str:
 
     **One line**, since `T-119`'s delegate draws a row of three: the name, whose choice it is, and
     the literal selector, separated rather than stacked.
+
+    **The name comes from `format_text`, not from `effective.name`** (`T-156`). This used to append
+    the bitrate itself, through a `describe_quality` helper that lived here — so the dialog held one
+    opinion about how to name a download and the queue and History held another, which is the split
+    `T-159` wrote that module to end. It now carries the bitrate because `format_name` does, and the
+    three surfaces say the same words about the same request by construction rather than by anyone
+    keeping them in step.
     """
     source = "this row only" if isinstance(row.preset, Preset) else "following the batch"
     selector = preset_registry.effective_selector(effective)
-    return f"{effective.name} — {source} · Format selector: {selector}{describe_quality(effective)}"
+    return f"{format_name(format_choice_of(effective))} — {source} · Format selector: {selector}"
 
 
 def headline_text(row: Row) -> str:
@@ -286,11 +284,6 @@ def detail_text(row: Row) -> str:
             describe_kind(media),
         )
     )
-
-
-#: The third line's opening words. A constant because `selector_candidates` builds the same string
-#: to measure the width this dialog opens at (`T-150`), and two copies of it would drift.
-FORMAT_PREFIX: Final = "Download as: "
 
 
 def selector_text(row: Row, effective: Preset | None) -> str:

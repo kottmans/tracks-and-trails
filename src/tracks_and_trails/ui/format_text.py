@@ -28,18 +28,25 @@ which `REQ-026` forbids History to hold. Handing this rule a request would have 
 one to feed it. `FormatChoice` is exactly `PRESET_OWNED_FIELDS`, so the rule is given every fact it
 needs and no fact it must not keep.
 
-## What it does not do yet
+## The MP3 bitrate, and the half of it that is still open
 
-**It does not disclose the MP3 bitrate**, and that is `T-156`'s to decide rather than an omission
-here. `Audio only (MP3)` converts at 192 kbps and says so nowhere — but the queue's format dropdown
-offers `preset.name`, so a row reading *Audio only (MP3), 192 kbps* beside a control reading
-*Audio only (MP3)* would be `T140-R3`'s own shape again, one field over. Disclosing it means
-deciding what the **control** says too, which is the product half `T-156` holds. When that is
-ruled on, this function is the one place it changes, and all three surfaces change with it.
+**It discloses the bitrate** (`T-156`): `Audio only (MP3)` converts at 192 kbps and used to say so
+nowhere but in the add dialog's own control. The number is read from the choice rather than from
+`MP3_QUALITY`, because `with_audio_quality` derives a preset at another bitrate and copies the name
+across — a suffix taken from the constant would name a 320 kbps download 192.
+
+**The dropdowns still offer `preset.name`, which does not carry it**, so a row reading
+*Audio only (MP3), 192 kbps* sits beside a control reading *Audio only (MP3)*. That is a real gap
+and it is `T140-R3`'s shape one field over. It is left open **deliberately**, on `T-156`'s own
+recommendation to *"disclose first, and decide the control with `T-111`"*: what the control should
+say is entangled with user presets and with `T-139`'s rule about disabling a bitrate where it does
+not apply, and naming the catalogue entry `Audio only (MP3, 192 kbps)` would put 192 beside a
+bitrate control set to 320 — trading this gap for a contradiction.
 """
 
 from typing import Final
 
+from tracks_and_trails.core.models import AudioCodec
 from tracks_and_trails.core.presets import BUILT_IN_PRESETS, PRESET_OWNED_FIELDS, FormatChoice
 
 __all__ = ["FORMAT_PREFIX", "effective_format_text", "format_name", "preset_name_for"]
@@ -83,8 +90,66 @@ def format_name(choice: FormatChoice) -> str:
     **The fallback is the selector, never the format id.** They are different things and only one
     of them was asked for: `bestaudio/best` is a request a user can recognise and act on, while
     `251` is what yt-dlp resolved it to on one site on one day.
+
+    **The bitrate is part of the name where there is one** (`T-156`). `Audio only (MP3)` converts
+    at 192 kbps and said so nowhere: the number was in `MP3_QUALITY`, in the add dialog's own
+    control, and on no row. `REQ-009`'s principle is that the row says what the download actually
+    is, and a name omitting the one number a user chose between is that gap one step smaller.
     """
-    return preset_name_for(choice) or choice.format_selector
+    name = preset_name_for(choice) or _converting_preset_for(choice)
+    if name is None:
+        return choice.format_selector
+    return f"{name}{_bitrate(choice)}"
+
+
+def _converting_preset_for(choice: FormatChoice) -> str | None:
+    """The built-in this download is, **apart from its bitrate** — for naming only (`T-156`).
+
+    **Why this is not just a looser `preset_name_for`.** That function decides *identity*: the
+    queue answers `PRESET_ROLE` with it, so it is what the row's dropdown shows as selected, and
+    `setData` compares against it to refuse a retarget that would change nothing. Matching a
+    320 kbps download to the 192 kbps preset there would make the control claim a preset that does
+    not describe the request — `T126-R4`'s defect, where a row opened its control reading a
+    built-in it was not. It stays strict, and this is separate for that reason.
+
+    **Describing is a different question from identifying, and the row is where it belongs.** A
+    download converted at 320 kbps *is* "Audio only (MP3)" at 320 kbps; saying so is exactly true,
+    and `_bitrate` renders the number from the choice so the sentence cannot outlive the fact. The
+    alternative is what the row said before: `bestaudio/best`, which is the selector twice over and
+    names nothing. `T126-R4` settled the shape — **the row speaks whenever the control cannot** —
+    and this is that rule applied one field over.
+
+    MP3 only, because `MP3_BITRATES` is MP3's scale and `with_audio_quality` refuses every other
+    codec outright. A codec that wants a quality control needs its own, and should say so.
+    """
+    if choice.audio_codec is not AudioCodec.MP3:
+        return None
+    apart_from_bitrate = PRESET_OWNED_FIELDS - {"audio_quality"}
+    for preset in BUILT_IN_PRESETS:
+        if preset.audio_codec is not AudioCodec.MP3:
+            continue
+        if all(getattr(preset, field) == getattr(choice, field) for field in apart_from_bitrate):
+            return preset.name
+    return None
+
+
+def _bitrate(choice: FormatChoice) -> str:
+    """`, 192 kbps` for a download that converts at one, and nothing for a download that does not.
+
+    **Read from the choice, never from `MP3_QUALITY`** (`T-156`). The catalogue's default and this
+    download's bitrate are different questions — `with_audio_quality` derives a preset at another
+    one and copies the name across — so a suffix taken from the constant would name a 320 kbps
+    download 192. That is `T140-R3` exactly: a control and a row describing the same request
+    differently, and it is worth more than the one character it costs to avoid.
+
+    **Silence where there is no bitrate, rather than a zero or an "n/a"** (`T-156`'s third
+    criterion). `Audio only (original)` converts nothing and `MP3_BITRATES` are MP3's scale;
+    `presets.with_audio_quality` refuses the others outright, and a name implying otherwise would
+    be worse than the omission this fixes.
+    """
+    if choice.audio_codec is not AudioCodec.MP3 or not choice.audio_quality:
+        return ""
+    return f", {choice.audio_quality} kbps"
 
 
 def effective_format_text(choice: FormatChoice) -> str:

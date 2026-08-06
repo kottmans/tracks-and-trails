@@ -16,7 +16,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QEvent, QRect, Qt
@@ -29,7 +29,7 @@ from tests.ui.test_row_delegate import REPAINT_BUDGET_SECONDS, VIEWPORT_ROWS
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
-from tracks_and_trails.core.presets import AUDIO_MP3, BEST_VIDEO, to_request
+from tracks_and_trails.core.presets import AUDIO_MP3, BEST_VIDEO, MP3_QUALITY, to_request
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
     Progress,
@@ -71,6 +71,17 @@ from tracks_and_trails.ui.row_delegate import (
     SegmentState,
 )
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
+
+#: What every surface must call a default MP3 download (`T-156`).
+#:
+#: **The wording is transcribed here and the two values are read from the catalogue**
+#: (`ai/TESTING.md` §13). Writing `"Audio only (MP3), 192 kbps"` outright would restate the preset
+#: name and the bitrate that production already declares, and the test would then pass while the
+#: catalogue said something else; asking `format_name` for the answer would be asking production
+#: what to expect. This states the *rule* — the name, a comma, the bitrate, `kbps` — and takes the
+#: facts from `presets.py`.
+MP3_TEXT: Final = f"{AUDIO_MP3.name}, {MP3_QUALITY} kbps"
+
 
 # --- a queue the table can read ---------------------------------------------------------------
 
@@ -2257,7 +2268,7 @@ def test_a_retargeted_playlist_says_which_entries_got_which_format(
         f"the completed entry says {entries[0]!r}; it kept the old format and must say so, or "
         "nothing in the window names which row got which"
     )
-    assert entries[1] == entries[2] == f"Download as: {AUDIO_MP3.name}"
+    assert entries[1] == entries[2] == f"Download as: {MP3_TEXT}"
 
 
 def test_a_uniform_playlists_entries_stay_silent(
@@ -2283,7 +2294,7 @@ def test_a_uniform_playlists_entries_stay_silent(
     assert view.model.data(header, PRESET_PLACEHOLDER_ROLE) is None, (
         "a playlist whose members agree offered a Mixed placeholder"
     )
-    assert view.model.data(header, SELECTOR_ROLE) == f"Download as: {AUDIO_MP3.name}"
+    assert view.model.data(header, SELECTOR_ROLE) == f"Download as: {MP3_TEXT}"
 
     for row in (1, 2, 3):
         assert view.model.data(view.model.index(row, JOB_COLUMN), SELECTOR_ROLE) == "", (

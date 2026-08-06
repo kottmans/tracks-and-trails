@@ -8,7 +8,7 @@ every criterion asserts a rendered string rather than the record behind it.
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QEvent, QItemSelectionModel, Qt
@@ -16,6 +16,7 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
 from tests.qt_lifecycle import drain
+from tracks_and_trails.core.presets import AUDIO_MP3, MP3_QUALITY
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import HistoryEntry, HistoryRepository
 from tracks_and_trails.ui.history_view import (
@@ -49,6 +50,16 @@ from tracks_and_trails.ui.row_delegate import (
     RowDelegate,
 )
 from tracks_and_trails.ui.row_verbs import Verb
+
+#: What every surface must call a default MP3 download (`T-156`).
+#:
+#: **The wording is transcribed here and the two values are read from the catalogue**
+#: (`ai/TESTING.md` §13). Writing `"Audio only (MP3), 192 kbps"` outright would restate the preset
+#: name and the bitrate that production already declares, and the test would then pass while the
+#: catalogue said something else; asking `format_name` for the answer would be asking production
+#: what to expect. This states the *rule* — the name, a comma, the bitrate, `kbps` — and takes the
+#: facts from `presets.py`.
+MP3_TEXT: Final = f"{AUDIO_MP3.name}, {MP3_QUALITY} kbps"
 
 
 class FakeHistory:
@@ -1146,7 +1157,7 @@ def test_a_history_row_names_its_format_instead_of_reporting_a_yt_dlp_id(
     view = view_over([an_entry("h-1", format_used="251", format_choice=format_choice_of(request))])
 
     shown = view.model.text_at("h-1", FORMAT_COLUMN)
-    assert shown == AUDIO_MP3.name, (
+    assert shown == MP3_TEXT, (
         f"the row states its format as {shown!r}; it must use the same words the rest of the "
         "window uses for the same download"
     )
@@ -1266,7 +1277,7 @@ def test_the_queue_history_and_add_dialog_name_one_download_the_same_way(
 
         for surface, said in surfaces.items():
             assert said is not None, f"{surface} says nothing about the format"
-            assert AUDIO_MP3.name in said, (
+            assert MP3_TEXT in said, (
                 f"{surface} reads {said!r}, which does not name the download the way the other "
                 "surfaces do — this is T140-R3's defect on a fourth surface"
             )
@@ -1276,6 +1287,99 @@ def test_the_queue_history_and_add_dialog_name_one_download_the_same_way(
     finally:
         manager.shutdown()
         drain(qapp, [manager])
+
+
+def test_a_bitrate_the_catalogue_does_not_offer_is_named_on_every_surface(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-156`, at the bitrate that makes naming hard, and the line it must not cross.
+
+    **A 320 kbps MP3 matches no built-in**, because `audio_quality` is preset-owned and
+    `preset_name_for` compares every such field. Before this it therefore had no name at all: the
+    queue and History read `bestaudio/best` — the selector twice over — and the add dialog read
+    *Audio only (MP3)* with the bitrate bolted on beside it, so the three surfaces said three
+    different things about one download.
+
+    **Describing and identifying are answered separately, and this asserts both halves.** The row
+    says *Audio only (MP3), 320 kbps*, which is exactly true. `PRESET_ROLE` still answers `None`,
+    because that is what the row's *dropdown* shows as selected and a control claiming the 192 kbps
+    preset for a 320 kbps download is `T126-R4` — a control reading a built-in that does not
+    describe its row. The row speaks because the control cannot.
+    """
+    from tests.ui.test_queue_view import FakeQueue, make_job
+    from tracks_and_trails.core.job_state import JobStatus
+    from tracks_and_trails.core.presets import (
+        AUDIO_MP3,
+        format_choice_of,
+        to_request,
+        with_audio_quality,
+    )
+    from tracks_and_trails.downloader.manager import DownloadManager
+    from tracks_and_trails.ui.add_dialog import describe_preset
+    from tracks_and_trails.ui.format_text import preset_name_for
+    from tracks_and_trails.ui.queue_view import QueueModel
+    from tracks_and_trails.ui.row_delegate import PRESET_ROLE
+    from tracks_and_trails.ui.row_delegate import SELECTOR_ROLE as QUEUE_SELECTOR
+    from tracks_and_trails.ui.staging import Row
+
+    url = "https://example.invalid/watch?v=abc123"
+    loud = with_audio_quality(AUDIO_MP3, "320")
+    request = to_request(loud, url=url, output_directory=str(tmp_path))
+    expected = f"{AUDIO_MP3.name}, 320 kbps"
+
+    queue = FakeQueue()
+    queue.add(make_job("job-1", tmp_path, request=request, url=url, status=JobStatus.COMPLETED))
+    manager = DownloadManager(queue)
+    history = view_over(
+        [an_entry("job-1", format_used="251", format_choice=format_choice_of(request))]
+    )
+    try:
+        model = QueueModel(jobs=queue, manager=manager)
+        surfaces = {
+            "queue row": model.data(model.index(0, 0), QUEUE_SELECTOR),
+            "history row": history.model.text_at("job-1", FORMAT_COLUMN),
+            "add dialog": describe_preset(Row(url=url, generation=0), loud),
+        }
+
+        for surface, said in surfaces.items():
+            assert said is not None, f"{surface} says nothing about the format"
+            assert expected in said, (
+                f"{surface} reads {said!r}, which does not name a 320 kbps download the way the "
+                "other surfaces do"
+            )
+
+        assert preset_name_for(format_choice_of(request)) is None, (
+            "a 320 kbps download now identifies as a built-in preset, so the row's dropdown would "
+            "show a preset that does not describe it and a retarget would be refused as a no-op"
+        )
+        assert model.data(model.index(0, 0), PRESET_ROLE) is None, (
+            "the queue row's control claims a preset for a bitrate the catalogue does not offer"
+        )
+    finally:
+        manager.shutdown()
+        drain(qapp, [manager])
+
+
+def test_a_preset_that_converts_nothing_says_nothing_about_a_bitrate() -> None:
+    """`T-156`'s third criterion: silence, not a zero and not an "n/a".
+
+    `Audio only (original)` extracts the stream as the site served it, and `MP3_BITRATES` is MP3's
+    scale — `with_audio_quality` refuses every other codec outright. A name implying a bitrate
+    where none applies would be worse than the omission this task fixes.
+    """
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS, MP3_QUALITY, format_choice_of
+    from tracks_and_trails.ui.format_text import format_name
+
+    named = {preset.name: format_name(format_choice_of(preset)) for preset in BUILT_IN_PRESETS}
+    silent = [name for preset, name in named.items() if preset != AUDIO_MP3.name]
+
+    assert named[AUDIO_MP3.name] == f"{AUDIO_MP3.name}, {MP3_QUALITY} kbps", (
+        f"the one preset that converts at a bitrate reads {named[AUDIO_MP3.name]!r}"
+    )
+    for text in silent:
+        assert "kbps" not in text, (
+            f"{text!r} mentions a bitrate for a download that converts at none"
+        )
 
 
 def test_a_history_group_keeps_its_verbs_on_a_narrow_row(qapp: QApplication) -> None:
