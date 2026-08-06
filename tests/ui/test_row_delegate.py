@@ -48,6 +48,7 @@ from tracks_and_trails.ui.row_delegate import (
     JOB_ID_ROLE,
     MERGED_BLOCKS,
     MIN_BLOCK_WIDTH,
+    MIN_CONTROL_WIDTH,
     MIN_FRACTION_BAR,
     PADDING,
     PRESET_CHOICES_ROLE,
@@ -89,10 +90,10 @@ RENDER_WIDTH: Final = 700
 #: against the format line, the control against the tile — appears over a *range* and disappears
 #: again, so a range is what has to be asserted.
 #:
-#: The low end is where the row still draws a last line at all today. Narrower than that the format
-#: control takes the whole width beside the tile and there is nothing left to measure, which is
-#: `T-160`'s defect rather than this range's business.
-SWEEP_WIDTHS: Final = range(380, 1201)
+#: The low end is a window narrower than any this application opens at, because a user can drag one
+#: there and `T-160` is the record of what was drawn when they did. It was 380 until `T-160`: below
+#: that the control took the whole width beside the tile and the row had no last line to measure.
+SWEEP_WIDTHS: Final = range(300, 1201)
 
 #: `NFR-001` budgets ~100 ms for an interaction. Half a second here for the same reason the add
 #: dialog's tests use that figure: the property is that the call **does not wait**, which a
@@ -1658,6 +1659,118 @@ def test_the_verbs_do_not_narrow_the_format_line_above_them(qapp: QApplication) 
         f"the format line drew nothing at {len(SWEEP_WIDTHS) - inked} of {len(SWEEP_WIDTHS)} "
         "widths, so comparing it proves little"
     )
+
+
+def a_staging_row(extra: dict[int, Any] | None = None) -> dict[int, Any]:
+    """An add-dialog row: the tile, the control and the selector all present at once (`T-160`).
+
+    No verbs and no job behind it, which is what a staged row is — and the surface the maintainer
+    found this on, at the size the dialog opens at.
+    """
+    return a_row(
+        0,
+        extra={
+            SELECTOR_ROLE: FORMAT_LINE,
+            PRESET_ROLE: "Best video available",
+            PRESET_CHOICES_ROLE: ["Best video available", "Audio only (MP3)"],
+            **(extra or {}),
+        },
+    )
+
+
+def test_the_format_control_never_covers_the_thumbnail(qapp: QApplication) -> None:
+    """`T-160`, and checklist row 2.7's property, inherited 2026-08-05.
+
+    The control was anchored to the right edge and clamped to `body.left()`, with nothing between
+    it and the picture — so on a row narrower than roughly 300 px *Same as all* was drawn across
+    the thumbnail. `EDITOR_WIDTH` is 190 and the tile is 96 plus a 10 px gap, which is where that
+    number comes from.
+
+    **All three surfaces, because `_control_rect` is shared** and this was reported on the add
+    dialog and then confirmed on a queue row the same day. A playlist header is included because
+    its body is indented by the disclosure, which is exactly the arithmetic that used to differ
+    between the paint and the click.
+
+    **Swept, and asserted as geometry**: one width is what let `T-155` through.
+    """
+    for name, row in (
+        ("staging row", a_staging_row()),
+        ("queue row", a_download()),
+        ("playlist header", a_playlist({SELECTOR_ROLE: FORMAT_LINE})),
+    ):
+        delegate = RowDelegate()
+        model = RowsModel([row])
+        for width in SWEEP_WIDTHS:
+            option = QStyleOptionViewItem()
+            option.rect = QRect(0, 0, width, ROW_HEIGHT)
+            option.fontMetrics = QFontMetrics(option.font)
+            index = model.index(0, 0)
+
+            body, size = delegate._body_of(option, index)
+            tile = QRect(body.left(), body.top(), *size)
+            control = delegate._control_of(option, index)
+
+            assert control.intersected(tile).isEmpty(), (
+                f"on a {width}px {name} the control {control} is drawn over the thumbnail {tile}"
+            )
+            assert control.width() >= MIN_CONTROL_WIDTH, (
+                f"on a {width}px {name} the control is {control.width()}px, under the stated "
+                f"{MIN_CONTROL_WIDTH}; it narrows to that and no further, and is never withheld"
+            )
+            assert control.right() <= body.right(), (
+                f"on a {width}px {name} the control runs off the row's right edge"
+            )
+
+
+@pytest.mark.parametrize("tile", [THUMBNAIL_SIZE[0], CHILD_THUMBNAIL[0]])
+def test_the_control_stays_clear_of_the_tile_at_any_body_width(
+    qapp: QApplication, tile: int
+) -> None:
+    """`T-160`, below the widths a window reaches, and for a child row's smaller picture.
+
+    **The clamp is the guarantee; the text minimum is only what usually keeps them apart.**
+    Subtracting `MIN_TEXT_WIDTH` happens to hold the control clear of a 96 px tile down to about a
+    186 px row, which is narrower than the swept range — so without this the clamp would be
+    untested code that two unrelated constants were standing in for. Here the body is driven down
+    until only the clamp can be doing the work.
+
+    A child's tile is smaller and its body is indented, so the two sizes are checked rather than
+    assuming the full one is the harder case.
+    """
+    delegate = RowDelegate()
+    option = QStyleOptionViewItem()
+    line = QFontMetrics(option.font).height()
+
+    for body_width in range(60, 500):
+        body = QRect(PADDING, PADDING, body_width, ROW_HEIGHT - 2 * PADDING)
+        picture = QRect(body.left(), body.top(), tile, tile)
+        control = delegate._control_rect(body, line, tile=tile)
+        assert control.intersected(picture).isEmpty(), (
+            f"with a {body_width}px body and a {tile}px tile the control {control} is drawn over "
+            f"the picture {picture}"
+        )
+
+
+def test_the_thumbnail_is_drawn_the_same_with_a_control_and_without(
+    qapp: QApplication,
+) -> None:
+    """`T-160` from the pixels, which is where the maintainer saw it.
+
+    The geometry above says the rectangles do not meet; this says nothing was painted over the
+    picture, which is the claim a user could check. The row with no choices draws no control at
+    all, so its tile is what an uncovered one looks like.
+    """
+    covered = a_download()
+    bare = a_download({PRESET_CHOICES_ROLE: None})
+    tile = QRect(PADDING, PADDING, *THUMBNAIL_SIZE)
+
+    for width in SWEEP_WIDTHS:
+        with_control = paint_rows(RowsModel([covered]), RowDelegate(), 0, width=width)
+        without = paint_rows(RowsModel([bare]), RowDelegate(), 0, width=width)
+        assert with_control.copy(tile) == without.copy(tile), (
+            f"at {width}px the row's picture is drawn differently once the row has a format "
+            "control, so the control is being painted over the thumbnail"
+        )
 
 
 def test_a_merged_block_takes_the_worst_state_it_covers() -> None:

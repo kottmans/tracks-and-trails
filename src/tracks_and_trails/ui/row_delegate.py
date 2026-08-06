@@ -238,6 +238,26 @@ ROW_HEIGHT: Final = THUMBNAIL_SIZE[1] + 2 * PADDING
 #: How wide the row's editor is drawn. Wide enough for the longest preset name plus its arrow.
 EDITOR_WIDTH: Final = 190
 
+#: The narrowest the format control is drawn before it stops narrowing (`T-160`).
+#:
+#: **The control narrows; it is never withheld and never drawn over the picture.** That is the
+#: promise, stated because a control that silently shrinks and one that silently vanishes are
+#: different ones. Withholding was the alternative and was rejected: the `⋯` exists so a dropped
+#: verb is still reachable, and there is no equivalent for the format — `EDIT_KEY` opens an editor
+#: in this very rectangle, so a row that withheld it would have no route to the format at all.
+#:
+#: The number is the combo's arrow plus enough of the name to tell one choice from another. Below
+#: it the control reads as a button with no label, which looks broken rather than narrow.
+MIN_CONTROL_WIDTH: Final = 64
+
+#: What the row's first two lines keep before the control stops taking width from them (`T-160`).
+#:
+#: The headline is the row's identity and `HEADLINE_ROLE` is the one thing every surface answers —
+#: "a row nobody can identify is worse than a long URL". This is enough for a recognisable prefix
+#: of one. It is a preference, not a floor: `MIN_CONTROL_WIDTH` wins on a row too narrow for both,
+#: because a control that has shrunk out of existence is worse than a title that has been elided.
+MIN_TEXT_WIDTH: Final = 120
+
 #: The height of the painted progress bar.
 BAR_HEIGHT: Final = 4
 
@@ -523,37 +543,30 @@ class RowDelegate(QStyledItemDelegate):
         muted = QColor(primary)
         muted.setAlpha(170)
 
-        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
-
         # **A playlist and its entries** (`T-140`, `UX-005` rows 9 and 9c). The disclosure sits in
         # the same indent the children get, so a group and its entries share a left edge instead
         # of stepping twice; and a child's tile is smaller, because an entry inherits its group's
         # format and has two lines to say rather than four.
-        depth = _depth(index)
+        #
+        # Drawn against the *unindented* body, which is where `_twisty_rect` hit-tests it.
         expanded = index.data(EXPANDED_ROLE)
         if isinstance(expanded, bool):
-            self._paint_twisty(painter, body, muted, opened=expanded)
-        if depth:
+            self._paint_twisty(
+                painter,
+                option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING),
+                muted,
+                opened=expanded,
+            )
+        if _depth(index):
             self._paint_rail(painter, option.rect, muted)
-            body = QRect(
-                body.left() + depth * INDENT,
-                body.top(),
-                max(body.width() - depth * INDENT, 0),
-                body.height(),
-            )
-        elif isinstance(expanded, bool):
-            body = QRect(
-                body.left() + TWISTY_WIDTH,
-                body.top(),
-                max(body.width() - TWISTY_WIDTH, 0),
-                body.height(),
-            )
 
-        tile = CHILD_THUMBNAIL if depth else THUMBNAIL_SIZE
+        # **The same body and the same text area the click and the hover resolve** (`T-160`). The
+        # two were computed separately and disagreed about the indent, which did not show while
+        # the control was anchored to the right edge alone and would have the moment it started
+        # measuring from the row's left.
+        body, text_area = self._verb_area(option, index)
+        _, tile = self._body_of(option, index)
         self._paint_tile(painter, body, index, size=tile)
-
-        text_left = body.left() + tile[0] + GAP
-        text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
 
         # **The control is drawn on every row that has one** (`UX-004` §1, `T118-R12`). Reserving
         # the slot and painting nothing in it was the defect: an empty 190 px gap is not a visible
@@ -563,12 +576,11 @@ class RowDelegate(QStyledItemDelegate):
         # `QComboBox` still exists only for the row being edited, so the widget-per-row cost that
         # `T118-R10` measured does not come back. What the user sees is identical either way,
         # because both are drawn by the same style.
-        if self._editable(index):
-            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
-            if not self._is_being_edited(index):
-                # Suppressed only under the live editor, which occupies the same rectangle —
-                # otherwise the painted affordance shows through the real control's edges.
-                self._paint_control(painter, body, option, index)
+        #
+        # Suppressed only under the live editor, which occupies the same rectangle — otherwise the
+        # painted affordance shows through the real control's edges.
+        if self._editable(index) and not self._is_being_edited(index):
+            self._paint_control(painter, option, index)
 
         verbs_left = self._paint_verbs(painter, text_area, body, option, index)
         self._paint_text(
@@ -576,7 +588,7 @@ class RowDelegate(QStyledItemDelegate):
         )
         painter.restore()
 
-    def _control_rect(self, body: QRect, line: int = 0) -> QRect:
+    def _control_rect(self, body: QRect, line: int = 0, *, tile: int = THUMBNAIL_SIZE[0]) -> QRect:
         """Where the row's format control sits. One definition, so the painted affordance, the
         live editor and the click target cannot disagree about where it is.
 
@@ -593,17 +605,71 @@ class RowDelegate(QStyledItemDelegate):
         into uselessness — so the control moved instead, which also makes the older comment true
         rather than leaving two correct halves that contradict each other.
 
+        **It narrows before the picture; it never crosses it** (`T-160`). The left edge was clamped
+        to `body.left()`, which is where `_paint_tile` draws the thumbnail — so a row narrower than
+        roughly 300 px drew *Same as all* across the picture. Visible at the size the add dialog
+        opens at, so every user met it before they met anything else.
+
+        **This is `T-136`'s family, one collision over**, and it gets the same answer from the
+        other side: there the control moved because the selector could not give, and here it
+        narrows because the picture cannot. What it gives up is `MIN_TEXT_WIDTH` first and then its
+        own width down to `MIN_CONTROL_WIDTH` — stated at those constants, because a control that
+        silently shrinks and one that silently vanishes are different promises and this one shrinks.
+
         `line` is the font's line height; `0` keeps the old centring for a caller that has no
-        metrics to hand, and every caller in this module has them.
+        metrics to hand, and every caller in this module has them. `tile` is the picture it must
+        stay clear of, which is smaller on a playlist's entry than on an ordinary row.
         """
         height = min(CONTROL_HEIGHT, body.height())
         band = min(2 * line, body.height()) if line else body.height()
+        beside = max(body.right() - (body.left() + tile + GAP), 0)
+        width = min(
+            max(min(beside - MIN_TEXT_WIDTH - GAP, EDITOR_WIDTH), MIN_CONTROL_WIDTH), beside
+        )
         return QRect(
-            max(body.right() - EDITOR_WIDTH, body.left()),
+            body.right() - width,
             body.top() + max(band - height, 0) // 2,
-            min(EDITOR_WIDTH, body.width()),
+            width,
             height,
         )
+
+    def _body_of(
+        self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
+    ) -> tuple[QRect, tuple[int, int]]:
+        """The row's body once its indent is taken out, and the tile that sits at its left edge.
+
+        **One definition, because two of them disagreed** (`T-160`). `paint` indented the body for
+        a group's disclosure and for a child's nesting; `_verb_area`, which the click and the hover
+        resolve against, did not. Nothing showed while every rectangle was measured from the row's
+        *right* edge — the indent does not move that — and the first thing measured from the left
+        would have been drawn in one place and clicked in another.
+        """
+        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        depth = _depth(index)
+        indent = (
+            depth * INDENT
+            if depth
+            else (TWISTY_WIDTH if isinstance(index.data(EXPANDED_ROLE), bool) else 0)
+        )
+        if indent:
+            body = QRect(
+                body.left() + indent,
+                body.top(),
+                max(body.width() - indent, 0),
+                body.height(),
+            )
+        return body, (CHILD_THUMBNAIL if depth else THUMBNAIL_SIZE)
+
+    def _control_of(
+        self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
+    ) -> QRect:
+        """Where this row's control sits, resolved from the row itself (`T-160`).
+
+        The paint, the click and the editor's geometry all come through here, so none of them can
+        hold a different idea of the row's indent or of the tile the control has to clear.
+        """
+        body, tile = self._body_of(option, index)
+        return self._control_rect(body, option.fontMetrics.height(), tile=tile[0])
 
     def _verbs_of(self, index: QModelIndex | _PersistentIndex) -> tuple[Verb, ...]:
         """What the model says this row offers. Empty on a surface that offers nothing."""
@@ -1009,7 +1075,6 @@ class RowDelegate(QStyledItemDelegate):
     def _paint_control(
         self,
         painter: QPainter,
-        body: QRect,
         option: QStyleOptionViewItem,
         index: QModelIndex | _PersistentIndex,
     ) -> None:
@@ -1041,7 +1106,7 @@ class RowDelegate(QStyledItemDelegate):
             label = INHERITED_TEXT if index.data(PRESET_INHERITABLE_ROLE) else ""
 
         box = QStyleOptionComboBox()
-        box.rect = self._control_rect(body, option.fontMetrics.height())
+        box.rect = self._control_of(option, index)
         box.palette = option.palette
         box.currentText = label
         box.state = QStyle.StateFlag.State_Enabled
@@ -1288,17 +1353,22 @@ class RowDelegate(QStyledItemDelegate):
     def _verb_area(
         self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
     ) -> tuple[QRect, QRect]:
-        """The row's body and the area the verbs are laid out in — one definition, three readers.
+        """The row's body and the area its text and verbs are laid out in — one definition.
 
         Extracted at `T-134`, when hover became the third thing that had to agree with the paint
         and the click about where the buttons are. Two copies of this arithmetic were already one
-        more than `_verb_rects`' own rule allows.
+        more than `_verb_rects`' own rule allows, and at `T-160` `paint` stopped keeping a fourth.
+
+        **The slot taken out is the control's real width, not `EDITOR_WIDTH`** (`T-160`). The
+        control narrows on a row that cannot hold all of it, and reserving the full width there
+        would leave a gap the row has no way to spend.
         """
-        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
-        text_left = body.left() + THUMBNAIL_SIZE[0] + GAP
+        body, tile = self._body_of(option, index)
+        text_left = body.left() + tile[0] + GAP
         text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
         if self._editable(index):
-            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
+            control = self._control_of(option, index)
+            text_area.setWidth(max(text_area.width() - control.width() - GAP, 0))
         return body, text_area
 
     def watch_hover(self, view: QAbstractItemView) -> None:
@@ -1409,7 +1479,7 @@ class RowDelegate(QStyledItemDelegate):
 
         if not self._editable(index):
             return False
-        if not self._control_rect(body, QFontMetrics(option.font).height()).contains(where):
+        if not self._control_of(option, index).contains(where):
             return False
         view = cast("QAbstractItemView | None", self.parent())
         if view is None:
@@ -1542,10 +1612,9 @@ class RowDelegate(QStyledItemDelegate):
         index: QModelIndex | _PersistentIndex,
     ) -> None:
         """Put the editor in the slot `paint` already reserved for it, on the row it belongs to."""
-        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
         # **The same rectangle the affordance was painted in** (`T118-R12`). One definition, so the
         # control does not move at the moment the user clicks it.
-        editor.setGeometry(self._control_rect(body, option.fontMetrics.height()))
+        editor.setGeometry(self._control_of(option, index))
 
 
 def _text(index: QModelIndex | _PersistentIndex, role: int) -> str:
