@@ -89,7 +89,7 @@ residue and blocks the first public release.
 
 ### Queue and execution
 
-- **REQ-012** — Maintain a persistent download queue. Queue and history survive application restart and unexpected termination.
+- **REQ-012** — Maintain a persistent download queue. The queue survives application restart and unexpected termination. *(This said "queue and history"; `REQ-020` was withdrawn 2026-08-06 and there is no history to survive anything.)*
 - **REQ-013** — Run a bounded, user-configurable number of downloads concurrently (default 3, minimum 1).
 - **REQ-014** — Per job, show live progress: percent, downloaded/total size, speed, ETA, current stage (probing, downloading video, downloading audio, merging, post-processing).
 - **REQ-015** — Per job, support cancel, retry, and remove. Cancelling must terminate the underlying work promptly and must not leave the UI unresponsive. Removing takes a job out of the queue and never deletes a file from disk. **Pause and resume are queue-level, not per-job** (`UX-001`, maintainer, 2026-07-29): pausing lets in-flight downloads finish and starts nothing new, so no partial file is ever created by pausing. Remove never deletes a file; removing a running job cancels it first. *(This read "Per job, support cancel, pause, resume, retry, and remove" until `T-080`'s decision; `core/job_state.py` still carries `RUNNING → PAUSED → RUNNING` edges that nothing now reaches, which `T-080` owns. `UX-001` holds the rationale and its reopening condition — per-job pause becomes coherent when `REQ-017` lands resume in Phase 3.)*
@@ -112,18 +112,28 @@ residue and blocks the first public release.
 *(Was **Library and results**. Renamed 2026-08-06 by `T-169`: "library" is the product this
 application is **not**, and the heading was the first place that read otherwise.)*
 
-- **REQ-020** — Keep a **private completion ledger**: the minimum record needed to tell that a URL
-  has been downloaded before, and when. It is infrastructure for `REQ-022`, **not a browseable
-  catalogue** — there is no history list, no per-record view and no selected-record removal. It is
-  kept until the user clears it, with no automatic expiry, and **Clear download records** in
-  Settings is the one action that empties it. Clearing records never deletes a downloaded file
-  (`DAT-005`), and the ledger never becomes a second home for credentials (`DAT-006`).
+- **REQ-020** — ~~Maintain a history of completed downloads.~~ **Withdrawn 2026-08-06.** Tracks &
+  Trails keeps **no record of what has been downloaded** — not a browseable list, and not a private
+  ledger behind one. A completed download is visible on its queue row until the user clears it, and
+  after that the application knows nothing about it.
+  *(This was narrowed to a private ledger earlier the same day and withdrawn once the ledger's cost
+  was visible: five review findings, two of them High, none about the feature and all about keeping
+  the data. A downloader that cannot say what you downloaded last month is the product; keeping a
+  durable index of a user's viewing to answer one warning is not.)*
 - **REQ-021** — Open a completed file, or reveal it in the system file manager, **from its queue
   row, for as long as that row exists**. Once the row is cleared the application does not claim to
   know where the file is: it does not follow files a user moves, renames or processes, and offers
   no route to a file it is no longer showing.
-- **REQ-022** — Detect that a URL has been downloaded before and warn before re-downloading, with
-  an override.
+- **REQ-022** — **A duplicate in the queue is allowed, and confirmed rather than refused.** When a
+  URL being added is already in the queue — or appears twice in one paste — say so and let the user
+  decide. Proceeding is one action and is not discouraged: wanting the same URL twice, at two
+  formats or after a failure, is an ordinary thing to want, and `UX-005` §5's rule that nothing is
+  offered which would be refused cuts both ways.
+  **Scoped to the live queue, 2026-08-06.** It was *"detect that a URL has been downloaded before"*,
+  which needs durable history; this is the part that earns its cost, and it needs no storage at all.
+  Beyond the queue there is no warning: a repeat download lands beside the first as `name (1)` under
+  `DAT-002`'s collision policy, which is what most downloaders do and what a user can see for
+  themselves.
 
 ### Configuration and environment
 

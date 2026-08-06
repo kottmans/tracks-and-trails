@@ -171,21 +171,3 @@ def test_a_custom_selector_is_named_by_its_own_syntax() -> None:
     custom = replace(described, format_selector="bestvideo[height<=480]+bestaudio")
 
     assert format_name(custom) == "bestvideo[height<=480]+bestaudio"
-
-
-def test_the_ledger_keeps_no_opinion_about_naming() -> None:
-    """`T-170`: History was the third surface, and its removal must not take the rule with it.
-
-    A regression guard rather than a behaviour: `format_text` is imported and exercised above by
-    the two surfaces that remain, and this states in one place that a third one leaving is not the
-    same as the rule leaving. `completed_at` is the only thing the ledger now records about a
-    finished download besides its URL.
-    """
-    from tracks_and_trails.persistence.repositories import HistoryEntry
-
-    modelled = set(HistoryEntry.__dataclass_fields__)
-
-    assert modelled == {"id", "url", "completed_at"}, (
-        f"the ledger models {sorted(modelled)}; DAT-006 §3 keeps three fields, and a format among "
-        "them would be a presentation field for a surface that no longer exists"
-    )

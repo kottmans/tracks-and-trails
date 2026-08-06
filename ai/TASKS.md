@@ -1612,9 +1612,16 @@ Neither is this task's to decide alone; both need an entry.
 
 ---
 
-### T-114 — Warn when a URL has been downloaded before
+### T-114 — Confirm before queueing a URL the queue already holds
 
-**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
+**Status:** Proposed — **rescoped 2026-08-06 by maintainer decision.** It was *"warn when a URL has
+been downloaded before"*, which needs durable history. `REQ-020` is withdrawn and there is none:
+this is now a check against the **live queue and the current paste**, in memory, with nothing
+stored.
+
+**A duplicate is allowed and confirmed, not refused.** Wanting the same URL twice — at two formats,
+or after a failure — is an ordinary thing to want, so proceeding is one action and is not
+discouraged.
 **Owner:** Implementer
 **Priority:** Low — the smallest item in the phase
 **Phase:** Phase 3
@@ -1730,55 +1737,6 @@ must not be treated as the same option.
 - Replacing the completion ledger required by `REQ-022`
 - Reconstructing a History tab by scanning users' download directories
 - Media-library features such as ratings, play counts, tagging, organisation or file watching
-
----
-
-### T-172 — Delete the ledger's removal API, which nothing calls
-
-**Status:** Proposed — **found by the Implementer, 2026-08-06**, sweeping for what `T-170` left
-behind. **Simplification only: no behaviour changes.**
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 3
-**Depends on:** `T-170`, complete
-**Relevant context:** `DAT-005`, `DAT-006`, `T-125`, `T-144`, `persistence/repositories.py`
-(`HistoryRepository`), `persistence/store.py`, `persistence/writer.py`
-**Affected surfaces:** `persistence/`, `tests/unit/test_persistence.py`
-**Risk:** Low — it is deletion, and the gate is that the suite still passes without the tests that
-only exercised the deleted code
-
-#### Scope
-
-**Selected-record removal went with the list it selected from**, and its plumbing did not. `T-125`
-built it through three layers and every one of them is now unreachable from the application:
-
-| Dead | Layer |
-|---|---|
-| `HistoryRepository.remove(entry_ids)` | repository |
-| `HistoryRepository.get(entry_id)` | repository |
-| `HistoryRepository.all_entries()` | repository — the History view was its only caller |
-| `PersistentJobStore.remove_history(...)` | store |
-| `QueueWriter.remove_history(...)` and its token handler | writer |
-
-Each is still covered by tests, which is why nothing reports them: **a test is a caller**, and a
-suite is not a check that production uses what it holds.
-
-**`clear()` stays** — it is what *Clear download records* calls, and `DAT-005` §2's reasoning for
-keeping it a separate, explicitly named method is untouched.
-
-#### Acceptance criteria
-
-- The five entries above are gone, along with the tests whose only subject was them
-- **`DAT-005` §2's guarantee keeps a test.** `test_clearing_touches_no_file` already asserts it
-  against `clear()`; removal's version of it must not be deleted without checking that one covers
-  the same promise
-- `HistoryEntry` is constructed in exactly one production place after this, and read in one
-- The full suite passes, and `mypy` finds no now-unused imports
-
-#### Out of scope
-
-- Dropping the table's unused columns. `DAT-006` §5 refuses that and the reasoning is unchanged
-- `HistoryRepository`'s name. It is the ledger now; renaming it is `T-174`
 
 ---
 
@@ -2314,6 +2272,57 @@ Assert, on `windows-latest`:
 
 ## Complete
 
+### T-172 — Delete the ledger's removal API, which nothing calls
+
+**Status:** **Cancelled — 2026-08-06, moot.** It proposed deleting the ledger's unreachable removal
+API. `REQ-020` was withdrawn the same day and the whole ledger went with it, including everything
+this task named. Kept as the record that the dead code was found before the feature was.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3
+**Depends on:** `T-170`, complete
+**Relevant context:** `DAT-005`, `DAT-006`, `T-125`, `T-144`, `persistence/repositories.py`
+(`HistoryRepository`), `persistence/store.py`, `persistence/writer.py`
+**Affected surfaces:** `persistence/`, `tests/unit/test_persistence.py`
+**Risk:** Low — it is deletion, and the gate is that the suite still passes without the tests that
+only exercised the deleted code
+
+#### Scope
+
+**Selected-record removal went with the list it selected from**, and its plumbing did not. `T-125`
+built it through three layers and every one of them is now unreachable from the application:
+
+| Dead | Layer |
+|---|---|
+| `HistoryRepository.remove(entry_ids)` | repository |
+| `HistoryRepository.get(entry_id)` | repository |
+| `HistoryRepository.all_entries()` | repository — the History view was its only caller |
+| `PersistentJobStore.remove_history(...)` | store |
+| `QueueWriter.remove_history(...)` and its token handler | writer |
+
+Each is still covered by tests, which is why nothing reports them: **a test is a caller**, and a
+suite is not a check that production uses what it holds.
+
+**`clear()` stays** — it is what *Clear download records* calls, and `DAT-005` §2's reasoning for
+keeping it a separate, explicitly named method is untouched.
+
+#### Acceptance criteria
+
+- The five entries above are gone, along with the tests whose only subject was them
+- **`DAT-005` §2's guarantee keeps a test.** `test_clearing_touches_no_file` already asserts it
+  against `clear()`; removal's version of it must not be deleted without checking that one covers
+  the same promise
+- `HistoryEntry` is constructed in exactly one production place after this, and read in one
+- The full suite passes, and `mypy` finds no now-unused imports
+
+#### Out of scope
+
+- Dropping the table's unused columns. `DAT-006` §5 refuses that and the reasoning is unchanged
+- `HistoryRepository`'s name. It is the ledger now; renaming it is `T-174`
+
+---
+
+
 ### T-170 — Replace the History tab with a small ledger
 
 **Status:** **Complete — 2026-08-06.** The History view, its tab and the tab widget are gone; the
@@ -2339,6 +2348,13 @@ would have been a window that does not start.
 
 *(Was: Proposed — **maintainer direction, 2026-08-06.** This is the implementation slice after
 `T-169` makes the product contract say what is now intended.)*
+
+**The ledger half is withdrawn, 2026-08-06.** The visible removal — no History tab, no tab widget,
+one Queue surface, open and reveal on a live row — stands and was accepted in review. What went
+with `REQ-020` is everything behind it: migration `0008`'s key, `core/urls.py`, the repository, the
+completion record, and the `Clear download records` control that was the Settings shell's only
+reason to exist. **The Settings menu went too** rather than shipping an empty screen; `T-146`
+brings it back with the settings `REQ-023` names.
 **Owner:** Implementer
 **Priority:** Medium-High — it removes a substantial UI and runtime surface while preserving the
 one durable behaviour that still earns its cost
@@ -2409,6 +2425,13 @@ the one change here that can lose a user's data. *(Was: Proposed — **maintaine
 2026-08-06.** Tracks & Trails is a lightweight downloader, not a media-library tracker. Reconcile
 the product contract before deleting a widget, so the old feature is not recreated by a still-live
 requirement.)*
+
+**Superseded in part, 2026-08-06.** The boundary this task drew — one Queue surface, no browseable
+History — stands and is implemented. **The ledger it specified does not exist**: `T169-R1` found
+`DAT-006` self-headed as Accepted when the maintainer's direction had established the boundary and
+not the detailed choices, and the ruling that followed was that Tracks & Trails keeps no record of
+what has been downloaded at all. `DAT-006` is **Withdrawn**; `REQ-020` is withdrawn; `REQ-022` is
+scoped to the live queue.
 **Owner:** Planner
 **Priority:** High — `REQ-020`, `REQ-021`, `DAT-005`, `UX-005` and the plan currently require the
 opposite product

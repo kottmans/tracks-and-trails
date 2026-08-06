@@ -122,9 +122,7 @@ class FakeQueue:
         if done is not None:
             done(None)
 
-    def complete(
-        self, job: Job, _format_used: str | None, done: Callable[[str | None], None]
-    ) -> None:
+    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
         self.update(job, done)
 
     def requeue_at_end(self, job: Any, done: Any) -> None:

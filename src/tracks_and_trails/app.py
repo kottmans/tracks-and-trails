@@ -281,7 +281,7 @@ def compose(
     from tracks_and_trails.downloader.environment import find_ffmpeg
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.persistence import db
-    from tracks_and_trails.persistence.repositories import HistoryRepository, JobRepository
+    from tracks_and_trails.persistence.repositories import JobRepository
     from tracks_and_trails.persistence.store import PersistentJobStore
     from tracks_and_trails.persistence.writer import QueueWriter, open_connection_factory
     from tracks_and_trails.ui.main_window import MainWindow
@@ -409,28 +409,6 @@ def compose(
         """Route a clear-finished to the manager (`REQ-016`, `T-081`)."""
         manager.clear_completed()
 
-    def clear_records() -> None:
-        """Empty the completion ledger (`REQ-020`, `DAT-005` amended 2026-08-06, `T-170`).
-
-        **Through the store rather than the manager.** Removing a *job* can mean stopping a
-        session, so the manager owns that; a completion record is a record of something already
-        finished — there is no session, nothing to cancel, and nothing for the manager to know.
-
-        **Its own call rather than `remove([])`.** That method's empty guard exists so an empty
-        selection cannot become an accidental `DELETE FROM history`, and routing a deliberate clear
-        through the one method whose job is to refuse it would delete the guard and the reasoning
-        together (`DAT-005` §2).
-
-        Nothing refreshes afterwards: there is no list to redraw. The Settings screen re-reads its
-        count when it is next opened, which is the only place the number is shown.
-        """
-
-        def settle(error: str | None) -> None:
-            if error is not None:
-                window.report_transiently(f"the download records were not cleared: {error}")
-
-        store.clear_history(settle)
-
     window = MainWindow(
         geometry_file,
         manager=manager,
@@ -444,7 +422,6 @@ def compose(
         on_remove_requested=remove_job,
         on_reorder_requested=reorder_queue,
         on_clear_requested=clear_finished,
-        on_clear_records_requested=clear_records,
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
@@ -452,7 +429,6 @@ def compose(
         # `T-100`: read-only over the table `T-085` writes. A third narrow protocol rather than
         # widening `QueueReader` — the history view enumerates records and nothing else, and a
         # reader that could also reach jobs would let it.
-        records=HistoryRepository(connection),
     )
     # The control follows the queue, not only the other way round: anything that pauses the pool
     # without going through the toolbar still leaves the toggle telling the truth (`T-080`).

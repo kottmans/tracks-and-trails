@@ -2628,22 +2628,15 @@ policy here is about *when*, not *where*.
 **The boundary is the part that does not move.** A record is not a file, and emptying records never
 deletes downloads — that is why this entry exists and `T-169` does not touch it.
 
-**What changes is that there is one action instead of two, and it lives in Settings.** Selected-record
-removal goes with the list it selected from: `REQ-020` no longer promises a browseable history, so
-there is no selection to scope a removal to. `Clear history` from the 2026-08-05 amendment below
-becomes **`Clear download records`** in a Settings data section.
+**What changes is that there is nothing left to clear.** *(This said the two actions became one,
+`Clear download records`, in a Settings data section. Later the same day `REQ-020` was withdrawn
+outright — there are no records — so that action is gone too, and this entry now governs nothing
+that exists.)*
 
-**The rename is the same ruling as that amendment's §1, applied to a new noun.** It argued that
-*Clear all* is "the phrasing most likely to be read as deleting downloads" because *all* has no
-object and the user supplies one — their files. *History* named the thing it emptied and was the
-right word for a visible list. With the list gone, *history* is a word for a feature the user can no
-longer see, and **records** names what is actually emptied. The distinction this entry draws is
-carried by the noun in both cases.
-
-**§2 stands and is now load-bearing in a second way.** A wholesale clear remains its own explicitly
-named method rather than removal with the ids left out; with per-record removal gone it is the only
-delete, and the narrow-signature guard it describes has nothing left to protect it from except
-itself.
+**The boundary this entry exists for outlives the feature it was written about.** A record is not a
+file, and nothing in this application deletes a user's downloads — that is `UX-001`'s promise and it
+is untouched by there being no records. Anything later that stores what was downloaded inherits this
+entry's rule rather than getting to decide it again.
 
 The 2026-08-05 amendment and the original entry follow unaltered; both are historically true of the
 feature as it stood.
@@ -3093,10 +3086,10 @@ current truth for the queue's own groups.
 is a control that offers a choice the user does not have, which is the same objection §5 makes to
 drawing a verb that would be refused.
 
-**`Clear history` leaves the toolbar** with the list it emptied; the one remaining action is
-`Clear download records` in Settings (`DAT-005`, amended the same day). `Clear finished` stays: it
-clears completed **queue rows**, which is a different thing from clearing records, and `T-170` must
-keep them distinguishable.
+**`Clear history` leaves the toolbar** with the list it emptied, and nothing replaces it: `REQ-020`
+was withdrawn later the same day, so there are no records to clear from anywhere. `Clear finished`
+stays — it clears completed **queue rows**, and with no ledger beside it there is nothing left for
+it to be confused with.
 
 The original entry and its 2026-08-05 amendment follow unaltered.
 
@@ -3791,7 +3784,42 @@ PowerShell 5.1 (`bff9713`), so it is no longer a prerequisite for anything.
 
 ## DAT-006 — The completion ledger: what it stores, and what it deliberately does not
 
-**Status:** Accepted
+### Withdrawn 2026-08-06 — there is no ledger, so there is nothing to decide
+
+**Status:** **Withdrawn**, by maintainer decision the same day it was written. **It was never
+accepted**: `T169-R1` found it self-headed as *Accepted "on maintainer direction"* when the
+direction had established the product boundary — a lightweight downloader with no browseable
+History — and not the detailed choices in §§1–6. That finding is correct and is the same authority
+distinction as `T145-R1` and `T144-R1`: satisfying a decision's trigger makes it eligible for a
+ruling, not self-ratifying.
+
+**The ruling, when it came, was that the ledger should not exist.** `REQ-020` is withdrawn: Tracks &
+Trails keeps no record of what has been downloaded, not even a private one. `REQ-022` is scoped to
+the live queue, where a duplicate is confirmed rather than refused and no storage is involved.
+
+**What the two review rounds actually showed.** Five findings, two of them High — an unratified
+decision, retained credentials, a non-atomic backfill, credential-lowercasing, and duplicate rows
+that broke the one-row invariant. **Not one was about the warning being wrong or unwanted; every one
+was about keeping the data.** A feature whose entire cost is in its storage, and whose storage is
+the only durable index of a user's viewing this application holds, is a feature a lightweight
+downloader can decline.
+
+**What survives, for whoever reads this next:**
+
+- **The failure-direction argument** was sound and is worth reusing: a missed duplicate costs a
+  warning that does not appear; a false one warns about the wrong file. Only the second lies.
+- **§5's reasoning against dropping columns** — SQLite makes a column drop a table rewrite, on a
+  table holding a user's own records — still governs migration `0008`'s now-unused
+  `normalised_url`, which stays where it is.
+- **`T170-R1`'s lesson outlives its migration**: a Python step that runs after its version bump has
+  committed leaves a database that is durably "migrated" with the data half missing, and no later
+  run will revisit it. If a data-transforming migration is ever written here, it belongs inside the
+  transaction.
+
+The original entry follows unaltered, as the record of a design that was built, reviewed and
+withdrawn inside one day.
+
+**Status:** ~~Accepted~~ **Withdrawn** — see above
 **Date:** 2026-08-06
 **Raised by:** `T-169`, on maintainer direction of the same day.
 **Amends:** `DAT-001`, `DAT-005`, `UX-005` — see the three amendment notes below, appended to those

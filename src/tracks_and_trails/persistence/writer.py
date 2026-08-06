@@ -44,12 +44,7 @@ from typing import Any, Protocol
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.persistence.repositories import (
-    HistoryEntry,
-    HistoryRepository,
-    JobRepository,
-    complete_job,
-)
+from tracks_and_trails.persistence.repositories import JobRepository
 
 
 class ConnectionFactory(Protocol):
@@ -135,46 +130,18 @@ class _Worker(QObject):
         self._perform(token, lambda connection: JobRepository(connection).remove(job_id))
 
     @Slot(int, object)
-    def remove_history(self, token: int, entry_ids: Sequence[str]) -> None:
-        """Delete the named history records, then report (`DAT-005`, `T-125`).
-
-        On this thread for `ARC-005`'s reason, unqualified: it is a write. It also has to be
-        ordered against `complete()`, which writes a history row in the same transaction as a job's
-        completion — a removal asked for while a completion is still in flight must land behind it,
-        or the record comes back.
-        """
-        self._perform(token, lambda connection: HistoryRepository(connection).remove(entry_ids))
-
-    @Slot(int, object)
-    def clear_history(self, token: int, _: object) -> None:
-        """Delete **every** history record, then report (`T-144`, `DAT-005` amended 2026-08-05).
-
-        Its own slot rather than `remove_history` with an empty list, which is the repository's
-        ruling carried up: an empty selection removes nothing, deliberately, and a clear that
-        arrived as one would be indistinguishable from that at every layer it passed through.
-
-        Ordered against `complete()` for `remove_history`'s reason — a clear asked for while a
-        completion is still in flight must land behind it, or the record it writes survives a list
-        the user emptied.
-
-        Takes an ignored payload to share the two-argument signal shape, as `clear_completed` does.
-        """
-        self._perform(token, lambda connection: HistoryRepository(connection).clear())
-
-    @Slot(int, object)
-    def complete(self, token: int, payload: tuple[Job, HistoryEntry]) -> None:
-        """Store a completed job **and** its history record in one transaction (`T050-R1`).
+    def complete(self, token: int, job: Job) -> None:
+        """Store a completed job. One row, one transaction.
 
         Here rather than on the GUI thread for the same reason every other write is: `ARC-005` is
         unqualified, and completion is persisted from `DownloadManager`, on the GUI thread.
 
-        **One slot carrying both, rather than two slots queued in order.** Queuing them separately
-        was the defect: ordering guarantees the history write is *attempted* second, and guarantees
-        nothing about the process still existing when it is. A hard exit between the two commits
-        left a durably completed job with no record of what it obtained.
+        *(This carried a `HistoryEntry` beside the job and wrote both in one transaction, because
+        `T050-R1` found a hard exit between two separate commits leaving a durably completed job
+        with no record of what it obtained. `REQ-020` was withdrawn on 2026-08-06 and there is no
+        second row — the pairing this slot existed to guarantee has nothing left to pair.)*
         """
-        job, entry = payload
-        self._perform(token, lambda connection: complete_job(connection, job, entry))
+        self._perform(token, lambda connection: JobRepository(connection).update(job))
 
     def _perform(self, token: int, work: Callable[[sqlite3.Connection], object]) -> None:
         """Run `work` against this thread's connection, reporting through `done` either way.
@@ -248,13 +215,6 @@ class QueueWriter(QObject):
     #: Internal: asks the worker to clear every finished job (`T-081`).
     _clear = Signal(int, object)
 
-    #: `DAT-005`: the one delete path history has. Carries a list of ids, never a predicate.
-    _remove_history = Signal(int, object)
-
-    #: `(token, None)` — empty the whole list (`T-144`). Apart from `_remove_history` so a
-    #: wholesale clear cannot be expressed as a removal of nothing.
-    _clear_history = Signal(int, object)
-
     #: The writer thread has finished and its connection is closed. **Shutdown is a lifecycle,
     #: not a call** — the same rule `T013-R2` established for the manager, and for the same
     #: reason: `close()` used to `QThread.wait(5000)` on the GUI thread, which a contended write
@@ -275,8 +235,6 @@ class QueueWriter(QObject):
         self._remove.connect(self._worker.remove)
         self._reorder.connect(self._worker.reorder)
         self._clear.connect(self._worker.clear_completed)
-        self._remove_history.connect(self._worker.remove_history)
-        self._clear_history.connect(self._worker.clear_history)
         self._shutdown.connect(self._worker.close)
         self._thread.finished.connect(self.closed)
         self._pending: dict[int, Callable[[str | None], None]] = {}
@@ -311,23 +269,20 @@ class QueueWriter(QObject):
         token = self._track(done)
         self._revise.emit(token, job)
 
-    def complete(self, job: Job, entry: HistoryEntry, done: Callable[[str | None], None]) -> None:
-        """Persist a completion — job row and history row, one transaction. **Returns immediately.**
+    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """Persist a completion. **Returns immediately.**
 
         Refused through the callback after `close()`, like every other submission: a caller waiting
         to hear whether the completion landed must not wait forever because shutdown got there
         first.
 
-        **A failure here means the job did not complete**, which is the point of pairing them. The
-        previous shape reported a history failure while the job row already said `COMPLETED`, so the
-        caller had a success it could not withdraw and a record it could not write. Now either both
-        rows are there or neither is, and a failure is an ordinary failed transition that
-        `DownloadManager._settle` logs, surfaces, and withholds the success announcement for.
+        A failure is an ordinary failed transition that `DownloadManager._settle` logs, surfaces,
+        and withholds the success announcement for.
         """
         if self._closed:
             done("the queue writer is shutting down; nothing was saved")
             return
-        self._complete.emit(self._track(done), (job, entry))
+        self._complete.emit(self._track(done), job)
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
         """Persist a manual retry, re-placed at the tail of the queue. **Returns immediately.**
@@ -351,31 +306,6 @@ class QueueWriter(QObject):
             done("the queue writer is shutting down; nothing was saved")
             return
         self._remove.emit(self._track(done), job_id)
-
-    def remove_history(self, entry_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
-        """Delete the named history records. **Returns immediately** (`DAT-005`, `T-125`).
-
-        `list()` for `reorder`'s reason: the sequence crosses a thread boundary, and a caller that
-        mutated its own list afterwards would be editing a set already being deleted.
-
-        Refused through the callback after `close()`, like every other write — a caller waiting to
-        hear whether a removal landed must not wait forever because shutdown got there first.
-        """
-        if self._closed:
-            done("the queue writer is shutting down; nothing was saved")
-            return
-        self._remove_history.emit(self._track(done), list(entry_ids))
-
-    def clear_history(self, done: Callable[[str | None], None]) -> None:
-        """Delete every history record. **Returns immediately** (`T-144`, `DAT-005`).
-
-        Refused through the callback after `close()`, like every other write — a caller waiting to
-        hear whether the list was emptied must not wait forever because shutdown got there first.
-        """
-        if self._closed:
-            done("the queue writer is shutting down; nothing was saved")
-            return
-        self._clear_history.emit(self._track(done), None)
 
     def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
         """Rearrange the queue into `job_ids`' order. **Returns immediately.**

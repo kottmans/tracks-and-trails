@@ -50,9 +50,9 @@ recorded as maintainer rulings that no maintainer had made.
 
 **[T]** `UX-005`, **amended 2026-08-06** (`T-169`). One list, no detail pane, every verb on the row.
 
-> **The History tab is gone, and so is the tab widget.** `REQ-020` now keeps a private completion
-> ledger (`DAT-006`) with nothing to browse, so the second tab has no contents rather than fewer of
-> them — and a tab strip holding one tab offers a choice the user does not have. Everything below
+> **The History tab is gone, and so is the tab widget.** `REQ-020` is **withdrawn**: the application
+> keeps no record of what has been downloaded, so the second tab has no contents rather than fewer
+> of them — and a tab strip holding one tab offers a choice the user does not have. Everything below
 > that describes **a row** still stands; the Queue still has rows. The struck items are kept
 > visible rather than deleted, because this section is what a reader checks the window against.
 
@@ -75,9 +75,8 @@ recorded as maintainer rulings that no maintainer had made.
    *Clear finished* moves it on.
 9. ~~**History removal is selection-scoped**, its verb names its own count, and *"files are never
    deleted"* sits in the status bar while History is showing.~~ **Withdrawn 2026-08-06**: there is
-   no list to select from. The one remaining action is **Clear download records** in Settings, and
-   it carries the same promise — `DAT-005` is unamended on the point that matters, that emptying
-   records never deletes a file.
+   no list, and no records behind it either. `DAT-005`'s boundary — a record is not a file — is
+   untouched and governs anything that ever stores one again.
 
 ### 2.1 The toolbar
 
@@ -85,10 +84,11 @@ recorded as maintainer rulings that no maintainer had made.
 `+ Add URLs` first, as the primary action; `Pause queue`; `Clear finished`; and the
 `Concurrent downloads` control that `ARC-007` put there until Phase 4's settings dialog replaces it.
 
-**`Clear history` left the toolbar with the list it emptied** (2026-08-06, `T-169`). `Clear finished`
-stayed, and the two were never the same action: it clears completed **queue rows**, while
-**Clear download records** in Settings empties the ledger. A row leaving the queue does not forget
-that the URL was downloaded.
+**`Clear history` left the toolbar with the list it emptied** (2026-08-06), and nothing replaced it:
+`REQ-020` was withdrawn the same day, so there is nothing anywhere to clear. `Clear finished` stays
+— it clears completed **queue rows**, and with no records beside it there is nothing left for it to
+be confused with. **There is no Settings menu**: the shell built to hold the records control went
+with the control, and `T-146` brings it back with the settings `REQ-023` names.
 
 **The rule the toolbar keeps:** nothing on it acts on a *selection*, and every verb on it names the
 list it empties.
@@ -428,8 +428,8 @@ silent on the rest, so these are scope choices.
 
 ### 9.3 Duplicate-URL warning — `REQ-022`, built by `T-114`
 
-- **[T]** `REQ-022`: detect that a URL has been downloaded before and warn before re-downloading,
-  **with an override**.
+- **[T]** `REQ-022`, as rescoped 2026-08-06: a URL already in the **queue** — or twice in one paste
+  — is **confirmed, not refused**. Nothing is stored, and nothing is detected beyond the queue.
 - **[P-26]** The warning is a **staging row** state rather than a modal. `UX-003` puts *probe
   failures* in the dialog; it does not decide where a *duplicate* is reported (`T105-R3`). The
   argument is that a modal per duplicate in a paste of thirty is unusable — which is a good
@@ -442,10 +442,11 @@ silent on the rest, so these are scope choices.
   conveyed by colour alone, and a warning only sighted users receive is that rule broken.
   **[D]** It therefore joins the row's accessible text, which is where the row's other facts already
   are. **[D]** It needs no keyboard route of its own, because a row state is not a control.
-- **[P-11]** The warning names **when** the URL was last downloaded, because *"you have had this
-  before"* without a date is not enough to act on. It is why the ledger keeps a completion time at
-  all (`DAT-006` §3). ~~and links to the History record~~ — **the link half is withdrawn**
-  (2026-08-06, `T-169`): there is no record to open.
+- **[P-11]** ~~The warning names **when** the URL was last downloaded and links to the History
+  record.~~ **Withdrawn entirely, 2026-08-06.** `REQ-020` is gone and nothing records when anything
+  was downloaded, so there is no date to name and no record to open. `REQ-022` is now a check
+  against the **live queue**: the warning says the URL is already queued, and the row it is already
+  on is right there to look at.
 
 ### Deliberately not offered
 
@@ -477,7 +478,7 @@ one pass rather than eleven, and so a task cannot mistake a proposal for a decis
 | ~~P-8~~ | ~~Where do user presets persist?~~ **Withdrawn — already decided** (`T105-R1`). `DAT-001` and `ARCHITECTURE.md` §5 fix it: TOML, at `user_config_dir/tracksandtrails/settings.toml`. Transcribed in §8; the number is kept so the withdrawal is legible rather than silent | §8 | — |
 | P-9 | Does the template editor list supported fields inline? | §9.1 | Scope of `T-112` |
 | P-10 | **Does `REQ-017` reopen per-job pause?** `UX-001` names this as its reopening condition | §9.2 | **Reopens `UX-001` and `T-080`.** Also decides `Pause all` on a group, deferred by `T140-R5` |
-| P-11 | Does the duplicate warning name the date? *(The History link half is withdrawn — `T-169`, 2026-08-06.)* | §9.3 | Small; `T-114` is the smallest item in the phase |
+| P-11 | ~~Does the duplicate warning name the date?~~ **Withdrawn 2026-08-06** — nothing records a date | §9.3 | — |
 | P-12 | **Do remux, recode, embed-thumbnail, embed-metadata and embed-chapters get typed fields on `Preset`**, or stay strings in `post_processors`? | §6 | **Widens a Phase 1 model.** Five checkboxes and one free-text list are different screens, so `T-109` cannot be specified past it |
 | P-13 | When ffmpeg is absent, is the merge mode hidden, shown-and-refused, or the table drawn without it? | §5 | `UX-005` §5 requires *some* treatment, not this one |
 | P-14 | Does the format table refuse re-probe, download-from-table, and filtering? | §4, §12 | Scope of `T-107` |
@@ -557,7 +558,7 @@ oversight.
 | **[T]** A disabled control | `UX-005` §5, `T081-R3`. Absent instead, so the application never reports that it considered and declined |
 | **[T]** Colour as the only carrier of state | `NFR-005`. The chip carries words |
 | **[T]** A soft delete of history | `DAT-005` §4. No `deleted_at` column to protect a record whose loss costs little |
-| **[T]** A History tab, list, group or row verb | `REQ-020`, `UX-005` and `DAT-005`, all amended 2026-08-06 (`T-169`). The ledger is infrastructure for `REQ-022`; a downloader is not a media library |
+| **[T]** Any record of what has been downloaded | `REQ-020`, **withdrawn** 2026-08-06. Not a History tab, not a list, and not a private ledger behind one. A downloader is not a media library, and the ledger cost five review findings without a user ever seeing it |
 | **[T]** Following a file after its queue row is cleared | `REQ-021`, amended 2026-08-06. The application does not claim to know where a file went |
 | **[T]** Automatic pruning of records by age or size | `DAT-005` (2026-08-05), and `REQ-020` (2026-08-06) now states no automatic expiry outright |
 | **[T]** Re-grouping history records that predate migration `0006` | `T-145`, approved |

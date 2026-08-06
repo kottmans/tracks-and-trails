@@ -271,7 +271,7 @@ def test_the_application_publishes_its_own_menu_bar(tree: Tree) -> None:
     )
 
 
-def test_the_application_menu_bar_exposes_exactly_its_three_menus(tree: Tree) -> None:
+def test_the_application_menu_bar_exposes_exactly_file_and_help(tree: Tree) -> None:
     """`T026-R2`. An **equality** over the application's own menu items.
 
     This assertion existed in the first correction round and was **deleted by accident** while
@@ -285,19 +285,18 @@ def test_the_application_menu_bar_exposes_exactly_its_three_menus(tree: Tree) ->
     Mnemonic markup must not survive into the tree either — Qt strips `&` when publishing to
     the platform bridge, and a regression there has Narrator saying "ampersand File".
 
-    **`Settings` joined the two on 2026-08-06** (`T-170`). It is not a cosmetic addition: it is the
-    only route to *Clear download records*, which is the one control the completion ledger offers
-    now that the History tab is gone, and `NFR-005` requires it to be reachable and named without a
-    pointer. **This equality is what caught the omission** — the menu shipped, the Linux suite
-    passed, and only the Windows job could see that the published tree had a third item nobody had
-    updated the expectation for. That is `AGENTS.md` §8's asymmetry, working as intended.
+    **`Settings` joined the two for six hours on 2026-08-06 and left again**, and both halves are
+    worth keeping. It arrived with `T-170` as the only route to *Clear download records*; this
+    equality caught it, on the Windows job alone, after the Linux suite had passed and three more
+    commits had been pushed — `AGENTS.md` §8's asymmetry working as intended. It went when `REQ-020`
+    was withdrawn and the screen had nothing left in it. `T-146` brings the menu back with the
+    settings `REQ-023` names, and will trip this equality again, which is the point of it.
     """
     items = [node for node in tree.application_controls() if node.control_type == UIA_MENU_ITEM]
     names = sorted(node.name for node in items)
 
-    assert names == ["File", "Help", "Settings"], (
-        f"the application menu bar exposes {names}; expected exactly "
-        f"['File', 'Help', 'Settings']. "
+    assert names == ["File", "Help"], (
+        f"the application menu bar exposes {names}; expected exactly ['File', 'Help']. "
         f"Application controls: {describe(tree.application_controls())}"
     )
     assert all(node.ancestor_roles[:1] == (UIA_MENU_BAR,) for node in items), (

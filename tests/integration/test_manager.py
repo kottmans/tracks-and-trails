@@ -96,7 +96,7 @@ class FakeRepository:
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
         self.writes: list[tuple[str, JobStatus]] = []
-        self.completions: list[tuple[str, str | None]] = []
+        self.completions: list[str] = []
         #: Ids removed, in order (`T-080`). A list rather than a count, so a test can assert
         #: *which* job left the queue rather than only that something did.
         self.removals: list[str] = []
@@ -125,16 +125,13 @@ class FakeRepository:
         if done is not None:
             done(None)
 
-    def complete(
-        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
-    ) -> None:
-        """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
 
-        A fake, so "atomically" is trivial: one dict assignment cannot half-happen. What it
-        preserves is the *shape* — one call, one settlement — so the manager cannot be
+        What it preserves is the *shape* — one call, one settlement — so the manager cannot be
         written against two separate writes and still pass here.
         """
-        self.completions.append((job.id, format_used))
+        self.completions.append(job.id)
         self.update(job, done)
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
@@ -2253,7 +2250,7 @@ def test_no_companion_signal_arrives_before_its_transition_is_durable(
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
             self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
-            self.completions: list[tuple[str, str | None]] = []
+            self.completions: list[str] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
@@ -2261,16 +2258,14 @@ def test_no_companion_signal_arrives_before_its_transition_is_durable(
         def update(self, job: Job, done: Callable[[str | None], None]) -> None:
             self.pending.append((job, done))
 
-        def complete(
-            self, job: Job, format_used: str | None, done: Callable[[str | None], None]
-        ) -> None:
-            """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+        def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
+            """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
 
             A fake, so "atomically" is trivial: one dict assignment cannot
             half-happen. What it preserves is the *shape* — one call, one settlement —
             so the manager cannot be written against two separate writes.
             """
-            self.completions.append((job.id, format_used))
+            self.completions.append(job.id)
             self.update(job, done)
 
         def release(self) -> None:
@@ -2354,7 +2349,7 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
             self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
-            self.completions: list[tuple[str, str | None]] = []
+            self.completions: list[str] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
@@ -2362,16 +2357,14 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
         def update(self, job: Job, done: Callable[[str | None], None]) -> None:
             self.pending.append((job, done))
 
-        def complete(
-            self, job: Job, format_used: str | None, done: Callable[[str | None], None]
-        ) -> None:
-            """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+        def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
+            """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
 
             A fake, so "atomically" is trivial: one dict assignment cannot
             half-happen. What it preserves is the *shape* — one call, one settlement —
             so the manager cannot be written against two separate writes.
             """
-            self.completions.append((job.id, format_used))
+            self.completions.append(job.id)
             self.update(job, done)
 
         def release(self) -> None:
@@ -2435,7 +2428,7 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
 
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
-            self.completions: list[tuple[str, str | None]] = []
+            self.completions: list[str] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
@@ -2444,16 +2437,14 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
             self.jobs[job.id] = job  # read-your-writes still holds
             done("OperationalError: database is locked")
 
-        def complete(
-            self, job: Job, format_used: str | None, done: Callable[[str | None], None]
-        ) -> None:
-            """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+        def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
+            """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
 
             A fake, so "atomically" is trivial: one dict assignment cannot
             half-happen. What it preserves is the *shape* — one call, one settlement —
             so the manager cannot be written against two separate writes.
             """
-            self.completions.append((job.id, format_used))
+            self.completions.append(job.id)
             self.update(job, done)
 
         def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
@@ -3179,7 +3170,7 @@ class HeldStore:
         self._order: list[str] = []
         self.written: list[tuple[str, JobStatus]] = []
         self.removed: list[str] = []
-        self.completions: list[tuple[str, str | None]] = []
+        self.completions: list[str] = []
         self.failing = False
 
     def get(self, job_id: str) -> Job | None:
@@ -3189,16 +3180,13 @@ class HeldStore:
         self.pending.append((job, done))
         self._order.append("write")
 
-    def complete(
-        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
-    ) -> None:
-        """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
 
-        A fake, so "atomically" is trivial: one dict assignment cannot half-happen. What it
-        preserves is the *shape* — one call, one settlement — so the manager cannot be
+        What it preserves is the *shape* — one call, one settlement — so the manager cannot be
         written against two separate writes and still pass here.
         """
-        self.completions.append((job.id, format_used))
+        self.completions.append(job.id)
         self.update(job, done)
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
@@ -3579,210 +3567,65 @@ def test_a_startup_failure_that_cannot_be_stored_announces_nothing_but_still_cle
 
 from tracks_and_trails.persistence import db  # noqa: E402
 from tracks_and_trails.persistence.repositories import (  # noqa: E402
-    HistoryRepository,
     JobRepository,
 )
 
-# --- history (T-050, REQ-020) --------------------------------------------------------------
+# --- completion durability (`NFR-003`) ------------------------------------------------------
 
 
-def _history_rows(path: Path) -> list[Any]:
-    """Read history through a *fresh* repository, so the assertion sees disk and not a view.
+def _completion_probe(tmp_path: Path) -> Path:
+    """Write a child that drives one real completion and hard-exits the way a power cut would.
 
-    Same reasoning as the completion test above: `PersistentJobStore` answers reads from a
-    write-through view of what is still in flight, so asking it would prove the manager intended a
-    row rather than that one landed.
+    *(It took a `die_before_history` flag that replaced `repositories._write_history` with
+    `os._exit`, so the process died **inside** a completion transaction between its two statements
+    — the only injection point that could tell an atomic completion from a split one. A completion
+    writes one statement since `REQ-020` was withdrawn, so there is no longer a between.)*
     """
-    from tracks_and_trails.persistence import db
-    from tracks_and_trails.persistence.repositories import HistoryRepository
-
-    with db.open_database(path) as connection:
-        return HistoryRepository(connection).all_entries()
-
-
-def test_a_completed_download_writes_exactly_one_history_row(
-    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
-) -> None:
-    """`T-050`, `REQ-020`: the real composition writes the record, not a fake sink.
-
-    Driven through `DownloadManager` and `PersistentJobStore` with the history sink wired the way
-    `app.py` wires it, because the sink is optional on the constructor: a test that supplied its own
-    fake would pass even if composition never connected one, which is the shape `T-036` exists to
-    catch.
-    """
-    from tracks_and_trails.persistence import db
-    from tracks_and_trails.persistence.repositories import JobRepository
-    from tracks_and_trails.persistence.store import PersistentJobStore
-    from tracks_and_trails.persistence.writer import QueueWriter
-
-    path = tmp_path / "library.sqlite3"
-    url = media_url(total_bytes=32 * 1024)
-    with db.open_database(path) as connection:
-        real = JobRepository(connection)
-        real.add(make_job("job-history", url, tmp_path))
-        writer = QueueWriter(lambda: db.connect(path))
-        store = PersistentJobStore(connection, writer)
-        download = DownloadManager(store)
-        try:
-            download.start("job-history")
-            assert spin(lambda: download.is_idle, timeout=120)
-            assert spin(lambda: len(_history_rows(path)) == 1, timeout=30)
-        finally:
-            download.shutdown()
-            writer.close()
-            assert spin(lambda: not writer.is_running, timeout=30), "the writer thread never quit"
-
-    rows = _history_rows(path)
-    assert len(rows) == 1
-    entry = rows[0]
-    assert entry.id == "job-history"
-    assert entry.url == url, "the ledger is keyed on the source URL (`REQ-022`, `DAT-006`)"
-    assert entry.completed_at is not None
-
-    stored = None
-    with db.open_database(path) as connection:
-        stored = JobRepository(connection).get("job-history")
-    assert stored is not None
-    # *(The ledger row also carried an `output_path` and this asserted the file was on disk.
-    # `T-170` took the path off the record — a path is a claim about where a file is, and
-    # `REQ-021` stopped making it — so the job's own path is what names the file now.)*
-    assert stored.output_path is not None and Path(stored.output_path).exists(), (
-        "the download did not leave the file it reported"
+    probe = tmp_path / "probe_after.py"
+    probe.write_text(
+        "\n".join(
+            [
+                "import os, sys",
+                "from dataclasses import replace",
+                "from datetime import UTC, datetime",
+                "from PySide6.QtCore import QCoreApplication",
+                "from tracks_and_trails.core.job_state import JobStatus",
+                "from tracks_and_trails.core.models import DownloadRequest, Job",
+                "from tracks_and_trails.persistence import db",
+                "from tracks_and_trails.persistence.repositories import JobRepository",
+                "from tracks_and_trails.persistence.store import PersistentJobStore",
+                "from tracks_and_trails.persistence.writer import QueueWriter",
+                "",
+                "path = sys.argv[1]",
+                "application = QCoreApplication([])",
+                "connection = db.connect(path)",
+                "request = DownloadRequest(",
+                "    url='https://example.com/x',",
+                "    output_directory=os.path.dirname(path),",
+                "    format_selector='best',",
+                "    output_template='%(title)s.%(ext)s',",
+                ")",
+                "queued = Job(id='j', url=request.url, request=request,",
+                "             created_at=datetime.now(UTC))",
+                "JobRepository(connection).add(queued)",
+                "finished = queued",
+                "for status in (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING,",
+                "               JobStatus.POST_PROCESSING, JobStatus.COMPLETED):",
+                "    finished = finished.with_status(status)",
+                "finished = replace(finished, finished_at=datetime.now(UTC))",
+                "",
+                "writer = QueueWriter(lambda: db.connect(path))",
+                "store = PersistentJobStore(connection, writer)",
+                "",
+                "def settled(error):",
+                "    # The statement has committed. Die the way a power cut would.",
+                "    os._exit(0 if error is None else 3)",
+                "",
+                "store.complete(finished, settled)",
+                "application.exec()",
+            ]
+        )
     )
-    assert entry.completed_at == stored.finished_at, (
-        "the ledger stamped its own time instead of the job's completion"
-    )
-
-
-@pytest.mark.parametrize(
-    ("name", "drive"),
-    [
-        ("cancelled", "cancel"),
-        ("failed", "fail"),
-    ],
-)
-def test_a_job_that_did_not_complete_writes_no_history_row(
-    name: str,
-    drive: str,
-    tmp_path: Path,
-    media_url: Callable[..., str],
-    spin: Callable[..., bool],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`REQ-020` is a record of what was **obtained** (`T-050`).
-
-    Both non-completions are driven for real rather than asserted about: a cancel through the
-    manager's own path, and a failure from a URL nothing can extract. An implementation that wrote
-    history from the terminal transition rather than from `Succeeded` would pass a cancel-only test
-    if it happened to skip `CANCELLED`, so both are here.
-    """
-    from tracks_and_trails.persistence import db
-    from tracks_and_trails.persistence.repositories import JobRepository
-    from tracks_and_trails.persistence.store import PersistentJobStore
-    from tracks_and_trails.persistence.writer import QueueWriter
-
-    # **No automatic retry here** (`T-083`). The `fail` case drives a real connection refusal,
-    # which is a `NETWORK` failure and now retries itself three times — four real worker processes
-    # and fourteen seconds of backoff, for a test whose subject is whether history records a job
-    # that did not complete. Retry policy has its own tests; this one keeps its single session.
-    monkeypatch.setattr(manager_module, "AUTOMATIC_RETRY_LIMIT", 0)
-
-    path = tmp_path / "library.sqlite3"
-    url = (
-        media_url(total_bytes=8 * 1024 * 1024, chunk_delay=0.05)
-        if drive == "cancel"
-        else ("https://127.0.0.1:1/nothing-here.mp4")
-    )
-    with db.open_database(path) as connection:
-        JobRepository(connection).add(make_job(f"job-{name}", url, tmp_path))
-        writer = QueueWriter(lambda: db.connect(path))
-        store = PersistentJobStore(connection, writer)
-        download = DownloadManager(store)
-        try:
-            download.start(f"job-{name}")
-            if drive == "cancel":
-                assert spin(lambda: bool(download.active_job_ids()), timeout=30)
-                download.cancel(f"job-{name}")
-            assert spin(lambda: download.is_idle, timeout=120)
-        finally:
-            download.shutdown()
-            writer.close()
-            assert spin(lambda: not writer.is_running, timeout=30), "the writer thread never quit"
-
-    with db.open_database(path) as connection:
-        stored = JobRepository(connection).get(f"job-{name}")
-    assert stored is not None
-    assert stored.status is not JobStatus.COMPLETED, "the job completed; this test proves nothing"
-    assert _history_rows(path) == [], f"a {name} job was recorded as an obtained download"
-
-
-def _completion_probe(tmp_path: Path, *, die_before_history: bool) -> Path:
-    """Write a child that drives one real completion and hard-exits at a chosen point.
-
-    `die_before_history=True` replaces `repositories._write_history` with `os._exit`, so the
-    process dies **inside** the completion transaction, between its two statements. That is the
-    only injection point that can tell an atomic completion from a split one — see
-    `test_a_completion_that_dies_before_its_history_write_leaves_neither_row`.
-    """
-    probe = tmp_path / f"probe_{'mid' if die_before_history else 'after'}.py"
-    body = [
-        "import os, sys",
-        "from dataclasses import replace",
-        "from datetime import UTC, datetime",
-        "from PySide6.QtCore import QCoreApplication",
-        "from tracks_and_trails.core.job_state import JobStatus",
-        "from tracks_and_trails.core.models import DownloadRequest, Job",
-        "from tracks_and_trails.persistence import db, repositories",
-        "from tracks_and_trails.persistence.repositories import JobRepository",
-        "from tracks_and_trails.persistence.store import PersistentJobStore",
-        "from tracks_and_trails.persistence.writer import QueueWriter",
-        "",
-        "path = sys.argv[1]",
-        "application = QCoreApplication([])",
-        "connection = db.connect(path)",
-        "request = DownloadRequest(",
-        "    url='https://example.com/x',",
-        "    output_directory=os.path.dirname(path),",
-        "    format_selector='best',",
-        "    output_template='%(title)s.%(ext)s',",
-        ")",
-        "queued = Job(id='j', url=request.url, request=request,",
-        "             created_at=datetime.now(UTC))",
-        "JobRepository(connection).add(queued)",
-        "finished = queued",
-        "for status in (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING,",
-        "               JobStatus.POST_PROCESSING, JobStatus.COMPLETED):",
-        "    finished = finished.with_status(status)",
-        "finished = replace(finished, finished_at=datetime.now(UTC))",
-        "",
-        "writer = QueueWriter(lambda: db.connect(path))",
-        "store = PersistentJobStore(connection, writer)",
-        "",
-    ]
-    if die_before_history:
-        body += [
-            "def die_before_history(connection, entry):",
-            "    # Inside the transaction: the job statement has run, this one never will.",
-            "    os._exit(17)",
-            "",
-            "repositories._write_history = die_before_history",
-            "",
-            "def settled(error):",
-            "    os._exit(1)  # unreachable: the injection kills us first",
-            "",
-        ]
-    else:
-        body += [
-            "def settled(error):",
-            "    # Both statements have committed. Die the way a power cut would.",
-            "    os._exit(0 if error is None else 3)",
-            "",
-        ]
-    body += [
-        "store.complete(finished, '137+140', settled)",
-        "application.exec()",
-    ]
-    probe.write_text("\n".join(body))
     return probe
 
 
@@ -3797,227 +3640,28 @@ def _run_probe(probe: Path, database: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_a_completion_that_dies_before_its_history_write_leaves_neither_row(
-    tmp_path: Path,
-) -> None:
-    """`T050-R1`, `T093-R1`: both rows commit or neither, proven by killing it between them.
-
-    **This replaces a test that could not fail** (`T093-R1`). The first version hard-exited
-    from the settlement callback — after `_Worker._perform` had returned, and therefore after
-    *every* statement in `complete_job` had run. Splitting the transaction into two consecutive
-    `with connection:` blocks left it passing, so it gated nothing. The mutation that appeared to
-    kill it supplied its own `os._exit` between the statements, which means the mutation was doing
-    the discriminating rather than the test. `ai/TESTING.md` §13's shape exactly: a guard nobody
-    watches fail.
-
-    The injection here is inside the transaction. `repositories._write_history` becomes `os._exit`,
-    so the job statement has executed and the history statement never will, and the process stops
-    existing before either can commit.
-
-    - **Atomic (current):** the transaction never commits, so SQLite discards it. The row is still
-      `QUEUED` and there is no history — **neither**.
-    - **Split:** the first block commits `COMPLETED`, then the process dies. `COMPLETED` with no
-      history — the exact irrecoverable state `T050-R1` reported, and this test fails.
-    """
-    database = tmp_path / "library.sqlite3"
-    probe = _completion_probe(tmp_path, die_before_history=True)
-    result = _run_probe(probe, database)
-    assert result.returncode == 17, (
-        f"the probe did not die at the history statement (exit {result.returncode}); "
-        f"the injection point moved: {result.stderr}"
-    )
-
-    with db.open_database(database) as connection:
-        stored = JobRepository(connection).get("j")
-        entry = HistoryRepository(connection).get("j")
-
-    assert stored is not None, "the job row vanished entirely"
-    # The invariant, stated as the invariant: the two rows agree about whether it completed.
-    assert not (stored.status is JobStatus.COMPLETED and entry is None), (
-        "a durably COMPLETED job with no history row — the completion was split across two "
-        "transactions and a death between them lost the record (T050-R1)"
-    )
-    # And what the atomic shape actually produces at this injection point.
-    assert entry is None, "history committed even though its statement never ran"
-    assert stored.status is JobStatus.QUEUED, (
-        f"the job advanced to {stored.status.value} from an uncommitted transaction"
-    )
-
-
-def test_a_hard_exit_after_a_completion_settles_keeps_both_rows(tmp_path: Path) -> None:
+def test_a_hard_exit_after_a_completion_settles_keeps_the_job_row(tmp_path: Path) -> None:
     """A committed completion survives a process that stops existing (`NFR-003`).
 
-    **Stated limit: this is a positive durability check, not the atomicity gate.** It exits from
-    the settlement callback, so every statement has already run and a split transaction passes it
-    too — which is why `T093-R1` rejected it as the gate for `T050-R1`. What it does establish is
-    that once a completion has settled, WAL has it: no `atexit`, no flush and no Qt teardown are
-    needed for both rows to be there on restart.
+    **Stated limit: this is a positive durability check, not an atomicity gate.** It exits from the
+    settlement callback, so every statement has already run — which is why `T093-R1` rejected it as
+    the gate for `T050-R1`. What it establishes is that once a completion has settled, WAL has it:
+    no `atexit`, no flush and no Qt teardown are needed for the row to be there on restart.
+
+    *(It asserted "both rows" and checked the ledger beside the job. `REQ-020` was withdrawn on
+    2026-08-06 and a completion writes one row, so the atomicity this pair was written to protect
+    has nothing left to be atomic with — `T050-R1`'s reasoning is preserved at `writer.complete`.)*
     """
     database = tmp_path / "library.sqlite3"
-    probe = _completion_probe(tmp_path, die_before_history=False)
+    probe = _completion_probe(tmp_path)
     result = _run_probe(probe, database)
     assert result.returncode == 0, f"the completion did not settle cleanly: {result.stderr}"
 
     with db.open_database(database) as connection:
         stored = JobRepository(connection).get("j")
-        entry = HistoryRepository(connection).get("j")
 
     assert stored is not None
-    assert stored.status is JobStatus.COMPLETED
-    assert entry is not None, "a settled completion lost its ledger row to the exit"
-    assert entry.completed_at is not None
-
-
-# --- T-085: the record REQ-020 names ------------------------------------------------------
-
-
-class _CapturingWriter:
-    """A `QueueWriter` stand-in that records the `HistoryEntry` a completion projected.
-
-    The projection is what `REQ-020` is about, and it happens in `PersistentJobStore.complete`.
-    Driving it through the real writer would prove the same thing while also proving SQLite works,
-    which `test_a_completed_download_writes_exactly_one_history_row` already does end to end.
-    """
-
-    def __init__(self) -> None:
-        self.completions: list[tuple[Job, Any]] = []
-
-    def complete(self, job: Job, entry: Any, done: Callable[[str | None], None]) -> None:
-        self.completions.append((job, entry))
-        done(None)
-
-    def revise(self, job: Job, done: Callable[[str | None], None]) -> None:
-        done(None)
-
-    def submit(self, jobs: Any, done: Callable[[str | None], None]) -> None:
-        done(None)
-
-
-def _job_with_every_field(tmp_path: Path) -> Job:
-    """A completed job carrying every fact `REQ-020` names, so none is absent by accident."""
-    job = make_job("job-full", "https://example.com/watch?v=abc", tmp_path)
-    for status in (
-        JobStatus.PROBING,
-        JobStatus.READY,
-        JobStatus.RUNNING,
-        JobStatus.POST_PROCESSING,
-        JobStatus.COMPLETED,
-    ):
-        job = job.with_status(status)
-    return replace(
-        job,
-        thumbnail_url="https://img.example.com/abc.jpg",
-        title="A Clip With A Title",
-        output_path=str(tmp_path / "A Clip With A Title.mp4"),
-        bytes_total=4096,
-        finished_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
-    )
-
-
-def test_a_completion_records_exactly_what_the_ledger_keeps(tmp_path: Path) -> None:
-    """`DAT-006` §3, through the real completion path.
-
-    **This asserted six fields until `T-170`**, because `REQ-020` promised a browseable record and
-    the projection had to carry everything a history row drew — title, path, format, size,
-    thumbnail address and playlist membership. `T-169` narrowed the requirement to a private ledger
-    and the projection narrowed with it. What is left answers the duplicate warning and nothing
-    else.
-
-    Driven through `_CapturingWriter` so the assertion is on what the completion **projected**,
-    not on what a test constructed and handed back to itself.
-    """
-    from tracks_and_trails.persistence.repositories import HistoryEntry
-    from tracks_and_trails.persistence.store import PersistentJobStore
-
-    writer = _CapturingWriter()
-    connection = db.connect(tmp_path / "library.sqlite3")
-    store = PersistentJobStore(connection, writer)  # type: ignore[arg-type]
-    job = _job_with_every_field(tmp_path)
-    store.complete(job, "137+140", lambda _error: None)
-
-    assert len(writer.completions) == 1, "the completion projected no ledger row"
-    _, entry = writer.completions[0]
-
-    assert entry == HistoryEntry(
-        id=entry.id,
-        url=entry.url,
-        completed_at=entry.completed_at,
-    ), (
-        "a completion projected more than the ledger keeps; every field beyond these three existed "
-        "to draw a history row, and DAT-006 §5 leaves their columns NULL rather than dropping them"
-    )
-    assert entry.url, "the ledger cannot answer REQ-022 without the URL it keys on"
-
-
-def test_history_outlives_the_job_row_it_describes(tmp_path: Path) -> None:
-    """`T-085`: history survives the queue being cleared, and the relationship is stated.
-
-    **The relationship is "none", deliberately.** `history` carries no foreign key to `jobs`, so
-    deleting a job cannot cascade into the record of what it obtained. That is the whole distinction
-    the task draws: a queue row is about work, a history row is about something that happened, and
-    removing the first must not remove the second.
-
-    Asserted by deleting the job row directly rather than by waiting for `T-081`'s clear-completed,
-    which does not exist yet. What `T-081` must not do is add a cascade; this test is what would
-    fail if it did.
-    """
-    from tracks_and_trails.persistence import db
-    from tracks_and_trails.persistence.repositories import (
-        HistoryEntry,
-        HistoryRepository,
-        JobRepository,
-        complete_job,
-    )
-
-    path = tmp_path / "library.sqlite3"
-    with db.open_database(path) as connection:
-        jobs = JobRepository(connection)
-        job = _job_with_every_field(tmp_path)
-        jobs.add(replace(job, status=JobStatus.QUEUED, queue_position=0))
-        complete_job(
-            connection,
-            job,
-            HistoryEntry(
-                id=job.id,
-                url=job.url,
-                completed_at=job.finished_at or datetime.now(UTC),
-            ),
-        )
-        assert HistoryRepository(connection).get("job-full") is not None
-
-        connection.execute("DELETE FROM jobs WHERE id = ?", ("job-full",))
-        connection.commit()
-
-        assert jobs.get("job-full") is None, "the job row was not actually removed"
-        entry = HistoryRepository(connection).get("job-full")
-
-    assert entry is not None, (
-        "deleting the job took its ledger row with it — the record must outlive the queue row, or "
-        "T-114's duplicate warning stops working the moment a user clears finished downloads"
-    )
-    assert entry.url == job.url, "the surviving record lost the URL it is keyed on"
-
-
-def test_the_history_table_declares_no_dependency_on_jobs(tmp_path: Path) -> None:
-    """The independent lifetime is structural, not just currently true.
-
-    Read from the schema rather than from behaviour: a `FOREIGN KEY ... ON DELETE CASCADE` added
-    later would make the test above fail, but a plain foreign key would pass it while still
-    coupling the two tables' lifetimes the moment anyone enabled enforcement.
-    """
-    from tracks_and_trails.persistence import db
-
-    path = tmp_path / "library.sqlite3"
-    with db.open_database(path) as connection:
-        row = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'history'"
-        ).fetchone()
-    assert row is not None
-    definition = row[0].upper()
-    assert "FOREIGN KEY" not in definition and "REFERENCES" not in definition, (
-        "history declares a dependency on another table; REQ-020's record is supposed to outlive "
-        "the queue row that produced it"
-    )
+    assert stored.status is JobStatus.COMPLETED, "a settled completion lost its row to the exit"
 
 
 # --- T-078: the pool is N, and N is respected exactly ---------------------------------------

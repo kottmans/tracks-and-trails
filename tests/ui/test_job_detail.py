@@ -54,7 +54,7 @@ class FakeStore:
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
         self.writes: list[tuple[str, JobStatus]] = []
-        self.completions: list[tuple[str, str | None]] = []
+        self.completions: list[str] = []
 
     def add(self, job: Job) -> None:
         self.jobs[job.id] = job
@@ -68,16 +68,13 @@ class FakeStore:
         if done is not None:
             done(None)
 
-    def complete(
-        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
-    ) -> None:
-        """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """`JobStore.complete` — the completed job row (`REQ-020` withdrawn 2026-08-06).
 
-        A fake, so "atomically" is trivial: one dict assignment cannot half-happen. What it
-        preserves is the *shape* — one call, one settlement — so the manager cannot be
+        What it preserves is the *shape* — one call, one settlement — so the manager cannot be
         written against two separate writes and still pass here.
         """
-        self.completions.append((job.id, format_used))
+        self.completions.append(job.id)
         self.update(job, done)
 
     def statuses(self, job_id: str) -> list[JobStatus]:

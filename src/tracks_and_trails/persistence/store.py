@@ -34,7 +34,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject
 
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.persistence.repositories import HistoryEntry, JobRepository
+from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.persistence.writer import QueueWriter
 
 
@@ -136,9 +136,7 @@ class PersistentJobStore(QObject):
 
         self._writer.revise(job, settle)
 
-    def complete(
-        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
-    ) -> None:
+    def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
         """Persist `job` as complete **and** its history record, in one transaction (`T050-R1`).
 
         This replaces a `record_completion` that wrote only history and relied on the job row having
@@ -152,20 +150,16 @@ class PersistentJobStore(QObject):
 
         **Returns immediately** (`ARC-005`).
 
-        **The projection happens here, not in the manager, and that is the point.** `T-050`'s fourth
-        acceptance criterion is that `downloader.manager` imports no `persistence` module. So the
-        manager hands over a `Job` — a `core` type it already owns — plus the one fact the job does
-        not carry, and this layer builds the `HistoryEntry`. Had the manager constructed the entry
-        it would have needed to import it, and the criterion would have been lost to convenience.
+        **Nothing is recorded beyond the job row** (`REQ-020`, withdrawn 2026-08-06). This wrote a
+        `HistoryEntry` in the same transaction, and `T050-R1` is the record of why it had to be the
+        same one: two transactions can be separated by a hard exit, and a restart once observed
+        `job_status='completed', history=None`. There is no second row now, so there is no gap for
+        a crash to land in — the atomicity requirement is met by there being nothing to be atomic
+        *with*.
 
-        **`format_used` is not on `Job` on purpose.** It is a completion fact rather than live queue
-        state, so putting it on the model would mean a `jobs` column that only ever matters once,
-        after the row stops changing. It arrives from `Succeeded.format_used` instead.
-
-        `completed_at` prefers the job's own `finished_at`, which the manager set in the same
-        transition that made the job `COMPLETED`. Falling back to now would silently record the
-        moment the *write* happened; the fallback exists only because `finished_at` is nullable in
-        the schema, and a history row with no completion time is unusable to `REQ-020`.
+        *(`format_used` came from `Succeeded.format_used` and existed only to fill a column of that
+        record. It is gone with it; `T-159`'s naming rule reads the request, which the job
+        already carries.)*
         """
         queued = self._pending.setdefault(job.id, [])
         queued.append(job)
@@ -184,20 +178,7 @@ class PersistentJobStore(QObject):
                     del self._pending[job.id]
             done(error)
 
-        self._writer.complete(
-            job,
-            # **Three fields, and each answers a question the duplicate warning asks**
-            # (`DAT-006` §3, `T-170`). This carried a title, a path, a format, a size, a thumbnail
-            # address and a playlist membership — every one of them to draw a history row, and
-            # there is no row to draw. A path in particular is a claim about where a file is that
-            # `REQ-021` has just stopped making.
-            HistoryEntry(
-                id=job.id,
-                url=job.url,
-                completed_at=job.finished_at or _now(),
-            ),
-            settle,
-        )
+        self._writer.complete(job, settle)
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
         """Persist a manual retry at the tail of the queue. **Returns immediately** (`T-080`).
@@ -268,33 +249,6 @@ class PersistentJobStore(QObject):
         reason `T-100`'s view can still answer "where did my file go" afterwards.
         """
         self._writer.clear_completed(done)
-
-    def remove_history(self, entry_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
-        """Delete the named history records. **Returns immediately** (`DAT-005`, `T-125`).
-
-        **Nothing is recorded in memory**, for `remove`'s reason: `_pending` holds newest revisions
-        of a *job*, and a history record is neither a job nor a revision of one. Between this call
-        and its callback the records are still readable, because they are still there — the view
-        refreshes from the callback, which is `T-013`'s persist-then-announce rule rather than an
-        exception to it.
-
-        **No file is touched**, which is `HistoryRepository.remove`'s guarantee and `DAT-005`'s
-        whole subject. Restated here because this is the method composition calls, and a promise
-        that lives only one layer down is one a caller has to go looking for.
-        """
-        self._writer.remove_history(entry_ids, done)
-
-    def clear_history(self, done: Callable[[str | None], None]) -> None:
-        """Delete every history record. **Returns immediately** (`T-144`, `DAT-005`).
-
-        **Not `remove_history([])`.** An empty selection removes nothing, by a guard that exists so
-        an empty selection cannot become an accidental `DELETE FROM history`; a clear that reused
-        that call would be asking the one method whose job is to refuse it.
-
-        **No file is touched**, restated here for `remove_history`'s reason: this is the method
-        composition calls, and it is the call a user is most likely to fear.
-        """
-        self._writer.clear_history(done)
 
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
         """Append `jobs` in one transaction. **Returns immediately** (`ARC-005`).

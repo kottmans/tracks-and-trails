@@ -102,7 +102,7 @@ class _EmptyStore:
         if callable(done):
             done(None)
 
-    def complete(self, job: Job, format_used: object = None, done: object = None) -> None:
+    def complete(self, job: Job, done: object = None) -> None:
         """Present only to satisfy `JobStore` (`T050-R1`). No session is started in this file.
 
         Found by `mypy --platform win32` rather than by the host gate, because this module is

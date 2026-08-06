@@ -246,9 +246,7 @@ class JobStore(Protocol):
 
     def update(self, job: Job, done: Callable[[str | None], None]) -> None: ...
 
-    def complete(
-        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
-    ) -> None: ...
+    def complete(self, job: Job, done: Callable[[str | None], None]) -> None: ...
 
     def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None: ...
 
@@ -2331,7 +2329,7 @@ class DownloadManager(QObject):
                 # One transaction for the job row and its history row (`T050-R1`). The
                 # announcement stays in `then`, so it fires only after that transaction commits —
                 # there is no instant where the user is told it succeeded and the record is missing.
-                write=lambda job, done: self._repository.complete(job, outcome.format_used, done),
+                write=lambda job, done: self._repository.complete(job, done),
                 then=lambda: self.job_succeeded.emit(job_id, outcome.output_path),
             )
         elif isinstance(outcome, Probed):

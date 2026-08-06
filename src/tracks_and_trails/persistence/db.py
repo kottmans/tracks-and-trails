@@ -28,14 +28,7 @@ from typing import Final
 
 from platformdirs import user_data_dir
 
-from tracks_and_trails.core.urls import normalise_url
 from tracks_and_trails.downloader.environment import APP_SLUG
-
-#: The migration whose key cannot be computed in SQL, and so has a Python step (`T-170`).
-#:
-#: Named rather than inlined so the hook below is obviously tied to one version and does not become
-#: a general "run some Python after migrating" seam. One `.sql` file per version is still the rule.
-_LEDGER_KEY_VERSION: Final = 8
 
 #: Where migrations live. One `.sql` file per version, named `NNNN_description.sql`.
 MIGRATIONS_DIRECTORY: Final = Path(__file__).parent / "migrations"
@@ -161,34 +154,7 @@ def migrate(connection: sqlite3.Connection) -> list[int]:
             connection.rollback()
             raise
         applied.append(version)
-        if version == _LEDGER_KEY_VERSION:
-            _key_existing_completions(connection)
     return applied
-
-
-def _key_existing_completions(connection: sqlite3.Connection) -> None:
-    """Compute `0008`'s lookup key for the rows that predate it (`DAT-006`, `T-170`).
-
-    **Python, not SQL, and that is the whole reason this hook exists.** Normalisation lower-cases a
-    scheme and a host and drops a fragment, which needs a URL parser; SQLite has none, and an
-    expression built from `instr` and `substr` that half-parses one would be wrong in ways nobody
-    would notice until it silently matched two different downloads.
-
-    **It runs once, inside the upgrade rather than beside it.** An installation that has been
-    downloading for months already knows what it has fetched, and that is the upgrade data `T-114`
-    needs: without this, the duplicate warning would only work for downloads made after the
-    upgrade, which is the sort of gap a user experiences as the feature simply not working.
-
-    A row whose URL cannot be parsed keeps `NULL` and never matches — the missed-duplicate side of
-    `core/urls.py`'s trade, taken deliberately over inventing a key.
-    """
-    rows = connection.execute("SELECT id, url FROM history WHERE normalised_url IS NULL").fetchall()
-    keyed = [(normalise_url(row["url"]), row["id"]) for row in rows]
-    with connection:
-        connection.executemany(
-            "UPDATE history SET normalised_url = ? WHERE id = ?",
-            [(key, entry_id) for key, entry_id in keyed if key is not None],
-        )
 
 
 def configure(connection: sqlite3.Connection) -> None:

@@ -56,7 +56,6 @@ from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
 from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
-from tracks_and_trails.ui.settings_dialog import RecordsReader, SettingsDialog
 
 APP_NAME: Final = "Tracks & Trails"
 
@@ -309,9 +308,7 @@ class MainWindow(QMainWindow):
         on_remove_requested: Callable[[str], None] | None = None,
         on_reorder_requested: Callable[[list[str]], None] | None = None,
         on_clear_requested: Callable[[], None] | None = None,
-        on_clear_records_requested: Callable[[], None] | None = None,
         queue: QueueReader | None = None,
-        records: RecordsReader | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -335,12 +332,6 @@ class MainWindow(QMainWindow):
         self._on_remove_requested = on_remove_requested
         self._on_reorder_requested = on_reorder_requested
         self._on_clear_requested = on_clear_requested
-        #: The ledger, for the Settings screen's one control (`T-170`). A count and a clear;
-        #: there is no list, so the window holds no view over it.
-        self._records = records
-        self._on_clear_records_requested = on_clear_records_requested
-        #: Built after the ledger is held: the Settings action is enabled only when there is one.
-        self._settings_action: QAction | None = None
         self._build_menus()
         self._concurrency: QSpinBox | None = None
         #: `T-080`'s queue actions. Built with the control bar, so a window given no `concurrency`
@@ -691,28 +682,6 @@ class MainWindow(QMainWindow):
         dialog.finished.connect(self.refresh_queue)
         dialog.open()
         return dialog
-
-    def open_settings(self) -> SettingsDialog | None:
-        """Open the Settings screen (`REQ-023`, `T-170`).
-
-        Returns it so a test drives the same route the user takes, which is how `open_add_dialog`
-        is asserted. `None` when composition supplied no ledger — the action is disabled then, and
-        this is the second half of that rather than a trust in the first.
-        """
-        if self._records is None or self._on_clear_records_requested is None:
-            return None
-        dialog = SettingsDialog(
-            records=self._records,
-            on_clear_records=self._on_clear_records_requested,
-            parent=self,
-        )
-        dialog.open()
-        return dialog
-
-    @property
-    def settings_action(self) -> QAction | None:
-        """The `Settings` menu item, so a test can drive the route a user takes."""
-        return self._settings_action
 
     def _build_concurrency_control(self, initial: int) -> None:
         """One control for `REQ-013`'s limit, in this window rather than a dialog (`ARC-007`).
@@ -1106,19 +1075,6 @@ class MainWindow(QMainWindow):
         quit_action.setObjectName("actionQuit")
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
-
-        # **`Settings` is its own menu, between File and Help** (`T-146`'s ruling, built here by
-        # `T-170` because the ledger's one control had nowhere else to go). `T-146` fills the same
-        # screen with the settings `REQ-023` names; this opens it with a data section in it.
-        settings_menu = menu_bar.addMenu("&Settings")
-        settings_action = QAction("&Settings...", self)
-        settings_action.setMenuRole(QAction.MenuRole.NoRole)
-        settings_action.setObjectName("actionSettings")
-        settings_action.setStatusTip("Preferences, and the records Tracks & Trails keeps")
-        settings_action.setEnabled(self._records is not None)
-        settings_action.triggered.connect(self.open_settings)
-        settings_menu.addAction(settings_action)
-        self._settings_action = settings_action
 
         help_menu = menu_bar.addMenu("&Help")
         about_action = QAction(f"&About {APP_NAME}", self)
