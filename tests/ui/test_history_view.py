@@ -24,6 +24,7 @@ from tracks_and_trails.ui.history_view import (
     EMPTY_TEXT,
     FORMAT_COLUMN,
     PATH_COLUMN,
+    RAW_FORMAT_PREFIX,
     SIZE_COLUMN,
     TITLE_COLUMN,
     URL_COLUMN,
@@ -1028,3 +1029,152 @@ def test_a_dissolved_group_routes_nothing(qapp: QApplication) -> None:
     view.trigger_verb("pl-gone", Verb.REMOVE)
 
     assert removed == []
+
+
+# --- T-159: a history row says what it got, in the window's own vocabulary ---------------------
+
+
+def test_a_history_row_names_its_format_instead_of_reporting_a_yt_dlp_id(
+    qapp: QApplication,
+) -> None:
+    """The report: *"the (251) here is useless to a regular user."*
+
+    `251` is yt-dlp's format id for YouTube's Opus audio stream, and `format_used` means *what
+    yt-dlp reported*. A merged download is worse — `399+140` is two ids joined by yt-dlp's own
+    selector syntax — so the field a user reads to answer *what did I get* answered with an
+    internal join expression.
+    """
+    from tracks_and_trails.core.presets import AUDIO_MP3, to_request
+
+    request = to_request(
+        AUDIO_MP3, url="https://example.invalid/watch?v=abc123", output_directory="/downloads"
+    )
+    view = view_over([an_entry("h-1", format_used="251", request=request)])
+
+    shown = view.model.text_at("h-1", FORMAT_COLUMN)
+    assert shown == AUDIO_MP3.name, (
+        f"the row states its format as {shown!r}; it must use the same words the rest of the "
+        "window uses for the same download"
+    )
+    assert "251" not in shown, "the id survived beside the name rather than being replaced"
+
+
+def test_a_custom_selector_is_shown_as_itself_rather_than_as_an_id(qapp: QApplication) -> None:
+    """`REQ-009`'s escape hatch, and `format_name`'s fallback rule.
+
+    A request no built-in describes still has to say what it is rather than falling silent. The
+    fallback is the **selector** — a request a user can recognise and act on — never the id, which
+    is what yt-dlp resolved it to on one site on one day.
+    """
+    from dataclasses import replace as replace_field
+
+    from tracks_and_trails.core.presets import AUDIO_MP3, to_request
+
+    request = replace_field(
+        to_request(
+            AUDIO_MP3, url="https://example.invalid/watch?v=abc123", output_directory="/downloads"
+        ),
+        format_selector="bestaudio[abr>128]",
+    )
+    view = view_over([an_entry("h-1", format_used="251", request=request)])
+
+    assert view.model.text_at("h-1", FORMAT_COLUMN) == "bestaudio[abr>128]"
+
+
+def test_a_record_from_before_the_request_column_still_renders_honestly(
+    qapp: QApplication,
+) -> None:
+    """The criterion, and `_text_or_absent`'s existing rule (`T-085`).
+
+    A record written before migration `0007` has no request and nothing to reconstruct one from.
+    It keeps saying what yt-dlp reported — an id labelled honestly is better than a name nobody
+    wrote down — and a record with no format at all still renders as absence rather than `None`.
+    """
+    view = view_over(
+        [
+            an_entry("legacy", format_used="137+140", request=None),
+            an_entry("nothing-reported", format_used=None, request=None),
+        ]
+    )
+
+    assert view.model.text_at("legacy", FORMAT_COLUMN) == "137+140"
+    assert view.model.text_at("nothing-reported", FORMAT_COLUMN) == UNKNOWN_TEXT
+
+
+def test_the_id_yt_dlp_reported_is_still_reachable(qapp: QApplication) -> None:
+    """`REQ-020` records what happened, and an id is what happened (`T-159`).
+
+    The row names the download in words; somebody debugging one needs `399+140` and cannot get it
+    from a preset's name. A tooltip is where the second reader is not charged for the first one's
+    question — and it is **labelled**, because a third line reading `399+140` under a URL and a
+    path is one more unexplained string rather than a fix for one.
+    """
+    from tracks_and_trails.core.presets import AUDIO_MP3, to_request
+
+    request = to_request(
+        AUDIO_MP3, url="https://example.invalid/watch?v=abc123", output_directory="/downloads"
+    )
+    view = view_over([an_entry("h-1", format_used="399+140", request=request)])
+    tooltip = view.model.data(view.model.index(0, 0), Qt.ItemDataRole.ToolTipRole)
+
+    assert f"{RAW_FORMAT_PREFIX}399+140" in tooltip, (
+        f"the tooltip reads {tooltip!r}; REQ-020 records what happened, and naming the download in "
+        "words must not be the same as discarding what yt-dlp answered"
+    )
+
+
+def test_the_queue_history_and_add_dialog_name_one_download_the_same_way(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The criterion `T140-R3` required: **asserted together, so a fourth surface cannot drift.**
+
+    This defect has been fixed twice and shipped a third time — the queue's ordinary row
+    (`T126-R2`), its playlist header (`T140-R3`), and History (`T-159`) — because each fix was a
+    copy of the rule rather than a use of it. One download is built here and every surface that
+    describes it is asked at once.
+
+    **They are not required to say identical strings**, and that would be the wrong assertion: the
+    add dialog deliberately spells out the literal selector beside the name, because `T118-R8`'s
+    promise is that *the effective selector shown stays the one that will run*. What must hold is
+    that all three name it with the **same words** and that none of them shows a yt-dlp id.
+    """
+    from tests.ui.test_queue_view import FakeQueue, make_job
+    from tracks_and_trails.core.job_state import JobStatus
+    from tracks_and_trails.core.presets import AUDIO_MP3, to_request
+    from tracks_and_trails.downloader.manager import DownloadManager
+    from tracks_and_trails.ui.add_dialog import describe_preset
+    from tracks_and_trails.ui.queue_view import QueueModel
+    from tracks_and_trails.ui.row_delegate import SELECTOR_ROLE as QUEUE_SELECTOR
+    from tracks_and_trails.ui.staging import Row
+
+    url = "https://example.invalid/watch?v=abc123"
+    request = to_request(AUDIO_MP3, url=url, output_directory=str(tmp_path))
+
+    queue = FakeQueue()
+    # **Completed**, which is the state a history record corresponds to — and `UX-005` §8 keeps a
+    # finished download in the Queue tab until *Clear finished*, so both tabs really do describe
+    # this one download at the same moment. While a row is still retargetable the queue puts the
+    # name in its *control* instead of on the line (`UX-005` §6), which is a different assertion.
+    queue.add(make_job("job-1", tmp_path, request=request, url=url, status=JobStatus.COMPLETED))
+    manager = DownloadManager(queue)
+    history = view_over([an_entry("job-1", format_used="251", request=request)])
+    try:
+        model = QueueModel(jobs=queue, manager=manager)
+        surfaces = {
+            "queue row": model.data(model.index(0, 0), QUEUE_SELECTOR),
+            "history row": history.model.text_at("job-1", FORMAT_COLUMN),
+            "add dialog": describe_preset(Row(url=url, generation=0), AUDIO_MP3),
+        }
+
+        for surface, said in surfaces.items():
+            assert said is not None, f"{surface} says nothing about the format"
+            assert AUDIO_MP3.name in said, (
+                f"{surface} reads {said!r}, which does not name the download the way the other "
+                "surfaces do — this is T140-R3's defect on a fourth surface"
+            )
+            assert "251" not in said, (
+                f"{surface} reads {said!r}, which is the yt-dlp id the user was told is useless"
+            )
+    finally:
+        manager.shutdown()
+        drain(qapp, [manager])

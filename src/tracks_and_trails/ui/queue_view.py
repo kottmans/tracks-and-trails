@@ -90,9 +90,14 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core.errors import is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.core.presets import BUILT_IN_PRESETS, PRESET_OWNED_FIELDS
+from tracks_and_trails.core.presets import BUILT_IN_PRESETS
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
+from tracks_and_trails.ui.format_text import (
+    FORMAT_PREFIX,
+    effective_format_text,
+    preset_name_for,
+)
 from tracks_and_trails.ui.grouping import Group, Visible, flatten
 from tracks_and_trails.ui.job_detail import (
     REPAINT_INTERVAL_MS,
@@ -322,30 +327,13 @@ def _order(job: Job) -> tuple[int, str]:
 
 
 def _preset_name_for(job: Job) -> str | None:
-    """Which built-in preset describes this job's request, if any.
+    """This job's built-in preset, if any. **The rule lives in `ui/format_text.py`** (`T-159`).
 
-    Matched on **every field a preset owns**, not on the format selector alone: two presets can
-    share a selector and differ in the container or the output template, and naming the wrong one
-    would tell the user their download is something it is not. `PRESET_OWNED_FIELDS` is derived
-    from the two dataclasses, so a field added to `Preset` is compared the day it appears
-    (`T015-R1`).
-
-    `None` for a request no built-in describes — a custom selector (`REQ-009`). The row still says
-    what it is in words; what it does not do is claim to be one of the choices.
+    A thin call rather than a second copy: History needs the same answer from a record rather than
+    a job, and the project had already written this rule three times — `T126-R2`, `T140-R3` and
+    the one History was still shipping. Kept as a name here because the model asks it of a *job*.
     """
-    for preset in BUILT_IN_PRESETS:
-        if all(
-            getattr(preset, field) == getattr(job.request, field) for field in PRESET_OWNED_FIELDS
-        ):
-            return preset.name
-    return None
-
-
-#: How a row states the format it is running as, once the control is gone (`UX-005` §6).
-#:
-#: The same three words the add dialog's row uses, so one download is described the same way in
-#: the dialog that queued it and in the queue that runs it.
-FORMAT_PREFIX: Final = "Download as: "
+    return preset_name_for(job.request)
 
 
 def _duration_text(seconds: float | None) -> str:
@@ -367,19 +355,12 @@ def _duration_text(seconds: float | None) -> str:
 def _effective_format_text(job: Job) -> str:
     """What this job will be — or is being — downloaded as, in words (`T126-R2`, `REQ-009`).
 
-    **The built-in's name when one describes the request, and the literal selector otherwise.**
-    `REQ-009` allows a custom selector and `retarget` is not the only thing that can set one, so a
-    row whose request no built-in matches must still say what it is rather than falling silent —
-    which is what "including custom selectors" costs if the text is derived from the preset list
-    alone. The literal is what a user can read the syntax out of, which is `REQ-009`'s own reason
-    for showing it.
-
-    Read from `job.request`, never from the chosen preset: the request is what the worker is
-    given, and a rendering derived from anything else is a second opinion about the download in
-    flight (`T118-R8` is this mistake in the add dialog).
+    **The rule lives in `ui/format_text.py` since `T-159`**, which is where its reasoning now is:
+    the built-in's name when one describes the request, the literal selector otherwise, read from
+    the request and never from a preset held elsewhere. History names the same download with the
+    same function, so the two surfaces cannot drift.
     """
-    name = _preset_name_for(job)
-    return f"{FORMAT_PREFIX}{name or job.request.format_selector}"
+    return effective_format_text(job.request)
 
 
 class QueueModel(QAbstractTableModel):

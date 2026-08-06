@@ -3945,6 +3945,11 @@ def test_a_completion_records_every_field_req_020_names(tmp_path: Path) -> None:
         output_path=str(tmp_path / "A Clip With A Title.mp4"),
         format_used="137+140",
         bytes_total=4096,
+        # **What was asked for, beside what yt-dlp answered** (`T-159`). `format_used` is an id —
+        # `137+140` is two of them joined by yt-dlp's own selector syntax — and naming a download
+        # in the words the rest of the window uses needs the request. This is the last moment it
+        # can be copied: the job row goes when the queue is cleared.
+        request=job.request,
         completed_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
     ), "the projection dropped or altered a field REQ-020 names"
 
@@ -3989,6 +3994,7 @@ def test_a_completion_carries_the_playlist_membership_across(tmp_path: Path) -> 
         playlist_id="pl-1",
         playlist_index=3,
         playlist_title="Trail Sounds",
+        request=job.request,
         completed_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
     ), "the completed record does not say which playlist it came from, so History cannot group it"
 

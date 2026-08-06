@@ -1482,62 +1482,6 @@ clicked — several hundred pixels away.
 
 ---
 
-### T-159 — History reports the format as a yt-dlp id
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**: *"the (251) here is useless to a
-regular user."* Correct — `251` is yt-dlp's format id for YouTube's Opus audio stream.
-**Owner:** Implementer
-**Priority:** Medium — it is the third surface to make the same mistake, and the first two are fixed
-**Phase:** Phase 3
-**Depends on:** nothing. Overlaps `T-156`, which asks the MP3 preset to state its bitrate
-**Relevant context:** `REQ-009`, `REQ-020`, `T140-R3`, `T126-R2`, `ui/history_view.py`
-(`FORMAT_COLUMN`), `ui/queue_view.py` (`_effective_format_text`)
-**Affected surfaces:** `ui/history_view.py`, possibly `core/models.py`
-**Risk:** Low to display; medium if the record has to carry more than it does
-
-#### Scope
-
-**History prints `entry.format_used` verbatim**, and that field means *"what yt-dlp reported"* — an
-id like `251`, not a description. **A merged download is worse: `399+140`**, which is two ids joined
-by yt-dlp's own selector syntax — video 399 with audio 140. So the field a user reads to answer
-*what did I get* answers with an internal join expression. A user reading their own download history is told a number with
-no explanation available anywhere in the window.
-
-**This is `T140-R3` on a third surface.** That finding was the queue header showing
-`bestvideo+bestaudio/best` where its own control offered *Best video available*; the fix routed it
-through `_effective_format_text`, which prefers a preset's name and falls back to the literal.
-`T126-R2` did the same for an ordinary row. **History was not changed**, so the project has now
-fixed this defect twice and still ships it once.
-
-**What a user actually wants is not the id.** The maintainer named it: **the file type and the
-bitrate** — `MP3, 192 kbps` — which is what they chose in the first place. The extension is
-inferable from the path shown beside it, and inference is not a field.
-
-**The record may not carry enough**, and that is the part to establish first. `format_used` is what
-the worker reported. Whether the *request* is recoverable from the history row — and so whether the
-preset name can be recovered rather than re-derived — is a `T-085` question this task must answer
-before it decides what to display.
-
-#### Acceptance criteria
-
-- A history row states the format in the same vocabulary the rest of the window uses — the preset's
-  name where one describes the download, per `_effective_format_text`'s rule, not a yt-dlp id
-- Where the download was a conversion, the row says **what it converted to**, including the bitrate
-  for MP3 — the pairing `T-156` asks for on the queue side, so the two surfaces agree
-- The raw `format_used` is still **available** — a tooltip, the detail view, somewhere — because
-  `REQ-020` records what happened and an id is what happened
-- A record that predates whatever field this needs still renders honestly, per `_text_or_absent`'s
-  existing rule
-- The queue, History and the add dialog are asserted **together** for one download, as `T140-R3`
-  required, so a fourth surface cannot drift
-
-#### Out of scope
-
-- Changing what the worker reports. `format_used` is yt-dlp's answer and stays that
-- A migration, unless the answer to the question above needs one — decide, then file it
-
----
-
 ### T-156 — The MP3 preset does not say which bitrate it means
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, reading the queue row's format
@@ -1548,6 +1492,12 @@ mockups covers what a preset's name discloses.
 **Phase:** Phase 3
 **Depends on:** nothing for the disclosure. The control half is adjacent to `T-111` (user presets)
 and `REQ-010`
+**Inherited from `T-159` (2026-08-05):** that task's criterion *"the row says what it converted to,
+including the bitrate for MP3"* is **left here**, because disclosing the bitrate on a row without
+deciding what the **control** says would put *Audio only (MP3), 192 kbps* beside a dropdown reading
+*Audio only (MP3)* — `T140-R3`'s defect one field over. `ui/format_text.format_name` is now the one
+place the wording lives, so whatever this task rules applies to the queue, History and the add
+dialog together rather than to one of them.
 **Relevant context:** `REQ-006`, `REQ-009`, `REQ-010`, `T-076`, `T-139`, `core/presets.py`
 (`MP3_QUALITY`, `MP3_BITRATES`), `ui/add_dialog.py`, `ui/queue_view.py`
 **Affected surfaces:** `core/presets.py` or `ui/`, depending on the ruling below
@@ -2574,6 +2524,77 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-159 — History reports the format as a yt-dlp id
+
+**Status:** **Complete — 2026-08-05, awaiting review**, with **one criterion deliberately left
+to `T-156`** — see below. Found by the maintainer, 2026-08-05: *"the (251) here is useless to a
+regular user."* The question the scope required answering first — whether the request is
+recoverable from a history row — is **no**: `audio_quality` is preset-owned, so an MP3
+converted at 320 kbps matches no built-in and cannot be named from an id. So it needed a
+migration, and `0007` carries the request itself rather than a rendered name, which would be a
+derived value with a lifetime — a preset renamed later would leave old records asserting a name
+this build no longer has. The naming rule now lives in `ui/format_text.py` and all three
+surfaces call it instead of holding a copy.
+
+**Criterion 2 — the bitrate for a conversion — is not built, and that is a ruling rather than
+an omission.** The queue's format dropdown offers `preset.name`, so a row reading *Audio only
+(MP3), 192 kbps* beside a control reading *Audio only (MP3)* would be `T140-R3`'s own defect one
+field over: a download named two ways, one row apart. Disclosing the bitrate means deciding what
+the **control** says too, which is the product half `T-156` holds. `format_text.format_name` is
+the single place it changes, and all three surfaces change with it — which is what criterion 5
+asks for. Reported rather than banked as met.
+**Owner:** Implementer
+**Priority:** Medium — it is the third surface to make the same mistake, and the first two are fixed
+**Phase:** Phase 3
+**Depends on:** nothing. Overlaps `T-156`, which asks the MP3 preset to state its bitrate
+**Relevant context:** `REQ-009`, `REQ-020`, `T140-R3`, `T126-R2`, `ui/history_view.py`
+(`FORMAT_COLUMN`), `ui/queue_view.py` (`_effective_format_text`)
+**Affected surfaces:** `ui/history_view.py`, possibly `core/models.py`
+**Risk:** Low to display; medium if the record has to carry more than it does
+
+#### Scope
+
+**History prints `entry.format_used` verbatim**, and that field means *"what yt-dlp reported"* — an
+id like `251`, not a description. **A merged download is worse: `399+140`**, which is two ids joined
+by yt-dlp's own selector syntax — video 399 with audio 140. So the field a user reads to answer
+*what did I get* answers with an internal join expression. A user reading their own download history is told a number with
+no explanation available anywhere in the window.
+
+**This is `T140-R3` on a third surface.** That finding was the queue header showing
+`bestvideo+bestaudio/best` where its own control offered *Best video available*; the fix routed it
+through `_effective_format_text`, which prefers a preset's name and falls back to the literal.
+`T126-R2` did the same for an ordinary row. **History was not changed**, so the project has now
+fixed this defect twice and still ships it once.
+
+**What a user actually wants is not the id.** The maintainer named it: **the file type and the
+bitrate** — `MP3, 192 kbps` — which is what they chose in the first place. The extension is
+inferable from the path shown beside it, and inference is not a field.
+
+**The record may not carry enough**, and that is the part to establish first. `format_used` is what
+the worker reported. Whether the *request* is recoverable from the history row — and so whether the
+preset name can be recovered rather than re-derived — is a `T-085` question this task must answer
+before it decides what to display.
+
+#### Acceptance criteria
+
+- A history row states the format in the same vocabulary the rest of the window uses — the preset's
+  name where one describes the download, per `_effective_format_text`'s rule, not a yt-dlp id
+- Where the download was a conversion, the row says **what it converted to**, including the bitrate
+  for MP3 — the pairing `T-156` asks for on the queue side, so the two surfaces agree
+- The raw `format_used` is still **available** — a tooltip, the detail view, somewhere — because
+  `REQ-020` records what happened and an id is what happened
+- A record that predates whatever field this needs still renders honestly, per `_text_or_absent`'s
+  existing rule
+- The queue, History and the add dialog are asserted **together** for one download, as `T140-R3`
+  required, so a fourth surface cannot drift
+
+#### Out of scope
+
+- Changing what the worker reports. `format_used` is yt-dlp's answer and stays that
+- A migration, unless the answer to the question above needs one — decide, then file it
+
+---
 
 ### T-144 — History can only be cleared one record at a time
 

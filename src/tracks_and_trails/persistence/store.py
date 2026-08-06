@@ -204,6 +204,11 @@ class PersistentJobStore(QObject):
                 playlist_id=job.playlist_id,
                 playlist_index=job.playlist_index,
                 playlist_title=job.playlist_title,
+                # **What was asked for, beside what was reported** (`T-159`). `format_used` is
+                # yt-dlp's answer — an id — and naming it in the words the rest of the window uses
+                # needs the request. Carried here for the membership's reason: the job's copy dies
+                # with the job, and this is the last moment it can be copied.
+                request=job.request,
                 completed_at=job.finished_at if job.finished_at is not None else _now(),
             ),
             settle,

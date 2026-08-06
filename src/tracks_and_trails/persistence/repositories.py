@@ -522,6 +522,7 @@ _HISTORY_COLUMNS: Final = (
     "playlist_id",
     "playlist_index",
     "playlist_title",
+    "request",
     "completed_at",
 )
 
@@ -581,6 +582,21 @@ class HistoryEntry:
     playlist_index: int | None = None
     playlist_title: str | None = None
 
+    #: What the user asked for, as the worker was given it (`T-159`, `REQ-009`, `REQ-020`).
+    #:
+    #: **The request, not a rendered name.** `format_used` is yt-dlp's answer — `251`, or `399+140`
+    #: for a merge — and naming that in words needs the thing that was asked for, which no other
+    #: field carries: `audio_quality` is preset-owned, so a download converted at 320 kbps cannot
+    #: be matched to a preset without it. `ui/format_text.py` holds the one naming rule all three
+    #: surfaces use, and it reads a request exactly as the queue's does.
+    #:
+    #: Storing the resolved *name* was rejected: a preset renamed in a later build would leave old
+    #: records asserting a name this application no longer has.
+    #:
+    #: `None` means "recorded before migration `0007`". Those rows still say what yt-dlp reported,
+    #: which is honest about being an id rather than dressed up as a name nobody wrote down.
+    request: DownloadRequest | None = None
+
     def __post_init__(self) -> None:
         membership = (self.playlist_id, self.playlist_index, self.playlist_title)
         if any(part is not None for part in membership) and None in membership:
@@ -617,6 +633,7 @@ def _history_to_values(entry: HistoryEntry) -> dict[str, Any]:
         "playlist_id": entry.playlist_id,
         "playlist_index": entry.playlist_index,
         "playlist_title": entry.playlist_title,
+        "request": None if entry.request is None else _serialize_request(entry.request),
         "completed_at": entry.completed_at.isoformat(),
     }
 
@@ -633,6 +650,7 @@ def _row_to_history(row: sqlite3.Row) -> HistoryEntry:
         playlist_id=row["playlist_id"],
         playlist_index=row["playlist_index"],
         playlist_title=row["playlist_title"],
+        request=None if row["request"] is None else _deserialize_request(row["request"]),
         completed_at=datetime.fromisoformat(row["completed_at"]),
     )
 

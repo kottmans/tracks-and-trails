@@ -88,6 +88,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.ui.format_text import format_name
 from tracks_and_trails.ui.grouping import Group, Visible, flatten
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, format_bytes
 from tracks_and_trails.ui.row_delegate import (
@@ -127,6 +128,12 @@ COMPLETED_COLUMN: Final = 5
 #: What an empty history says. A user who has downloaded nothing and a view that failed to load look
 #: identical without it — the same reason the queue has one.
 EMPTY_TEXT: Final = "Nothing downloaded yet. Completed downloads are listed here."
+
+#: How the tooltip labels the value yt-dlp reported (`T-159`, `REQ-020`).
+#:
+#: Labelled rather than appended bare: a third line reading `399+140` under a URL and a path is
+#: one more unexplained string, which is the defect this task is about rather than a fix for it.
+RAW_FORMAT_PREFIX: Final = "Reported by yt-dlp: "
 
 #: How a completion time is written. Seconds are dropped: this is a record of what happened, not a
 #: measurement, and a column of times to the second is harder to scan for no gain.
@@ -379,7 +386,20 @@ class HistoryModel(QAbstractTableModel):
             # report needs. They were per-column tooltips because both are routinely wider than
             # their column; on a row, the path is drawn on the last line and clipped when it is
             # long, so the need is unchanged and the tooltip is where it is met.
-            return "\n".join((self._text(entry, URL_COLUMN), self._text(entry, PATH_COLUMN)))
+            #
+            # **And the raw `format_used`, which is why this is where it went** (`T-159`). The row
+            # now names the download in words, and `REQ-020` records *what happened* — an id is
+            # what happened. Somebody debugging a download needs `399+140` and cannot get it from
+            # the preset's name; somebody reading their history needs the name and would learn
+            # nothing from the id. A tooltip is where the second reader is not charged for the
+            # first one's question.
+            return "\n".join(
+                (
+                    self._text(entry, URL_COLUMN),
+                    self._text(entry, PATH_COLUMN),
+                    f"{RAW_FORMAT_PREFIX}{_text_or_absent(entry.format_used)}",
+                )
+            )
         return None
 
     def _whole_row(self, entry: HistoryEntry) -> str:
@@ -408,6 +428,19 @@ class HistoryModel(QAbstractTableModel):
         if column == PATH_COLUMN:
             return _text_or_absent(entry.output_path)
         if column == FORMAT_COLUMN:
+            # **The words the rest of the window uses, not yt-dlp's id** (`T-159`, `T140-R3`).
+            # `format_used` is what yt-dlp *reported* — `251` for YouTube's Opus stream, or
+            # `399+140` for a merge, which is two ids joined by yt-dlp's own selector syntax. A
+            # user reading their own history was told a number with no explanation available
+            # anywhere in the window. `format_name` is the same rule the queue row and the add
+            # dialog name a download by, reading the request migration `0007` carried across.
+            #
+            # **A record from before that migration still says what yt-dlp reported**, through
+            # `_text_or_absent`'s existing rule: there is nothing to reconstruct a request from,
+            # and an id labelled honestly is better than a name nobody wrote down. The raw value
+            # stays reachable for every row either way — see the tooltip (`REQ-020`).
+            if entry.request is not None:
+                return format_name(entry.request)
             return _text_or_absent(entry.format_used)
         if column == SIZE_COLUMN:
             # The same function the queue and the detail view use, so one download is described

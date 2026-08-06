@@ -38,6 +38,7 @@ from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.persistence.repositories import HistoryEntry
 from tracks_and_trails.ui import theme
+from tracks_and_trails.ui.format_text import FORMAT_PREFIX
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 from tracks_and_trails.ui.main_window import (
     HISTORY_KEEPS_FILES,
@@ -47,7 +48,7 @@ from tracks_and_trails.ui.main_window import (
     clear_question,
     removal_question,
 )
-from tracks_and_trails.ui.queue_view import FORMAT_PREFIX, PROGRESS_COLUMN
+from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN
 from tracks_and_trails.ui.row_delegate import (
     DETAIL_ROLE,
     INHERITED_TEXT,
