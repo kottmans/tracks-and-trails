@@ -10842,3 +10842,66 @@ These are reviewer recommendations, not entries attributed to the maintainer:
 
 The reviewer appended this record only. No specification, task, decision, source, test, commit,
 remote ref or CI state was changed.
+
+## 2026-08-06 — Completion-ledger and Phase 3 batch review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `7afa295`
+**Implementation head:** `7f87534`
+**Submission head:** `3578fcc` (handoff only)
+**Tasks:** `T-150`, `T-156`, `T-169`, `T-170`, and `T-171` evidence
+**Verdict:** **Changes requested.** Removing the History product, keeping one Queue surface, moving
+record clearing into Settings, the derived add-dialog width, and the MP3 bitrate naming are sound
+in the reviewed paths. The ledger is not approvable yet. Its detailed data decision is recorded as
+maintainer-accepted without a maintainer ruling and contradicts T-169's own credential-retention
+criterion; the implementation also lower-cases URL credentials, can permanently skip the upgrade
+backfill after an interruption, and does not establish its stated one-row-per-identity invariant
+for existing data.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction |
+|---|---|---:|---|---|
+| `T169-R1` | **High** | **Yes** | `DAT-006` is marked Accepted “on maintainer direction”, but the direction established the product boundary—lightweight downloader, no browseable History—not the detailed ledger choices in §§1–6. T-169 required those choices to be decided before implementation; it did not authorize the Planner/Implementer to accept its own URL identity, normalization, raw-value retention, legacy-row or no-column-drop rulings. This is the same authority distinction enforced by `T145-R1` and `T144-R1`: satisfying a decision's trigger makes it eligible for a ruling, not self-ratifying. | Obtain and accurately record the maintainer's disposition of the detailed `DAT-006` choices. Until then, record the new decision and dependent task status as proposed/awaiting a ruling. If any choice changes, reconcile the implementation and tests before re-review. |
+| `T169-R2` | **High** | **Yes** | T-169's security criterion says authorization material and transient signed query data are not made durable merely to detect duplicates. The ledger stores the entered URL verbatim **and** a second plaintext normalized copy, without expiry, after its queue row can be cleared. A source URL containing userinfo or `?token=SignedValue` survives in both columns. The submitted structural test uses a harmless URL and claims none of the retained fields can carry a credential, but `url` and `normalised_url` plainly can. `DAT-003`'s older permission to keep a source URL in the retryable job record does not supply the ledger's new, longer-lived duplicate-only purpose. `DAT-006`'s hash rejection also rests on a false premise: P-11 requires the warning to show **when**, while the staging row already shows the URL being checked. | Preserve the criterion at the ledger sink: retain no plaintext userinfo, signed/private query value, authorization material or equivalent token merely for duplicate detection, and add a raw-database regression using such a URL. A digest or another privacy-preserving identity is one option, not a prescribed design. If the maintainer deliberately accepts plaintext source URLs instead, record that ruling and amend T-169, REQ-020 and DAT-006 truthfully rather than claiming storage was not broadened. |
+| `T170-R1` | **Medium** | **Yes** | Migration 0008 commits its DDL and `PRAGMA user_version = 8` before `_key_existing_completions()` runs. An interruption or exception in that Python step therefore leaves a version-8 database whose legacy keys are NULL; every later `migrate()` skips 0008, so those downloads never participate in T-114. A deterministic probe forced the hook to raise and observed `VERSION 8`, three NULL keys, then `SECOND_APPLIED []` and the same three NULL keys on the next migration call. The docstring's claim that the backfill runs “inside the upgrade” is false, and the failure reproduces the schema/version split T014-R2's transaction rule exists to prevent at a data-semantic boundary. | Make the Python backfill and version advance atomic, or make an incomplete backfill durably detectable and retried on startup. Add a deterministic interruption regression that proves the next open either sees no v8 commit or completes the missing keys. |
+| `T170-R2` | **Medium** | **Yes** | `normalise_url()` lower-cases `parts.netloc`, not the host. `netloc` includes userinfo, so `https://User:TokenA@Example.com/watch?v=1` and the otherwise distinct `...:Tokena@...` both key as `https://user:tokena@example.com/watch?v=1`. That violates DAT-006 §2's host-only rule, creates a false duplicate warning, and lets a later completion delete the earlier identity row. The existing tests vary host case but never put a case-sensitive component beside it. | Lower-case only the scheme and parsed host while preserving userinfo and other non-host authority text exactly; cover userinfo, port and IPv6 forms so reconstructing the authority does not trade this collision for another. Keep the two-token regression at both the normalizer and repository boundary. |
+| `T170-R3` | **Medium** | **Yes** | DAT-006 §4 says one row per identity, but migration 0008 only fills keys. Two legacy attempts for the same normalized URL remain two rows indefinitely unless that exact URL is downloaded again; “collapsing lazily … reaches the same state” is therefore false for every identity never repeated. The Settings count is then attempts rather than identities. `last_completed()` compensates with textual `MAX(completed_at)`, but ISO strings with offsets are not chronological across a fall-back or timezone change: the probe reported `01:50-05:00` although `01:10-06:00` is twenty minutes later. | Reconcile the conflicting preservation and one-row invariant deliberately. Either migrate legacy duplicates to one correctly selected latest row, or obtain a maintainer amendment that explicitly preserves legacy attempts and make lookup/count semantics truthful. In either case, compare completion instants chronologically rather than by offset-bearing text. Add a v7 fixture/probe with duplicate normalized URLs and offset-crossing timestamps. |
+| `T171-R1` | **Medium** | **No** | The evidence labels direct ffmpeg commands as “every path this application takes”, but it does not run yt-dlp's postprocessors or reproduce all built-in families. In particular, its video “merge” is one already-muxed MP4 copied to MKV, not separate video/audio inputs through `FFmpegMerger`; it does not exercise subtitle embedding, the no-postprocessor paths, or yt-dlp's actual output arguments. The script is useful exploratory evidence, and T-171 correctly remains Proposed, but the matrix cannot yet satisfy the task's per-family acceptance criterion or support the claim that standard tags survive every application path. | Keep this as labelled surrogate evidence and complete T-171's matrix through the actual postprocessor seams/output families before making the provenance decision. Narrow the present claims in the evidence and task summary so a later ruling cannot mistake the surrogate for application-path proof. |
+
+### Accepted parts and dispositions
+
+- **T-150 is accepted.** `StagingList.sizeHint()` derives its width from the delegate's anatomy and
+  Qt's own selector wrapping, invalidates the cache on font/style changes, and remains a hint rather
+  than a minimum. The one-pixel boundary tests connect the calculation to the drawing, and staged
+  rows genuinely have no verbs whose overflow could be asserted.
+- **T-156 is accepted.** The rendered bitrate comes from the actual `FormatChoice.audio_quality`,
+  so a derived 320 kbps choice does not inherit the catalogue's 192 label. Preset identity remains
+  strict while presentation can truthfully name the conversion. The explicitly deferred dropdown
+  vocabulary remains with T-111.
+- **The visible History removal is accepted subject to the ledger findings.** The composed window
+  uses `QueueView` directly, no tab widget or History route remains, open/reveal stays on live queue
+  rows, and Settings carries an exact-count confirmation plus the never-delete-files promise. The
+  clearing path is one unparameterized transaction and does not share clear-finished semantics.
+- **DAT-006 §5 is not independently rejected.** Leaving obsolete columns in place and writing NULL
+  for new completions is a defensible risk trade, but it is one of the detailed choices that still
+  needs the maintainer ruling in T169-R1. Its preservation rationale does not by itself settle the
+  separate duplicate-row conflict in T170-R3.
+- The stale History-named repository methods and prose are already bounded by T-172 and T-174.
+  They are follow-up simplification, not approval blockers for this removal.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 7afa295..3578fcc`: **pass**. Ten implementation/planning commits end at `7f87534`; `3578fcc` adds the handoff. |
+| Focused unit/UI suites | Persistence, format naming, Settings, add dialog and row delegate: **234 passed**. |
+| Focused integration | Composition plus completion/ledger transaction paths: **33 passed**. The first sandboxed run had two loopback-bind environment failures; rerunning with loopback permission passed all 33. |
+| Task placement | `tests/unit/test_task_placement.py`: **14 passed**. |
+| URL collision probe | `TokenA` and `Tokena` userinfo normalized to the same key: **reproduced**. Raw database probe retained userinfo and the signed query in both URL columns. |
+| Interrupted upgrade probe | Hook failure left version 8 with three NULL keys; the second migration applied nothing and left all three NULL: **reproduced**. |
+| Legacy invariant probes | A migrated v7 database retained two rows for one normalized identity. Offset-crossing duplicates made `last_completed()` return the earlier instant: **reproduced**. |
+| Submitted broader evidence | Implementer reports **2213 passed, 11 skipped**, clean ruff/format, host and win32 mypy, plus fresh/v7 migration and composed-window checks at `7f87534`. |
+
+The reviewer appended this record only. No source, test, task, decision, commit, remote ref or CI
+state was changed.

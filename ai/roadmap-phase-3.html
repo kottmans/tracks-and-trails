@@ -358,11 +358,12 @@
     <div class="titles">
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 3 — format and content depth</h1>
-      <p class="lede">Expose what yt-dlp can actually do. <strong>Twenty-two Phase 3 entries are closed and not one of them is a Phase 3 deliverable</strong> — they are the UI rework the phase inherited, the criterion 8 spillover Phase 2 handed over, and two batches found by opening the window. The eight deliverables this phase exists for have not been started, and six of the eight are waiting on the same unwritten document.</p>
+      <p class="lede">Expose what yt-dlp can actually do. <strong>The document that gated five deliverables is written, and the phase is no longer one file wide.</strong> <code>T-105</code> closed on 2026-08-06, so <code>T-107</code>, <code>T-109</code>–<code>T-112</code> are startable for the first time since the phase was planned. Thirty-seven Phase 3 entries are closed and <em>still</em> not one of them is a deliverable — but the reason has changed from "blocked" to "not yet begun".</p>
+      <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable</strong>: History is no longer a product, only a private ledger behind the duplicate warning. A phase that deletes a shipped feature is not the shape this board was drawn to show, and the section on it is new.</p>
       <p class="phase-line">
-        <span><strong>Head</strong> 4fcfe9f</span>
-        <span><strong>CI</strong> green, all five jobs</span>
-        <span><strong>Suite</strong> 2262 passed, 11 skipped</span>
+        <span><strong>Head</strong> be76fe9</span>
+        <span><strong>CI</strong> see the note below</span>
+        <span><strong>Suite</strong> 2213 passed, 11 skipped, locally</span>
         <span><strong>Phase 2</strong> exited 2026-08-05</span>
       </p>
     </div>
@@ -371,22 +372,23 @@
   <section>
     <p class="eyebrow">Where the phase actually stands</p>
     <ul class="tally">
-      <li style="--chip: var(--st-approved)"><span class="n">22</span><span class="k">Entries closed</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">37</span><span class="k">Entries closed</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 8 deliverables started</span></li>
-      <li style="--chip: var(--st-review)"><span class="n">6</span><span class="k">Deliverables gated by one doc</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Deliverables gated by a doc</span></li>
       <li style="--chip: var(--st-block)"><span class="n">3</span><span class="k">High-risk deliverables</span></li>
-      <li style="--chip: var(--st-ready)"><span class="n">7</span><span class="k">Open and unblocked</span></li>
-      <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Open blocking findings</span></li>
+      <li style="--chip: var(--st-ready)"><span class="n">8</span><span class="k">Of 8 deliverables startable</span></li>
+      <li style="--chip: var(--st-review)"><span class="n">10</span><span class="k">Commits awaiting review</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 6 exit criteria met</span></li>
-      <li style="--chip: var(--st-block)"><span class="n">2</span><span class="k">Accepted decisions reopened</span></li>
+      <li style="--chip: var(--st-block)"><span class="n">4</span><span class="k">Accepted entries amended</span></li>
     </ul>
-    <p class="note"><strong>The count of closed entries is not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01, and every one of those is still <em>Proposed</em>. What has been closed since is real work that landed in Phase 3's numbering because that is when it was found — which is worth seeing plainly rather than averaging into a percentage.</p>
+    <p class="note"><strong>The count of closed entries is still not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01 and every one of those is still <em>Proposed</em>. What has closed is real work that landed in Phase 3's numbering because that is when it was found. <span class="q-why">Counted as entries under <code>## Complete</code> in <code>ai/TASKS.md</code> whose <code>Phase:</code> line begins <em>Phase 3</em> — six of them closed on 2026-08-06 alone.</span></p>
+    <p class="note" style="--edge: var(--st-block)"><strong>CI is not green at this head, and was not green for three commits before it.</strong> Run <code>31080892061</code> failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality that expects the application menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job can see the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <strong>Both are fixed at <code>be76fe9</code>; the run confirming it had not finished when this board was written.</strong></p>
   </section>
 
   <section>
     <div class="section-head">
-      <h2>The critical path is one document wide</h2>
-      <p class="lede">Every green node is done and pushed. <strong>The single amber node gates six of the eight deliverables</strong> — <code>T-105</code> writes <code>docs/UX_SPEC.md</code>, the trigger this phase has carried since it was planned and which had no task behind it until 2026-08-01. Blue is ready to start now; grey is waiting on something.</p>
+      <h2>The critical path opened up on 2026-08-06</h2>
+      <p class="lede">Every green node is done and pushed. <strong>The amber node is gone: <code>T-105</code> wrote <code>docs/UX_SPEC.md</code> and closed, so nothing on this board is waiting on a document any more.</strong> All eight deliverables are startable, which has not been true since the phase was planned. What replaces the gate is a choice about order, not a blockage — and the red nodes are where the risk moved.</p>
     </div>
 
     <div class="chart-frame fit" id="chart">
@@ -410,11 +412,13 @@ flowchart TB
     REWORK["UI rework T-116 T-117 T-118 T-120"]:::done
     CRIT8["Criterion 8 spillover - 10 tasks"]:::done
     ROWS["Row layout T-160 T-163 T-164 T-166 T-167"]:::done
-    HIST["History batch T-142 T-144 T-145 T-159"]:::done
+    HIST["History batch T-142 T-144 T-145 T-159 - since removed"]:::done
+    FIXES["T-150 dialog width, T-156 MP3 bitrate, T-168"]:::done
+    LEDGER["T-169 contract plus T-170 History removed"]:::done
 
-    HEAD["Pushed and green - 4fcfe9f"]:::head
+    HEAD["Pushed, awaiting review - be76fe9"]:::head
 
-    UXSPEC["T-105 - write docs/UX_SPEC.md"]:::gate
+    UXSPEC["T-105 - docs/UX_SPEC.md WRITTEN"]:::done
 
     T107["T-107 format table - the foundation"]:::planned
     T108["T-108 pick video plus audio, merge"]:::planned
@@ -426,9 +430,10 @@ flowchart TB
     T114["T-114 warn on a repeat URL"]:::ready
 
     T143["T-143 probe a playlist's entries"]:::ready
-    T150["T-150 add dialog opens too narrow"]:::ready
-    T156["T-156 MP3 preset states its bitrate"]:::ready
     T158["T-158 a refused Open is reported unseen"]:::ready
+    T146["T-146 the rest of the Settings screen"]:::ready
+    T171["T-171 provenance - measured, undecided"]:::gate
+    TIDY["T-172 T-173 T-174 - simplification"]:::ready
 
     EXIT(["PHASE 3 EXIT - 6 criteria"]):::exit
 
@@ -436,14 +441,16 @@ flowchart TB
     REWORK --> HEAD
     CRIT8 --> HEAD
     ROWS --> HEAD
-    HIST --> HEAD
+    HIST --> LEDGER
+    FIXES --> HEAD
+    LEDGER --> HEAD
+    UXSPEC --> HEAD
 
-    HEAD --> UXSPEC
-    UXSPEC --> T107
-    UXSPEC --> T109
-    UXSPEC --> T110
-    UXSPEC --> T111
-    UXSPEC --> T112
+    HEAD --> T107
+    HEAD --> T109
+    HEAD --> T110
+    HEAD --> T111
+    HEAD --> T112
     T107 --> T108
     T108 --> T109
     T109 --> T111
@@ -451,9 +458,13 @@ flowchart TB
     HEAD --> T113
     HEAD --> T114
     HEAD --> T143
-    HEAD --> T150
     HEAD --> T158
-    HIST -. narrowed T-159, inherited the criterion .-> T156
+    HEAD --> T146
+    HEAD --> T171
+    HEAD --> TIDY
+    LEDGER -. T-114 now reads the ledger, not a view .-> T114
+    LEDGER -. T-170 built the Settings shell T-146 extends .-> T146
+    LEDGER -. left behind dead code and two names .-> TIDY
 
     T108 --> EXIT
     T109 --> EXIT
@@ -465,26 +476,26 @@ flowchart TB
 
       <div class="legend">
         <span><i style="--sw: var(--st-approved)"></i> Done and pushed</span>
-        <span><i style="--sw: var(--st-review)"></i> Gates the phase</span>
+        <span><i style="--sw: var(--st-review)"></i> Needs a maintainer decision</span>
         <span><i style="--sw: var(--st-ready)"></i> Startable now</span>
-        <span><i style="--sw: var(--st-idle)"></i> Waiting on the spec</span>
+        <span><i style="--sw: var(--st-idle)"></i> Startable, not started</span>
         <span><i style="--sw: var(--st-block)"></i> High risk</span>
         <span><i class="dashed"></i> Not a dependency</span>
       </div>
     </div>
 
-    <p class="note"><strong><code>T-114</code>, <code>T-143</code>, <code>T-150</code>, <code>T-156</code> and <code>T-158</code> hang off the head rather than off the spec</strong>, which is what makes them the work available today. <code>T-114</code> is the only <em>deliverable</em> among them: it needs history records and the history view, and both exist. Four of the five are corrections found by running the application, not planned features.</p>
+    <p class="note"><strong>Everything now hangs off the head.</strong> That is the whole change: with <code>T-105</code> written there is no longer a node the phase has to pass through, so the ordering below is a judgement rather than a constraint. <code>T-114</code>'s dependency moved rather than cleared — it needed the history records <em>and the view</em>, and the view is gone; it now reads <code>HistoryRepository.last_completed</code>, which <code>T-170</code> built for it. <code>T-171</code> is amber because what it needs is a decision, not work.</p>
   </section>
 
   <section>
     <div class="section-head">
       <h2>The eight deliverables, and what each is waiting for</h2>
-      <p class="lede">Transcribed from <code>ai/IMPLEMENTATION_PLAN.md</code>'s Phase 3 table, with the dependency and risk each task records for itself. None has been started.</p>
+      <p class="lede">Transcribed from <code>ai/IMPLEMENTATION_PLAN.md</code>'s Phase 3 table, with the dependency and risk each task records for itself. <strong>None has been started, and none is blocked.</strong> The <code>T-105</code> entries in the third column were the phase's whole critical path until 2026-08-06; they are struck rather than deleted, because what the column now shows is an ordering choice where it used to show a constraint.</p>
     </div>
 
     <div class="table-card">
       <table>
-        <caption>Decomposed 2026-08-01 · all eight still Proposed</caption>
+        <caption>Decomposed 2026-08-01 · all eight still Proposed · none blocked since 2026-08-06</caption>
         <thead>
           <tr><th>Task</th><th>Deliverable</th><th>Waiting on</th><th>Risk</th></tr>
         </thead>
@@ -492,7 +503,7 @@ flowchart TB
           <tr>
             <td class="id">T-107</td>
             <td>Sortable format table — every stream a probe found <span class="state-note">REQ-003</span></td>
-            <td><code>T-105</code></td>
+            <td><s><code>T-105</code></s> <span class="state-note">met 2026-08-06</span></td>
             <td><span class="state part">Medium</span><span class="state-note">The projection is where yt-dlp's churn lands</span></td>
           </tr>
           <tr>
@@ -504,25 +515,25 @@ flowchart TB
           <tr>
             <td class="id">T-109</td>
             <td>Post-processing: audio, container, thumbnail, metadata, chapters <span class="state-note">REQ-010</span></td>
-            <td><code>T-105</code>, <code>T-108</code></td>
+            <td><s><code>T-105</code></s>, <code>T-108</code></td>
             <td><span class="state blocked">High</span><span class="state-note">The largest single item. <code>T-077</code> found four of five Phase 1 options never produced a file</span></td>
           </tr>
           <tr>
             <td class="id">T-110</td>
             <td>Playlists: probe the entries, choose which to enqueue <span class="state-note">REQ-004</span></td>
-            <td><code>T-105</code></td>
+            <td><s><code>T-105</code></s> <span class="state-note">met 2026-08-06</span></td>
             <td><span class="state blocked">High</span><span class="state-note">Changes what a <em>job</em> is, which reaches <code>core/</code></span></td>
           </tr>
           <tr>
             <td class="id">T-111</td>
             <td>User presets: create, edit, duplicate, delete, set default <span class="state-note">REQ-007</span></td>
-            <td><code>T-105</code>, <code>T-109</code></td>
+            <td><s><code>T-105</code></s>, <code>T-109</code></td>
             <td><span class="state part">Medium</span><span class="state-note">Persisted state, and where it lives needs a decision</span></td>
           </tr>
           <tr>
             <td class="id">T-112</td>
             <td>Output template editor with a live path preview <span class="state-note">REQ-011</span></td>
-            <td><code>T-105</code></td>
+            <td><s><code>T-105</code></s> <span class="state-note">met 2026-08-06</span></td>
             <td><span class="state part">Medium</span><span class="state-note">Preview and real path must be one function</span></td>
           </tr>
           <tr>
@@ -541,23 +552,23 @@ flowchart TB
       </table>
     </div>
 
-    <p class="note"><strong><code>T-113</code> and <code>T-114</code> are startable and nothing says so anywhere else.</strong> Their recorded dependencies — Phase 2's exit, and the history records and view — are all met, so the "seven of eight are blocked" reading is about the spec, not about the whole phase being stalled.</p>
+    <p class="note"><strong>All eight are startable, and <code>T-114</code>'s dependency changed rather than cleared.</strong> It recorded "history records and the history view"; <code>T-170</code> deleted the view and gave it <code>HistoryRepository.last_completed</code> instead — an indexed lookup built for exactly this. The warning it shows also lost half its content: <code>docs/UX_SPEC.md</code> <code>P-11</code> asked it to name the date <em>and link to the History record</em>, and there is no record to open.</p>
   </section>
 
   <section>
     <div class="section-head">
       <h2>What to do next, in order</h2>
-      <p class="lede">One ordering, and the reason for it. The numbers are a sequence rather than a ranking: each item unblocks or de-risks the one under it.</p>
+      <p class="lede">One ordering, and the reason for it. The numbers are a sequence rather than a ranking: each item unblocks or de-risks the one under it. <strong>Rewritten 2026-08-06</strong> — the first item used to be the spec that gated five deliverables, and it is written.</p>
     </div>
 
     <ol class="queue">
       <li style="--edge: var(--st-review)">
-        <div class="q-head"><span class="id">T-105</span> <span class="name">Write <code>docs/UX_SPEC.md</code></span> <span class="pill">Unblocks 5</span></div>
-        <p class="q-why">It gates <code>T-107</code>, <code>T-109</code>, <code>T-110</code>, <code>T-111</code> and <code>T-112</code>, and it is the only thing on the board that does. <code>UX-005</code> has been the authority in its place since 2026-08-03 and says so in its own consequences. Until this is written the phase can only do work it found by accident.</p>
+        <div class="q-head"><span class="id">—</span> <span class="name">Review the ten commits that are waiting</span> <span class="pill">Before anything new</span></div>
+        <p class="q-why">Nothing in the range <code>7afa295..be76fe9</code> has been reviewed, and it includes <code>T-169</code>, which amends five accepted requirement and decision entries. <code>AGENTS.md</code> §3 makes review a distinct pass by a different agent; starting a deliverable on top of an unreviewed contract change is how a correction becomes a rewrite. The handoff is <code>ai/handoffs/2026-08-06-ledger-and-phase3.md</code>.</p>
       </li>
       <li style="--edge: var(--st-ready)">
         <div class="q-head"><span class="id">T-107</span> <span class="name">The format table</span> <span class="pill ghost">Foundation</span></div>
-        <p class="q-why">Named High because <code>REQ-008</code> and <code>T-109</code> both act on this table. It also owns proving the phase's first exit criterion — the table matching <code>yt-dlp -F</code> for a fixture set — so it carries a gate as well as a feature.</p>
+        <p class="q-why">Named High because <code>REQ-008</code> and <code>T-109</code> both act on this table. It also owns proving the phase's first exit criterion — the table matching <code>yt-dlp -F</code> for a fixture set — so it carries a gate as well as a feature. <strong>Now the first real deliverable that can start</strong>, and the spec it was waiting for exists.</p>
       </li>
       <li style="--edge: var(--st-ready)">
         <div class="q-head"><span class="id">T-113</span> <span class="name">Resume across a restart</span> <span class="pill" style="--edge: var(--st-block)">Start early</span></div>
@@ -569,7 +580,7 @@ flowchart TB
       </li>
       <li style="--edge: var(--st-idle)">
         <div class="q-head"><span class="id">T-110</span> <span class="name">Playlists, properly</span> <span class="pill" style="--edge: var(--st-block)">Structural</span></div>
-        <p class="q-why">Changes what a job <em>is</em>, so it reaches <code>core/</code> rather than the UI. Worth taking while the queue and History surfaces are freshly reviewed — <code>T-137</code>, <code>T-140</code> and <code>T-145</code> have each already moved part of the playlist story.</p>
+        <p class="q-why">Changes what a job <em>is</em>, so it reaches <code>core/</code> rather than the UI. Worth taking while the queue is freshly reviewed — <code>T-137</code> and <code>T-140</code> each moved part of the playlist story. <em>(<code>T-145</code> moved History's part of it, and that surface is gone.)</em></p>
       </li>
       <li style="--edge: var(--st-idle)">
         <div class="q-head"><span class="id">T-109</span> <span class="name">Post-processing, seven options</span> <span class="pill" style="--edge: var(--st-block)">Largest</span></div>
@@ -583,12 +594,12 @@ flowchart TB
   <section>
     <div class="section-head">
       <h2>What has actually been closed, and why it exists</h2>
-      <p class="lede">Twenty-two entries, none of them a deliverable. Grouped by where they came from, because the source is the interesting part: <strong>most of this phase's completed work was found by a person opening the application</strong>, not by a plan and not by a gate.</p>
+      <p class="lede">Thirty-seven entries, none of them a deliverable. Grouped by where they came from, because the source is the interesting part: <strong>most of this phase's completed work was found by a person opening the application</strong>, not by a plan and not by a gate — and the newest group was found by a person deciding the application should do <em>less</em>.</p>
     </div>
 
     <div class="table-card">
       <table>
-        <caption>Phase 3 entries under <code>## Complete</code>, 2026-08-02 to 2026-08-05</caption>
+        <caption>Phase 3 entries under <code>## Complete</code>, 2026-08-02 to 2026-08-06</caption>
         <thead><tr><th>Where it came from</th><th class="n">N</th><th>Tasks</th><th>State</th></tr></thead>
         <tbody>
           <tr>
@@ -613,13 +624,31 @@ flowchart TB
             <td>History — a playlist's records, its verbs, clearing it, and what it says it got</td>
             <td class="n">4</td>
             <td><code>T-142</code> <code>T-144</code> <code>T-145</code> <code>T-159</code></td>
-            <td><span class="state met">Approved</span><span class="state-note">Two migrations, one Critical corrected</span></td>
+            <td><span class="state met">Approved</span><span class="state-note">Two migrations, one Critical corrected. <strong>The surface these built was removed on 2026-08-06</strong></span></td>
+          </tr>
+          <tr>
+            <td><strong>Removing History</strong> — the contract, then the surface</td>
+            <td class="n">2</td>
+            <td><code>T-169</code> <code>T-170</code></td>
+            <td><span class="state part">Unreviewed</span><span class="state-note">Five accepted entries amended; <code>DAT-006</code> added; ~2,500 lines deleted</span></td>
+          </tr>
+          <tr>
+            <td>The spec the phase was planned around, and three defects found by running it</td>
+            <td class="n">4</td>
+            <td><code>T-105</code> <code>T-150</code> <code>T-156</code> <code>T-168</code></td>
+            <td><span class="state part">Unreviewed</span><span class="state-note"><code>T-105</code> is the one that lifted the gate</span></td>
           </tr>
           <tr>
             <td>Earlier: the MP3 bitrate control and history removal</td>
             <td class="n">2</td>
             <td><code>T-076</code> <code>T-125</code></td>
             <td><span class="state met">Approved</span><span class="state-note"><code>T-125</code> is what made <code>T-144</code> possible</span></td>
+          </tr>
+          <tr>
+            <td>Everything else Phase 2 handed over under Phase 3's numbering</td>
+            <td class="n">13</td>
+            <td><code>T-118</code> <code>T-124</code>–<code>T-126</code> <code>T-130</code> <code>T-136</code>–<code>T-141</code></td>
+            <td><span class="state met">Approved</span><span class="state-note">The add dialog, the queue row and the playlist group</span></td>
           </tr>
         </tbody>
       </table>
@@ -628,16 +657,26 @@ flowchart TB
 
   <section>
     <div class="section-head">
-      <h2>Two accepted decisions were reopened to get here</h2>
+      <h2>Four accepted entries have been amended to get here</h2>
     </div>
 
     <div class="callout" style="--accent: var(--st-block)">
-      <h3>Both were proposed by the implementer and ratified separately</h3>
+      <h3>The first two were proposed by the implementer and ratified separately</h3>
       <ul>
         <li><strong><code>UX-005</code> — a finished playlist is one History row.</strong> Three sub-decisions: the chip counts, there is no segmented bar, and a partly-failed playlist says <code>14 items</code> rather than <code>14 of 16</code>, because a stored original count goes stale the first time a user removes a member.</li>
         <li><strong><code>DAT-005</code> §1 — reopened to admit clearing the whole list.</strong> It had refused <em>Clear all</em> and named the condition that would lift the refusal; <code>T-125</code> met it. The verb is <code>Clear history</code>, because <em>all</em> has no object and the one a user supplies is their files.</li>
       </ul>
       <p class="note" style="border-left-color: var(--st-block)"><strong>Both were first recorded as maintainer rulings that had not happened</strong>, caught in review as <code>T145-R1</code> and <code>T144-R1</code>. The content survived ratification unchanged; the attribution was the defect. Phase 3 has more of this ahead — <code>T-113</code> reopens <code>UX-001</code> by design.</p>
+    </div>
+
+    <div class="callout" style="--accent: var(--st-review)">
+      <h3>The other two came with the History removal, on maintainer direction</h3>
+      <ul>
+        <li><strong><code>REQ-020</code> and <code>REQ-021</code> were rewritten</strong> (<code>T-169</code>). <code>REQ-020</code> is a private completion ledger with no browseable list and no per-record removal; <code>REQ-021</code> reaches a file only while its queue row exists, and no longer implies the application follows files a user moves.</li>
+        <li><strong><code>DAT-001</code>, <code>DAT-005</code> and <code>UX-005</code> carry appended amendments</strong>, never rewrites — <code>AGENTS.md</code> §6 makes those historical record. <code>DAT-005</code>'s boundary is untouched: a record is not a file. <code>UX-005</code> loses its second tab and keeps everything it decided about a <em>row</em>.</li>
+        <li><strong><code>DAT-006</code> is new</strong>, and decides the ledger's data: the entered URL normalised minimally, the URL as entered, the completion time. One row per identity. <strong>Obsolete columns stop being written rather than being dropped</strong> — SQLite makes a column drop a table rewrite, and the rows are a user's own record of their own downloads.</li>
+      </ul>
+      <p class="note" style="border-left-color: var(--st-review)"><strong>This is the part of the range most worth a reviewer's attention.</strong> Amending five accepted entries is a Planner act taken on a verbal direction; if that reads as beyond what an agent should apply to <code>REQUIREMENTS.md</code> and <code>DECISIONS.md</code>, the remedy is a ratification note rather than a code change.</p>
     </div>
   </section>
 
