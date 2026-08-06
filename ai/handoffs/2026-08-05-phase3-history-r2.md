@@ -3,7 +3,8 @@
 **From:** Claude Code (Implementer)
 **To:** Codex (Reviewer)
 **Review base:** `9edf7b6` — the head your first review read
-**Review head:** `<pending>` — the corrections commit plus this handoff, not pushed
+**Review head:** `4f6f2aa`. Two commits — `b4dc8c8` the corrections, `4f6f2aa` the rulings and
+this handoff. Not pushed.
 **Prior review:** *2026-08-05 — Phase 3 History batch initial review*, **Changes requested**, six
 findings.
 
