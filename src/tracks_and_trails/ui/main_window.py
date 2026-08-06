@@ -589,25 +589,24 @@ class MainWindow(QMainWindow):
         if self._output_directory is None or self._queue is None:
             return
         view = self._queue
-        if True:
-            self._file_actions.append(
-                FileActions(
-                    table=view.table,
-                    selected_path=view.selected_path,
-                    # Read at the moment of use, not captured: `T-079` lets the download folder
-                    # change while the window is open, and the boundary checked must be the current
-                    # one. `_output_directory` is not `None` here — the guard above returned.
-                    output_directory=lambda: cast("Path", self._output_directory),
-                    report=self._report_transiently,
-                    # **The row's `⋯` owns the context menu on these two lists** (`T124-R1`,
-                    # `UX-005` §4). A table has one `customContextMenuRequested`, and the row menu
-                    # already carries *Open* and *Show in folder* — through these very actions, for
-                    # the rows that have a file — plus everything else the row's state permits.
-                    # Leaving both connected popped two menus on one right-click or Menu key.
-                    context_menu=False,
-                    parent=self,
-                )
+        self._file_actions.append(
+            FileActions(
+                table=view.table,
+                selected_path=view.selected_path,
+                # Read at the moment of use, not captured: `T-079` lets the download folder
+                # change while the window is open, and the boundary checked must be the current
+                # one. `_output_directory` is not `None` here — the guard above returned.
+                output_directory=lambda: cast("Path", self._output_directory),
+                report=self._report_transiently,
+                # **The row's `⋯` owns the context menu on these two lists** (`T124-R1`,
+                # `UX-005` §4). A table has one `customContextMenuRequested`, and the row menu
+                # already carries *Open* and *Show in folder* — through these very actions, for
+                # the rows that have a file — plus everything else the row's state permits.
+                # Leaving both connected popped two menus on one right-click or Menu key.
+                context_menu=False,
+                parent=self,
             )
+        )
 
     def report_transiently(self, message: str) -> None:
         """Say something in the status bar. Public, so composition can report too (`T-125`).
