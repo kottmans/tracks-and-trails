@@ -10905,3 +10905,72 @@ for existing data.
 
 The reviewer appended this record only. No source, test, task, decision, commit, remote ref or CI
 state was changed.
+
+## 2026-08-06 — Completion-ledger withdrawal review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `3578fcc`
+**Implementation head:** `de7cb19`
+**Submission head:** `b652db5` (handoff only)
+**Tasks:** withdrawal of `T-169` / `T-170`, plus the `T171-R1` evidence correction
+**Verdict:** **Blocked.** Removing the History surface and abandoning its private-ledger replacement
+is a coherent response to the maintainer's lightweight-downloader direction. New completions no
+longer create History rows, the Queue remains the only download list, and the now-empty Settings
+shell is correctly absent until `T-146` has real settings to expose. The withdrawal is not yet a
+complete product transition for an upgraded installation: every pre-existing History row remains
+in the database after the only clear route is deleted, while the new contract says there is no
+record anywhere. Choosing whether to purge those user-owned records is destructive and needs an
+explicit maintainer ruling. Separately, canonical current-truth documents and open task contracts
+still direct future work to build and consume the withdrawn ledger.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction |
+|---|---|---:|---|---|
+| `T169-R3` | **High** | **Yes** | The withdrawal stops new writes and removes `HistoryRepository` plus the Settings clear action, but migration 0008 and the `history` table remain without any disposition of existing rows. Opening the frozen v7 fixture on this head left all three History rows at schema v8, including their source URLs and output paths. Thus an upgraded user retains exactly the durable download record `REQ-020` now says the application keeps nowhere, and has no application route to inspect or clear it. This is not merely dead schema: the rows contain user data. The existing migration test explicitly requires every History id and value to remain intact, so the current gate also enforces the opposite of an automatic purge. | Obtain and record the maintainer's explicit legacy-data ruling before implementing it: purge the rows on upgrade, retain a bounded clear route until they are removed, or deliberately preserve inaccessible legacy records and amend the “no record at all” contract. If purging is chosen, add a forward migration and frozen-v7/v8 regressions that prove the exact disposition without touching downloaded files, and update the migration test's now-conflicting preservation rule. Do not infer destructive deletion from the UI withdrawal alone. |
+| `T169-R4` | **High** | **Yes** | T-169's own acceptance criterion requires the plan, status, UX spec, and every open task to agree, but the current-truth sweep still describes the superseded private-ledger product. `STATUS.md` opens with “History becomes a private ledger”; `ARCHITECTURE.md` still owns `HistoryRepository`, `settings_dialog.py`, History data, and `HistoryEntry`; the Phase 3 plan still assigns T-169/T-170 the ledger; DAT-001's latest amendment says SQLite holds completion records; and the MVP list still includes withdrawn `REQ-020`. More importantly, open T-114 still depends on T-085/T-169 and requires indexed ledger lookups plus Settings clearing, while open T-146 requires extending T-170's deleted Settings shell and preserving its records action. T-169/T-170 themselves lead with completed-ledger status and actionable ledger criteria before later supersession notes. Following these canonical instructions would recreate the feature this range withdraws. | Sweep by authority and task status, not by ledger vocabulary. Rewrite current truth in `REQUIREMENTS.md`, `ARCHITECTURE.md`, `IMPLEMENTATION_PLAN.md`, `TASKS.md`, and `STATUS.md`; append the necessary withdrawal amendment to historical DAT-001; reconcile T-114 and T-146 to their actual dependency/shell contracts; and make T-169/T-170's present disposition lead unmistakably while preserving their completed history as history. Audit the generated Phase 3 board after its canonical sources agree. |
+| `T170-R4` | **Low** | **No** | The user-visible feature and its repository are gone, but several History-only runtime contracts remain with tests as their only callers: `history_group_verbs`, `Succeeded.format_used`, and the dedicated completion signal/store seam now wrap behavior otherwise supplied by ordinary job updates. Empty History test sections and current-tense source prose still describe a view or private ledger as live. This does not change present behavior, but cancelling T-172 and leaving T-174 aimed at a ledger rename means no current follow-up owns the residual machinery. | File or retarget an explicit lightweight-withdrawal cleanup task. Remove demonstrably unused data and action paths with relevant tests, simplify the completion seam only where its persistence-first announcement contract remains covered, and distinguish obsolete current-tense prose from historical rationale that should remain. This non-blocking cleanup does not authorize schema deletion. |
+
+### Prior-finding dispositions
+
+| Finding | Re-review result | Status |
+|---|---|---|
+| `T169-R1` | The maintainer's later ruling withdrew the ledger rather than ratifying DAT-006. DAT-006 now records both the false initial attribution and the actual ruling, so no implementer-authored data design remains in force. | **Resolved by withdrawal** |
+| `T169-R2` | The plaintext ledger sink and every new-write path are deleted. Existing rows remain a distinct upgraded-user defect under `T169-R3`, rather than a reason to keep the deleted sink finding open. | **Resolved for new writes; superseded by `T169-R3` for legacy data** |
+| `T170-R1` | The Python key backfill is deleted; no post-DDL step can be skipped after the v8 version commit. | **Moot by withdrawal** |
+| `T170-R2` | `core/urls.py` and its normalizer are deleted. | **Moot by withdrawal** |
+| `T170-R3` | There is no duplicate-identity lookup, collapse, count, or textual latest-row selection left in production. The separate question of what happens to old rows is `T169-R3`. | **Moot by withdrawal** |
+| `T171-R1` | The evidence file is now explicit in its purpose, method, table heading and limits that direct ffmpeg is surrogate evidence and does not satisfy the per-family criterion. The task summary still overclaims that “standard tags survive every path this application takes,” and its out-of-scope list still calls the completion ledger required by REQ-022. The requested task-summary narrowing is therefore incomplete. | **Open, non-blocking** |
+
+### Accepted parts and dispositions
+
+- **Removing the empty Settings menu is accepted.** It existed only for a data action that the
+  maintainer withdrew. A keyboard route to an empty screen would offer a control with no useful
+  result; T-146 can introduce the real settings route when it implements `REQ-023`. Its task entry
+  must be corrected to say that rather than claiming it extends the deleted shell.
+- **The one-row completion write is accepted.** `JobRepository.update` retains a transaction around
+  the durable job row, and the manager still withholds `job_succeeded` until that write settles.
+  T050-R1's two-row atomicity problem no longer exists because there is no second row to commit.
+- **Leaving the dead table and columns structurally present is not itself rejected.** Avoiding a
+  table rebuild remains a defensible migration-risk choice for fresh databases. It does not answer
+  `T169-R3`, which is about populated legacy rows and requires the maintainer to choose between
+  destructive removal, a clearing route, and deliberate retention.
+- **REQ-022 correctly remains unimplemented in this range.** Its live-queue confirmation belongs to
+  proposed T-114; adding it inside a withdrawal would hide the removal behind new behavior.
+- T-150 and T-156 remain accepted from the initial batch review. This range does not change their
+  source or tests.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 3578fcc..de7cb19`: **pass**. The implementation range is 27 files, +483 / -2154; `b652db5` adds the handoff only. |
+| Legacy upgrade probe | Loaded the frozen v7 fixture, then opened it through current `connect()`: schema advanced to 8 while History stayed **3 rows before / 3 rows after**. The retained values include `https://example.invalid/v7-one` and `/downloads/Trail Sounds/Track one.mp3`. |
+| Focused unit/UI/composition suites | Persistence, task placement, main window, row verbs, Windows accessibility and composition: **174 passed, 1 skipped**. |
+| Completion persistence | The hard-exit-after-completion probe: **passed**. The real-download persistence-first test initially could not bind its loopback fixture in the restricted sandbox; rerun with loopback permission: **1 passed**. |
+| Static diff audit | No production `INSERT`, `UPDATE`, `DELETE`, read, or join against `history` remains. `history_group_verbs` is called only by its tests; `Succeeded.format_used` is produced and validated but has no production consumer. |
+| Submitted broader evidence | Implementer reports **2163 passed, 11 skipped, 2 deselected**, 182 formatted files, clean ruff, and successful host/win32 mypy at 107 files. The reviewer did not rerun the full suite. |
+| CI | Not used as a prerequisite for this review. The handoff records run `31109522346` as still in flight and the last full green as `be76fe9`; no exact-head CI conclusion is claimed here. |
+
+The reviewer appended this record only. No source, test, requirement, decision, task state, commit,
+remote ref, migration, user database or CI state was changed.

@@ -361,8 +361,8 @@
       <p class="lede">Expose what yt-dlp can actually do. <strong>The document that gated five deliverables is written, and the phase is no longer one file wide.</strong> <code>T-105</code> closed on 2026-08-06, so <code>T-107</code>, <code>T-109</code>–<code>T-112</code> are startable for the first time since the phase was planned. Thirty-seven Phase 3 entries are closed and <em>still</em> not one of them is a deliverable — but the reason has changed from "blocked" to "not yet begun".</p>
       <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable, and then removed its replacement too.</strong> History went first; the private ledger meant to survive behind it was withdrawn hours later, after review found it had cost five findings — two High — without a user ever seeing it. <strong>The application now keeps no record of what has been downloaded at all.</strong></p>
       <p class="phase-line">
-        <span><strong>Head</strong> fd389f3</span>
-        <span><strong>CI</strong> green on all five jobs at be76fe9</span>
+        <span><strong>Head</strong> b652db5</span>
+        <span><strong>CI</strong> green on all five jobs at 6c90cf7</span>
         <span><strong>Suite</strong> 2163 passed, 11 skipped, locally</span>
         <span><strong>Phase 2</strong> exited 2026-08-05</span>
       </p>
@@ -382,7 +382,7 @@
       <li style="--chip: var(--st-block)"><span class="n">4</span><span class="k">Accepted entries amended</span></li>
     </ul>
     <p class="note"><strong>The count of closed entries is still not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01 and every one of those is still <em>Proposed</em>. What has closed is real work that landed in Phase 3's numbering because that is when it was found. <span class="q-why">Counted as entries under <code>## Complete</code> in <code>ai/TASKS.md</code> whose <code>Phase:</code> line begins <em>Phase 3</em> — six of them closed on 2026-08-06 alone.</span></p>
-    <p class="note" style="--edge: var(--st-approved)"><strong>CI went green at <code>be76fe9</code>, all five jobs, after three red commits.</strong> Run <code>31080892061</code> had failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality expecting the menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job sees the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <em>(The Settings menu has since been removed with the ledger, so that equality is back to two names — and will trip again when <code>T-146</code> restores the menu, which is what it is for.)</em></p>
+    <p class="note" style="--edge: var(--st-approved)"><strong>CI is green: all five jobs at <code>be76fe9</code>, and again at <code>6c90cf7</code> after the ledger came out.</strong> Run <code>31080892061</code> had failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality expecting the menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job sees the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <em>(The Settings menu has since been removed with the ledger, so that equality is back to two names — and will trip again when <code>T-146</code> restores the menu, which is what it is for.)</em></p>
   </section>
 
   <section>

@@ -128,11 +128,13 @@ it proposed deleting dead ledger code, and the live ledger went first, which is 
 | Composed window | central widget `QueueView`, **0 tab widgets**, menus `File`/`Help`, no `open_settings` |
 | Fresh database | schema v8, **`history` table present and empty** — it exists and nothing writes to it |
 
-**CI has not reported on this head.** Run `31109522346` was still in flight when this was written.
-The last full green was `be76fe9` — all five jobs, including `windows desktop`, which is the run
-that cleared the three red commits before it. **The withdrawal itself is unverified by CI**, and the
-`windows desktop` job is the one that matters most here, since it is the only thing that sees the
-menu bar this range changes twice.
+**CI is green on the withdrawal.** Run `31109522346`, at `6c90cf7`: all five jobs, **including
+`windows desktop`** — the job that matters most here, since it is the only thing that sees the menu
+bar this range changes twice, and the one that caught the `Settings` menu in the first place. The
+three commits after it are documentation, so they ran `Prose` alone (`OPS-011`).
+
+*(This section said the run was still in flight; it landed shortly after the handoff was written and
+is corrected here rather than left for a reviewer to re-check.)*
 
 `mypy` run as `python -m mypy`; the stale `.venv/bin/mypy` shebang is unchanged machine state.
 
