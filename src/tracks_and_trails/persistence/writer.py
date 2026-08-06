@@ -146,6 +146,22 @@ class _Worker(QObject):
         self._perform(token, lambda connection: HistoryRepository(connection).remove(entry_ids))
 
     @Slot(int, object)
+    def clear_history(self, token: int, _: object) -> None:
+        """Delete **every** history record, then report (`T-144`, `DAT-005` amended 2026-08-05).
+
+        Its own slot rather than `remove_history` with an empty list, which is the repository's
+        ruling carried up: an empty selection removes nothing, deliberately, and a clear that
+        arrived as one would be indistinguishable from that at every layer it passed through.
+
+        Ordered against `complete()` for `remove_history`'s reason — a clear asked for while a
+        completion is still in flight must land behind it, or the record it writes survives a list
+        the user emptied.
+
+        Takes an ignored payload to share the two-argument signal shape, as `clear_completed` does.
+        """
+        self._perform(token, lambda connection: HistoryRepository(connection).clear())
+
+    @Slot(int, object)
     def complete(self, token: int, payload: tuple[Job, HistoryEntry]) -> None:
         """Store a completed job **and** its history record in one transaction (`T050-R1`).
 
@@ -235,6 +251,10 @@ class QueueWriter(QObject):
     #: `DAT-005`: the one delete path history has. Carries a list of ids, never a predicate.
     _remove_history = Signal(int, object)
 
+    #: `(token, None)` — empty the whole list (`T-144`). Apart from `_remove_history` so a
+    #: wholesale clear cannot be expressed as a removal of nothing.
+    _clear_history = Signal(int, object)
+
     #: The writer thread has finished and its connection is closed. **Shutdown is a lifecycle,
     #: not a call** — the same rule `T013-R2` established for the manager, and for the same
     #: reason: `close()` used to `QThread.wait(5000)` on the GUI thread, which a contended write
@@ -256,6 +276,7 @@ class QueueWriter(QObject):
         self._reorder.connect(self._worker.reorder)
         self._clear.connect(self._worker.clear_completed)
         self._remove_history.connect(self._worker.remove_history)
+        self._clear_history.connect(self._worker.clear_history)
         self._shutdown.connect(self._worker.close)
         self._thread.finished.connect(self.closed)
         self._pending: dict[int, Callable[[str | None], None]] = {}
@@ -344,6 +365,17 @@ class QueueWriter(QObject):
             done("the queue writer is shutting down; nothing was saved")
             return
         self._remove_history.emit(self._track(done), list(entry_ids))
+
+    def clear_history(self, done: Callable[[str | None], None]) -> None:
+        """Delete every history record. **Returns immediately** (`T-144`, `DAT-005`).
+
+        Refused through the callback after `close()`, like every other write — a caller waiting to
+        hear whether the list was emptied must not wait forever because shutdown got there first.
+        """
+        if self._closed:
+            done("the queue writer is shutting down; nothing was saved")
+            return
+        self._clear_history.emit(self._track(done), None)
 
     def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
         """Rearrange the queue into `job_ids`' order. **Returns immediately.**

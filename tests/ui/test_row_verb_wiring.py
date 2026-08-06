@@ -44,6 +44,7 @@ from tracks_and_trails.ui.main_window import (
     STEP_DOWN_LABEL,
     STEP_UP_LABEL,
     MainWindow,
+    clear_question,
     removal_question,
 )
 from tracks_and_trails.ui.queue_view import FORMAT_PREFIX, PROGRESS_COLUMN
@@ -1722,6 +1723,13 @@ def test_the_queue_verbs_sit_at_the_far_end_of_the_toolbar(
 
     **Asserted by geometry, not by insertion order.** A separator inserted in the right place
     would satisfy an order check and still leave everything bunched at the left.
+
+    **The free space is compared to itself rather than to a fraction of the bar**, which is what
+    the spacer actually does: all of it collects *before* the group. The bound was
+    `gap > bar.width() // 3`, calibrated when two verbs sat there; `T-144`'s `Clear history` made
+    the group wider and drove the same correct layout to 294px against a 300px threshold — under
+    the full suite only, where an earlier test's stylesheet widens the buttons. A threshold that
+    moves when a button is added was measuring the group's width as much as its position.
     """
     window = _window_over([_job("job-1", 0)], tmp_path)
     window.resize(900, 500)
@@ -1732,18 +1740,19 @@ def test_the_queue_verbs_sit_at_the_far_end_of_the_toolbar(
 
     spinner = bar.findChild(QSpinBox, "concurrencyChoice")
     assert spinner is not None
-    queue_verbs = [
+    list_verbs = [
         widget
         for action in bar.actions()
-        if action.objectName() in {"pauseQueueAction", "clearCompletedAction"}
+        if action.objectName() in {"pauseQueueAction", "clearCompletedAction", "clearHistoryAction"}
         and (widget := bar.widgetForAction(action)) is not None
     ]
-    assert len(queue_verbs) == 2, "the toolbar no longer holds both queue verbs"
+    assert len(list_verbs) == 3, "the toolbar no longer holds all three whole-list verbs"
 
-    gap = min(widget.x() for widget in queue_verbs) - (spinner.x() + spinner.width())
-    assert gap > bar.width() // 3, (
-        f"only {gap}px separates the concurrency control from the queue verbs on a {bar.width()}px "
-        "toolbar, so they are packed together rather than at opposite ends"
+    gap = min(widget.x() for widget in list_verbs) - (spinner.x() + spinner.width())
+    trailing = bar.width() - max(widget.x() + widget.width() for widget in list_verbs)
+    assert gap > trailing, (
+        f"{gap}px of free space sits before the list verbs and {trailing}px after them on a "
+        f"{bar.width()}px toolbar, so they are not at the far end"
     )
 
 
@@ -2416,3 +2425,140 @@ def test_a_long_title_elides_rather_than_widening_the_list(
         "are drawn outside the viewport and the overflow menu never appears"
     )
     window.close()
+
+
+# --- T-144 / DAT-005 amended 2026-08-05: clearing the whole list ------------------------------
+
+
+class _HistoryOver:
+    """A `HistoryReader` over as many records as a test needs."""
+
+    def __init__(self, count: int) -> None:
+        self.entries = [
+            HistoryEntry(
+                id=f"h-{number}",
+                url="https://example.invalid/watch?v=abc",
+                completed_at=datetime(2026, 8, 5, 12, 0, tzinfo=UTC),
+            )
+            for number in range(count)
+        ]
+
+    def all_entries(self) -> list[HistoryEntry]:
+        return list(self.entries)
+
+
+def test_the_clear_question_names_its_count_and_never_says_all_alone(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`DAT-005` §4, and the wording its amendment ruled on.
+
+    That entry refused *Clear all* partly because the phrase *"is the phrasing most likely to be
+    read as deleting downloads"* — *all* has no object, so the user supplies one, and the one they
+    have in mind is their files. The question names **downloads** and **history**, so there is no
+    gap for them to fill.
+
+    The count is grouped because this is the number a user has not been keeping: `1,284` is a
+    quantity to feel where `1284` is a number to read.
+    """
+    assert clear_question(1) == "Clear the one download in your history?"
+    assert clear_question(1284) == "Clear all 1,284 downloads from your history?"
+    assert "downloads" not in clear_question(1), (
+        "the singular case reads as a plural, which is how a user learns the message is generated"
+    )
+
+
+def test_clearing_the_history_is_confirmed_with_its_count_and_the_file_promise(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The criterion: the confirmation names its own count **and** says the files are kept.
+
+    `HISTORY_KEEPS_FILES` is the same sentence the status bar carries (`DAT-005` §3), from the same
+    constant, so the two cannot come to disagree — and this is the moment it matters most, because
+    it is the moment the list becomes empty.
+    """
+    cleared: list[bool] = []
+    window = _window_over(
+        [],
+        tmp_path,
+        history=_HistoryOver(3),
+        on_history_clear_requested=lambda: cleared.append(True),
+    )
+
+    for button, expected in (
+        (QMessageBox.StandardButton.No, []),
+        (QMessageBox.StandardButton.Yes, [True]),
+    ):
+        confirm = window._clear_history_asked_for()
+        assert isinstance(confirm, QMessageBox)
+        try:
+            assert "3 downloads" in confirm.text(), f"the question reads {confirm.text()!r}"
+            assert confirm.informativeText() == HISTORY_KEEPS_FILES, (
+                "clearing the whole list does not say the files are safe, which is the one thing a "
+                "user emptying their history needs to know"
+            )
+            assert confirm.defaultButton() == confirm.button(QMessageBox.StandardButton.No), (
+                "the default button clears; an irreversible action's default should do nothing"
+            )
+            confirm.button(button).click()
+        finally:
+            confirm.close()
+        assert cleared == expected, f"{button} produced {cleared}"
+
+
+def test_the_clear_route_is_visible_and_reachable_without_a_pointer(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The criterion: a **visible** route, by pointer and by keyboard.
+
+    Bulk removal already existed before `T-144` — the list is `ExtendedSelection` and the
+    confirmation already counted — and there was no way to reach it except by dragging. A route
+    nobody can find is the same as no route.
+
+    The keyboard half is the mnemonic and the toolbar's own focus order; asserted as the action
+    being enabled, visible and carrying a mnemonic rather than by synthesising a key press, which
+    would test Qt rather than this window.
+    """
+    window = _window_over([], tmp_path, history=_HistoryOver(2), on_history_clear_requested=None)
+    action = window.clear_history_action
+
+    assert action is not None, "the window offers no route to clear the history at all"
+    assert action.isVisible() and action.isEnabled()
+    assert "&" in action.text(), (
+        "the action has no mnemonic, so the only way to reach it is with a pointer"
+    )
+    assert "history" in action.text().lower(), (
+        f"the action reads {action.text()!r}; DAT-005's amendment rules that the verb names the "
+        "list it empties, because 'Clear all' has no object and the user supplies one"
+    )
+    assert "file" in (action.toolTip() or "").lower(), (
+        "the tooltip does not mention the files, which is what tells a hesitating user that this "
+        "is about records"
+    )
+
+
+def test_clearing_an_empty_history_asks_nothing(qapp: QApplication, tmp_path: Path) -> None:
+    """`UX-005` §5: nothing is offered that would be refused.
+
+    *Clear 0 downloads from your history?* is a question with no answer worth giving, and a
+    confirmation that appears for it teaches the user that the dialog is noise.
+    """
+    cleared: list[bool] = []
+    window = _window_over(
+        [],
+        tmp_path,
+        history=_HistoryOver(0),
+        on_history_clear_requested=lambda: cleared.append(True),
+    )
+
+    assert window._clear_history_asked_for() is None
+    assert cleared == []
+
+
+def test_a_window_with_no_clear_handler_asks_nothing(qapp: QApplication, tmp_path: Path) -> None:
+    """Composition owns the write (`ARCHITECTURE.md` §7), so a window given none performs none.
+
+    The same shape as `_remove_history`: the window reports, it does not delete.
+    """
+    window = _window_over([], tmp_path, history=_HistoryOver(3))
+
+    assert window._clear_history_asked_for() is None

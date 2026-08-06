@@ -303,18 +303,31 @@ def test_the_toolbar_holds_nothing_that_acts_on_a_selection(qapp: QApplication) 
     Asserted **by object name over the real toolbar**, not by the absence of a property: a property
     can be deleted while the action goes on being built and added, which leaves the defect and
     passes the test. Every surviving action is then required to be enabled with nothing selected,
-    which is what "acts on the queue" means operationally.
+    which is what "acts on a whole list" means operationally.
+
+    *(This list said the toolbar's verbs act on the **queue**. `T-144` added `Clear history`, and
+    `DAT-005`'s 2026-08-05 amendment rewrote the rule to the principle underneath it: nothing here
+    acts on a selection, and every verb names the list it empties. The tab a verb belongs to was
+    never what made it unambiguous — `Clear finished` was not ambiguous while History was in front
+    either. The property this test guards is unchanged; only the sentence describing it moved.)*
     """
     window = _window_over([_job("a", 0), _job("b", 1)], on_remove_requested=lambda _: None)
     bar = window.findChild(QToolBar, "queueToolBar")
     assert bar is not None
 
     names = {action.objectName() for action in bar.actions() if action.objectName()}
-    assert names == {"actionAddUrls", "pauseQueueAction", "clearCompletedAction"}, (
+    assert names == {
+        "actionAddUrls",
+        "pauseQueueAction",
+        "clearCompletedAction",
+        "clearHistoryAction",
+    }, (
         f"the toolbar holds {sorted(names)}; UX-005 §4 leaves it queue-wide Pause and "
-        "Clear-finished, its 2026-08-04 amendment adds Add URLs as the primary action, and every "
-        "per-row verb belongs on the row"
+        "Clear-finished, its 2026-08-04 amendment adds Add URLs as the primary action, DAT-005's "
+        "2026-08-05 amendment adds Clear history, and every per-row verb belongs on the row"
     )
+    for name in names:
+        assert "selected" not in name.lower(), f"{name} names a selection rather than a list"
 
     # **Selection is the property under test, not enablement in general.** `actionAddUrls` is
     # legitimately disabled here — `T-016` disables it when composition supplied no job sink or

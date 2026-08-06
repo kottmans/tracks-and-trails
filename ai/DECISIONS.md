@@ -2609,6 +2609,55 @@ policy here is about *when*, not *where*.
 
 ## DAT-005 — Removing a history entry removes a record, never a file
 
+### Amended 2026-08-05 — clearing the whole list, on the foundation §1 named
+
+**Raised by:** `T-144`, found by the maintainer with a history large enough for it to matter.
+**Maintainer ruling, 2026-08-05.**
+
+**§1 refused *Clear all* and said exactly what would lift the refusal**: *"both can be added on this
+foundation once removal itself is proven, and neither is what a person reaches for first."* `T-125`
+built removal and it has been through review, so the condition this entry set for itself is met.
+What follows is the amendment, not an exception to it.
+
+**1. The verb is `Clear history`, and the wording is the ruling.** §1's other objection stands
+untouched: *"Clear all is also the phrasing most likely to be read as deleting downloads."* It is —
+*all* has no object, so the user supplies one, and the one they have in mind is their files.
+**`Clear history` names the thing it empties**, which is the same distinction this entry exists to
+draw: a record, not your downloads.
+
+**2. It is its own operation, not removal with the ids left out.** `HistoryRepository.remove`'s
+empty-sequence guard exists so that an empty selection cannot become an accidental
+`DELETE FROM history` — *"the failure this signature exists to make impossible"*. Widening that
+method to mean "everything when given nothing" would delete the guard and the reasoning together.
+So a wholesale clear is a **separate, explicitly named method**, and the narrow signature stays
+narrow.
+
+**3. The confirmation names its count and repeats the file guarantee**, per §4 and §3. *"Clear all
+1,284 downloads from history? The files stay on your disk."* The count is what tells a user how much
+they are about to lose; the guarantee is what tells them what they are not. This is the moment §3's
+promise matters most, because it is the moment the list becomes empty.
+
+**4. One transaction** (`NFR-003`). There is no half-emptied history, and nothing that survives only
+until the process exits — `T125-R1`'s lesson, which was a delete that looked durable through the
+connection that made it and was not.
+
+**5. Still no automatic pruning by age or size.** §1 refused two things and this lifts one of them.
+An age cutoff is a *policy* nobody has decided, and deciding it inside a task about a button would
+be `UX-005` §5's shape in the data layer.
+
+### Consequences
+
+- **A history past SQLite's parameter ceiling can be emptied at all.** `remove` builds one
+  placeholder per id, and `SQLITE_LIMIT_VARIABLE_NUMBER` is 32766 on this build — measured, in
+  `T-144` — so "select everything and remove it" failed outright with a database error on a history
+  that large. That is unreachable for most users and certain for the one who has used the
+  application longest.
+- **`UX-005`'s toolbar gains a verb that acts on History**, and the rule recorded in
+  `_build_queue_actions` — *"what is on this toolbar acts on the queue"* — is rewritten to the
+  principle underneath it rather than left standing as a comment that used to be true: **nothing on
+  the toolbar acts on a selection, and every verb on it names the list it empties.** That is what
+  made the original rule right; the tab a verb belongs to was never what made it unambiguous.
+
 **Status:** **Accepted** (2026-08-04) — maintainer decision, answering `UX-005` §9's deferral
 **Date:** 2026-08-04
 **Amends:** `REQ-020`, which said *maintain* a history and did not admit removal.

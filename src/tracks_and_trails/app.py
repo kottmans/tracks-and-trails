@@ -431,6 +431,23 @@ def compose(
 
         store.remove_history(entry_ids, settle)
 
+    def clear_history() -> None:
+        """Empty the whole list (`T-144`, `DAT-005` amended 2026-08-05).
+
+        Through the store for `remove_history`'s reason, and **its own call rather than
+        `remove_history([])`**: that method's empty guard exists so an empty selection cannot become
+        an accidental `DELETE FROM history`, and routing a deliberate clear through it would be
+        asking the one method whose job is to refuse this.
+        """
+
+        def settle(error: str | None) -> None:
+            if error is not None:
+                window.report_transiently(f"the history was not cleared: {error}")
+                return
+            window.refresh_history()
+
+        store.clear_history(settle)
+
     window = MainWindow(
         geometry_file,
         manager=manager,
@@ -445,6 +462,7 @@ def compose(
         on_reorder_requested=reorder_queue,
         on_clear_requested=clear_finished,
         on_history_removal_requested=remove_history,
+        on_history_clear_requested=clear_history,
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.

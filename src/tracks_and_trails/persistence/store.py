@@ -294,6 +294,18 @@ class PersistentJobStore(QObject):
         """
         self._writer.remove_history(entry_ids, done)
 
+    def clear_history(self, done: Callable[[str | None], None]) -> None:
+        """Delete every history record. **Returns immediately** (`T-144`, `DAT-005`).
+
+        **Not `remove_history([])`.** An empty selection removes nothing, by a guard that exists so
+        an empty selection cannot become an accidental `DELETE FROM history`; a clear that reused
+        that call would be asking the one method whose job is to refuse it.
+
+        **No file is touched**, restated here for `remove_history`'s reason: this is the method
+        composition calls, and it is the call a user is most likely to fear.
+        """
+        self._writer.clear_history(done)
+
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
         """Append `jobs` in one transaction. **Returns immediately** (`ARC-005`).
 

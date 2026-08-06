@@ -144,6 +144,24 @@ def removal_question(count: int) -> str:
     )
 
 
+def clear_question(count: int) -> str:
+    """The confirmation for emptying the whole list (`T-144`, `DAT-005` amended 2026-08-05).
+
+    **Separate wording from `removal_question`, and the difference is the point.** That one says
+    *remove these 3*, which describes a selection; this empties everything, and a user who reaches
+    it has usually not counted what they have. So the count is the sentence's news — it is how much
+    they are about to lose — and it is grouped, because `1284` is a number to read and `1,284` is a
+    quantity to feel.
+
+    Singular is written out for its sibling's reason: "1 downloads" is the tell that a message was
+    assembled rather than composed. The empty case has its own line because *"Clear 0 downloads"* is
+    a question with no answer worth giving — the verb is not offered then.
+    """
+    if count == 1:
+        return "Clear the one download in your history?"
+    return f"Clear all {count:,} downloads from your history?"
+
+
 #: Used when no geometry has been stored yet, and when what was stored is unusable.
 DEFAULT_SIZE: Final = QSize(960, 640)
 
@@ -327,6 +345,7 @@ class MainWindow(QMainWindow):
         on_reorder_requested: Callable[[list[str]], None] | None = None,
         on_clear_requested: Callable[[], None] | None = None,
         on_history_removal_requested: Callable[[list[str]], None] | None = None,
+        on_history_clear_requested: Callable[[], None] | None = None,
         queue: QueueReader | None = None,
         history: HistoryReader | None = None,
     ) -> None:
@@ -354,6 +373,7 @@ class MainWindow(QMainWindow):
         self._on_reorder_requested = on_reorder_requested
         self._on_clear_requested = on_clear_requested
         self._on_history_removal_requested = on_history_removal_requested
+        self._on_history_clear_requested = on_history_clear_requested
         self._build_menus()
         self._concurrency: QSpinBox | None = None
         #: `T-080`'s queue actions. Built with the control bar, so a window given no `concurrency`
@@ -368,6 +388,7 @@ class MainWindow(QMainWindow):
         #: What is left is queue-*wide* and unambiguous whichever tab is showing.
         self._pause: QAction | None = None
         self._clear: QAction | None = None
+        self._clear_history: QAction | None = None
         #: The toolbar's copy of File → Add URLs…, or `None` on a window with no control bar.
         self._add_urls_button: QAction | None = None
         if concurrency is not None:
@@ -670,6 +691,53 @@ class MainWindow(QMainWindow):
         confirm.buttonClicked.connect(act)
         confirm.open()
         return confirm
+
+    def _clear_history_asked_for(self) -> QMessageBox | None:
+        """Confirm, then ask composition to empty the list (`T-144`, `DAT-005` amended 2026-08-05).
+
+        **The count and the file guarantee in one breath**, which is `DAT-005` §4 and §3 together.
+        A user clearing a selection knows what they selected; a user clearing everything usually
+        does not know how much *everything* is, so the count is the news — and this is the moment
+        §3's promise matters most, because it is the moment the list becomes empty.
+
+        **Nothing is asked when there is nothing to clear.** A confirmation reading *Clear 0
+        downloads* is a question with no answer worth giving, and `UX-005` §5's rule is that nothing
+        is offered that would be refused.
+
+        Returned rather than only shown, and `open()` rather than `exec()`, for `_remove_history`'s
+        reason: `exec` starts a nested event loop a test cannot leave.
+        """
+        if self._on_history_clear_requested is None or self._history_view is None:
+            return None
+        count = self._history_view.model.download_count()
+        if not count:
+            self._report_transiently("There is nothing in your history to clear.")
+            return None
+
+        confirm = QMessageBox(self)
+        confirm.setObjectName("historyClearConfirm")
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle("Clear history")
+        confirm.setText(clear_question(count))
+        confirm.setInformativeText(HISTORY_KEEPS_FILES)
+        confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        # **Irreversible, so the safe button is the default** (`DAT-005` §4), and more so here than
+        # for a selection: this is every record the user has.
+        confirm.setDefaultButton(QMessageBox.StandardButton.No)
+        chosen = self._on_history_clear_requested
+
+        def act(button: object) -> None:
+            if confirm.standardButton(button) == QMessageBox.StandardButton.Yes:  # type: ignore[arg-type]
+                chosen()
+
+        confirm.buttonClicked.connect(act)
+        confirm.open()
+        return confirm
+
+    @property
+    def clear_history_action(self) -> QAction | None:
+        """The toolbar's `Clear history`, so a test can drive the route a user takes."""
+        return self._clear_history
 
     def _show_row_menu(self, job_id: str, verbs: object) -> QMenu | None:
         """The queue row's menu, holding whatever the view said to hold.
@@ -1017,7 +1085,7 @@ class MainWindow(QMainWindow):
         return button
 
     def _build_queue_actions(self, bar: QToolBar) -> None:
-        """Pause/Resume and Clear finished — the two verbs that act on the **queue** (`UX-001`).
+        """The verbs that act on a **whole list**, each naming the list it acts on (`UX-001`).
 
         **Everything per-row went to the row** (`UX-005` §4, `T124-R3`). This built *Remove*,
         *Move up* and *Move down* as well, each acting on `QueueView`'s selection and each enabled
@@ -1029,8 +1097,13 @@ class MainWindow(QMainWindow):
         implementations — `_remove_job` and `_move_job` — and cannot be ambiguous about their
         target, because the target is the row they are drawn on.
 
-        *(`P2PLAN-R1`'s distinction is preserved and is now the whole rule rather than half of it:
-        what is on this toolbar acts on the queue. Nothing here acts on a selection.)*
+        *(`P2PLAN-R1`'s distinction is preserved. This said "what is on this toolbar acts on the
+        queue", and `T-144` made that false by putting `Clear history` here — so it is rewritten to
+        the principle underneath it rather than left standing as a comment that used to be true.
+        **Nothing on this toolbar acts on a selection, and every verb on it names the list it
+        empties.** That is what made the original rule right: the tab a verb belonged to was never
+        what made it unambiguous, and `Clear finished` was never ambiguous while the History tab was
+        in front either.)*
 
         **The pause control is one checkable action, not two buttons.** Pause and Resume are the
         two states of one thing; a pair of buttons would spend the whole session with one of them
@@ -1072,6 +1145,25 @@ class MainWindow(QMainWindow):
         clear.triggered.connect(self._clear_finished)
         bar.addAction(clear)
         self._clear = clear
+
+        # **`Clear history`, not `Clear all`** (`T-144`, `DAT-005` amended 2026-08-05). That entry
+        # refused *Clear all* partly on the wording: *all* has no object, so the user supplies one,
+        # and the one they have in mind is their files. This names the list it empties, which is the
+        # distinction the whole entry exists to draw.
+        #
+        # **On the toolbar because discoverability is the defect.** Bulk removal already existed —
+        # the list is `ExtendedSelection` and the confirmation already counted — and there was no
+        # way to reach it without dragging. A route nobody can find is the same as no route.
+        clear_history = QAction("Clear &history", self)
+        clear_history.setObjectName("clearHistoryAction")
+        clear_history.setStatusTip("Empty the list of past downloads; the files are kept")
+        clear_history.setToolTip(
+            "Empty the list of what you have downloaded. This removes records only — every file "
+            "stays exactly where it was saved."
+        )
+        clear_history.triggered.connect(self._clear_history_asked_for)
+        bar.addAction(clear_history)
+        self._clear_history = clear_history
 
     def _pause_toggled(self, paused: bool) -> None:
         """Hand the queue's pause state to whoever composition said owns it.

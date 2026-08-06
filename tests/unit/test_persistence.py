@@ -1449,3 +1449,128 @@ def test_a_removal_is_committed_and_survives_the_writer_closing(tmp_path: Path) 
         "implicit transaction and was rolled back"
     )
     assert reopened.get("job-2") is not None
+
+
+# --- clearing the whole history (T-144, DAT-005 amended 2026-08-05) ---------------------------
+
+
+def test_clear_empties_the_list_and_reports_how_many_it_took(history: HistoryRepository) -> None:
+    """The criterion: one action empties the list, and says what it did.
+
+    Reported rather than assumed, so composition tells the user what happened rather than what it
+    asked for — and so clearing an empty history is honestly zero.
+    """
+    for entry_id in ("a", "b", "c"):
+        history.record(_entry(entry_id))
+
+    assert history.clear() == 3
+    assert history.all_entries() == []
+    assert history.clear() == 0, "clearing an already empty history claimed to remove something"
+
+
+def test_clear_is_committed_rather_than_only_visible_to_its_own_connection(
+    tmp_path: Path,
+) -> None:
+    """`NFR-003` and `T125-R1`, whose lesson this repeats deliberately.
+
+    The first `remove` executed its `DELETE` bare, on the implicit transaction `sqlite3` opens and
+    never closes by itself. Every test read back through the *same* connection, which sees its own
+    uncommitted work, so the deletion looked durable and was not — the History tab reads through a
+    different connection, and the records came back. A second connection is the only thing that can
+    tell those two apart, and a wholesale clear is the worst place to get it wrong.
+    """
+    database = tmp_path / "library.sqlite3"
+    writer = HistoryRepository(db.connect(database))
+    for entry_id in ("a", "b"):
+        writer.record(_entry(entry_id))
+
+    assert writer.clear() == 2
+
+    reader = HistoryRepository(db.connect(database))
+    assert reader.all_entries() == [], (
+        "the clear was never committed, so a second connection still sees the records and they "
+        "come back the moment the writer closes"
+    )
+
+
+def test_clearing_is_one_transaction_and_never_half_empties(tmp_path: Path) -> None:
+    """`NFR-003`: no half-emptied history, and nothing that survives only until the process exits.
+
+    Driven by killing the connection **without** closing it, which is what a hard exit looks like
+    to SQLite: whatever was committed is there and whatever was not is gone. There is no third
+    outcome for a single `DELETE`, which is the property being asserted.
+    """
+    database = tmp_path / "library.sqlite3"
+    connection = db.connect(database)
+    writer = HistoryRepository(connection)
+    for entry_id in ("a", "b", "c"):
+        writer.record(_entry(entry_id))
+    assert writer.clear() == 3
+    del writer
+    connection.close()
+
+    survivors = HistoryRepository(db.connect(database)).all_entries()
+    assert survivors == [], f"{len(survivors)} records survived a committed clear"
+
+
+def test_a_history_past_sqlites_parameter_ceiling_still_clears(history: HistoryRepository) -> None:
+    """The criterion, and the defect it is about (`T-144`).
+
+    `remove` builds one placeholder per id, and **`SQLITE_LIMIT_VARIABLE_NUMBER` is 32766 on this
+    build** — measured while filing the task: 999 ok, 32766 ok, 32767 raises
+    `OperationalError: too many SQL variables`. So "select everything and remove it" failed outright
+    on a history past that, with a database error rather than a message, on the machine of whoever
+    has used the application longest.
+
+    **The measured limit is reasoning, not an assertion.** Asserting against
+    `SQLITE_LIMIT_VARIABLE_NUMBER` would let this pass silently on a build with a different ceiling
+    — including one where the parameterised route never fails and the test proves nothing. A fixed
+    count comfortably past the number measured here is what actually exercises the property: a bare
+    `DELETE` names no parameters, so it has no ceiling to cross.
+
+    Seeded with `executemany` on the raw connection rather than through `record`, because the point
+    is the *volume*, and forty thousand separate transactions would test the writer's patience
+    rather than the ceiling.
+    """
+    beyond_the_ceiling = 40_000
+    # Seeding volume, not exercising the API: forty thousand `record()` calls would test the
+    # writer's patience rather than the ceiling.
+    connection = history._connection
+    with connection:
+        connection.executemany(
+            "INSERT INTO history (id, url, completed_at) VALUES (?, ?, ?)",
+            [
+                (f"h-{number}", "https://example.com/watch?v=abc", "2026-07-29T12:00:00+00:00")
+                for number in range(beyond_the_ceiling)
+            ],
+        )
+
+    assert history.clear() == beyond_the_ceiling
+    assert history.all_entries() == []
+
+
+def test_removing_nothing_still_removes_nothing(history: HistoryRepository) -> None:
+    """`remove`'s empty guard is untouched by `clear` existing (`T-144`, `DAT-005`).
+
+    The guard exists so an empty selection cannot become an accidental `DELETE FROM history` — *"the
+    failure this signature exists to make impossible"*. A wholesale clear is a separate method with
+    its own name precisely so that guard could stay, and this is what would fail if a later edit
+    taught `remove` to mean "everything" when given nothing.
+    """
+    for entry_id in ("a", "b"):
+        history.record(_entry(entry_id))
+
+    assert history.remove([]) == 0
+    assert {entry.id for entry in history.all_entries()} == {"a", "b"}, (
+        "an empty selection emptied the history, which is the exact failure remove's signature "
+        "exists to make impossible"
+    )
+
+
+def test_removing_a_selection_still_works_beside_clear(history: HistoryRepository) -> None:
+    """The last criterion: a wholesale clear changed nothing about selection-scoped removal."""
+    for entry_id in ("a", "b", "c"):
+        history.record(_entry(entry_id))
+
+    assert history.remove(["a", "c"]) == 2
+    assert [entry.id for entry in history.all_entries()] == ["b"]

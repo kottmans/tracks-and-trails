@@ -768,6 +768,35 @@ class HistoryRepository:
             )
             return int(cursor.rowcount)
 
+    def clear(self) -> int:
+        """Delete **every** record, and only records (`T-144`, `DAT-005` amended 2026-08-05).
+
+        **Its own method rather than `remove` with the ids left out, and that is a ruling.**
+        `remove`'s empty-sequence guard exists so an empty selection cannot become an accidental
+        `DELETE FROM history` — *"the failure this signature exists to make impossible"*. Teaching
+        that method to mean "everything" when given nothing would delete the guard and the reason
+        for it in one edit, and the call site that did it would look like a caller passing an empty
+        list. Two methods, two intentions, neither reachable by accident from the other.
+
+        **This is also the only way a large history can be emptied.** `remove` builds one
+        placeholder per id, and `SQLITE_LIMIT_VARIABLE_NUMBER` is 32766 on this build, so selecting
+        every row of a history past that and removing it raises `OperationalError: too many SQL
+        variables` — a database error rather than a message, on the machine of whoever has used the
+        application longest. A bare `DELETE` names no parameters at all and has no such ceiling.
+
+        **No file is touched**, which is the guarantee this whole entry is about rather than an
+        omission here. `DAT-005` §2 refuses even an opt-in for it, and clearing a *list* is the one
+        moment a user is most likely to fear otherwise.
+
+        One `with self._connection`, like every other write here: `NFR-003`'s no half-applied write,
+        and nothing that survives only until the process exits (`T125-R1`).
+
+        Returns how many records were deleted, so the caller reports what happened rather than what
+        it asked for — and so clearing an empty history is honestly zero rather than silent.
+        """
+        with self._connection:
+            return int(self._connection.execute("DELETE FROM history").rowcount)
+
     def all_entries(self) -> list[HistoryEntry]:
         """Every entry, most recently completed first.
 
