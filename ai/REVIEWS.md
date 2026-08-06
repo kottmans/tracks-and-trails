@@ -10974,3 +10974,10 @@ still direct future work to build and consume the withdrawn ledger.
 
 The reviewer appended this record only. No source, test, requirement, decision, task state, commit,
 remote ref, migration, user database or CI state was changed.
+
+**Post-review boundary update.** While this record was being written, maintainer commit `4b3a1c2`
+included it and updated the handoff/roadmap with the completed CI result. Run `31109522346` is green
+for all five jobs at withdrawal source head `6c90cf7`, including Windows desktop; the later commits
+through implementation head `de7cb19` are documentation-only and ran the Prose job. This resolves
+the in-flight-CI caveat in the table above and does not change the **Blocked** verdict or either
+blocking finding. The reviewer did not create or push `4b3a1c2`.
