@@ -35,9 +35,15 @@
 --
 -- **It is deliberately not restored afterwards.** There is no way to capture and put back the prior
 -- value in pure SQL, so restoring would mean writing `OFF` — which on a build like the one above
--- would leave the connection *less* safe than it was found. The cost of leaving it on is bounded to
--- nothing: `migrate` only runs a script for a version above the database's own, so this executes on
--- the single connection performing the single upgrade, and never again.
+-- would leave the connection *less* safe than it was found.
+--
+-- **The cost of leaving it on is small and it is not zero**, which an earlier draft of this comment
+-- claimed. A pragma is connection state, so it outlives the transaction that set it: every delete
+-- on *this* connection for the rest of the session overwrites its freed pages, which is real work
+-- on a queue whose rows the user may be removing. What bounds it is that `migrate` runs a script
+-- only for a version above the database's own — so this is one connection, in the one session that
+-- performs the upgrade, and no later launch sets it at all. That is a bounded cost accepted
+-- knowingly, not an absent one.
 --
 -- **What this still cannot promise.** In WAL mode the old content also lives in the `-wal` sidecar
 -- until a checkpoint retires it, and a hard exit before that leaves it there. `secure_delete` does
