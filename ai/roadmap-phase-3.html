@@ -1,0 +1,693 @@
+<title>Tracks &amp; Trails — Phase 3 roadmap</title>
+
+<style>
+  :root {
+    /* The project's adopted canonical swatches — ARCHITECTURE.md §8. Carried from the
+       Phase 2 roadmap unchanged: these two pages are a series, and a phase board that
+       changed its palette would read as a different project rather than the next chapter. */
+    --forest: #1E5E47;
+    --gold:   #D9A24C;
+    --deep:   #083122;
+
+    --st-approved: #1E5E47;
+    --st-review:   #B07C1F;
+    --st-ready:    #31688E;
+    --st-block:    #A6432B;
+    --st-idle:     #6E7E75;
+    --st-blocked:  #A6432B;
+
+    /* Neutrals biased green so they read as chosen rather than inherited. */
+    --ground:   #F6F8F5;
+    --raised:   #FFFFFF;
+    --sunken:   #EDF1EC;
+    --ink:      #101B15;
+    --ink-soft: #3C4B43;
+    --ink-mute: #66766C;
+    --rule:     #D6DFD8;
+    --rule-soft:#E5EBE5;
+
+    --shadow: 0 1px 2px rgba(8, 49, 34, .05), 0 8px 24px -12px rgba(8, 49, 34, .14);
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    --measure: 68ch;
+    --page: 1120px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --st-approved: #3E9E70;
+      --st-review:   #D9A24C;
+      --st-ready:    #6BA3CC;
+      --st-block:    #D97757;
+      --st-idle:     #8C9C93;
+      --st-blocked:  #D2694A;
+      --ground:   #071612;
+      --raised:   #0E241C;
+      --sunken:   #0A1D17;
+      --ink:      #E8F0EA;
+      --ink-soft: #B8C7BE;
+      --ink-mute: #84978B;
+      --rule:     #1E3B31;
+      --rule-soft:#173029;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --st-approved: #3E9E70;
+    --st-review:   #D9A24C;
+    --st-ready:    #6BA3CC;
+    --st-block:    #D97757;
+    --st-idle:     #8C9C93;
+    --st-blocked:  #D2694A;
+    --ground:   #071612;
+    --raised:   #0E241C;
+    --sunken:   #0A1D17;
+    --ink:      #E8F0EA;
+    --ink-soft: #B8C7BE;
+    --ink-mute: #84978B;
+    --rule:     #1E3B31;
+    --rule-soft:#173029;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --st-approved: #1E5E47;
+    --st-review:   #B07C1F;
+    --st-ready:    #31688E;
+    --st-block:    #A6432B;
+    --st-idle:     #6E7E75;
+    --st-blocked:  #A6432B;
+    --ground:   #F6F8F5;
+    --raised:   #FFFFFF;
+    --sunken:   #EDF1EC;
+    --ink:      #101B15;
+    --ink-soft: #3C4B43;
+    --ink-mute: #66766C;
+    --rule:     #D6DFD8;
+    --rule-soft:#E5EBE5;
+    --shadow: 0 1px 2px rgba(8, 49, 34, .05), 0 8px 24px -12px rgba(8, 49, 34, .14);
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .page {
+    max-width: var(--page);
+    margin: 0 auto;
+    padding: clamp(1.75rem, 5vw, 4rem) clamp(1rem, 4vw, 2.5rem) 4.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.5rem, 5vw, 3.75rem);
+  }
+
+  /* --- type ------------------------------------------------------------------ */
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(1.75rem, 4.4vw, 2.9rem);
+    line-height: 1.08;
+    letter-spacing: -.025em;
+    font-weight: 600;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: clamp(1.1rem, 2.4vw, 1.38rem);
+    letter-spacing: -.012em;
+    font-weight: 600;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h3 { font-family: var(--mono); font-size: 1rem; font-weight: 600; margin: 0; }
+
+  p { margin: 0; max-width: var(--measure); }
+  .lede { font-size: 1.05rem; color: var(--ink-soft); }
+
+  code, .id { font-family: var(--mono); font-size: .92em; font-variant-ligatures: none; }
+
+  a { color: inherit; text-decoration-color: var(--st-ready); text-underline-offset: .18em; }
+  a:focus-visible { outline: 2px solid var(--st-ready); outline-offset: 3px; border-radius: 3px; }
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+  .section-head { display: flex; flex-direction: column; gap: .3rem; }
+
+  header.masthead { display: flex; flex-direction: column; gap: 1.4rem; }
+  .titles { display: flex; flex-direction: column; gap: .5rem; }
+
+  .phase-line {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: .45rem .9rem;
+    font-family: var(--mono); font-size: .8rem; color: var(--ink-mute);
+    max-width: none;
+  }
+  .phase-line strong { color: var(--ink-soft); font-weight: 600; }
+
+  /* --- count chips ------------------------------------------------------------ */
+
+  .tally {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+    gap: .6rem;
+    list-style: none; padding: 0; margin: 0;
+  }
+  .tally li {
+    background: var(--raised);
+    border: 1px solid var(--rule-soft);
+    border-top: 3px solid var(--chip, var(--ink-mute));
+    border-radius: 3px;
+    padding: .7rem .8rem .75rem;
+    display: flex; flex-direction: column; gap: .1rem;
+    box-shadow: var(--shadow);
+  }
+  .tally .n {
+    font-family: var(--mono); font-size: 1.7rem; font-weight: 600; line-height: 1;
+    font-variant-numeric: tabular-nums; color: var(--chip);
+  }
+  .tally .k {
+    font-family: var(--mono); font-size: .68rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-mute);
+  }
+
+  /* --- the dependency chart ---------------------------------------------------
+     `TB`, natural size, scaled by `.fit`. Same mechanism the Phase 2 board used,
+     including the two-classes-deep override that beats the mermaid runtime's own
+     `max-width: 100%`, and the rule against `<br/>` in labels — it splits the text
+     into tspans and drops the spaces between words. */
+
+  .chart-frame {
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    box-shadow: var(--shadow);
+    padding: clamp(.75rem, 2.5vw, 1.25rem);
+    max-width: 100%;
+    display: flex; flex-direction: column; gap: .8rem;
+  }
+
+  .chart-bar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: .6rem 1rem;
+  }
+  .chart-hint {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-mute); margin: 0; max-width: none;
+  }
+  .chart-toggle {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-soft);
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 999px; padding: .34rem .85rem; cursor: pointer;
+  }
+  .chart-toggle:hover { border-color: var(--st-ready); color: var(--ink); }
+  .chart-toggle:focus-visible { outline: 2px solid var(--st-ready); outline-offset: 2px; }
+
+  .chart-scroll { overflow-x: auto; overflow-y: hidden; }
+  .chart-scroll pre.mermaid { margin: 0; background: none; }
+
+  .chart-scroll .mermaid-diagram svg,
+  .chart-scroll pre.mermaid svg {
+    max-width: none;
+    height: auto;
+  }
+  .chart-frame.fit .chart-scroll .mermaid-diagram svg,
+  .chart-frame.fit .chart-scroll pre.mermaid svg {
+    max-width: 100%;
+  }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: .4rem 1.2rem;
+    font-family: var(--mono); font-size: .74rem; color: var(--ink-mute);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: .4rem; }
+  .legend i {
+    width: .72rem; height: .72rem; border-radius: 2px;
+    background: var(--sw); display: inline-block;
+  }
+  .legend i.dashed { background: none; border: 1.5px dashed var(--ink-mute); }
+
+  /* --- the ordered run of work ------------------------------------------------- */
+
+  ol.queue {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: .7rem; counter-reset: q;
+  }
+  ol.queue > li {
+    counter-increment: q;
+    background: var(--raised);
+    border: 1px solid var(--rule-soft);
+    border-left: 4px solid var(--edge, var(--st-idle));
+    border-radius: 3px;
+    padding: .9rem 1.05rem 1rem;
+    display: grid;
+    grid-template-columns: 2.2rem 1fr;
+    gap: .2rem .9rem;
+    box-shadow: var(--shadow);
+  }
+  ol.queue > li::before {
+    content: counter(q);
+    grid-row: 1 / span 2;
+    font-family: var(--mono); font-size: 1.4rem; font-weight: 600;
+    font-variant-numeric: tabular-nums; color: var(--edge); line-height: 1.15;
+  }
+  .q-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .65rem; }
+  .q-head .id { font-size: 1rem; font-weight: 600; }
+  .q-head .name { font-weight: 600; }
+  .q-why { color: var(--ink-soft); font-size: .94rem; grid-column: 2; max-width: var(--measure); }
+
+  .pill {
+    font-family: var(--mono); font-size: .64rem; letter-spacing: .1em;
+    text-transform: uppercase; padding: .18rem .48rem .22rem; border-radius: 999px;
+    color: #fff; background: var(--edge, var(--ink-mute)); white-space: nowrap;
+  }
+  .pill.ghost { background: none; color: var(--ink-mute); border: 1px solid var(--rule); }
+
+  /* --- tables ----------------------------------------------------------------- */
+
+  .table-card {
+    border: 1px solid var(--rule); border-radius: 4px; background: var(--raised);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+  caption {
+    text-align: left; padding: .85rem 1rem .1rem; color: var(--ink-mute);
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+  }
+  th, td { text-align: left; padding: .68rem 1rem; vertical-align: top; border-bottom: 1px solid var(--rule-soft); }
+  thead th {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-mute); font-weight: 600; background: var(--sunken);
+    border-bottom: 1px solid var(--rule);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-mute); width: 2.6rem; }
+  .state { font-family: var(--mono); font-size: .78rem; font-weight: 600; display: block; }
+  .state.met { color: var(--st-approved); }
+  .state.part { color: var(--st-review); }
+  .state.unmet { color: var(--ink-mute); }
+  .state.blocked { color: var(--st-block); }
+  .state-note { color: var(--ink-mute); font-size: .86rem; }
+
+  @media (max-width: 640px) {
+    table, thead, tbody, tr, th, td { display: block; width: 100%; }
+    thead { position: absolute; left: -9999px; }
+    tbody tr { border-bottom: 1px solid var(--rule); padding: .3rem 0; }
+    tbody tr:last-child { border-bottom: none; }
+    td { border-bottom: none; padding: .3rem 1rem; }
+    td.n { padding-top: .7rem; }
+  }
+
+  /* --- callouts ---------------------------------------------------------------- */
+
+  .callout {
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent, var(--st-block));
+    border-radius: 3px;
+    padding: 1.05rem 1.2rem 1.15rem;
+    display: flex; flex-direction: column; gap: .6rem;
+    box-shadow: var(--shadow);
+  }
+  .callout h3 { color: var(--accent, var(--st-block)); }
+  .callout ul {
+    margin: 0; padding-left: 1.1rem;
+    display: flex; flex-direction: column; gap: .35rem;
+    color: var(--ink-soft); font-size: .94rem;
+  }
+  .callout ul li { max-width: var(--measure); }
+
+  .note {
+    font-size: .88rem; color: var(--ink-mute);
+    border-left: 2px solid var(--rule); padding-left: .85rem; max-width: var(--measure);
+  }
+
+  footer {
+    border-top: 1px solid var(--rule); padding-top: 1.3rem;
+    font-family: var(--mono); font-size: .73rem; color: var(--ink-mute);
+    display: flex; flex-wrap: wrap; gap: .3rem 1.4rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="titles">
+      <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
+      <h1>Phase 3 — format and content depth</h1>
+      <p class="lede">Expose what yt-dlp can actually do. <strong>Twenty-two Phase 3 entries are closed and not one of them is a Phase 3 deliverable</strong> — they are the UI rework the phase inherited, the criterion 8 spillover Phase 2 handed over, and two batches found by opening the window. The eight deliverables this phase exists for have not been started, and six of the eight are waiting on the same unwritten document.</p>
+      <p class="phase-line">
+        <span><strong>Head</strong> 4fcfe9f</span>
+        <span><strong>CI</strong> green, all five jobs</span>
+        <span><strong>Suite</strong> 2262 passed, 11 skipped</span>
+        <span><strong>Phase 2</strong> exited 2026-08-05</span>
+      </p>
+    </div>
+  </header>
+
+  <section>
+    <p class="eyebrow">Where the phase actually stands</p>
+    <ul class="tally">
+      <li style="--chip: var(--st-approved)"><span class="n">22</span><span class="k">Entries closed</span></li>
+      <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 8 deliverables started</span></li>
+      <li style="--chip: var(--st-review)"><span class="n">6</span><span class="k">Deliverables gated by one doc</span></li>
+      <li style="--chip: var(--st-block)"><span class="n">3</span><span class="k">High-risk deliverables</span></li>
+      <li style="--chip: var(--st-ready)"><span class="n">7</span><span class="k">Open and unblocked</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Open blocking findings</span></li>
+      <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 6 exit criteria met</span></li>
+      <li style="--chip: var(--st-block)"><span class="n">2</span><span class="k">Accepted decisions reopened</span></li>
+    </ul>
+    <p class="note"><strong>The count of closed entries is not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01, and every one of those is still <em>Proposed</em>. What has been closed since is real work that landed in Phase 3's numbering because that is when it was found — which is worth seeing plainly rather than averaging into a percentage.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The critical path is one document wide</h2>
+      <p class="lede">Every green node is done and pushed. <strong>The single amber node gates six of the eight deliverables</strong> — <code>T-105</code> writes <code>docs/UX_SPEC.md</code>, the trigger this phase has carried since it was planned and which had no task behind it until 2026-08-01. Blue is ready to start now; grey is waiting on something.</p>
+    </div>
+
+    <div class="chart-frame fit" id="chart">
+      <div class="chart-bar">
+        <p class="chart-hint">Whole graph, fitted to the page</p>
+        <button type="button" class="chart-toggle" id="chart-toggle" aria-pressed="true">Full size</button>
+      </div>
+      <div class="chart-scroll">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"fontSize":"16px","lineColor":"#8AA095","primaryTextColor":"#ffffff"},"flowchart":{"useMaxWidth":false,"nodeSpacing":24,"rankSpacing":52,"padding":8}}}%%
+flowchart TB
+    classDef done    fill:#1E5E47,stroke:#083122,stroke-width:2px,color:#ffffff
+    classDef head    fill:#0E4433,stroke:#D9A24C,stroke-width:3px,color:#ffffff
+    classDef gate    fill:#B07C1F,stroke:#6E4C0F,stroke-width:3px,color:#ffffff
+    classDef ready   fill:#31688E,stroke:#1D4058,stroke-width:2px,color:#ffffff
+    classDef planned fill:#6E7E75,stroke:#44534B,stroke-width:2px,color:#ffffff
+    classDef risky   fill:#A6432B,stroke:#5E2418,stroke-width:3px,color:#ffffff
+    classDef exit    fill:#083122,stroke:#D9A24C,stroke-width:3px,color:#D9A24C
+
+    P2["Phase 2 exited - 2026-08-05"]:::done
+    REWORK["UI rework T-116 T-117 T-118 T-120"]:::done
+    CRIT8["Criterion 8 spillover - 10 tasks"]:::done
+    ROWS["Row layout T-160 T-163 T-164 T-166 T-167"]:::done
+    HIST["History batch T-142 T-144 T-145 T-159"]:::done
+
+    HEAD["Pushed and green - 4fcfe9f"]:::head
+
+    UXSPEC["T-105 - write docs/UX_SPEC.md"]:::gate
+
+    T107["T-107 format table - the foundation"]:::planned
+    T108["T-108 pick video plus audio, merge"]:::planned
+    T109["T-109 post-processing - largest item"]:::risky
+    T110["T-110 playlists - changes what a job is"]:::risky
+    T111["T-111 user presets"]:::planned
+    T112["T-112 output template editor"]:::planned
+    T113["T-113 resume across restart - reopens UX-001"]:::risky
+    T114["T-114 warn on a repeat URL"]:::ready
+
+    T143["T-143 probe a playlist's entries"]:::ready
+    T150["T-150 add dialog opens too narrow"]:::ready
+    T156["T-156 MP3 preset states its bitrate"]:::ready
+    T158["T-158 a refused Open is reported unseen"]:::ready
+
+    EXIT(["PHASE 3 EXIT - 6 criteria"]):::exit
+
+    P2 --> HEAD
+    REWORK --> HEAD
+    CRIT8 --> HEAD
+    ROWS --> HEAD
+    HIST --> HEAD
+
+    HEAD --> UXSPEC
+    UXSPEC --> T107
+    UXSPEC --> T109
+    UXSPEC --> T110
+    UXSPEC --> T111
+    UXSPEC --> T112
+    T107 --> T108
+    T108 --> T109
+    T109 --> T111
+
+    HEAD --> T113
+    HEAD --> T114
+    HEAD --> T143
+    HEAD --> T150
+    HEAD --> T158
+    HIST -. narrowed T-159, inherited the criterion .-> T156
+
+    T108 --> EXIT
+    T109 --> EXIT
+    T110 --> EXIT
+    T112 --> EXIT
+    T113 --> EXIT
+</pre>
+      </div>
+
+      <div class="legend">
+        <span><i style="--sw: var(--st-approved)"></i> Done and pushed</span>
+        <span><i style="--sw: var(--st-review)"></i> Gates the phase</span>
+        <span><i style="--sw: var(--st-ready)"></i> Startable now</span>
+        <span><i style="--sw: var(--st-idle)"></i> Waiting on the spec</span>
+        <span><i style="--sw: var(--st-block)"></i> High risk</span>
+        <span><i class="dashed"></i> Not a dependency</span>
+      </div>
+    </div>
+
+    <p class="note"><strong><code>T-114</code>, <code>T-143</code>, <code>T-150</code>, <code>T-156</code> and <code>T-158</code> hang off the head rather than off the spec</strong>, which is what makes them the work available today. <code>T-114</code> is the only <em>deliverable</em> among them: it needs history records and the history view, and both exist. Four of the five are corrections found by running the application, not planned features.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The eight deliverables, and what each is waiting for</h2>
+      <p class="lede">Transcribed from <code>ai/IMPLEMENTATION_PLAN.md</code>'s Phase 3 table, with the dependency and risk each task records for itself. None has been started.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <caption>Decomposed 2026-08-01 · all eight still Proposed</caption>
+        <thead>
+          <tr><th>Task</th><th>Deliverable</th><th>Waiting on</th><th>Risk</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="id">T-107</td>
+            <td>Sortable format table — every stream a probe found <span class="state-note">REQ-003</span></td>
+            <td><code>T-105</code></td>
+            <td><span class="state part">Medium</span><span class="state-note">The projection is where yt-dlp's churn lands</span></td>
+          </tr>
+          <tr>
+            <td class="id">T-108</td>
+            <td>Choose a video and an audio stream, and merge <span class="state-note">REQ-008</span></td>
+            <td><code>T-107</code></td>
+            <td><span class="state part">Medium</span><span class="state-note"><code>T-061</code> is what a wrong ffmpeg check costs</span></td>
+          </tr>
+          <tr>
+            <td class="id">T-109</td>
+            <td>Post-processing: audio, container, thumbnail, metadata, chapters <span class="state-note">REQ-010</span></td>
+            <td><code>T-105</code>, <code>T-108</code></td>
+            <td><span class="state blocked">High</span><span class="state-note">The largest single item. <code>T-077</code> found four of five Phase 1 options never produced a file</span></td>
+          </tr>
+          <tr>
+            <td class="id">T-110</td>
+            <td>Playlists: probe the entries, choose which to enqueue <span class="state-note">REQ-004</span></td>
+            <td><code>T-105</code></td>
+            <td><span class="state blocked">High</span><span class="state-note">Changes what a <em>job</em> is, which reaches <code>core/</code></span></td>
+          </tr>
+          <tr>
+            <td class="id">T-111</td>
+            <td>User presets: create, edit, duplicate, delete, set default <span class="state-note">REQ-007</span></td>
+            <td><code>T-105</code>, <code>T-109</code></td>
+            <td><span class="state part">Medium</span><span class="state-note">Persisted state, and where it lives needs a decision</span></td>
+          </tr>
+          <tr>
+            <td class="id">T-112</td>
+            <td>Output template editor with a live path preview <span class="state-note">REQ-011</span></td>
+            <td><code>T-105</code></td>
+            <td><span class="state part">Medium</span><span class="state-note">Preview and real path must be one function</span></td>
+          </tr>
+          <tr>
+            <td class="id">T-113</td>
+            <td>Resume a partial download across a restart <span class="state-note">REQ-017</span></td>
+            <td><span class="state met">nothing — Phase 2 has exited</span></td>
+            <td><span class="state blocked">High</span><span class="state-note">Reopens <code>UX-001</code> and <code>T-080</code>'s removal of <code>PAUSED</code>. The highest <em>uncertainty</em> in the phase</span></td>
+          </tr>
+          <tr>
+            <td class="id">T-114</td>
+            <td>Warn when a URL has been downloaded before <span class="state-note">REQ-022</span></td>
+            <td><span class="state met">nothing — both are approved</span></td>
+            <td><span class="state unmet">Low</span><span class="state-note">The smallest item in the phase</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note"><strong><code>T-113</code> and <code>T-114</code> are startable and nothing says so anywhere else.</strong> Their recorded dependencies — Phase 2's exit, and the history records and view — are all met, so the "seven of eight are blocked" reading is about the spec, not about the whole phase being stalled.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What to do next, in order</h2>
+      <p class="lede">One ordering, and the reason for it. The numbers are a sequence rather than a ranking: each item unblocks or de-risks the one under it.</p>
+    </div>
+
+    <ol class="queue">
+      <li style="--edge: var(--st-review)">
+        <div class="q-head"><span class="id">T-105</span> <span class="name">Write <code>docs/UX_SPEC.md</code></span> <span class="pill">Unblocks 5</span></div>
+        <p class="q-why">It gates <code>T-107</code>, <code>T-109</code>, <code>T-110</code>, <code>T-111</code> and <code>T-112</code>, and it is the only thing on the board that does. <code>UX-005</code> has been the authority in its place since 2026-08-03 and says so in its own consequences. Until this is written the phase can only do work it found by accident.</p>
+      </li>
+      <li style="--edge: var(--st-ready)">
+        <div class="q-head"><span class="id">T-107</span> <span class="name">The format table</span> <span class="pill ghost">Foundation</span></div>
+        <p class="q-why">Named High because <code>REQ-008</code> and <code>T-109</code> both act on this table. It also owns proving the phase's first exit criterion — the table matching <code>yt-dlp -F</code> for a fixture set — so it carries a gate as well as a feature.</p>
+      </li>
+      <li style="--edge: var(--st-ready)">
+        <div class="q-head"><span class="id">T-113</span> <span class="name">Resume across a restart</span> <span class="pill" style="--edge: var(--st-block)">Start early</span></div>
+        <p class="q-why">Placed third despite being startable today, and deliberately not last: it reopens two accepted decisions and carries the phase's highest uncertainty. Discovering what it costs late is how a phase overruns — and it needs no spec, so nothing is lost by learning early.</p>
+      </li>
+      <li style="--edge: var(--st-idle)">
+        <div class="q-head"><span class="id">T-108</span> <span class="name">Video plus audio, merged</span> <span class="pill ghost">After T-107</span></div>
+        <p class="q-why">Reads the table <code>T-107</code> builds, and settles the ffmpeg-presence rule that <code>T-109</code> then shares. Two exit criteria run through here: the merge itself, on both platforms.</p>
+      </li>
+      <li style="--edge: var(--st-idle)">
+        <div class="q-head"><span class="id">T-110</span> <span class="name">Playlists, properly</span> <span class="pill" style="--edge: var(--st-block)">Structural</span></div>
+        <p class="q-why">Changes what a job <em>is</em>, so it reaches <code>core/</code> rather than the UI. Worth taking while the queue and History surfaces are freshly reviewed — <code>T-137</code>, <code>T-140</code> and <code>T-145</code> have each already moved part of the playlist story.</p>
+      </li>
+      <li style="--edge: var(--st-idle)">
+        <div class="q-head"><span class="id">T-109</span> <span class="name">Post-processing, seven options</span> <span class="pill" style="--edge: var(--st-block)">Largest</span></div>
+        <p class="q-why">The biggest item in the phase, and the one with a documented history of failing quietly: <code>T-077</code> found four of five Phase 1 options never produced a file. Late in the order because it wants <code>T-108</code>'s ffmpeg rule settled first.</p>
+      </li>
+    </ol>
+
+    <p class="note"><code>T-111</code>, <code>T-112</code> and <code>T-114</code> are not in this list because nothing about their order is contentious: <code>T-111</code> follows <code>T-109</code>, <code>T-112</code> follows the spec, and <code>T-114</code> can be taken by anyone at any point.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What has actually been closed, and why it exists</h2>
+      <p class="lede">Twenty-two entries, none of them a deliverable. Grouped by where they came from, because the source is the interesting part: <strong>most of this phase's completed work was found by a person opening the application</strong>, not by a plan and not by a gate.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <caption>Phase 3 entries under <code>## Complete</code>, 2026-08-02 to 2026-08-05</caption>
+        <thead><tr><th>Where it came from</th><th class="n">N</th><th>Tasks</th><th>State</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>The UI rework <code>UX-003</code> and <code>UX-004</code> forced — the staging list and the row delegate</td>
+            <td class="n">4</td>
+            <td><code>T-116</code> <code>T-117</code> <code>T-120</code> <code>T-119</code></td>
+            <td><span class="state met">Approved</span><span class="state-note"><code>T-119</code> is a tombstone: subsumed into <code>T-118</code></span></td>
+          </tr>
+          <tr>
+            <td>Criterion 8 — the window catching up with the features behind it</td>
+            <td class="n">7</td>
+            <td><code>T-129</code> <code>T-132</code> <code>T-133</code> <code>T-134</code> <code>T-135</code> <code>T-147</code> <code>T-148</code></td>
+            <td><span class="state met">Approved</span><span class="state-note">Ruled into Phase 2's exit, delivered under Phase 3's numbering</span></td>
+          </tr>
+          <tr>
+            <td>Row layout — five geometry defects found at a narrow window</td>
+            <td class="n">5</td>
+            <td><code>T-160</code> <code>T-163</code> <code>T-164</code> <code>T-166</code> <code>T-167</code></td>
+            <td><span class="state met">Approved</span><span class="state-note">One correction round</span></td>
+          </tr>
+          <tr>
+            <td>History — a playlist's records, its verbs, clearing it, and what it says it got</td>
+            <td class="n">4</td>
+            <td><code>T-142</code> <code>T-144</code> <code>T-145</code> <code>T-159</code></td>
+            <td><span class="state met">Approved</span><span class="state-note">Two migrations, one Critical corrected</span></td>
+          </tr>
+          <tr>
+            <td>Earlier: the MP3 bitrate control and history removal</td>
+            <td class="n">2</td>
+            <td><code>T-076</code> <code>T-125</code></td>
+            <td><span class="state met">Approved</span><span class="state-note"><code>T-125</code> is what made <code>T-144</code> possible</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Two accepted decisions were reopened to get here</h2>
+    </div>
+
+    <div class="callout" style="--accent: var(--st-block)">
+      <h3>Both were proposed by the implementer and ratified separately</h3>
+      <ul>
+        <li><strong><code>UX-005</code> — a finished playlist is one History row.</strong> Three sub-decisions: the chip counts, there is no segmented bar, and a partly-failed playlist says <code>14 items</code> rather than <code>14 of 16</code>, because a stored original count goes stale the first time a user removes a member.</li>
+        <li><strong><code>DAT-005</code> §1 — reopened to admit clearing the whole list.</strong> It had refused <em>Clear all</em> and named the condition that would lift the refusal; <code>T-125</code> met it. The verb is <code>Clear history</code>, because <em>all</em> has no object and the one a user supplies is their files.</li>
+      </ul>
+      <p class="note" style="border-left-color: var(--st-block)"><strong>Both were first recorded as maintainer rulings that had not happened</strong>, caught in review as <code>T145-R1</code> and <code>T144-R1</code>. The content survived ratification unchanged; the attribution was the defect. Phase 3 has more of this ahead — <code>T-113</code> reopens <code>UX-001</code> by design.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Exit criteria — six, none met</h2>
+      <p class="lede">Transcribed from the plan. Five are properties of unstarted deliverables; the sixth is a signature.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <caption>Phase 3 exit · <code>ai/IMPLEMENTATION_PLAN.md</code></caption>
+        <thead><tr><th class="n">#</th><th>Criterion</th><th>Owner</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td class="n">1</td><td>The format table matches <code>yt-dlp -F</code> for a fixture set of URLs</td><td><code>T-107</code></td><td><span class="state unmet">Not started</span></td></tr>
+          <tr><td class="n">2</td><td>A separate video + audio selection merges correctly via ffmpeg <strong>on both platforms</strong></td><td><code>T-108</code></td><td><span class="state unmet">Not started</span></td></tr>
+          <tr><td class="n">3</td><td>Template preview matches the written path in every tested case, including titles with characters illegal on Windows</td><td><code>T-112</code></td><td><span class="state unmet">Not started</span></td></tr>
+          <tr><td class="n">4</td><td>Path containment holds: no rendered template escapes the output directory</td><td><code>T-112</code></td><td><span class="state unmet">Not started</span></td></tr>
+          <tr><td class="n">5</td><td>A partial download resumes after restart, <em>or clearly states it cannot</em></td><td><code>T-113</code></td><td><span class="state unmet">Not started</span></td></tr>
+          <tr><td class="n">6</td><td>Reviewed and signed off</td><td>Reviewer</td><td><span class="state unmet">Not started</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note"><strong>Criterion 2 names both platforms, and that is the one to watch.</strong> Phase 2 exited with a recorded one-platform residual — CI runs the suite on Windows but no person has looked at the window there. This criterion cannot be met that way, and the Actions quota is nearly exhausted, so the Windows evidence route wants deciding before <code>T-108</code> rather than after it.</p>
+  </section>
+
+  <footer>
+    <span>Transcribed from ai/IMPLEMENTATION_PLAN.md, ai/TASKS.md, ai/DECISIONS.md, ai/REVIEWS.md</span>
+    <span>Counts parsed from the task entries, not written beside them</span>
+    <span>Head 4fcfe9f · CI 31066693863 green on all five jobs</span>
+    <span>Suite 2262 passed, 11 skipped · tests/network not run</span>
+    <span>2026-08-06</span>
+  </footer>
+
+</div>
+
+<script>
+  (function () {
+    var frame = document.getElementById("chart");
+    var button = document.getElementById("chart-toggle");
+    if (!frame || !button) return;
+    var hint = frame.querySelector(".chart-hint");
+    button.addEventListener("click", function () {
+      var fitted = frame.classList.toggle("fit");
+      button.setAttribute("aria-pressed", String(fitted));
+      button.textContent = fitted ? "Full size" : "Fit to page";
+      hint.textContent = fitted
+        ? "Whole graph, fitted to the page"
+        : "Drawn full size — scroll sideways inside this frame";
+    });
+  })();
+</script>
