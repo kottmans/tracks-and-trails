@@ -10981,3 +10981,68 @@ for all five jobs at withdrawal source head `6c90cf7`, including Windows desktop
 through implementation head `de7cb19` are documentation-only and ran the Prose job. This resolves
 the in-flight-CI caveat in the table above and does not change the **Blocked** verdict or either
 blocking finding. The reviewer did not create or push `4b3a1c2`.
+
+## 2026-08-06 — Completion-ledger withdrawal focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Prior review commit:** `4b3a1c2`
+**Correction implementation head:** `9378ae4`
+**Submission head:** `7ae6dcb` (handoff/CI corrections after the implementation head)
+**Tasks:** `T-169`, `T-170`, `T-171`, and follow-up `T-175`
+**Verdict:** **Approved with follow-ups at `9378ae4`.** Both High blockers are resolved. The purge is
+now an explicit maintainer ruling rather than an inference from removing a screen; migration 0009
+removes the populated legacy table atomically while preserving every queue row; and current truth
+plus the two dangerous live task contracts no longer direct future work back to the ledger. The
+focused sweep found two Low, non-blocking record/prose issues. They do not weaken the logical purge,
+its migration evidence, or the corrected T-114/T-146 contracts and are carried forward below.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T169-R3` | High | No | DAT-006 records the maintainer's explicit choice to purge over both a bounded clear route and preserving inaccessible rows. Migration 0009 is one `DROP TABLE history` inside the migration runner's transaction and version bump. Every frozen v1-v8 fixture proves it began with rows, loses the table, and retains no distinctive completion-record text in any logical table; the independent v8 probe also preserves both job rows, their URLs and queue positions. A forced statement failure after the drop rolled the whole operation back to version 8 with all four v8 History rows present, so interruption cannot commit a half-dispositioned schema. | **Resolved at `9378ae4`** |
+| `T169-R4` | High | No | Requirements, architecture, plan, status, DAT-001, T-169 and T-170 now lead with the same current contract: Queue only, no completion record, no Settings clearing shell. Open T-114 is an in-memory confirmation with no persistence dependency and an explicit no-write criterion; open T-146 builds its Settings route from nothing and names the Windows menu gate. Those were the actionable routes back to the withdrawn product and are corrected. Two unrelated cleanup tasks still carry stale premises, recorded as non-blocking `T169-R5`; they do not require or recreate the ledger. | **Resolved at `c03f7d4`** |
+| `T171-R1` | Medium | No | T-171 now says standard tags survived only the direct-ffmpeg shapes that were actually measured, repeats that no yt-dlp postprocessor seam ran, and no longer calls a completion ledger a REQ-022 requirement. Together with the already-corrected evidence file, neither task nor evidence can be mistaken for per-family application-path proof. | **Resolved at `c03f7d4`** |
+| `T170-R4` | Low | No | T-175 explicitly owns `history_group_verbs`, `Succeeded.format_used`, and the completion seam. It distinguishes deletion from a worker-protocol decision and makes any seam collapse preserve T050-R2's persist-before-announce mutation. It forbids schema work and preserves historical prose deliberately. | **Carried to `T-175`** |
+
+### New non-blocking follow-ups
+
+| ID | Severity | Blocks approval | Finding | Required follow-up |
+|---|---|---:|---|---|
+| `T169-R5` | **Low** | **No** | The authority sweep corrected the product-bearing tasks but missed two live cleanup contracts. T-173 still says `persistence/store.py._now` must match the manager because a deleted ledger timestamp and deleted History test compare them; in current source that store helper has **no caller**, so centralising both would add a shared abstraction instead of deleting residue. The Phase 3 board consequently calls T-173 startable. T-048 also still says no data migration exists and its strict migration comparison must not change, although 0009 is the first intentional data removal and this correction changed that comparison under a dedicated purge rule. Both are stale task state rather than a product defect. | Reconcile T-048 with the purge evidence it was filed to demand. Cancel or rewrite T-173 around deleting the unused store helper, preferably folding that fourth residual into T-175 rather than creating a shared clock with one real caller; redraw the convenience board afterwards. |
+| `T169-R6` | **Low** | **No** | The migration, DAT-006 and handoff correctly refuse to promise forensic erasure, but overstate why: they say freed-page content cannot be addressed inside the migration and the handoff says “secure delete” is impossible there. SQLite documents `PRAGMA secure_delete=ON` specifically for overwriting deleted ordinary-table content when enabled before deletion, and the reviewer verified the setting can be changed inside the migration transaction. It still would not retire older WAL frames; that needs a post-commit checkpoint/clean close, and a retained WAL is part of the database state. Thus the logical purge is sound, but “cannot” and the advice to delete only the database file are incomplete. | Narrow the prose to what 0009 actually guarantees. File a small decision/implementation follow-up to consider `secure_delete=ON` before the drop and a post-commit WAL checkpoint if best-effort byte scrubbing is wanted; otherwise record why logical removal is the boundary. Any manual-erasure advice must account for the database's `-wal`/`-shm` sidecars, not name the main file alone. See SQLite's official [`secure_delete` documentation](https://www.sqlite.org/pragma.html#pragma_secure_delete) and [WAL lifecycle](https://sqlite.org/wal.html). |
+
+### Reviewer dispositions
+
+- **The no-backup exception is accepted.** A durable pre-migration copy of the whole database would
+  preserve precisely the completion record the maintainer ruled must be purged, with no application
+  owner or cleanup path. Architecture §10 limits the exception to data whose removal was explicitly
+  ruled before implementation and still requires a narrowness regression. That preserves the
+  original backup rule for accidental loss while making this intentional deletion possible.
+- **`DROP TABLE`, rather than `DELETE`, is accepted.** The contract is that no completion-record
+  schema remains, not merely that it is empty today. The historical migrations and fixtures remain
+  untouched, while the generated current schema contains only `jobs`.
+- **The purge oracle is proportionate.** It derives distinctive text from every fixture's own
+  History rows, excludes text already present in the queue before migration, and then searches every
+  surviving logical table. The table-absence assertion kills no-op and `DELETE`; the plaintext
+  assertion kills both rename and copy-before-drop. It deliberately does not claim raw freed-page
+  erasure, which is the separate Low follow-up above.
+- **The historical task bodies may remain below explicit dispositions.** T-169/T-170 now tell a
+  reader before those bodies that the ledger criteria are historical and not instructions. That
+  preserves the reviewed record without making it current scope.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 4b3a1c2..9378ae4`: **pass**. Source/tests end at `9378ae4`; later commits change only the handoff and generated board. |
+| Focused suites | Persistence plus task placement: **94 passed**. |
+| Purge mutants | Actual migration: table absent, no distinctive v8 text leaked, schema 9. No-op, `DELETE`, rename-to-`completions`, and copy-to-`completions` mutants were all independently killed by the submitted oracle. |
+| Atomicity probe | Forced failure after `DROP TABLE`: schema remained **8**, `history` remained present, and all **4** seeded v8 rows remained. |
+| Current-truth audit | REQ-020/MVP, DAT-001/DAT-006, architecture ownership, Phase 2/3 plan rows, status, T-114, T-146, T-169/T-170 and T-171 agree. The only live-task misses are the non-product cleanup entries in `T169-R5`. |
+| Static/format gates | `ruff check .`: **pass**; `ruff format --check .`: **183 files formatted**; `git diff --check`: **pass**. |
+| Submitted broader evidence | Implementer reports **2173 passed, 11 skipped, 2 deselected**, successful host/win32 mypy at 107 files, and four killed migration mutants at `9378ae4`. The reviewer did not rerun the full suite. |
+| Submitted CI | Run `31122446758` is reported green on all five jobs at exact source/test head `9378ae4`, including Windows desktop and both frozen jobs. |
+
+The reviewer appended this record only. No source, test, requirement, decision, task state, commit,
+remote ref, migration, user database or CI state was changed.
