@@ -506,6 +506,13 @@ made urgent while Phase 2 was finishing.
 `T-105`** as of 2026-08-01 — it was a scheduled trigger with no task behind it, which is how a
 phase starts without the document it is supposed to start with.
 
+**Fired 2026-08-06.** `docs/UX_SPEC.md` exists and is the authority for the built window; the eight
+deliverables below each point at their section of it rather than restating it. **Twelve of its
+clauses are marked Proposed and await a maintainer ruling** (§10 of that file), three of which are
+not layout questions: where user presets persist is a `DAT-` decision, `REQ-017` reopening per-job
+pause is `UX-001`'s, and typing `REQ-010`'s five undedicated options would widen `Preset`. The
+deliverables gated on those cannot start past them.
+
 **Decomposed 2026-08-01** into `T-107`–`T-114`. Before that this phase had **zero** tasks against
 seven deliverables, so any statement of its size came from prose rather than from work anybody had
 broken down — and Phase 1 listed nine deliverables and produced fifty tasks. Eight is the starting

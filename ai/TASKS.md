@@ -969,48 +969,6 @@ separately from the part that needs it.
 
 ---
 
-### T-105 — Write `docs/UX_SPEC.md` before Phase 3 starts
-
-**Status:** Proposed — **filed 2026-08-01**, from the Phase 3 roadmap review. It is a scheduled
-trigger nobody had turned into work.
-**Owner:** Planner
-**Priority:** Medium — it gates nothing today and gates the start of Phase 3
-**Phase:** Phase 3 (its opening act)
-**Depends on:** nothing
-**Relevant context:** `DOC-002`, `IMPLEMENTATION_PLAN.md` §Phase 3, `REQ-003`, `REQ-004`, `REQ-007`,
-`REQ-010`, `REQ-011`
-**Affected surfaces:** `docs/UX_SPEC.md`
-**Risk:** Low as a document; Medium as an omission — Phase 3 is the phase with the most UI surface
-and the least written down about it
-
-#### Scope
-
-`IMPLEMENTATION_PLAN.md` §Phase 3 carries **Trigger:** *"`docs/UX_SPEC.md` is created at the start of
-this phase (`DOC-002`)"*. `docs/` holds `DEVELOPMENT.md` and `WINDOWS_VERIFICATION.md` and nothing
-else, and no task owned the trigger — so the first Phase 3 task would either have started without it
-or quietly invented the spec as it went.
-
-Phase 3 is where it matters most. A sortable format table, per-entry playlist selection, an output
-template editor with live preview and seven post-processing options are the densest UI in the
-project, and `REQ-007`'s user presets add a CRUD surface on top. Deciding all of that inside
-individual implementation tasks is how two of them end up disagreeing.
-
-#### Acceptance criteria
-
-- Covers every Phase 3 deliverable's user-facing surface, and says which requirement each serves
-- States the keyboard path through each new surface (`NFR-005`), because retrofitting that is what
-  `T-040` and `T-060` cost
-- Records what is **deliberately not** offered, so a later task does not read an absence as an
-  oversight
-- Is referenced by the Phase 3 tasks rather than duplicated into them
-
-#### Out of scope
-
-- Visual design beyond the brand palette already fixed in `ARCHITECTURE.md` §8
-- Phase 4's settings dialog (`REQ-023`), which has its own requirement
-
----
-
 ### T-106 — Decide the Linux packaging format before Phase 5
 
 **Status:** Proposed — **filed 2026-08-01**, from the Phase 5 roadmap review. `IMPLEMENTATION_PLAN.md`
@@ -1480,7 +1438,7 @@ proposes.
 **Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
 **Phase:** Phase 3
 **Depends on:** `T-105` (the UX spec), Phase 2 exit
-**Relevant context:** `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
+**Relevant context:** `docs/UX_SPEC.md` §4 (the format table's columns, sorting, keyboard path and refusals), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
 `downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
 **Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
 `ui/`
@@ -1525,7 +1483,7 @@ class of defect `T-075` was.
 **Priority:** High
 **Phase:** Phase 3
 **Depends on:** `T-107`
-**Relevant context:** `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
+**Relevant context:** `docs/UX_SPEC.md` §5 (the two selection modes and the ffmpeg rule), `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
 (`effective_selector`, `custom_preset`), `T-061` (the ffmpeg gate reads the selector, not the
 chosen format), `T-075`
 **Affected surfaces:** `core/presets.py`, `ui/`, `downloader/ytdlp_adapter.py`
@@ -1565,7 +1523,7 @@ merge it could not perform. The check here must read the user's actual selection
 **Priority:** High — the largest single item in the phase
 **Phase:** Phase 3
 **Depends on:** `T-105`; `T-108` for the ffmpeg-presence rule it shares
-**Relevant context:** `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
+**Relevant context:** `docs/UX_SPEC.md` §6 (the editor is the preset editor's screen; **P-12 must be ruled on first**), `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
 produced a file), `T-076`, `T-089`, `downloader/ytdlp_adapter.py`
 **Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`, `ui/`
 **Risk:** **High** — seven independent options, each of which can be wired to produce no effect
@@ -1616,7 +1574,7 @@ on a guess, because `docs/UX_SPEC.md` may draw the line differently.
 **Priority:** High — it changes what a *job* is, which reaches `core/`
 **Phase:** Phase 3
 **Depends on:** `T-105`
-**Relevant context:** `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
+**Relevant context:** `docs/UX_SPEC.md` §7 (the picker is the staging row opened, not a third playlist shape), `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
 `persistence/repositories.py` (`append` allocates positions in one transaction), `T-078`
 **Affected surfaces:** `core/models.py`, `downloader/ytdlp_adapter.py`, `ui/add_dialog.py`,
 `persistence/`
@@ -1658,7 +1616,7 @@ playlist is a long extraction, and the dialog has to stay responsive and cancell
 **Priority:** Medium
 **Phase:** Phase 3
 **Depends on:** `T-105`; `T-109` for the option set a preset can carry
-**Relevant context:** `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
+**Relevant context:** `docs/UX_SPEC.md` §8 (**P-8, where presets persist, is a `DAT-` decision**), `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
 `to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
 **Affected surfaces:** `core/presets.py`, `core/settings.py` or a new store, `ui/`
 **Risk:** Medium — user presets are persisted state with a name-collision problem
@@ -1695,7 +1653,7 @@ not an implementation choice, and it needs an entry.
 **Priority:** Medium
 **Phase:** Phase 3
 **Depends on:** `T-105`
-**Relevant context:** `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
+**Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
 atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
 **Affected surfaces:** `core/paths.py`, `ui/`
 **Risk:** Medium — the preview must be the same function the download uses, or it lies
@@ -1737,7 +1695,7 @@ must not reimplement any of it.
 **Priority:** Medium — and the highest *uncertainty* in the phase
 **Phase:** Phase 3
 **Depends on:** Phase 2 exit
-**Relevant context:** `REQ-017`, `UX-001` (this is its named reopening condition), `T-080`
+**Relevant context:** `docs/UX_SPEC.md` §9.2 (**P-10 reopens `UX-001`'s per-job pause**), `REQ-017`, `UX-001` (this is its named reopening condition), `T-080`
 (removed `JobStatus.PAUSED`), `ARCHITECTURE.md` §5, `NFR-003`
 **Affected surfaces:** `core/job_state.py`, `downloader/`, `persistence/`
 **Risk:** **High** — it is the one Phase 3 item whose feasibility depends on the site and format
@@ -1780,7 +1738,7 @@ Neither is this task's to decide alone; both need an entry.
 **Priority:** Low — the smallest item in the phase
 **Phase:** Phase 3
 **Depends on:** `T-085` (history records, approved) and `T-100` (the history view)
-**Relevant context:** `REQ-022`, `T-085`, `persistence/repositories.py` (`HistoryRepository`)
+**Relevant context:** `docs/UX_SPEC.md` §9.3 (a staging-row state, never a modal), `REQ-022`, `T-085`, `persistence/repositories.py` (`HistoryRepository`)
 **Affected surfaces:** `persistence/`, `ui/add_dialog.py`
 **Risk:** Low
 
@@ -2242,6 +2200,58 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-105 — Write `docs/UX_SPEC.md` before Phase 3 starts
+
+**Status:** **Complete — 2026-08-06, awaiting review.** `docs/UX_SPEC.md` is written, and the
+trigger `DOC-002` scheduled and `IMPLEMENTATION_PLAN.md` §Phase 3 carried has fired. It absorbs the
+window `UX-003`, `UX-004` and `UX-005` settled — both of the latter name this file as their
+destination — and specifies the eight Phase 3 surfaces that do not exist yet.
+
+**Twelve clauses are marked Proposed and are not decided** (§10). That is the document doing its
+job rather than falling short of it: `T145-R1` and `T144-R1` were an implementer recording his own
+choices as maintainer rulings, and this file separates transcribed, derived and proposed so the
+same thing cannot happen across eight tasks at once. **No task may build a `[P]` clause until it is
+ratified**, and three of the twelve are not layout questions — `P-8` (where user presets persist) is
+a `DAT-` decision, `P-10` reopens `UX-001`'s per-job pause, and `P-12` would widen a model frozen
+since Phase 1 and decides what `T-109`'s screen is.
+**Owner:** Planner
+**Priority:** Medium — it gates nothing today and gates the start of Phase 3
+**Phase:** Phase 3 (its opening act)
+**Depends on:** nothing
+**Relevant context:** `DOC-002`, `IMPLEMENTATION_PLAN.md` §Phase 3, `REQ-003`, `REQ-004`, `REQ-007`,
+`REQ-010`, `REQ-011`
+**Affected surfaces:** `docs/UX_SPEC.md`
+**Risk:** Low as a document; Medium as an omission — Phase 3 is the phase with the most UI surface
+and the least written down about it
+
+#### Scope
+
+`IMPLEMENTATION_PLAN.md` §Phase 3 carries **Trigger:** *"`docs/UX_SPEC.md` is created at the start of
+this phase (`DOC-002`)"*. `docs/` holds `DEVELOPMENT.md` and `WINDOWS_VERIFICATION.md` and nothing
+else, and no task owned the trigger — so the first Phase 3 task would either have started without it
+or quietly invented the spec as it went.
+
+Phase 3 is where it matters most. A sortable format table, per-entry playlist selection, an output
+template editor with live preview and seven post-processing options are the densest UI in the
+project, and `REQ-007`'s user presets add a CRUD surface on top. Deciding all of that inside
+individual implementation tasks is how two of them end up disagreeing.
+
+#### Acceptance criteria
+
+- Covers every Phase 3 deliverable's user-facing surface, and says which requirement each serves
+- States the keyboard path through each new surface (`NFR-005`), because retrofitting that is what
+  `T-040` and `T-060` cost
+- Records what is **deliberately not** offered, so a later task does not read an absence as an
+  oversight
+- Is referenced by the Phase 3 tasks rather than duplicated into them
+
+#### Out of scope
+
+- Visual design beyond the brand palette already fixed in `ARCHITECTURE.md` §8
+- Phase 4's settings dialog (`REQ-023`), which has its own requirement
+
+---
 
 ### T-159 — History reports the format as a yt-dlp id
 
