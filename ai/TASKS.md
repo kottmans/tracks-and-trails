@@ -1804,6 +1804,7 @@ def _now() -> datetime:
     """Timezone-aware, matching what the manager stamps onto `finished_at`."""
     return datetime.now().astimezone()
 
+
 # downloader/manager.py
 def _now() -> datetime:
     """Timezone-aware local time, matching what `persistence` stores (`T-014`)."""
