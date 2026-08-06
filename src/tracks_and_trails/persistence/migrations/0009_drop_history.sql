@@ -46,6 +46,15 @@
 -- database **together with its `-wal` and `-shm` siblings** — deleting `library.sqlite3` alone can
 -- leave a `library.sqlite3-wal` holding exactly what they meant to remove.
 --
+-- **The pragma was added after this migration first shipped, and that has one consequence.**
+-- `migrate` runs a script only for a version above the database's own, so a database that already
+-- reached v9 before this edit will never execute this file again: its dropped pages keep whatever
+-- zeroing its SQLite build happened to do, and the correction does not reach it. That is
+-- acceptable here only because nothing is released — no tag, no installer — so the population is a
+-- developer's own database. It would not be acceptable after a release, where editing a shipped
+-- migration silently divides users into those who ran the old text and those who ran the new, and
+-- the fix would have to be `0010`.
+--
 -- **Irreversible, like every migration here.** Forward-only (`T-014`): there is no down-migration
 -- to restore the table, and restoring a backup is the honest recovery path. Unlike the other eight,
 -- this one has something to recover.
