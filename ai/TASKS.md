@@ -78,10 +78,13 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Three await a re-review as of 2026-08-06:** `T-177`, `T-178` and `T-179`, whose initial review
-returned **Changes requested** with three blocking Medium findings. All three corrections are made
-and recorded in the entries below; **only the Reviewer marks a finding Resolved**, so they stay
-here until it does.)*
+*(**One awaits a verdict as of 2026-08-06: `T-179`.** Its batch-mates `T-177` and `T-178` had their
+findings marked **Resolved** at checkpoint `961cada` and were split out to `## Complete` by
+maintainer instruction — the reviewer called them individually ready, and neither has an approval
+verdict of its own. `T-179` is on its **second** rejection: `T179-R1` survived the focused
+correction re-review and `T179-R2`, **High**, was introduced by the correction itself. The Medium
+pass budget for `T179-R1` is exhausted and **the maintainer authorised another pass** on
+2026-08-06; the High needs no authorization.)*
 
 *(This note said "**Nothing awaits a verdict as of 2026-08-03**" — `T-118` was approved with
 follow-ups at `53b07ec` and moved to `## Complete`, and its follow-ups are `T-122` under
@@ -95,207 +98,6 @@ at all**. That is the ninth round of `COORD-R5`'s class and the first where the 
 filing rather than about status — `T-096`'s gate compares a status to its section, so three tasks
 whose stale status agreed with their stale section passed it. All three are now filed under
 `## Complete` at their approved heads.)*
-
----
-
-### T-177 — Startup reads the whole queue to find the few rows it wants
-
-**Status:** **In Review — corrected 2026-08-06, awaiting re-review.** Filed from an efficiency
-audit (Codex) and authorised by the maintainer in the same instruction. Behavior-preserving, and
-measured before and after rather than argued. The initial review returned **Changes requested**;
-`T177-R1` is corrected and recorded below as awaiting the Reviewer's verification. **One acceptance
-criterion was written on a false premise and is corrected in place below** — `IN ()` is valid
-SQLite — which the mutation check found rather than a reading.
-**Owner:** Implementer
-**Priority:** Medium — it is on the path that runs **before the window appears**, which is the one
-place this project has already paid for a per-row cost (`T-082`)
-**Phase:** Phase 3 cleanup
-**Depends on:** nothing
-**Relevant context:** `T-082` (the same path, the same shape of defect), `T-115`, `T081-R4`,
-`UX-003`, `ARC-009`, `NFR-002`
-**Affected surfaces:** `persistence/repositories.py`, `app.py`, their tests
-**Risk:** Low for the mechanism, **Medium for the ordering** — see below
-
-#### What is wrong
-
-Both startup scans load and deserialize **every** job to select a status SQLite already indexes:
-
-- `JobRepository.recover_interrupted()` calls `self.all_jobs()` and filters on
-  `INTERRUPTED_ON_STARTUP` in Python
-- `app.waiting_jobs()` calls `repository.all_jobs()` and filters on `QUEUED`/`READY` in Python
-
-`_row_to_job` runs `_deserialize_request` per row — a `json.loads` plus two enum conversions — so
-the cost is per stored job, not per wanted job. `0001_initial.sql` has created
-`CREATE INDEX jobs_status ON jobs (status)` since the first migration, and nothing has used it on
-this path.
-
-Measured on this host against a queue where only a handful of rows are wanted, best of seven. The
-*after* column is the **shipped** `recover_interrupted()` and `waiting_jobs()`, re-measured after
-the change rather than the standalone queries the estimate was first taken from:
-
-| Queue size | Both scans, before | Both scans, after |
-|---:|---:|---:|
-| 100 | 4.57 ms | 0.63 ms |
-| 500 | 23.16 ms | 0.62 ms |
-| 2000 | 93.27 ms | 0.65 ms |
-
-The *after* figures are larger than the 0.23 ms the query sketch showed, and the difference is
-real work rather than noise: the shipped `recover_interrupted()` also opens the transaction and
-writes the recovered rows, which the sketch did not do.
-
-`EXPLAIN QUERY PLAN` for the filtered form reports `SEARCH jobs USING INDEX jobs_status`. The
-filtered cost is flat because it is proportional to the rows *wanted*, which is what makes this
-worth doing at all — `T-007` measured cold start at 0.178 s median against `NFR-002`'s 3 s, so at
-2000 rows the two scans are about half the cold start again.
-
-#### Scope
-
-Add one repository query that selects by status in SQL and returns `JobModel`s in `all_jobs`
-order, and route both scans through it. Fold in the audit's fourth observation while the surface
-is open: `app.queued_job_ids()` wraps `waiting_jobs()` and has one caller, a test.
-
-#### Acceptance criteria
-
-- `recover_interrupted()` and `waiting_jobs()` no longer deserialize rows whose status they will
-  discard, and a test asserts the count of rows read rather than only the result
-- **Order is unchanged.** `all_jobs()` orders `queue_position IS NULL, queue_position, created_at,
-  id` and `waiting_jobs()` inherits it; the new query states the same order and a test fails if it
-  does not. This is the real risk in the change — a set-equal assertion would pass an ordering
-  regression, and `T-115` turned on startup order
-- The empty-status case is decided deliberately and its behaviour is pinned by a test. *(This
-  criterion was written as "not left to SQLite: `IN ()` is not valid SQL". **The premise is
-  wrong** — that is standard SQL, and SQLite accepts the empty list as an extension. The mutation
-  check found it, the guard written on the false premise is gone, and the test now pins the engine
-  behaviour instead of a branch of ours.)*
-- `queued_job_ids()`'s disposition is decided and stated — kept with a caller, or removed with its
-  test moved to `waiting_jobs()`
-- Recovery still writes one transaction (`T-082`), still validates each transition through
-  `with_failure`, and still computes every transition before writing any
-- `ruff check .`, `ruff format --check .`, host mypy, `mypy --platform win32`, and the persistence,
-  interrupted-offer and composition tests are clean
-
-#### Out of scope
-
-- Any change to what either scan selects. `READY` stays in the waiting set (`UX-003`) and `RUNNING`
-  stays out of it (`T081-R4`)
-- Adding an index. `jobs_status` already exists
-- Lazy or partial deserialization of `request`
-
-#### What it came to
-
-`JobRepository.with_statuses` selects in SQL and repeats `all_jobs()`' `ORDER BY` rather than
-sharing it through a constant — two orders that must agree are better stated twice and asserted.
-`recover_interrupted()` and `waiting_jobs()` both route through it; recovery still computes every
-transition before writing and still commits once (`T-082`).
-
-**`queued_job_ids` is gone.** It returned the ids alone, production read the pair, and its only
-caller was the test that proves the filter exists. Its reasoning — `T081-R4`, `T-115`, why `READY`
-is in the set and `RUNNING` is not — moved onto `waiting_jobs`, which is where the filter it
-documented actually lives, and the test now calls `waiting_jobs`.
-
-**The empty-status guard was written on a false premise and removed.** The mutation check deleted
-it and every test still passed, because SQLite accepts `IN ()` as an extension and evaluates it
-false — the "not valid SQL" the guard and its docstring both asserted is standard SQL, not this
-engine. What remains is `test_asking_for_no_statuses_returns_nothing`, which is no longer a test of
-our branch but a pin on third-party behaviour this code now depends on.
-
-Three mutants, all killed: filter ignored (fails the count and the startup-admission tests),
-`ORDER BY` dropped (fails the ordering test, and **only** the ordering test — a set-equal
-assertion would have passed it), guard deleted (survived, and was the finding above).
-
-#### Correction round 1 — `T177-R1`, 2026-08-06
-
-**Corrected, awaiting the Reviewer's verification.** The finding was right on both halves.
-
-- **The gate did not gate `waiting_jobs()`.** The acceptance criterion names both scans and only
-  recovery had a deserialization-count regression, so reverting `waiting_jobs()` to `all_jobs()`
-  plus a Python filter left every test green while restoring half the startup cost.
-  `test_waiting_jobs_deserializes_only_the_rows_it_returns` counts at `_row_to_job` and asserts the
-  returned pair as well, so a mutation selecting nothing cannot satisfy it by deserializing
-  nothing. **Mutation run: the exact revert the finding describes now fails it.**
-- **The 0.2 ms claim in `with_statuses`' docstring is gone.** It was the standalone query sketch's
-  number, left behind when the task entry was corrected to the shipped 0.65 ms. Replaced with the
-  durable statement — the cost is proportional to the rows wanted rather than the rows stored —
-  and a pointer to this entry, so a host-specific figure lives in one place that can be edited
-  rather than in source. The reviewer's independent in-memory measurement (100 rows 5.34/0.43 ms,
-  500 rows 25.19/0.51 ms, 2000 rows 102.22/0.55 ms) agrees with the scaling claim.
-
-#### Files
-
-`src/tracks_and_trails/persistence/repositories.py`, `src/tracks_and_trails/app.py`,
-`tests/unit/test_persistence.py`, `tests/unit/test_interrupted_offer.py`
-
----
-
-### T-178 — Delete the `FormatChoice` serializers migration 0009 orphaned
-
-**Status:** **In Review — corrected 2026-08-06, awaiting re-review.** Filed from the same audit and
-authorised with it. The three names and the `FormatChoice` import are gone; `fields` and the
-request pair stay. The deletion was accepted; **the replacement comment was not** — `T178-R1` is
-corrected and recorded below.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 3 cleanup
-**Depends on:** nothing
-**Relevant context:** `T-175` (the same withdrawal, the runtime half), `T-159`, `T159-R1`,
-`REQ-020` (withdrawn), `REQ-026`, migration `0009`
-**Affected surfaces:** `persistence/repositories.py` only
-**Risk:** Low
-
-#### Scope
-
-`_FORMAT_CHOICE_FIELDS`, `_serialize_format_choice` and `_deserialize_format_choice` have no
-caller in `src/` or `tests/` — they reference only each other. They wrote the `history` table's
-format column, which migration `0009` dropped. Remove the block and the `FormatChoice` import that
-exists only for it. `fields` stays: `_REQUEST_FIELDS` uses it.
-
-`T-175` removed the runtime machinery the withdrawal stranded and missed this because it is a
-serializer for a table rather than a queue path.
-
-#### Acceptance criteria
-
-- The three names and the now-unused import are gone; no other import is removed
-- Nothing in `src/` or `tests/` references them, verified by search and not by assumption
-- **`_serialize_request` and `_deserialize_request` are untouched.** They are the live pair and the
-  near-identical shape is exactly how the wrong one gets deleted
-- `T159-R1`'s reasoning — that what describes a download is serialized without ever writing a whole
-  request — is not deleted with the code if it still explains a live invariant; if it does not, it
-  goes rather than being kept as a comment about nothing
-- `ruff check .`, `ruff format --check .`, both mypy platforms, and the persistence tests are clean
-
-#### Out of scope
-
-- Removing `FormatChoice` itself, which is live in the preset and row-editor paths
-- Touching migration `0007`, which created the column, or any other historical migration
-
-#### What it came to
-
-The three names and the `FormatChoice` import are gone. `fields` stays — `_REQUEST_FIELDS` uses it
-— and `_serialize_request`/`_deserialize_request` are untouched, which was the criterion the
-near-identical shape put at risk. A past-tense note stands where the block did, saying what it
-wrote and which migration ended it; `T159-R1`'s rule survives in `REQ-026` and in the request
-serializer that is still the only one here.
-
-#### Correction round 1 — `T178-R1`, 2026-08-06
-
-**Corrected, awaiting the Reviewer's verification.** The deletion was accepted; the note I left in
-its place reversed the distinction it was describing.
-
-`T159-R1` required History to store a narrow `FormatChoice` **because** a whole `DownloadRequest`
-can carry `cookies_from_browser`, `proxy` and `rate_limit_bytes` — verified in `core/models.py`,
-where `proxy` additionally rejects userinfo (`T014-R1`) but the other two are plain optional
-fields. My note said the rule "survives in `_serialize_request`, which still writes a request
-rather than a credential", which reads as a claim that a `DownloadRequest` is credential-free, and
-it sat beside security-sensitive persistence code.
-
-The note now says what is true: `T159-R1`'s boundary **ended with the table**. `_serialize_request`
-is a different thing with a different justification — it persists the queue's settings freeze,
-where the whole request is the point — and `REQ-026` governs what may be written from it. The
-original wording is kept in the note as a superseded reading rather than quietly replaced.
-
-#### Files
-
-`src/tracks_and_trails/persistence/repositories.py`
 
 ---
 
@@ -2545,6 +2347,217 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-177 — Startup reads the whole queue to find the few rows it wants
+
+**Status:** **Complete — `T177-R1` Resolved by the Reviewer 2026-08-06, at checkpoint `961cada`.**
+Filed from an efficiency audit (Codex) and authorised by the maintainer in the same instruction.
+Behavior-preserving, and measured before and after rather than argued. **One acceptance criterion
+was written on a false premise and is corrected in place below** — `IN ()` is valid SQLite — which
+the mutation check found rather than a reading.
+
+**This task has no approval verdict of its own, and that is deliberate rather than an omission.**
+The 2026-08-06 focused re-review returned **Changes requested** for the three-task batch; it marked
+`T177-R1` **Resolved** and said `T-177` and `T-178` were *individually ready*, with only the batch
+and `T-179` blocked. Readiness is not an approval, so this entry does not claim one. **The
+maintainer split it out of the batch on that basis** (2026-08-06) so finished work would not wait
+on `T-179`'s design.
+**Owner:** Implementer
+**Priority:** Medium — it is on the path that runs **before the window appears**, which is the one
+place this project has already paid for a per-row cost (`T-082`)
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T-082` (the same path, the same shape of defect), `T-115`, `T081-R4`,
+`UX-003`, `ARC-009`, `NFR-002`
+**Affected surfaces:** `persistence/repositories.py`, `app.py`, their tests
+**Risk:** Low for the mechanism, **Medium for the ordering** — see below
+
+#### What is wrong
+
+Both startup scans load and deserialize **every** job to select a status SQLite already indexes:
+
+- `JobRepository.recover_interrupted()` calls `self.all_jobs()` and filters on
+  `INTERRUPTED_ON_STARTUP` in Python
+- `app.waiting_jobs()` calls `repository.all_jobs()` and filters on `QUEUED`/`READY` in Python
+
+`_row_to_job` runs `_deserialize_request` per row — a `json.loads` plus two enum conversions — so
+the cost is per stored job, not per wanted job. `0001_initial.sql` has created
+`CREATE INDEX jobs_status ON jobs (status)` since the first migration, and nothing has used it on
+this path.
+
+Measured on this host against a queue where only a handful of rows are wanted, best of seven. The
+*after* column is the **shipped** `recover_interrupted()` and `waiting_jobs()`, re-measured after
+the change rather than the standalone queries the estimate was first taken from:
+
+| Queue size | Both scans, before | Both scans, after |
+|---:|---:|---:|
+| 100 | 4.57 ms | 0.63 ms |
+| 500 | 23.16 ms | 0.62 ms |
+| 2000 | 93.27 ms | 0.65 ms |
+
+The *after* figures are larger than the 0.23 ms the query sketch showed, and the difference is
+real work rather than noise: the shipped `recover_interrupted()` also opens the transaction and
+writes the recovered rows, which the sketch did not do.
+
+`EXPLAIN QUERY PLAN` for the filtered form reports `SEARCH jobs USING INDEX jobs_status`. The
+filtered cost is flat because it is proportional to the rows *wanted*, which is what makes this
+worth doing at all — `T-007` measured cold start at 0.178 s median against `NFR-002`'s 3 s, so at
+2000 rows the two scans are about half the cold start again.
+
+#### Scope
+
+Add one repository query that selects by status in SQL and returns `JobModel`s in `all_jobs`
+order, and route both scans through it. Fold in the audit's fourth observation while the surface
+is open: `app.queued_job_ids()` wraps `waiting_jobs()` and has one caller, a test.
+
+#### Acceptance criteria
+
+- `recover_interrupted()` and `waiting_jobs()` no longer deserialize rows whose status they will
+  discard, and a test asserts the count of rows read rather than only the result
+- **Order is unchanged.** `all_jobs()` orders `queue_position IS NULL, queue_position, created_at,
+  id` and `waiting_jobs()` inherits it; the new query states the same order and a test fails if it
+  does not. This is the real risk in the change — a set-equal assertion would pass an ordering
+  regression, and `T-115` turned on startup order
+- The empty-status case is decided deliberately and its behaviour is pinned by a test. *(This
+  criterion was written as "not left to SQLite: `IN ()` is not valid SQL". **The premise is
+  wrong** — that is standard SQL, and SQLite accepts the empty list as an extension. The mutation
+  check found it, the guard written on the false premise is gone, and the test now pins the engine
+  behaviour instead of a branch of ours.)*
+- `queued_job_ids()`'s disposition is decided and stated — kept with a caller, or removed with its
+  test moved to `waiting_jobs()`
+- Recovery still writes one transaction (`T-082`), still validates each transition through
+  `with_failure`, and still computes every transition before writing any
+- `ruff check .`, `ruff format --check .`, host mypy, `mypy --platform win32`, and the persistence,
+  interrupted-offer and composition tests are clean
+
+#### Out of scope
+
+- Any change to what either scan selects. `READY` stays in the waiting set (`UX-003`) and `RUNNING`
+  stays out of it (`T081-R4`)
+- Adding an index. `jobs_status` already exists
+- Lazy or partial deserialization of `request`
+
+#### What it came to
+
+`JobRepository.with_statuses` selects in SQL and repeats `all_jobs()`' `ORDER BY` rather than
+sharing it through a constant — two orders that must agree are better stated twice and asserted.
+`recover_interrupted()` and `waiting_jobs()` both route through it; recovery still computes every
+transition before writing and still commits once (`T-082`).
+
+**`queued_job_ids` is gone.** It returned the ids alone, production read the pair, and its only
+caller was the test that proves the filter exists. Its reasoning — `T081-R4`, `T-115`, why `READY`
+is in the set and `RUNNING` is not — moved onto `waiting_jobs`, which is where the filter it
+documented actually lives, and the test now calls `waiting_jobs`.
+
+**The empty-status guard was written on a false premise and removed.** The mutation check deleted
+it and every test still passed, because SQLite accepts `IN ()` as an extension and evaluates it
+false — the "not valid SQL" the guard and its docstring both asserted is standard SQL, not this
+engine. What remains is `test_asking_for_no_statuses_returns_nothing`, which is no longer a test of
+our branch but a pin on third-party behaviour this code now depends on.
+
+Three mutants, all killed: filter ignored (fails the count and the startup-admission tests),
+`ORDER BY` dropped (fails the ordering test, and **only** the ordering test — a set-equal
+assertion would have passed it), guard deleted (survived, and was the finding above).
+
+#### Correction round 1 — `T177-R1`, 2026-08-06
+
+**Corrected, awaiting the Reviewer's verification.** The finding was right on both halves.
+
+- **The gate did not gate `waiting_jobs()`.** The acceptance criterion names both scans and only
+  recovery had a deserialization-count regression, so reverting `waiting_jobs()` to `all_jobs()`
+  plus a Python filter left every test green while restoring half the startup cost.
+  `test_waiting_jobs_deserializes_only_the_rows_it_returns` counts at `_row_to_job` and asserts the
+  returned pair as well, so a mutation selecting nothing cannot satisfy it by deserializing
+  nothing. **Mutation run: the exact revert the finding describes now fails it.**
+- **The 0.2 ms claim in `with_statuses`' docstring is gone.** It was the standalone query sketch's
+  number, left behind when the task entry was corrected to the shipped 0.65 ms. Replaced with the
+  durable statement — the cost is proportional to the rows wanted rather than the rows stored —
+  and a pointer to this entry, so a host-specific figure lives in one place that can be edited
+  rather than in source. The reviewer's independent in-memory measurement (100 rows 5.34/0.43 ms,
+  500 rows 25.19/0.51 ms, 2000 rows 102.22/0.55 ms) agrees with the scaling claim.
+
+#### Files
+
+`src/tracks_and_trails/persistence/repositories.py`, `src/tracks_and_trails/app.py`,
+`tests/unit/test_persistence.py`, `tests/unit/test_interrupted_offer.py`
+
+---
+
+### T-178 — Delete the `FormatChoice` serializers migration 0009 orphaned
+
+**Status:** **Complete — `T178-R1` Resolved by the Reviewer 2026-08-06, at checkpoint `961cada`.**
+Filed from the same audit and authorised with it. The three names and the `FormatChoice` import are
+gone; `fields` and the request pair stay. The deletion was accepted in the first pass; **the
+replacement comment was not**, and `T178-R1` is the correction.
+
+**No approval verdict of its own**, for the reason `T-177`'s entry gives: the batch verdict was
+Changes requested, the finding is Resolved, the reviewer called this task individually ready, and
+the maintainer split it out on that basis.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T-175` (the same withdrawal, the runtime half), `T-159`, `T159-R1`,
+`REQ-020` (withdrawn), `REQ-026`, migration `0009`
+**Affected surfaces:** `persistence/repositories.py` only
+**Risk:** Low
+
+#### Scope
+
+`_FORMAT_CHOICE_FIELDS`, `_serialize_format_choice` and `_deserialize_format_choice` have no
+caller in `src/` or `tests/` — they reference only each other. They wrote the `history` table's
+format column, which migration `0009` dropped. Remove the block and the `FormatChoice` import that
+exists only for it. `fields` stays: `_REQUEST_FIELDS` uses it.
+
+`T-175` removed the runtime machinery the withdrawal stranded and missed this because it is a
+serializer for a table rather than a queue path.
+
+#### Acceptance criteria
+
+- The three names and the now-unused import are gone; no other import is removed
+- Nothing in `src/` or `tests/` references them, verified by search and not by assumption
+- **`_serialize_request` and `_deserialize_request` are untouched.** They are the live pair and the
+  near-identical shape is exactly how the wrong one gets deleted
+- `T159-R1`'s reasoning — that what describes a download is serialized without ever writing a whole
+  request — is not deleted with the code if it still explains a live invariant; if it does not, it
+  goes rather than being kept as a comment about nothing
+- `ruff check .`, `ruff format --check .`, both mypy platforms, and the persistence tests are clean
+
+#### Out of scope
+
+- Removing `FormatChoice` itself, which is live in the preset and row-editor paths
+- Touching migration `0007`, which created the column, or any other historical migration
+
+#### What it came to
+
+The three names and the `FormatChoice` import are gone. `fields` stays — `_REQUEST_FIELDS` uses it
+— and `_serialize_request`/`_deserialize_request` are untouched, which was the criterion the
+near-identical shape put at risk. A past-tense note stands where the block did, saying what it
+wrote and which migration ended it; `T159-R1`'s rule survives in `REQ-026` and in the request
+serializer that is still the only one here.
+
+#### Correction round 1 — `T178-R1`, 2026-08-06
+
+**Corrected, awaiting the Reviewer's verification.** The deletion was accepted; the note I left in
+its place reversed the distinction it was describing.
+
+`T159-R1` required History to store a narrow `FormatChoice` **because** a whole `DownloadRequest`
+can carry `cookies_from_browser`, `proxy` and `rate_limit_bytes` — verified in `core/models.py`,
+where `proxy` additionally rejects userinfo (`T014-R1`) but the other two are plain optional
+fields. My note said the rule "survives in `_serialize_request`, which still writes a request
+rather than a credential", which reads as a claim that a `DownloadRequest` is credential-free, and
+it sat beside security-sensitive persistence code.
+
+The note now says what is true: `T159-R1`'s boundary **ended with the table**. `_serialize_request`
+is a different thing with a different justification — it persists the queue's settings freeze,
+where the whole request is the point — and `REQ-026` governs what may be written from it. The
+original wording is kept in the note as a superseded reading rather than quietly replaced.
+
+#### Files
+
+`src/tracks_and_trails/persistence/repositories.py`
+
+---
 
 ### T-173 — One `_now()`, not one per module that needs the same clock
 
