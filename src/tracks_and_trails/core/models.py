@@ -19,8 +19,12 @@ Every model here is frozen. Immutability is not stylistic: these objects are rea
 thread, sent to a worker process, and persisted, and a shared mutable job is how a queue
 silently disagrees with its own database.
 
-`HistoryEntry` is named in `ARCHITECTURE.md` §5 but is not defined here. It is a *durable
-record* rather than live domain state, so it belongs with the schema that stores it (`T-014`).
+`HistoryEntry` **no longer exists**, and this paragraph is kept as the reason it never lived
+here. It was named in `ARCHITECTURE.md` §5 and defined with the schema that stored it (`T-014`),
+because a durable record is not live domain state. `REQ-020` was withdrawn on 2026-08-06 and
+migration `0009` dropped the table; `T-175` removed the type. The rule the paragraph states —
+durable records belong with their schema, not in this module — is why it is worth keeping
+(`T-176`).
 """
 
 from collections.abc import Sequence

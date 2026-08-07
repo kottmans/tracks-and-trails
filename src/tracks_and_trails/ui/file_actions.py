@@ -91,9 +91,11 @@ class FileActions(QObject):
     downloads go *now*.
 
     **`QAbstractItemView`, not `QTableView`.** Nothing here uses more than the base class offers —
-    a context-menu policy, `doubleClicked`, a selection model and a viewport — and history is a
-    table while the queue became a list of drawn rows (`T-119`). Naming the narrower type would
-    have made this file pick a side in a decision it has no stake in.
+    a context-menu policy, `doubleClicked`, a selection model and a viewport. It was written
+    while History was a table and the queue was becoming a list of drawn rows (`T-119`), so naming
+    the narrower type would have made this file pick a side in a decision it had no stake in.
+    **History is gone and the reason survives it**: this file still has no stake in how its view
+    is built.  *(`T-176`: the sentence was present tense about a surface removed on 2026-08-06.)*
     """
 
     def __init__(

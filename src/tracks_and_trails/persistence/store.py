@@ -202,8 +202,13 @@ class PersistentJobStore(QObject):
     def clear_completed(self, done: Callable[[str | None], None]) -> None:
         """Delete every finished job's row. **Returns immediately** (`REQ-016`, `T-081`).
 
-        **History is not touched**, which is `JobRepository.clear_completed`'s guarantee and the
-        reason `T-100`'s view can still answer "where did my file go" afterwards.
+        **No file is touched, and nothing survives the row** (`UX-001`). Clearing removes the
+        queue's record of a finished download and leaves what it wrote on disk.
+
+        *(This read "**History is not touched** … the reason `T-100`'s view can still answer 'where
+        did my file go' afterwards". `REQ-020` was withdrawn on 2026-08-06: there is no History, no
+        view, and once a row is cleared the application knows nothing about that download — which
+        is `REQ-021`'s scope, not a gap. `T-176`.)*
         """
         self._writer.clear_completed(done)
 

@@ -24,9 +24,10 @@ built-in, and there is no way to know that from an id.
 **It takes a `FormatChoice`, which is narrower than a request, and that is a boundary rather than a
 convenience** (`T159-R1`, `REQ-026`). A `DownloadRequest` also carries `cookies_from_browser`,
 `proxy`, `output_directory` and `url` — none of which says what a download *is*, and the first of
-which `REQ-026` forbids History to hold. Handing this rule a request would have let History store
-one to feed it. `FormatChoice` is exactly `PRESET_OWNED_FIELDS`, so the rule is given every fact it
-needs and no fact it must not keep.
+which `REQ-026` forbids a durable record to hold. Handing this rule a request would have let the
+record store one to feed it. `FormatChoice` is exactly `PRESET_OWNED_FIELDS`, so the rule is given
+every fact it needs and no fact it must not keep. *(The record in question was History's, withdrawn
+2026-08-06; the boundary outlived it — `T-176`.)*
 
 ## The MP3 bitrate, and the half of it that is still open
 
@@ -54,8 +55,8 @@ __all__ = ["FORMAT_PREFIX", "effective_format_text", "format_name", "preset_name
 #: How a queue row states the format it is running as, once the control is gone (`UX-005` §6).
 #:
 #: The same three words the add dialog's row uses, so one download is described the same way in
-#: the dialog that queued it and in the queue that runs it. **History does not use it** — a record
-#: is not going to be downloaded as anything, it already was — so it takes `format_name` directly.
+#: the dialog that queued it and in the queue that runs it. History did not use it — a record is
+#: not going to be downloaded as anything, it already was — and History is gone (`T-176`).
 FORMAT_PREFIX: Final = "Download as: "
 
 

@@ -1,18 +1,19 @@
-"""Flattening a list into headers and the rows under them, for both tabs (`T-145`, `UX-005` §3).
+"""Flattening a list into headers and the rows under them (`T-140`, `UX-005` §3).
 
-## Why this is shared, and what is deliberately not
+## Why this is generic, with one caller
 
 `T-140` built playlist grouping for the queue: a `_Group`, a flattening pass, an expansion set and
-the line-number map three of them need. `T-145` gives History the same anatomy — `UX-005` §3 exists
-to keep the two tabs reading as one shape — and copying a hundred lines across is how the two tabs
-start to drift in exactly the way that decision forbids.
+the line-number map three of them need. `T-145` then gave History the same anatomy — `UX-005` §3
+existed to keep the two tabs reading as one shape — and this module is what stopped a hundred lines
+being copied across.
 
-**What is shared is the flattening and the expansion. The data is not, and could not be.** The
-queue groups `Job`s by status and draws a bar of their states; History groups records that are all
-finished by definition. So this module knows how to turn *a list plus a membership function* into
-headers and rows, and knows nothing about either row type — `Group` is generic, and every question
-about what a header *says* stays with the model that owns it (`QueueModel._group_data` and
-`HistoryModel._group_data` answer different roles from the same shape).
+**History was removed on 2026-08-06** (`REQ-020` withdrawn, `T-169`/`T-170`), so the queue is the
+only caller now. The generality is kept rather than inlined: what it buys is that `Group` knows
+nothing about a row type at all, and every question about what a header *says* stays with the model
+that owns it (`QueueModel._group_data`). That separation was worth having with one caller before
+`T-145` arrived, and it still is.
+
+*(This described "both tabs" and `HistoryModel._group_data` in the present tense — `T-176`.)*
 
 ## The rules the two tabs must not disagree about
 
@@ -39,9 +40,9 @@ class Group[T]:
     """A header and the items gathered under it.
 
     **Synthesised per rebuild, never stored** (`T-137`, `T-145`). A group has no state of its own:
-    its chip is a count of its members and, in the queue, its bar is their states — so there is
-    nothing to keep in sync and nothing to go stale. That is also why neither tab has a `playlists`
-    table, and why History carries membership on the record rather than in one.
+    its chip is a count of its members and its bar is their states — so there is nothing to keep in
+    sync and nothing to go stale. That is also why there is no `playlists` table: membership is
+    three columns on the job (`T-176`, which removed the same sentence's claim about History).
 
     `members` and `indices` are parallel: `indices[n]` is where `members[n]` sits in the list this
     group was built from, which is what lets the flattened view name a row without the model
@@ -81,10 +82,12 @@ def flatten[T](
     for the returned map. `expanded` holds the ids of the groups that are open.
 
     `order` sorts the members **within** a group when the list's own order is not the order they
-    should be read in. History needs it: records arrive newest-completed-first, while a playlist's
-    entries belong in the playlist's own order, so track 03 stays above track 04 however the
-    downloads interleaved. The queue passes nothing, because its list is already in queue order and
-    that is what the user arranged.
+    should be read in. **Nothing passes it today.** History needed it — records arrived
+    newest-completed-first while a playlist's entries belong in the playlist's own order, so track
+    03 stayed above track 04 however the downloads interleaved — and History is gone. The queue
+    passes nothing, because its list is already in queue order and that is what the user arranged.
+    Kept because the parameter costs nothing and the next list to be grouped may not arrive sorted
+    (`T-176`).
 
     The returned map is keyed by group id *and* item id together. They cannot collide in practice —
     both are uuid4 — and a caller that looks up an id it was given by this module gets the line it

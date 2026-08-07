@@ -116,7 +116,8 @@ class FailureDetail:
 
     Frozen and picklable: this crosses the process boundary from the worker back to the GUI
     (`ARC-002`), and a failure record that could be edited in flight would make the persisted
-    history untrustworthy.
+    job untrustworthy. *(This said "the persisted history"; `REQ-020` was withdrawn on 2026-08-06
+    and the row this protects is the job's own — `T-176`.)*
     """
 
     kind: ErrorKind

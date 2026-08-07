@@ -301,14 +301,18 @@ PRESET_OWNED_FIELDS: Final[frozenset[str]] = frozenset(
 class FormatChoice:
     """What a download **is**, with nothing about how it was fetched (`T159-R1`, `REQ-026`).
 
-    **This exists because History must not hold a request.** `T-159` needed a completed record to
-    name its format in words, and the first implementation stored the whole `DownloadRequest` — the
-    same object `jobs.request` holds. `T159-R1` is what that cost: a request carries
-    `cookies_from_browser`, `proxy`, `output_directory` and `url`, and `DAT-003` records that the
-    cookie field is a browser *name* only by caller convention — the model accepts a literal path.
-    `REQ-026` says a cookie path this application supplies is **never written to History**, and a
-    history record outlives the job row, so the queue's settings-freeze reason for keeping a whole
-    request does not reach a terminal record.
+    **This exists because a terminal record must not hold a request**, and it was History that
+    established the rule. `T-159` needed a completed record to name its format in words, and the
+    first implementation stored the whole `DownloadRequest` — the same object `jobs.request` holds.
+    `T159-R1` is what that cost: a request carries `cookies_from_browser`, `proxy`,
+    `output_directory` and `url`, and `DAT-003` records that the cookie field is a browser *name*
+    only by caller convention — the model accepts a literal path. `REQ-026` says a cookie path this
+    application supplies is never written to a durable record, and such a record outlived the job
+    row, so the queue's settings-freeze reason for keeping a whole request did not reach it.
+
+    **History was withdrawn on 2026-08-06 and the boundary is the part that survived.** Nothing
+    stores a `FormatChoice` today; it is what the queue's own rendering takes, and the reason it is
+    narrower than a request is unchanged (`T-176`).
 
     **The fields are exactly `PRESET_OWNED_FIELDS`, and that is the boundary rather than a
     coincidence.** Everything a request holds that is *not* preset-owned is either a credential, a
