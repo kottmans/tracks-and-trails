@@ -1357,7 +1357,19 @@ def bar_runs(row: dict[int, Any], width: int, delegate: RowDelegate | None = Non
     about what a user sees as they drag the window edge. The scanline is the bar's own, and the
     count starts at the text line's left edge because the tile shares that scanline.
     """
-    image = paint_rows(RowsModel([row]), delegate or RowDelegate(), 0, width=width)
+    return bar_runs_in(
+        paint_rows(RowsModel([row]), delegate or RowDelegate(), 0, width=width), row, width
+    )
+
+
+def bar_runs_in(image: QImage, row: dict[int, Any], width: int) -> list[int]:
+    """`bar_runs`, reading a row already painted rather than painting one (`T168-R1`).
+
+    Split out so a sweep that paints once per width can ask both questions of that paint — which
+    verbs were dropped, and which rendering the bar chose. Repainting to answer the second would
+    double the sweep and, worse, measure a second paint: the delegate records what it dropped on
+    the *last* one.
+    """
     # Held rather than inlined: a temporary `QStyleOptionViewItem` takes its `font` with it, and
     # `QFontMetrics` then reads a deleted C++ object.
     option = QStyleOptionViewItem()
@@ -1564,8 +1576,36 @@ def test_a_downloads_bar_keeps_its_minimum_and_the_verbs_give_way(
             )
 
 
+#: The entry counts the reserve is swept at (`T168-R1`).
+#:
+#: **Both sides of `MERGED_BLOCKS`, and four different merge thresholds above it.** The criterion
+#: is *"for a row of any entry count"*, and a sweep fixed at sixteen proves it for sixteen: a
+#: reserve that asked `segment_blocks` for every other count would leave the named gate green.
+#: `segment_span` is `17n - 1`, so each count above the merge threshold crosses at its own width —
+#: 152 px at nine, 271 at sixteen, 407 at twenty-four, 628 at thirty-seven — and a restoration
+#: keyed to any one of them is caught by the others.
+#:
+#: **Five and eight are not filler.** At or below `MERGED_BLOCKS` there is no merge and therefore
+#: no step to fall off, so they assert that the property holds where the defect could not occur —
+#: which is what stops a "fix" that merely special-cases the merging counts.
+#:
+#: Sixty is deliberately absent: `segment_span(60)` is 1019 px, wider than any bar this sweep can
+#: give, so it never draws its unmerged rendering and could not cross anything.
+#:
+#: **Measured against both mutants, and nine kills neither.** Restoring
+#: `segment_span(segment_blocks(entries, room))` fails at 16, 24 and 37; restoring it everywhere
+#: *except* sixteen — the count-specific form `T168-R1` names — fails at 24 and 37. Nine survives
+#: both, because its step is `segment_span(9) - segment_span(8)`, 17 px, and no verb is that
+#: narrow: the old reserve is harmless just above the threshold and the gap it hands back only
+#: becomes a button further up. It stays for what it does assert — that the property holds at a
+#: count that merges — and the counts that kill the mutants are 24 and 37.
+RESERVE_COUNTS: Final = (5, 8, 9, 16, 24, 37)
+
+
+@pytest.mark.parametrize("entries", RESERVE_COUNTS)
 def test_a_verb_dropped_at_one_width_never_returns_at_a_narrower_one(
     qapp: QApplication,
+    entries: int,
 ) -> None:
     """`T-168`: the maintainer narrowed the window and `Remove` came back.
 
@@ -1585,28 +1625,53 @@ def test_a_verb_dropped_at_one_width_never_returns_at_a_narrower_one(
     claim. `SWEEP_WIDTHS` is every pixel from 300 to 1200, and the assertion is on the *shape* of
     the sequence — the dropped set only ever grows as the row narrows — rather than on any width's
     value, so it keeps holding when a font or a label changes.
+
+    **Swept at every count in `RESERVE_COUNTS`, not only at sixteen** (`T168-R1`). The criterion
+    this test exists for says *any* entry count, and the reproduced defect was sixteen; a sweep
+    pinned there stays green for a reserve that consults `segment_blocks` — the rejected
+    mechanism — at every other count. Each count also asserts which renderings its own sweep
+    produced, so a count whose merge threshold has moved outside the swept range fails loudly
+    instead of quietly proving nothing.
     """
-    row = a_playlist({SEGMENTS_ROLE: [SegmentState.DONE] * 16})
+    row = a_playlist({SEGMENTS_ROLE: [SegmentState.DONE] * entries})
     delegate = RowDelegate()
     previous: frozenset[Verb] | None = None
     previous_width = 0
+    renderings: set[int] = set()
 
     for width in reversed(SWEEP_WIDTHS):
-        paint_rows(RowsModel([row]), delegate, 0, width=width)
+        image = paint_rows(RowsModel([row]), delegate, 0, width=width)
+        blocks = len(bar_runs_in(image, row, width))
+        if blocks:
+            renderings.add(blocks)
         dropped = frozenset(delegate.overflowing("playlist-1"))
         if previous is not None:
             returned = previous - dropped
             assert not returned, (
                 f"{sorted(v.value for v in returned)} was in the overflow at {previous_width}px "
-                f"and is drawn again at {width}px — narrowing the row gave a verb back. The bar "
-                "merges at this threshold and hands the verbs more space than it took"
+                f"and is drawn again at {width}px on a {entries}-entry row — narrowing the row "
+                "gave a verb back. The bar merges at this threshold and hands the verbs more "
+                "space than it took"
             )
         previous, previous_width = dropped, width
 
     assert previous, (
-        "at the narrowest swept width every verb is still drawn, so this never exercised the "
-        "crowding it exists to check"
+        f"at the narrowest swept width a {entries}-entry row still draws every verb, so this "
+        "never exercised the crowding it exists to check"
     )
+
+    if entries > MERGED_BLOCKS:
+        assert renderings == {MERGED_BLOCKS, entries}, (
+            f"a {entries}-entry row draws {sorted(renderings)} across the sweep; it must span "
+            f"this count's own merge threshold — {segment_span(entries)}px of bar — or it never "
+            "reaches the step the reserve exists to flatten"
+        )
+    else:
+        assert renderings == {entries}, (
+            f"a {entries}-entry row draws {sorted(renderings)} across the sweep; at or below "
+            f"{MERGED_BLOCKS} entries there is no merged rendering to reach, which is why these "
+            "counts hold the property where the defect could not occur"
+        )
 
 
 def test_the_overflow_still_holds_exactly_what_the_row_dropped(qapp: QApplication) -> None:
