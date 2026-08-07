@@ -101,10 +101,15 @@ capture.
 | `commons.wikimedia.org` — Caminandes, Big Buck Bunny, Sintel, Tears of Steel | **no** | yes | yes |
 
 Four Commons files and three archive.org items; **none carries `fps` on any format**. So the fps
-column is exercised by `derived_format_columns.json`, and `T-107`'s criterion was amended by the
-maintainer to *populated from a recorded fixture **where the source reports it***. `T-185` stays
-open as the record of this search, so the next person has somewhere to add a source rather than
-rediscovering that there wasn't one.
+column is exercised by `derived_format_columns.json`, and `T-107`'s criterion was amended to
+*populated from a recorded fixture **where the source reports it***.
+
+**That amendment is `OPS-013`, ratified by the maintainer on 2026-08-07.** When this section was
+first written it said "amended by the maintainer" on the strength of a Reviewer's *offer* of the
+wording, which the third re-review correctly refused to treat as a ruling; `T-107` was blocked on
+that alone until the ratification. `T-185` stays open as the record of this search, so the next
+person has somewhere to add a source rather than rediscovering that there wasn't one — and
+`OPS-013` names closing it as *"no acceptable source exists"* a legitimate outcome.
 
 `ai/TESTING.md` §5 wants sources that are freely licensed, unsigned and unlikely to change. A site
 that reports fps and churns weekly would satisfy the criterion's letter and break the property §5

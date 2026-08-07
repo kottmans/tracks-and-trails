@@ -11702,3 +11702,58 @@ The reviewer appended this focused re-review and filed the approved non-blocking
 No reviewed source/test, roadmap, requirement, decision, implementation-plan entry, status state,
 commit, remote ref, migration, user database or CI state was changed. Temporary source mutations
 were reverted before reviewer bookkeeping.
+
+## 2026-08-07 — T-107 High-correction continuation
+
+**Reviewer:** Codex (Reviewer)
+**Correction base/head:** `fb3d274..09c57c3`
+**Platforms verified:** Linux, Qt offscreen; Windows runtime not independently rerun
+**Verdict:** **T-107 Blocked pending maintainer ratification; T-187 Approved.** `T107-R3` is
+resolved: the route now begins at the body's actual focus, reaches a header with a selectable
+section, sorts that section, reverses it, announces it and leaves again. `T107-R1` is technically
+strengthened by a real codec/bitrate capture but cannot be marked Resolved yet: the prior review
+offered a maintainer amendment as one resolution path; it did not itself make that amendment. The
+correction records the amendment as the maintainer's while the handoff calls it the reviewer's.
+Approval therefore needs one explicit maintainer ratification of the new criterion wording.
+
+While this review was running, `ec1308b` advanced `main` and `origin/main` with task moves and the
+Phase 3 roadmap. It is outside `09c57c3`'s correction boundary and was not reviewed here. The
+reviewer did not edit the roadmap.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Focused re-review result | Status |
+|---|---|---:|---|---|
+| `T107-R1` | **High** | **Yes** | `wikimedia_caminandes` is a real recorded fixture carrying vcodec, acodec, total bitrate and estimated sizes, all exercised through the adapter/table. The evidence honestly says fps remains synthetic after seven acceptable-source probes. That satisfies the amended “where the source reports it” wording, but the amendment itself is not established: the reviewer offered it as an alternative and has no authority to take it. Under the original criterion, fps remains unpopulated from a recording. | **Blocked — explicit maintainer ratification required** |
+| `T107-R3` | **High** | **Yes** | `setTabKeyNavigation(False)` lets focus leave the body; explicit tab order reaches `SortableHeader`; arrows change its current section; Space/Enter sort that section; a focus rectangle and accessible description expose it. Real `QTest.keyClick` traversal reproduced body → header → body, and both submitted mutants failed independently. | **Resolved at `09c57c3`** |
+| `T181-R2` / `T-187` | **Low** | **No** | The live `MainWindow` comment now states the status line and Held row answer different questions from the same manager-owned gate. The superseded rationale is preserved only as explicit history. | **Resolved / T-187 Approved at `09c57c3`** |
+| `T107-R8` | **Medium** | **No** | The new fixture exposes a provenance bug in `capture_info`: `_fixture.extractor` is hardcoded to `archive.org`, so `wikimedia_caminandes.json` falsely records that extractor. Its source URL, licence and values remain clear, so this does not invalidate T-107's table behavior; still-open T-185 now owns deriving and gating truthful extractor metadata. | **Open — owner Implementer, target T-185** |
+
+### Ratification needed
+
+The maintainer need only confirm or reject this exact T-107 criterion amendment:
+
+> Every column `REQ-003` names is present, and populated from a recorded fixture by value where
+> the source reports it; fps may remain covered by the derived fixture until T-185 finds an
+> acceptable source.
+
+If ratified, `T107-R1` is Resolved at `09c57c3`; no additional source correction is required for
+T-107. `T107-R8` remains a non-blocking T-185 follow-up. If rejected, T-107 still needs a recorded
+source that supplies fps.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `fb3d274..09c57c3`: nine files, including the new recorded fixture. `git diff --check`: **pass**. The later `ec1308b` roadmap/task commit was excluded. |
+| Focused suites | `tests/ui/test_format_table.py` plus `tests/unit/test_fixtures.py`: **156 passed, 6 skipped**. |
+| Real keyboard probe | `QTest.keyClick` on the actual focus widget produced `QTableView → SortableHeader → QTableView`; Right changed Resolution to FPS, Space sorted FPS, and the accessible description followed the section. |
+| Tab-navigation mutant | In an extracted `09c57c3` tree, restoring `setTabKeyNavigation(True)` produced the expected **3 failed** keyboard tests. |
+| Wrong-column mutant | Sorting `sortIndicatorSection()` instead of the current section produced the expected focused column-test failure. |
+| Task placement | Exact extracted `09c57c3` tree: **14 passed**. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **191 files already formatted**; host and Win32-platform mypy over `src tests`: **success, 108 source files each**. |
+| Submitted full suite | The handoff reports **2259 passed, 12 skipped**; the reviewer did not rerun the full suite or query CI. |
+
+The reviewer appended this record and added `T107-R8` to already-open T-185. No reviewed source or
+test, roadmap, requirement, decision, implementation-plan entry, commit, remote ref, migration,
+user database or CI state was changed. Mutations ran only in an extracted `/tmp` tree.

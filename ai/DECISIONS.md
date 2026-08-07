@@ -4409,3 +4409,81 @@ network destination, which is a poor trade against a lookup that already reveals
 - **A default `--download-archive` path.** Rejected: that is the application keeping records again
   under a different filename.
 - **A configurable SponsorBlock endpoint.** Rejected, as above.
+
+## OPS-013 — A recorded-evidence criterion binds where the source reports it, and nowhere else
+
+**Status:** **Accepted** (2026-08-07) — maintainer ratification, requested by the Reviewer in
+`T107-R1` and given explicitly
+**Date:** 2026-08-07
+**Supersedes:** nothing. **Amends** `T-107`'s acceptance criterion and, through it, the standard
+Phase 3 exit criterion 1 is read against.
+
+### Context
+
+Phase 3's first exit criterion is *"the format table matches `yt-dlp -F` output for a fixture set of
+URLs"*, and `T-107` refined that to every column `REQ-003` names being **populated from a recorded
+fixture**. The comparison run against that wording found two real defects, so the wording was doing
+its job. Then it hit a column no source supplies.
+
+**`fps` is reported by none of the seven acceptable sources probed** on 2026-08-07: four Wikimedia
+Commons files (Caminandes, Big Buck Bunny, Sintel, Tears of Steel) and three archive.org items.
+Commons supplies codecs and bitrate — which is why `wikimedia_caminandes` was captured — and carries
+`fps` on no format. The constraint is `ai/TESTING.md` §5: sources must be freely licensed, unsigned
+and unlikely to change. A site that reported `fps` and churned weekly would satisfy the criterion's
+letter and break the property §5 chose these sources for.
+
+So the criterion as written cannot be met by any source the project is willing to depend on.
+
+### Decision
+
+**The ratified wording:**
+
+> Every column `REQ-003` names is present, and populated from a recorded fixture by value **where
+> the source reports it**; `fps` may remain covered by the derived fixture until `T-185` finds an
+> acceptable source.
+
+`T107-R1` is Resolved at `09c57c3`. `T-107` is approved. `T-185` stays open as the record of the
+search, and closing it as *"no acceptable source exists"* remains a legitimate outcome.
+
+### Why
+
+**A criterion that no permitted source can satisfy is not a high standard, it is a stuck one.** The
+alternative was to hold `T-107` — and the whole `T-108` chain behind it — against a source that
+seven probes say does not exist. That trades a real, working, independently-verified table for a
+column's provenance.
+
+**The gap is recorded rather than papered over.** `derived_format_columns.json` says what is
+synthetic in its own `what_is_synthetic` field; the evidence artifact names the seven sources and
+the answer each gave; `T-185` owns the search. The criterion is weakened in the open, with the
+weakening visible from the fixture, the evidence and the task list independently.
+
+**Ratification is recorded here because authority was the actual issue.** The Reviewer offered this
+amendment as one resolution path and correctly refused to treat its own offer as the ruling —
+`T-107`'s correction had recorded the amendment as the maintainer's while the handoff called it the
+Reviewer's. Neither document was where a ruling belongs. *An accepted entry here is the only thing
+that makes a criterion change checkable after the conversation that produced it is gone.*
+
+### Consequences
+
+- **`T-107`'s criterion is amended** to the wording above; the task record and
+  `ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md` cite this entry rather than an unattributed
+  "the maintainer".
+- **Phase 3 exit criterion 1 is read against the amended wording**, and the board says so.
+- **The general rule, for the criteria still ahead:** a recorded-evidence requirement binds a column
+  only where an acceptable source reports it. Covering the remainder synthetically is permitted
+  *only* when the fixture declares it synthetic and an open task owns the gap. Absent either, the
+  criterion binds as written.
+- Nothing here changes any code.
+
+### Alternatives considered
+
+- **Reject, and block `T-107` until a source supplies `fps`.** Rejected: seven acceptable sources
+  report none, so this blocks the deliverable and its dependents on a search that has already
+  failed.
+- **Relax `ai/TESTING.md` §5 to admit a churning source that reports `fps`.** Rejected: it satisfies
+  the criterion's letter by breaking the property the fixture set exists to have.
+- **Time-box it — require `T-185` resolved before Phase 3 exits.** Considered and not taken: the
+  criterion would gain a deadline without gaining a source, and `T-185` closing as *"none exists"*
+  is already an outcome the phase can exit on.
+- **Synthesize an `fps`-bearing "recorded" fixture by hand.** Rejected outright: that is a synthetic
+  fixture claiming provenance it does not have, which is the failure `SEC-002` exists to prevent.

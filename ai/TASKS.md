@@ -79,207 +79,12 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-### T-107 — The format table: every stream a probe found
 
-**Status:** **In Review — `T107-R1` and `T107-R3` corrected a second time 2026-08-07, awaiting
-re-review.** Five of the seven findings were resolved on the first correction; these two were not,
-and both re-corrections are recorded at the bottom of this entry. *Was blocked on Phase 2's exit and on `T-105`'s `docs/UX_SPEC.md`; both
-cleared, and `UX-007` ruled its surface.*
-
-**Two maintainer amendments were taken during the correction** (2026-08-07), both recorded here
-because a task cannot make either for itself:
-
-1. **The `yt-dlp -F` comparison was run** rather than deferred — the maintainer authorised the
-   network capture `T107-R1` required. Phase 3's **exit criterion 1 is now met**, with evidence.
-2. **Mounting the table is re-scoped to `T-108`** (`T107-R2`'s stated alternative). This task owns
-   the widget, its model, sorting, the keyboard and the layout contract; `T-108` mounts it in the
-   expanded staging row when it builds selection, because the staging list has no expansion
-   mechanism today and building one lands on exactly the surface `T-108` will edit.
-**Owner:** Implementer
-**Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
-**Phase:** Phase 3
-**Depends on:** `T-105` (the UX spec), Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **ruled 2026-08-07 by
-`UX-007`** — the table opens as the **staging row, expanded**, not a modal (`P-1`, ruled against the
-spec's own proposal), and `P-14`'s three refusals stand), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
-`downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
-**Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
-`ui/`
-**Risk:** Medium — the projection is where `NFR-008`'s churn lands
-
-#### Scope
-
-`REQ-003`: format ID, extension, resolution, fps, codecs, bitrate, filesize or estimate, notes, in
-a **sortable** table. `ARCHITECTURE.md` already names `FormatInfo` as a *projection of yt-dlp's
-`info_dict`, declared fields only* — this is where that stops being a plan.
-
-**The projection is the whole risk.** `NFR-008` isolates yt-dlp churn behind the adapter, and a
-table that reads raw `info_dict` keys in the widget puts churn straight into `ui/`. `T-018`'s
-recorded fixtures are what make the mapping assertable without a network.
-
-**Sorting is over the projection, not the display strings.** "1080p" sorts after "720p" and
-"144p"; "~12.4 MB" is an estimate and must sort as a number. A table that sorts its own text is the
-class of defect `T-075` was.
-
-#### Acceptance criteria
-
-- Every column `REQ-003` names is present, and **populated from a recorded fixture by value where
-  the source reports it** (maintainer amendment, 2026-08-07, from `T107-R1`). `wikimedia_caminandes`
-  supplies codecs, bitrate and estimated sizes; archive.org supplies ids, extensions, resolutions,
-  exact sizes and one audio codec. **fps is reported by no freely licensed source found** — four
-  Wikimedia Commons files and three archive.org items, none with it — so it is exercised by a
-  derived fixture and `T-185` records the search. *(This read "populated from a recorded fixture"
-  unqualified, which is unmeetable for a field nothing reports; `T107-R1` is the finding that the
-  task claimed it anyway.)*
-- **The table matches `yt-dlp -F` for a fixture set** — Phase 3's own exit criterion, so this owns
-  proving it rather than assuming it
-- Sorting is numeric where the value is numeric, asserted with a set that text-sorts differently
-- A format missing a field renders a stated placeholder rather than an empty cell or `None`
-- Repaint cost is bounded with a realistic format count (a large playlist entry has dozens)
-- Keyboard reachable and screen-reader labelled per `NFR-005`, per widget state (`T-060`'s rule)
-- `ui/` reads no raw `info_dict` key — asserted statically, as `T-097` does for settings
-
-#### Out of scope
-
-- Selecting from the table (`T-108`), which is `REQ-008`
-- Playlists (`T-110`)
-
-#### What was built, 2026-08-07
-
-**`core/models.py`** — `FormatInfo` gains `fps` and `bitrate_kbps`. `REQ-003` had named both since
-it was written and **neither had anywhere to live**, so the table that requirement asks for could
-not have been populated from a declared field. Both are `float | None`: yt-dlp reports them
-fractionally, and rounding in the projection puts the rounding where nothing can undo it.
-**No migration** — `FormatInfo` is imported only by `models.py` and the adapter, and nothing
-persists it. That was the risk flagged before starting and it is clear.
-
-**`downloader/ytdlp_adapter.py`** — `project_format` maps `fps` and `tbr`. `tbr` is the *total*
-rate, which is the one that means something for a progressive format and an audio-only one alike;
-`vbr`/`abr` stay unprojected.
-
-**`ui/format_table.py`** — `FormatTableModel` and `FormatTable`. Sorting is implemented **on the
-model**, because `QTableView.setSortingEnabled(True)` calls `model.sort()` and
-`QAbstractItemModel`'s default does nothing: a table that merely enables sorting moves its
-indicator and leaves the rows alone, which is worse than no sorting because it looks like it
-worked. Sort keys are always a `(number, text)` pair so the comparison is total — format ids are
-`137` *and* `hls-480` in one column, and a key that returned an `int` for one row and a `str` for
-another raises `TypeError` the moment `sorted` compares them.
-
-**The static boundary check is narrower than it first was, and the narrowing is the point.** Its
-first version scanned for every key `capture.py` consumes and failed on `main_window.py` reading
-`width`/`height` — **window geometry**, not an info dict. A gate that blocks correct code gets
-deleted, so it now names only keys that are unambiguously yt-dlp's (`vcodec`, `tbr`, `format_id`,
-`has_drm`, …) and says why `width`, `height`, `ext` and `filesize` are excluded.
-
-#### Correction — seven findings, 2026-08-07
-
-**`T107-R1` — the comparison was run, and it found two defects.** Both recorded fixtures were
-re-captured, `yt-dlp -F` was run against the same URLs, and the comparison is in
-`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md` and asserted by
-`test_the_table_matches_what_yt_dlp_f_reports`. What it caught:
-
-- **`0x0` where yt-dlp says `unknown`.** archive.org reports `height: 0` for an audio item, and
-  `_as_optional_int` keeps `0` — correctly, for a *count*. `_as_dimension` now projects a zero
-  dimension as absent.
-- **"audio only" asserted from a *missing* codec.** `is_audio_only` is `video_codec is None and
-  audio_codec is not None`, and `_as_optional_codec` maps both a missing `vcodec` and yt-dlp's
-  explicit `'none'` to `None` — so a format whose video codec was merely unknown was reported as
-  having no video. The column reads the height now and declines to assert what it cannot know.
-  Saying *audio only* honestly needs the projection to keep `'none'` apart from absent, which is a
-  widening this task did not need.
-
-**Three columns still render the placeholder from the recorded sources, and that *is* the match:**
-archive.org reports no fps, bitrate or video codec, and neither does `yt-dlp -F`. The audio fixture
-does report `acodec`, so one codec column is now populated **by value from a recorded capture**.
-
-**`T107-R2` — the layout defect, fixed; the mounting, re-scoped.** The wrapper had no layout, so the
-`QTableView` kept its construction geometry and the widget reported a `-1 x -1` size hint. A
-`QVBoxLayout` and a shown-widget regression now hold it.
-
-**`T107-R3` — the keyboard route exists.** The header had Qt's default `NoFocus`, so the route
-`docs/UX_SPEC.md` §4 declares was reachable only with a pointer. `StrongFocus` plus an event filter
-implements *Space sorts, again reverses*, and the test **posts a real `QKeyEvent`**. The test it
-replaces called `model.sort()` while being named for the key press — proving the ordering and
-bypassing the interaction, which is the defect class this project keeps finding and one I wrote.
-
-**`T107-R4` — sorting keeps its own invariants.** `sort()` now remaps persistent indexes, so a
-selection follows its format instead of its row number; `set_formats()` reapplies the active sort,
-so the indicator and the rows cannot disagree. This module's own docstring called that disagreement
-worse than no sorting, and the setter recreated it.
-
-**`T107-R5` — the gate gates.** The exclusion of `width`/`height`/`ext`/`filesize` is now **per
-module** rather than global, with `main_window.py`'s window-geometry use named and reasoned. The
-exact mutant the reviewer smuggled through — `{"width": 1920}["width"]` in `format_table.py` — now
-fails the test.
-
-**`T107-R6` — the repaint gate, and it caught a real defect immediately.** `ResizeToContents` asks
-the model for every row of every column to size a width: **44,019 model reads to paint fourteen
-visible rows** of a 200-format table, scaling with the model — 22,419 at 100 formats, 173,619 at
-800. `setResizeContentsPrecision(32)` bounds it, and the cost is **flat at 7,731 from 100 to 800**.
-The gate asserts the *scaling* rather than an absolute count, because that is the claim and it
-survives a different font.
-
-**`T107-R7` — an estimate no longer reads as a measurement.** `FormatInfo.filesize_is_estimate`
-carries the provenance `project_format` was collapsing, and the column renders `~44.8 MB`. Sorting
-is untouched: bytes either way.
-
-#### Second correction — `T107-R1` and `T107-R3`, 2026-08-07
-
-**`T107-R3` — the route existed only if you were already on the header.** `StrongFocus` plus an
-event filter made a *manually focused* header react; it did not create the route. `QTableView`
-consumes `Tab` for cell navigation, so focus never left the body, and `Space` sorted whatever the
-indicator already pointed at — there was no way to choose a column. **And my test injected the key
-event straight into the header**, which is the same bypass the reviewer named the first time, in a
-test written to answer that finding.
-
-- `setTabKeyNavigation(False)` so `Tab` leaves the view, and an explicit tab order so the header
-  follows the body.
-- `SortableHeader` — a `QHeaderView` subclass with a **current section** the arrow keys move,
-  `Space`/`Enter` sorting *that* column, and a focus rectangle painted on it. `QHeaderView` has no
-  current-section concept of its own, which is why an event filter could not supply one.
-  `NFR-005`: the section is announced through `accessibleDescription` as well as drawn.
-- **The tests send keys to `QApplication.focusWidget()`**, never to a widget by name. A route that
-  does not exist cannot be simulated into existing.
-- **Both mutants killed.** Restoring `setTabKeyNavigation(True)`: all three keyboard tests fail.
-  Sorting `sortIndicatorSection()` instead of the current section: the column-selection test fails.
-
-**`T107-R1` — a source was found for two of the three columns, and the third does not exist.**
-`wikimedia_caminandes` was added to `capture.py`: it reports `vcodec`, `acodec` and `tbr` per
-format, so **codecs and bitrate are now asserted by value from a recorded capture**. Its sizes are
-`filesize_approx`, so it exercises `T107-R7`'s estimate rendering against a real report too, and
-its `source` format carries an exact size and no bitrate — the contrast inside one capture.
-
-**fps is reported by nothing acceptable.** Four Wikimedia Commons files and three archive.org
-items, none with `fps` on any format; the probe table is in the evidence. The maintainer amended
-the criterion to *populated from a recorded fixture **where the source reports it***, and `T-185`
-stays **open** as the record of the search — it was briefly marked complete and reopened the same
-day, because closing a task whose criterion is unmet is the defect one level up from the one being
-fixed.
-
-**Everything the re-review found contradicting itself now agrees:** `T-185`'s status and
-acceptance, the module and test docstrings, and the two `STATUS.md` paragraphs — one of which said
-the criterion was met and the other that it was not. Both were true when written, hours apart,
-which is exactly how a status file comes to answer one question twice.
-
-#### What this found, and what it owes
-
-**The fixture gate worked exactly as designed and is worth recording.**
-`test_the_allowlist_matches_what_the_adapter_actually_reads` walks the adapter's AST and failed the
-moment `project_format` read two new keys — *"the adapter reads `['fps', 'tbr']` off a format"* —
-before any test of the new columns existed. That is the failure `T-018` and `SEC-002` were built to
-produce, arriving unprompted.
-
-**What it owed was `T-185`, and that was taken inside this correction** on maintainer
-authorisation. The fixtures are re-captured and the comparison is recorded, so **Phase 3's exit
-criterion 1 is met**. `T-185` is closed as done-by-`T-107` rather than left standing.
-
-**The re-capture found a third stale fixture, unprompted.** The playlist capture carried seven
-*empty* entry objects, because it predated `T-137` teaching the projection to read entries — the
-same shape as `fps` and `tbr`. A fresh capture fills them, which made a playlist stage seven jobs
-instead of one and failed an add-dialog test that had encoded the under-reporting as `== 2`. That
-test now asserts the shape rather than the number.
-
----
+*(**Nothing awaits a verdict as of 2026-08-07.** `T-107` was approved at `09c57c3` once the
+maintainer ratified its criterion amendment as `OPS-013`, and moved to `## Complete`; `T-181` and
+`T-187` were approved before it. `T-107`'s open follow-up is `T107-R8`, carried by `T-185` under
+`## Proposed — Phase 3`. Read the sections, not this line — `T-096`'s gate compares each entry's
+status to the section it sits in, and this parenthetical is prose it does not check.)*
 
 ## Ready
 
@@ -1998,8 +1803,16 @@ columns archive.org does not, and the `yt-dlp -F` comparison is recorded in
 **What remains is one column and one question: fps.** No freely licensed source found reports it —
 four Wikimedia Commons files and three archive.org items, none with `fps` on any format — so the
 column is exercised by a derived fixture and `T-107`'s criterion was amended to *where the source
-reports it*. This entry stays open as the place that search is recorded, so the next person to
-find a suitable source has somewhere to put it rather than rediscovering that there wasn't one.
+reports it* — **ratified by the maintainer as `OPS-013`** (2026-08-07). This entry stays open as
+the place that search is recorded, so the next person to find a suitable source has somewhere to
+put it rather than rediscovering that there wasn't one. **`OPS-013` names closing this as *"no
+acceptable source exists"* a legitimate outcome**, and Phase 3 may exit on it.
+
+**`T107-R8` adds one fixture-metadata correction before this task can close.** `capture_info`
+hardcodes `_fixture.extractor` to `archive.org`, so the new `wikimedia_caminandes.json` fixture
+claims the wrong extractor even though its source URL and licence correctly identify Wikimedia
+Commons. Derive the provenance from the captured result or the declared source, and gate a second
+extractor so another non-Archive source cannot silently inherit the same false metadata.
 
 *(It briefly read "Complete — done inside `T-107`'s correction" on 2026-08-07 and was reopened the
 same day: the re-review found the work incomplete, and closing a task whose criterion was still
@@ -2049,6 +1862,8 @@ because this entry is the record of what the search covered.
   or freely licensed, unsigned URLs, no reason to change. A source that churns teaches nothing when
   it breaks, so a fixture that reports fps and changes weekly is not an improvement
 - Each recorded fixture is re-captured with its metadata regenerated: yt-dlp version, date, options
+- Each fixture's recorded extractor matches its source; the capture writer does not hardcode
+  `archive.org`, and a non-Archive fixture makes that regression fail
 - The committed files carry `fps`, `tbr`, `vcodec` and `acodec` **where the source reports them**,
   and carry nothing else new — `tests/unit/test_fixtures.py`'s scanners stay clean
 - `tests/ui/test_format_table.py`'s recorded-fixture test asserts the four columns **by value**,
@@ -2699,6 +2514,215 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+### T-107 — The format table: every stream a probe found
+
+**Status:** **Complete — Approved at `09c57c3`** (2026-08-07). Five of the seven findings resolved
+on the first correction; `T107-R3` on the second; `T107-R1` was technically satisfied at `09c57c3`
+but blocked on authority alone — the Reviewer had *offered* the criterion amendment and correctly
+refused to treat its own offer as the ruling. **The maintainer ratified it as `OPS-013`**, and
+`T107-R1` resolves. `T107-R8` is a non-blocking follow-up owned by `T-185`. *Was blocked on Phase
+2's exit and on `T-105`'s `docs/UX_SPEC.md`; both cleared, and `UX-007` ruled its surface.*
+
+**Three maintainer decisions were taken during the correction** (2026-08-07), recorded here because
+a task cannot make any of them for itself:
+
+1. **The `yt-dlp -F` comparison was run** rather than deferred — the maintainer authorised the
+   network capture `T107-R1` required. Phase 3's **exit criterion 1 is now met**, with evidence.
+2. **The acceptance criterion was amended** to bind only where the source reports the value —
+   ratified as **`OPS-013`**. Recorded there rather than here, because a criterion change has to be
+   checkable from outside the task that benefits from it.
+3. **Mounting the table is re-scoped to `T-108`** (`T107-R2`'s stated alternative). This task owns
+   the widget, its model, sorting, the keyboard and the layout contract; `T-108` mounts it in the
+   expanded staging row when it builds selection, because the staging list has no expansion
+   mechanism today and building one lands on exactly the surface `T-108` will edit.
+
+**Owner:** Implementer
+**Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
+**Phase:** Phase 3
+**Depends on:** `T-105` (the UX spec), Phase 2 exit
+**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **ruled 2026-08-07 by
+`UX-007`** — the table opens as the **staging row, expanded**, not a modal (`P-1`, ruled against the
+spec's own proposal), and `P-14`'s three refusals stand), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
+`downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
+**Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
+`ui/`
+**Risk:** Medium — the projection is where `NFR-008`'s churn lands
+
+#### Scope
+
+`REQ-003`: format ID, extension, resolution, fps, codecs, bitrate, filesize or estimate, notes, in
+a **sortable** table. `ARCHITECTURE.md` already names `FormatInfo` as a *projection of yt-dlp's
+`info_dict`, declared fields only* — this is where that stops being a plan.
+
+**The projection is the whole risk.** `NFR-008` isolates yt-dlp churn behind the adapter, and a
+table that reads raw `info_dict` keys in the widget puts churn straight into `ui/`. `T-018`'s
+recorded fixtures are what make the mapping assertable without a network.
+
+**Sorting is over the projection, not the display strings.** "1080p" sorts after "720p" and
+"144p"; "~12.4 MB" is an estimate and must sort as a number. A table that sorts its own text is the
+class of defect `T-075` was.
+
+#### Acceptance criteria
+
+- Every column `REQ-003` names is present, and **populated from a recorded fixture by value where
+  the source reports it** — **ratified by the maintainer 2026-08-07 as `OPS-013`**, on the
+  Reviewer's request in `T107-R1`. `wikimedia_caminandes`
+  supplies codecs, bitrate and estimated sizes; archive.org supplies ids, extensions, resolutions,
+  exact sizes and one audio codec. **fps is reported by no freely licensed source found** — four
+  Wikimedia Commons files and three archive.org items, none with it — so it is exercised by a
+  derived fixture and `T-185` records the search. *(This read "populated from a recorded fixture"
+  unqualified, which is unmeetable for a field nothing reports; `T107-R1` is the finding that the
+  task claimed it anyway.)*
+- **The table matches `yt-dlp -F` for a fixture set** — Phase 3's own exit criterion, so this owns
+  proving it rather than assuming it
+- Sorting is numeric where the value is numeric, asserted with a set that text-sorts differently
+- A format missing a field renders a stated placeholder rather than an empty cell or `None`
+- Repaint cost is bounded with a realistic format count (a large playlist entry has dozens)
+- Keyboard reachable and screen-reader labelled per `NFR-005`, per widget state (`T-060`'s rule)
+- `ui/` reads no raw `info_dict` key — asserted statically, as `T-097` does for settings
+
+#### Out of scope
+
+- Selecting from the table (`T-108`), which is `REQ-008`
+- Playlists (`T-110`)
+
+#### What was built, 2026-08-07
+
+**`core/models.py`** — `FormatInfo` gains `fps` and `bitrate_kbps`. `REQ-003` had named both since
+it was written and **neither had anywhere to live**, so the table that requirement asks for could
+not have been populated from a declared field. Both are `float | None`: yt-dlp reports them
+fractionally, and rounding in the projection puts the rounding where nothing can undo it.
+**No migration** — `FormatInfo` is imported only by `models.py` and the adapter, and nothing
+persists it. That was the risk flagged before starting and it is clear.
+
+**`downloader/ytdlp_adapter.py`** — `project_format` maps `fps` and `tbr`. `tbr` is the *total*
+rate, which is the one that means something for a progressive format and an audio-only one alike;
+`vbr`/`abr` stay unprojected.
+
+**`ui/format_table.py`** — `FormatTableModel` and `FormatTable`. Sorting is implemented **on the
+model**, because `QTableView.setSortingEnabled(True)` calls `model.sort()` and
+`QAbstractItemModel`'s default does nothing: a table that merely enables sorting moves its
+indicator and leaves the rows alone, which is worse than no sorting because it looks like it
+worked. Sort keys are always a `(number, text)` pair so the comparison is total — format ids are
+`137` *and* `hls-480` in one column, and a key that returned an `int` for one row and a `str` for
+another raises `TypeError` the moment `sorted` compares them.
+
+**The static boundary check is narrower than it first was, and the narrowing is the point.** Its
+first version scanned for every key `capture.py` consumes and failed on `main_window.py` reading
+`width`/`height` — **window geometry**, not an info dict. A gate that blocks correct code gets
+deleted, so it now names only keys that are unambiguously yt-dlp's (`vcodec`, `tbr`, `format_id`,
+`has_drm`, …) and says why `width`, `height`, `ext` and `filesize` are excluded.
+
+#### Correction — seven findings, 2026-08-07
+
+**`T107-R1` — the comparison was run, and it found two defects.** Both recorded fixtures were
+re-captured, `yt-dlp -F` was run against the same URLs, and the comparison is in
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md` and asserted by
+`test_the_table_matches_what_yt_dlp_f_reports`. What it caught:
+
+- **`0x0` where yt-dlp says `unknown`.** archive.org reports `height: 0` for an audio item, and
+  `_as_optional_int` keeps `0` — correctly, for a *count*. `_as_dimension` now projects a zero
+  dimension as absent.
+- **"audio only" asserted from a *missing* codec.** `is_audio_only` is `video_codec is None and
+  audio_codec is not None`, and `_as_optional_codec` maps both a missing `vcodec` and yt-dlp's
+  explicit `'none'` to `None` — so a format whose video codec was merely unknown was reported as
+  having no video. The column reads the height now and declines to assert what it cannot know.
+  Saying *audio only* honestly needs the projection to keep `'none'` apart from absent, which is a
+  widening this task did not need.
+
+**Three columns still render the placeholder from the recorded sources, and that *is* the match:**
+archive.org reports no fps, bitrate or video codec, and neither does `yt-dlp -F`. The audio fixture
+does report `acodec`, so one codec column is now populated **by value from a recorded capture**.
+
+**`T107-R2` — the layout defect, fixed; the mounting, re-scoped.** The wrapper had no layout, so the
+`QTableView` kept its construction geometry and the widget reported a `-1 x -1` size hint. A
+`QVBoxLayout` and a shown-widget regression now hold it.
+
+**`T107-R3` — the keyboard route exists.** The header had Qt's default `NoFocus`, so the route
+`docs/UX_SPEC.md` §4 declares was reachable only with a pointer. `StrongFocus` plus an event filter
+implements *Space sorts, again reverses*, and the test **posts a real `QKeyEvent`**. The test it
+replaces called `model.sort()` while being named for the key press — proving the ordering and
+bypassing the interaction, which is the defect class this project keeps finding and one I wrote.
+
+**`T107-R4` — sorting keeps its own invariants.** `sort()` now remaps persistent indexes, so a
+selection follows its format instead of its row number; `set_formats()` reapplies the active sort,
+so the indicator and the rows cannot disagree. This module's own docstring called that disagreement
+worse than no sorting, and the setter recreated it.
+
+**`T107-R5` — the gate gates.** The exclusion of `width`/`height`/`ext`/`filesize` is now **per
+module** rather than global, with `main_window.py`'s window-geometry use named and reasoned. The
+exact mutant the reviewer smuggled through — `{"width": 1920}["width"]` in `format_table.py` — now
+fails the test.
+
+**`T107-R6` — the repaint gate, and it caught a real defect immediately.** `ResizeToContents` asks
+the model for every row of every column to size a width: **44,019 model reads to paint fourteen
+visible rows** of a 200-format table, scaling with the model — 22,419 at 100 formats, 173,619 at
+800. `setResizeContentsPrecision(32)` bounds it, and the cost is **flat at 7,731 from 100 to 800**.
+The gate asserts the *scaling* rather than an absolute count, because that is the claim and it
+survives a different font.
+
+**`T107-R7` — an estimate no longer reads as a measurement.** `FormatInfo.filesize_is_estimate`
+carries the provenance `project_format` was collapsing, and the column renders `~44.8 MB`. Sorting
+is untouched: bytes either way.
+
+#### Second correction — `T107-R1` and `T107-R3`, 2026-08-07
+
+**`T107-R3` — the route existed only if you were already on the header.** `StrongFocus` plus an
+event filter made a *manually focused* header react; it did not create the route. `QTableView`
+consumes `Tab` for cell navigation, so focus never left the body, and `Space` sorted whatever the
+indicator already pointed at — there was no way to choose a column. **And my test injected the key
+event straight into the header**, which is the same bypass the reviewer named the first time, in a
+test written to answer that finding.
+
+- `setTabKeyNavigation(False)` so `Tab` leaves the view, and an explicit tab order so the header
+  follows the body.
+- `SortableHeader` — a `QHeaderView` subclass with a **current section** the arrow keys move,
+  `Space`/`Enter` sorting *that* column, and a focus rectangle painted on it. `QHeaderView` has no
+  current-section concept of its own, which is why an event filter could not supply one.
+  `NFR-005`: the section is announced through `accessibleDescription` as well as drawn.
+- **The tests send keys to `QApplication.focusWidget()`**, never to a widget by name. A route that
+  does not exist cannot be simulated into existing.
+- **Both mutants killed.** Restoring `setTabKeyNavigation(True)`: all three keyboard tests fail.
+  Sorting `sortIndicatorSection()` instead of the current section: the column-selection test fails.
+
+**`T107-R1` — a source was found for two of the three columns, and the third does not exist.**
+`wikimedia_caminandes` was added to `capture.py`: it reports `vcodec`, `acodec` and `tbr` per
+format, so **codecs and bitrate are now asserted by value from a recorded capture**. Its sizes are
+`filesize_approx`, so it exercises `T107-R7`'s estimate rendering against a real report too, and
+its `source` format carries an exact size and no bitrate — the contrast inside one capture.
+
+**fps is reported by nothing acceptable.** Four Wikimedia Commons files and three archive.org
+items, none with `fps` on any format; the probe table is in the evidence. The maintainer amended
+the criterion to *populated from a recorded fixture **where the source reports it***, and `T-185`
+stays **open** as the record of the search — it was briefly marked complete and reopened the same
+day, because closing a task whose criterion is unmet is the defect one level up from the one being
+fixed.
+
+**Everything the re-review found contradicting itself now agrees:** `T-185`'s status and
+acceptance, the module and test docstrings, and the two `STATUS.md` paragraphs — one of which said
+the criterion was met and the other that it was not. Both were true when written, hours apart,
+which is exactly how a status file comes to answer one question twice.
+
+#### What this found, and what it owes
+
+**The fixture gate worked exactly as designed and is worth recording.**
+`test_the_allowlist_matches_what_the_adapter_actually_reads` walks the adapter's AST and failed the
+moment `project_format` read two new keys — *"the adapter reads `['fps', 'tbr']` off a format"* —
+before any test of the new columns existed. That is the failure `T-018` and `SEC-002` were built to
+produce, arriving unprompted.
+
+**What it owed was `T-185`, and that was taken inside this correction** on maintainer
+authorisation. The fixtures are re-captured and the comparison is recorded, so **Phase 3's exit
+criterion 1 is met**. `T-185` is closed as done-by-`T-107` rather than left standing.
+
+**The re-capture found a third stale fixture, unprompted.** The playlist capture carried seven
+*empty* entry objects, because it predated `T-137` teaching the projection to read entries — the
+same shape as `fps` and `tbr`. A fresh capture fills them, which made a playlist stage seven jobs
+instead of one and failed an add-dialog test that had encoded the under-reporting as `== 2`. That
+test now asserts the shape rather than the number.
+
+---
+
 
 ### T-181 — The queue is stopped until the user starts it
 

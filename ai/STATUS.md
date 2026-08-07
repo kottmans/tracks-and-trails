@@ -19,6 +19,34 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-07: `T-107` is approved, and the thing that blocked it was authority
+
+**`T-107` is Approved at `09c57c3`, and `T-187` with it.** That makes **two of nine Phase 3
+deliverables approved** (`T-181` was the first) and leaves nothing in `## In Review`.
+
+**The last blocker was not a defect.** By the third re-review every technical finding was resolved —
+`T107-R3`'s keyboard route was verified with real `QTest.keyClick` traversal, and both submitted
+mutants failed independently. What remained was `T107-R1`, blocked because the criterion amendment it
+relied on **had no author with the standing to make it**: the Reviewer offered the wording as one
+resolution path, and the correction then recorded it as the maintainer's. *The Reviewer refusing to
+treat its own offer as a ruling is the review working exactly as `§10` intends.* The maintainer
+ratified it explicitly, as **`OPS-013`**, and `T107-R1` resolves.
+
+**`OPS-013` generalises past this task**, because Phase 3 has five exit criteria left: a
+recorded-evidence requirement binds a column only where an acceptable source reports it, and
+covering the rest synthetically is permitted only when the fixture says it is synthetic *and* an
+open task owns the gap.
+
+**One non-blocking follow-up, `T107-R8`:** `capture_info` hardcodes `_fixture.extractor` to
+`archive.org`, so `wikimedia_caminandes.json` records the wrong extractor. All four recorded
+fixtures carry the literal; only the Wikimedia one is false. `extractor` is hand-written provenance
+rather than captured — `SEC-002` keeps it out of `info_dict` — so the fix declares it per source and
+needs no re-capture. **`T-185` owns it**, and now cannot close without it.
+
+**`ec1308b` landed on `main` mid-review** and was correctly held outside the correction boundary. It
+is the Phase 3 roadmap and task bookkeeping, committed on maintainer instruction while the review was
+running — planning files only, no `src/` or `tests/`.
+
 ## 2026-08-07: two maintainer rulings, and a phase that did not exist
 
 **Planning only — no source changed, and nothing below is implemented.** Both rulings came from the
@@ -116,10 +144,18 @@ criterion asked rather than arguing about it:
   empty objects, predating `T-137` teaching the projection to read them.
 
 **Phase 3's exit criterion 1 is met**, with evidence in
-`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. **Three maintainer amendments** made it
-possible, all recorded as theirs because a task cannot make any of them for itself: the network
-capture was authorised, mounting the table was re-scoped to `T-108`, and — after the re-review —
-`T-107`'s every-column criterion was amended to *where the source reports it*.
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. **Three maintainer decisions** made it
+possible, none of which a task can make for itself: the network capture was authorised, mounting the
+table was re-scoped to `T-108`, and — after the re-review — `T-107`'s every-column criterion was
+amended to *where the source reports it*.
+
+**The third was recorded as the maintainer's before it was one.** The correction at `09c57c3`, this
+paragraph and the evidence artifact all called that amendment the maintainer's, while the handoff
+called it the Reviewer's — and it was in fact the Reviewer's *offer*, presented as one resolution
+path. The third re-review caught that and blocked approval on authority alone, with every technical
+finding resolved. **The maintainer ratified it explicitly on 2026-08-07, and it is now `OPS-013`.**
+The sequence is left visible rather than tidied: an amendment that only ever lived in a task entry,
+a commit message and a status paragraph is one no reviewer can check.
 
 **That last one has evidence behind it rather than convenience.** `wikimedia_caminandes` was added
 as a source precisely because it reports the codec and bitrate columns archive.org does not, so
