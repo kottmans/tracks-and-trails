@@ -389,15 +389,16 @@
     <div class="titles">
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 3 — format and content depth</h1>
-      <p class="lede">Expose what yt-dlp can actually do. <strong>The phase is building now.</strong> <code>T-105</code> closed and was approved, <code>UX-007</code> ruled every open spec question, and <strong>two of the nine deliverables have landed</strong> — <code>T-181</code>'s start gate and <code>T-107</code>'s format table, both awaiting review. Forty-eight Phase 3 entries are closed; for most of this phase not one of them was a deliverable, and that is what changed.</p>
+      <p class="lede">Expose what yt-dlp can actually do. <strong>The phase is building now.</strong> <code>T-105</code> closed and was approved, <code>UX-007</code> ruled every open spec question, and the first deliverables have landed: <strong><code>T-181</code>'s start gate is approved</strong> and <strong><code>T-107</code>'s format table is on its third review round</strong>. Forty-eight Phase 3 entries are closed; for most of this phase not one of them was a deliverable, and that is what changed.</p>
+      <p class="lede"><strong>Phase 3's first exit criterion is met</strong> — the format table agrees with <code>yt-dlp -F</code>, evidenced in <code>ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md</code>. It is the first criterion this phase has met, and it took two review rounds to earn rather than to claim. <span class="q-why">The first submission asserted it and did not have it; the second ran the comparison and found two real defects; the third added a source that reports the codec and bitrate columns archive.org does not. <strong>The criterion now rests on evidence and one maintainer amendment</strong>, because no freely licensed source reports <code>fps</code> — four Wikimedia Commons files and three archive.org items, none with it.</span></p>
       <p class="lede"><strong>The phase's real blocker was never a dependency, and it was cleared on 2026-08-07.</strong> <code>docs/UX_SPEC.md</code> §1 bars any task from building a <code>[P]</code> clause until it is ratified; 25 were open, and every remaining deliverable's <em>surface</em> was decided by at least one — so eight could be begun and none could be finished. <strong><code>UX-007</code> ruled all 25</strong>, question by question. Every deliverable is now buildable as well as startable.</p>
       <p class="lede"><strong>Three were ruled <em>against</em> what the spec proposed</strong>, which is the part worth knowing before reading §4–§9: the format table opens as an <strong>expanding row</strong> rather than a modal (<code>P-1</code>); the template preview is a <strong>focusable</strong> read-only field rather than a live region (<code>P-22</code> — the spec had written the argument against its own proposal, and that argument won); and <strong>per-job pause is <code>T-113</code>'s to decide</strong> rather than settled in advance (<code>P-10</code>). <span class="q-why">A blanket ratification would have written the opposite of the decision into three clauses. Two rulings also created work rather than closing it: <code>T-113</code> must record the <code>P-10</code> answer either way, and <code>T-109</code> owns where the subtitle language list comes from, because <code>P-17</code> ruled it comes from the probe and <code>SUBTITLE_LANGUAGES</code> is <code>("all",)</code> today.</span></p>
       <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable, and then removed its replacement too.</strong> History went first; the private ledger meant to survive behind it was withdrawn hours later, after review found it had cost five findings — two High — without a user ever seeing it. <strong>The application now keeps no record of what has been downloaded at all</strong> — and as of migration <code>0009</code> that is true of an upgraded database too, not only a fresh one.</p>
       <p class="lede"><strong>Updated 2026-08-07, and two things moved.</strong> Every outstanding review boundary closed — <code>T-105</code>, <code>T-168</code> and <code>T-179</code> are approved and <code>In Review</code> is empty for the first time since 2026-08-03. And the maintainer took two rulings that add work rather than remove it: <strong><code>UX-006</code> stops the queue running until you press <em>Start</em></strong> (a ninth Phase 3 deliverable, <code>T-181</code>), and <strong><code>ARC-010</code> makes option coverage a phase of its own</strong> — <code>Phase 4.5</code>, between Settings and Distribution, because a GUI for yt-dlp that reaches eleven of its options is not yet the thing it claims to be.</p>
       <p class="phase-line">
-        <span><strong>Head</strong> e4ef4b6, pushed</span>
-        <span><strong>CI</strong> green on all five jobs at dcdb2b5</span>
-        <span><strong>Suite</strong> 2228 passed, 11 skipped</span>
+        <span><strong>Head</strong> 09c57c3, pushed</span>
+        <span><strong>CI</strong> green on all five jobs at dcdb2b5; later heads unreported</span>
+        <span><strong>Suite</strong> 2259 passed, 12 skipped</span>
         <span><strong>Phase 2</strong> exited 2026-08-05</span>
       </p>
     </div>
@@ -407,12 +408,13 @@
     <p class="eyebrow">Where the phase actually stands</p>
     <ul class="tally">
       <li style="--chip: var(--st-approved)"><span class="n">48</span><span class="k">Entries closed</span></li>
-      <li style="--chip: var(--st-approved)"><span class="n">2</span><span class="k">Of 9 deliverables done</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">1</span><span class="k">Of 9 deliverables approved</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Spec questions unruled</span></li>
+      <li style="--chip: var(--st-review)"><span class="n">1</span><span class="k">Awaiting re-review</span></li>
       <li style="--chip: var(--st-block)"><span class="n">3</span><span class="k">High-risk deliverables</span></li>
       <li style="--chip: var(--st-ready)"><span class="n">9</span><span class="k">Of 9 buildable today</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">4</span><span class="k">Of those closed, cancelled as moot</span></li>
-      <li style="--chip: var(--st-block)"><span class="n">1</span><span class="k">Exit criterion owed evidence</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">1</span><span class="k">Of 6 exit criteria met</span></li>
       <li style="--chip: var(--st-block)"><span class="n">7</span><span class="k">Accepted entries amended</span></li>
     </ul>
     <p class="note" style="--edge: var(--st-approved)"><strong>2026-08-07: the review queue emptied, and the phase grew.</strong> <code>T-179</code>, <code>T-168</code> and <code>T-105</code> are all approved, so nothing awaits a verdict. <code>T-105</code> took <strong>three correction rounds</strong>, and the third exists because <code>T105-R4</code> survived its own correction: the acceptance criterion was fixed and the context field three lines above it still stated the same unratified choice as task truth. <span class="q-why">That is the finding's own defect class committed inside the fix for it — and the first correction batch <em>did</em> run a sibling audit, across four <em>other</em> task entries, while not reading the two fields of the entry under the hand. The pass budget was spent by then, so <code>AGENTS.md</code> §10 put the task in <strong>Blocked</strong> and the maintainer authorised one focused pass for one sentence. <code>T168-R1</code> is the same lesson in a test: the criterion said <em>any entry count</em> and the regression built exactly sixteen.</span></p>
@@ -443,7 +445,7 @@ flowchart TB
 
     subgraph CHAIN["ORDER IS FORCED"]
       direction TB
-      T107["T-107 · format table · done"]:::done
+      T107["T-107 · format table · in review"]:::planned
       T108["T-108 · video + audio · exit 2"]:::planned
       T109["T-109 · post-processing"]:::risky
       T111["T-111 · user presets"]:::planned
@@ -453,12 +455,12 @@ flowchart TB
     subgraph FREE["ANY ORDER, ANY TIME"]
       direction TB
       T181["T-181 · start gate · done"]:::done
-      T185["T-185 · re-capture · owes exit 1"]:::risky
+      T185["T-185 · a source that reports fps"]:::ready
       T113["T-113 · resume · exit 5"]:::risky
       T110["T-110 · playlists"]:::risky
       T112["T-112 · template editor · exit 3, 4"]:::planned
       T114["T-114 · duplicate confirm"]:::ready
-      SMALL["cleanup · T-143 T-180"]:::ready
+      SMALL["cleanup · T-143 T-180 T-186"]:::ready
     end
 
     EXIT(["PHASE 3 EXIT · 6 criteria, 0 met"]):::exit
@@ -502,7 +504,7 @@ flowchart TB
             <td class="id">T-107</td>
             <td>Sortable format table — every stream a probe found <span class="state-note">REQ-003</span></td>
             <td><s><code>T-105</code></s> <span class="state-note">met 2026-08-06</span></td>
-            <td><span class="state met">Complete 08-07</span><span class="state-note">Awaiting review. <code>FormatInfo</code> gained <code>fps</code> and <code>bitrate_kbps</code> — two columns <code>REQ-003</code> named with nothing to carry them — and no migration was needed. <strong>Exit criterion 1 is not claimed</strong>: four columns rest on a derived fixture until <code>T-185</code></span></td>
+            <td><span class="state part">In review, round 3</span><span class="state-note"><code>FormatInfo</code> gained <code>fps</code> and <code>bitrate_kbps</code> — two columns <code>REQ-003</code> named with nothing to carry them — and no migration was needed. <strong>Exit criterion 1 is met.</strong> Seven findings on the first review, two surviving the second; both corrected</span></td>
           </tr>
           <tr>
             <td class="id">T-108</td>
@@ -570,9 +572,9 @@ flowchart TB
         <div class="q-head"><span class="id">T-108</span> <span class="name">Video plus audio, merged</span> <span class="pill ghost">Next in the chain</span></div>
         <p class="q-why">The head of what is left. It reads the table <code>T-107</code> just built, through the <code>format_chosen</code> seam, and settles the ffmpeg-presence rule <code>T-109</code> then shares. <strong>It is fully specified now</strong>: <code>P-2</code> gave it a mode rather than two pickers, <code>P-13</code> hides the merge mode with the reason in its place when ffmpeg is absent, and <code>P-15</code>'s refusals stand. Its entry also carries the corrected <code>T-061</code> reading — the selector-reading gate <em>refused</em> a <code>/best</code> resolution rather than approving a merge — so the two-direction criteria are in place before anyone starts.</p>
       </li>
-      <li style="--edge: var(--st-block)">
-        <div class="q-head"><span class="id">T-185</span> <span class="name">Re-capture the fixtures</span> <span class="pill" style="--edge: var(--st-block)">Owes an exit criterion</span></div>
-        <p class="q-why">Small, and the only thing between Phase 3 and exit criterion 1. Re-run the capture with the allowlist that now carries <code>fps</code> and <code>tbr</code>, then compare the table against <code>yt-dlp -F</code> and record it. <strong>Needs the network and a deliberate act</strong> — <code>capture.py</code> is run by hand, never by a test — which is why it is a task rather than something <code>T-107</code> did in passing.</p>
+      <li style="--edge: var(--st-ready)">
+        <div class="q-head"><span class="id">T-185</span> <span class="name">A source that reports fps</span> <span class="pill ghost">Small, and may close as "none exists"</span></div>
+        <p class="q-why">All that is left of it: <code>fps</code> is the one column no recorded capture populates. Four Wikimedia Commons files and three archive.org items report none. <strong>A legitimate outcome is closing it with that finding</strong> — <code>ai/TESTING.md</code> §5 wants sources that do not churn, and a site that reports fps and changes weekly satisfies the criterion's letter while breaking the property those sources were chosen for.</p>
       </li>
       <li style="--edge: var(--st-ready)">
         <div class="q-head"><span class="id">T-113</span> <span class="name">Resume across a restart</span> <span class="pill" style="--edge: var(--st-block)">Start early</span></div>
@@ -589,7 +591,8 @@ flowchart TB
     </ol>
 
     <p class="note"><code>T-111</code>, <code>T-112</code> and <code>T-114</code> are not in this list because nothing about their order is contentious: <code>T-111</code> follows <code>T-109</code>, and <code>T-112</code> and <code>T-114</code> can be taken by anyone at any point. <strong><code>T-143</code> and <code>T-180</code> are cleanup</strong> and belong in the gaps; <code>T-180</code> carries the open <code>T179-R3</code> and is a decision before it is a change.</p>
-    <p class="note" style="--edge: var(--st-review)"><strong>Three tasks are awaiting review</strong> — <code>T-181</code>, <code>T-176</code> and <code>T-107</code>, handed over at <code>ai/handoffs/2026-08-07-review-t181-t176-t107.md</code> against base <code>1e0d0d5</code> and head <code>dcdb2b5</code>. <strong>One ruling is still the maintainer's:</strong> <code>T-171</code>, whether downloaded files carry provenance. It is on no critical path and its measurement is already done.</p>
+    <p class="note" style="--edge: var(--st-review)"><strong>One task is awaiting re-review:</strong> <code>T-107</code>, on its third round. <code>T-181</code> and <code>T-176</code> are approved with follow-ups, and both follow-ups — <code>T-187</code> and <code>T-186</code> — were taken or filed rather than left implied. <span class="q-why">Ten findings across the two rounds, and the pattern in the ones that survived is worth keeping: each was a case of <em>answering a finding without meeting it</em>. The keyboard test posted its key event straight at the header, which proves the header reacts and says nothing about whether a keyboard can reach it — the same bypass the reviewer had already named once, repeated inside the test written to answer it.</span></p>
+    <p class="note" style="--edge: var(--st-review)"><strong>One ruling is still the maintainer's:</strong> <code>T-171</code>, whether downloaded files carry provenance. It is on no critical path and its measurement is already done.</p>
 
     <p class="note" style="--edge: var(--st-block)"><strong>The one thing on this board that is genuinely unscheduled is the size of Phase 4.5.</strong> <code>T-183</code> is the task that turns yt-dlp's option list into tasks, and until it lands <em>no estimate of that phase exists</em> — not a rough one, not a range. What is known is the shape: eleven options are expressible today, Phase 3 and 4 add perhaps fifteen, and the option list runs to roughly 250 across sixteen groups, of which a real fraction is the command line itself rather than a capability. Quoting a size before the audit would be inventing one.</p>
   </section>
@@ -597,7 +600,7 @@ flowchart TB
   <section>
     <div class="section-head">
       <h2>What has actually been closed, and why it exists</h2>
-      <p class="lede">Forty-eight entries, two of them deliverables at last. Grouped by where they came from, because the source is the interesting part: <strong>most of this phase's completed work was found by a person opening the application</strong>, not by a plan and not by a gate — and one group was found by a person deciding the application should do <em>less</em>. <span class="q-why">The rows sum to 48 and every id appears once. An earlier version of this table summed its own columns to 41 while the sentence above it said 37: <code>T-076</code> is a Phase 2 entry that had been counted here, and <code>T-125</code> was counted twice. Parsed from <code>ai/TASKS.md</code> this time — entries under <code>## Complete</code> whose <code>Phase:</code> line begins <em>Phase 3</em>.</span></p>
+      <p class="lede">Forty-eight entries, two of them deliverables at last. Grouped by where they came from, because the source is the interesting part: <strong>most of this phase's completed work was found by a person opening the application</strong>, not by a plan and not by a gate — and one group was found by a person deciding the application should do <em>less</em>. <span class="q-why">The rows sum to 48 and every id appears once. <code>T-107</code> is deliberately absent: it is in review, not closed. An earlier version of this table summed its own columns to 41 while the sentence above it said 37: <code>T-076</code> is a Phase 2 entry that had been counted here, and <code>T-125</code> was counted twice. Parsed from <code>ai/TASKS.md</code> this time — entries under <code>## Complete</code> whose <code>Phase:</code> line begins <em>Phase 3</em>.</span></p>
     </div>
 
     <div class="table-card">
@@ -654,10 +657,10 @@ flowchart TB
             <td><span class="state met">Approved</span><span class="state-note"><code>T-179</code> took three mechanisms and a maintainer disposition; its shared-cache defect is now <code>T-180</code></span></td>
           </tr>
           <tr>
-            <td><strong>The first deliverables</strong> — the start gate, the format table, and the prose the withdrawal left behind</td>
+            <td><strong>The first deliverable, and the prose the withdrawal left behind</strong></td>
             <td class="n">3</td>
-            <td><code>T-181</code> <code>T-107</code> <code>T-176</code></td>
-            <td><span class="state part">Awaiting review</span><span class="state-note">Two of them are Phase 3 deliverables rather than defects found by using the app — the first of this phase</span></td>
+            <td><code>T-181</code> <code>T-176</code> <code>T-187</code></td>
+            <td><span class="state met">Approved</span><span class="state-note"><code>T-181</code> is the first Phase 3 <em>deliverable</em> to be approved rather than a defect found by using the app. <code>T-187</code> is <code>T-181</code>'s own follow-up, taken rather than left</span></td>
           </tr>
           <tr>
             <td>Everything else Phase 2 handed over under Phase 3's numbering</td>
@@ -717,7 +720,7 @@ flowchart TB
         <caption>Phase 3 exit · <code>ai/IMPLEMENTATION_PLAN.md</code></caption>
         <thead><tr><th class="n">#</th><th>Criterion</th><th>Owner</th><th>State</th></tr></thead>
         <tbody>
-          <tr><td class="n">1</td><td>The format table matches <code>yt-dlp -F</code> for a fixture set of URLs</td><td><code>T-107</code> built it · <code>T-185</code> owes the evidence</td><td><span class="state blocked">Not met — evidence owed</span></td></tr>
+          <tr><td class="n">1</td><td>The format table matches <code>yt-dlp -F</code> for a fixture set of URLs</td><td><code>T-107</code></td><td><span class="state met">Met — evidence recorded</span><span class="state-note">Pending <code>T-107</code>'s own approval</span></td></tr>
           <tr><td class="n">2</td><td>A separate video + audio selection merges correctly via ffmpeg <strong>on both platforms</strong></td><td><code>T-108</code></td><td><span class="state unmet">Not started</span></td></tr>
           <tr><td class="n">3</td><td>Template preview matches the written path in every tested case, including titles with characters illegal on Windows</td><td><code>T-112</code></td><td><span class="state unmet">Not started</span></td></tr>
           <tr><td class="n">4</td><td>Path containment holds: no rendered template escapes the output directory</td><td><code>T-112</code></td><td><span class="state unmet">Not started</span></td></tr>
@@ -727,7 +730,8 @@ flowchart TB
       </table>
     </div>
 
-    <p class="note" style="--edge: var(--st-block)"><strong>Criterion 1 is the one that moved, and not the way it looks.</strong> <code>T-107</code> built the table and deliberately does <em>not</em> claim the criterion. The recorded fixtures carry no <code>fps</code>, <code>tbr</code>, <code>vcodec</code> or <code>acodec</code> — <code>SEC-002</code> commits only the fields the projection reads, and it did not read them until this task — so four of nine columns are evidenced by a <strong>derived</strong> fixture. <span class="q-why">A fixture this project wrote cannot show the table agrees with <code>yt-dlp -F</code>; that is the whole question the criterion asks. <code>T-185</code> re-captures and records the comparison. It needs the network and <code>capture.py</code> is explicitly run by hand, so it is a deliberate act rather than something a task does in passing.</span></p>
+    <p class="note" style="--edge: var(--st-approved)"><strong>Criterion 1 is met, and how it got there is the useful part.</strong> The first submission <em>claimed</em> it while four columns rested on a fixture this project wrote. The second ran the comparison and it immediately found two real defects — an audio item rendering <code>0x0</code> where yt-dlp prints <code>unknown</code>, and the table asserting <em>audio only</em> for a format whose video codec was merely unknown. The third added <code>wikimedia_caminandes</code>, which reports the codec and bitrate columns archive.org does not, so those are now asserted by value from a <strong>recorded</strong> capture. <span class="q-why"><code>fps</code> is reported by no acceptable source, so the every-column criterion was amended by the maintainer to <em>where the source reports it</em>, and <code>T-185</code> stays open as the record of that search. It was briefly closed and reopened the same day — closing a task whose criterion is unmet is the defect one level up from the one being fixed.</span></p>
+    <p class="note" style="--edge: var(--st-block)"><strong>The older note, kept because its warning still applies:</strong> <code>T-107</code> built the table and deliberately does <em>not</em> claim the criterion. The recorded fixtures carry no <code>fps</code>, <code>tbr</code>, <code>vcodec</code> or <code>acodec</code> — <code>SEC-002</code> commits only the fields the projection reads, and it did not read them until this task — so four of nine columns are evidenced by a <strong>derived</strong> fixture. <span class="q-why">A fixture this project wrote cannot show the table agrees with <code>yt-dlp -F</code>; that is the whole question the criterion asks. <code>T-185</code> re-captures and records the comparison. It needs the network and <code>capture.py</code> is explicitly run by hand, so it is a deliberate act rather than something a task does in passing.</span></p>
     <p class="note"><strong>Criterion 2 names both platforms, and that is the one to watch.</strong> Phase 2 exited with a recorded one-platform residual — CI runs the suite on Windows but no person has looked at the window there. This criterion cannot be met that way, and the Actions quota is nearly exhausted, so the Windows evidence route wants deciding before <code>T-108</code> rather than after it.</p>
     <p class="note"><strong><code>T-181</code> adds no exit criterion, and that is deliberate.</strong> It changes a default rather than delivering a capability the phase is measured on. Its own acceptance criteria carry the load — chiefly that a fresh launch with a full queue starts <em>nothing</em>, asserted on the pool rather than on a screenshot, because that is the behaviour change with the widest reach and the least visible symptom.</p>
   </section>
