@@ -51,6 +51,33 @@ against containment, `--download-archive` against the record-keeping the project
 and this application promises no outbound traffic beyond downloads and update checks. Capability
 parity does not silently buy any of them.
 
+## 2026-08-07, later: `T-181` and `T-176` are built, and the phase's real blocker is now visible
+
+**`T-181` is complete and awaiting review.** The queue is stopped until the user presses Start,
+stopped at every launch, and says so in the status bar; `start_queue()`/`stop_queue()` and
+`queue_running` replace the pause vocabulary. `UX-001`'s drain is untouched. **`T-176` is complete**
+— the withdrawn-History prose in live source and test comments now reads as history rather than as
+a live contract.
+
+**Three findings from `T-181` are worth carrying**, and all three are in its entry:
+
+- **The retry criterion could not be met as this project usually means it.** The gate is enforced in
+  two places, `_start_when_free` and `start()`, and each catches what the other releases — so no
+  single-point mutation fails the test. All three mutants were run; only removing both changes
+  behaviour. The entry asked for evidence the design cannot produce, and the test says so.
+- **`active_job_ids()` counts waiting jobs as active** (`T078-R1`), so it cannot express "nothing
+  started". Two tests were written against it and failed on correct code.
+- **A retried *probe* is exempt from the gate, correctly**, because a `QUEUED` job's session is a
+  probe. The retry test starts from `READY` for that reason.
+
+**The blocker that matters is not a dependency.** `docs/UX_SPEC.md` §1 bars a task from building a
+`[P]` clause until it is ratified, **25 are open**, and every remaining Phase 3 deliverable's surface
+is decided by at least one. So eight of the nine are startable and none is finishable; `T-181` was
+the exception only because `UX-006` settled its surface when it was accepted. A ruling pack — every
+question with options, costs and a recommendation — is at
+`ai/handoffs/2026-08-07-ux-spec-ruling-pack.md`, and the Phase 3 board now says
+**1 of 9 buildable today** rather than 9 of 9 startable.
+
 ## 2026-08-07: three verdicts, and the shape the two rejections share
 
 Codex reviewed every outstanding boundary on 2026-08-07 (`ai/REVIEWS.md`). One approval, two

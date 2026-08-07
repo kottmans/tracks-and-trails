@@ -1912,75 +1912,6 @@ the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a comm
 
 ---
 
-### T-181 — The queue is stopped until the user starts it
-
-**Status:** Proposed — **maintainer decision, 2026-08-07** (`UX-006`). Filed against `REQ-015` as
-amended.
-**Owner:** Implementer
-**Priority:** Medium — nothing is blocked by its absence, and it changes the first thing every user
-does
-**Phase:** Phase 3
-**Depends on:** nothing. The gate it changes has existed since `T-080` and parks correctly since
-`T080-R1`
-**Relevant context:** `UX-006`, `UX-001` (the drain it keeps), `UX-002` (automatic retry, which must
-observe the gate), `docs/UX_SPEC.md` §2 item 7 and §2.1, `REQ-015`, `REQUIREMENTS.md` §11 criterion
-1, `downloader/manager.py` (`_paused`, `pause()`, `resume()`, `_pause_blocks`, `_fill_free_slots`,
-`_start_when_free`), `ui/main_window.py`'s `pauseQueueAction`
-**Affected surfaces:** `downloader/manager.py`, `ui/main_window.py`, `ui/queue_view.py` if the
-stopped state is drawn there, and their tests. **Not `persistence/`** — the gate is not persisted
-and adds no column
-**Risk:** Low mechanically, Medium for legibility. The one way this fails a user is a window that
-looks broken because nothing happens and nothing says why
-
-#### Scope
-
-**Change the default, the vocabulary, and what a launch restores.** The queue gate exists; this
-task closes it at startup, renames it to what it now governs, and makes the stopped state legible.
-
-- The gate is **stopped at launch**, every launch. A restored queue starts nothing.
-- `Start` opens it; the queue then runs what it holds and everything added afterwards. Draining does
-  **not** re-arm it.
-- `Stop` drains, unchanged from `UX-001`: in-flight sessions finish, nothing new starts, no partial
-  file is created, no job enters `PAUSED`.
-- The toolbar's checkable `pauseQueueAction` becomes the run control — one action, two states,
-  reading `Start` and `Stop` (`docs/UX_SPEC.md` §2.1).
-- **Everything that begins work observes the gate**, including automatic retry (`UX-002`) and a
-  user's `Retry`. Probes are exempt, as they already are.
-- The stopped state is stated where the work is, per §2.1's `[D]` clause. **The treatment is this
-  task's to choose**; that there is one is not.
-
-#### Acceptance criteria
-
-- A fresh launch with a non-empty queue starts **no** download — asserted on the pool, not on a
-  screenshot. This is the behaviour change with the widest blast radius and the least visible
-  symptom
-- A URL added to a stopped queue is durably `QUEUED`, its row reads **Held**, and nothing starts
-- `Start` runs the held jobs up to the concurrency limit; a URL added afterwards starts without a
-  second `Start`
-- `Stop` while jobs are running: every in-flight job **completes**, nothing new starts, and **no
-  partial file exists** afterwards — the assertion `T-080` already makes, re-run against the new
-  default
-- A queue that empties while started stays started
-- **Automatic retry parks.** A `NETWORK` failure schedules a retry under `UX-002`, the queue is
-  stopped before the backoff elapses, and the attempt does not run until `Start` — with a test that
-  fails if the gate check is removed from the retry path
-- A stopped queue still **probes**: a paste resolves in the add dialog with the gate closed
-- The run control is keyboard-reachable, announces its current state rather than only its label, and
-  does not convey the state by colour alone (`NFR-005`)
-- `ruff check .`, `ruff format --check .`, both mypy platforms, and the manager, queue-view and
-  main-window tests are clean
-
-#### Out of scope
-
-- **Any per-job start, hold or pause.** `UX-006` §6 keeps the gate queue-level; `P-10` and `T-113`
-  own per-job control and answer it on resume's terms
-- **Persisting the gate.** It is stopped at every launch, so there is nothing to persist. A setting
-  that changes the default is `UX-006`'s rejected alternative and needs a new ruling, not this task
-- `JobStatus.PAUSED`. Still unreachable, still `T-080`'s tombstone, still not resurrected here
-- Reordering, and what `Start` means for order. The queue's existing order decides what runs first
-
----
-
 
 ## Proposed — Phase 4.5
 
@@ -2599,6 +2530,115 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-181 — The queue is stopped until the user starts it
+
+**Status:** **Complete — 2026-08-07, awaiting review.** Filed against `REQ-015` as amended by the
+maintainer decision `UX-006`, and implemented the same day. The gate is stopped at construction,
+the pair is renamed `start_queue()`/`stop_queue()` with a `queue_running` signal, the toolbar
+control reads *Start queue*/*Stop queue*, and the status bar says which state the queue is in and
+what to press. **Three things the work turned up are in the correction notes at the bottom of this
+entry** — one of them means a criterion cannot be demonstrated the way the entry asked for.
+**Owner:** Implementer
+**Priority:** Medium — nothing is blocked by its absence, and it changes the first thing every user
+does
+**Phase:** Phase 3
+**Depends on:** nothing. The gate it changes has existed since `T-080` and parks correctly since
+`T080-R1`
+**Relevant context:** `UX-006`, `UX-001` (the drain it keeps), `UX-002` (automatic retry, which must
+observe the gate), `docs/UX_SPEC.md` §2 item 7 and §2.1, `REQ-015`, `REQUIREMENTS.md` §11 criterion
+1, `downloader/manager.py` (`_paused`, `pause()`, `resume()`, `_pause_blocks`, `_fill_free_slots`,
+`_start_when_free`), `ui/main_window.py`'s `pauseQueueAction`
+**Affected surfaces:** `downloader/manager.py`, `ui/main_window.py`, `ui/queue_view.py` if the
+stopped state is drawn there, and their tests. **Not `persistence/`** — the gate is not persisted
+and adds no column
+**Risk:** Low mechanically, Medium for legibility. The one way this fails a user is a window that
+looks broken because nothing happens and nothing says why
+
+#### Scope
+
+**Change the default, the vocabulary, and what a launch restores.** The queue gate exists; this
+task closes it at startup, renames it to what it now governs, and makes the stopped state legible.
+
+- The gate is **stopped at launch**, every launch. A restored queue starts nothing.
+- `Start` opens it; the queue then runs what it holds and everything added afterwards. Draining does
+  **not** re-arm it.
+- `Stop` drains, unchanged from `UX-001`: in-flight sessions finish, nothing new starts, no partial
+  file is created, no job enters `PAUSED`.
+- The toolbar's checkable `pauseQueueAction` becomes the run control — one action, two states,
+  reading `Start` and `Stop` (`docs/UX_SPEC.md` §2.1).
+- **Everything that begins work observes the gate**, including automatic retry (`UX-002`) and a
+  user's `Retry`. Probes are exempt, as they already are.
+- The stopped state is stated where the work is, per §2.1's `[D]` clause. **The treatment is this
+  task's to choose**; that there is one is not.
+
+#### Acceptance criteria
+
+- A fresh launch with a non-empty queue starts **no** download — asserted on the pool, not on a
+  screenshot. This is the behaviour change with the widest blast radius and the least visible
+  symptom
+- A URL added to a stopped queue is durably `QUEUED`, its row reads **Held**, and nothing starts
+- `Start` runs the held jobs up to the concurrency limit; a URL added afterwards starts without a
+  second `Start`
+- `Stop` while jobs are running: every in-flight job **completes**, nothing new starts, and **no
+  partial file exists** afterwards — the assertion `T-080` already makes, re-run against the new
+  default
+- A queue that empties while started stays started
+- **Automatic retry parks.** A `NETWORK` failure schedules a retry under `UX-002`, the queue is
+  stopped before the backoff elapses, and the attempt does not run until `Start` — with a test that
+  fails if the gate check is removed from the retry path
+- A stopped queue still **probes**: a paste resolves in the add dialog with the gate closed
+- The run control is keyboard-reachable, announces its current state rather than only its label, and
+  does not convey the state by colour alone (`NFR-005`)
+- `ruff check .`, `ruff format --check .`, both mypy platforms, and the manager, queue-view and
+  main-window tests are clean
+
+#### Out of scope
+
+- **Any per-job start, hold or pause.** `UX-006` §6 keeps the gate queue-level; `P-10` and `T-113`
+  own per-job control and answer it on resume's terms
+- **Persisting the gate.** It is stopped at every launch, so there is nothing to persist. A setting
+  that changes the default is `UX-006`'s rejected alternative and needs a new ruling, not this task
+- `JobStatus.PAUSED`. Still unreachable, still `T-080`'s tombstone, still not resurrected here
+- Reordering, and what `Start` means for order. The queue's existing order decides what runs first
+
+#### What the implementation found, 2026-08-07
+
+**1. The retry criterion cannot be demonstrated the way this entry asked for, and the entry was
+wrong to ask.** It required "a test that fails if the gate check is removed from the retry path".
+There is no such single check: `_start_when_free` and `start()` both carry the gate, and a retry
+released by either meets the other — `_start_when_free` → `_start_or_report` → `start()` on the way
+down, and a parked start meets `_fill_free_slots` on the tick. **All three mutants were run.**
+Removing `_gate_blocks` from `_start_when_free`: five gate tests still pass. Removing `start()`'s
+guard: the construction-time test fails, the retry test does not. Removing **both**: the retry test
+fails, which is the evidence. Neither guard is individually load-bearing; both are needed to change
+behaviour, and a future simplification that deletes one will find the suite green. The test's
+docstring says so, because the first version of it claimed the single-point mutation worked and the
+measurement disproved it.
+
+**2. `active_job_ids()` cannot express "nothing started", and the first draft of two tests used
+it.** It counts *waiting* jobs as active on purpose (`T078-R1`) — they are accepted work — so a
+correctly parked job makes it non-empty. Both tests were rewritten onto `_sessions` and the durable
+status. This is worth keeping because the method's name reads like the opposite of what it means
+for exactly this question.
+
+**3. A retried *probe* is exempt from the gate, and that is correct.** A `QUEUED` job's session is a
+probe (`ARC-004`), so its automatic retry is a probe, and probes are never gated. The retry test
+starts from `READY` so the session under test is a download. The first version started from
+`QUEUED`, watched the retry run, and would have reported a correct exemption as a defect.
+
+**Not built: `docs/UX_SPEC.md` §2 item 7's *Held* row.** The stopped state is said once, at queue
+level, in the status bar. Writing it into per-row status text would put a queue-level fact in as
+many places as there are jobs, which is the confusion `UX-001` exists to prevent. It was not built
+before this task either; §2.1 now records the choice and flags the clause as worth re-deciding.
+
+**A process failure worth recording.** Reverting the second mutant with `git checkout --
+src/.../manager.py` discarded every uncommitted change in that file — the whole implementation —
+and it had to be reapplied from the session's own record. The safe form is to invert the exact
+string the mutation introduced, or to mutate a copy; `git checkout` is only safe on a file whose
+work is already committed, which was true of the earlier `T168-R1` mutation and not of this one.
+
+---
 
 ### T-105 — Write `docs/UX_SPEC.md` before Phase 3 starts
 

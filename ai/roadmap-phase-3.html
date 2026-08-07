@@ -389,7 +389,8 @@
     <div class="titles">
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 3 — format and content depth</h1>
-      <p class="lede">Expose what yt-dlp can actually do. <strong>The document that gated five deliverables is written, and the phase is no longer one file wide.</strong> <code>T-105</code> closed on 2026-08-06, so <code>T-107</code>, <code>T-109</code>–<code>T-112</code> are startable for the first time since the phase was planned. Thirty-seven Phase 3 entries are closed and <em>still</em> not one of them is a deliverable — but the reason has changed from "blocked" to "not yet begun".</p>
+      <p class="lede">Expose what yt-dlp can actually do. <strong>The document that gated five deliverables is written, and the phase is no longer one file wide.</strong> <code>T-105</code> closed on 2026-08-06 and was approved on 2026-08-07, so nothing waits on a document any more. Forty-five Phase 3 entries are closed and <em>still</em> only one of them is a deliverable — <code>T-181</code>, which landed the same day.</p>
+      <p class="lede" style="color: var(--st-review)"><strong>"Startable" and "buildable" are not the same thing, and this board said the first while meaning the second.</strong> <code>docs/UX_SPEC.md</code> §1 bars any task from building a <code>[P]</code> clause until it is ratified, and <strong>25 are still open</strong> — every remaining deliverable's <em>surface</em> is decided by at least one. So eight of the nine can be begun and none of them can be finished. <code>T-181</code> was the exception because <code>UX-006</code> settled its surface when it was accepted. <span class="q-why">Ruling §10 is worth more than any single deliverable on this board: it is the difference between eight tasks that can start and eight that can land. A pack with options, costs and a recommendation for each is in <code>ai/handoffs/2026-08-07-ux-spec-ruling-pack.md</code>.</span></p>
       <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable, and then removed its replacement too.</strong> History went first; the private ledger meant to survive behind it was withdrawn hours later, after review found it had cost five findings — two High — without a user ever seeing it. <strong>The application now keeps no record of what has been downloaded at all</strong> — and as of migration <code>0009</code> that is true of an upgraded database too, not only a fresh one.</p>
       <p class="lede"><strong>Updated 2026-08-07, and two things moved.</strong> Every outstanding review boundary closed — <code>T-105</code>, <code>T-168</code> and <code>T-179</code> are approved and <code>In Review</code> is empty for the first time since 2026-08-03. And the maintainer took two rulings that add work rather than remove it: <strong><code>UX-006</code> stops the queue running until you press <em>Start</em></strong> (a ninth Phase 3 deliverable, <code>T-181</code>), and <strong><code>ARC-010</code> makes option coverage a phase of its own</strong> — <code>Phase 4.5</code>, between Settings and Distribution, because a GUI for yt-dlp that reaches eleven of its options is not yet the thing it claims to be.</p>
       <p class="phase-line">
@@ -406,9 +407,9 @@
     <ul class="tally">
       <li style="--chip: var(--st-approved)"><span class="n">45</span><span class="k">Entries closed</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 9 deliverables started</span></li>
-      <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Awaiting a verdict</span></li>
+      <li style="--chip: var(--st-review)"><span class="n">25</span><span class="k">Spec questions unruled</span></li>
       <li style="--chip: var(--st-block)"><span class="n">3</span><span class="k">High-risk deliverables</span></li>
-      <li style="--chip: var(--st-ready)"><span class="n">9</span><span class="k">Of 9 deliverables startable</span></li>
+      <li style="--chip: var(--st-ready)"><span class="n">1</span><span class="k">Of 9 buildable today</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">4</span><span class="k">Of those closed, cancelled as moot</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 6 exit criteria met</span></li>
       <li style="--chip: var(--st-block)"><span class="n">7</span><span class="k">Accepted entries amended</span></li>
@@ -526,13 +527,13 @@ flowchart TB
             <td class="id">T-181</td>
             <td><strong>The queue is stopped until you press Start</strong> <span class="state-note">REQ-015 as amended, UX-006 · added 2026-08-07</span></td>
             <td><span class="state met">nothing — the gate already exists</span></td>
-            <td><span class="state unmet">Low</span><span class="state-note">Mechanically small: <code>T-080</code> built the gate and <code>T080-R1</code> already parks a download while admitting a probe. <strong>The risk is legibility</strong> — a window where nothing happens and nothing says why</span></td>
+            <td><span class="state met">Complete 08-07</span><span class="state-note">Awaiting review. The gate is stopped at construction, the control reads <em>Start</em>/<em>Stop</em>, and the status bar says which state the queue is in and what to press</span></td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <p class="note"><strong>All eight are startable, and <code>T-114</code> lost its dependencies entirely rather than having them cleared.</strong> It recorded "history records and the history view", then an indexed ledger lookup; all three are deleted. What is left is a comparison against the live queue and the paste being staged, in memory, storing nothing — and the answer is a <em>confirmation</em>, since a duplicate is allowed. <span class="q-why">Its Scope and acceptance criteria still demanded the ledger until <code>T169-R4</code> caught them: the status line had been rescoped and the body left behind, which is the same defect <code>T166-R1</code> found a day earlier.</span></p>
+    <p class="note"><strong>All nine are dependency-free, and <code>T-114</code> lost its dependencies entirely rather than having them cleared.</strong> It recorded "history records and the history view", then an indexed ledger lookup; all three are deleted. What is left is a comparison against the live queue and the paste being staged, in memory, storing nothing — and the answer is a <em>confirmation</em>, since a duplicate is allowed. <span class="q-why">Its Scope and acceptance criteria still demanded the ledger until <code>T169-R4</code> caught them: the status line had been rescoped and the body left behind, which is the same defect <code>T166-R1</code> found a day earlier.</span></p>
   </section>
 
   <section>
