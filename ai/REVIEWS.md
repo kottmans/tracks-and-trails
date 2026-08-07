@@ -11277,3 +11277,75 @@ that correction diff.
 The reviewer appended this re-review record only. No reviewed source, reviewed test, requirement,
 decision, task state, status state, commit, remote ref, migration, user database or CI state was
 changed.
+
+## 2026-08-06 — T-179 maintainer-authorized focused re-review (round 3)
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `3e9e051`
+**Correction head:** `5f469da`
+**Task:** `T-179`
+**Findings re-reviewed:** `T179-R1`, `T179-R2`
+**Platforms verified:** Linux, Qt offscreen; Windows runtime unverified
+**Verdict:** **Blocked.** `T179-R2` is Resolved at `5f469da`: the reset gate performs no
+filesystem operation. `T179-R1` remains Open because the process-local publication count cannot
+see another permitted process writing the shared cache. This was the maintainer-authorized extra
+pass for the exhausted Medium finding, so another mechanism is not automatic. T-179 is not ready
+to merge; withdrawing the optimization is preferable to a fourth mechanism unless the maintainer
+explicitly chooses otherwise.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T179-R1` | **Medium** | **Yes** | The in-process cases are corrected: the add dialog's second store advances the directory-keyed generation, a generation is captured when the sweep is requested, and serialized/coalesced sweeps cannot complete out of attribution order. The remaining premise is false, however. `cache_generation()` says `A-004` admits one instance, while `A-004` says only that concurrent instances may not share a database and accepted `ARC-006` explicitly requires instances using different databases not to block one another. Production stores use the same platform cache independently of the database path. A process-local dictionary therefore does not answer whether that shared directory changed. A deterministic probe completed a removal sweep, wrote the removed URL's cache path as a second process would, and emitted an unchanged reorder; the file survived and the recorded/request generations remained `0/0`. The replacement cross-store regression is valid for the add-dialog route but is not strictly stronger than the reviewer's direct-write test: it removed the permitted cross-process case that the counter cannot observe. | **Open — maintainer-authorized Medium pass exhausted** |
+| `T179-R2` | **High** | **Yes** | The directory-mtime mechanism is gone. `_sweep_thumbnails()` now reads model state and `cache_generation()`, whose path construction plus lock-protected dictionary lookup performs no filesystem operation. The structural regression makes `Path.stat`, `Path.iterdir`, and `Path.exists` raise across removal and reorder, and passes. No slow or missing-directory filesystem case remains on the GUI-thread gate. | **Resolved at `5f469da`** |
+
+### Focused review judgments
+
+- **The publication point is correct for this process.** `_note_publication()` follows the
+  successful same-directory `partial.replace()` and is skipped when the cache write fails. Search
+  found no other source writer. The single lock covers each read-modify-write and each read; no
+  callback or filesystem work occurs while it is held.
+- **The request-time generation test distinguishes the named mutation.** Its sweep is outstanding,
+  a second real store publishes, completion is emitted, and unchanged membership is reset. A
+  completion-time capture would promote the new generation and leave one request; the submitted
+  request-time capture leaves the older generation and schedules the required second request.
+- **Serialization/coalescing closes the prior overlap failure.** Only one store sweep is issued,
+  and completion re-reads the newest model state. The deterministic blocked-pool regression
+  observes exactly one follow-up for the final empty set.
+- **A closed store can leave `_sweep_in_flight` set, but not on a live production reset path.**
+  `QueueView.detach()` disconnects the model from all manager reset signals before closing the
+  store. An already-running sweep still reports completion; a request made after close can stick
+  only on a view that has already detached. No separate finding is warranted.
+- **The module dictionary is unbounded but immaterial at production scale.** It holds one entry per
+  cache directory that successfully receives a publication: normally one for the process, while
+  pytest creates transient `tmp_path` keys. Absolute generation values do not cross-contaminate a
+  new view because its completed marker starts at `None`. No finding is warranted.
+- **T-177 and T-178's entries are accurately qualified.** Each says its finding was Resolved and
+  that it has no approval verdict of its own; neither claims this T-179 pass approves it.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Before this review append, `HEAD` was `5f469da`, `git status --short` was clean, the correction-only diff `3e9e051..5f469da` contained exactly the stated five files and `+430/-79`, and `git diff --check` passed. |
+| Corrected T-179 cases | The ten removal, reorder, clear, missing-directory, overlap, publication-timing, and GUI-thread gate tests: **10 passed, 66 deselected** in 0.33 s. |
+| Relevant UI suites | `tests/ui/test_queue_view.py` plus `tests/ui/test_row_delegate.py`: **131 passed** in 18.04 s. |
+| Cross-process publication probe | After a completed removal sweep, an uncounted write to the removed URL followed by an unchanged reorder left `foreign_file_survived=True`, with `sweep_in_flight=False` and generation `0/0`: `T179-R1` reproduced. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; configured host mypy and `mypy --platform win32`: **success, 107 source files each**. |
+| Task placement | **14 passed**. |
+| Implementer evidence not rerun | The handoff reports unit+UI **1886 passed, 11 skipped** and integration **298 passed**. This focused pass did not rerun those whole partitions. |
+
+### Pass-budget and merge disposition
+
+This pass spent the maintainer-authorized exception for the surviving blocking Medium finding.
+`T179-R1` is still the same false-skip defect class, now at the process boundary, and it cannot
+start a fourth automatic agent loop. The maintainer must choose withdrawal, explicitly authorize
+another design, accept the documented risk, or move it to a named follow-up. The reviewer's
+recommendation is **withdrawal**: restore T-179's pre-task sweep-on-reset behavior while preserving
+the independently split T-177/T-178 work, rather than retaining the rejected mtime checkpoint or
+inventing a fourth gate for a Low-priority background-I/O optimization.
+
+The reviewer appended this review record only. No reviewed source, reviewed test, requirement,
+decision, task state, status state, commit, remote ref, migration, user database or CI state was
+changed.
