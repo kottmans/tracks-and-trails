@@ -24,10 +24,11 @@ saying which format it names — the seam `T-108` consumes.
 """
 
 from collections.abc import Sequence
-from typing import Final
+from typing import Final, cast
 
 from PySide6.QtCore import (
     QAbstractTableModel,
+    QEvent,
     QModelIndex,
     QObject,
     Qt,
@@ -36,7 +37,14 @@ from PySide6.QtCore import (
 from PySide6.QtCore import (
     QPersistentModelIndex as _PersistentIndex,
 )
-from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableView, QWidget
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHeaderView,
+    QTableView,
+    QVBoxLayout,
+    QWidget,
+)
 
 from tracks_and_trails.core.models import FormatInfo
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, format_bytes
@@ -79,11 +87,11 @@ SORT_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 1
 #: `FormatInfo` for the current row, answered on the row's first column.
 FORMAT_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 2
 
-#: What an audio-only format's resolution reads.
+#: Marks a size yt-dlp estimated rather than was told (`T107-R7`, `REQ-003`'s "filesize/estimate").
 #:
-#: Not `UNKNOWN_TEXT`: the height is not unknown, it is *absent by nature*, and telling a user the
-#: resolution of an audio stream is unknown invites them to go looking for it.
-AUDIO_ONLY_TEXT: Final = "audio only"
+#: The same `~` `docs/UX_SPEC.md` §4 uses in its own example. One character, in front, so the
+#: column still reads as a column of sizes.
+ESTIMATE_PREFIX: Final = "~"
 
 #: The invalid parent every flat model is asked about, as a module-level singleton.
 #:
@@ -93,14 +101,23 @@ _ROOT: Final = QModelIndex()
 
 
 def describe_resolution(entry: FormatInfo) -> str:
-    """`1920x1080`, or `1080p` when only the height is known, or a stated absence.
+    """`1920x1080`, or `1080p` when only the height is known, or `UNKNOWN_TEXT`.
 
     Both spellings are yt-dlp's own: it reports `width` and `height` for most formats and height
     alone for some. Rendering `1080p` for a format that also knows its width would throw away a
     fact the projection carries.
+
+    **It reads the height and nothing else, and dropping the audio-only case was the correction**
+    (`T107-R1`). This used to render *audio only* whenever `FormatInfo.is_audio_only` was true —
+    but that property is `video_codec is None and audio_codec is not None`, and
+    `_as_optional_codec` maps both *missing* and yt-dlp's explicit `'none'` to `None`. So a format
+    whose video codec is merely **unknown** was reported as having no video at all. `yt-dlp -F`
+    prints `unknown` for exactly those, and the recorded-capture comparison caught the divergence.
+
+    Saying *audio only* needs the projection to keep yt-dlp's `'none'` apart from a missing key,
+    which is a widening this task did not need. Until then the table declines to assert what it
+    does not know.
     """
-    if entry.is_audio_only:
-        return AUDIO_ONLY_TEXT
     if entry.height is None:
         return UNKNOWN_TEXT
     if entry.width is None:
@@ -128,13 +145,21 @@ def describe_bitrate(kbps: float | None) -> str:
 
 
 def describe_size(entry: FormatInfo) -> str:
-    """The size as the rest of the window renders one (`format_bytes`), or `UNKNOWN_TEXT`.
+    """`44.8 MB`, or `~44.8 MB` for an estimate, or `UNKNOWN_TEXT` (`T107-R7`).
 
-    Deliberately the same function the job detail uses. Two independently written byte formatters
-    drift, and a user reading a size in the table and the same size on a row should not have to
-    notice which is which — `format_eta`'s reasoning, one field over.
+    Deliberately the same `format_bytes` the job detail uses. Two independently written byte
+    formatters drift, and a user reading a size in the table and the same size on a row should not
+    have to notice which is which — `format_eta`'s reasoning, one field over.
+
+    **The tilde is the whole point of the column being named "filesize or estimate".** yt-dlp
+    supplies `filesize` or `filesize_approx` depending on the extractor, and rendering both the
+    same way showed a guess as a measurement. Sorting is unaffected: it is on bytes, and an
+    estimate is as sortable as an exact size.
     """
-    return format_bytes(entry.filesize)
+    rendered = format_bytes(entry.filesize)
+    if entry.filesize_is_estimate and rendered != UNKNOWN_TEXT:
+        return f"{ESTIMATE_PREFIX}{rendered}"
+    return rendered
 
 
 def describe_codec(codec: str | None) -> str:
@@ -152,11 +177,24 @@ class FormatTableModel(QAbstractTableModel):
     def __init__(self, formats: Sequence[FormatInfo] = (), parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._formats: tuple[FormatInfo, ...] = tuple(formats)
+        #: The active sort, so a reset can reapply it (`T107-R4`). `None` until something sorts.
+        self._sorted_by: tuple[int, Qt.SortOrder] | None = None
 
     def set_formats(self, formats: Sequence[FormatInfo]) -> None:
-        """Replace the whole table. A probe answers once; there is no incremental update."""
+        """Replace the whole table, **keeping the active sort** (`T107-R4`).
+
+        A probe answers once, so this is a reset rather than an incremental update. What it must
+        not do is install input order underneath a sort indicator that still points at a column:
+        the reviewer populated a table after construction and got rows `[720, 1080]` beneath a
+        *descending resolution* indicator. That is precisely the defect this module's own docstring
+        warns about one paragraph over — an indicator that moves while the rows do not — recreated
+        by the setter.
+        """
         self.beginResetModel()
         self._formats = tuple(formats)
+        if self._sorted_by is not None:
+            column, order = self._sorted_by
+            self._formats = self._ordered(self._formats, column, order)
         self.endResetModel()
 
     def formats(self) -> tuple[FormatInfo, ...]:
@@ -283,14 +321,38 @@ class FormatTableModel(QAbstractTableModel):
         if not 0 <= column < COLUMN_COUNT:
             return
         self.layoutAboutToBeChanged.emit()
-        self._formats = tuple(
+        # **Persistent indexes are remapped, which is what keeps a selection on its own row**
+        # (`T107-R4`). Qt tracks a current row by index, so a sort that only replaces the tuple
+        # leaves the *row number* selected and silently changes which format that is — the
+        # reviewer selected `b`, sorted, and `current_format()` answered `a`. Anything holding a
+        # `QPersistentModelIndex` — the view's current index among them — follows its row here.
+        old_indexes = self.persistentIndexList()
+        before = list(self._formats)
+        self._formats = self._ordered(self._formats, column, order)
+        self._sorted_by = (column, order)
+        moved = {id(entry): row for row, entry in enumerate(self._formats)}
+        self.changePersistentIndexList(
+            old_indexes,
+            [
+                self.index(moved[id(before[index.row()])], index.column())
+                if 0 <= index.row() < len(before)
+                else QModelIndex()
+                for index in old_indexes
+            ],
+        )
+        self.layoutChanged.emit()
+
+    def _ordered(
+        self, formats: tuple[FormatInfo, ...], column: int, order: Qt.SortOrder
+    ) -> tuple[FormatInfo, ...]:
+        """`formats` in `column` order. One implementation, so `sort` and a reset cannot differ."""
+        return tuple(
             sorted(
-                self._formats,
+                formats,
                 key=lambda entry: self._sort_value(entry, column),
                 reverse=order is Qt.SortOrder.DescendingOrder,
             )
         )
-        self.layoutChanged.emit()
 
 
 class FormatTable(QWidget):
@@ -320,7 +382,32 @@ class FormatTable(QWidget):
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        # **Sample a bounded number of rows when sizing a column** (`T107-R6`).
+        # `ResizeToContents` asks the model for *every* row of *every* column to decide a width:
+        # the repaint gate measured **44,019** model reads to paint fourteen visible rows of a
+        # 200-format table. A playlist entry with dozens of formats is the ordinary case, so this
+        # is a real cost rather than a synthetic one. Qt exposes the bound for exactly this, and
+        # 32 rows is plenty to size a column of format ids and codecs.
+        header.setResizeContentsPrecision(32)
         header.setSortIndicatorShown(True)
+        # **The header takes focus, which is what makes the declared keyboard route exist**
+        # (`T107-R3`, `docs/UX_SPEC.md` §4, `NFR-005`). Qt gives a horizontal header `NoFocus` by
+        # default, so `Tab` from the body returned to the same view and `Space` on a header was a
+        # route described in the spec and reachable only with a pointer. `T-152` is the same
+        # defect one surface over, and its lesson was that a declared route which needs a click
+        # first is not a route.
+        header.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        header.setAccessibleName("Sort formats by column")
+        header.installEventFilter(self)
+        self._header = header
+
+        # **A layout, so the view actually fills the widget** (`T107-R2`). Without one the child
+        # keeps whatever geometry it was constructed with: the reviewer resized the wrapper to
+        # 320x180 and the `QTableView` stayed 256x192, and the wrapper reported a `-1 x -1` size
+        # hint — so any surface embedding this would clip or collapse it.
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._table)
         # **Opens sorted by resolution, best first**, which is the order somebody opening a format
         # table is looking for. `sortByColumn` drives the model's own `sort` — see it for why the
         # model implements one rather than relying on Qt's default, which silently does nothing.
@@ -356,6 +443,52 @@ class FormatTable(QWidget):
         chosen = self.current_format()
         if chosen is not None:
             self.format_chosen.emit(chosen)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """`Space` on the focused header sorts that column, and sorts it the other way next time.
+
+        **The interaction, not the model call** (`T107-R3`). The test this replaces asserted
+        `model.sort()` directly and was named for the key press, so it proved the ordering while
+        bypassing the thing a keyboard user actually does — the shape this project keeps finding
+        and, here, one I wrote.
+
+        An event filter rather than a `QHeaderView` subclass: the header is Qt's own widget and
+        the only behaviour being added is one key, so a subclass would exist to hold a single
+        `keyPressEvent`.
+        """
+        if watched is self._header and event.type() == QEvent.Type.KeyPress:
+            key = cast("QKeyEvent", event)
+            if key.key() in (int(Qt.Key.Key_Space), int(Qt.Key.Key_Return), int(Qt.Key.Key_Enter)):
+                self.sort_by(self._focused_column())
+                return True
+        return super().eventFilter(watched, event)
+
+    def _focused_column(self) -> int:
+        """Which column the header's keyboard focus is on.
+
+        `QHeaderView` has no notion of a *current section* the way a view has a current index, so
+        the sorted column is used as the anchor and the first column before anything is sorted.
+        A caller moving with the arrow keys changes the sort indicator, which is what this reads.
+        """
+        section = self._header.sortIndicatorSection()
+        return section if 0 <= section < COLUMN_COUNT else FORMAT_COLUMN
+
+    def sort_by(self, column: int) -> None:
+        """Sort by `column`, reversing if it is already the sorted one (`docs/UX_SPEC.md` §4).
+
+        The one place the "again reverses" rule lives, so the header click and the key press
+        cannot disagree about it.
+        """
+        if not 0 <= column < COLUMN_COUNT:
+            return
+        current = self._header.sortIndicatorSection()
+        ascending = Qt.SortOrder.AscendingOrder
+        descending = Qt.SortOrder.DescendingOrder
+        if current == column and self._header.sortIndicatorOrder() is ascending:
+            order = descending
+        else:
+            order = ascending
+        self._table.sortByColumn(column, order)
 
     def _select_first_row(self) -> None:
         """Give the table a current row as soon as it has one (`T-152`, `docs/UX_SPEC.md` §4).

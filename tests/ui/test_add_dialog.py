@@ -1982,13 +1982,19 @@ def test_a_choice_made_during_the_debounce_lands_on_the_row_it_was_made_for(
 
     dialog.add_to_queue()
     committed = dialog.queued_job_ids
-    assert len(committed) == 2
+    # **Two rows, more than two jobs, and the difference is the playlist** (`T-137`). C enumerates
+    # into one job per entry, so the count is 1 + however many the fixture holds. It was `== 2`
+    # while the committed capture carried seven *empty* entry objects — the fixture predated the
+    # projection reading them, exactly as it predated `fps` and `tbr` (`T-107`'s re-capture).
+    # Asserted as a shape rather than a number so a re-capture that changes the entry count does
+    # not fail a test about per-row formats.
+    assert len(committed) > 2, f"the playlist did not enumerate: {len(committed)} jobs"
     assert store.jobs[committed[0]].request.media_kind is MediaKind.AUDIO, (
         "B was queued with the format it did not ask for"
     )
-    assert store.jobs[committed[1]].request.media_kind is MediaKind.VIDEO, (
-        "C was queued as audio; the choice made for B landed on the following URL"
-    )
+    assert all(
+        store.jobs[job_id].request.media_kind is MediaKind.VIDEO for job_id in committed[1:]
+    ), "the choice made for B landed on the following URL"
 
 
 def test_the_full_selector_survives_a_scaled_font(

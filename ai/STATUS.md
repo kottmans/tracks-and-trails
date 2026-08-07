@@ -89,6 +89,37 @@ it comes from the probe's own languages and `SUBTITLE_LANGUAGES` is `("all",)` t
 entries lost their "unruled" caveats — leaving those would have been the `T105-R4` defect in the
 other direction.
 
+## 2026-08-07, evening: the review round, and what correcting it found
+
+**`T-176` approved with follow-ups** (`T-186` owns the remaining prose). **`T-181` and `T-107` came
+back Changes requested** — one High and three High plus four blocking Medium — and both are
+corrected and awaiting re-review.
+
+**`T181-R1` is the one to read, because the defect was mine at the level of authority.** `UX-006`
+item 3 requires a stopped queue's rows to read `Held`. I did not build it, and recorded the
+omission in `docs/UX_SPEC.md` §2.1 as an implementer's choice — **using a current-truth paragraph to
+depart from an accepted maintainer decision**, which is `T124-R4`'s rule and the second time this
+project has recorded it. The row reads `Held` now; the reasoning I gave survives where it belongs,
+because the status line and the row answer different questions.
+
+**Correcting `T-107` found four defects the findings did not name**, three of them by doing what the
+criterion asked rather than arguing about it:
+
+- **The `yt-dlp -F` comparison caught two.** An audio item's `height: 0` rendered `0x0` where
+  yt-dlp prints `unknown`; and the table said *audio only* for a format whose video codec was
+  merely **unknown**, because `_as_optional_codec` maps a missing `vcodec` and an explicit `'none'`
+  to the same `None`.
+- **The repaint gate caught one immediately, in its own implementation.** `ResizeToContents` asks
+  the model for every row of every column: **44,019 reads to paint fourteen visible rows**, scaling
+  with the model. Bounded, it is flat at 7,731 from 100 formats to 800.
+- **The re-capture found a third stale fixture nobody had filed.** The playlist's entries were
+  empty objects, predating `T-137` teaching the projection to read them.
+
+**Phase 3's exit criterion 1 is met**, with evidence in
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. The maintainer authorised the network capture
+and re-scoped mounting the table to `T-108`; both are amendments a task cannot make for itself, and
+both are recorded as theirs.
+
 ## 2026-08-07: `T-107` is built, and it owes one exit criterion
 
 **The format table exists** (`REQ-003`, `docs/UX_SPEC.md` §4), awaiting review. `FormatInfo` gained

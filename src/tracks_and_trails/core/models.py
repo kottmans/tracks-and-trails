@@ -302,6 +302,18 @@ class FormatInfo:
     fps: float | None = None
     bitrate_kbps: float | None = None
 
+    #: Whether `filesize` is yt-dlp's estimate rather than a size it was told (`T107-R7`).
+    #:
+    #: **`REQ-003` names the column "filesize/estimate" and the two were indistinguishable.**
+    #: `project_format` accepts `filesize_approx` as a fallback for `filesize`, which is right —
+    #: a user wants a number — but it collapsed the provenance, so an estimate rendered exactly
+    #: like a measured size. The reviewer projected an exact and an approximate 4 MiB entry and
+    #: got equal `FormatInfo`s and the same `4.0 MB` text.
+    #:
+    #: A flag rather than a second size field: there is only ever one number, and two nullable
+    #: size fields would make every reader ask which to prefer.
+    filesize_is_estimate: bool = False
+
     def __post_init__(self) -> None:
         _require_text("FormatInfo", "format_id", self.format_id, "it is how a format is selected")
         _require_text("FormatInfo", "extension", self.extension)
@@ -315,6 +327,11 @@ class FormatInfo:
         # validator is a second thing to keep in step.
         for name in ("fps", "bitrate_kbps"):
             _require_optional_duration("FormatInfo", name, getattr(self, name))
+        _require_flag("FormatInfo", "filesize_is_estimate", self.filesize_is_estimate)
+        if self.filesize_is_estimate and self.filesize is None:
+            # An estimate of nothing is not a state: the flag qualifies a number, and a reader
+            # that trusted it without one would render "~Unknown".
+            raise ValueError("FormatInfo.filesize_is_estimate is set with no filesize to qualify")
 
     @property
     def is_audio_only(self) -> bool:

@@ -255,15 +255,23 @@ def project_format(entry: Mapping[str, Any]) -> FormatInfo:
     something for a progressive format and an audio-only one alike; `vbr` and `abr` stay
     unprojected until something asks for them.
     """
-    filesize = entry.get("filesize")
-    if filesize is None:
-        filesize = entry.get("filesize_approx")
+    exact = _as_optional_int(entry.get("filesize"))
+    size = exact if exact is not None else _as_optional_int(entry.get("filesize_approx"))
     return FormatInfo(
         format_id=str(entry.get("format_id") or ""),
         extension=str(entry.get("ext") or ""),
-        height=_as_optional_int(entry.get("height")),
-        width=_as_optional_int(entry.get("width")),
-        filesize=_as_optional_int(filesize),
+        # **A zero dimension is an absent one** (`T107-R1`). archive.org reports `height: 0` and
+        # `width: 0` for audio items, and `yt-dlp -F` prints `unknown` for exactly those — so
+        # projecting the zero produced a table reading `0x0` where yt-dlp reads `unknown`, which
+        # the recorded-capture comparison caught. `_as_optional_int` keeps `0` because a zero
+        # *count* is meaningful; a zero pixel dimension is not.
+        height=_as_dimension(entry.get("height")),
+        width=_as_dimension(entry.get("width")),
+        filesize=size,
+        # `filesize_approx` is a fallback for the number and **not** for its provenance
+        # (`T107-R7`). `REQ-003` names the column "filesize/estimate"; collapsing the two showed
+        # an estimate as though it had been measured.
+        filesize_is_estimate=size is not None and exact is None,
         video_codec=_as_optional_codec(entry.get("vcodec")),
         audio_codec=_as_optional_codec(entry.get("acodec")),
         note=_as_optional_str(entry.get("format_note")),
@@ -710,6 +718,17 @@ def _as_optional_str(value: object) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _as_dimension(value: object) -> int | None:
+    """A pixel dimension, where **zero means absent** (`T107-R1`).
+
+    Separate from `_as_optional_int` rather than changing it: a zero *count* — bytes, entries,
+    attempts — is a real value that must survive, and a zero *dimension* is yt-dlp saying it does
+    not know. `yt-dlp -F` prints `unknown` for those, and the table has to agree with it.
+    """
+    projected = _as_optional_int(value)
+    return projected or None
 
 
 def _as_optional_codec(value: object) -> str | None:

@@ -109,12 +109,17 @@ needs to be told what to press. The run control's own tooltip carries the same s
 a toolbar button publishes as its accessible description — the checked tick is a visual cue and
 cannot be the only one.
 
-**It is said once, at queue level, and deliberately not on the rows.** `UX-001`'s distinction is
-that the gate is a property of the queue and never of a job; writing it into per-row status text
-would put one queue-level fact in as many places as there are jobs. **So §2 item 7's waiting row
-still does not read *Held*** — it was not built before `T-181` and is not built by it. That clause
-describes a row-level rendering of a queue-level state, and whether it should exist at all is worth
-re-deciding rather than quietly implementing.
+**It is said in two places, and they answer different questions** (corrected 2026-08-07 by
+`T181-R1`). The status line answers *why is nothing happening* for the window; **§2 item 7's
+waiting row reads `Held`** and answers *what is this row waiting for*.
+
+*This paragraph previously recorded that the row was deliberately not built*, on the reasoning that
+a queue-level fact belongs at queue level. **That reasoning was mine and it cannot stand here**:
+`UX-006` item 3 is an accepted maintainer decision requiring the row to read `Held`, and a
+current-truth paragraph in this file cannot amend one — `T124-R4`'s rule, which this project has
+now recorded twice. The row is built, it repaints when the gate changes, and `UX-001`'s
+distinction survives intact: the gate is still a property of the queue, and the row reads it
+rather than storing one.
 
 **`Clear history` left the toolbar with the list it emptied** (2026-08-06), and nothing replaced it:
 `REQ-020` was withdrawn the same day, so there is nothing anywhere to clear. `Clear finished` stays

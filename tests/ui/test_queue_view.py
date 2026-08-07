@@ -48,9 +48,11 @@ from tracks_and_trails.downloader.protocol import (
 )
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, describe_bar
 from tracks_and_trails.ui.queue_view import (
+    CHIP_TEXT,
     COLUMN_HEADERS,
     EMPTY_TEXT,
     ETA_COLUMN,
+    HELD_TEXT,
     INDETERMINATE_TEXT,
     JOB_COLUMN,
     PROGRESS_COLUMN,
@@ -203,10 +205,17 @@ def queue() -> FakeQueue:
 def managers(queue: FakeQueue, qapp: QApplication) -> Iterator[Callable[..., DownloadManager]]:
     built: list[DownloadManager] = []
 
-    def build(**overrides: Any) -> DownloadManager:
+    def build(*, running: bool = True, **overrides: Any) -> DownloadManager:
+        """A manager, started by default — the opposite of the product's default (`UX-006`).
+
+        The tests in this file are about rows and repaints, not about the gate, so the harness
+        presses Start for them. `running=False` gets the shipped construction state, which is what
+        the `Held` cases need (`T181-R1`).
+        """
         manager = DownloadManager(queue, **overrides)
-        manager.start_queue()
         built.append(manager)
+        if running:
+            manager.start_queue()
         return manager
 
     yield build
@@ -296,6 +305,79 @@ def test_three_concurrent_downloads_show_independent_progress(
     assert len(set(sizes.values())) == 3, (
         f"the three rows report the same size, so they are not independent: {sizes}"
     )
+
+
+# --- T181-R1: a waiting row says what it is waiting for (`UX-006` item 3) --------------------
+
+
+def test_a_waiting_row_reads_held_while_the_queue_is_stopped(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`UX-006` item 3: adding to a stopped queue enqueues durably **and the row reads Held**.
+
+    `T-181` shipped without this and recorded the omission in `docs/UX_SPEC.md` §2.1 as an
+    implementer's choice; `T181-R1` is the finding that a spec paragraph cannot amend an accepted
+    maintainer decision. The queue-level status line stays — it answers *why is nothing happening*
+    for the window — and this answers *what is this row waiting for* on the row.
+    """
+    queue.add(make_job("job-1", tmp_path, queue_position=0))
+    queue.add(make_job("job-2", tmp_path, queue_position=1, status=JobStatus.READY))
+    manager = managers(running=False)
+    view = views(jobs=queue, manager=manager)
+
+    chips = [view.model.data(view.model.index(row, 0), STATE_CHIP_ROLE) for row in range(2)]
+    assert chips == [HELD_TEXT, HELD_TEXT], chips
+
+
+def test_starting_the_queue_stops_the_rows_saying_held(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """The transition, not only the resting state (`T181-R1`).
+
+    Without a repaint on the gate's signal the chips keep whatever they last said, so pressing
+    Start leaves a screen of `Held` rows above jobs that are running — worse than never having
+    said Held at all.
+    """
+    queue.add(make_job("job-1", tmp_path, queue_position=0))
+    manager = managers(running=False)
+    view = views(jobs=queue, manager=manager)
+    index = view.model.index(0, 0)
+    assert view.model.data(index, STATE_CHIP_ROLE) == HELD_TEXT
+
+    manager.start_queue()
+    qapp.processEvents()
+    assert view.model.data(index, STATE_CHIP_ROLE) == CHIP_TEXT[JobStatus.QUEUED], (
+        "a running queue still shows Held; the gate signal is not repainting the chips"
+    )
+
+    manager.stop_queue()
+    qapp.processEvents()
+    assert view.model.data(index, STATE_CHIP_ROLE) == HELD_TEXT, "stopping did not restore Held"
+
+
+def test_a_running_row_never_reads_held(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`UX-001`: stopping drains, so a live download keeps running and keeps saying so.
+
+    Held is what a row *waiting for the gate* reads; a row already past it is not waiting.
+    """
+    queue.add(make_job("job-1", tmp_path, queue_position=0, status=JobStatus.RUNNING))
+    manager = managers(running=False)
+    view = views(jobs=queue, manager=manager)
+
+    chip = view.model.data(view.model.index(0, 0), STATE_CHIP_ROLE)
+    assert chip != HELD_TEXT, chip
 
 
 def test_each_row_reports_its_own_job_while_all_three_are_running(

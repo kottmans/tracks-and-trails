@@ -464,10 +464,17 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     assert connection_count(manager, "progress") == 1, (
         "the queue model should be the only progress listener"
     )
-    for name in ("queue_running", "job_removed", "queue_reordered"):
+    for name in ("job_removed", "queue_reordered"):
         assert connection_count(manager, name) == 1, (
             f"{name} should have exactly the queue UI listener that reflects the durable change"
         )
+    # **Two, and both are named** (`T181-R1`). The run control follows the gate so the toolbar
+    # cannot disagree with the queue, and the queue model follows it so a waiting row can read
+    # `Held` — two consumers of one fact, answering different questions. A third would mean
+    # something else had started deciding what the gate means.
+    assert connection_count(manager, "queue_running") == 2, (
+        "queue_running should have the run control and the queue model, and nothing else"
+    )
     # **One, and it is named.** The queue model rebuilds its rows. This was **two** until `T-170`:
     # the History view re-read as well, because clear-finished was the moment history stopped
     # agreeing with the queue and became the only record of what had been downloaded. That view was

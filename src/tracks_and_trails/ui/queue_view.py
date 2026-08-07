@@ -150,6 +150,24 @@ COLUMN_HEADERS: Final = ("Job", "Status", "Progress", "Size", "Speed", "ETA")
 #:
 #: `RUNNING` is absent on purpose — a running row's chip is its percentage, and `_chip` falls back
 #: to `STATUS_TEXT` for the case where a running job has no honest fraction yet.
+#: What a waiting row's chip reads while the queue is stopped (`UX-006` item 3, `T181-R1`).
+#:
+#: **`UX-005` already had the word**, which is why the decision chose it: a queue-level gate that
+#: renamed the per-row state would be inventing a second vocabulary for one fact.
+#:
+#: *Not built by `T-181`'s first submission.* The implementer reasoned that a queue-level fact
+#: belongs at queue level and recorded the omission in `docs/UX_SPEC.md` §2.1 — but `UX-006` is an
+#: accepted maintainer decision and a spec paragraph cannot amend one (`T124-R4`'s rule, `T181-R1`
+#: the finding). The status-bar statement stays; it answers *why nothing is happening* for the
+#: window, and this answers *what is this row waiting for* on the row.
+HELD_TEXT: Final = "Held"
+
+#: The statuses a stopped queue is holding rather than running.
+#:
+#: `READY` is here as well as `QUEUED`: a probed job whose download has not started is waiting on
+#: exactly the same gate, and `ARC-004` makes `READY` the status a download begins from.
+HELD_STATUSES: Final[frozenset[JobStatus]] = frozenset({JobStatus.QUEUED, JobStatus.READY})
+
 CHIP_TEXT: Final[dict[JobStatus, str]] = {
     JobStatus.QUEUED: "Queued",
     JobStatus.PROBING: "Probing",
@@ -416,6 +434,10 @@ class QueueModel(QAbstractTableModel):
         self._manager.job_removed.connect(self._on_set_changed)
         self._manager.queue_reordered.connect(self._on_set_changed)
         self._manager.queue_cleared.connect(self._on_set_changed)
+        # **Starting or stopping the queue changes what every waiting row reads** (`T181-R1`).
+        # Without this the chips keep whatever they said when they were last painted, so pressing
+        # Start leaves a screen of `Held` rows above jobs that are running.
+        self._manager.queue_running.connect(self._on_gate_changed)
         self.refresh()
 
     # --- the promises tests read -----------------------------------------------------------
@@ -795,6 +817,11 @@ class QueueModel(QAbstractTableModel):
             fraction = self._fraction(row)
             if fraction is not None:
                 return f"{round(fraction * 100)}%"
+        if not self._manager.is_running and row.job.status in HELD_STATUSES:
+            # **A waiting row says what it is waiting for** (`UX-006` item 3, `T181-R1`). Read from
+            # the manager rather than stored, so there is one answer to "is the queue running" and
+            # the row cannot disagree with the toolbar about it.
+            return HELD_TEXT
         return CHIP_TEXT.get(row.job.status, STATUS_TEXT[row.job.status])
 
     def _fraction(self, row: _Row) -> float | None:
@@ -1127,6 +1154,18 @@ class QueueModel(QAbstractTableModel):
         if row.job.status is JobStatus.QUEUED:
             row.retire_live_state()
         self._emit_row_changed(index)
+
+    def _on_gate_changed(self, _running: bool) -> None:
+        """Repaint the chips when the queue starts or stops (`T181-R1`).
+
+        A data change rather than a reset: the rows are the same rows, and a reset would discard
+        an open format editor for a fact that is not about any row (`T118-R14`'s lesson).
+        """
+        if not self.rowCount():
+            return
+        top = self.index(0, 0)
+        bottom = self.index(self.rowCount() - 1, self.columnCount() - 1)
+        self.dataChanged.emit(top, bottom, [STATE_CHIP_ROLE, int(Qt.ItemDataRole.DisplayRole)])
 
     def _on_set_changed(self, *_: object) -> None:
         """A job left the queue, or the order changed. Rebuild from what is stored.

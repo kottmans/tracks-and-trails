@@ -79,6 +79,296 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
+### T-107 — The format table: every stream a probe found
+
+**Status:** **In Review — three High and four blocking Medium findings corrected 2026-08-07,
+awaiting re-review.** *Was blocked on Phase 2's exit and on `T-105`'s `docs/UX_SPEC.md`; both
+cleared, and `UX-007` ruled its surface.*
+
+**Two maintainer amendments were taken during the correction** (2026-08-07), both recorded here
+because a task cannot make either for itself:
+
+1. **The `yt-dlp -F` comparison was run** rather than deferred — the maintainer authorised the
+   network capture `T107-R1` required. Phase 3's **exit criterion 1 is now met**, with evidence.
+2. **Mounting the table is re-scoped to `T-108`** (`T107-R2`'s stated alternative). This task owns
+   the widget, its model, sorting, the keyboard and the layout contract; `T-108` mounts it in the
+   expanded staging row when it builds selection, because the staging list has no expansion
+   mechanism today and building one lands on exactly the surface `T-108` will edit.
+**Owner:** Implementer
+**Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
+**Phase:** Phase 3
+**Depends on:** `T-105` (the UX spec), Phase 2 exit
+**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **ruled 2026-08-07 by
+`UX-007`** — the table opens as the **staging row, expanded**, not a modal (`P-1`, ruled against the
+spec's own proposal), and `P-14`'s three refusals stand), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
+`downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
+**Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
+`ui/`
+**Risk:** Medium — the projection is where `NFR-008`'s churn lands
+
+#### Scope
+
+`REQ-003`: format ID, extension, resolution, fps, codecs, bitrate, filesize or estimate, notes, in
+a **sortable** table. `ARCHITECTURE.md` already names `FormatInfo` as a *projection of yt-dlp's
+`info_dict`, declared fields only* — this is where that stops being a plan.
+
+**The projection is the whole risk.** `NFR-008` isolates yt-dlp churn behind the adapter, and a
+table that reads raw `info_dict` keys in the widget puts churn straight into `ui/`. `T-018`'s
+recorded fixtures are what make the mapping assertable without a network.
+
+**Sorting is over the projection, not the display strings.** "1080p" sorts after "720p" and
+"144p"; "~12.4 MB" is an estimate and must sort as a number. A table that sorts its own text is the
+class of defect `T-075` was.
+
+#### Acceptance criteria
+
+- Every column `REQ-003` names is present, populated from a recorded fixture, and asserted by value
+- **The table matches `yt-dlp -F` for a fixture set** — Phase 3's own exit criterion, so this owns
+  proving it rather than assuming it
+- Sorting is numeric where the value is numeric, asserted with a set that text-sorts differently
+- A format missing a field renders a stated placeholder rather than an empty cell or `None`
+- Repaint cost is bounded with a realistic format count (a large playlist entry has dozens)
+- Keyboard reachable and screen-reader labelled per `NFR-005`, per widget state (`T-060`'s rule)
+- `ui/` reads no raw `info_dict` key — asserted statically, as `T-097` does for settings
+
+#### Out of scope
+
+- Selecting from the table (`T-108`), which is `REQ-008`
+- Playlists (`T-110`)
+
+#### What was built, 2026-08-07
+
+**`core/models.py`** — `FormatInfo` gains `fps` and `bitrate_kbps`. `REQ-003` had named both since
+it was written and **neither had anywhere to live**, so the table that requirement asks for could
+not have been populated from a declared field. Both are `float | None`: yt-dlp reports them
+fractionally, and rounding in the projection puts the rounding where nothing can undo it.
+**No migration** — `FormatInfo` is imported only by `models.py` and the adapter, and nothing
+persists it. That was the risk flagged before starting and it is clear.
+
+**`downloader/ytdlp_adapter.py`** — `project_format` maps `fps` and `tbr`. `tbr` is the *total*
+rate, which is the one that means something for a progressive format and an audio-only one alike;
+`vbr`/`abr` stay unprojected.
+
+**`ui/format_table.py`** — `FormatTableModel` and `FormatTable`. Sorting is implemented **on the
+model**, because `QTableView.setSortingEnabled(True)` calls `model.sort()` and
+`QAbstractItemModel`'s default does nothing: a table that merely enables sorting moves its
+indicator and leaves the rows alone, which is worse than no sorting because it looks like it
+worked. Sort keys are always a `(number, text)` pair so the comparison is total — format ids are
+`137` *and* `hls-480` in one column, and a key that returned an `int` for one row and a `str` for
+another raises `TypeError` the moment `sorted` compares them.
+
+**The static boundary check is narrower than it first was, and the narrowing is the point.** Its
+first version scanned for every key `capture.py` consumes and failed on `main_window.py` reading
+`width`/`height` — **window geometry**, not an info dict. A gate that blocks correct code gets
+deleted, so it now names only keys that are unambiguously yt-dlp's (`vcodec`, `tbr`, `format_id`,
+`has_drm`, …) and says why `width`, `height`, `ext` and `filesize` are excluded.
+
+#### Correction — seven findings, 2026-08-07
+
+**`T107-R1` — the comparison was run, and it found two defects.** Both recorded fixtures were
+re-captured, `yt-dlp -F` was run against the same URLs, and the comparison is in
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md` and asserted by
+`test_the_table_matches_what_yt_dlp_f_reports`. What it caught:
+
+- **`0x0` where yt-dlp says `unknown`.** archive.org reports `height: 0` for an audio item, and
+  `_as_optional_int` keeps `0` — correctly, for a *count*. `_as_dimension` now projects a zero
+  dimension as absent.
+- **"audio only" asserted from a *missing* codec.** `is_audio_only` is `video_codec is None and
+  audio_codec is not None`, and `_as_optional_codec` maps both a missing `vcodec` and yt-dlp's
+  explicit `'none'` to `None` — so a format whose video codec was merely unknown was reported as
+  having no video. The column reads the height now and declines to assert what it cannot know.
+  Saying *audio only* honestly needs the projection to keep `'none'` apart from absent, which is a
+  widening this task did not need.
+
+**Three columns still render the placeholder from the recorded sources, and that *is* the match:**
+archive.org reports no fps, bitrate or video codec, and neither does `yt-dlp -F`. The audio fixture
+does report `acodec`, so one codec column is now populated **by value from a recorded capture**.
+
+**`T107-R2` — the layout defect, fixed; the mounting, re-scoped.** The wrapper had no layout, so the
+`QTableView` kept its construction geometry and the widget reported a `-1 x -1` size hint. A
+`QVBoxLayout` and a shown-widget regression now hold it.
+
+**`T107-R3` — the keyboard route exists.** The header had Qt's default `NoFocus`, so the route
+`docs/UX_SPEC.md` §4 declares was reachable only with a pointer. `StrongFocus` plus an event filter
+implements *Space sorts, again reverses*, and the test **posts a real `QKeyEvent`**. The test it
+replaces called `model.sort()` while being named for the key press — proving the ordering and
+bypassing the interaction, which is the defect class this project keeps finding and one I wrote.
+
+**`T107-R4` — sorting keeps its own invariants.** `sort()` now remaps persistent indexes, so a
+selection follows its format instead of its row number; `set_formats()` reapplies the active sort,
+so the indicator and the rows cannot disagree. This module's own docstring called that disagreement
+worse than no sorting, and the setter recreated it.
+
+**`T107-R5` — the gate gates.** The exclusion of `width`/`height`/`ext`/`filesize` is now **per
+module** rather than global, with `main_window.py`'s window-geometry use named and reasoned. The
+exact mutant the reviewer smuggled through — `{"width": 1920}["width"]` in `format_table.py` — now
+fails the test.
+
+**`T107-R6` — the repaint gate, and it caught a real defect immediately.** `ResizeToContents` asks
+the model for every row of every column to size a width: **44,019 model reads to paint fourteen
+visible rows** of a 200-format table, scaling with the model — 22,419 at 100 formats, 173,619 at
+800. `setResizeContentsPrecision(32)` bounds it, and the cost is **flat at 7,731 from 100 to 800**.
+The gate asserts the *scaling* rather than an absolute count, because that is the claim and it
+survives a different font.
+
+**`T107-R7` — an estimate no longer reads as a measurement.** `FormatInfo.filesize_is_estimate`
+carries the provenance `project_format` was collapsing, and the column renders `~44.8 MB`. Sorting
+is untouched: bytes either way.
+
+#### What this found, and what it owes
+
+**The fixture gate worked exactly as designed and is worth recording.**
+`test_the_allowlist_matches_what_the_adapter_actually_reads` walks the adapter's AST and failed the
+moment `project_format` read two new keys — *"the adapter reads `['fps', 'tbr']` off a format"* —
+before any test of the new columns existed. That is the failure `T-018` and `SEC-002` were built to
+produce, arriving unprompted.
+
+**What it owed was `T-185`, and that was taken inside this correction** on maintainer
+authorisation. The fixtures are re-captured and the comparison is recorded, so **Phase 3's exit
+criterion 1 is met**. `T-185` is closed as done-by-`T-107` rather than left standing.
+
+**The re-capture found a third stale fixture, unprompted.** The playlist capture carried seven
+*empty* entry objects, because it predated `T-137` teaching the projection to read entries — the
+same shape as `fps` and `tbr`. A fresh capture fills them, which made a playlist stage seven jobs
+instead of one and failed an add-dialog test that had encoded the under-reporting as `== 2`. That
+test now asserts the shape rather than the number.
+
+---
+
+### T-181 — The queue is stopped until the user starts it
+
+**Status:** **In Review — `T181-R1` (High) corrected 2026-08-07, awaiting re-review.** Filed
+against `REQ-015` as amended by the maintainer decision `UX-006`, and implemented the same day. The gate is stopped at construction,
+the pair is renamed `start_queue()`/`stop_queue()` with a `queue_running` signal, the toolbar
+control reads *Start queue*/*Stop queue*, and the status bar says which state the queue is in and
+what to press. **Three things the work turned up are in the correction notes at the bottom of this
+entry** — one of them means a criterion cannot be demonstrated the way the entry asked for.
+**Owner:** Implementer
+**Priority:** Medium — nothing is blocked by its absence, and it changes the first thing every user
+does
+**Phase:** Phase 3
+**Depends on:** nothing. The gate it changes has existed since `T-080` and parks correctly since
+`T080-R1`
+**Relevant context:** `UX-006`, `UX-001` (the drain it keeps), `UX-002` (automatic retry, which must
+observe the gate), `docs/UX_SPEC.md` §2 item 7 and §2.1, `REQ-015`, `REQUIREMENTS.md` §11 criterion
+1, `downloader/manager.py` (`_paused`, `pause()`, `resume()`, `_pause_blocks`, `_fill_free_slots`,
+`_start_when_free`), `ui/main_window.py`'s `pauseQueueAction`
+**Affected surfaces:** `downloader/manager.py`, `ui/main_window.py`, `ui/queue_view.py` if the
+stopped state is drawn there, and their tests. **Not `persistence/`** — the gate is not persisted
+and adds no column
+**Risk:** Low mechanically, Medium for legibility. The one way this fails a user is a window that
+looks broken because nothing happens and nothing says why
+
+#### Scope
+
+**Change the default, the vocabulary, and what a launch restores.** The queue gate exists; this
+task closes it at startup, renames it to what it now governs, and makes the stopped state legible.
+
+- The gate is **stopped at launch**, every launch. A restored queue starts nothing.
+- `Start` opens it; the queue then runs what it holds and everything added afterwards. Draining does
+  **not** re-arm it.
+- `Stop` drains, unchanged from `UX-001`: in-flight sessions finish, nothing new starts, no partial
+  file is created, no job enters `PAUSED`.
+- The toolbar's checkable `pauseQueueAction` becomes the run control — one action, two states,
+  reading `Start` and `Stop` (`docs/UX_SPEC.md` §2.1).
+- **Everything that begins work observes the gate**, including automatic retry (`UX-002`) and a
+  user's `Retry`. Probes are exempt, as they already are.
+- The stopped state is stated where the work is, per §2.1's `[D]` clause. **The treatment is this
+  task's to choose**; that there is one is not.
+
+#### Acceptance criteria
+
+- A fresh launch with a non-empty queue starts **no** download — asserted on the pool, not on a
+  screenshot. This is the behaviour change with the widest blast radius and the least visible
+  symptom
+- A URL added to a stopped queue is durably `QUEUED`, its row reads **Held**, and nothing starts
+- `Start` runs the held jobs up to the concurrency limit; a URL added afterwards starts without a
+  second `Start`
+- `Stop` while jobs are running: every in-flight job **completes**, nothing new starts, and **no
+  partial file exists** afterwards — the assertion `T-080` already makes, re-run against the new
+  default
+- A queue that empties while started stays started
+- **Automatic retry parks.** A `NETWORK` failure schedules a retry under `UX-002`, the queue is
+  stopped before the backoff elapses, and the attempt does not run until `Start` — with a test that
+  fails if the gate check is removed from the retry path
+- A stopped queue still **probes**: a paste resolves in the add dialog with the gate closed
+- The run control is keyboard-reachable, announces its current state rather than only its label, and
+  does not convey the state by colour alone (`NFR-005`)
+- `ruff check .`, `ruff format --check .`, both mypy platforms, and the manager, queue-view and
+  main-window tests are clean
+
+#### Out of scope
+
+- **Any per-job start, hold or pause.** `UX-006` §6 keeps the gate queue-level; `P-10` and `T-113`
+  own per-job control and answer it on resume's terms
+- **Persisting the gate.** It is stopped at every launch, so there is nothing to persist. A setting
+  that changes the default is `UX-006`'s rejected alternative and needs a new ruling, not this task
+- `JobStatus.PAUSED`. Still unreachable, still `T-080`'s tombstone, still not resurrected here
+- Reordering, and what `Start` means for order. The queue's existing order decides what runs first
+
+#### What the implementation found, 2026-08-07
+
+**1. The retry criterion cannot be demonstrated the way this entry asked for, and the entry was
+wrong to ask.** It required "a test that fails if the gate check is removed from the retry path".
+There is no such single check: `_start_when_free` and `start()` both carry the gate, and a retry
+released by either meets the other — `_start_when_free` → `_start_or_report` → `start()` on the way
+down, and a parked start meets `_fill_free_slots` on the tick. **All three mutants were run.**
+Removing `_gate_blocks` from `_start_when_free`: five gate tests still pass. Removing `start()`'s
+guard: the construction-time test fails, the retry test does not. Removing **both**: the retry test
+fails, which is the evidence. Neither guard is individually load-bearing; both are needed to change
+behaviour, and a future simplification that deletes one will find the suite green. The test's
+docstring says so, because the first version of it claimed the single-point mutation worked and the
+measurement disproved it.
+
+**2. `active_job_ids()` cannot express "nothing started", and the first draft of two tests used
+it.** It counts *waiting* jobs as active on purpose (`T078-R1`) — they are accepted work — so a
+correctly parked job makes it non-empty. Both tests were rewritten onto `_sessions` and the durable
+status. This is worth keeping because the method's name reads like the opposite of what it means
+for exactly this question.
+
+**3. A retried *probe* is exempt from the gate, and that is correct.** A `QUEUED` job's session is a
+probe (`ARC-004`), so its automatic retry is a probe, and probes are never gated. The retry test
+starts from `READY` so the session under test is a download. The first version started from
+`QUEUED`, watched the retry run, and would have reported a correct exemption as a defect.
+
+**Not built: `docs/UX_SPEC.md` §2 item 7's *Held* row.** The stopped state is said once, at queue
+level, in the status bar. Writing it into per-row status text would put a queue-level fact in as
+many places as there are jobs, which is the confusion `UX-001` exists to prevent. It was not built
+before this task either; §2.1 now records the choice and flags the clause as worth re-deciding.
+
+#### Correction — `T181-R1` (High, blocking), 2026-08-07
+
+**The row now reads `Held` while the queue is stopped**, and the omission this entry recorded was
+not mine to make. `UX-006` item 3 requires it; `docs/UX_SPEC.md` §2 item 7 transcribes it; and I
+used a **§2.1 note** — a current-truth paragraph in a lower-authority file — to record a decision
+not to build it. `T124-R4` is the rule I broke, and this project has now recorded it twice.
+
+The reasoning I gave was not worthless and it is kept where it belongs: the status line answers
+*why is nothing happening* for the window, and the row answers *what is this row waiting for*. Both
+exist now. `UX-001`'s distinction survives intact — the gate is still a property of the queue, and
+`QueueModel._chip` **reads** it rather than storing a per-row copy.
+
+- `HELD_TEXT` and `HELD_STATUSES` in `queue_view.py`; `QUEUED` and `READY` both wait on the gate,
+  because `ARC-004` makes `READY` the status a download begins from.
+- `queue_running` is connected to a `_on_gate_changed` that emits `dataChanged` over the visible
+  rows. **A data change, not a reset**: a reset would discard an open format editor for a fact
+  that is not about any row (`T118-R14`).
+- Three tests: the resting state, **the transition both ways**, and that a running row never reads
+  `Held`. The transition is the one that matters — without the signal the chips keep whatever they
+  last said, so pressing Start leaves a screen of `Held` above jobs that are running.
+- `docs/UX_SPEC.md` §2.1 is corrected to agree with `UX-006` rather than to record a departure
+  from it.
+- `test_every_manager_signal_the_ui_needs_has_exactly_one_connection` now expects **two**
+  `queue_running` listeners, named: the run control and the queue model.
+
+**A process failure worth recording.** Reverting the second mutant with `git checkout --
+src/.../manager.py` discarded every uncommitted change in that file — the whole implementation —
+and it had to be reapplied from the session's own record. The safe form is to invert the exact
+string the mutation introduced, or to mutate a copy; `git checkout` is only safe on a file whose
+work is already committed, which was true of the earlier `T168-R1` mutation and not of this one.
+
+---
+
 *(**Nothing awaits a verdict as of 2026-08-07.** The section is empty because the three tasks that
 were in it were all decided that day, not because nobody has looked — and the line below is the
 standing reminder that this sentence is the one in this file most likely to go stale. Read the
@@ -1303,6 +1593,13 @@ thing
 
 #### Scope
 
+**This task also mounts the table** (maintainer amendment, 2026-08-07, from `T107-R2`). `T-107`
+built the widget — model, sorting, keyboard, layout contract — and does **not** place it. `UX-007`
+ruled `P-1`: it opens as the **staging row, expanded**, from the format control's *Choose specific
+formats…* entry, the same mechanism `P-19` gives the playlist picker. The staging list has no
+expansion mechanism today, so building one is part of this task rather than a correction to the
+last one — it lands on exactly the surface selection is added to.
+
 `REQ-008`: select specific format IDs from `T-107`'s table, **including a separate video and audio
 stream to be merged**. The selector this produces is `bestvideo[...]+bestaudio[...]`-shaped, so it
 flows through the existing `custom_preset` path rather than a new one.
@@ -1332,6 +1629,9 @@ not.)*
 
 #### Acceptance criteria
 
+- **The table is reachable from the product**: the format control offers *Choose specific
+  formats…*, the staging row expands to show `T-107`'s widget, and the widget fills the space it
+  is given (asserted on a shown row, which is how `T107-R2`'s layout defect escaped)
 - A video-only and an audio-only selection produce one merged file, on **both** platforms
 - **With ffmpeg absent, an explicitly chosen video + audio pair is refused before the download
   starts**, naming ffmpeg — not at merge time, which `REQ-024` is explicit about
@@ -1760,65 +2060,49 @@ must not be treated as the same option.
 
 ---
 
-### T-185 — Re-capture the fixtures so the format columns rest on a real report
+### T-186 — Finish the withdrawn-History prose sweep
 
-**Status:** Proposed — **filed 2026-08-07 by `T-107`, which found the gap and could not close it.**
+**Status:** Proposed — **filed from non-blocking `T176-R1`, 2026-08-07.** `T-176` corrected a
+useful first set, but the semantic sweep still leaves live comments, docstrings and assertion
+messages claiming that a History surface or private completion ledger exists.
 **Owner:** Implementer
-**Priority:** **High for Phase 3's exit, low for anything running today.** No user-visible behaviour
-depends on it; one exit criterion does
-**Phase:** Phase 3
-**Depends on:** nothing. It needs the network and a deliberate act, not another task
-**Relevant context:** `SEC-002` (a fixture commits only the fields the projection reads),
-`tests/fixtures/capture.py` (run by hand, never by a test), `T-018`, `ai/TESTING.md` §5,
-`tests/fixtures/infodicts/derived_format_columns.json` (the stand-in this replaces the need for)
-**Affected surfaces:** `tests/fixtures/infodicts/*.json`, and `tests/ui/test_format_table.py` where
-it names the derived fixture. **No `src/`**
-**Risk:** Low to run, Medium to get wrong: a fixture is a **contract**, and a careless re-capture
-that widens what is committed is how data reaches the repository permanently (`REQ-026`, `NFR-007`)
-
-#### What is wrong
-
-`REQ-003` names fps, codecs and bitrate as columns. The recorded captures carry none of them,
-because `SEC-002` commits only the fields the projection reads and the projection did not read them
-until `T-107`. `T-107` therefore evidences four of its nine columns against
-`derived_format_columns.json` — **synthetic values in a real shape**.
-
-**A derived fixture cannot answer the question Phase 3's exit criterion 1 asks.** *"The format table
-matches `yt-dlp -F` output for a fixture set"* is a claim about agreeing with what yt-dlp actually
-reports; a fixture this project wrote agrees with itself. The criterion is **not met** and `T-107`
-does not claim it.
+**Priority:** Low — runtime behavior is correct; the remaining defect is the contract taught to
+the next maintainer
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T170-R4`, `T175-R1`, `T176-R1`, `T-176`, withdrawn `REQ-020`, migration
+`0009`
+**Affected surfaces:** comments, docstrings, test headings and assertion messages under `src/` and
+`tests/`. **No production logic, historical migration, frozen fixture or historical record**
+**Risk:** Low — the sweep must distinguish a false present-tense contract from accurate history
 
 #### Scope
 
-Re-run `python -m tests.fixtures.capture <name>` for the recorded info-dict fixtures, with the
-allowlist now carrying `fps` and `tbr` (`T-107` updated `CONSUMED_FORMAT` and
-`ALLOWED_FORMAT_KEYS`), so the committed captures carry what the projection reads.
+Finish the semantic audit `T-176` began. Representative survivors include
+`downloader/manager.py` saying clearing leaves History untouched and removal leaves a History
+record, `ui/main_window.py` saying `REQ-020` is still a private ledger and that both tabs draw the
+same rows, and `tests/unit/test_presets.py` saying `FormatChoice` still narrows data for History.
 
-**Then compare the table against `yt-dlp -F` for those URLs** and record the comparison as the
-criterion's evidence — that is the part that makes this an exit-criterion task rather than a
-fixture refresh.
+Preserve historical rationale when it still explains a live invariant, but put it in the past or
+inside an explicit supersession note. A current contract must describe the Queue-only product that
+exists after `T-175` and migration `0009`.
 
 #### Acceptance criteria
 
-- Each recorded fixture is re-captured with its metadata regenerated: yt-dlp version, date, options
-- The committed files carry `fps`, `tbr`, `vcodec` and `acodec` **where the source reports them**,
-  and carry nothing else new — `tests/unit/test_fixtures.py`'s scanners stay clean
-- `tests/ui/test_format_table.py`'s recorded-fixture test asserts the four columns **by value**,
-  and its docstring stops saying they rest on a derived fixture
-- **The `yt-dlp -F` comparison is recorded** in `ai/evidence/`, naming the yt-dlp version and the
-  URLs, so Phase 3's exit criterion 1 has evidence rather than an assertion
-- A source that genuinely reports no fps for a format keeps the placeholder, and the test says so:
-  the criterion is that the table matches the report, not that every cell is full
-- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture and format-table
-  tests are clean
+- No current-tense comment, docstring, test heading or assertion message under `src/` or `tests/`
+  says a History view, completion record or private ledger still exists
+- Historical rationale remains truthful and explicitly historical; migrations, frozen fixtures,
+  `ai/DECISIONS.md`, `ai/REVIEWS.md` and `ai/archive/` are byte-identical
+- The sweep is semantic rather than a blind word replacement; unrelated sequence history and
+  accurate descriptions of removed behavior remain
+- Production behavior is unchanged; `ruff check .`, `ruff format --check .`, bare `mypy`,
+  `mypy --platform win32`, task placement and the tests whose prose changes are clean
 
 #### Out of scope
 
-- Changing what the projection reads. `T-107` fixed that; this makes the fixtures catch up
-- New sources. `ai/TESTING.md` §5 chose boring, freely licensed ones deliberately, and a re-capture
-  is not the moment to reopen that
-- `derived_format_columns.json`. It keeps earning its place: `formats[4]` carries no fps, bitrate or
-  size at all, which is the placeholder path, and no recorded source is guaranteed to have one
+- Reintroducing a History surface, completion record or Settings clearing route
+- Renaming identifiers solely because their historical rationale mentions History
+- Rewriting historical records, migrations or frozen evidence
 
 ---
 
@@ -2452,96 +2736,73 @@ Assert, on `windows-latest`:
 
 ## Complete
 
-### T-107 — The format table: every stream a probe found
+### T-185 — Re-capture the fixtures so the format columns rest on a real report
 
-**Status:** **Complete — 2026-08-07, awaiting review.** *Was blocked on Phase 2's exit and on
-`T-105`'s `docs/UX_SPEC.md`; both cleared, and `UX-007` ruled its surface on 2026-08-07.*
+**Status:** **Complete — done inside `T-107`'s correction, 2026-08-07.** Filed the same day by
+`T-107`, which found the gap and could not close it without the maintainer authorising a network
+capture. That authorisation was given during the `T107-R1` correction, so the work happened there
+rather than here: both recorded fixtures are re-captured, the `yt-dlp -F` comparison is in
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`, and **Phase 3's exit criterion 1 is met**.
 
-**One acceptance criterion is deliberately not claimed met, and it is Phase 3's exit criterion 1.**
-The recorded captures carry no `fps`, `tbr`, `vcodec` or `acodec` — `SEC-002` commits only the
-fields the projection reads, and the projection did not read them until this task — so four of the
-nine columns are evidenced by a **derived** fixture. A derived fixture cannot show that the table
-matches `yt-dlp -F`; only a re-capture can, and that is **`T-185`**.
+**Kept as an entry rather than deleted** because it is where the reasoning lives for *why* a
+re-capture was a deliberate act with its own task — and because the capture found a third stale
+fixture nobody had filed: the playlist's entries were empty objects predating `T-137`.
 **Owner:** Implementer
-**Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
+**Priority:** **High for Phase 3's exit, low for anything running today.** No user-visible behaviour
+depends on it; one exit criterion does
 **Phase:** Phase 3
-**Depends on:** `T-105` (the UX spec), Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **ruled 2026-08-07 by
-`UX-007`** — the table opens as the **staging row, expanded**, not a modal (`P-1`, ruled against the
-spec's own proposal), and `P-14`'s three refusals stand), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
-`downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
-**Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
-`ui/`
-**Risk:** Medium — the projection is where `NFR-008`'s churn lands
+**Depends on:** nothing. It needs the network and a deliberate act, not another task
+**Relevant context:** `SEC-002` (a fixture commits only the fields the projection reads),
+`tests/fixtures/capture.py` (run by hand, never by a test), `T-018`, `ai/TESTING.md` §5,
+`tests/fixtures/infodicts/derived_format_columns.json` (the stand-in this replaces the need for)
+**Affected surfaces:** `tests/fixtures/infodicts/*.json`, and `tests/ui/test_format_table.py` where
+it names the derived fixture. **No `src/`**
+**Risk:** Low to run, Medium to get wrong: a fixture is a **contract**, and a careless re-capture
+that widens what is committed is how data reaches the repository permanently (`REQ-026`, `NFR-007`)
+
+#### What is wrong
+
+`REQ-003` names fps, codecs and bitrate as columns. The recorded captures carry none of them,
+because `SEC-002` commits only the fields the projection reads and the projection did not read them
+until `T-107`. `T-107` therefore evidences four of its nine columns against
+`derived_format_columns.json` — **synthetic values in a real shape**.
+
+**A derived fixture cannot answer the question Phase 3's exit criterion 1 asks.** *"The format table
+matches `yt-dlp -F` output for a fixture set"* is a claim about agreeing with what yt-dlp actually
+reports; a fixture this project wrote agrees with itself. The criterion is **not met** and `T-107`
+does not claim it.
 
 #### Scope
 
-`REQ-003`: format ID, extension, resolution, fps, codecs, bitrate, filesize or estimate, notes, in
-a **sortable** table. `ARCHITECTURE.md` already names `FormatInfo` as a *projection of yt-dlp's
-`info_dict`, declared fields only* — this is where that stops being a plan.
+Re-run `python -m tests.fixtures.capture <name>` for the recorded info-dict fixtures, with the
+allowlist now carrying `fps` and `tbr` (`T-107` updated `CONSUMED_FORMAT` and
+`ALLOWED_FORMAT_KEYS`), so the committed captures carry what the projection reads.
 
-**The projection is the whole risk.** `NFR-008` isolates yt-dlp churn behind the adapter, and a
-table that reads raw `info_dict` keys in the widget puts churn straight into `ui/`. `T-018`'s
-recorded fixtures are what make the mapping assertable without a network.
-
-**Sorting is over the projection, not the display strings.** "1080p" sorts after "720p" and
-"144p"; "~12.4 MB" is an estimate and must sort as a number. A table that sorts its own text is the
-class of defect `T-075` was.
+**Then compare the table against `yt-dlp -F` for those URLs** and record the comparison as the
+criterion's evidence — that is the part that makes this an exit-criterion task rather than a
+fixture refresh.
 
 #### Acceptance criteria
 
-- Every column `REQ-003` names is present, populated from a recorded fixture, and asserted by value
-- **The table matches `yt-dlp -F` for a fixture set** — Phase 3's own exit criterion, so this owns
-  proving it rather than assuming it
-- Sorting is numeric where the value is numeric, asserted with a set that text-sorts differently
-- A format missing a field renders a stated placeholder rather than an empty cell or `None`
-- Repaint cost is bounded with a realistic format count (a large playlist entry has dozens)
-- Keyboard reachable and screen-reader labelled per `NFR-005`, per widget state (`T-060`'s rule)
-- `ui/` reads no raw `info_dict` key — asserted statically, as `T-097` does for settings
+- Each recorded fixture is re-captured with its metadata regenerated: yt-dlp version, date, options
+- The committed files carry `fps`, `tbr`, `vcodec` and `acodec` **where the source reports them**,
+  and carry nothing else new — `tests/unit/test_fixtures.py`'s scanners stay clean
+- `tests/ui/test_format_table.py`'s recorded-fixture test asserts the four columns **by value**,
+  and its docstring stops saying they rest on a derived fixture
+- **The `yt-dlp -F` comparison is recorded** in `ai/evidence/`, naming the yt-dlp version and the
+  URLs, so Phase 3's exit criterion 1 has evidence rather than an assertion
+- A source that genuinely reports no fps for a format keeps the placeholder, and the test says so:
+  the criterion is that the table matches the report, not that every cell is full
+- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture and format-table
+  tests are clean
 
 #### Out of scope
 
-- Selecting from the table (`T-108`), which is `REQ-008`
-- Playlists (`T-110`)
-
-#### What was built, 2026-08-07
-
-**`core/models.py`** — `FormatInfo` gains `fps` and `bitrate_kbps`. `REQ-003` had named both since
-it was written and **neither had anywhere to live**, so the table that requirement asks for could
-not have been populated from a declared field. Both are `float | None`: yt-dlp reports them
-fractionally, and rounding in the projection puts the rounding where nothing can undo it.
-**No migration** — `FormatInfo` is imported only by `models.py` and the adapter, and nothing
-persists it. That was the risk flagged before starting and it is clear.
-
-**`downloader/ytdlp_adapter.py`** — `project_format` maps `fps` and `tbr`. `tbr` is the *total*
-rate, which is the one that means something for a progressive format and an audio-only one alike;
-`vbr`/`abr` stay unprojected.
-
-**`ui/format_table.py`** — `FormatTableModel` and `FormatTable`. Sorting is implemented **on the
-model**, because `QTableView.setSortingEnabled(True)` calls `model.sort()` and
-`QAbstractItemModel`'s default does nothing: a table that merely enables sorting moves its
-indicator and leaves the rows alone, which is worse than no sorting because it looks like it
-worked. Sort keys are always a `(number, text)` pair so the comparison is total — format ids are
-`137` *and* `hls-480` in one column, and a key that returned an `int` for one row and a `str` for
-another raises `TypeError` the moment `sorted` compares them.
-
-**The static boundary check is narrower than it first was, and the narrowing is the point.** Its
-first version scanned for every key `capture.py` consumes and failed on `main_window.py` reading
-`width`/`height` — **window geometry**, not an info dict. A gate that blocks correct code gets
-deleted, so it now names only keys that are unambiguously yt-dlp's (`vcodec`, `tbr`, `format_id`,
-`has_drm`, …) and says why `width`, `height`, `ext` and `filesize` are excluded.
-
-#### What this found, and what it owes
-
-**The fixture gate worked exactly as designed and is worth recording.**
-`test_the_allowlist_matches_what_the_adapter_actually_reads` walks the adapter's AST and failed the
-moment `project_format` read two new keys — *"the adapter reads `['fps', 'tbr']` off a format"* —
-before any test of the new columns existed. That is the failure `T-018` and `SEC-002` were built to
-produce, arriving unprompted.
-
-**What it owes is `T-185`.** The recorded fixtures must be re-captured so the four columns rest on
-what yt-dlp actually reports rather than on synthetic values. Until then **Phase 3's exit criterion
-1 is not met**, and this entry does not claim it.
+- Changing what the projection reads. `T-107` fixed that; this makes the fixtures catch up
+- New sources. `ai/TESTING.md` §5 chose boring, freely licensed ones deliberately, and a re-capture
+  is not the moment to reopen that
+- `derived_format_columns.json`. It keeps earning its place: `formats[4]` carries no fps, bitrate or
+  size at all, which is the placeholder path, and no recorded source is guaranteed to have one
 
 ---
 
@@ -2675,115 +2936,6 @@ archived tasks and frozen evidence continue to say what was true at their bounda
 - Reintroducing a completion record, History surface or Settings clearing route
 - Renaming live identifiers merely because their historical prose mentions History
 - Rewriting `ai/REVIEWS.md`, `ai/DECISIONS.md`, `ai/archive/`, migrations or frozen fixtures
-
----
-
-### T-181 — The queue is stopped until the user starts it
-
-**Status:** **Complete — 2026-08-07, awaiting review.** Filed against `REQ-015` as amended by the
-maintainer decision `UX-006`, and implemented the same day. The gate is stopped at construction,
-the pair is renamed `start_queue()`/`stop_queue()` with a `queue_running` signal, the toolbar
-control reads *Start queue*/*Stop queue*, and the status bar says which state the queue is in and
-what to press. **Three things the work turned up are in the correction notes at the bottom of this
-entry** — one of them means a criterion cannot be demonstrated the way the entry asked for.
-**Owner:** Implementer
-**Priority:** Medium — nothing is blocked by its absence, and it changes the first thing every user
-does
-**Phase:** Phase 3
-**Depends on:** nothing. The gate it changes has existed since `T-080` and parks correctly since
-`T080-R1`
-**Relevant context:** `UX-006`, `UX-001` (the drain it keeps), `UX-002` (automatic retry, which must
-observe the gate), `docs/UX_SPEC.md` §2 item 7 and §2.1, `REQ-015`, `REQUIREMENTS.md` §11 criterion
-1, `downloader/manager.py` (`_paused`, `pause()`, `resume()`, `_pause_blocks`, `_fill_free_slots`,
-`_start_when_free`), `ui/main_window.py`'s `pauseQueueAction`
-**Affected surfaces:** `downloader/manager.py`, `ui/main_window.py`, `ui/queue_view.py` if the
-stopped state is drawn there, and their tests. **Not `persistence/`** — the gate is not persisted
-and adds no column
-**Risk:** Low mechanically, Medium for legibility. The one way this fails a user is a window that
-looks broken because nothing happens and nothing says why
-
-#### Scope
-
-**Change the default, the vocabulary, and what a launch restores.** The queue gate exists; this
-task closes it at startup, renames it to what it now governs, and makes the stopped state legible.
-
-- The gate is **stopped at launch**, every launch. A restored queue starts nothing.
-- `Start` opens it; the queue then runs what it holds and everything added afterwards. Draining does
-  **not** re-arm it.
-- `Stop` drains, unchanged from `UX-001`: in-flight sessions finish, nothing new starts, no partial
-  file is created, no job enters `PAUSED`.
-- The toolbar's checkable `pauseQueueAction` becomes the run control — one action, two states,
-  reading `Start` and `Stop` (`docs/UX_SPEC.md` §2.1).
-- **Everything that begins work observes the gate**, including automatic retry (`UX-002`) and a
-  user's `Retry`. Probes are exempt, as they already are.
-- The stopped state is stated where the work is, per §2.1's `[D]` clause. **The treatment is this
-  task's to choose**; that there is one is not.
-
-#### Acceptance criteria
-
-- A fresh launch with a non-empty queue starts **no** download — asserted on the pool, not on a
-  screenshot. This is the behaviour change with the widest blast radius and the least visible
-  symptom
-- A URL added to a stopped queue is durably `QUEUED`, its row reads **Held**, and nothing starts
-- `Start` runs the held jobs up to the concurrency limit; a URL added afterwards starts without a
-  second `Start`
-- `Stop` while jobs are running: every in-flight job **completes**, nothing new starts, and **no
-  partial file exists** afterwards — the assertion `T-080` already makes, re-run against the new
-  default
-- A queue that empties while started stays started
-- **Automatic retry parks.** A `NETWORK` failure schedules a retry under `UX-002`, the queue is
-  stopped before the backoff elapses, and the attempt does not run until `Start` — with a test that
-  fails if the gate check is removed from the retry path
-- A stopped queue still **probes**: a paste resolves in the add dialog with the gate closed
-- The run control is keyboard-reachable, announces its current state rather than only its label, and
-  does not convey the state by colour alone (`NFR-005`)
-- `ruff check .`, `ruff format --check .`, both mypy platforms, and the manager, queue-view and
-  main-window tests are clean
-
-#### Out of scope
-
-- **Any per-job start, hold or pause.** `UX-006` §6 keeps the gate queue-level; `P-10` and `T-113`
-  own per-job control and answer it on resume's terms
-- **Persisting the gate.** It is stopped at every launch, so there is nothing to persist. A setting
-  that changes the default is `UX-006`'s rejected alternative and needs a new ruling, not this task
-- `JobStatus.PAUSED`. Still unreachable, still `T-080`'s tombstone, still not resurrected here
-- Reordering, and what `Start` means for order. The queue's existing order decides what runs first
-
-#### What the implementation found, 2026-08-07
-
-**1. The retry criterion cannot be demonstrated the way this entry asked for, and the entry was
-wrong to ask.** It required "a test that fails if the gate check is removed from the retry path".
-There is no such single check: `_start_when_free` and `start()` both carry the gate, and a retry
-released by either meets the other — `_start_when_free` → `_start_or_report` → `start()` on the way
-down, and a parked start meets `_fill_free_slots` on the tick. **All three mutants were run.**
-Removing `_gate_blocks` from `_start_when_free`: five gate tests still pass. Removing `start()`'s
-guard: the construction-time test fails, the retry test does not. Removing **both**: the retry test
-fails, which is the evidence. Neither guard is individually load-bearing; both are needed to change
-behaviour, and a future simplification that deletes one will find the suite green. The test's
-docstring says so, because the first version of it claimed the single-point mutation worked and the
-measurement disproved it.
-
-**2. `active_job_ids()` cannot express "nothing started", and the first draft of two tests used
-it.** It counts *waiting* jobs as active on purpose (`T078-R1`) — they are accepted work — so a
-correctly parked job makes it non-empty. Both tests were rewritten onto `_sessions` and the durable
-status. This is worth keeping because the method's name reads like the opposite of what it means
-for exactly this question.
-
-**3. A retried *probe* is exempt from the gate, and that is correct.** A `QUEUED` job's session is a
-probe (`ARC-004`), so its automatic retry is a probe, and probes are never gated. The retry test
-starts from `READY` so the session under test is a download. The first version started from
-`QUEUED`, watched the retry run, and would have reported a correct exemption as a defect.
-
-**Not built: `docs/UX_SPEC.md` §2 item 7's *Held* row.** The stopped state is said once, at queue
-level, in the status bar. Writing it into per-row status text would put a queue-level fact in as
-many places as there are jobs, which is the confusion `UX-001` exists to prevent. It was not built
-before this task either; §2.1 now records the choice and flags the clause as worth re-deciding.
-
-**A process failure worth recording.** Reverting the second mutant with `git checkout --
-src/.../manager.py` discarded every uncommitted change in that file — the whole implementation —
-and it had to be reapplied from the session's own record. The safe form is to invert the exact
-string the mutation introduced, or to mutate a copy; `git checkout` is only safe on a file whose
-work is already committed, which was true of the earlier `T168-R1` mutation and not of this one.
 
 ---
 

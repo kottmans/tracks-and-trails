@@ -11563,3 +11563,79 @@ This was the additional focused pass explicitly authorized by the maintainer aft
 Medium budget was exhausted. The reviewer appended this approval record only. The roadmap work was
 not reviewed or changed. No source, test, task state, status state, requirement, decision, commit,
 remote ref, migration, user database or CI state was changed.
+
+## 2026-08-07 — T-181 / T-176 / T-107 implementation review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `1e0d0d5`
+**Submitted head:** `dcdb2b5`
+**Implementation boundaries:** `ac9cad3` plus `21a9d8f` (`T-181`); `a5be84f` (`T-176`);
+`dcdb2b5` (`T-107`)
+**Platforms verified:** Linux, Qt offscreen; Windows runtime not independently rerun
+**Verdict:** **T-181 Changes requested; T-176 Approved with follow-ups; T-107 Changes requested.**
+The queue gate and its run control satisfy the start/stop behavior, but the accepted decision's
+Held-row requirement is deliberately omitted. T-176 corrects a useful subset of the withdrawn
+History prose and changes no behavior; remaining Low residue is filed as `T-186`. T-107's
+projection and basic model rendering work, but three High and four blocking Medium findings leave
+the task incomplete: its recorded-fixture criterion is expressly unmet, no product path constructs
+the table, its declared keyboard sorting route does not exist, and four narrower table/gate
+invariants are unproved or false.
+
+The intervening planner commits (`f95357a`, `76fe48d`, `217e028`, `3342404`, `f28a57d`,
+`cb33ec5`, `e4e96f4`, `dd607dc`) record maintainer rulings and roadmap state; they were read only
+where a task linked to the resulting authority and were not reviewed as implementation. `9d330dd`
+is the reviewer's earlier record and `3f320ee` is the already-approved `T168-R1` correction; neither
+is offered or reviewed again here.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction / follow-up | Status |
+|---|---|---:|---|---|---|
+| `T181-R1` | **High** | **Yes** | `UX-006` decision item 3 and T-181's own acceptance criterion require a URL added while stopped to remain durably queued **and have its row read Held**. The implementation intentionally leaves the row on the ordinary `QUEUED` rendering and adds only a queue-level status label; `docs/UX_SPEC.md` §2.1 then records that omission as T-181's choice even though §2 item 7 and the higher-authority accepted decision still require Held. A lower current-truth UX paragraph and an implementer rationale cannot amend an accepted maintainer decision. | Implement the Held rendering for waiting rows while the queue gate is stopped, including transitions when Start/Stop changes the queue state, and add a behavioral row test. Correct §2.1 so it agrees with `UX-006`. If the product instead wants queue-level wording only, the maintainer must explicitly amend `UX-006` and T-181's criterion before approval. | **Open** |
+| `T176-R1` | **Low** | **No** | The semantic prose sweep is incomplete, including sites `T175-R1` directly put in scope. `manager.queue_cleared` still says “History is untouched”; `manager.remove` says T-085 History keeps a completed record; `MainWindow._build_body` says `REQ-020` is now a private ledger; `_row_menu` says both tabs still draw rows; and `tests/unit/test_presets.py` still says values never reach, and are stored by, History. These are present-tense maintenance contracts, not historical explanations. | Complete `T-186`, which owns the remaining semantic sweep and preserves truthful historical rationale. | **Open — owner Implementer, target T-186** |
+| `T107-R1` | **High** | **Yes** | T-107 expressly does not meet two of its own acceptance statements: every named column must be populated from a **recorded** fixture, and the table must match `yt-dlp -F` for a fixture set. Four columns instead use project-authored synthetic values. The disclosure and T-185 follow-up are honest, but a follow-up cannot make a task complete while the task says it owns the Phase 3 exit evidence. | Complete T-185's recorded captures and `yt-dlp -F` comparison inside T-107's correction boundary, or obtain a maintainer scope change that moves those criteria out of T-107 before requesting approval. | **Open** |
+| `T107-R2` | **High** | **Yes** | No product module constructs or imports `FormatTable`; only its own tests do. `REQ-003` says to **show** the table, UX-007 puts it in an expanded staging row, and T-107's Out of scope excludes selection and playlists—not mounting the table. The class is not yet an integration-ready substitute: its `QTableView` child has no layout, the wrapper reports an invalid `-1 x -1` size hint, and resizing the wrapper to 320×180 left the child at 256×192. The user therefore has no table to open, and a future embedding can clip or collapse it. | Wire the table into the ruled expanded staging-row surface without taking T-108's selection semantics, and give the wrapper a layout/size contract with a shown-widget regression. Alternatively, the maintainer must explicitly re-scope product integration to T-108 and amend T-107's scope and acceptance claims; the layout defect still needs correction. | **Open** |
+| `T107-R3` | **High** | **Yes** | The keyboard path required by `NFR-005` and `docs/UX_SPEC.md` §4 is not implemented. The horizontal header has Qt's `NoFocus` policy, Tab from the table body returns focus to the same `QTableView`, and there is no key handling that lets Space focus/toggle a header. The test named for “Space on a header” calls `model.sort()` directly, so it proves model ordering while bypassing the interaction it claims. A keyboard user cannot operate the task's core sortable-table behavior. | Implement and test the actual keyboard route through the shown widget: focus reaches the header, Space sorts the focused column and reverses it, and focus/state are announced. Keep T-108-owned selection semantics separate if needed. Mutation-check the event-to-sort seam rather than calling the model directly. | **Open** |
+| `T107-R4` | **Medium** | **Yes** | Sorting does not preserve the table's own state invariants. Sorting the model after selecting format `b` left the current row number selected but silently changed `current_format()` to `a`, because persistent indexes are not remapped around the layout change. Separately, `set_formats()` installs input order without reapplying the active sort: a descending-resolution indicator remained visible while rows were `[720, 1080]`. The handoff correctly warns that a moving indicator with unchanged rows is worse than no sorting; the setter recreates that defect. | Preserve or deliberately clear/remap the current identity during model sort, and reapply the active sort after reset so the indicator and rows cannot disagree. Add shown-view tests for both a selected row and post-construction population. | **Open** |
+| `T107-R5` | **Medium** | **Yes** | The static NFR-008 test does not gate the acceptance criterion it names. It excludes `width`, `height`, `ext` and `filesize` globally to avoid unrelated UI uses, but those are also four raw yt-dlp format keys the format-table boundary exists to forbid. In an independent temporary tree, adding `{"width": 1920}["width"]` to `ui/format_table.py` left `test_no_ui_module_reads_a_raw_info_dict_key` green. This is the exact “gate that does not gate what it claims” class. | Make the check context- or location-aware: cover the complete consumed format-key set while narrowly allowing established non-info uses, then mutation-check each ambiguous key in a format UI module and at least one legitimate geometry use. | **Open** |
+| `T107-R6` | **Medium** | **Yes** | The required repaint-cost gate is absent. Neither `test_format_table.py` nor another submitted test paints or times a realistic dozens-of-formats table, counts data/paint calls, or supplies any non-vacuous cost bound. The frozen tuple and comments may be efficient, but they are not the acceptance evidence T-107 requires. | Add a deterministic, non-vacuous repaint/call-count or timing gate at a realistic format count, following T-079's linked rules, and demonstrate that an intentionally unbounded implementation fails it. | **Open** |
+| `T107-R7` | **Medium** | **Yes** | The “filesize or estimate” column cannot tell an estimate from an exact size. `project_format` collapses `filesize_approx` into the same `FormatInfo.filesize` field as `filesize`, and `describe_size` renders both identically. Independent projection of exact and approximate 4 MiB entries produced equal `FormatInfo` values and the same `4.0 MB` text, despite the task/UX example using `~12.4 MB` specifically to denote an estimate. Users are shown an estimate as if it were exact. | Preserve exact-versus-estimated provenance in the projection and render estimates distinctly (for example `~4.0 MB`), while keeping numeric sorting on bytes. Add exact, approximate, both-present and missing cases. | **Open** |
+
+### Review judgments
+
+- **T-181's gate behavior is otherwise established.** Construction starts stopped, Start fills
+  the available slots, draining does not re-arm the gate, Stop lets live downloads finish, an
+  automatic download retry parks, and probes remain exempt. The duplicated guards mean no
+  single-point removal changes retry behavior; the disclosed two-point mutation is acceptable
+  evidence for the behavior and is not a separate finding.
+- **T-181's control is legible and correctly wired.** The action and manager agree at startup,
+  toggle Start/Stop through composition, and expose the queue state in words through the action
+  tooltip and permanent status line. The Held miss is a separate per-row decision requirement.
+- **T-176 changes prose only and preserves the useful distinction it set out to preserve.** The
+  seven-file correction accurately puts those sites in the past; the finding is the unfinished
+  sweep, not a behavioral regression. Low consequence makes it a named follow-up rather than a
+  blocker.
+- **T-107's projection core is sound within the submitted data.** `fps` and total bitrate remain
+  fractional, codec absence is projected honestly, every basic column renders a non-empty value,
+  and numeric model sorting works for the tested resolution, size and mixed-ID cases. Those
+  positives do not supply the missing real-capture, product-surface, accessibility or robustness
+  evidence.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `1e0d0d5..dcdb2b5` contains the fourteen disclosed commits and the working tree was clean before reviewer bookkeeping. `git diff --check 1e0d0d5..dcdb2b5` and the reviewer diff: **pass**. |
+| T-181 manager gate cases | Five focused construction/start/drain/retry/probe tests: **5 passed, 136 deselected** in 14.42 s with loopback enabled. The restricted run produced three loopback `PermissionError` failures and two passes; all environmental failures disappeared on the permitted rerun. |
+| T-181 UI/composition | Run-control MainWindow cases: **7 passed, 50 deselected**. Composed run-control seam: **1 passed, 82 deselected**. |
+| T-107 focused suites | `tests/ui/test_format_table.py` plus `tests/unit/test_fixtures.py`: **128 passed, 5 skipped**. |
+| T-107 UI probes | Header focus policy `NoFocus`; Tab from the body stayed on `QTableView`; wrapper size hint `-1 x -1`; a 320×180 wrapper retained a 256×192 child; sorting changed current identity `b → a`; `set_formats` left heights `[720, 1080]` beneath a descending-resolution indicator. |
+| T-107 boundary mutant | In an extracted temporary tree, a raw UI `width` subscript survived the static boundary test: **1 passed**. The reviewed tree was not mutated. |
+| T-107 estimate probe | Exact and `filesize_approx`-only 4 MiB inputs projected equal and both rendered `4.0 MB`. |
+| Task placement | **14 passed** after filing T-186; task identity/count rules remain clean. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **189 files already formatted**; bare mypy and `mypy --platform win32`: **success, 108 source files each**. |
+| Submitted CI | The handoff reports run `31212563771` green on all five jobs at `dcdb2b5`. The reviewer did not query or rerun CI. |
+
+The reviewer appended this review record and filed the approved non-blocking T-186 follow-up only.
+No reviewed source, reviewed test, requirement, decision, implementation-plan entry, status state,
+commit, remote ref, migration, user database or CI state was changed.

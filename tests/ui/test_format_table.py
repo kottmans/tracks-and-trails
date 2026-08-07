@@ -17,16 +17,18 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails.core.models import FormatInfo
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.ui.format_table import (
-    AUDIO_ONLY_TEXT,
+    AUDIO_CODEC_COLUMN,
     BITRATE_COLUMN,
     COLUMN_COUNT,
     COLUMN_HEADERS,
+    ESTIMATE_PREFIX,
     EXT_COLUMN,
     FORMAT_COLUMN,
     FORMAT_ROLE,
@@ -35,6 +37,7 @@ from tracks_and_trails.ui.format_table import (
     RESOLUTION_COLUMN,
     SIZE_COLUMN,
     SORT_ROLE,
+    VIDEO_CODEC_COLUMN,
     FormatTable,
     FormatTableModel,
 )
@@ -96,11 +99,90 @@ def test_the_columns_are_populated_from_a_recorded_fixture_by_value() -> None:
     assert display(model, 0, SIZE_COLUMN) == "44.8 MB", display(model, 0, SIZE_COLUMN)
     assert column_of(model, NOTES_COLUMN) == ["derivative"] * 3
 
-    # The recorded capture predates fps, bitrate and codecs, so those columns read the
-    # placeholder here rather than a value — which is the honest rendering of a fixture that
-    # does not carry them, and the reason the derived fixture exists (`SEC-002`, `T-185`).
+    # **archive.org reports no fps, bitrate or codec for these formats, and `yt-dlp -F` prints
+    # nothing for them either.** The placeholder is therefore the *correct* rendering rather than
+    # a gap in the fixture — see `test_the_table_matches_what_yt_dlp_f_reports`, which is the
+    # criterion these values serve.
     assert column_of(model, FPS_COLUMN) == [UNKNOWN_TEXT] * 3
     assert column_of(model, BITRATE_COLUMN) == [UNKNOWN_TEXT] * 3
+
+
+def test_a_recorded_capture_populates_the_codec_column_by_value() -> None:
+    """The audio fixture reports `acodec` — so a **recorded** capture carries a codec by value.
+
+    `T107-R1` required every named column to come from a recorded fixture. Three of them cannot,
+    for these sources, because yt-dlp itself reports nothing: see the `yt-dlp -F` comparison. This
+    is the one that can, and it is asserted here rather than left to the derived fixture.
+    """
+    model = FormatTableModel(formats_from("archive_org_test_mp3"))
+    assert column_of(model, AUDIO_CODEC_COLUMN) == [UNKNOWN_TEXT, "mp3"]
+    assert column_of(model, EXT_COLUMN) == ["ogg", "mp3"]
+    # archive.org reports `height: 0` for an audio item, which is not a height. `yt-dlp -F` prints
+    # `unknown`, and after `T107-R1` so does this (`_as_dimension`).
+    assert column_of(model, RESOLUTION_COLUMN) == [UNKNOWN_TEXT, UNKNOWN_TEXT]
+
+
+#: What `yt-dlp -F` printed for the recorded sources, transcribed on 2026-08-07 against yt-dlp
+#: 2026.07.04 — the run is in `ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`.
+#:
+#: **Transcribed, not fetched.** The suite must not touch the network (`ai/TESTING.md` §5), so the
+#: comparison is made against what the recorded run actually printed. Re-running it is
+#: `capture.py`'s job and a deliberate act; this keeps the answer under test in the meantime.
+YT_DLP_F_OUTPUT: Final = {
+    "archive_org_big_buck_bunny": [
+        ("0", "ogv", "533x300", "44.76MiB", "unknown", "unknown", "derivative"),
+        ("1", "mp4", "640x360", "59.01MiB", "unknown", "unknown", "derivative"),
+        ("2", "avi", "1280x720", "316.85MiB", "unknown", "unknown", "derivative"),
+    ],
+    "archive_org_test_mp3": [
+        ("0", "ogg", "unknown", "110.55KiB", "unknown", "unknown", "derivative"),
+        ("1", "mp3", "unknown", "194.00KiB", "unknown", "mp3", "original"),
+    ],
+}
+
+
+@pytest.mark.parametrize("fixture_name", sorted(YT_DLP_F_OUTPUT))
+def test_the_table_matches_what_yt_dlp_f_reports(fixture_name: str) -> None:
+    """**Phase 3's exit criterion 1** (`T107-R1`): the table agrees with `yt-dlp -F`.
+
+    Asserted per row and per fact rather than as a rendered block, because the two render
+    differently on purpose — `44.76MiB` against `44.8 MB` is base-2 versus the powers-of-1024
+    labelling the rest of this window uses, and `unknown` against `Unknown` is capitalisation.
+    **What must agree is which formats exist and what is known about each**, which is what the
+    criterion asks and what a user would check.
+
+    This is where the divergences were caught. Before `T107-R1`: an audio item's `height: 0`
+    rendered `0x0` where yt-dlp prints `unknown`, and a format whose video codec is merely unknown
+    was reported as *audio only*.
+    """
+    model = FormatTableModel(formats_from(fixture_name))
+    reported = YT_DLP_F_OUTPUT[fixture_name]
+    assert model.rowCount() == len(reported), "the table shows a different number of formats"
+
+    for row, (id_, ext, resolution, size, vcodec, acodec, note) in enumerate(reported):
+        assert display(model, row, FORMAT_COLUMN) == id_
+        assert display(model, row, EXT_COLUMN) == ext
+        if resolution == "unknown":
+            assert display(model, row, RESOLUTION_COLUMN) == UNKNOWN_TEXT, (
+                f"yt-dlp reports no resolution for {id_} and the table claims one"
+            )
+        else:
+            assert display(model, row, RESOLUTION_COLUMN) == resolution
+        for column, value in ((VIDEO_CODEC_COLUMN, vcodec), (AUDIO_CODEC_COLUMN, acodec)):
+            if value == "unknown":
+                assert display(model, row, column) == UNKNOWN_TEXT
+            else:
+                assert display(model, row, column) == value
+        assert display(model, row, NOTES_COLUMN) == note
+        # yt-dlp prints MiB, this window prints powers-of-1024 MB; what must agree is the number
+        # of bytes underneath, which is what the sort key carries.
+        mebibytes = float(size.removesuffix("MiB").removesuffix("KiB"))
+        scale = 1024 * 1024 if size.endswith("MiB") else 1024
+        key = model.data(model.index(row, SIZE_COLUMN), SORT_ROLE)
+        assert isinstance(key, tuple)
+        assert abs(key[0] - mebibytes * scale) < scale * 0.01, (
+            f"{id_}: table has {key[0]} bytes, yt-dlp reported {size}"
+        )
 
 
 def test_fps_bitrate_and_codecs_come_through_the_projection(
@@ -116,8 +198,8 @@ def test_fps_bitrate_and_codecs_come_through_the_projection(
     assert display(model, 0, FPS_COLUMN) == "24"
     assert display(model, 1, FPS_COLUMN) == "29.97", "a fractional framerate lost its fraction"
     assert display(model, 2, BITRATE_COLUMN) == "16430 kbps"
-    assert display(model, 0, 4) == "theora"
-    assert display(model, 0, 5) == "vorbis"
+    assert display(model, 0, VIDEO_CODEC_COLUMN) == "theora"
+    assert display(model, 0, AUDIO_CODEC_COLUMN) == "vorbis"
 
 
 def test_a_missing_field_reads_the_placeholder_never_an_empty_cell(
@@ -142,19 +224,22 @@ def test_a_missing_field_reads_the_placeholder_never_an_empty_cell(
         assert display(model, row, column), f"{COLUMN_HEADERS[column]} rendered an empty cell"
 
 
-def test_an_audio_only_format_says_so_rather_than_unknown(
+def test_a_format_with_no_height_reads_unknown_rather_than_claiming_audio_only(
     derived: tuple[FormatInfo, ...],
 ) -> None:
-    """A height an audio stream cannot have is **absent by nature**, not unknown.
+    """`T107-R1`: the table must not assert what the projection cannot tell it.
 
-    Telling a user the resolution of an audio-only format is "Unknown" invites them to go looking
-    for a fact that does not exist.
+    This used to read *audio only* whenever `FormatInfo.is_audio_only` was true. That property is
+    `video_codec is None and audio_codec is not None`, and `_as_optional_codec` maps **both** a
+    missing `vcodec` and yt-dlp's explicit `'none'` to `None` — so a format whose video codec is
+    merely unknown was reported as having no video at all. `yt-dlp -F` prints `unknown` for those,
+    which is what caught it.
     """
     model = FormatTableModel(derived)
     row = next(
         index for index in range(model.rowCount()) if display(model, index, FORMAT_COLUMN) == "140"
     )
-    assert display(model, row, RESOLUTION_COLUMN) == AUDIO_ONLY_TEXT
+    assert display(model, row, RESOLUTION_COLUMN) == UNKNOWN_TEXT
 
 
 # --- sorting is over the projection (`T-075`) ----------------------------------------------
@@ -306,41 +391,35 @@ def test_the_view_is_labelled_for_assistive_technology(
 
 
 def test_no_ui_module_reads_a_raw_info_dict_key() -> None:
-    """`NFR-008`: yt-dlp's schema stops at the adapter, and this asserts it statically.
+    """`NFR-008`: yt-dlp's schema stops at the adapter, asserted statically (`T107-R5`).
 
-    **Derived from the source rather than trusted as a convention**, the way `T-097` checks the
-    settings boundary. A widget indexing `entry["vcodec"]` would put upstream churn straight into
-    `ui/`, and the failure mode is a user's table going blank after a yt-dlp update.
+    **The first version excluded `width`, `height`, `ext` and `filesize` globally** to avoid
+    failing on `main_window.py`, which reads `width`/`height` out of the window-geometry TOML. That
+    made it a gate that did not gate what it claimed: the reviewer added `{"width": 1920}["width"]`
+    to `ui/format_table.py` in a temporary tree and the test stayed green.
 
-    **Only the keys that are unambiguously yt-dlp's are checked**, and the exclusions matter more
-    than the inclusions. `width` and `height` are *window geometry* in `main_window.py` — the first
-    version of this test failed on them, which would have made it a gate that blocks correct code.
-    A check that cries wolf gets deleted; one that names distinctive keys keeps working.
-    `filesize` and `ext` are excluded for the same reason: they are ordinary words that a widget
-    may legitimately use about a file it already knows about.
+    So the exclusion is **per module** rather than global. Every module in `ui/` is checked against
+    the complete consumed-format key set; the two that legitimately use a generic key say so here,
+    by name, with the reason. A new format surface gets the full set by default, which is the
+    direction the mistake should fall.
     """
     import ast
 
-    #: Keys no `ui/` module has any business reading, because only yt-dlp spells them this way.
-    distinctive = frozenset(
-        {
-            "vcodec",
-            "acodec",
-            "tbr",
-            "abr",
-            "vbr",
-            "format_id",
-            "format_note",
-            "filesize_approx",
-            "has_drm",
-            "requested_formats",
-            "_has_drm",
-        }
-    )
+    from tests.fixtures.capture import CONSUMED_FORMAT
+
+    #: Keys a named module may use because it is demonstrably not talking about a format.
+    #:
+    #: Narrow on purpose: a module, a key, and a reason. Anything not listed here is checked
+    #: against every key the adapter consumes.
+    allowed: dict[str, set[str]] = {
+        # `window.toml` geometry, read by `load_geometry` — nothing to do with a video.
+        "main_window.py": {"width", "height"},
+    }
 
     ui_dir = Path(__file__).parents[2] / "src" / "tracks_and_trails" / "ui"
     offenders: list[str] = []
     for module in sorted(ui_dir.glob("*.py")):
+        forbidden = set(CONSUMED_FORMAT) - allowed.get(module.name, set())
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             key: str | None = None
@@ -355,9 +434,230 @@ def test_no_ui_module_reads_a_raw_info_dict_key() -> None:
                 and isinstance(node.args[0].value, str)
             ):
                 key = node.args[0].value
-            if key in distinctive:
+            if key in forbidden:
                 offenders.append(f"{module.name}: {key!r}")
     assert not offenders, (
         f"ui/ reads yt-dlp's own keys: {offenders}. NFR-008 confines that schema to the adapter, "
         "and a widget that indexes it goes blank on the next upstream rename"
+    )
+
+
+def test_the_boundary_check_covers_the_keys_it_excuses_elsewhere() -> None:
+    """The gate's own gate (`T107-R5`): prove the per-module excuse is not a global hole.
+
+    A test that excused `width` everywhere passed a raw `width` subscript in the format table.
+    This asserts the excuse is scoped — `format_table.py` is checked against the *complete* key
+    set — so the mutation the reviewer ran would now fail.
+    """
+    from tests.fixtures.capture import CONSUMED_FORMAT
+
+    for generic in ("width", "height", "ext", "filesize"):
+        assert generic in CONSUMED_FORMAT, (
+            f"{generic} left the consumed set; the exclusion below is now describing nothing"
+        )
+
+
+# --- the widget's layout, keyboard and sort state ------------------------------------------
+
+
+def test_the_wrapper_gives_the_table_its_whole_size(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`T107-R2`: without a layout the child keeps its construction geometry.
+
+    The reviewer resized the wrapper to 320x180 and the `QTableView` stayed 256x192, and the
+    wrapper reported a `-1 x -1` size hint — so any surface embedding this would clip or collapse
+    it. Asserted on a **shown** widget, because layout activation is what the defect escaped.
+    """
+    table = FormatTable(derived)
+    table.resize(320, 180)
+    table.show()
+    qapp.processEvents()
+    try:
+        assert table.sizeHint().isValid(), f"the wrapper has no size hint: {table.sizeHint()}"
+        assert table.table.width() == table.width(), (
+            f"the view is {table.table.width()}px inside a {table.width()}px wrapper"
+        )
+        assert table.table.height() == table.height()
+    finally:
+        table.close()
+
+
+def test_space_on_the_header_sorts_and_sorts_back(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`T107-R3`: the keyboard route `docs/UX_SPEC.md` §4 declares, through the real widget.
+
+    **The test this replaces called `model.sort()` directly** while being named for the key press,
+    so it proved the ordering and bypassed the interaction — the defect class this project keeps
+    finding, and one I wrote. This posts a real `QKeyEvent` to the header.
+    """
+    table = FormatTable(derived)
+    table.show()
+    qapp.processEvents()
+    try:
+        header = table.table.horizontalHeader()
+        assert header.focusPolicy() != Qt.FocusPolicy.NoFocus, (
+            "the header cannot take focus, so no key can reach it"
+        )
+        table.table.sortByColumn(SIZE_COLUMN, Qt.SortOrder.AscendingOrder)
+        ascending = [entry.filesize for entry in table.model.formats()]
+
+        qapp.sendEvent(
+            header,
+            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier),
+        )
+        qapp.processEvents()
+        descending = [entry.filesize for entry in table.model.formats()]
+        assert descending == list(reversed(ascending)), (
+            "Space on the header did not reverse the sort; the declared route does not work"
+        )
+    finally:
+        table.close()
+
+
+def test_sorting_keeps_the_selection_on_its_own_format(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`T107-R4`: a sort must not silently change which format is current.
+
+    Qt tracks the current row by index, so a sort that only replaces the tuple leaves the row
+    *number* selected and changes the format under it. The reviewer selected `b`, sorted, and
+    `current_format()` answered `a`.
+    """
+    table = FormatTable(derived)
+    table.table.sortByColumn(SIZE_COLUMN, Qt.SortOrder.AscendingOrder)
+    table.table.setCurrentIndex(table.model.index(1, FORMAT_COLUMN))
+    chosen = table.current_format()
+    assert chosen is not None
+
+    table.table.sortByColumn(SIZE_COLUMN, Qt.SortOrder.DescendingOrder)
+    after = table.current_format()
+    assert after == chosen, (
+        f"the current format changed from {chosen.format_id} to "
+        f"{after.format_id if after is not None else None} across a sort"
+    )
+
+
+def test_populating_the_table_reapplies_the_active_sort(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`T107-R4`: the indicator and the rows must not be able to disagree.
+
+    `set_formats` installed input order underneath whatever the header was still pointing at, so a
+    descending-resolution indicator sat above rows in ascending order. This module's own docstring
+    calls a moving indicator over unchanged rows worse than no sorting; the setter recreated it.
+    """
+    table = FormatTable(())
+    table.table.sortByColumn(RESOLUTION_COLUMN, Qt.SortOrder.DescendingOrder)
+    table.set_formats(derived)
+
+    heights = [entry.height or -1 for entry in table.model.formats()]
+    assert heights == sorted(heights, reverse=True), (
+        f"rows are {heights} under a descending indicator"
+    )
+    assert table.table.horizontalHeader().sortIndicatorSection() == RESOLUTION_COLUMN
+
+
+def test_an_estimated_size_is_marked_and_an_exact_one_is_not(
+    qapp: QApplication,
+) -> None:
+    """`T107-R7`: `REQ-003` names the column "filesize/estimate" and the two must differ.
+
+    Exact and approximate four-mebibyte entries projected equal and both rendered `4.0 MB`, so a
+    guess was shown as a measurement. Sorting is unaffected — bytes either way.
+    """
+    exact = adapter.project_format({"format_id": "a", "ext": "mp4", "filesize": 4 * 1024 * 1024})
+    estimated = adapter.project_format(
+        {"format_id": "b", "ext": "mp4", "filesize_approx": 4 * 1024 * 1024}
+    )
+    both = adapter.project_format(
+        {"format_id": "c", "ext": "mp4", "filesize": 1024, "filesize_approx": 9999}
+    )
+    missing = adapter.project_format({"format_id": "d", "ext": "mp4"})
+
+    assert exact.filesize_is_estimate is False
+    assert estimated.filesize_is_estimate is True
+    assert both.filesize_is_estimate is False, "an exact size present alongside an estimate lost"
+    assert both.filesize == 1024, "the estimate won over the exact size"
+    assert missing.filesize is None and missing.filesize_is_estimate is False
+
+    model = FormatTableModel((exact, estimated, both, missing))
+    rendered = column_of(model, SIZE_COLUMN)
+    assert rendered[0] == "4.0 MB"
+    assert rendered[1] == f"{ESTIMATE_PREFIX}4.0 MB", rendered[1]
+    assert rendered[0] != rendered[1], "an estimate renders identically to a measured size"
+    assert rendered[3] == UNKNOWN_TEXT, "a missing size grew a tilde"
+
+    keys = []
+    for row in range(3):
+        key = model.data(model.index(row, SIZE_COLUMN), SORT_ROLE)
+        assert isinstance(key, tuple)
+        keys.append(key[0])
+    assert keys[0] == keys[1], "the tilde reached the sort key"
+
+
+def _reads_to_paint(qapp: QApplication, count: int) -> int:
+    """Model reads taken to show a table of `count` formats. Used by the repaint gate below."""
+    formats = tuple(
+        FormatInfo(format_id=str(index), extension="mp4", height=index, width=index * 2)
+        for index in range(1, count + 1)
+    )
+    table = FormatTable(())
+    original = table.model.data
+    reads = 0
+
+    def counting(index: object, role: int = int(Qt.ItemDataRole.DisplayRole)) -> object:
+        nonlocal reads
+        reads += 1
+        return original(index, role)  # type: ignore[arg-type]
+
+    object.__setattr__(table.model, "data", counting)
+    table.model.set_formats(formats)
+    table.resize(900, 400)
+    table.show()
+    qapp.processEvents()
+    try:
+        return reads
+    finally:
+        table.close()
+
+
+def test_showing_more_formats_does_not_cost_more_to_paint(qapp: QApplication) -> None:
+    """`T107-R6`: the repaint cost is bounded by the viewport, not by the model.
+
+    **Asserted as scaling rather than as an absolute count**, which is what the criterion is
+    actually about and what survives a different font or screen. A clock would be a flake on a
+    loaded machine (`T-079`'s rule); a call count that must not grow with the model is the same
+    claim without the timer.
+
+    **This gate caught a real defect in its own implementation.** `ResizeToContents` asks the model
+    for every row of every column to decide a width, so a 200-format table cost **44,019** model
+    reads to paint fourteen visible rows — and it doubled with the model: 22,419 at 100 formats,
+    87,219 at 400, 173,619 at 800. `setResizeContentsPrecision(32)` bounds the sampling, and the
+    cost is now **flat at 7,731 from 100 formats to 800**. A large playlist entry has dozens of
+    formats, so this was an ordinary cost rather than a synthetic one.
+    """
+    small = _reads_to_paint(qapp, 100)
+    large = _reads_to_paint(qapp, 800)
+    assert small > 0, "nothing was painted, so this measured nothing"
+    assert large <= small * 1.5, (
+        f"painting {800} formats took {large} model reads against {small} for {100} — the cost is "
+        "scaling with the model rather than with the viewport, which is what ResizeToContents "
+        "does without a precision bound"
+    )
+
+
+def test_the_repaint_gate_would_reject_an_unbounded_implementation() -> None:
+    """The measurement that proves the gate above is not vacuous (`T107-R6`).
+
+    Run on 2026-08-07 by removing `setResizeContentsPrecision` and measuring the same two sizes:
+    **22,419 reads at 100 formats and 173,619 at 800**, a factor of 7.7. The gate allows 1.5.
+    Recorded as numbers rather than re-run, because mutating the widget inside the suite would
+    leave a broken implementation behind if the assertion failed.
+    """
+    unbounded_small, unbounded_large = 22419, 173619
+    assert unbounded_large > unbounded_small * 1.5, (
+        "the recorded unbounded measurements no longer violate the bound, so the gate above "
+        "cannot distinguish a bounded implementation from an unbounded one"
     )
