@@ -11205,6 +11205,136 @@ The reviewer appended this review record only. No reviewed source, reviewed test
 decision, task state, status state, commit, remote ref, migration, user database or CI state was
 changed.
 
+## 2026-08-07 — Review continuation pointer
+
+The current verdicts for `T-105`, `T-168`, and `T-179` are recorded under the three
+**2026-08-07** headings immediately above the two older T-179 correction records. The physical
+order is not chronological: the T-179 sequence is the 2026-08-06 initial review, focused
+correction re-review, maintainer-authorized round 3, and then the 2026-08-07 maintainer-disposition
+re-review. The dates and exact commit boundaries on those records are authoritative.
+
+## 2026-08-07 — T-105 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `aed907a`
+**Correction head:** `a688a4e`
+**Submission head:** `da55a29` (handoff only)
+**Task:** `T-105`
+**Findings re-reviewed:** `T105-R1`, `T105-R2`, `T105-R3`, `T105-R4`
+**Verdict:** **Changes requested.** The specification now distinguishes settled rules from
+proposals and inventories the formerly unmarked refusals, resolving `T105-R3`. The correction did
+not reconcile the documents that future implementers actually follow: `T-111` still reopens the
+settled preset-store boundary, `T-108` still states the rejected selector reading as T-061's rule,
+and `T-112`/`T-114` still carry unratified proposals as actionable task text. Three blocking
+findings remain.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T105-R1` | **High** | **Yes** | `docs/UX_SPEC.md` correctly withdraws P-8 and transcribes TOML at the existing `settings.toml`, but the correction leaves the opposite instructions in the dependent task and phase plan. At `a688a4e`, `T-111` still lists “`core/settings.py` or a new store,” says where presets live “is a decision this task must take or raise,” and argues for a sibling file (`ai/TASKS.md:1714,1722-1725`). The Phase 3 deliverables table still says where user presets live “needs a decision” (`ai/IMPLEMENTATION_PLAN.md:564`). An implementer following those current-truth entries can still create the new store this finding forbids. | **Open** |
+| `T105-R2` | **Medium** | **Yes** | The UX spec itself now states the two facts correctly: an explicit table pair is known to merge, while the worker reads resolved `requested_formats` and falls back only when unresolved. `T-108` still says T-061 means “the ffmpeg gate reads the selector, not the chosen format,” says that selector reading “approved a merge it could not perform,” and asks for a pair a selector-only check would wrongly approve (`ai/TASKS.md:1570-1595`). T-061's reproduced defect was the reverse: the selector fallback falsely refused a progressive `/best` resolution. The downstream task therefore still directs the implementation toward the rejected rule. | **Open — ordinary Medium pass budget exhausted by this re-review** |
+| `T105-R3` | **High** | **Yes** | The correction marks the previously unmarked refusals, moves the named screen/container/control choices to P-13 through P-28, separates the settled and proposed §12 inventories, and collects 27 active proposals plus withdrawn P-8 in §10. The previously unsupported shared-screen, subtitle, playlist-container, preview and duplicate-warning choices are no longer presented as derived facts. | **Resolved at `a688a4e`** |
+| `T105-R4` | **Medium** | **Yes** | The task reconciliation remains incomplete. `T-112` explicitly identifies report-as-you-type as unruled P-23 but still requires “An invalid template is reported as the user types” (`ai/TASKS.md:1749-1751,1776`). `T-114`'s relevant-context field still states “a staging-row state, never a modal” as fact although the corrected spec makes that P-26 (`ai/TASKS.md:1836-1838`). Merely naming the contradiction does not keep an implementation task from satisfying its own acceptance criteria with an unratified choice. | **Open — ordinary Medium pass budget exhausted by this re-review** |
+
+### Focused review judgments
+
+- **The correction to the specification is sound.** P-8 stays visibly withdrawn instead of being
+  silently renumbered; §5 accurately distinguishes the table's explicit pair from the worker's
+  resolved-format gate; and the proposal inventory now exposes rather than makes the product
+  choices the initial review named.
+- **The residuals are the same findings, not a new broad audit.** Each is in the correction's named
+  downstream reconciliation surface and directly contradicts the corrected paragraph beside it.
+- **One further focused pass is automatic for the surviving High `T105-R1`.** The correction batch
+  should also answer the two original Medium findings. If `T105-R1` resolves while either Medium
+  remains, §10's ordinary pass budget then requires a maintainer disposition rather than another
+  automatic loop.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `aed907a..a688a4e` contains the correction; `da55a29` adds only its handoff. `git diff --check aed907a..a688a4e`: **pass**. |
+| Proposal audit | P-1 through P-28 are present, with P-8 visibly withdrawn: **27 active proposals**. The formerly unmarked refusal groups are classified in their sections and §12. |
+| Exact-head task placement | Extracted `a688a4e`: **14 passed**. This proves placement syntax, not semantic reconciliation. |
+| Source/tests | Not run for this docs-only correction. |
+
+## 2026-08-07 — T-168 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `da55a29`
+**Implementation head:** `3859190`
+**Submission head:** `7afa295` (handoff only)
+**Task:** `T-168`
+**Platforms verified:** Linux, Qt offscreen; Windows runtime unverified
+**Verdict:** **Changes requested.** Reserving the widest segmented rendering makes verb space
+continuous in row width and closes the reproduced sixteen-entry regression without weakening the
+bar or overflow behavior. The task's explicit any-entry-count gate is not implemented: the only
+new monotonicity test fixes the segment count at sixteen.
+
+### Finding
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| `T168-R1` | **Medium** | **Yes** | The acceptance criterion requires “A verb dropped at some width stays dropped at every narrower width, for a row of **any entry count** — asserted by sweeping the width.” `test_a_verb_dropped_at_one_width_never_returns_at_a_narrower_one` sweeps every pixel but constructs exactly `[DONE] * 16` (`tests/ui/test_row_delegate.py:1565-1607` at `3859190`). Restoring a count-dependent reserve for any other count leaves the named gate green. The implementation's `segment_span(entries)` is general today, but the regression does not hold that property there. | Parameterize representative counts on both sides of `MERGED_BLOCKS`, including counts whose merge threshold differs from sixteen, while retaining the per-pixel downward sweep and non-vacuity assertion. Demonstrate that a count-specific restoration of the old reserve fails. | **Open** |
+
+### Review judgments
+
+- **The implementation formula is correct for the reviewed code.** `segment_span(entries)` is
+  fixed for a given row, `_bar_line` is monotone in width, and `min(fixed_span, room)` cannot give
+  the verbs more space as a row narrows.
+- **The submitted trade-off is accepted.** Once verbs give way they remain in `...`; using the
+  merged rendering's freed pixels for wider blocks preserves T-164's visible-failure guarantee.
+  The existing overflow and bar-floor tests cover reachability and narrow rendering.
+- **The finding is about the required negative gate, not a claimed production failure.** Its
+  Medium severity follows the unmet acceptance criterion; the current one-line implementation
+  behaves correctly for counts beyond sixteen by inspection.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `da55a29..3859190` is the implementation commit; `7afa295` adds only the handoff. `git diff --check da55a29..3859190`: **pass**. |
+| Exact-head row-delegate suite | Extracted `3859190` with `PYTHONPATH` pinned to that tree: **53 passed** in 5.48 s. |
+| Current descendant focused suites | Queue view, row delegate and task placement: **145 passed** in 6.31 s. Later T-150 additions modify the same two row-delegate files, so this is supporting evidence rather than the exact review boundary. |
+| Current descendant static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; host mypy and `mypy --platform win32`: **success, 44 source files each**. The direct `.venv/bin/mypy` launcher has a stale shebang; both mypy runs used `.venv/bin/python -m mypy`. |
+
+## 2026-08-07 — T-179 maintainer-disposition re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `e159c9a`
+**Correction head:** `1e0d0d5`
+**Task:** `T-179`
+**Findings re-reviewed:** `T179-R1`, `T179-R2`
+**Verdict:** **Approved with follow-ups at `1e0d0d5`.** The maintainer chose the option the round-3
+record explicitly offered: accept the Medium cross-process limitation and move the shared-cache
+defect to named follow-up `T-180`. The correction removes the false A-004 premise from both the
+source and task record, accurately identifies the per-database lock versus per-machine cache, and
+preserves the already verified resolution of High `T179-R2`. One Low wording issue is assigned to
+`T-180`; it does not reopen the dispositioned task.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T179-R1` | **Medium** | **No — maintainer disposition** | The defect remains exactly as round 3 established: a process-local publication count cannot see another permitted instance writing the shared cache. The 2026-08-07 maintainer disposition accepts that limitation, records that unconditional sweeps already delete a peer instance's thumbnails, and files both collision directions as `T-180`. This is an accepted Medium risk, not a claim that the finding was technically resolved. | **Dispositioned by maintainer 2026-08-07; follow-up `T-180`** |
+| `T179-R2` | **High** | **Yes** | No behavioral source changed after `5f469da`; the reset gate still performs only model reads and a lock-protected integer lookup, with no filesystem operation. | **Resolved at `5f469da`** |
+| `T179-R3` | **Low** | **No** | The task record precisely says a foreign publication survives “until this one's own membership changes,” but `cache_generation()` compresses that to “one sweep's delay” (`ui/thumbnails.py:127`). Because sweeps are event-driven rather than periodic, elapsed time may be the rest of the process lifetime. The following sentences identify the safe failure direction, so this does not hide the accepted mechanism or change behavior, but `T-180` should use the precise trigger when it next edits or removes this residual-risk paragraph. | **Open — owner Implementer, target `T-180`** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `e159c9a..1e0d0d5` changes only `ai/TASKS.md` and the `cache_generation()` docstring; `git diff --check e159c9a..1e0d0d5`: **pass**. |
+| Authority check | A-004 says no concurrent instances against the same database; accepted ARC-006 derives ownership from that database path; `thumbnail_cache_directory()` derives only from the platform cache root. The corrected rationale matches all three. |
+| Focused suites | Queue view, row delegate and task placement on the current head: **145 passed** in 6.31 s. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; host mypy and win32 mypy: **success, 44 source files each**, invoked through `.venv/bin/python -m mypy` because the wrapper shebang is stale. |
+
+The reviewer appended these three records only. Concurrent uncommitted edits in
+`ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, and `docs/UX_SPEC.md` belong to another agent's roadmap
+work and were excluded from every boundary and finding. No reviewed source, reviewed test, task
+state, status state, commit, remote ref, migration, user database or CI state was changed.
+
 ## 2026-08-06 — T-177 / T-178 / T-179 focused correction re-review
 
 **Reviewer:** Codex (Reviewer)
@@ -11349,3 +11479,87 @@ inventing a fourth gate for a Low-priority background-I/O optimization.
 The reviewer appended this review record only. No reviewed source, reviewed test, requirement,
 decision, task state, status state, commit, remote ref, migration, user database or CI state was
 changed.
+
+## 2026-08-07 — T-105 / T-168 correction re-review and T179-R3 placement
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `1e0d0d5`
+**Correction head:** uncommitted working tree, bounded to the finding-correction hunks described
+below
+**Tasks:** `T-105`, `T-168`; `T179-R3` follow-up placement on `T-180`
+**Findings re-reviewed:** `T105-R1`, `T105-R2`, `T105-R4`, `T168-R1`, `T179-R3`
+**Platforms verified:** Linux, Qt offscreen; Windows runtime unverified
+**Verdict:** **T-168 Approved in the bounded correction; T-105 Blocked.** `T105-R1`, `T105-R2`
+and `T168-R1` are Resolved. `T105-R4` is corrected in T-114 and in T-112's acceptance criterion,
+but T-112's context still calls unruled P-23 “this task's own report-as-you-type criterion.” This
+is the second correction re-review and only a blocking Medium remains, so §10 requires a maintainer
+choice before another pass. `T179-R3` is correctly assigned to T-180 and remains an open,
+non-blocking follow-up; T-179's approval is unchanged.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T105-R1` | **High** | **Yes** | T-111 now names only `core/settings.py`, states that presets are TOML in the existing `settings.toml`, and explicitly rules out a new store, sibling file, table or migration. The Phase 3 deliverables row states the same settled DAT-001 boundary. The contrary phrases remain only inside clearly marked superseded/correction history. | **Resolved in the bounded working tree** |
+| `T105-R2` | **Medium** | **Yes** | T-108 now separates an explicit table pair from the worker's definitive resolved-format gate and records T-061's measured direction correctly: selector inspection falsely refused a `/best` resolution that produced one progressive format. Its two criteria distinguish both directions—an explicit pair is refused without ffmpeg; a `+` selector resolved to one progressive format is not. A selector-only implementation cannot satisfy both. | **Resolved in the bounded working tree** |
+| `T105-R4` | **Medium** | **Yes** | T-114's context and criterion now leave row-versus-modal treatment to P-26. T-112's acceptance criterion likewise requires only that an invalid template never reach download and leaves edit-time versus commit-time refusal to P-23. However T-112's own `Relevant context` still says “P-23 is this task's own report-as-you-type criterion” (`ai/TASKS.md:1772-1775`). That is the same unratified timing choice presented as task truth one paragraph before the corrected criterion says the timing is unruled. | **Open — ordinary pass budget exhausted; maintainer disposition required** |
+| `T168-R1` | **Medium** | **Yes** | The per-pixel monotonicity sweep now covers counts 5, 8, 9, 16, 24 and 37, checks that each count actually drew the expected merged/unmerged renderings, and retains a non-vacuity assertion. Independent mutation restored the old reserve globally and produced exactly **3 failures / 3 passes** (16, 24, 37 failed); preserving the correct sixteen case while restoring the old reserve elsewhere produced **2 failures / 4 passes** (24 and 37 failed). The count-specific survivor named by the finding is therefore killed outside sixteen. Nine's harmless 17 px step is accurately documented rather than counted as mutation evidence. | **Resolved in the bounded working tree** |
+| `T179-R3` | **Low** | **No** | T-180 now requires the residual-risk paragraph to say the precise event-driven trigger—until this process's own membership changes—or remove the paragraph if partitioning removes the risk. No approved T-179 source was changed. | **Open — correctly owned by T-180** |
+
+### Convergence disposition
+
+`T105-R4` cannot start another automatic correction loop. The initial review plus ordinary focused
+re-review spent the Medium budget; the present extra pass was available because High `T105-R1`
+was still open. That High is now resolved and only the Medium residue remains. The maintainer must
+choose one of AGENTS.md §10's exits: authorize one more narrowly focused pass, accept the documented
+risk, change scope, or carry the residue into a named follow-up. The smallest correction would be
+to make T-112's context say P-23's **timing is unruled**, matching its criterion; this review does
+not apply that correction or authorize its own next pass.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Finding corrections are in `ai/TASKS.md`, the T-111 Phase 3 row in `ai/IMPLEMENTATION_PLAN.md`, and `tests/ui/test_row_delegate.py`. UX-006/ARC-010 roadmap edits in decisions, requirements, plan, tasks and `docs/UX_SPEC.md` were excluded except where a correction hunk itself was inspected. `git diff --check`: **pass**. |
+| Focused suites | Queue view, row delegate and task placement: **150 passed** in 9.61 s. |
+| T168 global old-reserve mutant | Independent temporary-tree run: **3 failed, 3 passed**; failures at 16, 24 and 37. |
+| T168 count-specific mutant | Independent temporary-tree run retaining the correct sixteen path: **2 failed, 4 passed**; failures at 24 and 37. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **185 files already formatted**; host mypy and `mypy --platform win32`: **success, 44 source files each**. |
+| Source boundary | Repository `src/` is clean. Mutations were applied only in `/tmp`; no reviewed source was changed. |
+
+The reviewer appended this re-review record only. The uncommitted UX-006/ARC-010 roadmap work was
+not reviewed or changed. No source, test, task state, status state, requirement, decision, commit,
+remote ref, migration, user database or CI state was changed.
+
+## 2026-08-07 — T-105 maintainer-authorized final focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `1e0d0d5`
+**Correction head:** uncommitted working tree, bounded to T-112's `Relevant context` sentence and
+the review/task/status bookkeeping described in the handoff addendum
+**Task:** `T-105`
+**Finding re-reviewed:** `T105-R4`
+**Verdict:** **Approved in the bounded working tree.** The context now states that P-23 is the
+unruled choice between edit-time and commit-time refusal, joins P-22 under one future ruling, and
+bars T-112 from choosing either. It therefore agrees with the already corrected acceptance
+criterion. No open blocking finding remains.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T105-R4` | **Medium** | **Yes** | T-112's context and criterion now state the same boundary: containment failure must prevent download, while edit-time versus commit-time reporting is unruled P-23. T-114's corresponding P-26 context and criterion remain corrected. The former “report-as-you-type criterion” text survives only inside an explicitly superseded parenthetical and the correction record. | **Resolved in the bounded working tree** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | The behavioral correction is one sentence in `ai/TASKS.md`; no source, test, acceptance criterion or other task entry changed in this pass. UX-006/ARC-010 roadmap hunks remain excluded. `git diff --check`: **pass**. |
+| Context/criterion agreement | T-112 `Relevant context` and its invalid-template criterion both identify P-23 as unruled and choose neither timing: **pass**. |
+| Task placement | **14 passed** in 0.06 s. |
+| Broader evidence not rerun | The immediately preceding focused pass established **150 passed**, clean ruff/format, and clean host/win32 mypy. This one-sentence docs correction did not require rerunning source/UI gates. |
+
+This was the additional focused pass explicitly authorized by the maintainer after the ordinary
+Medium budget was exhausted. The reviewer appended this approval record only. The roadmap work was
+not reviewed or changed. No source, test, task state, status state, requirement, decision, commit,
+remote ref, migration, user database or CI state was changed.
