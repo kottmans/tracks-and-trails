@@ -188,11 +188,12 @@
     text-transform: uppercase; color: var(--ink-mute);
   }
 
-  /* --- the dependency chart ---------------------------------------------------
-     `TB`, natural size, scaled by `.fit`. Same mechanism the Phase 2 board used,
-     including the two-classes-deep override that beats the mermaid runtime's own
-     `max-width: 100%`, and the rule against `<br/>` in labels — it splits the text
-     into tspans and drops the spaces between words. */
+  /* --- the dependency charts --------------------------------------------------
+     `TB`, natural size, no scaling and no toggle (2026-08-07). The Phase 2 board's
+     two-classes-deep `.fit` override is gone with the button it served: a chart wide
+     enough to need shrinking is a chart drawing too much, and that is a content fix.
+     The rule against `<br/>` in labels stands — it splits the text into tspans and
+     drops the spaces between words. */
 
   .chart-frame {
     background: var(--raised);
@@ -212,21 +213,18 @@
     font-family: var(--mono); font-size: .7rem; letter-spacing: .08em;
     text-transform: uppercase; color: var(--ink-mute); margin: 0; max-width: none;
   }
-  .chart-toggle {
-    font-family: var(--mono); font-size: .7rem; letter-spacing: .08em;
-    text-transform: uppercase; color: var(--ink-soft);
-    background: var(--sunken); border: 1px solid var(--rule);
-    border-radius: 999px; padding: .34rem .85rem; cursor: pointer;
-  }
-  .chart-toggle:hover { border-color: var(--st-ready); color: var(--ink); }
-  .chart-toggle:focus-visible { outline: 2px solid var(--st-ready); outline-offset: 2px; }
+  /* No fit/full-size toggle any more, and no scaling. A diagram that has to be shrunk to fit
+     the page is a diagram that is too wide, and the answer is to draw less of it — not to give
+     the reader a button that trades unreadable text for sideways scrolling. Both charts below
+     run top-to-bottom and are at most two columns wide, so they render at their natural size
+     inside the page. `overflow-x` survives as a safety net for a very narrow phone. */
 
   .chart-scroll { overflow-x: auto; overflow-y: hidden; }
   .chart-scroll pre.mermaid { margin: 0; background: none; }
 
   .chart-scroll .mermaid-diagram svg,
   .chart-scroll pre.mermaid svg {
-    max-width: none;
+    max-width: 100%;
     height: auto;
   }
   /* Cluster (subgraph) chrome, themed through the page's own tokens.
@@ -248,11 +246,6 @@
     font-family: var(--mono);
     font-size: .7rem;
     letter-spacing: .1em;
-  }
-
-  .chart-frame.fit .chart-scroll .mermaid-diagram svg,
-  .chart-frame.fit .chart-scroll pre.mermaid svg {
-    max-width: 100%;
   }
 
   .legend {
@@ -428,99 +421,43 @@
 
   <section>
     <div class="section-head">
-      <h2>One chain in Phase 3, and one gate in the phase after it</h2>
-      <p class="lede">Every green node is done and pushed. <strong>Phase 3 still contains exactly one dependency chain and nothing waiting on a document</strong> — all nine deliverables are startable, and the order is a choice rather than a constraint. What is new on this drawing is the block on the right: <strong><code>Phase 4.5</code> has a real gate</strong>, and it is amber because it needs a maintainer ruling rather than an implementer.</p>
+      <h2>The whole of Phase 3's ordering, in four boxes</h2>
+      <p class="lede"><strong>Nothing is waiting on a document and nothing is blocked</strong>, so this is not a picture of what is stuck. It is the one place in the phase where order is forced: four deliverables that must happen in sequence, because each reads what the one above it builds. <span class="q-why">The chart after Phase 4.5's table draws the only other real sequence on the roadmap.</span></p>
     </div>
 
-    <div class="chart-frame fit" id="chart">
+    <div class="chart-frame">
       <div class="chart-bar">
-        <p class="chart-hint">Grouped by what constrains order — fitted to the page</p>
-        <button type="button" class="chart-toggle" id="chart-toggle" aria-pressed="true">Full size</button>
+        <p class="chart-hint">Every ordering constraint in Phase 3 — there is one</p>
       </div>
       <div class="chart-scroll">
 <pre class="mermaid">
-%%{init: {"theme":"base","themeVariables":{"fontSize":"15px","lineColor":"#8AA095","primaryTextColor":"#ffffff","clusterBkg":"transparent","clusterBorder":"#C3D0C6"},"flowchart":{"useMaxWidth":false,"nodeSpacing":26,"rankSpacing":70,"padding":10,"curve":"basis"}}}%%
-flowchart LR
-    classDef done    fill:#1E5E47,stroke:#083122,stroke-width:2px,color:#ffffff
-    classDef gate    fill:#B07C1F,stroke:#6E4C0F,stroke-width:3px,color:#ffffff
-    classDef ready   fill:#31688E,stroke:#1D4058,stroke-width:2px,color:#ffffff
+%%{init: {"theme":"base","themeVariables":{"fontSize":"16px","lineColor":"#8AA095","primaryTextColor":"#ffffff"},"flowchart":{"useMaxWidth":true,"nodeSpacing":30,"rankSpacing":40,"padding":12,"curve":"basis"}}}%%
+flowchart TB
     classDef planned fill:#6E7E75,stroke:#44534B,stroke-width:2px,color:#ffffff
     classDef risky   fill:#A6432B,stroke:#5E2418,stroke-width:3px,color:#ffffff
     classDef exit    fill:#083122,stroke:#D9A24C,stroke-width:3px,color:#D9A24C
 
-    subgraph SHIPPED["CLOSED AND APPROVED"]
-      direction TB
-      P2["Phase 2 exited"]:::done
-      UXSPEC["T-105 UX spec — approved 08-07"]:::done
-      REMOVED["T-169 T-170 removed History"]:::done
-      CLEARED["T-168 T-179 approved 08-07"]:::done
-    end
+    T107["T-107 · the format table · exit criterion 1"]:::planned
+    T108["T-108 · video + audio, merged · exit criterion 2"]:::planned
+    T109["T-109 · post-processing · the largest item"]:::risky
+    T111["T-111 · user presets"]:::planned
+    EXIT(["PHASE 3 EXIT · 6 criteria, 0 met"]):::exit
 
-    subgraph CHAIN["THE ONLY CHAIN — four deep"]
-      direction LR
-      T107["T-107 format table"]:::planned
-      T108["T-108 merge video and audio"]:::planned
-      T109["T-109 post-processing"]:::risky
-      T111["T-111 user presets"]:::planned
-      T107 --> T108 --> T109 --> T111
-    end
-
-    subgraph FREE["INDEPENDENT — any can start today"]
-      direction TB
-      T113["T-113 resume across restart"]:::risky
-      T110["T-110 playlists"]:::risky
-      T112["T-112 output template editor"]:::planned
-      T181["T-181 queue stopped until Start"]:::ready
-      T114["T-114 confirm a queued duplicate"]:::ready
-      T180["T-180 shared thumbnail cache"]:::ready
-      SMALL["T-143 T-176 — small"]:::ready
-    end
-
-    subgraph RULINGS["WAITING ON THE MAINTAINER, NOT AN IMPLEMENTER"]
-      direction TB
-      T171["T-171 do files carry provenance"]:::gate
-      T182["T-182 which yt-dlp options REQ-EXCL forbids"]:::gate
-    end
-
-    EXIT(["PHASE 3 EXIT — 6 criteria"]):::exit
-    P4["Phase 4 — settings T-146, polish, accessibility"]:::planned
-
-    subgraph LATER["PHASE 4.5 — OPTION COVERAGE"]
-      direction TB
-      T183["T-183 audit and decompose the phase"]:::planned
-      T184["T-184 the escape hatch"]:::risky
-      TYPED["typed fields, from T-183"]:::planned
-      T183 --> T184
-      T183 --> TYPED
-    end
-
-    SHIPPED ==> CHAIN
-    SHIPPED ==> FREE
-
-    T108 --> EXIT
-    T109 --> EXIT
-    T110 --> EXIT
-    T112 --> EXIT
-    T113 --> EXIT
-
-    EXIT ==> P4 ==> LATER
-    T182 --> T183
-    T182 --> T184
+    T107 --> T108 --> T109 --> T111 --> EXIT
 </pre>
       </div>
 
       <div class="legend">
-        <span><i style="--sw: var(--st-approved)"></i> Done and approved</span>
-        <span><i style="--sw: var(--st-review)"></i> Needs a maintainer decision</span>
-        <span><i style="--sw: var(--st-ready)"></i> Small or well understood</span>
         <span><i style="--sw: var(--st-idle)"></i> Ordinary deliverable</span>
         <span><i style="--sw: var(--st-block)"></i> High risk</span>
         <span><i class="arrowed"></i> An arrow means one must precede the other</span>
       </div>
     </div>
 
-    <p class="note"><strong>Phase 3 contains exactly one dependency chain, and this drawing exists to say so.</strong> An earlier version ran every task through a single "head" node — twenty-odd arrows meeting in one place, which drew the fact that the work is <em>unconstrained</em> as though it were a bottleneck. Only four tasks must happen in an order. The other eight can start today in any sequence, and the arrows that remain are the five that reach an exit criterion. <span class="q-why">Arrows removed: eighteen. None of them encoded a dependency — they encoded "has been unblocked", which is true of everything on the board and is better said once, in a sentence, than twenty times in ink.</span></p>
-    <p class="note" style="--edge: var(--st-review)"><strong>The two amber nodes are the only things on this board an implementer cannot start.</strong> Both are maintainer rulings and neither is scheduled. <code>T-182</code> is the sharper of the two: six yt-dlp option families point in the opposite direction from a written constraint — site credentials against <code>REQ-EXCL-003</code>, <code>--impersonate</code> against <code>-005</code>, <code>--xff</code> against <code>-002</code>, <code>--exec</code> against path containment, <code>--download-archive</code> against the record-keeping this phase deliberately withdrew, and <strong>SponsorBlock against <code>NFR-007</code></strong>, whose promise of no outbound traffic beyond downloads and update checks those options would widen. <span class="q-why">It is drawn gating both <code>T-183</code> and <code>T-184</code> because the audit cannot classify what it may not offer, and the escape hatch's refusal list is exactly that classification. Capability parity does not silently buy a new network destination or a relaxed exclusion.</span></p>
+    <p class="note"><strong>Everything else in Phase 3 is a box with no arrows, so it is a list rather than a drawing.</strong> Five more deliverables — <code>T-110</code> playlists, <code>T-112</code> the template editor, <code>T-113</code> resume, <code>T-114</code> the duplicate confirmation, <code>T-181</code> the start gate — plus <code>T-180</code>, <code>T-176</code> and <code>T-143</code> as cleanup. <strong>Any of them can start today, in any order, and none waits on anything.</strong> <span class="q-why">They were drawn as an eight-node cluster until 2026-08-07, which made the chart three times wider and every label smaller, to encode <em>no relationship at all</em>. The table below carries them with their risk and their requirement, which is more than a box could say.</span></p>
+
+    <p class="note"><strong>This drawing has now lost arrows twice, for the same reason both times.</strong> The first version ran every task through one "head" node — twenty-odd arrows meeting in a single place, drawing the fact that the work is <em>unconstrained</em> as though it were a bottleneck. The second, on 2026-08-07, added clusters for the independent work, the pending rulings and the phase after next, and became too wide to read at page width. <span class="q-why">Both were the same error: putting things in a dependency diagram that have no dependencies. Eight unconnected boxes cost three times the width and said nothing an arrow could carry — and the fix for the width was a fit/full-size toggle, which offered the reader a choice between unreadable and sideways. The toggle is gone with them.</span></p>
+    <p class="note" style="--edge: var(--st-review)"><strong>Two things on the roadmap are waiting on you rather than on an implementer, and neither is drawn here.</strong> <code>T-171</code> asks whether downloaded files carry provenance. <code>T-182</code> is the sharper one: six yt-dlp option families point in the opposite direction from a written constraint — site credentials against <code>REQ-EXCL-003</code>, <code>--impersonate</code> against <code>-005</code>, <code>--xff</code> against <code>-002</code>, <code>--exec</code> against path containment, <code>--download-archive</code> against the record-keeping this phase deliberately withdrew, and <strong>SponsorBlock against <code>NFR-007</code></strong>, whose promise of no outbound traffic beyond downloads and update checks those options would widen. It appears in the Phase 4.5 chart below, where it actually gates something.</p>
   </section>
 
   <section>
@@ -776,6 +713,42 @@ flowchart LR
       <p class="lede">Added 2026-08-07 between Settings and Distribution. <strong>The premise of this application is that it is a GUI for yt-dlp, and it can currently express eleven of yt-dlp's options.</strong> Phase 3 and Phase 4 add perhaps fifteen more. The option list runs to roughly 250 across sixteen groups — so the gap is not a rounding error, and shipping a first release without closing it would mean shipping the claim without the thing.</p>
     </div>
 
+    <div class="chart-frame">
+      <div class="chart-bar">
+        <p class="chart-hint">What has to happen in an order, after Phase 3</p>
+      </div>
+      <div class="chart-scroll">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"fontSize":"16px","lineColor":"#8AA095","primaryTextColor":"#ffffff"},"flowchart":{"useMaxWidth":true,"nodeSpacing":30,"rankSpacing":40,"padding":12,"curve":"basis"}}}%%
+flowchart TB
+    classDef gate    fill:#B07C1F,stroke:#6E4C0F,stroke-width:3px,color:#ffffff
+    classDef planned fill:#6E7E75,stroke:#44534B,stroke-width:2px,color:#ffffff
+    classDef risky   fill:#A6432B,stroke:#5E2418,stroke-width:3px,color:#ffffff
+    classDef exit    fill:#083122,stroke:#D9A24C,stroke-width:3px,color:#D9A24C
+
+    EXIT3(["Phase 3 exit"]):::exit
+    P4["Phase 4 · settings, polish, accessibility"]:::planned
+    T182["T-182 · the ruling · takeable today"]:::gate
+    T183["T-183 · the audit · decomposes the phase"]:::planned
+    T184["T-184 · the escape hatch"]:::risky
+    TYPED["typed fields, per option group"]:::planned
+
+    EXIT3 --> P4 --> T183
+    T182 --> T183
+    T183 --> T184
+    T183 --> TYPED
+</pre>
+      </div>
+
+      <div class="legend">
+        <span><i style="--sw: var(--st-review)"></i> Waiting on a maintainer ruling</span>
+        <span><i style="--sw: var(--st-idle)"></i> Ordinary work</span>
+        <span><i style="--sw: var(--st-block)"></i> High risk</span>
+      </div>
+    </div>
+
+    <p class="note"><strong><code>T-182</code> is drawn off to the side because it belongs to no phase's schedule.</strong> It can be taken this afternoon and it gates everything under it — the audit cannot classify what it may not offer, and the escape hatch's refusal list <em>is</em> that classification. <code>T-171</code>, the provenance ruling, sits in the same position against Phase 4 and is on nobody's critical path either.</p>
+
     <div class="table-card">
       <table>
         <caption><code>ARC-010</code> · <code>REQ-030</code> · <code>REQ-031</code> · not decomposed — <code>T-183</code> is what decomposes it</caption>
@@ -820,19 +793,7 @@ flowchart LR
 
 </div>
 
-<script>
-  (function () {
-    var frame = document.getElementById("chart");
-    var button = document.getElementById("chart-toggle");
-    if (!frame || !button) return;
-    var hint = frame.querySelector(".chart-hint");
-    button.addEventListener("click", function () {
-      var fitted = frame.classList.toggle("fit");
-      button.setAttribute("aria-pressed", String(fitted));
-      button.textContent = fitted ? "Full size" : "Fit to page";
-      hint.textContent = fitted
-        ? "Whole graph, fitted to the page"
-        : "Drawn full size — scroll sideways inside this frame";
-    });
-  })();
-</script>
+<!-- The fit/full-size toggle was removed on 2026-08-07 with the chart that needed it. A control
+     offering a reader unreadable-but-whole or readable-but-scrolling is a way of not choosing;
+     both charts above are narrow enough to render at their natural size, so there is nothing to
+     toggle and no script left on this page. -->
