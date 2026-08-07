@@ -11,6 +11,7 @@ real worker cannot be asked to emit hundreds of messages inside one repaint inte
 Each says so where it appears, matching `tests/ui/test_job_detail.py`'s convention.
 """
 
+import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
@@ -25,7 +26,13 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from tests.qt_lifecycle import drain
-from tests.ui.test_row_delegate import REPAINT_BUDGET_SECONDS, VIEWPORT_ROWS
+from tests.ui.test_row_delegate import (
+    IMAGE_SOURCE,
+    REPAINT_BUDGET_SECONDS,
+    VIEWPORT_ROWS,
+    FakeLoader,
+    occupy_pool,
+)
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
@@ -72,6 +79,7 @@ from tracks_and_trails.ui.row_delegate import (
     SegmentState,
 )
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
+from tracks_and_trails.ui.thumbnails import ThumbnailStore
 
 #: What every surface must call a default MP3 download (`T-156`).
 #:
@@ -2454,12 +2462,14 @@ def test_a_picture_written_after_its_removal_sweep_is_still_collected(
     set, so every later reset was suppressed and the file stayed for the life of the process —
     where the base implementation swept again on the next reorder and collected it.
 
-    The write is made directly rather than through the store on purpose: this must hold for a file
-    the view has no signal for, which is not hypothetical — the add dialog runs a second store over
-    the same cache root (`T118-R16`), and nothing this view is connected to fires for it.
+    **The picture is published through a second real store, not written by hand** (`T179-R1`, round
+    two). Writing the bytes directly models nothing that happens: every real publication goes
+    through `_DecodeTask`, which is what records it. The second store is not a convenience either —
+    it is the case that makes a per-store signal insufficient, because the add dialog runs its own
+    store over the same cache root (`T118-R16`) and nothing this view connects to fires for it.
 
-    So the gate also remembers what the cache directory looked like when the sweep **finished**,
-    and a pure reorder over a changed directory sweeps rather than skipping.
+    So the gate counts publications into the directory rather than listening to one store, and a
+    pure reorder after any of them sweeps rather than skipping.
     """
     kept = "https://pics.invalid/kept.jpg"
     gone = "https://pics.invalid/gone.jpg"
@@ -2479,12 +2489,19 @@ def test_a_picture_written_after_its_removal_sweep_is_still_collected(
         "the removal sweep never finished, so the race this is about was never set up"
     )
 
-    # The late decode lands: its job is already gone, and the sweep that would have caught it has
-    # been and finished.
+    # The late decode lands, published the way every real one is: through a store's decode task,
+    # over the same cache root, by a store this view has never heard of.
+    dialogs_store = ThumbnailStore(
+        loader=FakeLoader(IMAGE_SOURCE.read_bytes()), cache_root=root, parent=None
+    )
     late = thumbnail_cache_path(gone, root)
-    late.write_bytes(b"decoded after the sweep")
-
-    manager.queue_reordered.emit(("job-keeps",))
+    try:
+        dialogs_store.pixmap(gone)
+        assert spin_until(qapp, late.exists), "the second store never published its picture"
+        manager.queue_reordered.emit(("job-keeps",))
+    finally:
+        dialogs_store.close()
+        dialogs_store.deleteLater()
 
     assert spin_until(qapp, lambda: not late.exists()), (
         "a picture written after its job's removal sweep survived a later reorder; unchanged "
@@ -2580,4 +2597,219 @@ def test_a_sweep_that_deleted_something_does_not_make_the_next_reorder_sweep(
     assert swept == [], (
         f"a reorder after a sweep that deleted a file scheduled {len(swept)} more scans; the "
         "recorded fingerprint was taken before the sweep changed the directory it fingerprints"
+    )
+
+
+def test_two_resets_during_one_sweep_schedule_one_more_sweep_for_the_newest_set(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Overlapping sweeps have no request identity, so there must never be two (`T179-R1`).
+
+    `ThumbnailStore.swept` reports a removal count and nothing else. With sweeps A and B both in
+    flight, whichever finishes second promotes its own set for both — the reviewer's probe ran A
+    then B, completed B then A, and ended with orphan A still on disk, live B deleted, and the
+    view believing it had swept for B. Adding identity to the store's signal is one fix; this is
+    the other, and it is smaller: **one sweep at a time**, with a request arriving during one
+    re-evaluated against the model when it finishes.
+
+    The pool is blocked so the first sweep provably cannot complete while the other two resets
+    arrive. That makes the overlap deterministic rather than a race this test hopes to hit.
+    """
+    root = tmp_path / "cache"
+    urls = [f"https://pics.invalid/{n}.jpg" for n in range(3)]
+    for index, url in enumerate(urls):
+        path = thumbnail_cache_path(url, root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"a picture")
+        queue.add(_thumbed(f"job-{index}", tmp_path, url, index))
+
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+
+    requested: list[frozenset[str]] = []
+    real = view._thumbnails.sweep
+
+    def recording(live: Any) -> None:
+        live = frozenset(live)
+        requested.append(live)
+        real(live)
+
+    monkeypatch.setattr(view._thumbnails, "sweep", recording)
+
+    gate = threading.Event()
+    occupy_pool(view._thumbnails, gate)
+    try:
+        del queue.jobs["job-0"]
+        manager.job_removed.emit("job-0")
+        del queue.jobs["job-1"]
+        manager.job_removed.emit("job-1")
+        del queue.jobs["job-2"]
+        manager.job_removed.emit("job-2")
+
+        assert len(requested) == 1, (
+            f"{len(requested)} sweeps were in flight at once: {requested}. swept() carries no "
+            "request identity, so the second completion would promote the wrong set"
+        )
+    finally:
+        gate.set()
+
+    assert spin_until(qapp, lambda: not view._thumbnails.outstanding)
+
+    assert len(requested) == 2, (
+        f"the coalesced resets scheduled {len(requested) - 1} follow-up sweeps, not 1: {requested}"
+    )
+    assert requested[-1] == frozenset(), (
+        f"the follow-up swept for {requested[-1]!r}; it must use the model as it stands when the "
+        "first sweep finishes, which by then holds no jobs at all"
+    )
+    assert spin_until(
+        qapp, lambda: not any(thumbnail_cache_path(url, root).exists() for url in urls)
+    ), "every job was removed and its picture survived"
+
+
+def test_unchanged_reorders_over_an_absent_cache_directory_sweep_once(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T179-R1`: the empty-cache case, where the second attempt failed its own criterion.
+
+    The mtime gate returned `None` when the directory did not exist and failed open, so three
+    unchanged reorders scheduled three scans — the optimization not applying at all in the state a
+    fresh install is in. Counting publications has no such case: nothing has been published, so the
+    generation is zero and stays zero, and only the first reset sweeps.
+    """
+    root = tmp_path / "cache-that-does-not-exist"
+    queue.add(make_job("job-a", tmp_path, queue_position=0))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+    assert not thumbnail_cache_path("https://pics.invalid/x.jpg", root).parent.exists()
+
+    swept: list[frozenset[str]] = []
+    real = view._thumbnails.sweep
+
+    def recording(live: Any) -> None:
+        live = frozenset(live)
+        swept.append(live)
+        real(live)
+
+    monkeypatch.setattr(view._thumbnails, "sweep", recording)
+
+    manager.queue_reordered.emit(("job-a",))
+    assert spin_until(qapp, lambda: not view._thumbnails.outstanding)
+    manager.queue_reordered.emit(("job-a",))
+    manager.queue_reordered.emit(("job-a",))
+
+    assert len(swept) == 1, (
+        f"three unchanged reorders over an absent cache directory scheduled {len(swept)} scans; "
+        "the optimization does not apply in the state a fresh install is in"
+    )
+
+
+def test_the_sweep_gate_touches_no_file_on_the_gui_thread(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T179-R2`, as a gate rather than as a promise.
+
+    The rejected correction read the cache directory's mtime from a `modelReset` slot. `NFR-001`
+    and `ARCHITECTURE.md` §8 say the GUI thread is never blocked on disk, and `T118-R13` had
+    already moved this exact directory's work to the pool; a reviewer probe with a slow `stat` held
+    a reorder for 0.152 s.
+
+    A timing assertion would make this a statement about how fast the machine is. Instead every
+    `Path.stat` and `Path.iterdir` raises for the duration: if the reset path touches the
+    filesystem at all, it fails here, and no delay has to be guessed at.
+    """
+    root = tmp_path / "cache"
+    url = "https://pics.invalid/a.jpg"
+    path = thumbnail_cache_path(url, root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"a picture")
+
+    queue.add(_thumbed("job-a", tmp_path, url, 0))
+    queue.add(_thumbed("job-b", tmp_path, url, 1))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+
+    def refuse(*_: Any, **__: Any) -> Any:
+        raise AssertionError("the sweep gate touched the filesystem on the GUI thread")
+
+    monkeypatch.setattr(view._thumbnails, "sweep", lambda live: None)
+    monkeypatch.setattr(Path, "stat", refuse)
+    monkeypatch.setattr(Path, "iterdir", refuse)
+    monkeypatch.setattr(Path, "exists", refuse)
+
+    del queue.jobs["job-b"]
+    manager.job_removed.emit("job-b")
+    manager.queue_reordered.emit(("job-a",))
+
+
+def test_a_picture_published_while_the_sweep_runs_is_not_counted_as_swept(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Why the generation is captured when the sweep is **asked for**, not when it finishes.
+
+    A picture published while the sweep is running may or may not have been enumerated — that is
+    precisely the race `T179-R1` is about, and it is unknowable from outside. Recording the
+    generation as of completion declares it swept, which suppresses the next reset and strands the
+    file: `T179-R1` for the third time, in the third mechanism.
+
+    Driven by stubbing the sweep and emitting `swept` by hand, so the publication provably lands
+    between the request and the completion. Blocking the pool cannot express this — `_DecodeTask`
+    shares that pool, so a blocked pool stops the very publication being modelled.
+    """
+    kept = "https://pics.invalid/kept.jpg"
+    gone = "https://pics.invalid/gone.jpg"
+    root = tmp_path / "cache"
+    thumbnail_cache_path(kept, root).parent.mkdir(parents=True, exist_ok=True)
+    thumbnail_cache_path(kept, root).write_bytes(b"a picture")
+
+    queue.add(_thumbed("job-keeps", tmp_path, kept, 0))
+    queue.add(_thumbed("job-goes", tmp_path, gone, 1))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+
+    requested: list[frozenset[str]] = []
+    monkeypatch.setattr(view._thumbnails, "sweep", lambda live: requested.append(frozenset(live)))
+
+    del queue.jobs["job-goes"]
+    manager.job_removed.emit("job-goes")
+    assert len(requested) == 1, "the removal did not ask for a sweep"
+
+    # Mid-flight: the sweep has been asked for and has not reported back.
+    dialogs_store = ThumbnailStore(
+        loader=FakeLoader(IMAGE_SOURCE.read_bytes()), cache_root=root, parent=None
+    )
+    try:
+        dialogs_store.pixmap(gone)
+        assert spin_until(qapp, thumbnail_cache_path(gone, root).exists), (
+            "the second store never published, so nothing landed mid-sweep"
+        )
+        view._thumbnails.swept.emit(0)
+
+        manager.queue_reordered.emit(("job-keeps",))
+    finally:
+        dialogs_store.close()
+        dialogs_store.deleteLater()
+
+    assert len(requested) == 2, (
+        "a picture published while the sweep was running was recorded as already swept, so the "
+        "next reset was skipped and the file is stranded"
     )

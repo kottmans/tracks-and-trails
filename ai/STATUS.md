@@ -65,11 +65,11 @@ by the Implementer and targeted at **`T-176`**, which is filed under `## Propose
 *awaiting review* in their entries. They are not covered by the `b92ec62` approval, whose base is
 `e70d615`.
 
-**`T-177`, `T-178` and `T-179` are in review, corrected once** — filed 2026-08-06 from an
-efficiency audit (Codex, which changed no files) and implemented the same day on maintainer
-instruction. The initial review returned **Changes requested** with three blocking Medium findings,
-one per task; all three corrections are made and are awaiting the Reviewer's verification. Nothing
-is committed. All three are behavior-preserving:
+**`T-177` and `T-178` are complete; `T-179` is on its third mechanism.** All three were filed
+2026-08-06 from an efficiency audit (Codex, which changed no files) and implemented the same day on
+maintainer instruction. Two review rounds followed. `T177-R1` and `T178-R1` are **Resolved**, and
+the maintainer split those two tasks out of the blocked batch — neither carries an approval verdict
+of its own, and both entries say so. All three are behavior-preserving:
 
 - **`T-177`** — both startup scans deserialized every stored job to select a status `jobs_status`
   has indexed since the first migration. `JobRepository.with_statuses` selects in SQL and keeps
@@ -82,7 +82,13 @@ is committed. All three are behavior-preserving:
   does not look like a queue path.
 - **`T-179`** — the thumbnail cache is swept when the live URL set changes rather than on every
   model reset, so a pure reorder no longer schedules a scan that can only conclude everything is
-  still wanted.
+  still wanted. **Rejected twice.** The first gate remembered only the membership and stranded a
+  picture published after its removal sweep (`T179-R1`); the second compared the cache directory's
+  mtime, which is lossy on FAT, is not promised to update continuously on Windows, and — `T179-R2`,
+  **High** — was read with a `Path.stat()` on the GUI thread that a probe measured holding a
+  reorder for 0.152 s. The third mechanism asks the filesystem nothing: it counts publications in
+  process, keyed by cache directory so it spans both stores over one root. Awaiting re-review on a
+  base of checkpoint `961cada`.
 
 **Four claims written into this work were wrong, and none of them was caught by reading it** —
 which is the same lesson `ai/TESTING.md` §13 already carries, arriving four more times in one day.

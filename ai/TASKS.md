@@ -103,11 +103,12 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ### T-179 — Every model reset scans the thumbnail cache, including a pure reorder
 
-**Status:** **In Review — corrected 2026-08-06, awaiting re-review.** Filed from the same audit and
-authorised with it. **The first gate was wrong and the review was right about why** — `T179-R1`
-found that it suppressed the scan that would have collected a picture written after its job's
-removal sweep. The gate now checks the cache directory as well as the membership, and records what
-a sweep *finished* with. Corrected and recorded below.
+**Status:** **In Review — corrected twice, third mechanism, awaiting re-review 2026-08-06.**
+**Two rejections, and both were the reviewer's.** `T179-R1` survived the first correction and
+`T179-R2` — **High** — was introduced *by* it. The Medium pass budget is exhausted and **the
+maintainer authorised another pass on 2026-08-06**; the High needed no authorization. Correction
+round 2 is at the bottom of this entry, on a base of checkpoint `961cada`, which is the rejected
+state committed deliberately so this correction has a boundary of its own.
 **Owner:** Implementer
 **Priority:** Low
 **Phase:** Phase 3 cleanup
@@ -219,9 +220,68 @@ which is behaviourally the same as the correct code, and it survived. Reformed t
 completion handler, it dies. A surviving mutant is only evidence if the mutant is the change it
 claims to be.
 
+#### Correction round 2 — `T179-R1` and `T179-R2`, 2026-08-06
+
+**The mtime gate is withdrawn entirely.** It was wrong in three independent ways and the reviewer
+found all three; keeping any part of it would have been defending a mechanism rather than fixing a
+defect.
+
+| What was wrong | Why it could not be patched |
+|---|---|
+| Directory mtime is lossy and filesystem-dependent — FAT resolves write times to two seconds, and Windows does not promise continuous updates | No amount of care makes a timestamp a reliable change-detector across the filesystems this ships on |
+| Reading it was `Path.stat()` **on the GUI thread**, from a `modelReset` slot — `T179-R2`, **High**. `NFR-001` and `ARCHITECTURE.md` §8 forbid it and `T118-R13` had already moved this exact directory's work to the pool. A slow-stat probe held a reorder for **0.152 s** | Any filesystem question asked from the gate is disk I/O on that thread. The fix is to stop asking the filesystem, not to ask it faster |
+| An absent cache directory returned `None` and failed open, so three unchanged reorders scheduled three scans | The optimization did not apply in the state a fresh install is in |
+
+**What replaces it: `cache_generation`, a count of publications, in process, under a lock.** It
+answers "could the cache have gained a file since I last looked?" without asking the filesystem
+anything — a dict lookup, no `stat`, no enumeration, nothing that can block. It is keyed by *cache
+directory* rather than by store, which is the property a per-store signal could never have: this
+application runs two `ThumbnailStore`s over one root (`T118-R16`), and a picture the add dialog
+publishes is one the queue's sweep must still collect. `_DecodeTask` records the publication at the
+point the file appears in the directory, and only on success.
+
+**Its limit, stated rather than discovered later:** it does not see a write by another *process*.
+`A-004` admits one instance, so within this application's rules there is no second writer; a
+foreign process writing into our cache directory is outside what any in-process bookkeeping can
+answer, and no timestamp would have answered it reliably either.
+
+**Overlapping sweeps are serialized rather than identified.** `swept` reports a count and carries
+no request identity, so with two in flight the second completion promotes the first's set — the
+reviewer's probe ended with orphan A on disk, live B deleted, and the view believing it had swept
+for B. Adding identity to the store's signal was one option; one sweep at a time is smaller and
+changes no shared API. A request arriving during a sweep sets `_coalesced`, and `_on_swept` re-runs
+the gate against the model **as it stands then**, which is fresher than any set queued earlier.
+
+**The generation is captured when the sweep is requested, not when it completes.** A picture
+published while the sweep runs may or may not have been enumerated; recording completion-time state
+declares it swept and strands it. That is `T179-R1`'s shape a third time, and it is the mutation
+that survived the first battery of this round.
+
+**Five mutations, five killed** — the fifth only after the test that catches it was written:
+
+| Mutation | Killed by |
+|---|---|
+| Gate ignores the generation (the original `T179-R1`) | `test_a_picture_written_after_its_removal_sweep_is_still_collected` |
+| Publications never recorded | the same test |
+| No serialization, overlapping sweeps allowed | `test_two_resets_during_one_sweep_schedule_one_more_sweep_for_the_newest_set` |
+| Generation captured at completion rather than request | `test_a_picture_published_while_the_sweep_runs_is_not_counted_as_swept` — **survived until that test existed** |
+| — | `test_unchanged_reorders_over_an_absent_cache_directory_sweep_once` and `test_the_sweep_gate_touches_no_file_on_the_gui_thread` cover the other two rejected behaviours directly |
+
+**`T179-R2` is asserted structurally, not by a stopwatch.** `Path.stat`, `Path.iterdir` and
+`Path.exists` are made to raise for the duration of a removal and a reorder; if the reset path
+touches the filesystem at all it fails, and no delay has to be guessed at. A timing bound would
+have made it a claim about how fast the machine is — which is the defect `T118-R10` records.
+
+**The reviewer's own test had to be replaced, and that is worth reading.** The round-one regression
+wrote the late file directly with `write_bytes`. Under a publication counter that models nothing
+real: every actual publication goes through `_DecodeTask`. It now publishes through a **second real
+`ThumbnailStore` over the same cache root**, which is both faithful and strictly stronger — it is
+the add-dialog case that makes a per-store signal insufficient.
+
 #### Files
 
-`src/tracks_and_trails/ui/queue_view.py`, `tests/ui/test_queue_view.py`
+`src/tracks_and_trails/ui/queue_view.py`, `src/tracks_and_trails/ui/thumbnails.py`,
+`tests/ui/test_queue_view.py`
 
 ---
 

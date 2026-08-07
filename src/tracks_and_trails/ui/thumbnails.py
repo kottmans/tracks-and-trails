@@ -28,6 +28,7 @@ ever held.
 
 import os
 import tempfile
+import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -92,6 +93,44 @@ class _Sink(QObject):
     failed = Signal(str)
     swept = Signal(int)
     task_done = Signal()
+
+
+#: How many pictures have been published into each cache directory **by this process**, keyed by
+#: the directory itself. Guarded by a lock because `_DecodeTask` runs on the pool (`ARC-005`).
+_PUBLICATIONS: dict[Path, int] = {}
+_PUBLICATIONS_LOCK: Final = threading.Lock()
+
+
+def cache_generation(root: Path | None = None) -> int:
+    """How many pictures have been published into `root`'s cache directory since this run began.
+
+    **A counter rather than anything the filesystem reports** (`T179-R1`, `T179-R2`). A caller that
+    wants to know whether the cache could have gained a file since it last looked has two bad
+    options and this one: a directory timestamp is lossy and filesystem-dependent — FAT resolves
+    write times to two seconds and Windows does not promise continuous updates — and enumerating is
+    the very work the question exists to avoid. Worse, either one is disk I/O, and the caller is the
+    GUI thread, which `NFR-001` and `ARCHITECTURE.md` §8 forbid blocking. This reads an integer
+    under a lock and touches nothing.
+
+    **Keyed by directory so it spans stores rather than objects.** This application runs two
+    `ThumbnailStore`s over one cache root — the queue's and the add dialog's (`T118-R16`) — and a
+    picture the dialog publishes is one the queue's sweep must still collect. A per-store signal
+    cannot see that; this can.
+
+    **What it does not see, stated rather than assumed:** a write by another *process*. `A-004`
+    admits one instance, so within this application's own rules there is no second writer, and a
+    foreign process writing into our cache directory is outside what any in-process bookkeeping can
+    answer.
+    """
+    directory = thumbnail_cache_directory(root)
+    with _PUBLICATIONS_LOCK:
+        return _PUBLICATIONS.get(directory, 0)
+
+
+def _note_publication(path: Path) -> None:
+    """Record that `path` was just published into its directory. Called from the pool."""
+    with _PUBLICATIONS_LOCK:
+        _PUBLICATIONS[path.parent] = _PUBLICATIONS.get(path.parent, 0) + 1
 
 
 class ThumbnailLoader(Protocol):
@@ -230,6 +269,11 @@ class _DecodeAndStore(QRunnable):
                     with os.fdopen(handle, "wb") as writing:
                         writing.write(self._data)
                     partial.replace(self._path)
+                    # **The publication point** (`T179-R1`). Recorded here rather than beside the
+                    # `decoded` emission below, because this is where a file appears in the
+                    # directory a sweep enumerates — and only on success: the `OSError` path below
+                    # leaves the cache untouched and must not claim otherwise.
+                    _note_publication(self._path)
                 except OSError:
                     # Our own temporary, so our own to remove. Leaving it would accumulate one
                     # unreadable file per failed write in a directory nothing else prunes.

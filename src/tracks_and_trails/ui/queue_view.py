@@ -90,7 +90,6 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core.errors import is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.core.paths import thumbnail_cache_directory
 from tracks_and_trails.core.presets import BUILT_IN_PRESETS, format_choice_of
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
@@ -134,7 +133,7 @@ from tracks_and_trails.ui.row_delegate import (
 )
 from tracks_and_trails.ui.row_verbs import Verb, group_verbs, verbs_for
 from tracks_and_trails.ui.staging import placeholder_hue
-from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore
+from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore, cache_generation
 
 #: The columns, in order, with the header each shows. `REQ-014` names five things a user must be
 #: able to see per job; the sixth is which job it is. Transcribed from the requirement rather than
@@ -1273,12 +1272,17 @@ class QueueView(QWidget):
         #: no pictures still has to sweep once, and an empty set as the starting value would call
         #: that "unchanged".
         self._swept_for: frozenset[str] | None = None
-        #: The set handed to the sweep currently in flight, promoted to `_swept_for` when it
+        #: The publication count the last completed sweep was asked at. `None` before the first,
+        #: for the same reason `_swept_for` is (`T-179`).
+        self._swept_generation: int | None = None
+        #: The set and generation handed to the sweep currently in flight, promoted when it
         #: finishes. A requested sweep is not proof of anything (`T179-R1`).
         self._sweeping_for: frozenset[str] = frozenset()
-        #: What the cache directory looked like when that sweep finished, so a file written after
-        #: it — by this store or by the add dialog's over the same root — is not skipped past.
-        self._swept_at: int | None = None
+        self._sweeping_generation: int = 0
+        #: One sweep at a time, because `swept` carries no request identity — a request arriving
+        #: during one is remembered here and re-evaluated on completion (`T179-R1`).
+        self._sweep_in_flight = False
+        self._coalesced = False
         self._cache_root = cache_root
 
         layout = QVBoxLayout(self)
@@ -1707,26 +1711,6 @@ class QueueView(QWidget):
                 self._model.index(0, JOB_COLUMN), self._model.index(count - 1, JOB_COLUMN)
             )
 
-    def _cache_fingerprint(self) -> int | None:
-        """What the cache directory looked like, cheaply. `None` when it is not there yet.
-
-        The directory's own mtime, which changes when an entry is created, renamed over or
-        unlinked. **One `stat` of one directory**, not the enumerate-and-stat of every entry that
-        `T118-R13` moved to the pool — the whole point is to answer "could anything have changed?"
-        without doing the work that answers "what changed?".
-
-        It has to be the *directory* rather than anything this view knows about, because this
-        application runs two stores over one cache root: the queue's and the add dialog's
-        (`T118-R16`). A file the dialog publishes is invisible to every signal this view is
-        connected to, and it is exactly the kind of orphan the sweep exists to collect.
-        """
-        try:
-            return thumbnail_cache_directory(self._cache_root).stat().st_mtime_ns
-        except OSError:
-            # Not there, or unreadable. Either way this cannot prove nothing changed, so it says
-            # so and the caller sweeps rather than skipping on an error.
-            return None
-
     def _sweep_thumbnails(self) -> None:
         """Drop cached pictures no remaining job names (`T-119`, `NFR-004`).
 
@@ -1734,48 +1718,73 @@ class QueueView(QWidget):
         `queue_cleared` all cause — so a removed job's picture goes with it, and a picture two jobs
         shared survives until the second one goes too.
 
-        **Skipped only when nothing could have changed** (`T-179`, `T179-R1`). A reorder resets the
-        model and cannot change which URLs are named, so it used to schedule a full
-        enumerate-and-stat of the cache directory that could only conclude everything was still
-        wanted. Two things have to hold before that scan can be skipped, and the first version of
-        this checked only the first:
+        **Skipped only when nothing could have changed** (`T-179`). A reorder resets the model and
+        cannot change which URLs are named, so it used to schedule a full enumerate-and-stat of the
+        cache directory that could only conclude everything was still wanted. Two things must hold
+        before that scan is skipped:
 
-        1. the live set equals what the last sweep was given, and
-        2. the cache directory has not changed since that sweep **finished**.
+        1. the live set equals what the last **completed** sweep was given, and
+        2. no picture has been published into the cache directory since that sweep was asked for.
 
-        **`T179-R1` is why the second condition exists, and why it is the directory rather than a
-        signal.** A thumbnail decode already in flight publishes its file after the sweep has
-        enumerated the directory; the sweep misses it, and a gate that remembered only the live set
-        then suppressed every later scan, so the file stayed for the life of the process. The base
-        implementation swept again on the next reorder and collected it. The mtime sees that write —
-        and, unlike any signal this view could connect to, it also sees one made by the add
-        dialog's store over the same cache root.
+        **The second condition is `T179-R1`, and it has been wrong twice.** A decode already in
+        flight publishes its file after the sweep has enumerated the directory; that sweep cannot
+        see it, and a gate remembering only the live set then suppressed every later scan, so the
+        file stayed for the life of the process. The second attempt compared the cache directory's
+        mtime, which failed three ways at once: the timestamp is lossy and filesystem-dependent
+        (FAT resolves to two seconds, and Windows does not promise continuous updates), reading it
+        was **disk I/O on the GUI thread** — `T179-R2`, `NFR-001`, and the exact thing `T118-R13`
+        moved to the pool — and an absent directory forced a scan on every reset.
 
-        **And the recorded state is what *completed*, not what was requested.** `_swept_for` is set
-        from `_on_swept`, so a sweep that is scheduled and never finishes — the store closed under
-        it, the pool still draining — leaves the previous value standing and the next reset sweeps.
-        Treating a requested sweep as proof the cache is clean was the other half of `T179-R1`.
+        `cache_generation` answers the same question without asking the filesystem anything: it
+        counts publications, in process, under a lock. It spans both stores over the cache root
+        (`T118-R16`), which is why a per-store signal was never enough, and it costs a dict lookup.
 
-        What remains given up is narrow and worth stating: between a write landing and the *next*
-        model reset, the file is on disk with no job naming it. That was true before this change
-        too — the sweep has always been asynchronous — and `T-119`'s criterion is that the entry is
-        removed when no job names it, which a reset now still delivers.
+        **The generation is captured when the sweep is *requested*, not when it finishes**, so a
+        picture published while the sweep is running invalidates it. That is the race in its exact
+        form: such a file may or may not have been enumerated, and a gate that assumed it was would
+        be `T179-R1` a third time.
+
+        **One sweep at a time, and the newest request wins** (`T179-R1`). `swept` reports a count
+        and carries no request identity, so with two sweeps in flight the second completion would
+        promote the first's set. Rather than add identity to the store's signal, this serializes:
+        a request arriving during a sweep sets `_coalesced`, and `_on_swept` re-runs the gate
+        against the model as it stands *then* — which is fresher than any set queued earlier.
+
+        What remains given up: between a write landing and the next model reset, the file is on
+        disk with no job naming it. The reviewer confirmed that is not new — the sweep has always
+        been asynchronous and reset-driven — and `T-119`'s criterion is that the entry goes when no
+        job names it, which a reset still delivers.
         """
         live = frozenset(
             job.thumbnail_url
             for job in (self._model.job_for(job_id) for job_id in self._model.job_ids())
             if job is not None and job.thumbnail_url
         )
-        fingerprint = self._cache_fingerprint()
-        if live == self._swept_for and fingerprint is not None and fingerprint == self._swept_at:
+        generation = cache_generation(self._cache_root)
+        if live == self._swept_for and generation == self._swept_generation:
+            return
+        if self._sweep_in_flight:
+            self._coalesced = True
             return
         self._sweeping_for = live
+        self._sweeping_generation = generation
+        self._sweep_in_flight = True
+        self._coalesced = False
         self._thumbnails.sweep(live)
 
     def _on_swept(self, _count: int) -> None:
-        """A sweep finished. Only now is the cache known to match the set it was given."""
+        """A sweep finished. Only now is the cache known to match the set it was given.
+
+        A request that arrived while it was running was not issued — one sweep at a time is what
+        makes a countless `swept` safe to attribute — so the gate is re-run here against the model
+        as it stands now, which is fresher than anything that could have been queued earlier.
+        """
         self._swept_for = self._sweeping_for
-        self._swept_at = self._cache_fingerprint()
+        self._swept_generation = self._sweeping_generation
+        self._sweep_in_flight = False
+        if self._coalesced:
+            self._coalesced = False
+            self._sweep_thumbnails()
 
     def _show_the_right_thing(self) -> None:
         """The table when there are rows, the notice when there are none. Never both."""
