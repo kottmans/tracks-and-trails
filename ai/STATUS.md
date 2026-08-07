@@ -89,6 +89,32 @@ it comes from the probe's own languages and `SUBTITLE_LANGUAGES` is `("all",)` t
 entries lost their "unruled" caveats — leaving those would have been the `T105-R4` defect in the
 other direction.
 
+## 2026-08-07: `T-182` ruled, and it corrected a decision on the way out
+
+**`SEC-003`.** Six yt-dlp option families pointed opposite a written constraint, and all six are
+ruled. `--netrc` and client certificates are permitted; `-u`/`-p`/`--video-password` are not, on the
+precedent that `DownloadRequest` already makes proxy credentials *unrepresentable* rather than
+scrubbing them. `--impersonate` and `--xff` are forbidden, `--geo-verification-proxy` permitted —
+the line is whether the user owns the thing being used. `--exec` is forbidden.
+`--download-archive` is permitted **as a user-named file with no default path**, because
+`REQ-020` withdrew *this application's* record and not the user's right to keep one. SponsorBlock is
+permitted opt-in, with **`NFR-007` amended** to name a third destination rather than read loosely.
+
+**Three of the six turned on a measurement rather than a reading**, taken against the installed
+yt-dlp: SponsorBlock sends `sha256(video_id)[:4]` — one bucket in 65,536 — not a video id;
+`--impersonate` is inert without `curl_cffi`, which is not installed, so permitting it would have
+added a runtime dependency and a licence check; `--xff`'s own option help calls it
+geographic-restriction bypass. Briefing from memory would have got at least the first one wrong.
+
+**The ruling corrected `ARC-010` §3**, which listed `--exec` among the options "subject to the same
+containment check as the output template". It is not: `T-034` contains the paths *yt-dlp writes*,
+and a shell command writes wherever it likes. An implementer building `T-184` to that decision as
+written would have believed a check was guarding something it cannot see — the project's recurring
+defect, this time committed inside a decision rather than a commit.
+
+**Phase 4.5 has no blocking gate left.** `T-183`'s audit starts with its excluded class known, and
+`T-184`'s refusal list starts with seven entries.
+
 ## 2026-08-07: three verdicts, and the shape the two rejections share
 
 Codex reviewed every outstanding boundary on 2026-08-07 (`ai/REVIEWS.md`). One approval, two

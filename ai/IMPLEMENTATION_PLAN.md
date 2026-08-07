@@ -644,8 +644,9 @@ buy an integer. The fractional label is uglier and cannot mislead.
 is unreachable from this GUI.
 
 **Prerequisites:** Phase 4 approved — it owns the settings dialog, and a large part of this phase
-lands *in* that dialog rather than beside it. `T-182`'s ruling must be taken before any work on the
-families it covers.
+lands *in* that dialog rather than beside it. *(`T-182`'s ruling was the other prerequisite and was
+taken on 2026-08-07, `SEC-003`, so the excluded families are known before the audit starts rather
+than discovered during it.)*
 
 **Why it sits here rather than earlier or later.** Earlier, it would compete with the format,
 post-processing and playlist work that this phase's typed fields extend — and several of its groups
@@ -662,7 +663,7 @@ option list into tasks, and no estimate of this phase's size should be quoted be
 
 | Deliverable | Owner | Risk |
 |---|---|---|
-| **The `REQ-EXCL` ruling** — credentials, `--impersonate`, `--xff`, `--exec`, `--download-archive`, SponsorBlock's third-party API against `NFR-007` | `T-182` | **Blocking, and the maintainer's.** Nothing in this phase touching those families may start first |
+| ~~**The `REQ-EXCL` ruling**~~ — **taken 2026-08-07 as `SEC-003`**: `--netrc` and client certs in, `-u`/`-p` out; `--impersonate` and `--xff` out; `--geo-verification-proxy` in; `--exec` out; `--download-archive` in as a user-named file; SponsorBlock in, opt-in, with `NFR-007` amended | `T-182` | **Complete.** It blocked the phase and no longer does. It also corrected `ARC-010` §3, which claimed containment reaches `--exec` |
 | **The option audit**: every group classified as typed-field, escape-hatch-only, application-owned, or excluded — and decomposed into tasks | `T-183` | Medium — it is the phase's plan, and a wrong classification is a wrong task list |
 | **The escape hatch** (`REQ-031`): parsing, validation, containment, redaction, refusal list, precedence against typed fields | `T-184` | **High** — it is a new route to `T-034`'s containment boundary and `DAT-003`/`DAT-004`'s redaction boundary. Both are Critical-band if breached |
 | Typed fields per option group | from `T-183` | Medium — breadth, and `NFR-008`'s churn lands on every one of them |

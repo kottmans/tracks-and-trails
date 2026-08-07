@@ -190,7 +190,7 @@ application is **not**, and the heading was the first place that read otherwise.
 - **NFR-004 — Portability.** One codebase, no platform forks beyond a documented platform-abstraction layer. All paths use platform-appropriate user config/data/cache directories; nothing is written beside the installed application.
 - **NFR-005 — Accessibility.** Full keyboard navigation, visible focus, screen-reader labels on all controls, and no information conveyed by color alone.
 - **NFR-006 — Honest errors.** Errors state what failed, why, and what the user can do. Extractor messages are surfaced, never swallowed or replaced with a generic message.
-- **NFR-007 — Privacy.** No telemetry, no analytics, no phone-home, no crash reporting to a third party. The only outbound network traffic is downloads the user requested and explicit yt-dlp update checks.
+- **NFR-007 — Privacy.** No telemetry, no analytics, no phone-home, no crash reporting to a third party. The only outbound network traffic is downloads the user requested, explicit yt-dlp update checks, **and SponsorBlock lookups when the user has switched them on** (`SEC-003`, 2026-08-07). *(The third destination was added deliberately rather than the promise read loosely. It is opt-in per preset, and the request carries the first four hex characters of `sha256(video_id)` — one bucket in 65,536 — with filtering done locally, so the endpoint does not learn which video was watched. Measured against yt-dlp 2026.07.04, not recalled. A configurable API endpoint was declined: a typo in it would be a new destination.)*
 - **NFR-008 — Resilience to yt-dlp churn.** yt-dlp changes frequently. The integration must isolate that churn behind an adapter so a yt-dlp update does not require changes spread across the codebase.
 - **NFR-009 — Licensing.** All bundled and runtime dependencies must be license-compatible with distribution (see `LIC-001`). Qt/PySide6 stays dynamically linked.
 
@@ -219,11 +219,12 @@ Ideas not yet committed: scheduled/deferred downloads, per-site profiles, watch-
 URL-file import, browser extension "send to Tracks & Trails", SponsorBlock integration,
 music-library organization and tagging, download bandwidth scheduling.
 
-**SponsorBlock is listed above and `REQ-030` reaches it**, which is a conflict rather than an
-oversight: yt-dlp's SponsorBlock options query a third-party API, and `NFR-007` permits outbound
-traffic only for downloads the user requested and explicit yt-dlp update checks. Capability parity
-does not silently buy a new network destination. **`T-182` owns the ruling**, with the other option
-families that touch `REQ-EXCL` and the privacy requirement.
+**SponsorBlock was the conflict this list flagged, and it is ruled** (`SEC-003`, 2026-08-07):
+**permitted, opt-in**, with `NFR-007` amended above to name the destination. Capability parity did
+not silently buy it — the promise was widened deliberately, on a measurement of what the lookup
+actually sends rather than on how it sounds. `T-182` ruled the other five families with it;
+`REQ-EXCL-002`, `-003` and `-005` are unchanged, and what each forbids in yt-dlp's option surface is
+now written down.
 
 ## 8. Explicit exclusions (`REQ-EXCL`)
 

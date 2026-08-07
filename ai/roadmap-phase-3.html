@@ -479,7 +479,8 @@ flowchart TB
     <p class="note"><strong>The right column carries no arrows on purpose — that is the fact it is drawing.</strong> Six items, any of which can be taken today in any sequence: nothing in that column waits on anything, and nothing in it blocks anything else. The left column is the phase's only forced order, four deep, because each task reads what the one above it builds. <span class="q-why">This drawing has been wrong twice in one day in opposite directions. First it drew the independent work as a cluster wired into a "head" node, which encoded <em>no relationship at all</em> as though it were a bottleneck and made the chart too wide to read. Then the correction cut it to the chain alone — accurate, legible, and showing four of nine deliverables, so the board's main diagram described a third of the phase. This shows all nine and keeps the distinction in the layout rather than in the arrows.</span></p>
 
     <p class="note"><strong>This drawing has now lost arrows twice, for the same reason both times.</strong> The first version ran every task through one "head" node — twenty-odd arrows meeting in a single place, drawing the fact that the work is <em>unconstrained</em> as though it were a bottleneck. The second, on 2026-08-07, added clusters for the independent work, the pending rulings and the phase after next, and became too wide to read at page width. <span class="q-why">Both were the same error: putting things in a dependency diagram that have no dependencies. Eight unconnected boxes cost three times the width and said nothing an arrow could carry — and the fix for the width was a fit/full-size toggle, which offered the reader a choice between unreadable and sideways. The toggle is gone with them.</span></p>
-    <p class="note" style="--edge: var(--st-review)"><strong>Two things on the roadmap are waiting on you rather than on an implementer, and neither is drawn here.</strong> <code>T-171</code> asks whether downloaded files carry provenance. <code>T-182</code> is the sharper one: six yt-dlp option families point in the opposite direction from a written constraint — site credentials against <code>REQ-EXCL-003</code>, <code>--impersonate</code> against <code>-005</code>, <code>--xff</code> against <code>-002</code>, <code>--exec</code> against path containment, <code>--download-archive</code> against the record-keeping this phase deliberately withdrew, and <strong>SponsorBlock against <code>NFR-007</code></strong>, whose promise of no outbound traffic beyond downloads and update checks those options would widen. It appears in the Phase 4.5 chart below, where it actually gates something.</p>
+    <p class="note" style="--edge: var(--st-approved)"><strong><code>T-182</code> was the sharper of the two rulings waiting on the maintainer, and it was taken on 2026-08-07 (<code>SEC-003</code>).</strong> Six yt-dlp option families pointed opposite a written constraint. Ruled: <code>--netrc</code> and client certificates in, <code>-u</code>/<code>-p</code>/<code>--video-password</code> out — the application never holds a secret, which is the same boundary <code>_require_credential_free_proxy</code> already enforces for proxies; <code>--impersonate</code> and <code>--xff</code> out; <code>--geo-verification-proxy</code> in, because a proxy you own is not a header you spoof; <code>--exec</code> out; <code>--download-archive</code> in as a <em>user-named</em> file with no default path; SponsorBlock in, opt-in, with <code>NFR-007</code> amended to name it. <span class="q-why">Three turned on a measurement rather than a reading. SponsorBlock sends <code>sha256(video_id)[:4]</code> — one bucket in 65,536 — not a video id. <code>--impersonate</code> is inert without <code>curl_cffi</code>, which is not installed, so permitting it would have added a runtime dependency. And <code>--xff</code>'s own option help calls it geographic-restriction bypass. <strong>The ruling also corrected <code>ARC-010</code></strong>, which claimed <code>--exec</code> is bound by path containment: it is not, because a shell command writes wherever it likes, and only refusal reaches it.</span></p>
+    <p class="note" style="--edge: var(--st-review)"><strong>One ruling is still waiting on the maintainer:</strong> <code>T-171</code>, whether downloaded files carry provenance. It is on no critical path, and its measurement is already done.</p>
   </section>
 
   <section>
@@ -743,14 +744,14 @@ flowchart TB
 <pre class="mermaid">
 %%{init: {"theme":"base","themeVariables":{"fontSize":"16px","lineColor":"#8AA095","primaryTextColor":"#ffffff"},"flowchart":{"useMaxWidth":true,"nodeSpacing":30,"rankSpacing":40,"padding":12,"curve":"basis"}}}%%
 flowchart TB
-    classDef gate    fill:#B07C1F,stroke:#6E4C0F,stroke-width:3px,color:#ffffff
+    classDef done    fill:#1E5E47,stroke:#083122,stroke-width:2px,color:#ffffff
     classDef planned fill:#6E7E75,stroke:#44534B,stroke-width:2px,color:#ffffff
     classDef risky   fill:#A6432B,stroke:#5E2418,stroke-width:3px,color:#ffffff
     classDef exit    fill:#083122,stroke:#D9A24C,stroke-width:3px,color:#D9A24C
 
     EXIT3(["Phase 3 exit"]):::exit
     P4["Phase 4 · settings, polish, accessibility"]:::planned
-    T182["T-182 · the ruling · takeable today"]:::gate
+    T182["T-182 · the ruling · taken 08-07"]:::done
     T183["T-183 · the audit · decomposes the phase"]:::planned
     T184["T-184 · the escape hatch"]:::risky
     TYPED["typed fields, per option group"]:::planned
@@ -763,13 +764,13 @@ flowchart TB
       </div>
 
       <div class="legend">
-        <span><i style="--sw: var(--st-review)"></i> Waiting on a maintainer ruling</span>
+        <span><i style="--sw: var(--st-approved)"></i> Ruled or done</span>
         <span><i style="--sw: var(--st-idle)"></i> Ordinary work</span>
         <span><i style="--sw: var(--st-block)"></i> High risk</span>
       </div>
     </div>
 
-    <p class="note"><strong><code>T-182</code> is drawn off to the side because it belongs to no phase's schedule.</strong> It can be taken this afternoon and it gates everything under it — the audit cannot classify what it may not offer, and the escape hatch's refusal list <em>is</em> that classification. <code>T-171</code>, the provenance ruling, sits in the same position against Phase 4 and is on nobody's critical path either.</p>
+    <p class="note"><strong><code>T-182</code> is drawn off to the side because it belonged to no phase's schedule — and it is done.</strong> It gated everything under it: the audit cannot classify what it may not offer, and the escape hatch's refusal list <em>is</em> that classification. That list now starts with seven entries rather than a question. <code>T-171</code>, the provenance ruling, sits in the same position against Phase 4 and is still open.</p>
 
     <div class="table-card">
       <table>

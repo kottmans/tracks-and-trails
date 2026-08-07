@@ -4126,9 +4126,15 @@ this GUI.** It is met two ways, and both are required.
    that an expert reaching for syntax they already know is better served than blocked.
 3. **The hatch is parsed and validated, never passed through.** Three invariants bind it and none
    is negotiable:
-   - **Containment** (`T-034`). Options that redirect where files land — `-P/--paths`, `-o`,
-     `--exec` — are subject to the same containment check as the output template, or the escape
-     hatch becomes the way to write outside the directory the user chose.
+   - **Containment** (`T-034`). Options that redirect where files land — `-P/--paths`, `-o` — are
+     subject to the same containment check as the output template, or the escape hatch becomes the
+     way to write outside the directory the user chose.
+     > **Corrected 2026-08-07 by `SEC-003`.** This listed `--exec` among them, and containment
+     > cannot reach it: `T-034` contains the paths *yt-dlp writes*, and a shell command writes
+     > wherever it likes. `--exec` and `--exec-before-download` are **forbidden** and sit on the
+     > refusal list instead. Left standing, an implementer building the hatch to this decision
+     > would have believed a check was guarding something it cannot see — which is the shape of
+     > defect this project keeps finding, committed inside a decision rather than a commit.
    - **Redaction** (`DAT-003`, `DAT-004`). An option value can carry a secret. What the user types
      here is *our* text under `DAT-004`'s provenance rule, and is redacted as such.
    - **Typing** (`ARC-002`, `ARCHITECTURE.md` §8). It is one declared, validated member of
@@ -4294,3 +4300,112 @@ handle rather than assume away.
 - **Deferring the shape questions to a mockup.** Offered and declined; the six were ruled directly.
   A mockup is still worth building before `T-107` starts, but as a check on the ruling rather than
   as the thing that produces it.
+
+---
+
+## SEC-003 — The six yt-dlp option families that meet an exclusion, ruled
+
+**Status:** **Accepted** (2026-08-07) — maintainer decision, taken from the Planner's material for
+`T-182`
+**Date:** 2026-08-07
+**Supersedes:** nothing. **Amends** `NFR-007` (a third permitted destination) and **corrects**
+`ARC-010` §3, which claimed `--exec` is bound by containment. **Interprets** `REQ-EXCL-002`,
+`-003` and `-005` without widening any of them.
+
+### Context
+
+`ARC-010` set the target as capability parity with yt-dlp and explicitly did **not** decide which
+option families `REQ-EXCL` forbids. Six point in the opposite direction from a written constraint,
+and an implementer meeting one mid-task would settle it in a commit rather than a decision. `T-182`
+exists so that cannot happen.
+
+**Three facts were measured against yt-dlp 2026.07.04 as installed, not recalled:**
+
+1. **SponsorBlock sends a hash *prefix*, not a video id.** `postprocessor/sponsorblock.py` computes
+   `sha256(video_id)` and requests `/api/skipSegments/<first 4 hex chars>`, filtering the response
+   locally. The endpoint learns one bucket in 65,536, not which video was watched.
+2. **`--impersonate` is inert here.** `curl_cffi` is not installed and
+   `_get_available_impersonate_targets()` returns none, so permitting it means **adding a runtime
+   dependency** — an `AGENTS.md` §7 decision, a `LIC-001` check, and both frozen artifacts.
+3. **`--xff` is unambiguous.** yt-dlp's own option help reads *"Bypass geographic restriction via
+   faking X-Forwarded-For"*, and it maps to `geo_bypass`.
+
+### Decision
+
+| Family | Ruled |
+|---|---|
+| **Site credentials** | **`--netrc`, `--netrc-cmd`, `--netrc-location` and the client-certificate options are permitted. `-u`/`-p`/`--video-password` are forbidden.** |
+| **`--impersonate`** | **Forbidden.** |
+| **Geo** | **`--xff` forbidden; `--geo-verification-proxy` permitted.** |
+| **`--exec`, `--exec-before-download`** | **Forbidden**, and `ARC-010` §3 corrected. |
+| **`--download-archive`** | **Permitted as a user-named file only.** |
+| **SponsorBlock** | **Permitted, opt-in**, with `NFR-007` amended to name it. |
+
+### Rationale
+
+**Credentials: the application must never hold one, and `--netrc` is how it doesn't.**
+`REQ-EXCL-003` forbids asking for a site username and password *to store*. A `--netrc` flag asks for
+nothing: the secret lives in the user's own file, which this application neither reads nor writes.
+A client certificate is the same shape — a path to something the user already has.
+
+**The rejected half has a precedent in this codebase, and it is strict.** `DownloadRequest` cannot
+carry proxy credentials *at all*: `_require_credential_free_proxy` makes them unrepresentable rather
+than scrubbing them, because three credential forms reached the database before that and one attempt
+to strip them corrupted output paths instead. A site password is the identical shape — a secret
+inside a frozen request that is persisted and crosses a process boundary. Session-only fields would
+mean reopening that, and the thing that was hard was never the field; it was everything downstream.
+
+**`--impersonate` is the flag `REQ-EXCL-005` most looks like**, and it is not free either: it needs
+a runtime dependency this project does not have. Sites fronted by TLS-fingerprint checks will simply
+fail. **That cost is real and is accepted knowingly** — the refusal names itself, so a user meets an
+explanation rather than a mystery.
+
+**Geo splits on whether the user owns the thing being used.** `--xff` spoofs a header describing
+someone else's location; `--geo-verification-proxy` routes a request through a proxy the user has.
+The first is what `REQ-EXCL-002` names. The second is proxy configuration, which `REQ-023` already
+covers.
+
+**`--exec` is forbidden because the alternative cannot be built.** `ARC-010` §3 listed it among the
+options "subject to the same containment check as the output template". **That is not achievable:**
+`T-034` contains the paths *yt-dlp writes*, and a shell command writes wherever it likes. There is
+no middle position where the hatch validates `--exec` — only refusal reaches it. A confirmation
+dialog was considered and rejected: people click through confirmations, and this one would carry
+arbitrary code.
+
+**`--download-archive` is the user's record, not the application's.** `REQ-020` withdrew *this
+application's* record of what has been downloaded. A path the user types, to a file the application
+never creates, never defaults and never reads unasked, is not that record coming back. The
+distinction is only real if the defaults hold, which is why "no default path" is part of the ruling
+rather than a detail of it.
+
+**SponsorBlock is permitted because the measured cost is small and the promise is amendable.**
+`NFR-007` is a promise about outbound traffic, and a promise is kept by amending it in the open
+rather than by reading it loosely. Opt-in per preset, and the request carries a 4-character hash
+prefix. **A self-hosted `--sponsorblock-api` was declined**: it adds a field whose typo is a new
+network destination, which is a poor trade against a lookup that already reveals almost nothing.
+
+### Consequences
+
+- **`NFR-007` is amended** to name SponsorBlock as a third permitted destination, conditional on the
+  user enabling it. The amendment is in `REQUIREMENTS.md` §5 with its reasoning here.
+- **`ARC-010` §3 is corrected**: containment binds paths, not commands, and `--exec` is on the
+  refusal list rather than in the validated set. *The original line was wrong in a way that would
+  have shipped: an implementer building the hatch to `ARC-010` as written would have believed
+  `--exec` was contained by a check that cannot see it.*
+- **`T-183`'s audit gains its excluded class**, and `T-184`'s refusal list gains five entries:
+  `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec`, `--exec-before-download`.
+- **`REQ-030`'s parity promise gains named exclusions.** The README must carry them, per Phase 4.5's
+  exit criteria: what is refused is stated, not silently absent.
+- Nothing here is built.
+
+### Alternatives considered
+
+- **Session-only username and password.** Rejected on the `_require_credential_free_proxy`
+  precedent: the field is easy and the boundary it breaches is not.
+- **`--exec` behind a confirmation.** Rejected: the guard is a dialog, and the payload is arbitrary
+  code.
+- **Forbidding `--geo-verification-proxy` with `--xff`.** Rejected: it reads `REQ-EXCL-002` at its
+  widest and costs a user their own proxy for no gain in the thing the exclusion protects.
+- **A default `--download-archive` path.** Rejected: that is the application keeping records again
+  under a different filename.
+- **A configurable SponsorBlock endpoint.** Rejected, as above.

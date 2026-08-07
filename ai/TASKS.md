@@ -1888,75 +1888,13 @@ the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a comm
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
 descend from, and `T-183` is what turns them into the rest of the phase.)*
 
-### T-182 — Rule on the option families `REQ-EXCL` and `NFR-007` touch
-
-**Status:** **Proposed — a decision task. The ruling is the maintainer's and nothing here proposes
-one.** Filed 2026-08-07 with `ARC-010`, which explicitly does not decide it.
-**Owner:** Maintainer, with the Planner preparing the material
-**Priority:** **High for the phase, blocking within it.** No typed field, refusal-list entry or
-escape-hatch rule for these families may be written first
-**Phase:** Phase 4.5, and it is the phase's first task
-**Depends on:** nothing
-**Relevant context:** `REQ-EXCL-001` … `-005`, `SEC-001`, `NFR-007`, `REQ-026`, `REQ-030`,
-`ARC-010` §"Not decided here", `REQUIREMENTS.md` §7's SponsorBlock note
-**Affected surfaces:** `ai/DECISIONS.md` (a new `SEC-` entry), `ai/REQUIREMENTS.md` §8 if an
-exclusion is narrowed. **No source**
-**Risk:** Low to take, High to skip. Each family is a place where "capture all of yt-dlp" and a
-written exclusion point in opposite directions, and an implementer who meets one mid-task will
-resolve it by accident
-
-#### Scope
-
-Five families, each needing *permitted*, *forbidden*, or *permitted in a narrowed form*, with the
-reasoning recorded where a future task will find it:
-
-1. **Site credentials** — `-u/--username`, `-p/--password`, `--video-password`, `--netrc`,
-   `--client-certificate`. `REQ-EXCL-003` says the application never asks for a site
-   username/password **to store**. A session-only credential that is never persisted and never
-   logged may be consistent with that; the exclusion may equally stand as written. `REQ-026`
-   already permits cookies for content the user is entitled to, which is the precedent.
-2. **`--impersonate`** — a TLS/browser fingerprint. `REQ-EXCL-005` forbids anti-detection framing;
-   this is dual-use, and the question is whether it is a workaround for broken sites or the thing
-   the exclusion names.
-3. **`--xff` and `--geo-verification-proxy`** — `REQ-EXCL-002` forbids geo-restriction bypass. `--xff`
-   looks like exactly that. `--geo-verification-proxy` is arguably ordinary proxy configuration.
-4. **`--exec` and `--exec-before-download`** — arbitrary command execution after download. Even
-   permitted, it is the escape hatch's sharpest edge and interacts with `T-034` containment.
-5. **`--download-archive`** — a durable record of what has been downloaded. `REQ-020` was withdrawn
-   on 2026-08-06 precisely to not have one. A user pointing yt-dlp at their own archive file is not
-   the application keeping records, and the difference wants stating rather than assuming.
-
-**And one that is not an exclusion but a privacy requirement:** **SponsorBlock**
-(`--sponsorblock-mark`, `--sponsorblock-remove`, `--sponsorblock-api`). Those options query a
-third-party API, and `NFR-007` permits outbound traffic only for the user's downloads and explicit
-yt-dlp update checks. Permitting them widens `NFR-007`; forbidding them puts a hole in `REQ-030`.
-Either is defensible; neither is implicit.
-
-#### Acceptance criteria
-
-- Each of the six has a recorded ruling with its reasoning, in `ai/DECISIONS.md`
-- Every *narrowed* permission states the narrowing as a testable property, not as an intention —
-  "never persisted" and "never logged" are assertions a later task can fail
-- `REQUIREMENTS.md` §8 is amended where an exclusion changed, with the superseded wording preserved
-  in place as this project does everywhere else
-- `REQ-030`'s claim is reconciled: whatever is forbidden is named as an exclusion to the parity
-  promise, so the promise and the exclusions are read together
-- **Nothing is implemented.** This task produces a decision
-
-#### Out of scope
-
-- Building anything. Every family that ends up permitted gets a task from `T-183`
-- Re-litigating `SEC-001` or the DRM exclusion, which nothing here touches
-
----
-
 ### T-183 — The option audit: classify every group, and decompose the phase
 
 **Status:** Proposed — filed 2026-08-07 with the phase
 **Owner:** Planner
 **Priority:** High within the phase — it *is* the phase's plan
 **Phase:** Phase 4.5
-**Depends on:** `T-182` for the excluded families. The rest can be classified without it
+**Depends on:** nothing. `T-182` ruled the excluded families on 2026-08-07 (`SEC-003`), so the excluded class is known before the audit starts
 **Relevant context:** `REQ-030`, `REQ-031`, `ARC-010`, yt-dlp's *Usage and Options*,
 `downloader/ytdlp_adapter.build_options` (what the application already sets and therefore owns),
 `core/models.DownloadRequest`, `core/presets.py`
@@ -2011,8 +1949,7 @@ most of the filesystem group (`--restrict-filenames`, `--windows-filenames`, `--
 **Owner:** Implementer
 **Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
 **Phase:** Phase 4.5
-**Depends on:** `T-182` (the refusal list needs the excluded families) and `T-183` (the
-application-owned list)
+**Depends on:** `T-183` for the application-owned list. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
 **Relevant context:** `REQ-031`, `ARC-010`, `REQ-009` (the pattern), `T-034` (path containment),
 `DAT-003` and `DAT-004` (redaction, and whose text this is), `ARCHITECTURE.md` §8 (a request is
 frozen at job-creation time), `ARC-002` (it crosses a process boundary and must pickle),
@@ -2500,6 +2437,78 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-182 — Rule on the option families `REQ-EXCL` and `NFR-007` touch
+
+**Status:** **Complete — ruled 2026-08-07, recorded as `SEC-003`.** Filed the same day with
+`ARC-010`, which explicitly did not decide it. The deliverable was a decision, and it exists:
+`--netrc` and client certificates are permitted while `-u`/`-p`/`--video-password` are not;
+`--impersonate` and `--xff` are forbidden; `--geo-verification-proxy` is permitted; `--exec` is
+forbidden **and `ARC-010` §3 is corrected** because it claimed containment reaches a shell command;
+`--download-archive` is permitted as a user-named file with no default path; SponsorBlock is
+permitted opt-in with `NFR-007` amended to name the destination.
+
+**Three of the six turned on a measurement rather than a reading**, taken against yt-dlp 2026.07.04
+as installed: SponsorBlock sends a four-character hash prefix rather than a video id; `--impersonate`
+is inert without `curl_cffi`, which is not installed, so permitting it would add a runtime
+dependency; and `--xff`'s own option help calls it geographic-restriction bypass.
+**Owner:** Maintainer, with the Planner preparing the material
+**Priority:** **High for the phase, blocking within it.** No typed field, refusal-list entry or
+escape-hatch rule for these families may be written first
+**Phase:** Phase 4.5, and it is the phase's first task
+**Depends on:** nothing
+**Relevant context:** `REQ-EXCL-001` … `-005`, `SEC-001`, `NFR-007`, `REQ-026`, `REQ-030`,
+`ARC-010` §"Not decided here", `REQUIREMENTS.md` §7's SponsorBlock note
+**Affected surfaces:** `ai/DECISIONS.md` (a new `SEC-` entry), `ai/REQUIREMENTS.md` §8 if an
+exclusion is narrowed. **No source**
+**Risk:** Low to take, High to skip. Each family is a place where "capture all of yt-dlp" and a
+written exclusion point in opposite directions, and an implementer who meets one mid-task will
+resolve it by accident
+
+#### Scope
+
+Five families, each needing *permitted*, *forbidden*, or *permitted in a narrowed form*, with the
+reasoning recorded where a future task will find it:
+
+1. **Site credentials** — `-u/--username`, `-p/--password`, `--video-password`, `--netrc`,
+   `--client-certificate`. `REQ-EXCL-003` says the application never asks for a site
+   username/password **to store**. A session-only credential that is never persisted and never
+   logged may be consistent with that; the exclusion may equally stand as written. `REQ-026`
+   already permits cookies for content the user is entitled to, which is the precedent.
+2. **`--impersonate`** — a TLS/browser fingerprint. `REQ-EXCL-005` forbids anti-detection framing;
+   this is dual-use, and the question is whether it is a workaround for broken sites or the thing
+   the exclusion names.
+3. **`--xff` and `--geo-verification-proxy`** — `REQ-EXCL-002` forbids geo-restriction bypass. `--xff`
+   looks like exactly that. `--geo-verification-proxy` is arguably ordinary proxy configuration.
+4. **`--exec` and `--exec-before-download`** — arbitrary command execution after download. Even
+   permitted, it is the escape hatch's sharpest edge and interacts with `T-034` containment.
+5. **`--download-archive`** — a durable record of what has been downloaded. `REQ-020` was withdrawn
+   on 2026-08-06 precisely to not have one. A user pointing yt-dlp at their own archive file is not
+   the application keeping records, and the difference wants stating rather than assuming.
+
+**And one that is not an exclusion but a privacy requirement:** **SponsorBlock**
+(`--sponsorblock-mark`, `--sponsorblock-remove`, `--sponsorblock-api`). Those options query a
+third-party API, and `NFR-007` permits outbound traffic only for the user's downloads and explicit
+yt-dlp update checks. Permitting them widens `NFR-007`; forbidding them puts a hole in `REQ-030`.
+Either is defensible; neither is implicit.
+
+#### Acceptance criteria
+
+- Each of the six has a recorded ruling with its reasoning, in `ai/DECISIONS.md`
+- Every *narrowed* permission states the narrowing as a testable property, not as an intention —
+  "never persisted" and "never logged" are assertions a later task can fail
+- `REQUIREMENTS.md` §8 is amended where an exclusion changed, with the superseded wording preserved
+  in place as this project does everywhere else
+- `REQ-030`'s claim is reconciled: whatever is forbidden is named as an exclusion to the parity
+  promise, so the promise and the exclusions are read together
+- **Nothing is implemented.** This task produces a decision
+
+#### Out of scope
+
+- Building anything. Every family that ends up permitted gets a task from `T-183`
+- Re-litigating `SEC-001` or the DRM exclusion, which nothing here touches
+
+---
 
 ### T-176 — Put the withdrawn History prose in the past tense
 
