@@ -11,7 +11,14 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QAction, QGuiApplication
-from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QToolBar
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QToolBar,
+)
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core.job_state import JobStatus
@@ -274,7 +281,7 @@ def test_a_rect_already_on_screen_is_left_alone(qapp: QApplication) -> None:
     assert moved_onto_a_screen(rect) == rect
 
 
-# --- T-080: the queue's pause toggle and the selected job's remove action ------------------
+# --- T-080/T-181: the queue's run toggle and the selected job's remove action ---------------
 
 
 def test_the_queue_actions_exist_only_with_the_control_bar(qapp: QApplication) -> None:
@@ -285,11 +292,11 @@ def test_the_queue_actions_exist_only_with_the_control_bar(qapp: QApplication) -
     it has no queue actions either — and `T-007`'s tests construct exactly that window.
     """
     bare = MainWindow()
-    assert bare.pause_action is None
+    assert bare.run_action is None
     assert bare.clear_completed_action is None
 
     equipped = MainWindow(concurrency=3)
-    assert equipped.pause_action is not None
+    assert equipped.run_action is not None
     assert equipped.clear_completed_action is not None
 
 
@@ -318,10 +325,10 @@ def test_the_toolbar_holds_nothing_that_acts_on_a_selection(qapp: QApplication) 
     names = {action.objectName() for action in bar.actions() if action.objectName()}
     assert names == {
         "actionAddUrls",
-        "pauseQueueAction",
+        "runQueueAction",
         "clearCompletedAction",
     }, (
-        f"the toolbar holds {sorted(names)}; UX-005 §4 leaves it queue-wide Pause and "
+        f"the toolbar holds {sorted(names)}; UX-005 §4 leaves it queue-wide Start/Stop and "
         "Clear-finished, its 2026-08-04 amendment adds Add URLs as the primary action, DAT-005's "
         "2026-08-05 amendment adds Clear history, and every per-row verb belongs on the row"
     )
@@ -347,16 +354,16 @@ def test_the_toolbar_holds_nothing_that_acts_on_a_selection(qapp: QApplication) 
     )
 
 
-def test_pausing_reports_once_and_says_which_way(qapp: QApplication) -> None:
+def test_the_run_toggle_reports_once_and_says_which_way(qapp: QApplication) -> None:
     """The toggle reports the state it moved to, and reports it exactly once per change.
 
     `toggled` rather than `triggered`: a checkable action fires `triggered` on every activation
-    including the ones that do not change the state, and a queue asked to pause twice would be a
+    including the ones that do not change the state, and a queue asked to stop twice would be a
     manager call the second press did not earn.
     """
     reported: list[bool] = []
-    window = MainWindow(concurrency=3, on_pause_changed=reported.append)
-    action = window.pause_action
+    window = MainWindow(concurrency=3, on_run_changed=reported.append)
+    action = window.run_action
     assert action is not None
 
     action.setChecked(True)
@@ -370,19 +377,20 @@ def test_pausing_reports_once_and_says_which_way(qapp: QApplication) -> None:
     assert reported == [True, False], "an unchanged toggle reported a change"
 
 
-def test_showing_the_pause_state_does_not_report_it_back(qapp: QApplication) -> None:
+def test_showing_the_run_state_does_not_report_it_back(qapp: QApplication) -> None:
     """`T-080`: the manager telling the control must not become the control telling the manager.
 
-    Composition connects `DownloadManager.queue_paused` to `show_queue_paused`, so without blocking
-    signals the round trip is control → manager → control → manager. The assertion is on the
-    handler never firing, which is the half a `setChecked` that merely *looks* right would fail.
+    Composition connects `DownloadManager.queue_running` to `show_queue_running`, so without
+    blocking signals the round trip is control → manager → control → manager. The assertion is on
+    the handler never firing, which is the half a `setChecked` that merely *looks* right would
+    fail.
     """
     reported: list[bool] = []
-    window = MainWindow(concurrency=3, on_pause_changed=reported.append)
-    action = window.pause_action
+    window = MainWindow(concurrency=3, on_run_changed=reported.append)
+    action = window.run_action
     assert action is not None
 
-    window.show_queue_paused(True)
+    window.show_queue_running(True)
 
     assert action.isChecked(), "the control did not follow the queue"
     assert reported == [], (
@@ -390,9 +398,88 @@ def test_showing_the_pause_state_does_not_report_it_back(qapp: QApplication) -> 
         "ends up fighting itself"
     )
 
-    window.show_queue_paused(False)
+    window.show_queue_running(False)
     assert not action.isChecked()
     assert reported == []
+
+
+def test_the_window_opens_with_the_queue_stopped_and_says_so(qapp: QApplication) -> None:
+    """`UX-006`, `T-181`: the window's own default, and the words that go with it.
+
+    **Two defaults have to agree and composition does not sync them**: `DownloadManager` is
+    constructed stopped and this control is constructed unchecked. `test_the_composed_run_control_
+    changes_the_real_manager` asserts the pair; this asserts the window's half on its own, so a
+    failure says which side moved.
+    """
+    window = MainWindow(concurrency=3)
+    action = window.run_action
+    assert action is not None
+
+    assert not action.isChecked(), "the window opened claiming a running queue"
+    assert action.text() == "&Start queue", (
+        f"the control reads {action.text()!r} on a stopped queue; its label names what pressing "
+        "it does, and a window where nothing has ever run must not offer Stop"
+    )
+
+    state = window.findChild(QLabel, "queueGateState")
+    assert state is not None, "the window has no permanent statement of whether the queue runs"
+    assert "stopped" in state.text().lower(), state.text()
+    assert "start" in state.text().lower(), (
+        f"the status bar says {state.text()!r}, which names the state without naming the remedy; "
+        "a user looking at a full queue and no activity needs to be told what to press"
+    )
+
+
+def test_the_run_control_says_its_state_in_words_not_only_by_being_checked(
+    qapp: QApplication,
+) -> None:
+    """`NFR-005`: no information by a visual cue alone, and a checkbox tick is one.
+
+    A screen-reader user hearing only *Start queue* cannot tell whether the queue is running —
+    the verb is the same shape either way. So the state itself is in the tooltip, which is what a
+    toolbar button publishes as its accessible description, and in the status bar's own words.
+    Both are asserted here rather than one, because a control and a status line that disagree are
+    worse than either alone.
+    """
+    window = MainWindow(concurrency=3)
+    action = window.run_action
+    state = window.findChild(QLabel, "queueGateState")
+    assert action is not None and state is not None
+
+    assert "stopped" in action.toolTip().lower(), action.toolTip()
+
+    window.show_queue_running(True)
+    assert action.text() == "&Stop queue"
+    assert "running" in action.toolTip().lower(), (
+        f"a running queue's control describes {action.toolTip()!r}; the state a user cannot see "
+        "from the tick is the one that has to be said"
+    )
+    assert "running" in state.text().lower(), state.text()
+
+    window.show_queue_running(False)
+    assert action.text() == "&Start queue"
+    assert "stopped" in action.toolTip().lower()
+    assert "stopped" in state.text().lower(), (
+        "the status bar kept the running wording after the queue stopped; it follows the manager's "
+        "signal, not only the click"
+    )
+
+
+def test_the_run_control_is_reachable_by_keyboard(qapp: QApplication) -> None:
+    """`NFR-005`: every interactive control is operable by keyboard alone.
+
+    Asserted through the action's own mnemonic rather than by simulating a key press: the toolbar
+    button is built by Qt from the action, and `&S` is what makes `Alt`-navigation reach it. A
+    control with no mnemonic is reachable only by `Tab` order, which `T-040` already covers for
+    the window as a whole — this is the half that names *this* control.
+    """
+    window = MainWindow(concurrency=3)
+    action = window.run_action
+    assert action is not None
+    assert "&" in action.text(), (
+        f"{action.text()!r} carries no mnemonic, so Alt-navigation cannot reach the one control "
+        "that decides whether anything downloads"
+    )
 
 
 def test_a_rows_remove_names_its_own_job(qapp: QApplication) -> None:
@@ -453,6 +540,7 @@ def _job(job_id: str, position: int, status: JobStatus = JobStatus.QUEUED) -> Jo
 
 def _window_over(jobs: list[Job], **handlers: object) -> MainWindow:
     manager = DownloadManager(_EmptyJobStore(), concurrency=1)
+    manager.start_queue()
     return MainWindow(concurrency=1, manager=manager, queue=_FakeQueue(jobs), **handlers)  # type: ignore[arg-type]
 
 

@@ -304,7 +304,7 @@ class MainWindow(QMainWindow):
         retry: Callable[[str], None] | None = None,
         concurrency: int | None = None,
         on_concurrency_changed: Callable[[int], None] | None = None,
-        on_pause_changed: Callable[[bool], None] | None = None,
+        on_run_changed: Callable[[bool], None] | None = None,
         on_remove_requested: Callable[[str], None] | None = None,
         on_reorder_requested: Callable[[list[str]], None] | None = None,
         on_clear_requested: Callable[[], None] | None = None,
@@ -328,7 +328,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
         self._on_concurrency_changed = on_concurrency_changed
-        self._on_pause_changed = on_pause_changed
+        self._on_run_changed = on_run_changed
         self._on_remove_requested = on_remove_requested
         self._on_reorder_requested = on_reorder_requested
         self._on_clear_requested = on_clear_requested
@@ -344,17 +344,36 @@ class MainWindow(QMainWindow):
         #: it guessed wrong: they stayed enabled and aimed at the hidden queue's selection while
         #: History was in front. The row route was added without the rejected one being removed.
         #: What is left is queue-*wide* and unambiguous whichever tab is showing.
-        self._pause: QAction | None = None
+        self._run: QAction | None = None
         self._clear: QAction | None = None
         #: The toolbar's copy of File → Add URLs…, or `None` on a window with no control bar.
         self._add_urls_button: QAction | None = None
         if concurrency is not None:
             self._build_concurrency_control(concurrency)
+        #: Whether the queue is running, said in words and permanently (`UX-006`, `T-181`).
+        #:
+        #: **A stopped queue that holds work must say so somewhere the user is looking**, and the
+        #: toolbar's control alone is not that: a checkable action's unchecked state is a visual
+        #: cue, `NFR-005` forbids that being the only one, and a window where nothing happens and
+        #: nothing explains why is the one state a user can reasonably read as broken.
+        #:
+        #: **At queue level rather than on the rows.** `UX-001`'s distinction is that the gate is a
+        #: property of the queue and never of a job, and writing "Held" into per-row status text
+        #: would put a queue-level fact in as many places as there are jobs — the confusion that
+        #: decision exists to prevent. `docs/UX_SPEC.md` §2 item 7 does describe a waiting row
+        #: reading *Held*; it is not built, was not built before this task either, and `T-181`
+        #: records that rather than half-building it here.
+        self._gate = QLabel(self)
+        self._gate.setObjectName("queueGateState")
+        self._gate.setAccessibleName("Queue state")
+        self._gate.setTextFormat(Qt.TextFormat.PlainText)
+        self.statusBar().addPermanentWidget(self._gate)
         self._environment = QLabel(self)
         self._environment.setObjectName("environmentSummary")
         self._environment.setAccessibleName("Environment")
         self._environment.setTextFormat(Qt.TextFormat.PlainText)
         self.statusBar().addPermanentWidget(self._environment)
+        self._show_gate_state(running=False)
         self._build_body(queue)
         self._restore_geometry()
 
@@ -843,26 +862,23 @@ class MainWindow(QMainWindow):
         what made it unambiguous, and `Clear finished` was never ambiguous while the History tab was
         in front either.)*
 
-        **The pause control is one checkable action, not two buttons.** Pause and Resume are the
-        two states of one thing; a pair of buttons would spend the whole session with one of them
-        disabled, and a screen reader would read the disabled one too.
+        **The run control is one checkable action, not two buttons** (`UX-006`, `T-181`). Start and
+        Stop are the two states of one thing; a pair of buttons would spend the whole session with
+        one of them disabled, and a screen reader would read the disabled one too.
+
+        **It opens unchecked, because the queue opens stopped.** The label follows the state rather
+        than naming a fixed verb: a control reading *Stop queue* on a window where nothing has ever
+        run describes the wrong half of itself.
         """
-        pause = QAction("&Pause queue", self)
-        pause.setObjectName("pauseQueueAction")
-        pause.setCheckable(True)
-        pause.setStatusTip("Stop starting new downloads; let running ones finish")
-        # `NFR-005`, through the tooltip rather than through `setAccessibleName`: `QAction` has
-        # no accessible-name property in Qt 6 — an action's accessible name comes from its text,
-        # and the toolbar button takes its accessible *description* from the tooltip. So the
-        # sentence a user is most likely to need goes here, which is that pause does not stop what
-        # is already running (`UX-001`).
-        pause.setToolTip(
-            "Stop starting new downloads. Downloads already running finish; nothing is cancelled "
-            "and no partly downloaded file is left behind."
-        )
-        pause.toggled.connect(self._pause_toggled)
-        bar.addAction(pause)
-        self._pause = pause
+        run = QAction(self)
+        run.setObjectName("runQueueAction")
+        run.setCheckable(True)
+        run.toggled.connect(self._run_toggled)
+        bar.addAction(run)
+        self._run = run
+        # Sets text, status tip, tooltip and accessible description together, so the four cannot
+        # describe different states of the same control (`NFR-005`).
+        self._describe_run_action(running=False)
 
         # *(`REQ-016`'s reordering is still two named actions rather than a drag gesture, for
         # `T-081`'s reason — they are keyboard-reachable and drag is not, which `NFR-005` makes the
@@ -884,14 +900,61 @@ class MainWindow(QMainWindow):
         bar.addAction(clear)
         self._clear = clear
 
-    def _pause_toggled(self, paused: bool) -> None:
-        """Hand the queue's pause state to whoever composition said owns it.
+    def _describe_run_action(self, *, running: bool) -> None:
+        """Make the run control's four pieces of text say the same state (`UX-006`, `NFR-005`).
+
+        **The label names what pressing it does**, which is the opposite of the current state:
+        stopped reads *Start queue*. The accessible description names the state itself, because a
+        screen-reader user who hears only the verb cannot tell whether the queue is running — the
+        checked state is a visual cue and `NFR-005` forbids leaving it as the only one.
+
+        `QAction` has no accessible-name property in Qt 6 — the name comes from the text, and the
+        toolbar button takes its accessible *description* from the tooltip — so the state sentence
+        goes in the tooltip, where `T-132` already put this control's explanation.
+        """
+        if self._run is None:
+            return
+        self._run.setText("&Stop queue" if running else "&Start queue")
+        if running:
+            self._run.setStatusTip("The queue is running. Stop starting new downloads.")
+            self._run.setToolTip(
+                "The queue is running. Pressing this stops starting new downloads; downloads "
+                "already running finish, nothing is cancelled, and no partly downloaded file is "
+                "left behind."
+            )
+        else:
+            self._run.setStatusTip("The queue is stopped. Start downloading what is queued.")
+            self._run.setToolTip(
+                "The queue is stopped, so nothing downloads until you press Start. Queued items "
+                "wait; adding more never starts them on its own."
+            )
+
+    def _show_gate_state(self, *, running: bool) -> None:
+        """Say whether the queue is running, in words, in the status bar (`UX-006`, `NFR-005`).
+
+        The stopped wording names the remedy rather than only the state: *press Start* is the one
+        thing a user looking at a full queue and no activity needs to be told, and a label that
+        said only "Queue stopped" would describe the problem without answering it.
+        """
+        self._gate.setText(
+            "Queue running" if running else "Queue stopped — press Start to download"
+        )
+
+    def _run_toggled(self, running: bool) -> None:
+        """Hand the queue's run state to whoever composition said owns it.
 
         Injected exactly as `retry` and the concurrency handler are, so the control can be driven
         in a test with no pool behind it (`ARCHITECTURE.md` §3).
+
+        The label is updated here as well as from `show_queue_running`, because a press that
+        composition declines — during shutdown, which `stop_queue()` refuses — must not leave a
+        control describing a state the queue is not in. `show_queue_running` then corrects it from
+        the manager's own signal, which is the authority.
         """
-        if self._on_pause_changed is not None:
-            self._on_pause_changed(paused)
+        self._describe_run_action(running=running)
+        self._show_gate_state(running=running)
+        if self._on_run_changed is not None:
+            self._on_run_changed(running)
 
     def _remove_job(self, job_id: str) -> None:
         """Remove one named job. **The single implementation**, so every route to a removal — the
@@ -994,30 +1057,36 @@ class MainWindow(QMainWindow):
         return self._add_urls_button
 
     @property
-    def pause_action(self) -> QAction | None:
-        """The queue's pause toggle, if this window was given a control bar."""
-        return self._pause
+    def run_action(self) -> QAction | None:
+        """The queue's Start/Stop toggle, if this window was given a control bar."""
+        return self._run
 
     @property
     def clear_completed_action(self) -> QAction | None:
         """The clear-finished action, if this window was given a control bar."""
         return self._clear
 
-    def show_queue_paused(self, paused: bool) -> None:
-        """Reflect the queue's pause state **without re-emitting it** (`T-080`).
+    def show_queue_running(self, running: bool) -> None:
+        """Reflect the queue's run state **without re-emitting it** (`T-080`, `UX-006`).
 
-        Composition connects this to `DownloadManager.queue_paused`, so the control follows the
+        Composition connects this to `DownloadManager.queue_running`, so the control follows the
         queue whatever changed it. Signals are blocked for the assignment because `setChecked`
         emits `toggled`, and a round trip — control tells manager, manager tells control, control
         tells manager — is how a toggle ends up fighting itself.
+
+        **The label is set outside the blocked region on purpose.** Blocking suppresses `toggled`,
+        which is what `_run_toggled` would otherwise use to re-describe the control, so a state
+        arriving from the manager rather than from a click would leave the text behind.
         """
-        if self._pause is None:
+        if self._run is None:
             return
-        blocked = self._pause.blockSignals(True)
+        blocked = self._run.blockSignals(True)
         try:
-            self._pause.setChecked(paused)
+            self._run.setChecked(running)
         finally:
-            self._pause.blockSignals(blocked)
+            self._run.blockSignals(blocked)
+        self._describe_run_action(running=running)
+        self._show_gate_state(running=running)
 
     def _concurrency_chosen(self, value: int) -> None:
         """Hand the new limit to whoever composition said owns it.

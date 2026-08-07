@@ -260,9 +260,25 @@ def manager(
     """
     built: list[DownloadManager] = []
 
-    def build(**overrides: Any) -> DownloadManager:
+    def build(*, running: bool = True, **overrides: Any) -> DownloadManager:
+        """A manager, **started by default** — which is not the application's default (`UX-006`).
+
+        `T-181` made the gate stopped at construction, so a manager nobody starts runs nothing.
+        Almost every test in this file predates that and is about something else entirely: the
+        pool, the pump, cancellation, reordering, the process tree. Making each of them press
+        Start would be several hundred edits that say nothing about what they assert.
+
+        So the fixture presses it, and the tests that are *about* the gate pass `running=False`
+        to get the real construction-time state. The default is a test-harness convenience and is
+        deliberately the opposite of the product's, which is why
+        `test_a_manager_starts_stopped_and_runs_nothing_until_it_is_started` builds one directly
+        rather than through here — a fixture that hid the shipped default could not assert it.
+        """
         manager = DownloadManager(repository, **overrides)
+        manager.start_queue()
         built.append(manager)
+        if running:
+            manager.start_queue()
         return manager
 
     yield build
@@ -1091,6 +1107,7 @@ def test_the_manager_drives_the_real_repository(
         writer = QueueWriter(lambda: db.connect(path))
         store = PersistentJobStore(connection, writer)
         download = DownloadManager(store)
+        download.start_queue()
         try:
             download.start("job-real")
             assert spin(lambda: download.is_idle, timeout=120)
@@ -2088,6 +2105,9 @@ def test_killing_the_parent_does_not_leave_the_child_running(
         "repository = FakeRepository()\n"
         f"repository.add(make_job('job-1', url, {str(tmp_path)!r}))\n"
         "manager = DownloadManager(repository)\n"
+        # `UX-006`: a manager is constructed stopped, and this child exists to spawn a worker
+        # and be killed. Without Start it waits forever and so does the parent.
+        "manager.start_queue()\n"
         # Announced on the first progress message, not on `start()`. A child killed while it is
         # still unpickling its arguments dies of its own broken bootstrap pipe, which would let
         # this pass with no guard at all.
@@ -2155,6 +2175,8 @@ def test_killing_the_parent_takes_the_grandchild_too(tmp_path: Path) -> None:
         "repository = FakeRepository()\n"
         f"repository.add(make_job('job-1', 'https://example.invalid/clip', {str(tmp_path)!r}))\n"
         "manager = DownloadManager(repository, entry_point=child_with_a_grandchild_of_its_own)\n"
+        # `UX-006`, as above: nothing spawns until the queue is started.
+        "manager.start_queue()\n"
         "seen = []\n"
         "def announce(message):\n"
         "    if not seen:\n"
@@ -2341,6 +2363,7 @@ def test_no_companion_signal_arrives_before_its_transition_is_durable(
     store = HeldStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     download = DownloadManager(store, entry_point=child_reporting_nothing)
+    download.start_queue()
     failures: list[JobStatus | None] = []
     download.job_failed.connect(
         lambda *_: failures.append(store.jobs["job-1"].status if "job-1" in store.jobs else None)
@@ -2430,6 +2453,7 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     store.jobs["job-2"] = make_job("job-2", "https://example.invalid/y", tmp_path)
     download = DownloadManager(store, entry_point=child_downloading_forever)
+    download.start_queue()
 
     try:
         download.start("job-1")
@@ -2492,6 +2516,7 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
     store = RefusingStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     download = DownloadManager(store, entry_point=child_downloading_forever)
+    download.start_queue()
     announced: list[tuple[str, str]] = []
     reported: list[tuple[str, str]] = []
     download.job_changed.connect(lambda job_id, status: announced.append((job_id, status)))
@@ -3308,6 +3333,7 @@ def test_a_retarget_never_starts_against_a_revision_that_did_not_land(
     job = make_job("job-1", "https://example.invalid/x", tmp_path)
     store.jobs["job-1"] = job.with_status(JobStatus.PROBING).with_status(JobStatus.READY)
     manager = DownloadManager(store)
+    manager.start_queue()
 
     wanted = replace(job.request, format_selector="bestaudio/best")
     seen_when_started: list[str] = []
@@ -3358,6 +3384,7 @@ def test_cancelling_a_reserved_start_stops_the_worker_from_ever_being_built(
     store = HeldStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     download = DownloadManager(store, entry_point=child_downloading_forever)
+    download.start_queue()
     rejections: list[tuple[str, str]] = []
     download.start_rejected.connect(lambda job_id, why: rejections.append((job_id, why)))
 
@@ -3400,6 +3427,7 @@ def test_shutdown_while_a_start_is_reserved_neither_spawns_nor_claims_to_be_idle
     store = HeldStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     download = DownloadManager(store, entry_point=child_downloading_forever)
+    download.start_queue()
     idles: list[None] = []
     download.idle.connect(lambda: idles.append(None))
 
@@ -3459,6 +3487,7 @@ def test_a_second_progress_message_waits_for_the_first_ones_write(
     store = HeldStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     download = DownloadManager(store, entry_point=child_downloading_forever)
+    download.start_queue()
     seen: list[JobStatus | None] = []
     download.progress.connect(
         lambda _: seen.append(store.jobs["job-1"].status if "job-1" in store.jobs else None)
@@ -3537,6 +3566,7 @@ def test_a_startup_failure_that_cannot_be_stored_announces_nothing_but_still_cle
     store = HeldStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     download = DownloadManager(store, entry_point=refuses_to_spawn)
+    download.start_queue()
     download._context = type(
         "Context",
         (),
@@ -3709,6 +3739,7 @@ def test_the_limit_is_respected_exactly_at_saturation(
         repository.add(replace(make_job(job_id, url, tmp_path), queue_position=position))
 
     download = DownloadManager(repository, concurrency=3)
+    download.start_queue()
     try:
         for job_id in ("job-1", "job-2", "job-3"):
             download.start(job_id)
@@ -3740,6 +3771,7 @@ def test_lowering_the_limit_drains_rather_than_killing(
         repository.add(replace(make_job(job_id, url, tmp_path), queue_position=position))
 
     download = DownloadManager(repository, concurrency=3)
+    download.start_queue()
     try:
         for job_id in ("job-1", "job-2", "job-3"):
             download.start(job_id)
@@ -3778,6 +3810,7 @@ def test_raising_the_limit_starts_waiting_jobs_without_waiting_for_a_tick(
     queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         download._start_when_free("job-2")
@@ -3813,6 +3846,7 @@ def test_waiting_jobs_start_in_queue_order_not_arrival_order(
     queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         download._start_when_free("job-3")
@@ -3844,6 +3878,7 @@ def test_a_waiting_job_holds_idle_open_and_shutdown_drops_it(
     queued(repository, "job-1", "job-2", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         download._start_when_free("job-2")
@@ -3871,6 +3906,7 @@ def test_a_job_waiting_with_nothing_running_still_holds_idle_open(tmp_path: Path
     repository = FakeRepository()
     queued(repository, "job-1", directory=tmp_path)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
 
     assert download.is_idle, "nothing has been asked for yet"
     download._waiting.append("job-1")
@@ -3898,6 +3934,7 @@ def test_a_reservation_occupies_a_slot_at_a_limit_above_one(
         store.jobs[job_id] = replace(job, queue_position=position)
 
     download = DownloadManager(store, concurrency=2, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         download.start("job-2")
@@ -3932,6 +3969,7 @@ def test_a_waiting_job_is_part_of_what_the_manager_reports_it_is_holding(
     queued(repository, "job-1", "job-2", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         download._start_when_free("job-2")
@@ -3961,6 +3999,7 @@ def test_the_holding_report_names_a_job_once_when_two_collections_hold_it(
     queued(repository, "job-1", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         download._waiting.append("job-1")
@@ -3992,6 +4031,7 @@ def test_lowering_the_limit_holds_a_waiting_job_until_the_pool_drains(
     queued(repository, "job-1", "job-2", "job-3", "job-4", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=3, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         for job_id in ("job-1", "job-2", "job-3"):
             download.start(job_id)
@@ -4088,6 +4128,7 @@ def test_only_a_network_failure_retries_itself(
     job_id = f"job-{kind_name}"
     repository.add(make_job(job_id, "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    download.start_queue()
     try:
         download.start(job_id)
         assert spin(lambda: job_row(repository, job_id).status is JobStatus.FAILED, timeout=60)
@@ -4118,6 +4159,7 @@ def test_a_network_failure_retries_itself_and_counts_the_attempt(
     repository = FakeRepository()
     repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    download.start_queue()
     try:
         download.start("job-NETWORK")
         assert spin(lambda: job_row(repository, "job-NETWORK").attempts >= 1, timeout=60), (
@@ -4155,6 +4197,7 @@ def test_an_automatic_retry_preserves_a_probe_as_a_probe(
     repository = FakeRepository()
     repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=child_recording_kind_then_failing_network)
+    download.start_queue()
     try:
         download.start("job-NETWORK", SessionKind.PROBE)
         kinds_path = tmp_path / "session-kinds.txt"
@@ -4187,6 +4230,7 @@ def test_the_attempt_count_is_bounded_and_the_last_error_survives(
     repository = FakeRepository()
     repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    download.start_queue()
     try:
         download.start("job-NETWORK")
 
@@ -4248,6 +4292,7 @@ def test_the_backoff_is_waited_rather_than_declared(
     repository = FakeRepository()
     repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    download.start_queue()
 
     # **Both instants come from the manager, not from a poll** (`T083-R2`).
     #
@@ -4309,6 +4354,7 @@ def test_a_retry_does_not_jump_ahead_of_a_job_that_has_never_run(tmp_path: Path)
         )
     )
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download._waiting.extend(["job-retried", "job-fresh"])
 
@@ -4333,6 +4379,7 @@ def test_idle_is_not_announced_while_a_retry_is_waiting(
     repository = FakeRepository()
     repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    download.start_queue()
     try:
         download.start("job-NETWORK")
         assert spin(
@@ -4351,13 +4398,215 @@ def test_idle_is_not_announced_while_a_retry_is_waiting(
         )
 
 
-# --- T-080: queue-level pause and resume; per-job cancel, retry and remove -----------------
+# --- T-080/T-181: the queue-level run gate; per-job cancel, retry and remove ----------------
 #
 # `UX-001` is the decision these gate, and it is a decision about *granularity* before it is one
-# about behaviour: pause and resume act on the queue, cancel and retry and remove act on a job.
+# about behaviour: start and stop act on the queue, cancel and retry and remove act on a job.
 # The assertions below are written to fail if that split is reversed, because the previous version
 # of `T-080` described queue-level behaviour under a per-job title and an implementer reading it
 # received mutually exclusive instructions.
+#
+# `UX-006` moved the gate's **default** and kept its semantics, so what follows is in two halves:
+# the drain, which `T-080` established and which is unchanged, and the construction-time state,
+# which `T-181` added and which the fixture above deliberately overrides for every other test.
+
+
+def test_a_manager_starts_stopped_and_runs_nothing_until_it_is_started(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """`UX-006`: a restored queue starts nothing, and `Start` is what starts it.
+
+    **Built directly rather than through the `manager` fixture**, which presses Start for the
+    hundred tests that predate this one. A fixture that hid the shipped default could not assert
+    it, and this is the assertion with the widest reach and the least visible symptom: an
+    application that resumes a queue on launch looks exactly like one that does not, until it has
+    spent somebody's bandwidth on a decision they never made.
+
+    **Asserted on `_sessions` and on the durable status, and deliberately not on
+    `active_job_ids()`.** That method counts waiting jobs as active on purpose (`T078-R1`) —
+    they are a commitment this manager has accepted — so it answers "what is this manager
+    holding", which a parked job is part of. It cannot express "nothing started", and the first
+    version of this test used it and failed against correct code.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=4 * 1024 * 1024, chunk_delay=0.02)
+    for position, job_id in enumerate(("job-1", "job-2")):
+        repository.add(replace(make_job(job_id, url, tmp_path), queue_position=position))
+
+    download = DownloadManager(repository, concurrency=2)
+    try:
+        assert not download.is_running, "a freshly constructed manager was already running"
+
+        for job_id in ("job-1", "job-2"):
+            download.start(job_id)
+
+        # **Long enough that a running queue would have started both.** The negative needs a
+        # window in which the positive would have been observable, or it passes against a manager
+        # that is merely slow — the shape `test_a_paused_queue_admits_and_still_starts_nothing`
+        # already uses one layer up.
+        assert not spin(lambda: bool(download._sessions), timeout=3), (
+            f"a stopped queue spawned {sorted(download._sessions)}"
+        )
+        assert all(
+            repository.jobs[job_id].status is JobStatus.QUEUED for job_id in ("job-1", "job-2")
+        ), "the parked jobs did not stay durably QUEUED"
+        assert set(download.active_job_ids()) == {"job-1", "job-2"}, (
+            "the stopped queue dropped the jobs instead of parking them; they are accepted work "
+            "waiting for a slot, which is what T078-R1 makes them"
+        )
+
+        download.start_queue()
+        assert download.is_running
+        assert spin(lambda: len(download._sessions) == 2, timeout=60), (
+            "Start did not run the jobs the stopped queue had parked"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_started_queue_stays_started_for_work_added_afterwards(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """`UX-006` chose a **mode**, not a one-shot batch commit.
+
+    Draining does not re-arm the gate: a queue that empties and then receives a URL starts it.
+    The rejected alternative — `Start` releasing only what was queued at that instant — would
+    leave a row sitting `Held` beside running jobs with the difference visible nowhere.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=64 * 1024)
+    repository.add(replace(make_job("job-1", url, tmp_path), queue_position=0))
+
+    download = DownloadManager(repository, concurrency=1)
+    try:
+        download.start_queue()
+        download.start("job-1")
+        assert spin(lambda: repository.jobs["job-1"].status is JobStatus.COMPLETED, timeout=60), (
+            "the first job never finished, so the queue never drained"
+        )
+        assert spin(lambda: download.is_idle, timeout=60), "the queue never went idle"
+        assert download.is_running, "draining the queue stopped it; the gate re-armed itself"
+
+        repository.add(replace(make_job("job-2", url, tmp_path), queue_position=1))
+        download.start("job-2")
+        assert spin(lambda: repository.jobs["job-2"].status is JobStatus.COMPLETED, timeout=60), (
+            "a job added to a drained-but-started queue needed a second Start"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`UX-006` §7: **everything that begins work observes the gate**, retry included.
+
+    This is the one path where the gate and the clock interact. `UX-002` schedules an automatic
+    retry two seconds out, so a queue stopped in between has a decision already made and pending —
+    and a retry is a *new* session rather than the continuation of a draining one, which is what
+    makes parking it the right answer rather than an inconsistency with `UX-001`'s drain.
+
+    **The backoff is waited out rather than mocked.** What is under test is that the deadline
+    firing does not bypass the gate, and a fake clock that never fires would pass against an
+    implementation with no gate at all.
+
+    **The job starts `READY`, and that is load-bearing.** A `QUEUED` job's session is a *probe*
+    (`ARC-004`), so its automatic retry is a probe too — and a probe is exempt from the gate, by
+    the same rule that lets a stopped queue read a paste. The first version of this test used a
+    `QUEUED` job, watched the retry run, and would have reported a correct exemption as a defect.
+    A download retry is the one the criterion is about.
+
+    **Mutation-checked, and the result was not what this docstring first claimed.** It said
+    removing `_gate_blocks` from `_start_when_free` would fail this test. It does not: the gate is
+    enforced twice, and a retry released there still meets `start()`'s guard through
+    `_start_or_report`. Removing `start()`'s guard alone does not fail it either, for the mirror
+    reason. **Only removing both** lets a stopped queue run the retry — measured 2026-08-07, all
+    three mutants run.
+
+    That is worth keeping rather than tidying away: it means no single-point mutation can
+    demonstrate this criterion, and a reviewer who asks for one is asking for something the
+    design does not offer. It also means neither guard is individually load-bearing, so a future
+    simplification that deletes one will find the suite still green.
+    """
+    repository = FakeRepository()
+    repository.add(
+        replace(
+            make_job("job-network", "https://retry.invalid/clip", tmp_path),
+            status=JobStatus.READY,
+        )
+    )
+
+    download = DownloadManager(
+        repository, entry_point=child_recording_kind_then_failing_network, concurrency=1
+    )
+    try:
+        download.start_queue()
+        download.start("job-network")
+
+        def failed() -> bool:
+            return repository.jobs["job-network"].status is JobStatus.FAILED
+
+        assert spin(failed, timeout=60), (
+            "the job never failed, so no automatic retry was ever scheduled"
+        )
+
+        # Stopped *after* the failure and *before* the backoff expires, which is the window the
+        # criterion is about.
+        download.stop_queue()
+
+        # **Wait for the failed session to be released before asserting no session exists.** The
+        # process outlives its outcome — `_release` runs on a later tick — so an assertion made
+        # straight after the failure catches the *dying original* and reports it as a retry. The
+        # first version of this test did exactly that and failed against a correct gate.
+        assert spin(lambda: not download._sessions, timeout=60), (
+            "the failed session was never released, so nothing here can be attributed to a retry"
+        )
+
+        # `_sessions`, not `active_job_ids()`: a parked retry is *accepted* work and counts as
+        # active by design (`T078-R1`). What must not exist is a spawned session. Six seconds
+        # comfortably outlives `RETRY_BACKOFF_SECONDS[0]`, so the deadline really does fire inside
+        # this window — a shorter wait would assert that nothing happened before anything could.
+        assert not spin(lambda: bool(download._sessions), timeout=6), (
+            f"a stopped queue ran an automatic retry: {sorted(download._sessions)}. The backoff "
+            "fired and the gate did not hold it"
+        )
+        assert repository.jobs["job-network"].status is JobStatus.QUEUED, (
+            "the retry's deadline never fired at all, so this proved nothing about the gate"
+        )
+
+        download.start_queue()
+        assert spin(lambda: bool(download._sessions), timeout=60), (
+            "starting the queue never released the retry the stop had parked"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_stopped_queue_still_probes(tmp_path: Path, spin: Callable[..., bool]) -> None:
+    """`T080-R1` under `UX-006`, where the exemption stopped being a courtesy.
+
+    A probe is exempt from the gate because reading a URL moves no bytes. That mattered rarely
+    while a stopped queue was an unusual state; now it is the state every window opens in, so a
+    gate that blocked probes would leave a first run unable to read anything the user pasted.
+    """
+    repository = FakeRepository()
+    repository.add(make_job("job-probe", "https://probe.invalid/clip", tmp_path))
+
+    # `child_downloading_forever` simply keeps its session alive; what is under test is whether
+    # the *admission* happens, not what the child says once it has.
+    download = DownloadManager(repository, entry_point=child_downloading_forever)
+    try:
+        assert not download.is_running
+        download.start("job-probe", kind=SessionKind.PROBE)
+        assert spin(lambda: tuple(download._sessions) == ("job-probe",), timeout=60), (
+            "a stopped queue refused a probe, so a first-run paste can never be read"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
 
 
 def test_pausing_a_saturated_queue_drains_it_and_starts_nothing(
@@ -4378,6 +4627,7 @@ def test_pausing_a_saturated_queue_drains_it_and_starts_nothing(
         repository.add(replace(make_job(job_id, url, tmp_path), queue_position=position))
 
     download = DownloadManager(repository, concurrency=2)
+    download.start_queue()
     try:
         download.start("job-1")
         download.start("job-2")
@@ -4385,8 +4635,8 @@ def test_pausing_a_saturated_queue_drains_it_and_starts_nothing(
         download._start_when_free("job-4")
         assert spin(lambda: len(download._sessions) == 2, timeout=60), "the pool never saturated"
 
-        download.pause()
-        assert download.is_paused
+        download.stop_queue()
+        assert not download.is_running
 
         # The two in flight are still in flight, and stay so after the loop has had its chance.
         live = set(download._sessions)
@@ -4425,16 +4675,17 @@ def test_resuming_starts_the_waiting_jobs(tmp_path: Path, spin: Callable[..., bo
     queued(repository, "job-1", "job-2", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=2, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
         download._start_when_free("job-1")
         download._start_when_free("job-2")
         assert download._waiting == ["job-1", "job-2"], "a paused queue started something"
         assert not download._sessions
 
-        download.resume()
+        download.start_queue()
 
-        assert not download.is_paused
+        assert download.is_running
         assert download._waiting == [], (
             f"waiting {download._waiting}; resume must take the work, and take it now rather than "
             "on whichever tick happens to fire next"
@@ -4461,8 +4712,9 @@ def test_pause_leaves_no_partial_file_because_it_stops_nothing(
     queued(repository, "job-1", "job-2", directory=outputs)
 
     download = DownloadManager(repository, concurrency=2, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
         download._start_when_free("job-1")
         download._start_when_free("job-2")
         spin(lambda: False, timeout=0.5)
@@ -4499,6 +4751,7 @@ def test_no_job_ever_reaches_a_paused_status_because_there_is_no_such_status(
     repository = FakeRepository()
     queued(repository, "job-1", directory=tmp_path)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         # **Settled before pausing, not merely started.** `child_downloading_forever` walks
@@ -4510,7 +4763,7 @@ def test_no_job_ever_reaches_a_paused_status_because_there_is_no_such_status(
             "the session never reached RUNNING, so there was no settled status to pause against"
         )
 
-        download.pause()
+        download.stop_queue()
         spin(lambda: False, timeout=0.5)
 
         stored = repository.get("job-1")
@@ -4541,6 +4794,7 @@ def test_removing_a_job_takes_it_out_of_the_queue_and_leaves_the_files_alone(
     repository = FakeRepository()
     queued(repository, "job-1", "job-2", directory=outputs)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     removed: list[str] = []
     download.job_removed.connect(removed.append)
     try:
@@ -4575,6 +4829,7 @@ def test_removing_a_waiting_job_stops_the_pool_from_ever_starting_it(
     repository = FakeRepository()
     queued(repository, "job-1", "job-2", directory=tmp_path)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         download._start_when_free("job-2")
@@ -4612,6 +4867,7 @@ def test_removing_a_running_job_cancels_it_first_and_inside_the_budget(
     url = media_url(total_bytes=512 * 1024 * 1024, chunk_delay=0.01)
     repository.add(make_job("job-1", url, tmp_path))
     download = DownloadManager(repository, concurrency=1)
+    download.start_queue()
     removed: list[str] = []
     download.job_removed.connect(removed.append)
     recorder = Recorder(download, repository)
@@ -4660,13 +4916,14 @@ def test_a_manual_retry_re_enters_the_queue_at_the_back(
     repository.jobs["job-1"] = failed.with_failure(ErrorKind.NETWORK, "the transfer stalled")
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         before = repository.get("job-1")
         assert before is not None and before.queue_position == 0
 
         # Paused so the retry parks instead of starting immediately, which keeps this test about
         # the position it was written with rather than about how far the restarted job got.
-        download.pause()
+        download.stop_queue()
         download.retry("job-1")
 
         after = repository.get("job-1")
@@ -4698,6 +4955,7 @@ def test_a_manual_retry_starts_after_the_jobs_that_have_not_run(
     repository.jobs["job-1"] = failed.with_failure(ErrorKind.NETWORK, "the transfer stalled")
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         # Saturate with a job that is not part of the comparison, so both candidates must wait.
         repository.add(
@@ -4735,8 +4993,9 @@ def test_pause_does_not_refuse_a_probe_the_user_just_asked_for(
     repository = FakeRepository()
     queued(repository, "job-1", directory=tmp_path)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
         download.start("job-1", SessionKind.PROBE)
 
         # **Occupancy, not `active_job_ids()`.** That accounting deliberately includes jobs merely
@@ -4765,8 +5024,9 @@ def test_pause_does_not_allow_a_direct_download_start(
     repository = FakeRepository()
     queued(repository, "job-1", directory=tmp_path)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
         with contextlib.suppress(RuntimeError):
             download.start("job-1", SessionKind.DOWNLOAD)
 
@@ -4798,10 +5058,11 @@ def test_reordering_changes_the_order_the_pool_starts_jobs_in(
     queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     ordered: list[tuple[str, ...]] = []
     download.queue_reordered.connect(ordered.append)
     try:
-        download.pause()
+        download.stop_queue()
         for job_id in ("job-1", "job-2", "job-3"):
             download._start_when_free(job_id)
         assert download._next_waiting() == "job-1", "before reordering, position decides"
@@ -4855,13 +5116,14 @@ def test_pool_does_not_start_from_the_old_order_while_reordering_is_in_flight(
     repository = HeldReorderStore()
     queued(repository, "job-1", "job-2", directory=tmp_path)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
         download._start_when_free("job-1")
         download._start_when_free("job-2")
 
         download.reorder(["job-2", "job-1"])
-        download.resume()
+        download.start_queue()
 
         assert download._occupant_ids() == (), (
             "the pool chose a job while the reorder was still in flight; that choice used the "
@@ -4898,6 +5160,7 @@ def test_clearing_finished_jobs_announces_and_keeps_the_unfinished(
         repository.jobs[job_id] = replace(stored, status=status)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     cleared: list[int] = []
     download.queue_cleared.connect(lambda: cleared.append(1))
     try:
@@ -4934,6 +5197,7 @@ def test_cancelling_a_waiting_job_drops_it_from_the_waiting_list(
     queued(repository, "job-1", "job-2", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     rejections: list[tuple[str, str]] = []
     download.start_rejected.connect(lambda job_id, reason: rejections.append((job_id, reason)))
     try:
@@ -4973,8 +5237,9 @@ def test_a_queue_whose_only_waiting_job_was_cancelled_goes_idle(
     queued(repository, "job-1", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
         download._start_when_free("job-1")
         assert not download.is_idle, "a job waiting for a slot is work this manager has accepted"
 
@@ -5001,6 +5266,7 @@ def test_clearing_after_a_cancel_leaves_nothing_looking_up_a_missing_row(
     queued(repository, "job-1", "job-2", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("job-1")
         download._start_when_free("job-2")
@@ -5059,13 +5325,14 @@ def test_a_reorder_in_flight_stops_the_pool_admitting_the_old_head(
     queued(repository, "job-1", "job-2", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
         download._start_when_free("job-1")
         download._start_when_free("job-2")
 
         download.reorder(["job-2", "job-1"])
-        download.resume()
+        download.start_queue()
 
         assert download._occupant_ids() == (), (
             f"occupants {download._occupant_ids()}; a job was admitted while the order deciding "
@@ -5096,14 +5363,15 @@ def test_a_refused_reorder_releases_the_barrier_and_uses_the_old_order(
     queued(repository, "job-1", "job-2", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     refusals: list[tuple[str, str]] = []
     download.persistence_failed.connect(lambda job_id, reason: refusals.append((job_id, reason)))
     try:
-        download.pause()
+        download.stop_queue()
         download._start_when_free("job-1")
         download._start_when_free("job-2")
         download.reorder(["job-2", "job-1"])
-        download.resume()
+        download.start_queue()
         assert download._occupant_ids() == ()
 
         repository.release_reorders(error="the writer refused this reorder")
@@ -5130,14 +5398,15 @@ def test_two_reorders_in_flight_hold_the_barrier_until_both_settle(
     queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
         for job_id in ("job-1", "job-2", "job-3"):
             download._start_when_free(job_id)
 
         download.reorder(["job-2", "job-1"])
         download.reorder(["job-3", "job-2"])
-        download.resume()
+        download.start_queue()
         assert download._occupant_ids() == ()
 
         # Settle exactly one of the two.
@@ -5171,6 +5440,7 @@ def test_a_direct_download_start_cannot_bypass_the_reorder_barrier(
     repository = ReorderHoldingRepository()
     queued(repository, "job-1", "job-2", directory=tmp_path)
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.reorder(["job-2", "job-1"])
         download.start("job-1", SessionKind.DOWNLOAD)
@@ -5214,6 +5484,7 @@ def test_settling_a_reorder_does_not_admit_a_job_nobody_started(
     repository.add(replace(requested, status=JobStatus.READY))
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.reorder(["recovered", "requested"])
         download.start("requested", SessionKind.DOWNLOAD)
@@ -5257,6 +5528,7 @@ def test_removing_a_job_awaiting_an_automatic_retry_drops_the_retry(
     repository.jobs["job-1"] = stored.with_failure(ErrorKind.NETWORK, "the transfer stalled")
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download._schedule_automatic_retry("job-1", ErrorKind.NETWORK)
         # Read into locals for `test_composition`'s reason: mypy narrows a property across
@@ -5294,6 +5566,7 @@ def test_an_automatic_retry_of_a_download_stays_a_download(
     repository = FakeRepository()
     repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=child_recording_kind_then_failing_network)
+    download.start_queue()
     try:
         download.start("job-NETWORK", SessionKind.DOWNLOAD)
         kinds_path = tmp_path / "session-kinds.txt"
@@ -5327,6 +5600,7 @@ def test_a_retried_probe_writes_no_output(
     repository = FakeRepository()
     repository.add(make_job("job-NETWORK", "https://example.invalid/clip", downloads))
     download = DownloadManager(repository, entry_point=child_recording_kind_then_failing_network)
+    download.start_queue()
     try:
         download.start("job-NETWORK", SessionKind.PROBE)
         kinds_path = downloads / "session-kinds.txt"
@@ -5367,6 +5641,7 @@ def test_a_parked_probe_still_resumes_as_a_probe(tmp_path: Path, spin: Callable[
     download = DownloadManager(
         repository, concurrency=3, probe_concurrency=1, entry_point=child_downloading_forever
     )
+    download.start_queue()
     try:
         download.start("holder", SessionKind.PROBE)
         assert spin(lambda: "holder" in download._occupant_ids(SessionKind.PROBE), timeout=60)
@@ -5413,6 +5688,7 @@ def test_a_probe_is_released_before_the_same_job_starts_downloading(
         probe_concurrency=1,
         entry_point=child_probe_reporting_then_lingering,
     )
+    download.start_queue()
     download.media_probed.connect(lambda job_id, _: download.admit(job_id))
 
     try:
@@ -5454,6 +5730,7 @@ def test_start_refuses_a_job_that_already_has_a_session(
     download = DownloadManager(
         repository, concurrency=3, probe_concurrency=3, entry_point=child_downloading_forever
     )
+    download.start_queue()
     try:
         download.start("job-1", SessionKind.PROBE)
         assert spin(lambda: "job-1" in download._occupant_ids(), timeout=60)
@@ -5478,6 +5755,7 @@ def test_a_staged_job_cannot_be_downloaded(tmp_path: Path, spin: Callable[..., b
     """
     repository = FakeRepository()
     download = DownloadManager(repository, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         staged = download.stage(make_job("unused", "https://example.invalid/x", tmp_path).request)
         assert download.is_staged(staged)
@@ -5517,6 +5795,7 @@ def test_cancelling_a_failed_job_declines_instead_of_raising_out_of_the_state_ma
     )
     repository.add(failed)
     download = DownloadManager(repository, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         assert not can_transition(JobStatus.FAILED, JobStatus.CANCELLED), (
             "this test is about an illegal transition and the state machine now allows it"
@@ -5553,6 +5832,7 @@ def test_abandoning_a_failed_staging_probe_leaves_no_durable_trace(
     """
     repository = FakeRepository()
     download = DownloadManager(repository, entry_point=child_probe_failing_then_lingering)
+    download.start_queue()
     try:
         staged = download.stage(make_job("unused", "https://example.invalid/x", tmp_path).request)
 
@@ -5603,6 +5883,7 @@ def test_cancelling_an_id_the_queue_can_no_longer_answer_for_is_a_no_op(
     """
     repository = FakeRepository()
     download = DownloadManager(repository, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         orphan = "an-id-with-no-record"
         download._reserved[orphan] = _PendingStart(job_id=orphan, kind=SessionKind.PROBE)
@@ -5635,6 +5916,7 @@ def test_a_saturated_download_lane_no_longer_parks_a_probe(
     queued(repository, "holder", "job-1", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
         download.start("holder")
         assert spin(lambda: "holder" in download._occupant_ids(), timeout=60)
@@ -5667,6 +5949,7 @@ def test_the_probe_lane_has_its_own_ceiling(tmp_path: Path, spin: Callable[..., 
     download = DownloadManager(
         repository, concurrency=3, probe_concurrency=2, entry_point=child_downloading_forever
     )
+    download.start_queue()
     try:
         download.start("job-1", SessionKind.PROBE)
         download.start("job-2", SessionKind.PROBE)
@@ -5706,6 +5989,7 @@ def test_probes_beyond_the_lane_queue_in_queue_order_rather_than_being_refused(
     download = DownloadManager(
         repository, concurrency=3, probe_concurrency=1, entry_point=child_downloading_forever
     )
+    download.start_queue()
     try:
         download.admit("job-1", SessionKind.PROBE)
         assert spin(lambda: "job-1" in download._occupant_ids(SessionKind.PROBE), timeout=60)
@@ -5755,6 +6039,7 @@ def test_a_waiting_download_does_not_hold_up_a_waiting_probe(
     download = DownloadManager(
         repository, concurrency=1, probe_concurrency=1, entry_point=child_downloading_forever
     )
+    download.start_queue()
     try:
         download.start("holder-download")
         download.start("holder-probe", SessionKind.PROBE)
@@ -5793,8 +6078,9 @@ def test_a_paused_queue_still_reads_urls(tmp_path: Path, spin: Callable[..., boo
     queued(repository, "to-read", "to-download", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=2, entry_point=child_downloading_forever)
+    download.start_queue()
     try:
-        download.pause()
+        download.stop_queue()
 
         download.admit("to-read", SessionKind.PROBE)
         download.admit("to-download")
@@ -5830,6 +6116,7 @@ def test_cancelling_a_queued_probe_stops_it_ever_starting(
     download = DownloadManager(
         repository, concurrency=3, probe_concurrency=1, entry_point=child_downloading_forever
     )
+    download.start_queue()
     try:
         download.start("holder", SessionKind.PROBE)
         assert spin(lambda: "holder" in download._occupant_ids(SessionKind.PROBE), timeout=60)
@@ -5861,6 +6148,7 @@ def test_shutdown_drains_both_lanes(tmp_path: Path, spin: Callable[..., bool]) -
     download = DownloadManager(
         repository, concurrency=1, probe_concurrency=1, entry_point=child_downloading_forever
     )
+    download.start_queue()
     download.start("downloading")
     download.start("probing", SessionKind.PROBE)
     assert spin(lambda: len(download._occupant_ids()) == 2, timeout=60)
@@ -5928,6 +6216,7 @@ def test_a_probe_stores_the_thumbnail_url_in_the_same_revision_as_the_title(
     queued(repository, "job-1", directory=tmp_path)
 
     download = DownloadManager(repository, entry_point=child_probing_with_a_thumbnail)
+    download.start_queue()
     try:
         download.start("job-1", SessionKind.PROBE)
         assert spin(lambda: repository.jobs["job-1"].status is JobStatus.READY, timeout=60)
@@ -5956,6 +6245,7 @@ def test_a_probe_that_found_no_thumbnail_stores_null(
     queued(repository, "job-1", directory=tmp_path)
 
     download = DownloadManager(repository, entry_point=child_probing_without_a_thumbnail)
+    download.start_queue()
     try:
         download.start("job-1", SessionKind.PROBE)
         assert spin(lambda: repository.jobs["job-1"].status is JobStatus.READY, timeout=60)
@@ -5983,6 +6273,7 @@ def test_a_durable_probe_carries_the_job_on_into_its_download(
     download = DownloadManager(
         repository, concurrency=1, entry_point=child_probe_reporting_then_lingering
     )
+    download.start_queue()
     try:
         download.admit("job-1", SessionKind.PROBE)
 
@@ -6018,6 +6309,7 @@ def test_a_staged_probe_does_not_start_a_download(
     download = DownloadManager(
         repository, concurrency=1, entry_point=child_probe_reporting_then_lingering
     )
+    download.start_queue()
     try:
         probed: list[str] = []
         download.media_probed.connect(lambda job_id, _media: probed.append(job_id))

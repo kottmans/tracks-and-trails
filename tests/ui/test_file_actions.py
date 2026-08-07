@@ -449,6 +449,7 @@ def test_the_queue_view_offers_the_actions_for_a_finished_job_and_not_a_running_
     queue.add(Job(id="running", url=request.url, request=request))
     queue.add(Job(id="done", url=request.url, request=request, output_path=str(written)))
     manager = DownloadManager(queue)
+    manager.start_queue()
     view = QueueView(jobs=queue, manager=manager)
     spawner = RecordingSpawner()
     try:
@@ -492,6 +493,7 @@ def test_a_row_with_no_written_file_answers_absent_rather_than_a_placeholder(
     queue = FakeQueue()
     queue.add(Job(id="running", url=request.url, request=request))
     manager = DownloadManager(queue)
+    manager.start_queue()
     view = QueueView(jobs=queue, manager=manager)
     try:
         assert view.select("running")

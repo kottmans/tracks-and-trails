@@ -376,18 +376,20 @@ def compose(
         manager.set_concurrency(chosen.concurrency)
         app_settings.save(chosen, settings_file)
 
-    def choose_pause(paused: bool) -> None:
-        """Pause or resume the queue (`UX-001`, `T-080`).
+    def choose_run(running: bool) -> None:
+        """Start or stop the queue (`UX-001`, `UX-006`, `T-181`).
 
         **Not saved to `settings.toml`, unlike the concurrency limit.** A limit is a preference —
-        the user chose 5 and means it next time. A paused queue is a *state*, and restoring it at
-        launch would mean starting the application to find it deliberately doing nothing, with the
-        reason a session old. `ARC-007`'s file holds settings, and this is not one.
+        the user chose 5 and means it next time. Whether the queue is running is a *state*, and
+        `UX-006` fixes what it is at launch: stopped, every time. So there is nothing to persist
+        and nothing to restore, which is the same conclusion this reached when the default was the
+        other way round — for a different reason then. `ARC-007`'s file holds settings, and this is
+        not one.
         """
-        if paused:
-            manager.pause()
+        if running:
+            manager.start_queue()
         else:
-            manager.resume()
+            manager.stop_queue()
 
     def remove_job(job_id: str) -> None:
         """Route a removal to the manager, which owns it (`T036-R1`, `UX-001`).
@@ -421,7 +423,7 @@ def compose(
         retry=retry,
         concurrency=settings.concurrency,
         on_concurrency_changed=choose_concurrency,
-        on_pause_changed=choose_pause,
+        on_run_changed=choose_run,
         on_remove_requested=remove_job,
         on_reorder_requested=reorder_queue,
         on_clear_requested=clear_finished,
@@ -429,13 +431,17 @@ def compose(
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
         queue=store,
-        # `T-100`: read-only over the table `T-085` writes. A third narrow protocol rather than
-        # widening `QueueReader` — the history view enumerates records and nothing else, and a
-        # reader that could also reach jobs would let it.
+        # *(A third protocol was passed here until 2026-08-06: read-only over the table `T-085`
+        # wrote, for the History view that enumerated records. `REQ-020` is withdrawn, the table is
+        # dropped by migration `0009`, and the argument went with them — `T-176`.)*
     )
-    # The control follows the queue, not only the other way round: anything that pauses the pool
+    # The control follows the queue, not only the other way round: anything that stops the pool
     # without going through the toolbar still leaves the toggle telling the truth (`T-080`).
-    manager.queue_paused.connect(window.show_queue_paused)
+    #
+    # **The window opens stopped and so does the manager**, so no initial sync is needed here —
+    # `_describe_run_action(running=False)` and `_running = False` agree by construction (`UX-006`).
+    # A test asserts they still do, because two defaults that must match are two places to drift.
+    manager.queue_running.connect(window.show_queue_running)
     window.report_environment(ffmpeg.summary())
     # `ARC-008`: after the window exists, because that is the earliest a modal can be shown, and
     # before it is interactive, because the reverted setting is what the user would otherwise

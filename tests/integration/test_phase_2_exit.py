@@ -151,7 +151,7 @@ from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails import app as application
 
-database, downloads, geometry, settings, paused, *urls = sys.argv[1:]
+database, downloads, geometry, settings, running, *urls = sys.argv[1:]
 qapp = QApplication([])
 composition = application.compose(
     qapp,
@@ -160,10 +160,12 @@ composition = application.compose(
     geometry_file=Path(geometry),
     settings_file=Path(settings),
 )
-# Pause is a runtime state, not a setting — `app.py` deliberately does not restore it — so a
-# test that wants a paused queue has to ask for one here (`UX-001`).
-if paused == "1":
-    composition.manager.pause()
+# Whether the queue runs is a runtime state, not a setting — `app.py` deliberately does not
+# restore it — and since `UX-006` a composed application opens **stopped**. So the flag inverted
+# with the default: a test that wants work to move has to press Start here, and a test that wants
+# a stopped queue does nothing at all (`UX-001`, `UX-006`, `T-181`).
+if running == "1":
+    composition.manager.start_queue()
 dialog = composition.window.open_add_dialog()
 dialog._urls.setPlainText(chr(10).join(urls))
 names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
@@ -296,7 +298,7 @@ def launch(
     geometry: Path,
     concurrency: int,
     urls: list[str],
-    paused: bool = False,
+    running: bool = True,
 ) -> tuple[subprocess.Popen[str], int, list[str]]:
     """Start a real application in another interpreter and read its startup handshake."""
     downloads.mkdir(exist_ok=True)
@@ -311,7 +313,7 @@ def launch(
             str(downloads),
             str(geometry),
             str(settings),
-            "1" if paused else "0",
+            "1" if running else "0",
             *urls,
         ],
         stdout=subprocess.PIPE,
@@ -1189,7 +1191,7 @@ def test_a_paused_queue_admits_and_still_starts_nothing(
         geometry=tmp_path / "window.toml",
         concurrency=CONCURRENT,
         urls=urls,
-        paused=True,
+        running=False,
     )
     try:
         # Long enough that an unpaused queue would have started and finished all three.

@@ -456,12 +456,16 @@ class DownloadManager(QObject):
     #: previous synchronous write raised an `OperationalError` that reached no user at all.
     persistence_failed = Signal(str, str)
 
-    #: `paused` — the queue stopped starting work, or started again (`UX-001`, `T-080`).
+    #: `running` — the queue started taking work, or stopped (`UX-001`, `UX-006`, `T-181`).
     #:
-    #: Emitted rather than polled because pause is **queue-level**: there is no job whose
-    #: `job_changed` would carry it. A control that reads `is_paused` on a timer would be inventing
-    #: a signal this class is better placed to send.
-    queue_paused = Signal(bool)
+    #: Emitted rather than polled because the gate is **queue-level**: there is no job whose
+    #: `job_changed` would carry it. A control that read this on a timer would be inventing a
+    #: signal this class is better placed to send.
+    #:
+    #: **Says `running`, not `paused`, and the inversion is the point** (`UX-006`). A queue that
+    #: has never been started is not paused — nobody paused it — and a control wired to a signal
+    #: named for the wrong state has to invert it somewhere, which is a place to get it backwards.
+    queue_running = Signal(bool)
 
     #: `job_id` — the job is no longer in the queue, and its row is gone (`UX-001`, `T-080`).
     #:
@@ -560,15 +564,20 @@ class DownloadManager(QObject):
         #: (`T-083`). Held on the tick rather than on a timer per job, for the reason every other
         #: deadline in this class is: one place where the lifetime rules are applied.
         self._retry_at: dict[str, float] = {}
-        #: What to restart, for a job whose start is deferred — parked behind pause, a slot,
+        #: What to restart, for a job whose start is deferred — parked behind the gate, a slot,
         #: a reorder barrier, or a retry's backoff (`T083-R1`). Absent means `DOWNLOAD`, which
         #: is what every deferred start was silently assumed to be until a retried **probe**
         #: came back as a download and began writing media nobody had confirmed.
         self._intended_kind: dict[str, SessionKind] = {}
-        #: Whether the queue is paused (`UX-001`, `T-080`). **Not a job status** — that is the whole
-        #: decision. Pause governs what this manager *starts*; it never changes a job, which is why
-        #: `T-080` could delete `JobStatus.PAUSED` outright.
-        self._paused = False
+        #: Whether the queue is running (`UX-001`, `UX-006`, `T-181`). **Not a job status** — that
+        #: is the whole decision. The gate governs what this manager *starts*; it never changes a
+        #: job, which is why `T-080` could delete `JobStatus.PAUSED` outright.
+        #:
+        #: **`False` at construction, and that is `UX-006`.** A queue does not run until the user
+        #: starts it, so restoring a queue at launch starts nothing — the behaviour change with the
+        #: widest reach and the least visible symptom, which is why `T-181` asserts it on the pool
+        #: rather than on a window. It was `_paused = False` until 2026-08-07, i.e. running.
+        self._running = False
         #: Jobs asked to be removed whose session has not ended yet (`T-080`). Removal of a running
         #: job is a cancel followed by a delete, and the delete cannot happen until the process is
         #: gone — a row deleted out from under a live session leaves `_require` raising on the next
@@ -624,53 +633,63 @@ class DownloadManager(QObject):
         if not self._shutting_down:
             self._fill_free_slots()
 
-    # --- queue-level pause (`UX-001`) ---------------------------------------------------
+    # --- the queue-level run gate (`UX-001`, `UX-006`) -----------------------------------
 
     @property
-    def is_paused(self) -> bool:
-        """Whether the queue is paused. **A property of the queue, never of a job** (`UX-001`)."""
-        return self._paused
+    def is_running(self) -> bool:
+        """Whether the queue is running. **A property of the queue, never of a job** (`UX-001`).
 
-    def pause(self) -> None:
+        `False` until somebody calls `start_queue()`, including at launch (`UX-006`).
+        """
+        return self._running
+
+    def stop_queue(self) -> None:
         """Stop starting work. **In-flight sessions finish; nothing new begins** (`UX-001`).
 
         This is `set_concurrency(0)` in spirit and deliberately not in fact: the limit stays what
-        the user chose, so resuming restores it without having to remember it. What pause changes
-        is whether `_fill_free_slots` is willing to spend a slot at all.
+        the user chose, so starting again restores it without having to remember it. What this
+        changes is whether `_fill_free_slots` is willing to spend a slot at all.
 
         **Nothing is asked to stop, and no job's status changes.** `UX-001` chose draining because
         every alternative buys a half-written file plus a rule about its lifetime, in a phase where
         `REQ-017`'s resume does not exist — so there is no partial file to have a rule about. That
-        is also why `T-080` removed `JobStatus.PAUSED`: a paused queue has running jobs and waiting
-        jobs, and no job in a paused state.
+        is also why `T-080` removed `JobStatus.PAUSED`: a stopped queue has running jobs and
+        waiting jobs, and no job in a stopped state.
 
-        A direct `start()` — the add-URL dialog's probe — is **not** governed by this. Pause is
+        A direct `start()` — the add-URL dialog's probe — is **not** governed by this. The gate is
         about the queue draining, and a probe the user just asked for by typing a URL is not queue
         work waiting for a slot. Silently refusing it would make the dialog hang on "Probing …"
-        with nothing to say why.
+        with nothing to say why — and under `UX-006` it would hang that way on a *fresh launch*,
+        which is now the ordinary case rather than an unusual one.
 
         Idempotent, and refused during shutdown: a queue that is already ending is not a queue to
-        pause, and pausing it would be a second reason nothing starts, with only one of them ever
+        stop, and stopping it would be a second reason nothing starts, with only one of them ever
         cleared.
-        """
-        if self._paused or self._shutting_down:
-            return
-        self._paused = True
-        self.queue_paused.emit(True)
 
-    def resume(self) -> None:
-        """Start taking work again, filling every free slot **now** (`UX-001`).
+        *(Was `pause()`. `T-181` renamed the pair when `UX-006` made stopped the state a window
+        opens in: a queue nobody has started has not been paused by anyone.)*
+        """
+        if not self._running or self._shutting_down:
+            return
+        self._running = False
+        self.queue_running.emit(False)
+
+    def start_queue(self) -> None:
+        """Start taking work, filling every free slot **now** (`UX-001`, `UX-006`).
 
         Immediately rather than on the next tick, for `set_concurrency`'s reason: a tick is up to
         `poll_interval_ms` away, which is invisible to a test that spins the event loop and
-        perfectly visible to somebody who just pressed Resume.
+        perfectly visible to somebody who just pressed Start.
+
+        **Named `start_queue` rather than `start`** because `start(job_id)` is this class's
+        per-job entry point and has been since Phase 1. Two methods called `start` differing by
+        arity is how a queue-level verb gets called on a job by mistake.
         """
-        if not self._paused:
+        if self._running or self._shutting_down:
             return
-        self._paused = False
-        self.queue_paused.emit(False)
-        if not self._shutting_down:
-            self._fill_free_slots()
+        self._running = True
+        self.queue_running.emit(True)
+        self._fill_free_slots()
 
     # --- removal (`UX-001`) -------------------------------------------------------------
 
@@ -933,8 +952,9 @@ class DownloadManager(QObject):
         **Ordering is `queue_position`'s**, through `_next_waiting` — not arrival, and not this
         call. That is what survives a restart and what the queue view already shows.
 
-        **A paused queue admits and starts nothing** (`UX-001`): `_start_when_free` parks it, and
-        `resume()` drains. Admission is not a start; it is a claim on the next free slot.
+        **A stopped queue admits and starts nothing** (`UX-001`, `UX-006`): `_start_when_free`
+        parks it, and `start_queue()` drains. Admission is not a start; it is a claim on the next
+        free slot.
 
         **A row this manager cannot see is reported, not raised.** `start()` raises for it, and is
         right to: its caller asked for a session on a specific job and a vanished row means their
@@ -1085,19 +1105,29 @@ class DownloadManager(QObject):
                 "probe that moved the job to running would say a download holds it."
             )
 
-        # **A paused queue admits a probe and parks a download** (`T080-R1`, `UX-001`).
+        # **A stopped queue admits a probe and parks a download** (`T080-R1`, `UX-001`, `UX-006`).
         #
-        # The pause guards used to sit only on `_fill_free_slots` and `_start_when_free`, so this
+        # **This guard and `_start_when_free`'s are belt and braces, and `T-181` measured that.**
+        # Removing either one alone changes no observable behaviour: a retry released by
+        # `_start_when_free` still meets this one through `_start_or_report`, and a parked start
+        # here would meet that one on the tick. Only removing both lets a stopped queue run. That
+        # is worth knowing before anyone "simplifies" one of them away on the grounds that a test
+        # still passes without it.
+        #
+        # The gate guards used to sit only on `_fill_free_slots` and `_start_when_free`, so this
         # public entry point walked straight past them. That is not a hypothetical hole: the
         # add-URL dialog calls `start(job_id)` after a probe resolves, and its default `kind` is
-        # `DOWNLOAD` — so pressing Add while the queue was paused started a download immediately.
+        # `DOWNLOAD` — so pressing Add while the queue was paused started a download at once.
         # **The test that was supposed to cover this protected the defect**: it described a probe
         # and called `start("job-1")`, taking the same default, so it asserted that a paused queue
         # starts a *download* and called that the probe exemption.
         #
         # Parked rather than refused, because a refusal has nowhere to put the user's intent. The
-        # job is already durably `QUEUED`; adding it to the waiting list means resume starts it,
-        # which is what somebody who queued work while paused meant to happen.
+        # job is already durably `QUEUED`; adding it to the waiting list means `start_queue()`
+        # starts it, which is what somebody who queued work while stopped meant to happen.
+        #
+        # **Under `UX-006` this is the path, not the edge.** The queue is stopped until the user
+        # presses Start, so every ordinary Add lands here and parks.
         # **Every DOWNLOAD admission goes through the same two rules** (`T080-R1`, `T081-R1`).
         #
         # The first correction put the pause guard here and the reorder barrier only on
@@ -1106,14 +1136,14 @@ class DownloadManager(QObject):
         # hand while a reorder was in flight admitted it against the positions the reorder was
         # replacing: both writes then succeeded and the durable order named a different job first.
         #
-        # Parked rather than refused, for pause's reason: the job is already durably `QUEUED`, so
-        # the waiting list is where the intent belongs until the queue can honour it. `resume()`
-        # and `_settle_reorder` both fill from durable positions afterwards.
+        # Parked rather than refused, for the gate's reason: the job is already durably `QUEUED`,
+        # so the waiting list is where the intent belongs until the queue can honour it.
+        # `start_queue()` and `_settle_reorder` both fill from durable positions afterwards.
         #
         # **The PROBE exemption is explicit and applies to both rules.** A metadata probe is not
         # queue work waiting for a slot — it neither depends on `queue_position` nor changes it —
         # and refusing it silently hangs the add dialog on "Probing ...".
-        if kind is SessionKind.DOWNLOAD and (self._paused or self._reorders_in_flight):
+        if kind is SessionKind.DOWNLOAD and (not self._running or self._reorders_in_flight):
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
             self._intended_kind[job_id] = kind
@@ -1579,17 +1609,23 @@ class DownloadManager(QObject):
         """
         return job_id in self._sessions or job_id in self._reserved
 
-    def _pause_blocks(self, kind: SessionKind) -> bool:
-        """Whether a paused queue stops a session of `kind` from starting (`UX-001`, `T080-R1`).
+    def _gate_blocks(self, kind: SessionKind) -> bool:
+        """Whether a stopped queue stops a session of `kind` from starting (`UX-001`, `T080-R1`).
 
-        **Pause stops downloads, not reading.** `start()` has encoded that since `T080-R1` — "a
+        **The gate stops downloads, not reading.** `start()` has encoded that since `T080-R1` — "a
         paused queue admits a probe and parks a download" — and admission did not, which was
         invisible while probing was a button. `UX-003` made it visible immediately: the add dialog
-        probes through `admit`, so a paused queue left every pasted URL unread and the dialog with
+        probes through `admit`, so a stopped queue left every pasted URL unread and the dialog with
         nothing it could ever offer to queue. Reading a URL moves no bytes and writes no file; it
-        is not the work pause exists to stop.
+        is not the work this gate exists to stop.
+
+        **`UX-006` made that exemption load-bearing rather than considerate.** The queue is stopped
+        at every launch, so a gate that blocked probes would leave a first-run window unable to
+        read anything the user pasted — the failure would be the ordinary case, not the unusual
+        one. It also exempts a retried *probe*, for the same reason and with the same consequence:
+        `T-181`'s retry test starts from `READY` so the retry under test is a download.
         """
-        return self._paused and kind is not SessionKind.PROBE
+        return not self._running and kind is not SessionKind.PROBE
 
     def _limit_for(self, kind: SessionKind) -> int:
         """The ceiling on `kind`'s lane. **Two lanes, not one budget** (`T-116`)."""
@@ -1641,17 +1677,17 @@ class DownloadManager(QObject):
         which has no position, sorts last on its id — deterministic rather than incidental, so a
         test comparing whole lists is comparing something real.
 
-        Called from the tick, from `set_concurrency`, **and from `resume`** — which is what makes a
-        raised limit, or an un-paused queue, take effect at once rather than on whichever tick
-        happens next. `T-078`'s criterion says "without waiting for a tick that happens to fire",
-        and sharing this is how all three paths keep the same promise.
+        Called from the tick, from `set_concurrency`, **and from `start_queue`** — which is what
+        makes a raised limit, or a queue that has just been started, take effect at once rather
+        than on whichever tick happens next. `T-078`'s criterion says "without waiting for a tick
+        that happens to fire", and sharing this is how all three paths keep the same promise.
 
-        **A paused queue starts no download** (`UX-001`, `T-080`). The guard is applied through
-        `_pause_blocks` rather than as an early return, because pause has never stopped a *probe* —
-        `start()` has said so since `T080-R1` and this path did not, which `UX-003` turned from a
-        latent inconsistency into a dialog that could read nothing while the queue was paused.
-        Keeping the rule in one predicate is what stops the tick, `set_concurrency` and `resume`
-        being three chances to get it wrong.
+        **A stopped queue starts no download** (`UX-001`, `UX-006`). The guard is applied through
+        `_gate_blocks` rather than as an early return, because the gate has never stopped a
+        *probe* — `start()` has said so since `T080-R1` and this path did not, which `UX-003`
+        turned from a latent inconsistency into a dialog that could read nothing while the queue
+        was stopped. Keeping the rule in one predicate is what stops the tick, `set_concurrency`
+        and `start_queue` being three chances to get it wrong.
 
         **A full download lane no longer stops a waiting probe** (`T-116`). The loop used to end
         at the first job it could not start, which was correct with one budget and starves the
@@ -1682,7 +1718,7 @@ class DownloadManager(QObject):
                 # Its own earlier session has not been released yet (`T116-R1`). `_release` fills
                 # again once it has, so this is a wait rather than a refusal.
                 return False
-            return self._has_capacity(kind) and not self._pause_blocks(kind)
+            return self._has_capacity(kind) and not self._gate_blocks(kind)
 
         startable = [job_id for job_id in self._waiting if may_start(job_id)]
         return min(startable, key=self._waiting_order) if startable else None
@@ -1721,15 +1757,20 @@ class DownloadManager(QObject):
     def _start_when_free(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Start `job_id` now, or queue it for the first moment a slot opens.
 
-        **A paused queue always parks it**, even with the pool empty (`UX-001`). This is the path a
-        retry takes — manual through `retry()`, automatic through `_perform_due_retries` — so
-        without the check a `NETWORK` failure would restart itself while the user had the queue
-        paused, which is precisely the work pause exists to stop.
+        **A stopped queue always parks it**, even with the pool empty (`UX-001`, `UX-006`). This
+        is the path a retry takes — manual through `retry()`, automatic through
+        `_perform_due_retries` — so a `NETWORK` failure does not restart itself while the user has
+        the queue stopped, which is precisely the work the gate exists to stop.
+
+        **`start()` carries the same guard, and both are needed to change behaviour.** `T-181`
+        mutated each in turn and the suite stayed green either way; only removing both let a
+        stopped queue run a retry. Neither is redundant — they cover different entry points — but
+        neither is individually load-bearing, and a test cannot prove one of them alone.
         """
         if self._shutting_down:
             return
         if (
-            self._pause_blocks(kind)
+            self._gate_blocks(kind)
             or self._reorders_in_flight
             or self._holds(job_id)
             or not self._has_capacity(kind)
@@ -2158,10 +2199,10 @@ class DownloadManager(QObject):
         `is_staged()` already distinguishes them and is checked at claim time, before `_release`
         clears it.
 
-        **Pause is preserved for free** (`T080-R1`, `UX-001`). The probe half runs while paused
+        **The gate is honoured for free** (`T080-R1`, `UX-001`). The probe half runs while stopped
         because probes are exempt; this admission is an ordinary `DOWNLOAD`, so `_start_when_free`
-        parks it and `resume()` drains it. A paused queue therefore probes a playlist's entries and
-        starts none of them, which is exactly what pausing is for.
+        parks it and `start_queue()` drains it. A stopped queue therefore probes a playlist's
+        entries and starts none of them, which is exactly what the gate is for.
 
         **A failed probe never reaches here.** `Failed` is a different outcome branch, so an entry
         whose extraction fails is reported per entry and is not carried into a download of

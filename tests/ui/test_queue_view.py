@@ -205,6 +205,7 @@ def managers(queue: FakeQueue, qapp: QApplication) -> Iterator[Callable[..., Dow
 
     def build(**overrides: Any) -> DownloadManager:
         manager = DownloadManager(queue, **overrides)
+        manager.start_queue()
         built.append(manager)
         return manager
 

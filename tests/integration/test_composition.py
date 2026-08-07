@@ -250,6 +250,14 @@ def test_a_queued_playlist_entry_left_on_disk_is_probed_after_restart(
         database=database,
         entry_point=child_probing_then_waiting,
     )
+    # **The queue is stopped until it is started** (`UX-006`, `T-181`), so a composed test that
+    # expects bytes to move has to press Start exactly as a user does. Called on the manager
+    # rather than through the toolbar because the seam under test here is not the control.
+    #
+    # `ARC-009`'s probe-before-download is what this test is about, and the gate does not change
+    # it: a probe is exempt from the gate, so the entry is *read* either way. What Start buys is
+    # the download that follows, which is the state this asserts on.
+    composition.manager.start_queue()
 
     assert spin(lambda: shown_status(composition, "entry-1") is JobStatus.RUNNING, timeout=60), (
         "the playlist entry left queued on disk never reached its download"
@@ -341,6 +349,10 @@ def test_the_composed_application_downloads_a_file_and_shows_it_finished(
     visible to a person at all.
     """
     composition = composed(entry_point=child_probing_then_succeeding)
+    # **The queue is stopped until it is started** (`UX-006`, `T-181`), so a composed test that
+    # expects bytes to move has to press Start exactly as a user does. Called on the manager
+    # rather than through the toolbar because the seam under test here is not the control.
+    composition.manager.start_queue()
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/movie")
     dialog.resolve()
@@ -452,23 +464,24 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     assert connection_count(manager, "progress") == 1, (
         "the queue model should be the only progress listener"
     )
-    for name in ("queue_paused", "job_removed", "queue_reordered"):
+    for name in ("queue_running", "job_removed", "queue_reordered"):
         assert connection_count(manager, name) == 1, (
             f"{name} should have exactly the queue UI listener that reflects the durable change"
         )
     # **One, and it is named.** The queue model rebuilds its rows. This was **two** until `T-170`:
     # the History view re-read as well, because clear-finished was the moment history stopped
-    # agreeing with the queue and became the only record of what had been downloaded. There is no
-    # view over the ledger now, so nothing re-reads it — `T-170`'s criterion that an invisible
-    # ledger performs no view refresh is asserted here, as the absence of a listener.
+    # agreeing with the queue and became the only record of what had been downloaded. That view was
+    # removed, and then the ledger behind it was withdrawn outright (`REQ-020`, 2026-08-06), so
+    # there is nothing left to re-read — one listener is the whole answer (`T-176`).
     assert connection_count(manager, "queue_cleared") == 1, (
         "queue_cleared should have exactly the queue model's listener"
     )
-    # **Nothing at all**, for the same reason. A completion writes its ledger row in the same
-    # transaction (`T050-R1`), and no surface shows it.
+    # **Nothing at all**, and now for a simpler reason than when this was written. A completion
+    # used to write a ledger row in the same transaction (`T050-R1`) that no surface showed; the
+    # row and the ledger are both gone, so a completion writes only the job (`T-176`).
     assert connection_count(manager, "job_succeeded") == 0, (
-        "job_succeeded gained a listener; the ledger is invisible and nothing should re-read it "
-        "when a download completes (T-170)"
+        "job_succeeded gained a listener; a completion updates the job the queue is already "
+        "watching, and nothing else records it (REQ-020 withdrawn)"
     )
 
     dialog = composition.window.open_add_dialog()
@@ -571,6 +584,10 @@ def test_closing_the_window_with_a_download_running_stops_everything_in_order(
     the database closed. Quitting earlier leaves an orphaned process or loses a row.
     """
     composition = composed(entry_point=child_probing_then_waiting)
+    # **The queue is stopped until it is started** (`UX-006`, `T-181`), so a composed test that
+    # expects bytes to move has to press Start exactly as a user does. Called on the manager
+    # rather than through the toolbar because the seam under test here is not the control.
+    composition.manager.start_queue()
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/long")
     dialog.resolve()
@@ -707,6 +724,10 @@ def test_retrying_a_failed_job_re_queues_it_and_starts_it_again(
     anything until composition existed — which is exactly the shape of gap `T-036` was filed for.
     """
     composition = composed(entry_point=child_probing_then_failing)
+    # **The queue is stopped until it is started** (`UX-006`, `T-181`), so a composed test that
+    # expects bytes to move has to press Start exactly as a user does. Called on the manager
+    # rather than through the toolbar because the seam under test here is not the control.
+    composition.manager.start_queue()
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/gone")
     # **The URL reads, and the *download* fails** (`UX-003`, `T118-R1`). This used to fail the
@@ -868,6 +889,10 @@ def test_lowering_the_limit_through_the_control_holds_new_work_without_stopping_
 
     settings_file = tmp_path / "settings.toml"
     composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    # **The queue is stopped until it is started** (`UX-006`, `T-181`), so a composed test that
+    # expects bytes to move has to press Start exactly as a user does. Called on the manager
+    # rather than through the toolbar because the seam under test here is not the control.
+    composition.manager.start_queue()
     manager = composition.manager
     assert manager.concurrency == 3, "this test needs the default limit to be the saturated one"
 
@@ -1083,26 +1108,38 @@ def queue_three(
     assert saved == [None], f"submitting the queue failed: {saved}"
 
 
-def test_the_composed_pause_control_changes_the_real_manager(
+def test_the_composed_run_control_changes_the_real_manager(
     composed: Callable[..., application.Composition],
 ) -> None:
-    """`T-080`: prove the toolbar-to-manager seam instead of either component in isolation."""
+    """`T-080`, `T-181`: prove the toolbar-to-manager seam instead of either component alone."""
     composition = composed()
-    action = composition.window.pause_action
+    action = composition.window.run_action
     assert action is not None
+
+    # **Both start stopped, and that is asserted rather than assumed** (`UX-006`). The window's
+    # control and the manager's gate are two defaults that must agree; composition does no initial
+    # sync, so if either flips the other is silently wrong from the first frame.
+    stopped = composition.manager.is_running
+    assert not stopped, "the composed manager was running before anybody pressed Start"
+    assert not action.isChecked(), "the control claimed a running queue on a stopped one"
 
     # Read into locals: mypy narrows a property across asserts, so asserting the opposite
     # afterwards types the rest of the test as unreachable and stops it being a gate. The same
     # idiom `job_detail`'s `view.failure` uses.
     action.trigger()
-    paused = composition.manager.is_paused
-    assert paused
+    running = composition.manager.is_running
+    assert running
     assert action.isChecked()
+    assert action.text() == "&Stop queue", (
+        "a running queue's control still offers Start, so its label names the state it is in "
+        "rather than what pressing it does"
+    )
 
     action.trigger()
-    resumed = composition.manager.is_paused
-    assert not resumed
+    again = composition.manager.is_running
+    assert not again
     assert not action.isChecked()
+    assert action.text() == "&Start queue"
 
 
 def test_the_composed_move_control_updates_the_store_and_the_table(
@@ -1220,6 +1257,10 @@ def test_three_concurrent_downloads_each_keep_their_own_row(
     a table with one shared progress field looks like, and it passes any check that counts rows.
     """
     composition = composed(entry_point=child_streaming_its_own_size)
+    # **The queue is stopped until it is started** (`UX-006`, `T-181`), so a composed test that
+    # expects bytes to move has to press Start exactly as a user does. Called on the manager
+    # rather than through the toolbar because the seam under test here is not the control.
+    composition.manager.start_queue()
     queue_three(composition, spin, tmp_path / "downloads")
     table = composition.window.queue_view
     assert table is not None, "composition did not give the window a queue table"
@@ -1302,6 +1343,10 @@ def test_the_interface_stays_inside_its_budget_while_three_downloads_run(
     """
     downloads = tmp_path / "downloads"
     composition = composed(entry_point=child_streaming_until_released)
+    # **The queue is stopped until it is started** (`UX-006`, `T-181`), so a composed test that
+    # expects bytes to move has to press Start exactly as a user does. Called on the manager
+    # rather than through the toolbar because the seam under test here is not the control.
+    composition.manager.start_queue()
     queue_three(composition, spin, downloads)
 
     # Recorded before the starts, and per job: `Progress` carries the count the table draws, and

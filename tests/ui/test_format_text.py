@@ -58,6 +58,7 @@ def surfaces_naming(url: str, preset: object, tmp_path: Path, qapp: QApplication
     queue = FakeQueue()
     queue.add(make_job("job-1", tmp_path, request=request, url=url, status=JobStatus.COMPLETED))
     manager = DownloadManager(queue)
+    manager.start_queue()
     try:
         model = QueueModel(jobs=queue, manager=manager)
         return {
@@ -128,6 +129,7 @@ def test_a_bitrate_the_catalogue_does_not_offer_is_named_on_every_surface(
     queue = FakeQueue()
     queue.add(make_job("job-1", tmp_path, request=request, url=url, status=JobStatus.COMPLETED))
     manager = DownloadManager(queue)
+    manager.start_queue()
     try:
         model = QueueModel(jobs=queue, manager=manager)
         assert model.data(model.index(0, 0), PRESET_ROLE) is None, (

@@ -97,9 +97,23 @@ the state a window opens in.)*
 
 **[D]** **A stopped queue holding work says so where the work is.** Derived from `UX-005` §5 —
 nothing is drawn that would be refused, and its converse, that a state which blocks a user's
-expectation is stated — plus `NFR-005`'s rule against colour alone. A queue that shows `Held` rows
+expectation is stated — plus `NFR-005`'s rule against colour alone. A queue that shows waiting rows
 and nothing else is the one state in which a user can reasonably conclude the application is
-broken. **`T-181` decides the treatment**; that there *is* one is not open.
+broken.
+
+**[T]** **`T-181` chose the treatment, 2026-08-07: a permanent status-bar statement**, reading
+*Queue stopped — press Start to download* or *Queue running*, beside the environment summary. It
+names the remedy and not only the state, because a user looking at a full queue and no activity
+needs to be told what to press. The run control's own tooltip carries the same state, which is what
+a toolbar button publishes as its accessible description — the checked tick is a visual cue and
+cannot be the only one.
+
+**It is said once, at queue level, and deliberately not on the rows.** `UX-001`'s distinction is
+that the gate is a property of the queue and never of a job; writing it into per-row status text
+would put one queue-level fact in as many places as there are jobs. **So §2 item 7's waiting row
+still does not read *Held*** — it was not built before `T-181` and is not built by it. That clause
+describes a row-level rendering of a queue-level state, and whether it should exist at all is worth
+re-deciding rather than quietly implementing.
 
 **`Clear history` left the toolbar with the list it emptied** (2026-08-06), and nothing replaced it:
 `REQ-020` was withdrawn the same day, so there is nothing anywhere to clear. `Clear finished` stays

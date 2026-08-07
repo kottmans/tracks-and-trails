@@ -724,6 +724,8 @@ def test_each_preset_produces_the_file_it_promises(
         output_directory=tmp_path / "downloads",
         geometry_file=tmp_path / "window.toml",
     )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
     try:
         job_id = queue_one(composition, hls_media_url(), preset=preset, bitrate=bitrate)
         assert spin(
@@ -777,6 +779,8 @@ def test_audio_postprocessing_does_not_overwrite_an_existing_final_path(
         output_directory=downloads,
         geometry_file=tmp_path / "window.toml",
     )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
     try:
         url = hls_media_url()
         job_id = queue_one(composition, url, preset="Audio only (MP3)")
@@ -835,6 +839,8 @@ def test_original_audio_preview_matches_the_real_postprocessor_output(
         output_directory=tmp_path / "downloads",
         geometry_file=tmp_path / "window.toml",
     )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
     try:
         url = hls_media_url()
         job_id = queue_one(composition, url, preset="Audio only (original)")
@@ -907,6 +913,8 @@ def test_a_url_becomes_a_file_with_the_bytes_it_reported(
         output_directory=tmp_path / "downloads",
         geometry_file=tmp_path / "window.toml",
     )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
     seen: list[Progress] = []
     composition.manager.progress.connect(seen.append)
 
@@ -990,6 +998,8 @@ def test_a_progressive_download_completes_with_no_ffmpeg_at_all(
         geometry_file=tmp_path / "window.toml",
         ffmpeg_override=tmp_path / "no-such-ffmpeg",
     )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
     try:
         assert not composition.ffmpeg.available, (
             "ffmpeg was available, so this proves nothing about doing without it"
@@ -1034,6 +1044,10 @@ composition = application.compose(
     output_directory=__import__("pathlib").Path(downloads),
     geometry_file=__import__("pathlib").Path(geometry),
 )
+# `UX-006`: a composed application opens stopped, and this script exists to be killed
+# mid-download, so it presses Start. Without it the job reaches READY and stays there — which is
+# the shape this failed as, and it is the gate working rather than a defect.
+composition.manager.start_queue()
 dialog = composition.window.open_add_dialog()
 dialog._urls.setPlainText(url)
 names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
@@ -1047,7 +1061,8 @@ while not dialog.queued_job_ids:
     qapp.processEvents()
 job_id = dialog.queued_job_ids[0]
 dialog.close()
-# No explicit start: Add admits the job now (`T-115`), and starting it again is refused.
+# No explicit per-job start: Add admits the job now (`T-115`), and starting it again is
+# refused. The queue-level Start above is a different thing (`UX-006`).
 # `os.getpid()` is this interpreter, which under a Windows venv is *not* the pid Popen returned
 # — that one is the launcher. T072-R1: the test needs the application's own identity to walk
 # from, because a count beneath the launcher cannot tell a worker-less tree from a healthy one.
@@ -1188,6 +1203,8 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
         output_directory=downloads,
         geometry_file=tmp_path / "window2.toml",
     )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
     try:
         recovered = composition.store.get(job_id)
         assert recovered is not None, "the job did not survive the kill at all"
@@ -1258,6 +1275,8 @@ def test_recovery_is_the_applications_own_and_not_the_tests(
         output_directory=tmp_path / "downloads",
         geometry_file=tmp_path / "window.toml",
     )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
     try:
         recovered = composition.store.get("planted")
         assert recovered is not None

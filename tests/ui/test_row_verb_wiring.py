@@ -104,6 +104,7 @@ class _RecordingSink:
 
 def _window_over(jobs: list[Job], tmp_path: Path, **handlers: Any) -> MainWindow:
     manager = DownloadManager(_EmptyJobStore(), concurrency=1)  # type: ignore[arg-type]
+    manager.start_queue()
     return MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
@@ -581,6 +582,7 @@ def _shown_window(queue: _MutableQueue, tmp_path: Path, **handlers: Any) -> Main
     directly and could not see that neither had a user route into it (`T124-R1`, `T126-R1`).
     """
     manager = DownloadManager(_EmptyJobStore(), concurrency=1)  # type: ignore[arg-type]
+    manager.start_queue()
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
@@ -1132,6 +1134,7 @@ def test_a_lifecycle_commit_of_an_unchanged_editor_never_reaches_the_manager(
         [_job("job-a", 0), replace(_job("job-b", 1), request=already, url=already.url)]
     )
     manager = DownloadManager(store, concurrency=1)
+    manager.start_queue()
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
@@ -1193,6 +1196,7 @@ def test_a_real_choice_still_reaches_the_durable_request_through_the_manager(
     """
     store = _WritableStore([_job("job-a", 0), _job("job-b", 1)])
     manager = DownloadManager(store, concurrency=1)
+    manager.start_queue()
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
@@ -1456,11 +1460,12 @@ def test_the_queue_verbs_sit_at_the_far_end_of_the_toolbar(
     list_verbs = [
         widget
         for action in bar.actions()
-        if action.objectName() in {"pauseQueueAction", "clearCompletedAction"}
+        if action.objectName() in {"runQueueAction", "clearCompletedAction"}
         and (widget := bar.widgetForAction(action)) is not None
     ]
-    # Two, not three: `Clear history` left the toolbar with the list it emptied (`T-169`), and the
-    # ledger's one control is in Settings.
+    # Two, not three: `Clear history` left the toolbar with the list it emptied (`T-169`), and
+    # the ledger that briefly replaced it — and its one Settings control — went the same day
+    # (`REQ-020` withdrawn). Nothing is waiting to become a third (`T-176`).
     assert len(list_verbs) == 2, "the toolbar no longer holds both whole-list verbs"
 
     gap = min(widget.x() for widget in list_verbs) - (spinner.x() + spinner.width())
@@ -1631,7 +1636,7 @@ def test_the_toolbars_verbs_are_drawn_as_buttons(qapp: QApplication, tmp_path: P
         verbs = [
             widget
             for action in bar.actions()
-            if action.objectName() in {"pauseQueueAction", "clearCompletedAction"}
+            if action.objectName() in {"runQueueAction", "clearCompletedAction"}
             and (widget := bar.widgetForAction(action)) is not None
         ]
         assert len(verbs) == 2, "the toolbar no longer holds both queue verbs"
@@ -1825,19 +1830,23 @@ def test_declining_a_group_removal_removes_nothing(qapp: QApplication, tmp_path:
     confirm.close()
 
 
-def test_a_paused_queue_looks_different_from_a_running_one(
+def test_a_running_queue_looks_different_from_a_stopped_one(
     qapp: QApplication, tmp_path: Path
 ) -> None:
-    """`T-149`: pressing `Pause queue` must change something a person can see.
+    """`T-149`: pressing the run control must change something a person can see.
 
-    **The state was always there and always invisible.** `Pause queue` is one checkable `QAction` —
-    pause and resume are the same control — so Qt announced the toggled state to a screen reader
+    **The state was always there and always invisible.** The control is one checkable `QAction` —
+    Start and Stop are the same control — so Qt announced the toggled state to a screen reader
     and drew a checked tool button sunken, until `T-132`'s style sheet replaced its rendering
     without saying what checked means. `T-129` restored hover, pressed and disabled and missed
-    this one, because pause is the only checkable control on the toolbar.
+    this one, because this is the only checkable control on the toolbar.
 
     Rendered rather than asserted against the style sheet's text: a rule that exists and does not
     reach this button would pass a `grep` and fail a user, which is `T132-R1`'s whole lesson.
+
+    **`T-181` made this harder to fail and the test is kept anyway.** The label now changes with
+    the state too, so the rendering differs for a second reason. That is not a substitute: a label
+    is the *name* of the verb and the checked state is the *state*, and `NFR-005` wants both.
     """
     previous_sheet = qapp.styleSheet()
     previous_palette = qapp.palette()
@@ -1849,20 +1858,21 @@ def test_a_paused_queue_looks_different_from_a_running_one(
         window.show()
         qapp.processEvents()
 
-        button = window.findChild(QToolButton, "pauseQueueButton") or next(
+        button = next(
             child
             for child in window.findChildren(QToolButton)
-            if child.text().replace("&", "") == "Pause queue"
+            if child.text().replace("&", "") == "Start queue"
         )
+        stopped = button.grab().toImage()
+
+        run = window.run_action
+        assert run is not None
+        run.setChecked(True)
+        qapp.processEvents()
         running = button.grab().toImage()
 
-        assert window._pause is not None
-        window._pause.setChecked(True)
-        qapp.processEvents()
-        paused = button.grab().toImage()
-
-        assert paused != running, (
-            "the toolbar draws a paused queue exactly like a running one, so pressing Pause queue "
+        assert running != stopped, (
+            "the toolbar draws a running queue exactly like a stopped one, so pressing Start "
             "changes nothing the user can see"
         )
     finally:
@@ -1963,6 +1973,7 @@ def test_the_first_rows_of_a_first_run_take_the_keyboard(
     """
     jobs: list[Job] = []
     manager = DownloadManager(_EmptyJobStore(), concurrency=1)  # type: ignore[arg-type]
+    manager.start_queue()
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,

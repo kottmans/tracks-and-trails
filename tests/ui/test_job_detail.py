@@ -215,6 +215,7 @@ def managers(store: FakeStore, qapp: QApplication) -> Iterator[Callable[..., Dow
 
     def build(**overrides: Any) -> DownloadManager:
         manager = DownloadManager(store, **overrides)
+        manager.start_queue()
         built.append(manager)
         return manager
 

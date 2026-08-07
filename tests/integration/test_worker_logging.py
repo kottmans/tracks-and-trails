@@ -104,6 +104,7 @@ def test_a_spawned_workers_line_reaches_the_parents_log_without_its_token(
     repository.add(make_job("job-1", "https://example.invalid/clip", tmp_path))
     log_path = app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
     download = DownloadManager(repository, entry_point=a_worker_that_logs)
+    download.start_queue()
 
     try:
         download.start("job-1")
@@ -168,6 +169,7 @@ def test_two_jobs_cannot_write_into_each_others_logs(
         for job_id in ("job-alpha", "job-beta"):
             repository.add(make_job(job_id, "https://example.invalid/clip", tmp_path))
             download = DownloadManager(repository, entry_point=a_worker_logging_its_own_id)
+            download.start_queue()
             download.start(job_id)
             deadline = time.monotonic() + 60
             while time.monotonic() < deadline and not download.is_idle:
@@ -234,6 +236,7 @@ def test_a_records_late_arrival_still_reaches_the_job_it_belongs_to(
     repository = FakeRepository()
     repository.add(make_job("job-late", "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=a_worker_logging_its_own_id)
+    download.start_queue()
     job_log = tmp_path / "jobs" / "job-late.log"
 
     try:
@@ -284,6 +287,7 @@ def test_shutdown_does_not_wait_for_a_blocked_log_listener(
     gate = GatedHandler()
     logging.getLogger("tracksandtrails").addHandler(gate)
     download = DownloadManager(FakeRepository())
+    download.start_queue()
 
     try:
         app_logging.worker_log_queue().put(
@@ -333,6 +337,7 @@ def test_idle_is_not_announced_while_the_listener_still_holds_records(
     gate = GatedHandler()
     logging.getLogger("tracksandtrails").addHandler(gate)
     download = DownloadManager(FakeRepository())
+    download.start_queue()
     announced: list[bool] = []
     download.idle.connect(lambda: announced.append(True))
 
@@ -386,6 +391,7 @@ def test_a_wedged_listener_cannot_keep_the_application_open(
     gate = GatedHandler()
     logging.getLogger("tracksandtrails").addHandler(gate)
     download = DownloadManager(FakeRepository(), reap_seconds=0.2)
+    download.start_queue()
     announced: list[bool] = []
     download.idle.connect(lambda: announced.append(True))
 
@@ -541,6 +547,7 @@ def test_two_live_workers_cannot_write_into_each_others_logs(
         download = DownloadManager(
             repository, concurrency=2, entry_point=a_worker_interleaving_with_its_neighbour
         )
+        download.start_queue()
         download.start("job-alpha")
         download.start("job-beta")
 
@@ -716,6 +723,7 @@ def test_real_yt_dlp_diagnostics_reach_that_job_s_log_file(
     repository.add(make_job("job-1", "https://example.invalid/watch?v=abc", tmp_path))
     app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
     download = DownloadManager(repository, entry_point=a_worker_that_really_runs_ytdlp)
+    download.start_queue()
 
     try:
         download.start("job-1")

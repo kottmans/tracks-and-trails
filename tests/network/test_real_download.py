@@ -68,6 +68,8 @@ def test_one_real_url_downloads_end_to_end(
         output_directory=tmp_path / "downloads",
         geometry_file=tmp_path / "window.toml",
     )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
     try:
         dialog = composition.window.open_add_dialog()
         dialog._urls.setPlainText(REAL_URL)
