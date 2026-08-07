@@ -286,6 +286,22 @@ class FormatInfo:
     audio_codec: str | None = None
     note: str | None = None
 
+    #: Frames per second, and the total bitrate in kbps (`REQ-003`, added by `T-107`).
+    #:
+    #: **`REQ-003` has named both since it was written and neither had anywhere to live**, so the
+    #: table that requirement asks for could not have been populated from a declared field. This is
+    #: the projection catching up with the requirement rather than a new capability.
+    #:
+    #: **Fractional on purpose.** yt-dlp reports `fps` as a float — 29.97 and 59.94 are ordinary —
+    #: and `tbr` likewise. Rounding here would put the rounding in the projection, where nothing
+    #: can undo it, instead of in the one place that renders it.
+    #:
+    #: **`bitrate_kbps` is yt-dlp's `tbr`, the *total* rate**, not `vbr` or `abr`. `REQ-003` names
+    #: one bitrate column, and total is the one that means something for both a progressive format
+    #: and an audio-only one. The split rates stay unprojected until something asks for them.
+    fps: float | None = None
+    bitrate_kbps: float | None = None
+
     def __post_init__(self) -> None:
         _require_text("FormatInfo", "format_id", self.format_id, "it is how a format is selected")
         _require_text("FormatInfo", "extension", self.extension)
@@ -293,6 +309,12 @@ class FormatInfo:
             _require_optional_count("FormatInfo", name, getattr(self, name))
         for name in ("video_codec", "audio_codec", "note"):
             _require_optional_text("FormatInfo", name, getattr(self, name))
+        # `_require_optional_duration` is the non-negative-real validator, named for its first
+        # caller rather than for what it checks. Reused rather than copied: fps and a bitrate have
+        # exactly its shape — optional, fractional, never negative — and a second identical
+        # validator is a second thing to keep in step.
+        for name in ("fps", "bitrate_kbps"):
+            _require_optional_duration("FormatInfo", name, getattr(self, name))
 
     @property
     def is_audio_only(self) -> bool:

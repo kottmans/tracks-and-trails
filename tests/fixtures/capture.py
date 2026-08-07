@@ -80,8 +80,10 @@ CONSUMED_FORMAT: Final = (
     "filesize_approx",
     "format_id",
     "format_note",
+    "fps",
     "has_drm",
     "height",
+    "tbr",
     "vcodec",
     "width",
 )

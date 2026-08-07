@@ -1,0 +1,85 @@
+{
+  "_fixture": {
+    "capture_method": "derived",
+    "captured": "2026-08-07",
+    "content_licence": "Big Buck Bunny (c) Blender Foundation, CC BY 3.0. Media URLs are unsigned.",
+    "derived_from": "archive_org_big_buck_bunny",
+    "note": "Derived, not recorded. The recorded captures predate `fps`, `tbr`, `vcodec` and `acodec` on a format (SEC-002: a fixture carries only what the projection reads, and the projection did not read them until T-107). REQ-003 names all four as columns, so the format table's tests need a fixture that has them. This is that fixture, and it is NOT evidence for Phase 3's exit criterion 1 \u2014 matching `yt-dlp -F` needs a recorded capture, which T-185 owns.",
+    "policy": "allowlist: only fields ytdlp_adapter reads carry values, and playlist entries are counted rather than recorded; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
+    "what_is_synthetic": [
+      "formats[].fps",
+      "formats[].tbr",
+      "formats[].vcodec",
+      "formats[].acodec",
+      "formats[3]",
+      "formats[4]"
+    ],
+    "why_this_source": "The same public-domain item the recorded capture uses, so the shape is real; only the fields the recorded capture could not carry are synthetic. formats[3] is audio-only and formats[4] carries neither fps nor bitrate nor size, so the table's placeholder and audio-only paths have a row each.",
+    "yt_dlp_version": "2026.07.04"
+  },
+  "info_dict": {
+    "_has_drm": null,
+    "duration": 596.46,
+    "formats": [
+      {
+        "acodec": "vorbis",
+        "ext": "ogv",
+        "filesize": 46935223,
+        "format_id": "0",
+        "format_note": "derivative",
+        "fps": 24.0,
+        "height": 300,
+        "tbr": 1064.2,
+        "vcodec": "theora",
+        "width": 533
+      },
+      {
+        "acodec": "aac",
+        "ext": "mp4",
+        "filesize": 20758961,
+        "format_id": "1",
+        "format_note": "derivative",
+        "fps": 29.97,
+        "height": 360,
+        "tbr": 470.5,
+        "vcodec": "h264",
+        "width": 640
+      },
+      {
+        "acodec": "aac",
+        "ext": "mp4",
+        "filesize": 725106140,
+        "format_id": "2",
+        "format_note": "original",
+        "fps": 60.0,
+        "height": 1080,
+        "tbr": 16430.0,
+        "vcodec": "h264",
+        "width": 1920
+      },
+      {
+        "acodec": "mp4a.40.2",
+        "ext": "m4a",
+        "filesize": 3901234,
+        "format_id": "140",
+        "format_note": "audio only",
+        "tbr": 128.0,
+        "vcodec": null
+      },
+      {
+        "acodec": "aac",
+        "ext": "mp4",
+        "format_id": "hls-480",
+        "format_note": null,
+        "height": 480,
+        "vcodec": "h264"
+      }
+    ],
+    "original_url": "https://archive.org/details/BigBuckBunny_124",
+    "thumbnail": "https://archive.org/download/BigBuckBunny_124/BigBuckBunny_124.thumbs/Content/big_buck_bunny_720p_surround_000585.jpg",
+    "title": "Big Buck Bunny",
+    "uploader": "jake@archive.org",
+    "url": "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.avi",
+    "webpage_url": "https://archive.org/details/BigBuckBunny_124"
+  }
+}

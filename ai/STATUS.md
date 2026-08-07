@@ -89,6 +89,27 @@ it comes from the probe's own languages and `SUBTITLE_LANGUAGES` is `("all",)` t
 entries lost their "unruled" caveats — leaving those would have been the `T105-R4` defect in the
 other direction.
 
+## 2026-08-07: `T-107` is built, and it owes one exit criterion
+
+**The format table exists** (`REQ-003`, `docs/UX_SPEC.md` §4), awaiting review. `FormatInfo` gained
+`fps` and `bitrate_kbps` — **two columns `REQ-003` had named since it was written with nothing to
+carry them** — and no migration was needed, because nothing persists a `FormatInfo`. Sorting is on
+the model, over the projection: `1080p` above `144p`, `10.1 MB` above `9.9 MB`, and keys that are
+always a `(number, text)` pair so a column holding both `137` and `hls-480` cannot raise.
+
+**Phase 3's exit criterion 1 is *not* met, and `T-107` does not claim it.** The recorded captures
+carry no `fps`, `tbr`, `vcodec` or `acodec` — `SEC-002` commits only the fields the projection
+reads, and it did not read them until now — so four of nine columns are evidenced by a **derived**
+fixture. A fixture this project wrote cannot show the table agrees with `yt-dlp -F`. **`T-185`** is
+filed for the re-capture and owns the criterion's evidence.
+
+**Two gates fired unprompted and both were right.**
+`test_the_allowlist_matches_what_the_adapter_actually_reads` walks the adapter's AST and failed the
+moment `project_format` read two new keys, before any test of the new columns existed — exactly
+what `T-018` and `SEC-002` were built to produce. And the new static boundary check failed on
+`main_window.py` reading `width`/`height`, which are **window geometry**: a gate that blocks correct
+code gets deleted, so it was narrowed to keys only yt-dlp spells that way.
+
 ## 2026-08-07: `T-182` ruled, and it corrected a decision on the way out
 
 **`SEC-003`.** Six yt-dlp option families pointed opposite a written constraint, and all six are

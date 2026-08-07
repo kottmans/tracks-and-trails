@@ -1285,54 +1285,6 @@ proposes.
 
 ---
 
-### T-107 — The format table: every stream a probe found
-
-**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.** Blocked on Phase 2's exit and on
-`T-105`'s `docs/UX_SPEC.md`.
-**Owner:** Implementer
-**Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
-**Phase:** Phase 3
-**Depends on:** `T-105` (the UX spec), Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **ruled 2026-08-07 by
-`UX-007`** — the table opens as the **staging row, expanded**, not a modal (`P-1`, ruled against the
-spec's own proposal), and `P-14`'s three refusals stand), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
-`downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
-**Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
-`ui/`
-**Risk:** Medium — the projection is where `NFR-008`'s churn lands
-
-#### Scope
-
-`REQ-003`: format ID, extension, resolution, fps, codecs, bitrate, filesize or estimate, notes, in
-a **sortable** table. `ARCHITECTURE.md` already names `FormatInfo` as a *projection of yt-dlp's
-`info_dict`, declared fields only* — this is where that stops being a plan.
-
-**The projection is the whole risk.** `NFR-008` isolates yt-dlp churn behind the adapter, and a
-table that reads raw `info_dict` keys in the widget puts churn straight into `ui/`. `T-018`'s
-recorded fixtures are what make the mapping assertable without a network.
-
-**Sorting is over the projection, not the display strings.** "1080p" sorts after "720p" and
-"144p"; "~12.4 MB" is an estimate and must sort as a number. A table that sorts its own text is the
-class of defect `T-075` was.
-
-#### Acceptance criteria
-
-- Every column `REQ-003` names is present, populated from a recorded fixture, and asserted by value
-- **The table matches `yt-dlp -F` for a fixture set** — Phase 3's own exit criterion, so this owns
-  proving it rather than assuming it
-- Sorting is numeric where the value is numeric, asserted with a set that text-sorts differently
-- A format missing a field renders a stated placeholder rather than an empty cell or `None`
-- Repaint cost is bounded with a realistic format count (a large playlist entry has dozens)
-- Keyboard reachable and screen-reader labelled per `NFR-005`, per widget state (`T-060`'s rule)
-- `ui/` reads no raw `info_dict` key — asserted statically, as `T-097` does for settings
-
-#### Out of scope
-
-- Selecting from the table (`T-108`), which is `REQ-008`
-- Playlists (`T-110`)
-
----
-
 ### T-108 — Choose a video and an audio stream, and merge them
 
 **Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
@@ -1805,6 +1757,68 @@ must not be treated as the same option.
   back to reconstruct a list of downloads
 - Reconstructing a History tab by scanning users' download directories
 - Media-library features such as ratings, play counts, tagging, organisation or file watching
+
+---
+
+### T-185 — Re-capture the fixtures so the format columns rest on a real report
+
+**Status:** Proposed — **filed 2026-08-07 by `T-107`, which found the gap and could not close it.**
+**Owner:** Implementer
+**Priority:** **High for Phase 3's exit, low for anything running today.** No user-visible behaviour
+depends on it; one exit criterion does
+**Phase:** Phase 3
+**Depends on:** nothing. It needs the network and a deliberate act, not another task
+**Relevant context:** `SEC-002` (a fixture commits only the fields the projection reads),
+`tests/fixtures/capture.py` (run by hand, never by a test), `T-018`, `ai/TESTING.md` §5,
+`tests/fixtures/infodicts/derived_format_columns.json` (the stand-in this replaces the need for)
+**Affected surfaces:** `tests/fixtures/infodicts/*.json`, and `tests/ui/test_format_table.py` where
+it names the derived fixture. **No `src/`**
+**Risk:** Low to run, Medium to get wrong: a fixture is a **contract**, and a careless re-capture
+that widens what is committed is how data reaches the repository permanently (`REQ-026`, `NFR-007`)
+
+#### What is wrong
+
+`REQ-003` names fps, codecs and bitrate as columns. The recorded captures carry none of them,
+because `SEC-002` commits only the fields the projection reads and the projection did not read them
+until `T-107`. `T-107` therefore evidences four of its nine columns against
+`derived_format_columns.json` — **synthetic values in a real shape**.
+
+**A derived fixture cannot answer the question Phase 3's exit criterion 1 asks.** *"The format table
+matches `yt-dlp -F` output for a fixture set"* is a claim about agreeing with what yt-dlp actually
+reports; a fixture this project wrote agrees with itself. The criterion is **not met** and `T-107`
+does not claim it.
+
+#### Scope
+
+Re-run `python -m tests.fixtures.capture <name>` for the recorded info-dict fixtures, with the
+allowlist now carrying `fps` and `tbr` (`T-107` updated `CONSUMED_FORMAT` and
+`ALLOWED_FORMAT_KEYS`), so the committed captures carry what the projection reads.
+
+**Then compare the table against `yt-dlp -F` for those URLs** and record the comparison as the
+criterion's evidence — that is the part that makes this an exit-criterion task rather than a
+fixture refresh.
+
+#### Acceptance criteria
+
+- Each recorded fixture is re-captured with its metadata regenerated: yt-dlp version, date, options
+- The committed files carry `fps`, `tbr`, `vcodec` and `acodec` **where the source reports them**,
+  and carry nothing else new — `tests/unit/test_fixtures.py`'s scanners stay clean
+- `tests/ui/test_format_table.py`'s recorded-fixture test asserts the four columns **by value**,
+  and its docstring stops saying they rest on a derived fixture
+- **The `yt-dlp -F` comparison is recorded** in `ai/evidence/`, naming the yt-dlp version and the
+  URLs, so Phase 3's exit criterion 1 has evidence rather than an assertion
+- A source that genuinely reports no fps for a format keeps the placeholder, and the test says so:
+  the criterion is that the table matches the report, not that every cell is full
+- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture and format-table
+  tests are clean
+
+#### Out of scope
+
+- Changing what the projection reads. `T-107` fixed that; this makes the fixtures catch up
+- New sources. `ai/TESTING.md` §5 chose boring, freely licensed ones deliberately, and a re-capture
+  is not the moment to reopen that
+- `derived_format_columns.json`. It keeps earning its place: `formats[4]` carries no fps, bitrate or
+  size at all, which is the placeholder path, and no recorded source is guaranteed to have one
 
 ---
 
@@ -2437,6 +2451,99 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-107 — The format table: every stream a probe found
+
+**Status:** **Complete — 2026-08-07, awaiting review.** *Was blocked on Phase 2's exit and on
+`T-105`'s `docs/UX_SPEC.md`; both cleared, and `UX-007` ruled its surface on 2026-08-07.*
+
+**One acceptance criterion is deliberately not claimed met, and it is Phase 3's exit criterion 1.**
+The recorded captures carry no `fps`, `tbr`, `vcodec` or `acodec` — `SEC-002` commits only the
+fields the projection reads, and the projection did not read them until this task — so four of the
+nine columns are evidenced by a **derived** fixture. A derived fixture cannot show that the table
+matches `yt-dlp -F`; only a re-capture can, and that is **`T-185`**.
+**Owner:** Implementer
+**Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
+**Phase:** Phase 3
+**Depends on:** `T-105` (the UX spec), Phase 2 exit
+**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **ruled 2026-08-07 by
+`UX-007`** — the table opens as the **staging row, expanded**, not a modal (`P-1`, ruled against the
+spec's own proposal), and `P-14`'s three refusals stand), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
+`downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
+**Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
+`ui/`
+**Risk:** Medium — the projection is where `NFR-008`'s churn lands
+
+#### Scope
+
+`REQ-003`: format ID, extension, resolution, fps, codecs, bitrate, filesize or estimate, notes, in
+a **sortable** table. `ARCHITECTURE.md` already names `FormatInfo` as a *projection of yt-dlp's
+`info_dict`, declared fields only* — this is where that stops being a plan.
+
+**The projection is the whole risk.** `NFR-008` isolates yt-dlp churn behind the adapter, and a
+table that reads raw `info_dict` keys in the widget puts churn straight into `ui/`. `T-018`'s
+recorded fixtures are what make the mapping assertable without a network.
+
+**Sorting is over the projection, not the display strings.** "1080p" sorts after "720p" and
+"144p"; "~12.4 MB" is an estimate and must sort as a number. A table that sorts its own text is the
+class of defect `T-075` was.
+
+#### Acceptance criteria
+
+- Every column `REQ-003` names is present, populated from a recorded fixture, and asserted by value
+- **The table matches `yt-dlp -F` for a fixture set** — Phase 3's own exit criterion, so this owns
+  proving it rather than assuming it
+- Sorting is numeric where the value is numeric, asserted with a set that text-sorts differently
+- A format missing a field renders a stated placeholder rather than an empty cell or `None`
+- Repaint cost is bounded with a realistic format count (a large playlist entry has dozens)
+- Keyboard reachable and screen-reader labelled per `NFR-005`, per widget state (`T-060`'s rule)
+- `ui/` reads no raw `info_dict` key — asserted statically, as `T-097` does for settings
+
+#### Out of scope
+
+- Selecting from the table (`T-108`), which is `REQ-008`
+- Playlists (`T-110`)
+
+#### What was built, 2026-08-07
+
+**`core/models.py`** — `FormatInfo` gains `fps` and `bitrate_kbps`. `REQ-003` had named both since
+it was written and **neither had anywhere to live**, so the table that requirement asks for could
+not have been populated from a declared field. Both are `float | None`: yt-dlp reports them
+fractionally, and rounding in the projection puts the rounding where nothing can undo it.
+**No migration** — `FormatInfo` is imported only by `models.py` and the adapter, and nothing
+persists it. That was the risk flagged before starting and it is clear.
+
+**`downloader/ytdlp_adapter.py`** — `project_format` maps `fps` and `tbr`. `tbr` is the *total*
+rate, which is the one that means something for a progressive format and an audio-only one alike;
+`vbr`/`abr` stay unprojected.
+
+**`ui/format_table.py`** — `FormatTableModel` and `FormatTable`. Sorting is implemented **on the
+model**, because `QTableView.setSortingEnabled(True)` calls `model.sort()` and
+`QAbstractItemModel`'s default does nothing: a table that merely enables sorting moves its
+indicator and leaves the rows alone, which is worse than no sorting because it looks like it
+worked. Sort keys are always a `(number, text)` pair so the comparison is total — format ids are
+`137` *and* `hls-480` in one column, and a key that returned an `int` for one row and a `str` for
+another raises `TypeError` the moment `sorted` compares them.
+
+**The static boundary check is narrower than it first was, and the narrowing is the point.** Its
+first version scanned for every key `capture.py` consumes and failed on `main_window.py` reading
+`width`/`height` — **window geometry**, not an info dict. A gate that blocks correct code gets
+deleted, so it now names only keys that are unambiguously yt-dlp's (`vcodec`, `tbr`, `format_id`,
+`has_drm`, …) and says why `width`, `height`, `ext` and `filesize` are excluded.
+
+#### What this found, and what it owes
+
+**The fixture gate worked exactly as designed and is worth recording.**
+`test_the_allowlist_matches_what_the_adapter_actually_reads` walks the adapter's AST and failed the
+moment `project_format` read two new keys — *"the adapter reads `['fps', 'tbr']` off a format"* —
+before any test of the new columns existed. That is the failure `T-018` and `SEC-002` were built to
+produce, arriving unprompted.
+
+**What it owes is `T-185`.** The recorded fixtures must be re-captured so the four columns rest on
+what yt-dlp actually reports rather than on synthetic values. Until then **Phase 3's exit criterion
+1 is not met**, and this entry does not claim it.
+
+---
 
 ### T-182 — Rule on the option families `REQ-EXCL` and `NFR-007` touch
 

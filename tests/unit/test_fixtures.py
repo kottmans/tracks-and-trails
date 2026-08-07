@@ -147,8 +147,14 @@ ALLOWED_FORMAT_KEYS = frozenset(
         "filesize_approx",
         "format_id",
         "format_note",
+        # `fps` and `tbr` joined when `T-107` gave `FormatInfo` the two columns `REQ-003` had
+        # always named and nothing carried. **The recorded captures predate them and do not hold
+        # them** — this list says what a fixture *may* carry, not what one does — so the columns
+        # they feed are asserted against a derived fixture until a re-capture lands (`T-185`).
+        "fps",
         "has_drm",
         "height",
+        "tbr",
         "vcodec",
         "width",
     }

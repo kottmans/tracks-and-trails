@@ -247,6 +247,13 @@ def project_format(entry: Mapping[str, Any]) -> FormatInfo:
     Declared fields only (`ARCHITECTURE.md` §5). `filesize_approx` is accepted as a fallback for
     `filesize` because yt-dlp supplies one or the other depending on the extractor, and a
     missing size shows the user "unknown" rather than a wrong number.
+
+    **`fps` and `tbr` are projected as floats** (`T-107`). yt-dlp reports both fractionally —
+    29.97 fps and 1234.56 kbps are ordinary — so `_as_optional_float` is the coercion rather than
+    `_as_optional_int`, which would round in the projection where nothing downstream can undo it.
+    `REQ-003` names one bitrate column and `tbr` is the total, which is the rate that means
+    something for a progressive format and an audio-only one alike; `vbr` and `abr` stay
+    unprojected until something asks for them.
     """
     filesize = entry.get("filesize")
     if filesize is None:
@@ -260,6 +267,8 @@ def project_format(entry: Mapping[str, Any]) -> FormatInfo:
         video_codec=_as_optional_codec(entry.get("vcodec")),
         audio_codec=_as_optional_codec(entry.get("acodec")),
         note=_as_optional_str(entry.get("format_note")),
+        fps=_as_optional_float(entry.get("fps")),
+        bitrate_kbps=_as_optional_float(entry.get("tbr")),
     )
 
 
