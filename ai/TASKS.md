@@ -1109,60 +1109,6 @@ beats designing it against an imagined one.
 
 ## Proposed — Phase 3
 
-### T-158 — A refused Open is reported where nobody is looking
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, pressing *Open* on a download whose
-file had moved and reporting that **nothing happened at all**.
-**Owner:** Implementer
-**Priority:** Medium — nothing is lost, but the user cannot tell that
-**Phase:** Phase 3. A defect in `T-086`'s route (`REQ-021`), which is an approved Phase 2
-deliverable rather than one of criterion 8's ten
-**Depends on:** nothing
-**Relevant context:** `REQ-021`, `NFR-006`, `T-086`, `T-169`, `UX-001`, `ui/reveal.py`
-(`_refuse_unless_usable`), `ui/file_actions.py`, `ui/main_window.py` (`_report_transiently`)
-**Affected surfaces:** `ui/main_window.py`, possibly `ui/file_actions.py`
-**Risk:** Low
-
-#### Scope
-
-**It is not silent, and that is the interesting part.** The whole chain works:
-`_refuse_unless_usable` returns a `Refusal` carrying a written sentence — *"…is no longer
-there…"* — `FileActions._act` passes it to its `report` callback, `MainWindow` wires that to
-`_report_transiently`, and a test asserts the whole path
-(`test_a_refusal_reaches_the_user_rather_than_the_console`).
-
-**The message goes to the status bar, briefly, and was not seen.** The maintainer pressed *Open*,
-watched the row, and reported nothing happening — which is the only test of feedback that counts.
-
-**The design decision is deliberate and should not simply be reversed.** `_report_transiently`
-documents it: *"A file that has been moved is the ordinary case — `UX-001` promises nothing here
-deletes the user's files, so they are free to move them — and a modal dialog for an ordinary case
-trains people to dismiss dialogs unread."* That reasoning is sound. **The gap is not
-dialog-versus-status-bar; it is distance.** The status bar sits at the bottom of a tall window,
-already carrying a persistent ffmpeg line, while the user's attention is on a row they just
-clicked — several hundred pixels away.
-
-#### Acceptance criteria
-
-- Pressing *Open* on a missing file produces feedback the user **perceives at the row they acted
-  on**, without a modal dialog for an ordinary case
-- The existing sentence is reused, not rewritten — `Refusal.reason` already says the right thing,
-  and a second wording is a second thing to keep true
-- The Queue's completed row reports through the same `FileActions` path for pointer, keyboard and
-  overflow-menu activation; `T-169` removes the second History surface rather than requiring it to
-  grow another feedback treatment
-- The transient status-bar report **stays**, or its removal is deliberate. It is the record for a
-  user who looked away
-- `NFR-005`: whatever carries it is announced, not colour or motion alone
-
-#### Out of scope
-
-- What happens after the completed Queue row has been cleared. `T-169` deliberately stops claiming
-  a durable file-location surface at that boundary
-- Re-locating a moved file, or offering to. That is a feature, not this defect
-
----
-
 ### T-146 — A Settings menu, and the screen behind it
 
 **Status:** Proposed — **requested by the maintainer, 2026-08-05.** Filed against `REQ-023`, which
@@ -2245,6 +2191,53 @@ that one of the two callers was about to go.)*
 **Owner:** Implementer
 **Phase:** Phase 3
 **Risk:** —
+
+---
+
+### T-158 — A refused Open is reported where nobody is looking
+
+**Status:** **Complete — 2026-08-06.** A refusal is now said three times: at the row, in the status
+bar, and to assistive technology. **Nothing was broken and nothing was rewritten** — the sentence
+`reveal.Refusal` already carried is delivered to two more places.
+
+**The diagnosis in the task held up exactly.** The chain worked end to end and a test proved it; the
+message simply arrived several hundred pixels below the row the user had just clicked, in a bar
+already carrying a permanent ffmpeg line. **The defect was distance, not silence**, so the status
+bar stays — it is the record for a user who looked away, and a tooltip that has faded leaves
+nothing behind.
+
+**Anchored to the row, not the cursor.** `QToolTip.showText` follows the pointer by default, which
+is wrong for the keyboard and overflow-menu routes: they arrive with no meaningful mouse position,
+and a message where the mouse last rested is worse than one in the status bar. All three routes go
+through `FileActions._act`, so the anchor is read from the view's current index and is the same for
+each.
+
+**`NFR-005` is met by an announcement, not by hoping a tooltip is read.** A fix whose whole point
+is *where* a message appears is precisely the fix that leaves a user who cannot see it with
+nothing, and "the status bar is too far away for the sighted user" is not an argument that it
+suffices for anyone else. `QAccessibleAnnouncementEvent` carries the same sentence.
+
+#### What the tests had to be changed to prove
+
+The first version asserted the tooltip's **text** and that two rows each said something. **A mutant
+that anchored every message at the cursor passed it** — which is this project's recurring shape,
+a test that looks like it checks placement and checks nothing of the sort. `FileActions` now takes
+a `show_tip` seam, like the `run` and `start` seams beside it, so a test records *where* a refusal
+went and not only what it said.
+
+Five mutants, all killed: no row report; the status-bar report dropped in its favour; anchored at
+the cursor; the announcement dropped; the announcement carrying its own wording instead of
+`Refusal.reason`.
+
+**Verification:** full suite **2169 passed**, 11 skipped, 2 deselected. `ruff format --check .`,
+`ruff check .`, `mypy` and `mypy --platform win32` clean.
+
+*(Found by the maintainer, 2026-08-05, pressing *Open* on a download whose file had moved and
+reporting that nothing happened at all.)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Risk:** Low
 
 ---
 

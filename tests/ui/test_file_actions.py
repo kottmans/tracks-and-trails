@@ -13,12 +13,14 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QAccessibleAnnouncementEvent
 from PySide6.QtWidgets import QApplication
 
 from tests.ui.test_queue_view import FakeQueue
 from tests.ui.test_reveal import RecordingSpawner
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.ui import file_actions
 from tracks_and_trails.ui.file_actions import OPEN_TEXT, REVEAL_TEXT, FileActions
 from tracks_and_trails.ui.queue_view import QueueView
 from tracks_and_trails.ui.reveal import open_command, reveal_command
@@ -84,6 +86,9 @@ class Attached:
         #: the Windows CI job would launch a real media player on a build agent.
         self.started: list[Path] = []
         self.reported: list[str] = []
+        #: `(position, text)` per row-anchored refusal (`T-158`). The position is the half a
+        #: text-only assertion cannot see, and the half the defect was about.
+        self.tips: list[tuple[QPoint, str]] = []
         self.actions = FileActions(
             table=self.view.table,
             selected_path=self.view.selected_path,
@@ -92,6 +97,7 @@ class Attached:
             run=self.spawner,
             start=self.started.append,
             platform=platform,
+            show_tip=lambda position, text: self.tips.append((position, text)),
         )
         self.platform = platform
 
@@ -231,6 +237,105 @@ def test_a_refusal_reaches_the_user_rather_than_the_console(
     assert refusal is not None
     assert attached.reported == [refusal.reason]
     assert "no longer there" in attached.reported[0]
+
+
+def test_a_refusal_is_shown_at_the_row_the_user_acted_on(
+    qapp: QApplication, downloads: Path
+) -> None:
+    """`T-158`: the status bar was working and was not being read.
+
+    The maintainer pressed *Open* on a moved file, watched the row, and reported that nothing
+    happened. Nothing was broken — the sentence went to a status bar several hundred pixels below
+    the row, already carrying a permanent ffmpeg line. **The defect was distance**, so this asserts
+    the message arrives at the row *as well*, in the row's own place, and that the status-bar
+    report survived: it is the record for a user who looked away.
+
+    One sentence, not two: `Refusal.reason` is written in `reveal.py` and a second wording here
+    would be a second thing to keep true.
+    """
+    attached = Attached(entries=[an_entry("a", str(downloads / "moved.mp4"))], downloads=downloads)
+    attached.select_row(0)
+
+    refusal = attached.actions.open_selected()
+
+    assert refusal is not None
+    assert [text for _, text in attached.tips] == [refusal.reason], (
+        "the row said nothing, or said something other than the one written sentence"
+    )
+    assert attached.reported == [refusal.reason], (
+        "the status-bar report was dropped; it is the record for a user who looked away"
+    )
+    assert attached.tips[0][0] == attached.actions.row_anchor(), (
+        "the message was placed somewhere other than the row it belongs to"
+    )
+
+
+def test_the_row_report_follows_the_row_rather_than_the_mouse(
+    qapp: QApplication, downloads: Path
+) -> None:
+    """The keyboard and overflow-menu routes have no meaningful cursor position (`NFR-005`).
+
+    `QToolTip.showText` defaults to following the pointer, which would put the message wherever
+    the mouse last rested — for a keyboard user, anywhere at all.
+
+    **Asserted on the position, because asserting on the text cannot see this.** An earlier
+    version of this test drove two rows and checked only that each said something; a mutant that
+    anchored every message at the cursor passed it. The mouse never moves here, so if the two
+    reports land at different points, something other than the cursor decided where they went.
+    """
+    entries = [
+        an_entry("a", str(downloads / "gone-a.mp4")),
+        an_entry("b", str(downloads / "gone-b.mp4")),
+    ]
+    attached = Attached(entries=entries, downloads=downloads)
+
+    attached.select_row(0)
+    attached.actions.open_selected()
+    attached.select_row(1)
+    attached.actions.open_selected()
+
+    assert len(attached.tips) == 2, "one of the two rows reported nothing"
+    (first, _), (second, _) = attached.tips
+    assert first != second, (
+        "both refusals were placed at the same point while the selection moved between rows — "
+        "the message is following the cursor, or nothing, rather than the row"
+    )
+
+
+def test_a_refusal_is_announced_to_assistive_technology(
+    qapp: QApplication, downloads: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`NFR-005`, and the criterion `T-158` states: not carried by position alone.
+
+    A tooltip is placed, not spoken. Screen readers do not dependably read one, and a fix whose
+    whole point is *where* the message appears is exactly the fix that leaves a user who cannot
+    see where it appeared with nothing — the status bar having been judged too far away for the
+    sighted user is not an argument that it is sufficient for anyone else.
+
+    So the refusal is also raised as an announcement, and this asserts it carries the same
+    sentence. Recorded by replacing the module's `QAccessible` rather than by asking the platform,
+    because the offscreen plugin has no assistive technology attached and a test that waited for
+    one would pass by never running.
+    """
+    raised: list[object] = []
+
+    class RecordingAccessible:
+        @staticmethod
+        def updateAccessibility(event: object) -> None:  # noqa: N802 — Qt's spelling
+            raised.append(event)
+
+    monkeypatch.setattr(file_actions, "QAccessible", RecordingAccessible)
+    attached = Attached(entries=[an_entry("a", str(downloads / "moved.mp4"))], downloads=downloads)
+    attached.select_row(0)
+
+    refusal = attached.actions.open_selected()
+
+    assert refusal is not None
+    assert raised, "the refusal was shown but never announced"
+    assert any(
+        isinstance(event, QAccessibleAnnouncementEvent) and event.message() == refusal.reason
+        for event in raised
+    ), f"nothing announced the refusal's own sentence: {raised}"
 
 
 def test_a_recorded_path_outside_the_download_folder_is_refused_at_the_moment_of_use(
