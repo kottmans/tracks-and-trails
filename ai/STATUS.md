@@ -5,7 +5,7 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-06
+**Last updated:** 2026-08-07
 **Last verified against repository:** 2026-08-06 **for the Phase 3 block below** — its task states,
 verdicts and commit SHAs were checked against `ai/TASKS.md` and `git log`. The Phase 1 and Phase 2
 narrative from `## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a
@@ -18,6 +18,87 @@ statement of what is true now.
 **Current phase:** **Phase 3 — Format and content depth.** **Phase 2 exited 2026-08-05** (commit
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
+
+## 2026-08-07: two maintainer rulings, and a phase that did not exist
+
+**Planning only — no source changed, and nothing below is implemented.** Both rulings came from the
+maintainer on 2026-08-07 and are recorded as decisions with tasks against them.
+
+- **`UX-006` — the queue is stopped until it is started.** Adding a URL enqueues it and starts
+  nothing; the user reviews the batch and presses `Start`; a started queue keeps running until
+  `Stop`. The queue is **stopped at every launch**, so restoring a queue no longer resumes
+  downloading on its own. `UX-001`'s drain is kept exactly as it was — this changes the default, not
+  the semantics, which is why it needs no new mechanism: `T-080` built the gate and `T080-R1`
+  already made it park a download and admit a probe. **`T-181`** implements it, in Phase 3. The
+  amendment reaches `REQ-015`, `REQUIREMENTS.md` §11 criterion 1, and `docs/UX_SPEC.md` §2, §2.1.
+- **`ARC-010` — option coverage is typed fields plus one validated escape hatch.** `REQ-030` sets
+  the target as *capability* parity, not flag count: no download reachable from the yt-dlp command
+  line may be unreachable from the GUI, while the options that *are* the command line stay the
+  application's own plumbing. `REQ-031` adds the escape hatch — additional yt-dlp options, parsed
+  and validated against containment, redaction and an application-owned refusal list, never passed
+  through. **It answers `P-12` from above** (typed, the model widens) and narrows `P-18`.
+
+**`Phase 4.5 — Option coverage` is new**, between Phase 4 and Distribution, and Distribution is
+deliberately **not** renumbered: "Phase 5" names it in five documents and every review record that
+cites it. Three tasks are filed against it and **it is not decomposed** — `T-183` is the audit that
+turns yt-dlp's option list into the rest of the phase, so no size estimate for it exists yet.
+
+**`T-182` blocks part of that phase and is the maintainer's, not an implementer's.** Six option
+families point in the opposite direction from a written constraint: site credentials against
+`REQ-EXCL-003`, `--impersonate` against `REQ-EXCL-005`, `--xff` against `REQ-EXCL-002`, `--exec`
+against containment, `--download-archive` against the record-keeping the project withdrew on
+2026-08-06 — and **SponsorBlock against `NFR-007`**, because those options query a third-party API
+and this application promises no outbound traffic beyond downloads and update checks. Capability
+parity does not silently buy any of them.
+
+## 2026-08-07: three verdicts, and the shape the two rejections share
+
+Codex reviewed every outstanding boundary on 2026-08-07 (`ai/REVIEWS.md`). One approval, two
+*Changes requested*, all corrected the same day and awaiting re-review.
+
+- **`T-179` — Approved with follow-ups at `1e0d0d5`.** Recorded above.
+- **`T-168` — Changes requested at `3859190`, then Approved** on the correction. The implementation
+  was accepted as correct throughout; the finding was against the **test**. The reviewer reproduced
+  both mutants independently and got the same splits — 3 failed / 3 passed globally, 2 failed / 4
+  passed for the count-specific form.
+- **`T-105` — Changes requested at `a688a4e`, then Blocked, then Approved.** `T105-R3` (High)
+  Resolved on the first re-review; `T105-R1` (High) and `T105-R2` (Medium) on the second;
+  `T105-R4` (Medium) on a third, maintainer-authorized pass. **`T105-R4` survived its own
+  correction** and is the entry worth reading below. The ordinary pass budget was spent with only
+  that blocking Medium left, so §10 put the task in **Blocked** and the maintainer **authorized one
+  focused pass** on 2026-08-07 for a single sentence.
+
+**Every outstanding review boundary is now closed**, and `## In Review` is empty for the first time
+since 2026-08-03. Four tasks were decided on 2026-08-07 — `T-179`, `T-168` and `T-105` approved,
+`T105-R4` through three correction rounds — and the open work is `T-180` (carrying `T179-R3`),
+`T-176`, and the four tasks the roadmap change filed.
+
+**The two rejections are the same defect at two altitudes, and it is worth naming.** In both, the
+artifact under review was corrected and *the thing an implementer would actually act on* was not.
+`T-105` corrected `docs/UX_SPEC.md` and left `T-111` instructing an implementer to build the preset
+store the finding forbids, `T-108` stating the **rejected** reading as `T-061`'s rule, and
+`T-112`/`T-114` carrying unratified `[P]` proposals as acceptance criteria. `T-168` fixed
+`_bar_reserve` correctly and left a regression that fixed the entry count at sixteen while its own
+criterion said *any* count — so the gate would have stayed green for the rejected mechanism at
+every other count.
+
+**A `[P]` mark protects only the document it is in.** That is `T105-R4`'s lesson stated generally:
+the spec can be scrupulous about what is unratified and it changes nothing if the task entry an
+implementer opens states the proposal as a requirement. The corrections put the requirement in the
+criterion and the choice in the question, in both files.
+
+**And then `T105-R4` was committed a second time, inside its own correction.** The first batch
+fixed `T-112`'s acceptance criterion and left its **context field**, three lines above, still
+calling `P-23` *"this task's own report-as-you-type criterion"*. The proposal was removed from
+where it would be built and left in the field an implementer reads first. A sibling audit ran
+across four *other* task entries in that same batch and not across the two fields of the entry
+being edited — which is the shape worth keeping: *the audit was aimed outward at the class and
+missed the instance under the hand*.
+
+**`T168-R1`'s correction produced a fact worth keeping:** of the counts now swept, **24 and 37 kill
+the mutants and 9 does not** — nine's merge step is 17 px and no verb is that narrow, so just above
+the threshold the rejected reserve is harmless. A parameterized test whose parameters have not been
+mutation-checked one at a time can look broader than it is.
 
 ## The direction that changed on 2026-08-06: nothing records what has been downloaded
 
@@ -61,11 +142,12 @@ to assistive technology. One **Low, non-blocking** finding is open: `T175-R1`, t
 source and test prose that still describes the withdrawn History view or ledger as live. It is owned
 by the Implementer and targeted at **`T-176`**, which is filed under `## Proposed — Phase 3`.
 
-**Two tasks are complete but have never been reviewed:** `T-168` and `T-105`, both recorded as
-*awaiting review* in their entries. They are not covered by the `b92ec62` approval, whose base is
-`e70d615`.
+**`T-168` and `T-105` were reviewed on 2026-08-07 and both came back *Changes requested*.** They
+had sat as *complete, awaiting review*; **both are now Approved and Complete** — see the 2026-08-07
+review block below. Neither is covered by the `b92ec62` approval, whose base is `e70d615`.
 
-**`T-177` and `T-178` are complete; `T-179` is on its third mechanism.** All three were filed
+**`T-177`, `T-178` and `T-179` are complete; `T-179` took three mechanisms and a maintainer
+disposition to get there.** All three were filed
 2026-08-06 from an efficiency audit (Codex, which changed no files) and implemented the same day on
 maintainer instruction. Two review rounds followed. `T177-R1` and `T178-R1` are **Resolved**, and
 the maintainer split those two tasks out of the blocked batch — neither carries an approval verdict
@@ -87,8 +169,12 @@ of its own, and both entries say so. All three are behavior-preserving:
   mtime, which is lossy on FAT, is not promised to update continuously on Windows, and — `T179-R2`,
   **High** — was read with a `Path.stat()` on the GUI thread that a probe measured holding a
   reorder for 0.152 s. The third mechanism asks the filesystem nothing: it counts publications in
-  process, keyed by cache directory so it spans both stores over one root. Awaiting re-review on a
-  base of checkpoint `961cada`.
+  process, keyed by cache directory so it spans both stores over one root. **Approved with
+  follow-ups at `1e0d0d5`** on 2026-08-07, after the maintainer accepted `T179-R1`'s cross-process
+  limitation rather than correcting it: a process-local count cannot see another permitted instance
+  writing the shared cache, and **both collision directions are `T-180`'s** — including the older,
+  worse half, that unconditional sweeps already delete a peer instance's thumbnails. One Low,
+  `T179-R3`, is open against `T-180`.
 
 **Four claims written into this work were wrong, and none of them was caught by reading it** —
 which is the same lesson `ai/TESTING.md` §13 already carries, arriving four more times in one day.

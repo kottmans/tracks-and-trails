@@ -5,7 +5,7 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-04
+**Last updated:** 2026-08-07 — Phase 4.5 added (option coverage), and `T-181` added to Phase 3
 **Last reviewed:** 2026-08-01
 **Update when:** Phase scope, delivery order, dependencies, or exit criteria change.
 **Does not contain:** Individual coding tasks (`TASKS.md`), progress (`STATUS.md`).
@@ -562,12 +562,13 @@ work depended on itself. One task is now filed and the other is a tombstone poin
 | Separate video/audio selection and merge (`REQ-008`) | `T-108` | Medium — `T-061` is what a wrong ffmpeg check costs |
 | Post-processing, seven options (`REQ-010`) | `T-109` | **High** — `T-077` found four of five Phase 1 options never produced a file |
 | Playlist probing and per-entry selection (`REQ-004`) | `T-110` | **High** — one URL is one job today; a playlist is one probe producing N |
-| User-defined presets (`REQ-007`) | `T-111` | Medium — persisted state, and where it lives needs a decision |
+| User-defined presets (`REQ-007`) | `T-111` | Medium — persisted state with a name-collision problem. **Where it lives is settled**: TOML in the existing `settings.toml` (`DAT-001`, `ARCHITECTURE.md` §5). *(This said it "needs a decision"; the decision predates the row — `T105-R1`.)* |
 | Output template editor with live preview (`REQ-011`) | `T-112` | Medium — preview and real path must be one function |
 | Cross-restart resume of partial downloads (`REQ-017`) | `T-113` | **High** — reopens `UX-001` and `T-080`'s `PAUSED` removal |
 | **In-queue duplicate confirmation** (`REQ-022`, rescoped 2026-08-06) | `T-114` | Low — a live-queue comparison that stores nothing |
 | **Withdraw the completion record** (`REQ-020`, `REQ-021`) | `T-169` | **High** — five accepted entries required the opposite product. **Complete.** Reconciled the contract to a private ledger first, then withdrew that too |
 | **Remove the History tab and the ledger behind it** (`REQ-020`, `DAT-006`) | `T-170` | Medium-High. **Complete.** The deletion was easy; the work was the boundary — and `T169-R3` found the part the deletion missed, the rows an upgraded database already held |
+| **The queue is stopped until started** (`REQ-015` as amended, `UX-006`, added 2026-08-07) | `T-181` | Low — the gate exists and parks correctly (`T080-R1`); this changes its default, its vocabulary and what a launch restores. The risk is legibility, not mechanism |
 
 **Two Phase 3 deliverables *remove* a Phase 2 deliverable, and that is deliberate** (maintainer
 direction, 2026-08-06). Phase 2's items 7 and 11 built history persistence and a history view, and
@@ -630,6 +631,63 @@ accepted decisions by design.
 
 ---
 
+## Phase 4.5 — Option coverage
+
+**Added 2026-08-07** on maintainer direction, from `ARC-010`, `REQ-030` and `REQ-031`.
+
+**It is `4.5` and Distribution is not renumbered.** "Phase 5" names the distribution phase in
+`REQUIREMENTS.md`, `TASKS.md`, `STATUS.md`, every review record that cites it and this file's own
+history. Renumbering would rewrite the meaning of references nobody can retroactively correct, to
+buy an integer. The fractional label is uglier and cannot mislead.
+
+**Goal:** Make the parity claim true. `REQ-030`: no download reachable from the yt-dlp command line
+is unreachable from this GUI.
+
+**Prerequisites:** Phase 4 approved — it owns the settings dialog, and a large part of this phase
+lands *in* that dialog rather than beside it. `T-182`'s ruling must be taken before any work on the
+families it covers.
+
+**Why it sits here rather than earlier or later.** Earlier, it would compete with the format,
+post-processing and playlist work that this phase's typed fields extend — and several of its groups
+need Phase 4's settings screen to exist first. Later, it would be post-release, and the first
+release would ship claiming to wrap yt-dlp while covering perhaps a tenth of it.
+
+**The size of it, honestly stated.** yt-dlp has roughly 250 options in sixteen groups. Eleven
+things are expressible today; Phase 3 and Phase 4 add perhaps fifteen. This phase is not "the rest
+of them" — `REQ-030` excludes the options that *are* the command line — but it is still the largest
+breadth phase in the plan, and it is **not decomposed yet**. `T-183` writes the audit that turns the
+option list into tasks, and no estimate of this phase's size should be quoted before that lands.
+
+### Deliverables
+
+| Deliverable | Owner | Risk |
+|---|---|---|
+| **The `REQ-EXCL` ruling** — credentials, `--impersonate`, `--xff`, `--exec`, `--download-archive`, SponsorBlock's third-party API against `NFR-007` | `T-182` | **Blocking, and the maintainer's.** Nothing in this phase touching those families may start first |
+| **The option audit**: every group classified as typed-field, escape-hatch-only, application-owned, or excluded — and decomposed into tasks | `T-183` | Medium — it is the phase's plan, and a wrong classification is a wrong task list |
+| **The escape hatch** (`REQ-031`): parsing, validation, containment, redaction, refusal list, precedence against typed fields | `T-184` | **High** — it is a new route to `T-034`'s containment boundary and `DAT-003`/`DAT-004`'s redaction boundary. Both are Critical-band if breached |
+| Typed fields per option group | from `T-183` | Medium — breadth, and `NFR-008`'s churn lands on every one of them |
+| Promotion of the options users actually type into the hatch | from `T-183` | Low — but it is what stops the hatch becoming the interface |
+
+### Exit criteria
+
+- **The audit is complete and every option group is classified**, with the application-owned and
+  excluded lists stated and testable rather than implied by absence
+- A download configured through typed fields and a download configured through the escape hatch
+  produce the **same yt-dlp option dictionary** for the same intent — asserted, not reasoned about
+- **The escape hatch cannot escape containment**: an option that redirects output is refused or
+  contained, proved by a test that fails when the check is removed (`T-034`'s gate, extended)
+- **No option value reaches a log unredacted**, by the same automated redaction test `NFR-007`
+  already requires, extended over the hatch's parsed values
+- An option the application owns, and an option `REQ-EXCL` forbids, are **refused where the user
+  typed them with the reason shown** — not silently dropped
+- Every typed control is keyboard-reachable and screen-reader-labelled (`NFR-005`) — this phase adds
+  more controls than any other, and Phase 4's accessibility pass precedes it rather than covering it
+- The `REQ-030` claim is **stated in the README with its exclusions**, so the parity promise a user
+  reads matches the one the application keeps
+- Reviewed and signed off
+
+---
+
 ## Phase 5 — Distribution
 
 **Goal:** Installable artifacts for both platforms and a repeatable release process.
@@ -676,9 +734,14 @@ long before Phase 5.
 ## Deferred beyond Phase 5
 
 Not scheduled: scheduled/deferred downloads, per-site profiles, watch-folder import, browser
-"send to" integration, SponsorBlock, music-library organization and tagging, bandwidth
-scheduling, macOS support. See `REQUIREMENTS.md` §7. None may be started without a phase
-being added here first.
+"send to" integration, music-library organization and tagging, bandwidth scheduling, macOS support.
+See `REQUIREMENTS.md` §7. None may be started without a phase being added here first.
+
+**SponsorBlock left this list on 2026-08-07 without joining another one.** `REQ-030` reaches it —
+it is one of yt-dlp's option groups — and `NFR-007` may forbid it, because those options query a
+third-party API and this application promises no outbound traffic beyond the user's downloads and
+explicit update checks. It is `T-182`'s ruling, and until that ruling it is neither deferred nor
+scheduled: it is an open question with a task against it.
 
 ## Phase-level risks
 
@@ -695,3 +758,5 @@ being added here first.
 | yt-dlp gains a compiled dependency, breaking the `OPS-002` updater | ongoing | Purity re-checked at every release gate (`TESTING.md` §8) |
 | **CI stops executing entirely, so "a red run blocks" stops meaning anything** | 2 | **Live as of 2026-07-31**, not hypothetical: no job has run a step since 2026-07-30, hosted jobs fail before step one and the self-hosted job is starved. Measured in `STATUS.md`. The mitigation is that it is *visible* — a zero-step failure must never be read as a test failure, and no task may be reported as gated by CI until a run executes a step. It blocks Phase 2's exit criterion 5, not its tasks |
 | License choice blocks public release | 0 | `LIC-001` resolved as a Phase 0 exit criterion |
+| **The escape hatch becomes the interface** — options are typed into a text field instead of built as controls | 4.5 | `ARC-010` accepted this risk deliberately. The mitigation is an exit criterion, not an intention: promotion of the options users actually type is deliverable work, and the phase does not exit while the common ones are still free text |
+| **The escape hatch is a second route to the containment and redaction boundaries** | 4.5 | Both breaches are Critical-band (`AGENTS.md` §10). `T-184` extends `T-034`'s gate and `NFR-007`'s redaction test over the parsed options rather than writing new checks beside them |

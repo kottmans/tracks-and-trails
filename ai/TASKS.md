@@ -5,7 +5,8 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-06
+**Last updated:** 2026-08-07 — `T-181` filed under Phase 3, and `T-182`–`T-184` under the new
+Phase 4.5
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -78,14 +79,21 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**One awaits a verdict as of 2026-08-07: `T-179`.** Its batch-mates `T-177` and `T-178` had their
-findings marked **Resolved** at checkpoint `961cada` and were split out to `## Complete` by
-maintainer instruction — the reviewer called them individually ready, and neither has an approval
-verdict of its own. `T-179` took a **third** rejection on 2026-08-06: `T179-R2`, **High**, was
-resolved, and `T179-R1` survived at the process boundary. The Medium pass budget is spent, so
-**the maintainer dispositioned `T179-R1` on 2026-08-07** — accepted, with its false rationale
-corrected and the underlying shared-cache defect filed as `T-180`. What awaits a verdict now is
-that correction, not another mechanism.)*
+*(**Nothing awaits a verdict as of 2026-08-07.** The section is empty because the three tasks that
+were in it were all decided that day, not because nobody has looked — and the line below is the
+standing reminder that this sentence is the one in this file most likely to go stale. Read the
+sections.
+
+- **`T-105` — Approved 2026-08-07**, after `T105-R4` survived the first correction batch (the
+  criterion was fixed and the context field above it still stated the same unratified timing), the
+  task went **Blocked** under §10 with the ordinary budget spent, and the maintainer authorized one
+  focused pass for that sentence.
+- **`T-168` — Approved 2026-08-07**, `T168-R1` Resolved, after the reviewer reproduced both
+  mutants independently and reached the same splits.
+- **`T-179` — Approved with follow-ups at `1e0d0d5`**, after the maintainer dispositioned
+  `T179-R1`'s cross-process limitation and filed both collision directions as `T-180`. Its
+  batch-mates `T-177` and `T-178` had gone earlier, split out by maintainer instruction with their
+  findings Resolved at checkpoint `961cada` and no approval verdict of their own.)*
 
 *(This note said "**Nothing awaits a verdict as of 2026-08-03**" — `T-118` was approved with
 follow-ups at `53b07ec` and moved to `## Complete`, and its follow-ups are `T-122` under
@@ -101,228 +109,6 @@ whose stale status agreed with their stale section passed it. All three are now 
 `## Complete` at their approved heads.)*
 
 ---
-
-### T-179 — Every model reset scans the thumbnail cache, including a pure reorder
-
-**Status:** **In Review — the maintainer accepted `T179-R1`'s limitation on 2026-08-07; the
-corrected rationale awaits the reviewer.** `T179-R2` is Resolved at `5f469da`. `T179-R1` is
-dispositioned rather than fixed: see **Maintainer disposition** below. The task is *not* claiming
-an approval — no verdict has been issued on the correction that disposition required.
-*(This read "corrected twice, third mechanism, awaiting re-review 2026-08-06".)*
-**Three rejections, and all were the reviewer's.** `T179-R1` survived two corrections and
-`T179-R2` — **High** — was introduced *by* the first. The Medium pass budget is exhausted and
-**the maintainer authorised another pass on 2026-08-06**; the High needed no authorization.
-Correction round 2 is at the bottom of this entry, on a base of checkpoint `961cada`, which is the
-rejected state committed deliberately so this correction has a boundary of its own.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 3 cleanup
-**Depends on:** nothing
-**Relevant context:** `T-119` (the criterion this must not break), `T118-R13`, `NFR-004`,
-`ARC-005`, `NFR-001`
-**Affected surfaces:** `ui/queue_view.py`, its tests
-**Risk:** **Medium.** `T-119`'s criterion is that a picture goes with its job and survives while any
-other job names it. A gate that skips too much turns that into a cache that never shrinks
-
-#### What is wrong
-
-`QueueView._sweep_thumbnails` is connected to `modelReset`, which `job_removed`, `queue_reordered`
-and `queue_cleared` all cause. A reorder cannot change the set of live thumbnail URLs, so it
-schedules a full enumerate-and-stat of the cache directory that can only conclude that everything
-is still wanted. `ThumbnailStore.sweep()` already keeps this off the GUI thread (`T118-R13`), so
-the cost is background I/O rather than a stall — which is why this is Low and not higher.
-
-#### Scope
-
-Sweep when the live URL set actually changes, rather than on every reset. The set is already
-computed in `_sweep_thumbnails` to build the call, so the comparison is against what was last
-swept.
-
-#### Acceptance criteria
-
-- A reorder that changes no membership schedules **no** sweep, asserted on the store rather than on
-  a timer
-- A removal that drops the last job naming a URL still sweeps, and the file still goes — `T-119`'s
-  existing criterion, re-asserted through the view rather than only against the store directly,
-  because the view wiring is the part being changed and today no test covers it
-- A removal that leaves another job naming the same URL still keeps the file
-- The first sweep after construction is not skipped: nothing has been swept yet, and a queue
-  restored from disk may name pictures no live job wants
-- The gate is proven by mutation: making the comparison always-unequal, and always-equal, each
-  fails a test
-- What the gate gives up is **written down rather than implied** — a file that lands in the cache
-  after a sweep enumerated the directory is not collected until the membership changes again, and
-  the honest statement of that belongs in the docstring
-- `ruff check .`, `ruff format --check .`, both mypy platforms, and the queue-view and row-delegate
-  tests are clean
-
-#### Out of scope
-
-- Coalescing inside `ThumbnailStore`. The add dialog shares that store, and a store-level cache of
-  the last request would change a surface this task has no reason to touch
-- Sweeping on a timer, or on any schedule other than the queue changing
-- `MainWindow.job_reader`, the audit's fifth observation: it belongs to the deferred
-  `JobProgressView` seam and is left alone until that seam's fate is decided
-
-#### The third mutation, which is the part worth reading
-
-The criterion asked for two mutations — always-equal and always-unequal — and both died as
-expected: always-equal loses the deletion when the last job naming a picture is removed,
-always-unequal reproduces the sweep-per-reorder this task exists to stop.
-
-**`_swept_for` starts at `None`, and the comment saying why was a claim rather than a tested
-property.** Replacing `None` with `frozenset()` **survived both**. It survives because in each of
-those tests the queue names at least one picture, so the starting value differs from the live set
-either way. The case that separates them is a queue naming *no* pictures over a cache directory
-that still holds files from a previous run: starting at the empty set calls that "already swept"
-and the stale files stay for the life of the process.
-
-`test_a_first_queue_that_names_no_pictures_still_sweeps_once` is that case, and it kills the third
-mutant. This is `ai/TESTING.md` §13's shape again — the comment was right and nothing held it
-there.
-
-#### Correction round 1 — `T179-R1`, 2026-08-06
-
-**Corrected, awaiting the Reviewer's verification. The finding was right and the docstring I wrote
-was the tell** — it described the race as an accepted cost, which is how a behavior regression gets
-shipped with its own explanation attached.
-
-**What was wrong.** A thumbnail decode already in flight publishes its file *after* the removal
-sweep has enumerated the directory. That sweep cannot see it. A gate remembering only the live set
-then suppressed every later scan, so the file stayed for the life of the process — where the base
-implementation swept on the next reorder and collected it. Calling that "delayed" also leaned on a
-first sweep next run that construction does not itself schedule.
-
-**Two things changed.**
-
-1. The gate now also compares the cache directory's own mtime against what it was when the last
-   sweep **finished**. One `stat` of one directory, not the enumerate-and-stat of every entry that
-   `T118-R13` moved to the pool. It is the directory rather than a signal because **this
-   application runs two stores over one cache root** — the queue's and the add dialog's
-   (`T118-R16`) — so a file the dialog publishes fires nothing this view is connected to. That is
-   the production form of the reviewer's direct-write probe, and a signal-based fix would have
-   missed it.
-2. `_swept_for` is recorded from the store's `swept` completion, not when the sweep is requested. A
-   requested sweep is not proof the cache is clean.
-
-**Four tests, and the mutations that killed each.**
-
-| Test | Kills |
-|---|---|
-| `test_a_picture_written_after_its_removal_sweep_is_still_collected` | the membership-only gate (`T179-R1` itself), and a fingerprint that ignores the directory |
-| `test_a_sweep_that_deleted_something_does_not_make_the_next_reorder_sweep` | recording at request time — a sweep changes the directory it fingerprints, so the stale fingerprint reintroduces the redundant scan one step later |
-| `test_clearing_the_queue_sweeps_every_picture_it_held` | the sibling `queue_cleared` path the finding asked be audited explicitly |
-| `test_a_reorder_that_changes_no_membership_does_not_sweep_the_cache` | the optimization itself — still proves an ordinary unchanged reorder schedules no scan |
-
-**The reorder test had to change to be worth anything.** It stubbed `sweep` to record calls, and
-the gate now promotes its state from `swept` — so a stub that never completes leaves every reorder
-looking like the first, and the test would have asserted nothing about the gate. It wraps the real
-sweep now: counts the call *and* lets the work happen.
-
-**One mutation was malformed the first time and is worth recording.** The "record on request"
-mutant initially *added* the request-time assignment while leaving the completion handler in place,
-which is behaviourally the same as the correct code, and it survived. Reformed to also neuter the
-completion handler, it dies. A surviving mutant is only evidence if the mutant is the change it
-claims to be.
-
-#### Correction round 2 — `T179-R1` and `T179-R2`, 2026-08-06
-
-**The mtime gate is withdrawn entirely.** It was wrong in three independent ways and the reviewer
-found all three; keeping any part of it would have been defending a mechanism rather than fixing a
-defect.
-
-| What was wrong | Why it could not be patched |
-|---|---|
-| Directory mtime is lossy and filesystem-dependent — FAT resolves write times to two seconds, and Windows does not promise continuous updates | No amount of care makes a timestamp a reliable change-detector across the filesystems this ships on |
-| Reading it was `Path.stat()` **on the GUI thread**, from a `modelReset` slot — `T179-R2`, **High**. `NFR-001` and `ARCHITECTURE.md` §8 forbid it and `T118-R13` had already moved this exact directory's work to the pool. A slow-stat probe held a reorder for **0.152 s** | Any filesystem question asked from the gate is disk I/O on that thread. The fix is to stop asking the filesystem, not to ask it faster |
-| An absent cache directory returned `None` and failed open, so three unchanged reorders scheduled three scans | The optimization did not apply in the state a fresh install is in |
-
-**What replaces it: `cache_generation`, a count of publications, in process, under a lock.** It
-answers "could the cache have gained a file since I last looked?" without asking the filesystem
-anything — a dict lookup, no `stat`, no enumeration, nothing that can block. It is keyed by *cache
-directory* rather than by store, which is the property a per-store signal could never have: this
-application runs two `ThumbnailStore`s over one root (`T118-R16`), and a picture the add dialog
-publishes is one the queue's sweep must still collect. `_DecodeTask` records the publication at the
-point the file appears in the directory, and only on success.
-
-**Its limit, stated rather than discovered later:** it does not see a write by another *process*.
-*(This said `A-004` admits one instance "so within this application's rules there is no second
-writer". **That was false and `T179-R1` caught it.** `A-004` forbids two instances sharing one
-*database*; `ARC-006` requires instances on different databases not to block one another, and
-`thumbnail_cache_directory()` keys off the platform cache root rather than the database path — so
-permitted concurrent instances do share this directory. The limit is real; the excuse was not.)*
-No timestamp would have answered it reliably either, which is why the mechanism is not the thing
-at fault here.
-
-**Overlapping sweeps are serialized rather than identified.** `swept` reports a count and carries
-no request identity, so with two in flight the second completion promotes the first's set — the
-reviewer's probe ended with orphan A on disk, live B deleted, and the view believing it had swept
-for B. Adding identity to the store's signal was one option; one sweep at a time is smaller and
-changes no shared API. A request arriving during a sweep sets `_coalesced`, and `_on_swept` re-runs
-the gate against the model **as it stands then**, which is fresher than any set queued earlier.
-
-**The generation is captured when the sweep is requested, not when it completes.** A picture
-published while the sweep runs may or may not have been enumerated; recording completion-time state
-declares it swept and strands it. That is `T179-R1`'s shape a third time, and it is the mutation
-that survived the first battery of this round.
-
-**Five mutations, five killed** — the fifth only after the test that catches it was written:
-
-| Mutation | Killed by |
-|---|---|
-| Gate ignores the generation (the original `T179-R1`) | `test_a_picture_written_after_its_removal_sweep_is_still_collected` |
-| Publications never recorded | the same test |
-| No serialization, overlapping sweeps allowed | `test_two_resets_during_one_sweep_schedule_one_more_sweep_for_the_newest_set` |
-| Generation captured at completion rather than request | `test_a_picture_published_while_the_sweep_runs_is_not_counted_as_swept` — **survived until that test existed** |
-| — | `test_unchanged_reorders_over_an_absent_cache_directory_sweep_once` and `test_the_sweep_gate_touches_no_file_on_the_gui_thread` cover the other two rejected behaviours directly |
-
-**`T179-R2` is asserted structurally, not by a stopwatch.** `Path.stat`, `Path.iterdir` and
-`Path.exists` are made to raise for the duration of a removal and a reorder; if the reset path
-touches the filesystem at all it fails, and no delay has to be guessed at. A timing bound would
-have made it a claim about how fast the machine is — which is the defect `T118-R10` records.
-
-**The reviewer's own test had to be replaced, and that is worth reading.** The round-one regression
-wrote the late file directly with `write_bytes`. Under a publication counter that models nothing
-real: every actual publication goes through `_DecodeTask`. It now publishes through a **second real
-`ThumbnailStore` over the same cache root**, which is both faithful and strictly stronger — it is
-the add-dialog case that makes a per-store signal insufficient.
-
-#### Maintainer disposition — `T179-R1`, 2026-08-07
-
-The reviewer's round-3 record offered four exits and recommended withdrawal. **The maintainer chose
-to accept the documented limitation and have the false rationale corrected.** The decision is
-theirs; this entry records it rather than making it.
-
-**What the finding got right, verified before acting on it rather than after.** `A-004`
-([`REQUIREMENTS.md` §9](REQUIREMENTS.md)) forbids concurrent instances against one *database*;
-`ARC-006` requires instances on *different* databases not to block one another; and
-`thumbnail_cache_directory()` returns `cache_directory() / "thumbnails"`, which no database path
-enters. Permitted concurrent instances therefore share one thumbnail cache, and
-`cache_generation()`'s appeal to `A-004` was false as written. It is corrected in the docstring and
-in correction round 2 above.
-
-**What the recommendation did not weigh.** `_SweepTask.run` unlinks every entry in that shared
-directory whose name is absent from *this* instance's keep set. Two permitted instances already
-delete each other's thumbnails, on every reset, and did so before this task existed. Withdrawal
-would restore that unconditional sweep. Measured against it, a gate that skips too often fails in
-the direction that leaves a regenerable file alive one sweep too long — which is why the
-optimization is kept and the shared-cache defect is filed as its own work rather than treated as
-something `T-179` introduced.
-
-**The residual risk, named so nobody has to rediscover it.** A picture published by a second
-instance is not collected by this one until this one's own membership changes. It is a
-regenerable file in a cache, on a Low-priority task whose entire subject is background I/O.
-
-**`T-180` inherits the real question** — whether the cache should be partitioned per instance at
-all — and covers both halves: the counter's blindness and the sweep's cross-instance deletion.
-
-#### Files
-
-`src/tracks_and_trails/ui/queue_view.py`, `src/tracks_and_trails/ui/thumbnails.py`,
-`tests/ui/test_queue_view.py`
-
----
-
 
 ## Ready
 
@@ -1555,9 +1341,9 @@ class of defect `T-075` was.
 **Depends on:** `T-107`
 **Relevant context:** `docs/UX_SPEC.md` §5 (the selection modes, and the ffmpeg rule stated the
 right way round: the worker's gate reads the **resolved** formats and falls back to the selector
-only when nothing resolved — the criterion below already had this right), `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
-(`effective_selector`, `custom_preset`), `T-061` (the ffmpeg gate reads the selector, not the
-chosen format), `T-075`
+only when nothing resolved), `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
+(`effective_selector`, `custom_preset`), `T-061` (**the selector-reading gate refused a merge that
+never happened** — see the Scope below), `T-075`
 **Affected surfaces:** `core/presets.py`, `ui/`, `downloader/ytdlp_adapter.py`
 **Risk:** Medium — a merge needs ffmpeg, and `T-061` is what happens when the check reads the wrong
 thing
@@ -1568,17 +1354,38 @@ thing
 stream to be merged**. The selector this produces is `bestvideo[...]+bestaudio[...]`-shaped, so it
 flows through the existing `custom_preset` path rather than a new one.
 
-**ffmpeg is required for a merge and optional otherwise**, which is exactly `T-061`'s defect one
-layer up: that gate read the *selector* rather than the format actually chosen, so it approved a
-merge it could not perform. The check here must read the user's actual selection.
+**ffmpeg is required for a merge and optional otherwise, and there are two different questions
+here** (`T105-R2`, corrected 2026-08-07):
+
+1. **The table knows its own pair needs a merge.** A user who has explicitly chosen a video format
+   and an audio format has *stated* a merge. Nothing is inferred and no selector is parsed, so with
+   ffmpeg absent that pair is refused before the download starts.
+2. **The worker's gate is the definitive one and it reads the *resolved* formats.** `_ffmpeg_gap`
+   asks `_will_merge(info)` — yt-dlp records the decision by populating `requested_formats` with
+   more than one entry — and consults `request.format_selector` **only when resolution supplied no
+   answer at all** (a playlist, or an extraction that stopped before format selection), where being
+   wrong costs a refusal rather than the user's bandwidth.
+
+**`T-061`'s defect was the selector-reading gate, and it ran the other way from how this entry used
+to describe it.** `bestvideo+bestaudio/best` against a source offering one progressive format
+resolves through `/best` to no merge at all, and the selector-reading gate **refused it anyway** —
+measured 2026-07-28. It did not approve a merge it could not perform.
+
+*(This entry said the gate "read the selector rather than the format actually chosen, so it
+approved a merge it could not perform", and asked for a pair "a selector-only check would wrongly
+approve". Both stated the rejected reading as `T-061`'s rule and would have directed an
+implementer straight back into it. `docs/UX_SPEC.md` §5 was corrected on 2026-08-06 and this was
+not.)*
 
 #### Acceptance criteria
 
 - A video-only and an audio-only selection produce one merged file, on **both** platforms
-- **With ffmpeg absent, a merge selection is refused before the download starts**, naming ffmpeg —
-  not at merge time, which `REQ-024` is explicit about
-- The refusal reads the chosen formats, asserted by choosing a pair that a selector-only check
-  would wrongly approve (`T-061`)
+- **With ffmpeg absent, an explicitly chosen video + audio pair is refused before the download
+  starts**, naming ffmpeg — not at merge time, which `REQ-024` is explicit about
+- **A selector that contains `+` but resolves to a single progressive format is not refused**, with
+  ffmpeg absent — `T-061`'s measured defect, asserted in the direction it actually failed. The gate
+  under test is the resolved-format one; a selector-only check passes the criterion above and fails
+  this one, which is why both are here
 - The effective selector is visible, per `REQ-009`'s learn-the-syntax rule
 - A single progressive format still downloads with no ffmpeg involvement
 
@@ -1597,7 +1404,8 @@ merge it could not perform. The check here must read the user's actual selection
 **Depends on:** `T-105`; `T-108` for the ffmpeg-presence rule it shares
 **Relevant context:** `docs/UX_SPEC.md` §6 (**`P-16` decides whether this shares `T-111`'s screen
 or has its own — unruled, so the out-of-scope line below is engineering scope, not a UI ruling**;
-**`P-12` must be ruled first**, since typed fields and one free list are different screens), `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
+**`P-12` is ruled** as of 2026-08-07 — `ARC-010` says the five undedicated options get **typed
+fields** and the model widens, so this task no longer waits on it and no longer chooses), `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
 produced a file), `T-076`, `T-089`, `downloader/ytdlp_adapter.py`
 **Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`, `ui/`
 **Risk:** **High** — seven independent options, each of which can be wired to produce no effect
@@ -1697,7 +1505,7 @@ playlist is a long extraction, and the dialog has to stay responsive and cancell
 `settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5; no new store, no migration owed. `P-20`,
 the manager's layout, is unruled), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
 `to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
-**Affected surfaces:** `core/presets.py`, `core/settings.py` or a new store, `ui/`
+**Affected surfaces:** `core/presets.py`, `core/settings.py`, `ui/`
 **Risk:** Medium — user presets are persisted state with a name-collision problem
 
 #### Scope
@@ -1705,10 +1513,15 @@ the manager's layout, is unruled), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, 
 `REQ-007`: create, edit, duplicate, delete, and set a default. The built-in presets (`REQ-006`) stay
 and must not be editable into something that no longer matches its own name.
 
-**Where they live is a decision this task must take or raise.** `settings.toml` is `ARC-007`'s and
-holds settings; a list of user presets is closer to data. `DAT-001` chose TOML for
-human-editability, which argues for a sibling file rather than a table — but that is a decision,
-not an implementation choice, and it needs an entry.
+**Where they live is already decided, and this task does not reopen it** (`T105-R1`, High). User
+presets persist as **TOML in the existing `settings.toml`**, per `DAT-001` and `ARCHITECTURE.md` §5.
+No new store, no sibling file, no table, and no migration is owed.
+
+*(This read "a decision this task must take or raise", and argued for a sibling file. It was wrong
+twice over: the decision existed before the task was written, and an implementer following the
+paragraph would have built the store `T105-R1` forbids. `docs/UX_SPEC.md` §8 was corrected on
+2026-08-06 and this entry was not, which is exactly the drift the finding is about — the spec is
+not what an implementer opens.)*
 
 #### Acceptance criteria
 
@@ -1733,8 +1546,11 @@ not an implementation choice, and it needs an entry.
 **Phase:** Phase 3
 **Depends on:** `T-105`
 **Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function; **`P-22`, the
-preview's focus and announcement policy, is unruled**, and `P-23` is this task's own
-report-as-you-type criterion — one ruling covers both), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
+preview's focus and announcement policy, is unruled**, and **`P-23` — whether a containment failure
+is refused at edit time or at commit — is unruled with it**; one ruling covers both, and until it is
+taken this task chooses neither. *(This read "`P-23` is this task's own report-as-you-type
+criterion", which is the unratified timing stated as task truth three lines above the criterion that
+says it is unruled — `T105-R4`, second correction.)*), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
 atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
 **Affected surfaces:** `core/paths.py`, `ui/`
 **Risk:** Medium — the preview must be the same function the download uses, or it lies
@@ -1759,7 +1575,13 @@ must not reimplement any of it.
   including titles with characters illegal on Windows
 - **Path containment holds**: no rendered template escapes the output directory — asserted with
   `..`, absolute paths, and a template that resolves to one
-- An invalid template is reported as the user types, not at download time
+- **An invalid template never reaches a download.** *Where* the refusal is surfaced — as the user
+  types, or at commit — is `P-23` and is **unruled**, so this task cannot be started against either
+  timing until it is (`T105-R4`). Naming the containment rule is enough for the criterion; naming
+  the moment is the product choice nobody has made. *(This read "reported as the user types, not at
+  download time", which is `P-23`'s proposal stated as a requirement — the task would have
+  satisfied its own acceptance criteria with an unratified choice, which is what merely flagging
+  the contradiction in the context field did not prevent.)*
 - Long paths behave per `T-067`'s finding, which is that the default configuration is the case
   to test
 
@@ -1777,7 +1599,9 @@ must not reimplement any of it.
 **Phase:** Phase 3
 **Depends on:** Phase 2 exit
 **Relevant context:** `docs/UX_SPEC.md` §9.2 (**`P-10` reopens `UX-001`'s per-job pause** — the
-last criterion below is that same question, and answering one answers both), `REQ-017`, `UX-001` (this is its named reopening condition), `T-080`
+last criterion below is that same question, and answering one answers both), `REQ-017`, `UX-001` (this is its named reopening condition) **as amended by
+`UX-006`** — the queue-level gate is now *stopped until started*, which changes the default this
+task reopens against and changes nothing about per-job pause, `T-080`
 (removed `JobStatus.PAUSED`), `ARCHITECTURE.md` §5, `NFR-003`
 **Affected surfaces:** `core/job_state.py`, `downloader/`, `persistence/`
 **Risk:** **High** — it is the one Phase 3 item whose feasibility depends on the site and format
@@ -1830,7 +1654,9 @@ discouraged.
 record contract. Both are withdrawn, and a dependency on a withdrawn contract is how a task
 rebuilds it. `T169-R4` caught this entry still directing an implementer to a ledger that no longer
 exists.)*
-**Relevant context:** `docs/UX_SPEC.md` §9.3 (a staging-row state, never a modal), `REQ-022`,
+**Relevant context:** `docs/UX_SPEC.md` §9.3 (**`P-26`, whether the warning is a staging-row state
+rather than a modal, is unruled** — this task may not pick either until it is ruled, `T105-R4`;
+`P-27`, whether ordinary *Add to queue* is the override, is unruled with it), `REQ-022`,
 `ui/add_dialog.py`'s staging list, `DAT-002`'s collision policy for what happens beyond the queue
 **Affected surfaces:** `ui/add_dialog.py`. **Not `persistence/`** — this task stores nothing and
 adds no table, column or index
@@ -1850,8 +1676,10 @@ offered which would be refused cuts both ways.
 
 #### Acceptance criteria
 
-- A URL that matches a **job already in the queue** is marked on its staging row before enqueueing,
-  in the row's own state rather than a modal (`docs/UX_SPEC.md` §9.3)
+- A URL that matches a **job already in the queue** is **said before enqueueing**. Whether it is
+  said in the staging row's own state or in a modal is `P-26` and is unruled — the criterion is
+  that the user is told in time to act, not which surface tells them (`T105-R4`). *(This required
+  "the row's own state rather than a modal", which is `P-26`'s proposal as a requirement.)*
 - A URL repeated **within one paste** is marked the same way — the second occurrence, not the first
 - **Confirming enqueues it**, asserted on the stored queue: the duplicate is added, not skipped
 - A URL matching nothing enqueues with no prompt at all — the silent case, which an over-eager
@@ -2065,6 +1893,12 @@ the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a comm
   migrated or deliberately abandoned, not left to chance
 - If the partition lands, `cache_generation()`'s docstring loses its residual-risk paragraph
   because the risk is gone; if it does not, that paragraph is still true and stays
+- **`T179-R3` is discharged either way** (Low, non-blocking, assigned here 2026-08-07). That
+  paragraph says a foreign publication survives "one sweep's delay" (`ui/thumbnails.py:127`), and
+  sweeps are **event-driven, not periodic** — so the elapsed time can be the rest of the process
+  lifetime. Whichever way this task goes, the paragraph is rewritten to the precise trigger the
+  task record already uses — *until this one's own membership changes* — or removed with the risk.
+  The finding does not reopen `T-179`, which is approved at `1e0d0d5`
 - `ruff check .`, `ruff format --check .`, both mypy platforms, task placement, and the queue-view,
   thumbnail and paths tests are clean
 
@@ -2075,6 +1909,258 @@ the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a comm
 - The single-instance guard itself, its socket, or its named pipe
 - Any other directory under `cache_directory()`. If one of them has the same defect it gets its own
   task rather than being swept into this one
+
+---
+
+### T-181 — The queue is stopped until the user starts it
+
+**Status:** Proposed — **maintainer decision, 2026-08-07** (`UX-006`). Filed against `REQ-015` as
+amended.
+**Owner:** Implementer
+**Priority:** Medium — nothing is blocked by its absence, and it changes the first thing every user
+does
+**Phase:** Phase 3
+**Depends on:** nothing. The gate it changes has existed since `T-080` and parks correctly since
+`T080-R1`
+**Relevant context:** `UX-006`, `UX-001` (the drain it keeps), `UX-002` (automatic retry, which must
+observe the gate), `docs/UX_SPEC.md` §2 item 7 and §2.1, `REQ-015`, `REQUIREMENTS.md` §11 criterion
+1, `downloader/manager.py` (`_paused`, `pause()`, `resume()`, `_pause_blocks`, `_fill_free_slots`,
+`_start_when_free`), `ui/main_window.py`'s `pauseQueueAction`
+**Affected surfaces:** `downloader/manager.py`, `ui/main_window.py`, `ui/queue_view.py` if the
+stopped state is drawn there, and their tests. **Not `persistence/`** — the gate is not persisted
+and adds no column
+**Risk:** Low mechanically, Medium for legibility. The one way this fails a user is a window that
+looks broken because nothing happens and nothing says why
+
+#### Scope
+
+**Change the default, the vocabulary, and what a launch restores.** The queue gate exists; this
+task closes it at startup, renames it to what it now governs, and makes the stopped state legible.
+
+- The gate is **stopped at launch**, every launch. A restored queue starts nothing.
+- `Start` opens it; the queue then runs what it holds and everything added afterwards. Draining does
+  **not** re-arm it.
+- `Stop` drains, unchanged from `UX-001`: in-flight sessions finish, nothing new starts, no partial
+  file is created, no job enters `PAUSED`.
+- The toolbar's checkable `pauseQueueAction` becomes the run control — one action, two states,
+  reading `Start` and `Stop` (`docs/UX_SPEC.md` §2.1).
+- **Everything that begins work observes the gate**, including automatic retry (`UX-002`) and a
+  user's `Retry`. Probes are exempt, as they already are.
+- The stopped state is stated where the work is, per §2.1's `[D]` clause. **The treatment is this
+  task's to choose**; that there is one is not.
+
+#### Acceptance criteria
+
+- A fresh launch with a non-empty queue starts **no** download — asserted on the pool, not on a
+  screenshot. This is the behaviour change with the widest blast radius and the least visible
+  symptom
+- A URL added to a stopped queue is durably `QUEUED`, its row reads **Held**, and nothing starts
+- `Start` runs the held jobs up to the concurrency limit; a URL added afterwards starts without a
+  second `Start`
+- `Stop` while jobs are running: every in-flight job **completes**, nothing new starts, and **no
+  partial file exists** afterwards — the assertion `T-080` already makes, re-run against the new
+  default
+- A queue that empties while started stays started
+- **Automatic retry parks.** A `NETWORK` failure schedules a retry under `UX-002`, the queue is
+  stopped before the backoff elapses, and the attempt does not run until `Start` — with a test that
+  fails if the gate check is removed from the retry path
+- A stopped queue still **probes**: a paste resolves in the add dialog with the gate closed
+- The run control is keyboard-reachable, announces its current state rather than only its label, and
+  does not convey the state by colour alone (`NFR-005`)
+- `ruff check .`, `ruff format --check .`, both mypy platforms, and the manager, queue-view and
+  main-window tests are clean
+
+#### Out of scope
+
+- **Any per-job start, hold or pause.** `UX-006` §6 keeps the gate queue-level; `P-10` and `T-113`
+  own per-job control and answer it on resume's terms
+- **Persisting the gate.** It is stopped at every launch, so there is nothing to persist. A setting
+  that changes the default is `UX-006`'s rejected alternative and needs a new ruling, not this task
+- `JobStatus.PAUSED`. Still unreachable, still `T-080`'s tombstone, still not resurrected here
+- Reordering, and what `Start` means for order. The queue's existing order decides what runs first
+
+---
+
+
+## Proposed — Phase 4.5
+
+*(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
+descend from, and `T-183` is what turns them into the rest of the phase.)*
+
+### T-182 — Rule on the option families `REQ-EXCL` and `NFR-007` touch
+
+**Status:** **Proposed — a decision task. The ruling is the maintainer's and nothing here proposes
+one.** Filed 2026-08-07 with `ARC-010`, which explicitly does not decide it.
+**Owner:** Maintainer, with the Planner preparing the material
+**Priority:** **High for the phase, blocking within it.** No typed field, refusal-list entry or
+escape-hatch rule for these families may be written first
+**Phase:** Phase 4.5, and it is the phase's first task
+**Depends on:** nothing
+**Relevant context:** `REQ-EXCL-001` … `-005`, `SEC-001`, `NFR-007`, `REQ-026`, `REQ-030`,
+`ARC-010` §"Not decided here", `REQUIREMENTS.md` §7's SponsorBlock note
+**Affected surfaces:** `ai/DECISIONS.md` (a new `SEC-` entry), `ai/REQUIREMENTS.md` §8 if an
+exclusion is narrowed. **No source**
+**Risk:** Low to take, High to skip. Each family is a place where "capture all of yt-dlp" and a
+written exclusion point in opposite directions, and an implementer who meets one mid-task will
+resolve it by accident
+
+#### Scope
+
+Five families, each needing *permitted*, *forbidden*, or *permitted in a narrowed form*, with the
+reasoning recorded where a future task will find it:
+
+1. **Site credentials** — `-u/--username`, `-p/--password`, `--video-password`, `--netrc`,
+   `--client-certificate`. `REQ-EXCL-003` says the application never asks for a site
+   username/password **to store**. A session-only credential that is never persisted and never
+   logged may be consistent with that; the exclusion may equally stand as written. `REQ-026`
+   already permits cookies for content the user is entitled to, which is the precedent.
+2. **`--impersonate`** — a TLS/browser fingerprint. `REQ-EXCL-005` forbids anti-detection framing;
+   this is dual-use, and the question is whether it is a workaround for broken sites or the thing
+   the exclusion names.
+3. **`--xff` and `--geo-verification-proxy`** — `REQ-EXCL-002` forbids geo-restriction bypass. `--xff`
+   looks like exactly that. `--geo-verification-proxy` is arguably ordinary proxy configuration.
+4. **`--exec` and `--exec-before-download`** — arbitrary command execution after download. Even
+   permitted, it is the escape hatch's sharpest edge and interacts with `T-034` containment.
+5. **`--download-archive`** — a durable record of what has been downloaded. `REQ-020` was withdrawn
+   on 2026-08-06 precisely to not have one. A user pointing yt-dlp at their own archive file is not
+   the application keeping records, and the difference wants stating rather than assuming.
+
+**And one that is not an exclusion but a privacy requirement:** **SponsorBlock**
+(`--sponsorblock-mark`, `--sponsorblock-remove`, `--sponsorblock-api`). Those options query a
+third-party API, and `NFR-007` permits outbound traffic only for the user's downloads and explicit
+yt-dlp update checks. Permitting them widens `NFR-007`; forbidding them puts a hole in `REQ-030`.
+Either is defensible; neither is implicit.
+
+#### Acceptance criteria
+
+- Each of the six has a recorded ruling with its reasoning, in `ai/DECISIONS.md`
+- Every *narrowed* permission states the narrowing as a testable property, not as an intention —
+  "never persisted" and "never logged" are assertions a later task can fail
+- `REQUIREMENTS.md` §8 is amended where an exclusion changed, with the superseded wording preserved
+  in place as this project does everywhere else
+- `REQ-030`'s claim is reconciled: whatever is forbidden is named as an exclusion to the parity
+  promise, so the promise and the exclusions are read together
+- **Nothing is implemented.** This task produces a decision
+
+#### Out of scope
+
+- Building anything. Every family that ends up permitted gets a task from `T-183`
+- Re-litigating `SEC-001` or the DRM exclusion, which nothing here touches
+
+---
+
+### T-183 — The option audit: classify every group, and decompose the phase
+
+**Status:** Proposed — filed 2026-08-07 with the phase
+**Owner:** Planner
+**Priority:** High within the phase — it *is* the phase's plan
+**Phase:** Phase 4.5
+**Depends on:** `T-182` for the excluded families. The rest can be classified without it
+**Relevant context:** `REQ-030`, `REQ-031`, `ARC-010`, yt-dlp's *Usage and Options*,
+`downloader/ytdlp_adapter.build_options` (what the application already sets and therefore owns),
+`core/models.DownloadRequest`, `core/presets.py`
+**Affected surfaces:** `ai/TASKS.md`, `ai/IMPLEMENTATION_PLAN.md` §Phase 4.5. **No source**
+**Risk:** Medium — a misclassification becomes a wrong task, and the ones that hurt are options
+filed as *escape-hatch-only* that a user reaches for daily
+
+#### Scope
+
+Every option group in yt-dlp's *Usage and Options*, each option landing in exactly one of four
+classes:
+
+- **Typed field** — it gets a control, an owner task, and a phase position
+- **Escape-hatch only** — reachable through `REQ-031`, no control planned, with the reason
+- **Application-owned** — the GUI sets it and a user may not (`outtmpl`, `format`, `progress_hooks`,
+  `logger`, `quiet`, the simulation and printing flags). This list becomes the refusal list `T-184`
+  enforces, so it must be derived from `build_options` rather than written from memory
+- **Excluded** — per `T-182`
+
+The known-thin areas, recorded here so the audit is checked against them rather than starting from a
+blank page: video-selection filters (`-I`, filesize, date, `--match-filters`, `--max-downloads`),
+download tuning (`--download-sections`, `-N`, retry policy, `--downloader`, `--live-from-start`),
+most of the filesystem group (`--restrict-filenames`, `--windows-filenames`, `--trim-filenames`,
+`--paths`, `--mtime`, the metadata writers), thumbnails, `--extractor-args`, subtitle depth
+(`--write-auto-subs`, `--sub-format`, `--convert-subs`), format depth (`--format-sort`,
+`--merge-output-format`, `--check-formats`) and the workarounds group.
+
+#### Acceptance criteria
+
+- Every option in the current yt-dlp *Usage and Options* appears in exactly one class, against a
+  **recorded yt-dlp version** — an audit of an unnamed version cannot be re-run when upstream moves
+- The application-owned list is **derived from `build_options`**, and a test asserts the two agree,
+  so the refusal list cannot drift from what the code actually sets (`NFR-008`)
+- Typed-field options are decomposed into tasks with owners and dependencies, and Phase 4.5's
+  deliverable table is rewritten from the result
+- Escape-hatch-only classifications each carry a reason. "Nobody asked for it" is a reason; silence
+  is not
+- The audit states what it could not classify, if anything, rather than forcing a class
+
+#### Out of scope
+
+- Implementing any option
+- Ruling on the `T-182` families
+- yt-dlp options that do not exist yet. The audit is a snapshot with a version on it, and `NFR-008`
+  already owns keeping up with upstream
+
+---
+
+### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
+
+**Status:** Proposed — filed 2026-08-07 with the phase
+**Owner:** Implementer
+**Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
+**Phase:** Phase 4.5
+**Depends on:** `T-182` (the refusal list needs the excluded families) and `T-183` (the
+application-owned list)
+**Relevant context:** `REQ-031`, `ARC-010`, `REQ-009` (the pattern), `T-034` (path containment),
+`DAT-003` and `DAT-004` (redaction, and whose text this is), `ARCHITECTURE.md` §8 (a request is
+frozen at job-creation time), `ARC-002` (it crosses a process boundary and must pickle),
+`core/models.DownloadRequest`, `downloader/ytdlp_adapter.build_options`
+**Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`,
+`persistence/` (the request gains a field, so a migration), the preset/options UI, and their tests
+**Risk:** **High.** It is a new route to two boundaries whose breach is Critical-band: writing
+outside the chosen directory, and a secret in a log
+
+#### Scope
+
+An *Additional yt-dlp options* field, per preset and overridable per job, taking command-line
+syntax, **parsed into a validated structure at job-creation time** and merged into `build_options`
+under a stated precedence.
+
+- **Parsed, not passed through.** The stored field is declared, typed, frozen and picklable like
+  every other member of `DownloadRequest`; an unparsed string handed to yt-dlp is not acceptable
+  even as an intermediate step
+- **Containment.** Options that redirect where files land go through `T-034`'s check, not beside it
+- **Redaction.** Values are this application's text under `DAT-004` and are redacted as such
+- **Refusal.** An application-owned or excluded option is refused **where the user typed it, with
+  the reason** — never accepted and dropped
+- **Precedence.** A typed field wins over the hatch for the same user-owned key, because it is the
+  one with a visible control; an application-owned key is never overridable at all
+
+#### Acceptance criteria
+
+- A valid option typed into the field reaches yt-dlp, proved by the option dictionary the worker
+  receives rather than by the download succeeding
+- **The same intent expressed as a typed field and as a hatch option produces the same option
+  dictionary** — the assertion that keeps two routes from meaning two things
+- An option that would write outside the output directory is **refused or contained**, with a test
+  that fails when the containment call is removed
+- **No hatch value appears unredacted in any log**, under the existing redaction test extended over
+  the parsed values — including the case where the option name is innocuous and the value is not
+- An application-owned option and an excluded option are each refused at edit time with a stated
+  reason, and a test asserts they never reach `build_options`
+- A malformed field fails **at edit time**, not after the bytes are spent — the same rule
+  `audio_quality` already follows and for the same reason
+- The migration adding the field round-trips an existing queue, and an old row without it loads
+- `requires_ffmpeg` still answers correctly for a post-processor the hatch installed
+- Both mypy platforms, `ruff`, the model, adapter, persistence and UI tests are clean
+
+#### Out of scope
+
+- Typed fields for individual options — those are `T-183`'s tasks
+- yt-dlp **configuration files** as an input route. A config file is a second, invisible source of
+  options and would defeat every check above; if it is ever wanted it needs its own decision
+- Per-entry hatch options within a playlist — `T-110` owns per-entry anything
 
 ---
 
@@ -2513,6 +2599,491 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-105 — Write `docs/UX_SPEC.md` before Phase 3 starts
+
+**Status:** **Complete — Approved 2026-08-07** in the bounded working tree. All four findings are
+Resolved: `T105-R3` at `a688a4e`, `T105-R1` and `T105-R2` on the second re-review, `T105-R4` on the
+maintainer-authorized final pass.
+
+**It took three correction rounds, and the third existed because `T105-R4` survived its own
+correction.** The criterion was fixed and **the context field three lines above it still stated the
+same unratified timing as task truth** — the finding's own defect class, committed inside the fix
+for it. The ordinary pass budget was spent by then, so the task went **Blocked** under `AGENTS.md`
+§10 and the maintainer authorized one focused pass for that single sentence.
+
+The findings that remained after the first review were all one shape: the specification was
+corrected and **the documents an implementer actually opens were not**. Both correction batches are
+recorded at the bottom of this entry; they change `ai/TASKS.md` and `ai/IMPLEMENTATION_PLAN.md`,
+not `docs/UX_SPEC.md`.
+*(This read "In Review — `T105-R4` corrected a second time … awaiting a bounded re-review", before
+that "Changes requested at `a688a4e` … awaiting re-review", and before that "Complete — 2026-08-06,
+awaiting review".)*
+
+`docs/UX_SPEC.md` is written, and the
+trigger `DOC-002` scheduled and `IMPLEMENTATION_PLAN.md` §Phase 3 carried has fired. It absorbs the
+window `UX-003`, `UX-004` and `UX-005` settled — both of the latter name this file as their
+destination — and specifies the eight Phase 3 surfaces that do not exist yet.
+
+**Twenty-seven clauses are marked Proposed and are not decided** (§10). That is the document doing
+its job rather than falling short of it: `T145-R1` and `T144-R1` were an implementer recording his
+own choices as maintainer rulings, and this file separates transcribed, derived and proposed so the
+same thing cannot happen across eight tasks at once. **No task may build a `[P]` clause until it is
+ratified.**
+
+**The count rose from twelve to twenty-seven under review, and one was withdrawn.** `T105-R3` found
+several real choices marked *derived* and every refusal unmarked — so the first number measured how
+much had been marked, not how much was open. `T105-R1` withdrew `P-8`: where user presets persist
+was **already decided** by `DAT-001` and `ARCHITECTURE.md` §5, and this file had trusted `T-111`'s
+risk line instead of reading the decision. Four of the twenty-seven decide more than a layout —
+`P-10`, `P-12`, `P-16` and `P-22`.
+**Owner:** Planner
+**Priority:** Medium — it gates nothing today and gates the start of Phase 3
+**Phase:** Phase 3 (its opening act)
+**Depends on:** nothing
+**Relevant context:** `DOC-002`, `IMPLEMENTATION_PLAN.md` §Phase 3, `REQ-003`, `REQ-004`, `REQ-007`,
+`REQ-010`, `REQ-011`
+**Affected surfaces:** `docs/UX_SPEC.md`
+**Risk:** Low as a document; Medium as an omission — Phase 3 is the phase with the most UI surface
+and the least written down about it
+
+#### Scope
+
+`IMPLEMENTATION_PLAN.md` §Phase 3 carries **Trigger:** *"`docs/UX_SPEC.md` is created at the start of
+this phase (`DOC-002`)"*. `docs/` holds `DEVELOPMENT.md` and `WINDOWS_VERIFICATION.md` and nothing
+else, and no task owned the trigger — so the first Phase 3 task would either have started without it
+or quietly invented the spec as it went.
+
+Phase 3 is where it matters most. A sortable format table, per-entry playlist selection, an output
+template editor with live preview and seven post-processing options are the densest UI in the
+project, and `REQ-007`'s user presets add a CRUD surface on top. Deciding all of that inside
+individual implementation tasks is how two of them end up disagreeing.
+
+#### Acceptance criteria
+
+- Covers every Phase 3 deliverable's user-facing surface, and says which requirement each serves
+- States the keyboard path through each new surface (`NFR-005`), because retrofitting that is what
+  `T-040` and `T-060` cost
+- Records what is **deliberately not** offered, so a later task does not read an absence as an
+  oversight
+- Is referenced by the Phase 3 tasks rather than duplicated into them
+
+#### Out of scope
+
+- Visual design beyond the brand palette already fixed in `ARCHITECTURE.md` §8
+- Phase 4's settings dialog (`REQ-023`), which has its own requirement
+
+#### Correction batch — `T105-R1`, `T105-R2`, `T105-R4`, 2026-08-07
+
+**All three findings are one defect: the spec was corrected and the task entries were not.** A
+`[P]` mark in `docs/UX_SPEC.md` does not reach an implementer who opens `ai/TASKS.md` and follows
+the entry in front of them — and every one of these entries contradicted the corrected paragraph
+beside it. Nothing in `docs/UX_SPEC.md` changed in this batch; the finding was never about that
+file.
+
+- **`T105-R1` (High).** `T-111` said where user presets live "is a decision this task must take or
+  raise" and argued for a sibling file, and its **Affected surfaces** offered "`core/settings.py`
+  **or a new store**". Both are gone: presets persist as TOML in the existing `settings.toml`
+  (`DAT-001`, `ARCHITECTURE.md` §5), stated as settled with the superseded wording preserved.
+  `IMPLEMENTATION_PLAN.md`'s Phase 3 row said the same thing — "where it lives needs a decision" —
+  and now says it is settled.
+- **`T105-R2` (Medium).** `T-108` stated the **rejected** reading as `T-061`'s rule in three
+  places: its context line, its Scope, and an acceptance criterion asking for a pair "a
+  selector-only check would wrongly approve". `T-061`'s measured defect ran the other way — the
+  selector-reading gate **refused** `bestvideo+bestaudio/best` where `/best` resolved to a single
+  progressive format. The Scope now states both questions separately (the table's explicit pair;
+  the worker's resolved-format gate), and the criteria assert **both directions**: an explicit pair
+  refused without ffmpeg, and a `+` selector that resolved to one progressive format **not**
+  refused. A selector-only check now passes one and fails the other.
+- **`T105-R4` (Medium).** `T-112` required an invalid template be "reported as the user types",
+  which is `P-23`'s proposal as a requirement; the criterion now requires only that an invalid
+  template never reaches a download and states that the timing is unruled. `T-114` asserted
+  `P-26`'s staging-row treatment as fact in **two** places — its context field, which the finding
+  named, and an acceptance criterion, which it did not. Both are corrected: the requirement is that
+  the user is told in time to act, not which surface tells them.
+
+#### Second correction — `T105-R4`, 2026-08-07, maintainer-authorized
+
+**The first batch fixed `T-112`'s criterion and left its context field asserting the same
+unratified choice**, three lines above it: *"`P-23` is this task's own report-as-you-type
+criterion"*. The context now says what the criterion says — `P-23` is whether a containment failure
+is refused at edit time or at commit, it is unruled, and until it is ruled this task chooses
+neither.
+
+**This is the finding's own defect class, committed inside the correction for it.** `T105-R4` is
+about a proposal stated as task truth; I removed it from the criterion, which is where it would be
+*built*, and left it in the field an implementer reads *first*. Auditing sibling fields is
+`AGENTS.md` §10's stated requirement of a correction batch, and I ran that audit across four other
+task entries while not running it across the two fields of the entry I was editing.
+
+Authorized by the maintainer on 2026-08-07 under §10, the ordinary budget being spent and only a
+blocking Medium remaining. One sentence in `ai/TASKS.md`; no source, no test, no other entry.
+
+#### Sibling audit of the first batch
+
+**Sibling audit.** `T-107`, `T-109`, `T-110` and `T-113` were checked for the same class.
+`T-107` and `T-110` already mark their open questions and derive their criteria from the
+requirement; `T-109` and `T-113` had their context lines updated for rulings taken on 2026-08-07
+(`P-12` by `ARC-010`, `UX-001` as amended by `UX-006`) rather than for this finding.
+
+---
+
+### T-168 — A group's `Remove` comes back as the window gets smaller
+
+**Status:** **Complete — Approved 2026-08-07.** `T168-R1` is **Resolved**: the reviewer reproduced
+both mutants independently in a temporary tree and got the same 3/3 and 2/4 splits recorded below.
+Changes requested at `3859190` first; the implementation was accepted as correct then, and the
+finding was that its required *any entry count* gate was not implemented — the sweep fixed the
+segment count at sixteen. The sweep is now parameterized over `RESERVE_COUNTS` — 5, 8, 9, 16, 24 and 37, both sides
+of `MERGED_BLOCKS` and four different merge thresholds — keeps the per-pixel downward sweep and the
+non-vacuity assertion, and adds a per-count assertion that the sweep actually spanned that count's
+threshold. **Mutation-checked both ways** (below).
+*(This read "Complete — 2026-08-06, awaiting review".)*
+Found by the maintainer, 2026-08-06,
+narrowing the window on a sixteen-entry playlist. **Direction 1 was taken**: the bar asks for its
+*widest* rendering rather than the one this width chose, so the space left for the verbs is
+`max(0, width - segment_span(entries) - VERB_GAP)` — continuous and non-decreasing, with no width
+at which narrowing the row gives a verb back. The bar loses nothing: it is drawn into whatever the
+verbs leave and still picks its block count from `_bar_line`, so a merged bar spends the freed
+width on eight wider blocks. Swept every pixel from 300 to 1200; the mutation restoring the old
+reserve fails at the threshold.
+**Owner:** Implementer
+**Priority:** Medium — nothing is unreachable (`⋯` holds the verb throughout), but a control that
+returns when you take space away teaches the user that the row is arbitrary
+**Phase:** Phase 3
+**Depends on:** nothing. It is `T-163`, `T-164` and `T-167` meeting
+**Relevant context:** `T-167` (the bar changing shape twice, the same property one field over),
+`T-163` (the bar's share of the last line), `T-164` (the eight-block merge), `T-135` (`⋯` holds what
+was dropped), `UX-005` §4, `ui/row_delegate.py` (`_bar_reserve`, `_bar_line`, `_verb_rects`)
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`
+**Risk:** Low to fix, Medium to fix *without* reopening what `T-163` and `T-164` each decided
+
+#### Scope
+
+**Measured on this build**, a sixteen-entry playlist header in the Queue tab, all members
+`COMPLETED`, narrowing 560 px → 300 px in 4 px steps:
+
+| Window | Dropped into `⋯` |
+|---|---|
+| 560 px | `reveal` |
+| **496 px** | `reveal`, **`remove`** — the button goes |
+| **432 px** | `reveal` — **the button comes back** |
+| **360 px** | `reveal`, `remove` — it goes again |
+
+**Neither feature is wrong on its own; the composition is.** `T-163` gave the progress bar a share
+of the last line and made the **verbs** the half that yields, because a dropped verb is still
+reachable through `⋯` and a squeezed bar has no overflow. `T-164` merges a narrow bar from sixteen
+blocks to eight, because sixteen blocks at 15 px are one bar rather than sixteen. Both are right.
+
+Together they make the bar's demand a **step function of the row's width**, and the step is larger
+than a button:
+
+```
+room for the bar   blocks   the bar reserves
+   280 px            16          271 px      <- verbs get 9 px, `Remove` does not fit
+   270 px             8          135 px      <- verbs get 135 px, `Remove` fits again
+```
+
+**136 px is handed back to the verbs by making the window smaller.** That is the whole defect.
+
+**`T-167`'s monotonicity claim is narrowly true and does not cover this.** `_bar_line`'s docstring
+says *"Monotonic in the window's width … everything subtracted here is fixed for a given row rather
+than a function of what fit on this paint"* — true of `_bar_line`, which subtracts only the `⋯`.
+What is not monotonic is `_bar_reserve`, which is `segment_span(segment_blocks(entries, room))`, and
+therefore what is left for the verbs. The property a user experiences was never the one asserted.
+
+#### Acceptance criteria
+
+- **A verb dropped at some width stays dropped at every narrower width**, for a row of any entry
+  count — asserted by sweeping the width and requiring the dropped set to grow monotonically, not
+  by checking two or three chosen widths
+- The sweep covers the **merge threshold**, since that is where the step is, and a test that steps
+  in coarse increments can pass straight over it
+- `⋯` still holds every verb the row could not draw (`T-135`), so nothing becomes unreachable at
+  any width
+- Whatever the bar does instead, a completed playlist's bar is still legible at a narrow window —
+  `T-164`'s finding is not reopened by fixing this
+- The queue's ordinary rows and History's group header, which has no bar, are unaffected
+
+#### Candidate directions, none of them ruled
+
+1. **The bar takes the room rather than a fixed span.** Reserve `min(room, span(16))` and let the
+   merged bar draw wider blocks into the space it already has. Verb space becomes monotone by
+   construction; the cost is that below the threshold the bar takes the whole line and `⋯` really is
+   all that is left — which is what the report asks for.
+2. **Choose the block count from the row's width alone**, independent of what the verbs want, so the
+   two decisions stop feeding each other.
+3. **Make the drop sticky per row.** Rejected on sight and recorded so nobody re-proposes it: it
+   makes what a row shows depend on the widths it has previously been drawn at, which is the
+   paint-time-state defect `T-135` already had to correct once.
+
+#### Out of scope
+
+- Changing which verbs a group offers (`T-140`, `T-142`)
+- The bar's colours or block states (`T-165`)
+
+#### Correction — `T168-R1` (Medium, blocking), 2026-08-07
+
+**The finding was about the gate, not the code.** `segment_span(entries)` is general and correct;
+the regression fixed the count at sixteen, so a reserve that consulted `segment_blocks` for every
+*other* count would have left the acceptance criterion above green. That criterion says **any entry
+count**, and the test proved one.
+
+`test_a_verb_dropped_at_one_width_never_returns_at_a_narrower_one` is now parameterized over
+`RESERVE_COUNTS = (5, 8, 9, 16, 24, 37)`. It keeps the per-pixel downward sweep and the
+non-vacuity assertion, and adds one per count: which renderings that count's own sweep produced —
+`{MERGED_BLOCKS, entries}` above the threshold, `{entries}` at or below it. A count whose threshold
+drifts outside `SWEEP_WIDTHS` now fails loudly instead of passing while proving nothing.
+
+`bar_runs_in()` was split out of `bar_runs()` so the sweep asks both questions of the paint it
+already does: repainting to count blocks would double the sweep and, worse, measure a second paint,
+since the delegate records what it dropped on the *last* one.
+
+**Mutation results, measured — and one chosen count kills neither mutant:**
+
+| Mutant | Result |
+|---|---|
+| `keep = segment_span(segment_blocks(entries, room))` — the old reserve, restored everywhere | **fails at 16, 24, 37**; passes at 5, 8, 9 |
+| The same, restored everywhere **except** sixteen — the count-specific form the finding names | **fails at 24, 37**; passes at 5, 8, 9, 16 |
+
+**Nine survives both, and it is worth saying why rather than quietly dropping it.** Its step is
+`segment_span(9) - segment_span(8)` = 17 px and no verb is that narrow, so just above the merge
+threshold the old reserve is harmless — the gap it hands back only becomes a button further up. It
+stays for the property it does assert; **24 and 37 are the counts that kill the mutants**, and 5
+and 8 are the no-merge side.
+
+**Not changed:** `ui/row_delegate.py`. The reviewer accepted the implementation formula, and the
+finding is that the test did not hold it.
+
+---
+
+---
+
+### T-179 — Every model reset scans the thumbnail cache, including a pure reorder
+
+**Status:** **Complete — Approved with follow-ups at `1e0d0d5`** (2026-08-07, base `e159c9a`).
+`T179-R2` is Resolved at `5f469da`. `T179-R1` is **dispositioned rather than fixed**: the maintainer
+accepted the cross-process limitation on 2026-08-07 and both collision directions are filed as
+`T-180` — see **Maintainer disposition** below. One new **Low** finding, `T179-R3`, is open and
+**targeted at `T-180`**: `cache_generation()` compresses "until this one's own membership changes"
+to "one sweep's delay", and sweeps are event-driven rather than periodic, so the elapsed time can be
+the rest of the process lifetime. It does not reopen this task.
+*(This read "In Review — the corrected rationale awaits the reviewer", then before that "corrected
+twice, third mechanism, awaiting re-review 2026-08-06".)*
+**Three rejections, and all were the reviewer's.** `T179-R1` survived two corrections and
+`T179-R2` — **High** — was introduced *by* the first. The Medium pass budget is exhausted and
+**the maintainer authorised another pass on 2026-08-06**; the High needed no authorization.
+Correction round 2 is at the bottom of this entry, on a base of checkpoint `961cada`, which is the
+rejected state committed deliberately so this correction has a boundary of its own.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T-119` (the criterion this must not break), `T118-R13`, `NFR-004`,
+`ARC-005`, `NFR-001`
+**Affected surfaces:** `ui/queue_view.py`, its tests
+**Risk:** **Medium.** `T-119`'s criterion is that a picture goes with its job and survives while any
+other job names it. A gate that skips too much turns that into a cache that never shrinks
+
+#### What is wrong
+
+`QueueView._sweep_thumbnails` is connected to `modelReset`, which `job_removed`, `queue_reordered`
+and `queue_cleared` all cause. A reorder cannot change the set of live thumbnail URLs, so it
+schedules a full enumerate-and-stat of the cache directory that can only conclude that everything
+is still wanted. `ThumbnailStore.sweep()` already keeps this off the GUI thread (`T118-R13`), so
+the cost is background I/O rather than a stall — which is why this is Low and not higher.
+
+#### Scope
+
+Sweep when the live URL set actually changes, rather than on every reset. The set is already
+computed in `_sweep_thumbnails` to build the call, so the comparison is against what was last
+swept.
+
+#### Acceptance criteria
+
+- A reorder that changes no membership schedules **no** sweep, asserted on the store rather than on
+  a timer
+- A removal that drops the last job naming a URL still sweeps, and the file still goes — `T-119`'s
+  existing criterion, re-asserted through the view rather than only against the store directly,
+  because the view wiring is the part being changed and today no test covers it
+- A removal that leaves another job naming the same URL still keeps the file
+- The first sweep after construction is not skipped: nothing has been swept yet, and a queue
+  restored from disk may name pictures no live job wants
+- The gate is proven by mutation: making the comparison always-unequal, and always-equal, each
+  fails a test
+- What the gate gives up is **written down rather than implied** — a file that lands in the cache
+  after a sweep enumerated the directory is not collected until the membership changes again, and
+  the honest statement of that belongs in the docstring
+- `ruff check .`, `ruff format --check .`, both mypy platforms, and the queue-view and row-delegate
+  tests are clean
+
+#### Out of scope
+
+- Coalescing inside `ThumbnailStore`. The add dialog shares that store, and a store-level cache of
+  the last request would change a surface this task has no reason to touch
+- Sweeping on a timer, or on any schedule other than the queue changing
+- `MainWindow.job_reader`, the audit's fifth observation: it belongs to the deferred
+  `JobProgressView` seam and is left alone until that seam's fate is decided
+
+#### The third mutation, which is the part worth reading
+
+The criterion asked for two mutations — always-equal and always-unequal — and both died as
+expected: always-equal loses the deletion when the last job naming a picture is removed,
+always-unequal reproduces the sweep-per-reorder this task exists to stop.
+
+**`_swept_for` starts at `None`, and the comment saying why was a claim rather than a tested
+property.** Replacing `None` with `frozenset()` **survived both**. It survives because in each of
+those tests the queue names at least one picture, so the starting value differs from the live set
+either way. The case that separates them is a queue naming *no* pictures over a cache directory
+that still holds files from a previous run: starting at the empty set calls that "already swept"
+and the stale files stay for the life of the process.
+
+`test_a_first_queue_that_names_no_pictures_still_sweeps_once` is that case, and it kills the third
+mutant. This is `ai/TESTING.md` §13's shape again — the comment was right and nothing held it
+there.
+
+#### Correction round 1 — `T179-R1`, 2026-08-06
+
+**Corrected, awaiting the Reviewer's verification. The finding was right and the docstring I wrote
+was the tell** — it described the race as an accepted cost, which is how a behavior regression gets
+shipped with its own explanation attached.
+
+**What was wrong.** A thumbnail decode already in flight publishes its file *after* the removal
+sweep has enumerated the directory. That sweep cannot see it. A gate remembering only the live set
+then suppressed every later scan, so the file stayed for the life of the process — where the base
+implementation swept on the next reorder and collected it. Calling that "delayed" also leaned on a
+first sweep next run that construction does not itself schedule.
+
+**Two things changed.**
+
+1. The gate now also compares the cache directory's own mtime against what it was when the last
+   sweep **finished**. One `stat` of one directory, not the enumerate-and-stat of every entry that
+   `T118-R13` moved to the pool. It is the directory rather than a signal because **this
+   application runs two stores over one cache root** — the queue's and the add dialog's
+   (`T118-R16`) — so a file the dialog publishes fires nothing this view is connected to. That is
+   the production form of the reviewer's direct-write probe, and a signal-based fix would have
+   missed it.
+2. `_swept_for` is recorded from the store's `swept` completion, not when the sweep is requested. A
+   requested sweep is not proof the cache is clean.
+
+**Four tests, and the mutations that killed each.**
+
+| Test | Kills |
+|---|---|
+| `test_a_picture_written_after_its_removal_sweep_is_still_collected` | the membership-only gate (`T179-R1` itself), and a fingerprint that ignores the directory |
+| `test_a_sweep_that_deleted_something_does_not_make_the_next_reorder_sweep` | recording at request time — a sweep changes the directory it fingerprints, so the stale fingerprint reintroduces the redundant scan one step later |
+| `test_clearing_the_queue_sweeps_every_picture_it_held` | the sibling `queue_cleared` path the finding asked be audited explicitly |
+| `test_a_reorder_that_changes_no_membership_does_not_sweep_the_cache` | the optimization itself — still proves an ordinary unchanged reorder schedules no scan |
+
+**The reorder test had to change to be worth anything.** It stubbed `sweep` to record calls, and
+the gate now promotes its state from `swept` — so a stub that never completes leaves every reorder
+looking like the first, and the test would have asserted nothing about the gate. It wraps the real
+sweep now: counts the call *and* lets the work happen.
+
+**One mutation was malformed the first time and is worth recording.** The "record on request"
+mutant initially *added* the request-time assignment while leaving the completion handler in place,
+which is behaviourally the same as the correct code, and it survived. Reformed to also neuter the
+completion handler, it dies. A surviving mutant is only evidence if the mutant is the change it
+claims to be.
+
+#### Correction round 2 — `T179-R1` and `T179-R2`, 2026-08-06
+
+**The mtime gate is withdrawn entirely.** It was wrong in three independent ways and the reviewer
+found all three; keeping any part of it would have been defending a mechanism rather than fixing a
+defect.
+
+| What was wrong | Why it could not be patched |
+|---|---|
+| Directory mtime is lossy and filesystem-dependent — FAT resolves write times to two seconds, and Windows does not promise continuous updates | No amount of care makes a timestamp a reliable change-detector across the filesystems this ships on |
+| Reading it was `Path.stat()` **on the GUI thread**, from a `modelReset` slot — `T179-R2`, **High**. `NFR-001` and `ARCHITECTURE.md` §8 forbid it and `T118-R13` had already moved this exact directory's work to the pool. A slow-stat probe held a reorder for **0.152 s** | Any filesystem question asked from the gate is disk I/O on that thread. The fix is to stop asking the filesystem, not to ask it faster |
+| An absent cache directory returned `None` and failed open, so three unchanged reorders scheduled three scans | The optimization did not apply in the state a fresh install is in |
+
+**What replaces it: `cache_generation`, a count of publications, in process, under a lock.** It
+answers "could the cache have gained a file since I last looked?" without asking the filesystem
+anything — a dict lookup, no `stat`, no enumeration, nothing that can block. It is keyed by *cache
+directory* rather than by store, which is the property a per-store signal could never have: this
+application runs two `ThumbnailStore`s over one root (`T118-R16`), and a picture the add dialog
+publishes is one the queue's sweep must still collect. `_DecodeTask` records the publication at the
+point the file appears in the directory, and only on success.
+
+**Its limit, stated rather than discovered later:** it does not see a write by another *process*.
+*(This said `A-004` admits one instance "so within this application's rules there is no second
+writer". **That was false and `T179-R1` caught it.** `A-004` forbids two instances sharing one
+*database*; `ARC-006` requires instances on different databases not to block one another, and
+`thumbnail_cache_directory()` keys off the platform cache root rather than the database path — so
+permitted concurrent instances do share this directory. The limit is real; the excuse was not.)*
+No timestamp would have answered it reliably either, which is why the mechanism is not the thing
+at fault here.
+
+**Overlapping sweeps are serialized rather than identified.** `swept` reports a count and carries
+no request identity, so with two in flight the second completion promotes the first's set — the
+reviewer's probe ended with orphan A on disk, live B deleted, and the view believing it had swept
+for B. Adding identity to the store's signal was one option; one sweep at a time is smaller and
+changes no shared API. A request arriving during a sweep sets `_coalesced`, and `_on_swept` re-runs
+the gate against the model **as it stands then**, which is fresher than any set queued earlier.
+
+**The generation is captured when the sweep is requested, not when it completes.** A picture
+published while the sweep runs may or may not have been enumerated; recording completion-time state
+declares it swept and strands it. That is `T179-R1`'s shape a third time, and it is the mutation
+that survived the first battery of this round.
+
+**Five mutations, five killed** — the fifth only after the test that catches it was written:
+
+| Mutation | Killed by |
+|---|---|
+| Gate ignores the generation (the original `T179-R1`) | `test_a_picture_written_after_its_removal_sweep_is_still_collected` |
+| Publications never recorded | the same test |
+| No serialization, overlapping sweeps allowed | `test_two_resets_during_one_sweep_schedule_one_more_sweep_for_the_newest_set` |
+| Generation captured at completion rather than request | `test_a_picture_published_while_the_sweep_runs_is_not_counted_as_swept` — **survived until that test existed** |
+| — | `test_unchanged_reorders_over_an_absent_cache_directory_sweep_once` and `test_the_sweep_gate_touches_no_file_on_the_gui_thread` cover the other two rejected behaviours directly |
+
+**`T179-R2` is asserted structurally, not by a stopwatch.** `Path.stat`, `Path.iterdir` and
+`Path.exists` are made to raise for the duration of a removal and a reorder; if the reset path
+touches the filesystem at all it fails, and no delay has to be guessed at. A timing bound would
+have made it a claim about how fast the machine is — which is the defect `T118-R10` records.
+
+**The reviewer's own test had to be replaced, and that is worth reading.** The round-one regression
+wrote the late file directly with `write_bytes`. Under a publication counter that models nothing
+real: every actual publication goes through `_DecodeTask`. It now publishes through a **second real
+`ThumbnailStore` over the same cache root**, which is both faithful and strictly stronger — it is
+the add-dialog case that makes a per-store signal insufficient.
+
+#### Maintainer disposition — `T179-R1`, 2026-08-07
+
+The reviewer's round-3 record offered four exits and recommended withdrawal. **The maintainer chose
+to accept the documented limitation and have the false rationale corrected.** The decision is
+theirs; this entry records it rather than making it.
+
+**What the finding got right, verified before acting on it rather than after.** `A-004`
+([`REQUIREMENTS.md` §9](REQUIREMENTS.md)) forbids concurrent instances against one *database*;
+`ARC-006` requires instances on *different* databases not to block one another; and
+`thumbnail_cache_directory()` returns `cache_directory() / "thumbnails"`, which no database path
+enters. Permitted concurrent instances therefore share one thumbnail cache, and
+`cache_generation()`'s appeal to `A-004` was false as written. It is corrected in the docstring and
+in correction round 2 above.
+
+**What the recommendation did not weigh.** `_SweepTask.run` unlinks every entry in that shared
+directory whose name is absent from *this* instance's keep set. Two permitted instances already
+delete each other's thumbnails, on every reset, and did so before this task existed. Withdrawal
+would restore that unconditional sweep. Measured against it, a gate that skips too often fails in
+the direction that leaves a regenerable file alive one sweep too long — which is why the
+optimization is kept and the shared-cache defect is filed as its own work rather than treated as
+something `T-179` introduced.
+
+**The residual risk, named so nobody has to rediscover it.** A picture published by a second
+instance is not collected by this one until this one's own membership changes. It is a
+regenerable file in a cache, on a Low-priority task whose entire subject is background I/O.
+
+**`T-180` inherits the real question** — whether the cache should be partitioned per instance at
+all — and covers both halves: the counter's blindness and the sweep's cross-instance deletion.
+
+#### Files
+
+`src/tracks_and_trails/ui/queue_view.py`, `src/tracks_and_trails/ui/thumbnails.py`,
+`tests/ui/test_queue_view.py`
+
+---
+
 
 ### T-177 — Startup reads the whole queue to find the few rows it wants
 
@@ -3290,152 +3861,6 @@ metrics imply will survive a change to those metrics, and a number typed here wi
 
 ---
 
-
-### T-168 — A group's `Remove` comes back as the window gets smaller
-
-**Status:** **Complete — 2026-08-06, awaiting review.** Found by the maintainer, 2026-08-06,
-narrowing the window on a sixteen-entry playlist. **Direction 1 was taken**: the bar asks for its
-*widest* rendering rather than the one this width chose, so the space left for the verbs is
-`max(0, width - segment_span(entries) - VERB_GAP)` — continuous and non-decreasing, with no width
-at which narrowing the row gives a verb back. The bar loses nothing: it is drawn into whatever the
-verbs leave and still picks its block count from `_bar_line`, so a merged bar spends the freed
-width on eight wider blocks. Swept every pixel from 300 to 1200; the mutation restoring the old
-reserve fails at the threshold.
-**Owner:** Implementer
-**Priority:** Medium — nothing is unreachable (`⋯` holds the verb throughout), but a control that
-returns when you take space away teaches the user that the row is arbitrary
-**Phase:** Phase 3
-**Depends on:** nothing. It is `T-163`, `T-164` and `T-167` meeting
-**Relevant context:** `T-167` (the bar changing shape twice, the same property one field over),
-`T-163` (the bar's share of the last line), `T-164` (the eight-block merge), `T-135` (`⋯` holds what
-was dropped), `UX-005` §4, `ui/row_delegate.py` (`_bar_reserve`, `_bar_line`, `_verb_rects`)
-**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`
-**Risk:** Low to fix, Medium to fix *without* reopening what `T-163` and `T-164` each decided
-
-#### Scope
-
-**Measured on this build**, a sixteen-entry playlist header in the Queue tab, all members
-`COMPLETED`, narrowing 560 px → 300 px in 4 px steps:
-
-| Window | Dropped into `⋯` |
-|---|---|
-| 560 px | `reveal` |
-| **496 px** | `reveal`, **`remove`** — the button goes |
-| **432 px** | `reveal` — **the button comes back** |
-| **360 px** | `reveal`, `remove` — it goes again |
-
-**Neither feature is wrong on its own; the composition is.** `T-163` gave the progress bar a share
-of the last line and made the **verbs** the half that yields, because a dropped verb is still
-reachable through `⋯` and a squeezed bar has no overflow. `T-164` merges a narrow bar from sixteen
-blocks to eight, because sixteen blocks at 15 px are one bar rather than sixteen. Both are right.
-
-Together they make the bar's demand a **step function of the row's width**, and the step is larger
-than a button:
-
-```
-room for the bar   blocks   the bar reserves
-   280 px            16          271 px      <- verbs get 9 px, `Remove` does not fit
-   270 px             8          135 px      <- verbs get 135 px, `Remove` fits again
-```
-
-**136 px is handed back to the verbs by making the window smaller.** That is the whole defect.
-
-**`T-167`'s monotonicity claim is narrowly true and does not cover this.** `_bar_line`'s docstring
-says *"Monotonic in the window's width … everything subtracted here is fixed for a given row rather
-than a function of what fit on this paint"* — true of `_bar_line`, which subtracts only the `⋯`.
-What is not monotonic is `_bar_reserve`, which is `segment_span(segment_blocks(entries, room))`, and
-therefore what is left for the verbs. The property a user experiences was never the one asserted.
-
-#### Acceptance criteria
-
-- **A verb dropped at some width stays dropped at every narrower width**, for a row of any entry
-  count — asserted by sweeping the width and requiring the dropped set to grow monotonically, not
-  by checking two or three chosen widths
-- The sweep covers the **merge threshold**, since that is where the step is, and a test that steps
-  in coarse increments can pass straight over it
-- `⋯` still holds every verb the row could not draw (`T-135`), so nothing becomes unreachable at
-  any width
-- Whatever the bar does instead, a completed playlist's bar is still legible at a narrow window —
-  `T-164`'s finding is not reopened by fixing this
-- The queue's ordinary rows and History's group header, which has no bar, are unaffected
-
-#### Candidate directions, none of them ruled
-
-1. **The bar takes the room rather than a fixed span.** Reserve `min(room, span(16))` and let the
-   merged bar draw wider blocks into the space it already has. Verb space becomes monotone by
-   construction; the cost is that below the threshold the bar takes the whole line and `⋯` really is
-   all that is left — which is what the report asks for.
-2. **Choose the block count from the row's width alone**, independent of what the verbs want, so the
-   two decisions stop feeding each other.
-3. **Make the drop sticky per row.** Rejected on sight and recorded so nobody re-proposes it: it
-   makes what a row shows depend on the widths it has previously been drawn at, which is the
-   paint-time-state defect `T-135` already had to correct once.
-
-#### Out of scope
-
-- Changing which verbs a group offers (`T-140`, `T-142`)
-- The bar's colours or block states (`T-165`)
-
----
-
----
-
-### T-105 — Write `docs/UX_SPEC.md` before Phase 3 starts
-
-**Status:** **Complete — 2026-08-06, awaiting review.** `docs/UX_SPEC.md` is written, and the
-trigger `DOC-002` scheduled and `IMPLEMENTATION_PLAN.md` §Phase 3 carried has fired. It absorbs the
-window `UX-003`, `UX-004` and `UX-005` settled — both of the latter name this file as their
-destination — and specifies the eight Phase 3 surfaces that do not exist yet.
-
-**Twenty-seven clauses are marked Proposed and are not decided** (§10). That is the document doing
-its job rather than falling short of it: `T145-R1` and `T144-R1` were an implementer recording his
-own choices as maintainer rulings, and this file separates transcribed, derived and proposed so the
-same thing cannot happen across eight tasks at once. **No task may build a `[P]` clause until it is
-ratified.**
-
-**The count rose from twelve to twenty-seven under review, and one was withdrawn.** `T105-R3` found
-several real choices marked *derived* and every refusal unmarked — so the first number measured how
-much had been marked, not how much was open. `T105-R1` withdrew `P-8`: where user presets persist
-was **already decided** by `DAT-001` and `ARCHITECTURE.md` §5, and this file had trusted `T-111`'s
-risk line instead of reading the decision. Four of the twenty-seven decide more than a layout —
-`P-10`, `P-12`, `P-16` and `P-22`.
-**Owner:** Planner
-**Priority:** Medium — it gates nothing today and gates the start of Phase 3
-**Phase:** Phase 3 (its opening act)
-**Depends on:** nothing
-**Relevant context:** `DOC-002`, `IMPLEMENTATION_PLAN.md` §Phase 3, `REQ-003`, `REQ-004`, `REQ-007`,
-`REQ-010`, `REQ-011`
-**Affected surfaces:** `docs/UX_SPEC.md`
-**Risk:** Low as a document; Medium as an omission — Phase 3 is the phase with the most UI surface
-and the least written down about it
-
-#### Scope
-
-`IMPLEMENTATION_PLAN.md` §Phase 3 carries **Trigger:** *"`docs/UX_SPEC.md` is created at the start of
-this phase (`DOC-002`)"*. `docs/` holds `DEVELOPMENT.md` and `WINDOWS_VERIFICATION.md` and nothing
-else, and no task owned the trigger — so the first Phase 3 task would either have started without it
-or quietly invented the spec as it went.
-
-Phase 3 is where it matters most. A sortable format table, per-entry playlist selection, an output
-template editor with live preview and seven post-processing options are the densest UI in the
-project, and `REQ-007`'s user presets add a CRUD surface on top. Deciding all of that inside
-individual implementation tasks is how two of them end up disagreeing.
-
-#### Acceptance criteria
-
-- Covers every Phase 3 deliverable's user-facing surface, and says which requirement each serves
-- States the keyboard path through each new surface (`NFR-005`), because retrofitting that is what
-  `T-040` and `T-060` cost
-- Records what is **deliberately not** offered, so a later task does not read an absence as an
-  oversight
-- Is referenced by the Phase 3 tasks rather than duplicated into them
-
-#### Out of scope
-
-- Visual design beyond the brand palette already fixed in `ARCHITECTURE.md` §8
-- Phase 4's settings dialog (`REQ-023`), which has its own requirement
-
----
 
 ### T-159 — History reports the format as a yt-dlp id
 
