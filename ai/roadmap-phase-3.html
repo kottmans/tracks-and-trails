@@ -398,10 +398,11 @@
       <h1>Phase 3 — format and content depth</h1>
       <p class="lede">Expose what yt-dlp can actually do. <strong>The document that gated five deliverables is written, and the phase is no longer one file wide.</strong> <code>T-105</code> closed on 2026-08-06, so <code>T-107</code>, <code>T-109</code>–<code>T-112</code> are startable for the first time since the phase was planned. Thirty-seven Phase 3 entries are closed and <em>still</em> not one of them is a deliverable — but the reason has changed from "blocked" to "not yet begun".</p>
       <p class="lede">The other thing that changed is what the phase is <em>for</em>. <strong><code>T-169</code> and <code>T-170</code> removed a Phase 2 deliverable, and then removed its replacement too.</strong> History went first; the private ledger meant to survive behind it was withdrawn hours later, after review found it had cost five findings — two High — without a user ever seeing it. <strong>The application now keeps no record of what has been downloaded at all</strong> — and as of migration <code>0009</code> that is true of an upgraded database too, not only a fresh one.</p>
+      <p class="lede"><strong>Updated 2026-08-07, and two things moved.</strong> Every outstanding review boundary closed — <code>T-105</code>, <code>T-168</code> and <code>T-179</code> are approved and <code>In Review</code> is empty for the first time since 2026-08-03. And the maintainer took two rulings that add work rather than remove it: <strong><code>UX-006</code> stops the queue running until you press <em>Start</em></strong> (a ninth Phase 3 deliverable, <code>T-181</code>), and <strong><code>ARC-010</code> makes option coverage a phase of its own</strong> — <code>Phase 4.5</code>, between Settings and Distribution, because a GUI for yt-dlp that reaches eleven of its options is not yet the thing it claims to be.</p>
       <p class="phase-line">
-        <span><strong>Head</strong> dc7d301, plus this board</span>
-        <span><strong>CI</strong> green on all five jobs at e70d615</span>
-        <span><strong>Suite</strong> 2174 passed, 11 skipped, locally</span>
+        <span><strong>Head</strong> 76fe48d, pushed</span>
+        <span><strong>CI</strong> green at 1e0d0d5; this head's run is still executing</span>
+        <span><strong>Suite</strong> 150 passed on the focused set; full suite last green at 1e0d0d5</span>
         <span><strong>Phase 2</strong> exited 2026-08-05</span>
       </p>
     </div>
@@ -410,24 +411,25 @@
   <section>
     <p class="eyebrow">Where the phase actually stands</p>
     <ul class="tally">
-      <li style="--chip: var(--st-approved)"><span class="n">40</span><span class="k">Entries closed</span></li>
-      <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 8 deliverables started</span></li>
-      <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Deliverables gated by a doc</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">45</span><span class="k">Entries closed</span></li>
+      <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 9 deliverables started</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Awaiting a verdict</span></li>
       <li style="--chip: var(--st-block)"><span class="n">3</span><span class="k">High-risk deliverables</span></li>
-      <li style="--chip: var(--st-ready)"><span class="n">8</span><span class="k">Of 8 deliverables startable</span></li>
-      <li style="--chip: var(--st-idle)"><span class="n">4</span><span class="k">Of those, cancelled as moot</span></li>
+      <li style="--chip: var(--st-ready)"><span class="n">9</span><span class="k">Of 9 deliverables startable</span></li>
+      <li style="--chip: var(--st-idle)"><span class="n">4</span><span class="k">Of those closed, cancelled as moot</span></li>
       <li style="--chip: var(--st-idle)"><span class="n">0</span><span class="k">Of 6 exit criteria met</span></li>
-      <li style="--chip: var(--st-block)"><span class="n">6</span><span class="k">Accepted entries amended</span></li>
+      <li style="--chip: var(--st-block)"><span class="n">7</span><span class="k">Accepted entries amended</span></li>
     </ul>
-    <p class="note"><strong>The count of closed entries is still not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01 and every one of those is still <em>Proposed</em>. What has closed is real work that landed in Phase 3's numbering because that is when it was found. <span class="q-why">Counted as entries under <code>## Complete</code> in <code>ai/TASKS.md</code> whose <code>Phase:</code> line begins <em>Phase 3</em>. <strong>Four of the forty are cancelled rather than done</strong>, and three of those — <code>T-172</code>, <code>T-173</code>, <code>T-174</code> — are simplification tasks filed against the completion ledger during a sweep on 2026-08-06, cancelled hours later when the ledger itself was withdrawn. A tidy-up outlived by the thing it was tidying.</span></p>
+    <p class="note" style="--edge: var(--st-approved)"><strong>2026-08-07: the review queue emptied, and the phase grew.</strong> <code>T-179</code>, <code>T-168</code> and <code>T-105</code> are all approved, so nothing awaits a verdict. <code>T-105</code> took <strong>three correction rounds</strong>, and the third exists because <code>T105-R4</code> survived its own correction: the acceptance criterion was fixed and the context field three lines above it still stated the same unratified choice as task truth. <span class="q-why">That is the finding's own defect class committed inside the fix for it — and the first correction batch <em>did</em> run a sibling audit, across four <em>other</em> task entries, while not reading the two fields of the entry under the hand. The pass budget was spent by then, so <code>AGENTS.md</code> §10 put the task in <strong>Blocked</strong> and the maintainer authorised one focused pass for one sentence. <code>T168-R1</code> is the same lesson in a test: the criterion said <em>any entry count</em> and the regression built exactly sixteen.</span></p>
+    <p class="note"><strong>The count of closed entries is still not progress against this phase's goal.</strong> Phase 3 was decomposed into <code>T-107</code>–<code>T-114</code> on 2026-08-01, <code>T-181</code> joined them on 2026-08-07, and every one of the nine is still <em>Proposed</em>. What has closed is real work that landed in Phase 3's numbering because that is when it was found. <span class="q-why">Counted as entries under <code>## Complete</code> in <code>ai/TASKS.md</code> whose <code>Phase:</code> line begins <em>Phase 3</em>. <strong>Four of the forty are cancelled rather than done</strong>, and three of those — <code>T-172</code>, <code>T-173</code>, <code>T-174</code> — are simplification tasks filed against the completion ledger during a sweep on 2026-08-06, cancelled hours later when the ledger itself was withdrawn. A tidy-up outlived by the thing it was tidying.</span></p>
     <p class="note" style="--edge: var(--st-approved)"><strong>CI is green: all five jobs at <code>be76fe9</code>, and again at <code>6c90cf7</code> after the ledger came out.</strong> Run <code>31080892061</code> had failed the <code>windows desktop</code> job: the <code>Settings</code> menu <code>T-170</code> added broke an accessibility equality expecting the menu bar to hold exactly <em>File</em> and <em>Help</em>. The Linux suite passed throughout — only the self-hosted Windows job sees the published UI Automation tree, which is <code>AGENTS.md</code> §8's asymmetry exactly. Two further runs failed on a formatting check for a code fence in a task entry. <em>(The Settings menu has since been removed with the ledger, so that equality is back to two names — and will trip again when <code>T-146</code> restores the menu, which is what it is for.)</em> <strong>The purge is green too</strong> — run <code>31122446758</code> at <code>9378ae4</code>, and again at <code>e70d615</code> (run <code>31129239797</code>) once <code>secure_delete</code> landed. All five jobs both times, <code>windows desktop</code> among them. <em>(The head is one commit further on at <code>dc7d301</code>, which edits a comment inside a <code>.sql</code> file and nothing else. No run of its own, correctly.)</em></p>
     <p class="note" style="--edge: var(--st-approved)"><strong>The withdrawal, the purge and the sweep are all approved.</strong> Four review rounds in two days: <code>T169-R1</code> and <code>T169-R2</code> (High) on the ledger, answered by withdrawing it; <code>T169-R3</code> and <code>T169-R4</code> (High) on what the withdrawal missed, answered by migration <code>0009</code> and a sweep by authority; then <code>T169-R5</code> and <code>T169-R6</code> (Low) on two stale task premises and a migration comment that overstated what could not be done. <span class="q-why">The pattern in the Low round is the one worth keeping: three times the migration's prose asserted a limit that had been reasoned about rather than measured — <em>not a secure erase</em>, <em>delete the database file</em>, <em>bounded to nothing</em>. All three were wrong or incomplete, and <code>PRAGMA secure_delete</code> now zeroes the purged pages because the second look measured instead of assuming.</span></p>
   </section>
 
   <section>
     <div class="section-head">
-      <h2>The critical path opened up on 2026-08-06</h2>
-      <p class="lede">Every green node is done and pushed. <strong>The amber node is gone: <code>T-105</code> wrote <code>docs/UX_SPEC.md</code> and closed, so nothing on this board is waiting on a document any more.</strong> All eight deliverables are startable, which has not been true since the phase was planned. What replaces the gate is a choice about order, not a blockage — and the red nodes are where the risk moved.</p>
+      <h2>One chain in Phase 3, and one gate in the phase after it</h2>
+      <p class="lede">Every green node is done and pushed. <strong>Phase 3 still contains exactly one dependency chain and nothing waiting on a document</strong> — all nine deliverables are startable, and the order is a choice rather than a constraint. What is new on this drawing is the block on the right: <strong><code>Phase 4.5</code> has a real gate</strong>, and it is amber because it needs a maintainer ruling rather than an implementer.</p>
     </div>
 
     <div class="chart-frame fit" id="chart">
@@ -449,9 +451,9 @@ flowchart LR
     subgraph SHIPPED["CLOSED AND APPROVED"]
       direction TB
       P2["Phase 2 exited"]:::done
-      UXSPEC["T-105 wrote the UX spec"]:::done
+      UXSPEC["T-105 UX spec — approved 08-07"]:::done
       REMOVED["T-169 T-170 removed History"]:::done
-      PURGE["0009 purged the legacy rows"]:::done
+      CLEARED["T-168 T-179 approved 08-07"]:::done
     end
 
     subgraph CHAIN["THE ONLY CHAIN — four deep"]
@@ -468,13 +470,29 @@ flowchart LR
       T113["T-113 resume across restart"]:::risky
       T110["T-110 playlists"]:::risky
       T112["T-112 output template editor"]:::planned
-      T171["T-171 provenance — needs a ruling"]:::gate
-      T146["T-146 the Settings screen"]:::ready
+      T181["T-181 queue stopped until Start"]:::ready
       T114["T-114 confirm a queued duplicate"]:::ready
-      SMALL["T-143 T-158 T-175 — small"]:::ready
+      T180["T-180 shared thumbnail cache"]:::ready
+      SMALL["T-143 T-176 — small"]:::ready
+    end
+
+    subgraph RULINGS["WAITING ON THE MAINTAINER, NOT AN IMPLEMENTER"]
+      direction TB
+      T171["T-171 do files carry provenance"]:::gate
+      T182["T-182 which yt-dlp options REQ-EXCL forbids"]:::gate
     end
 
     EXIT(["PHASE 3 EXIT — 6 criteria"]):::exit
+    P4["Phase 4 — settings T-146, polish, accessibility"]:::planned
+
+    subgraph LATER["PHASE 4.5 — OPTION COVERAGE"]
+      direction TB
+      T183["T-183 audit and decompose the phase"]:::planned
+      T184["T-184 the escape hatch"]:::risky
+      TYPED["typed fields, from T-183"]:::planned
+      T183 --> T184
+      T183 --> TYPED
+    end
 
     SHIPPED ==> CHAIN
     SHIPPED ==> FREE
@@ -484,6 +502,10 @@ flowchart LR
     T110 --> EXIT
     T112 --> EXIT
     T113 --> EXIT
+
+    EXIT ==> P4 ==> LATER
+    T182 --> T183
+    T182 --> T184
 </pre>
       </div>
 
@@ -497,18 +519,20 @@ flowchart LR
       </div>
     </div>
 
-    <p class="note"><strong>The phase contains exactly one dependency chain, and this drawing exists to say so.</strong> An earlier version ran every task through a single "head" node — twenty-odd arrows meeting in one place, which drew the fact that the work is <em>unconstrained</em> as though it were a bottleneck. Only four tasks must happen in an order. The other seven can start today in any sequence, and the arrows that remain are the five that reach an exit criterion. <span class="q-why">Arrows removed: eighteen. None of them encoded a dependency — they encoded "has been unblocked", which is true of everything on the board and is better said once, in a sentence, than twenty times in ink.</span></p>
+    <p class="note"><strong>Phase 3 contains exactly one dependency chain, and this drawing exists to say so.</strong> An earlier version ran every task through a single "head" node — twenty-odd arrows meeting in one place, which drew the fact that the work is <em>unconstrained</em> as though it were a bottleneck. Only four tasks must happen in an order. The other eight can start today in any sequence, and the arrows that remain are the five that reach an exit criterion. <span class="q-why">Arrows removed: eighteen. None of them encoded a dependency — they encoded "has been unblocked", which is true of everything on the board and is better said once, in a sentence, than twenty times in ink.</span></p>
+    <p class="note" style="--edge: var(--st-review)"><strong>The two amber nodes are the only things on this board an implementer cannot start.</strong> Both are maintainer rulings and neither is scheduled. <code>T-182</code> is the sharper of the two: six yt-dlp option families point in the opposite direction from a written constraint — site credentials against <code>REQ-EXCL-003</code>, <code>--impersonate</code> against <code>-005</code>, <code>--xff</code> against <code>-002</code>, <code>--exec</code> against path containment, <code>--download-archive</code> against the record-keeping this phase deliberately withdrew, and <strong>SponsorBlock against <code>NFR-007</code></strong>, whose promise of no outbound traffic beyond downloads and update checks those options would widen. <span class="q-why">It is drawn gating both <code>T-183</code> and <code>T-184</code> because the audit cannot classify what it may not offer, and the escape hatch's refusal list is exactly that classification. Capability parity does not silently buy a new network destination or a relaxed exclusion.</span></p>
   </section>
 
   <section>
     <div class="section-head">
-      <h2>The eight deliverables, and what each is waiting for</h2>
+      <h2>The nine deliverables, and what each is waiting for</h2>
       <p class="lede">Transcribed from <code>ai/IMPLEMENTATION_PLAN.md</code>'s Phase 3 table, with the dependency and risk each task records for itself. <strong>None has been started, and none is blocked.</strong> The <code>T-105</code> entries in the third column were the phase's whole critical path until 2026-08-06; they are struck rather than deleted, because what the column now shows is an ordering choice where it used to show a constraint.</p>
+      <p class="lede"><strong>Two of these rows changed on 2026-08-07 without anyone writing code.</strong> <code>T-181</code> is new. And <code>T-111</code>'s risk used to read <em>"where it lives needs a decision"</em> — which was the finding: the decision had been taken by <code>DAT-001</code> long before, and three documents were still telling an implementer to take it again. This board transcribed the wrong one faithfully, which is exactly how that class of error travels.</p>
     </div>
 
     <div class="table-card">
       <table>
-        <caption>Decomposed 2026-08-01 · all eight still Proposed · none blocked since 2026-08-06</caption>
+        <caption>Decomposed 2026-08-01, plus <code>T-181</code> on 2026-08-07 · all nine still Proposed · none blocked</caption>
         <thead>
           <tr><th>Task</th><th>Deliverable</th><th>Waiting on</th><th>Risk</th></tr>
         </thead>
@@ -541,7 +565,7 @@ flowchart LR
             <td class="id">T-111</td>
             <td>User presets: create, edit, duplicate, delete, set default <span class="state-note">REQ-007</span></td>
             <td><s><code>T-105</code></s>, <code>T-109</code></td>
-            <td><span class="state part">Medium</span><span class="state-note">Persisted state, and where it lives needs a decision</span></td>
+            <td><span class="state part">Medium</span><span class="state-note">Persisted state with a name collision. <strong>Where it lives is settled</strong> — TOML in the existing <code>settings.toml</code> (<code>T105-R1</code>)</span></td>
           </tr>
           <tr>
             <td class="id">T-112</td>
@@ -561,6 +585,12 @@ flowchart LR
             <td><span class="state met">nothing at all</span></td>
             <td><span class="state unmet">Low</span><span class="state-note">The smallest item in the phase, and smaller than it was</span></td>
           </tr>
+          <tr>
+            <td class="id">T-181</td>
+            <td><strong>The queue is stopped until you press Start</strong> <span class="state-note">REQ-015 as amended, UX-006 · added 2026-08-07</span></td>
+            <td><span class="state met">nothing — the gate already exists</span></td>
+            <td><span class="state unmet">Low</span><span class="state-note">Mechanically small: <code>T-080</code> built the gate and <code>T080-R1</code> already parks a download while admitting a probe. <strong>The risk is legibility</strong> — a window where nothing happens and nothing says why</span></td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -571,21 +601,25 @@ flowchart LR
   <section>
     <div class="section-head">
       <h2>What to do next, in order</h2>
-      <p class="lede">One ordering, and the reason for it. The numbers are a sequence rather than a ranking: each item unblocks or de-risks the one under it. <strong>Rewritten 2026-08-06</strong> — the first item used to be the spec that gated five deliverables, and it is written.</p>
+      <p class="lede">One ordering, and the reason for it. The numbers are a sequence rather than a ranking: each item unblocks or de-risks the one under it. <strong>Rewritten 2026-08-07</strong> — the review queue emptied, so for the first time this phase every slot holds a deliverable rather than a correction.</p>
     </div>
 
     <ol class="queue">
-      <li style="--edge: var(--st-approved)">
-        <div class="q-head"><span class="id">—</span> <span class="name">Nothing. The board is clear</span> <span class="pill ghost">Approved 2026-08-06</span></div>
-        <p class="q-why">This slot held <em>re-review the withdrawal</em>, then <em>re-review the purge and the sweep</em>, for two days. Both are approved and no finding is open, so for the first time this phase the next thing to do is a deliverable rather than a correction. Kept as an entry rather than deleted, because "the queue in front of the work is empty" is the fact that changes what the list below means.</p>
+      <li style="--edge: var(--st-review)">
+        <div class="q-head"><span class="id">T-182</span> <span class="name">Rule on the excluded option families</span> <span class="pill" style="--edge: var(--st-review)">Maintainer, not implementer</span></div>
+        <p class="q-why">First because it is <strong>cheap to take now and expensive to meet by accident later</strong>, and because it is the only item here that nobody else can do. Six families point opposite a written constraint, and an implementer who meets one mid-task will resolve it in a commit rather than a decision. It blocks no Phase 3 work at all — which is exactly why it can be taken while the code work runs.</p>
+      </li>
+      <li style="--edge: var(--st-ready)">
+        <div class="q-head"><span class="id">T-181</span> <span class="name">The queue is stopped until Start</span> <span class="pill ghost">Small, and user-facing</span></div>
+        <p class="q-why">Promoted above the format table deliberately. It is the smallest deliverable in the phase — the gate exists and already parks correctly — and it changes <strong>the first thing every user does</strong>, so it wants to be in the window early rather than landing on top of four other unfamiliar surfaces. It also fixes a live defect in passing: a relaunch currently resumes downloading with no user action.</p>
       </li>
       <li style="--edge: var(--st-ready)">
         <div class="q-head"><span class="id">T-107</span> <span class="name">The format table</span> <span class="pill ghost">Foundation</span></div>
-        <p class="q-why">Named High because <code>REQ-008</code> and <code>T-109</code> both act on this table. It also owns proving the phase's first exit criterion — the table matching <code>yt-dlp -F</code> for a fixture set — so it carries a gate as well as a feature. <strong>Now the first real deliverable that can start</strong>, and the spec it was waiting for exists.</p>
+        <p class="q-why">Named High because <code>REQ-008</code> and <code>T-109</code> both act on this table. It also owns proving the phase's first exit criterion — the table matching <code>yt-dlp -F</code> for a fixture set — so it carries a gate as well as a feature. It is the head of the phase's only chain, and nothing else can shorten that chain.</p>
       </li>
       <li style="--edge: var(--st-ready)">
         <div class="q-head"><span class="id">T-113</span> <span class="name">Resume across a restart</span> <span class="pill" style="--edge: var(--st-block)">Start early</span></div>
-        <p class="q-why">Placed third despite being startable today, and deliberately not last: it reopens two accepted decisions and carries the phase's highest uncertainty. Discovering what it costs late is how a phase overruns — and it needs no spec, so nothing is lost by learning early.</p>
+        <p class="q-why">Startable today and deliberately not last: it reopens two accepted decisions and carries the phase's highest uncertainty. Discovering what it costs late is how a phase overruns — and it needs no spec, so nothing is lost by learning early. <strong><code>UX-006</code> did not touch it</strong>: the start gate moved a queue-level default, and <code>P-10</code>'s per-job pause still arrives here.</p>
       </li>
       <li style="--edge: var(--st-idle)">
         <div class="q-head"><span class="id">T-108</span> <span class="name">Video plus audio, merged</span> <span class="pill ghost">After T-107</span></div>
@@ -601,18 +635,19 @@ flowchart LR
       </li>
     </ol>
 
-    <p class="note"><code>T-111</code>, <code>T-112</code> and <code>T-114</code> are not in this list because nothing about their order is contentious: <code>T-111</code> follows <code>T-109</code>, <code>T-112</code> follows the spec, and <code>T-114</code> can be taken by anyone at any point.</p>
+    <p class="note"><code>T-111</code>, <code>T-112</code> and <code>T-114</code> are not in this list because nothing about their order is contentious: <code>T-111</code> follows <code>T-109</code>, <code>T-112</code> follows the spec, and <code>T-114</code> can be taken by anyone at any point. <strong><code>T-180</code>, <code>T-176</code> and <code>T-143</code> are cleanup</strong> and belong in the gaps between the items above — <code>T-180</code> carries the open <code>T179-R3</code> and is a decision before it is a change.</p>
+    <p class="note" style="--edge: var(--st-block)"><strong>The one thing on this board that is genuinely unscheduled is the size of Phase 4.5.</strong> <code>T-183</code> is the task that turns yt-dlp's option list into tasks, and until it lands <em>no estimate of that phase exists</em> — not a rough one, not a range. What is known is the shape: eleven options are expressible today, Phase 3 and 4 add perhaps fifteen, and the option list runs to roughly 250 across sixteen groups, of which a real fraction is the command line itself rather than a capability. Quoting a size before the audit would be inventing one.</p>
   </section>
 
   <section>
     <div class="section-head">
       <h2>What has actually been closed, and why it exists</h2>
-      <p class="lede">Thirty-seven entries, none of them a deliverable. Grouped by where they came from, because the source is the interesting part: <strong>most of this phase's completed work was found by a person opening the application</strong>, not by a plan and not by a gate — and the newest group was found by a person deciding the application should do <em>less</em>.</p>
+      <p class="lede">Forty-five entries, none of them a deliverable. Grouped by where they came from, because the source is the interesting part: <strong>most of this phase's completed work was found by a person opening the application</strong>, not by a plan and not by a gate — and one group was found by a person deciding the application should do <em>less</em>. <span class="q-why">The rows sum to 45 and every id appears once. An earlier version of this table summed its own columns to 41 while the sentence above it said 37: <code>T-076</code> is a Phase 2 entry that had been counted here, and <code>T-125</code> was counted twice. Parsed from <code>ai/TASKS.md</code> this time — entries under <code>## Complete</code> whose <code>Phase:</code> line begins <em>Phase 3</em>.</span></p>
     </div>
 
     <div class="table-card">
       <table>
-        <caption>Phase 3 entries under <code>## Complete</code>, 2026-08-02 to 2026-08-06</caption>
+        <caption>Phase 3 entries under <code>## Complete</code>, 2026-08-02 to 2026-08-07</caption>
         <thead><tr><th>Where it came from</th><th class="n">N</th><th>Tasks</th><th>State</th></tr></thead>
         <tbody>
           <tr>
@@ -649,17 +684,23 @@ flowchart LR
             <td>The spec the phase was planned around, and three defects found by running it</td>
             <td class="n">4</td>
             <td><code>T-105</code> <code>T-150</code> <code>T-156</code> <code>T-168</code></td>
-            <td><span class="state part">Unreviewed</span><span class="state-note"><code>T-105</code> is the one that lifted the gate</span></td>
+            <td><span class="state met">Approved</span><span class="state-note"><code>T-105</code> lifted the gate, and took <strong>three correction rounds</strong> to be approved on 2026-08-07; <code>T-168</code> was approved the same day</span></td>
           </tr>
           <tr>
-            <td>Earlier: the MP3 bitrate control and history removal</td>
-            <td class="n">2</td>
-            <td><code>T-076</code> <code>T-125</code></td>
-            <td><span class="state met">Approved</span><span class="state-note"><code>T-125</code> is what made <code>T-144</code> possible</span></td>
+            <td><strong>The tidy-up the withdrawal outlived</strong> — filed against the ledger, cancelled with it</td>
+            <td class="n">3</td>
+            <td><code>T-172</code> <code>T-173</code> <code>T-174</code></td>
+            <td><span class="state unmet">Cancelled as moot</span><span class="state-note">Filed during a simplification sweep and cancelled hours later, when the surface they proposed to rename or delete was gone</span></td>
+          </tr>
+          <tr>
+            <td>Cleanup after the removal, and an efficiency audit that found four real things</td>
+            <td class="n">5</td>
+            <td><code>T-175</code> <code>T-158</code> <code>T-177</code> <code>T-178</code> <code>T-179</code></td>
+            <td><span class="state met">Approved</span><span class="state-note"><code>T-179</code> took three mechanisms and a maintainer disposition; its shared-cache defect is now <code>T-180</code></span></td>
           </tr>
           <tr>
             <td>Everything else Phase 2 handed over under Phase 3's numbering</td>
-            <td class="n">13</td>
+            <td class="n">11</td>
             <td><code>T-118</code> <code>T-124</code>–<code>T-126</code> <code>T-130</code> <code>T-136</code>–<code>T-141</code></td>
             <td><span class="state met">Approved</span><span class="state-note">The add dialog, the queue row and the playlist group</span></td>
           </tr>
@@ -670,7 +711,7 @@ flowchart LR
 
   <section>
     <div class="section-head">
-      <h2>Six accepted entries have been amended to get here</h2>
+      <h2>Seven accepted entries have been amended to get here</h2>
     </div>
 
     <div class="callout" style="--accent: var(--st-block)">
@@ -691,6 +732,16 @@ flowchart LR
         <li><strong><code>ARCHITECTURE.md</code> §10 gained an exception</strong>, and it is the judgement on this board most worth challenging. §10 forbade a destructive migration without a pre-migration backup. A backup here would leave the purged URLs in a second file beside the database — unreachable, unmanaged, removed by nothing — so the rule that protects data from a change which did not intend to touch it is inverted by one that does. <strong>The purge was the maintainer's ruling; reading it as also waiving the backup is a Planner judgement</strong> and is flagged as one in the document.</li>
       </ul>
       <p class="note" style="border-left-color: var(--st-block)"><strong>The review found exactly that, and it was right.</strong> <code>T169-R1</code>: satisfying a decision's trigger makes it eligible for a ruling, not self-ratifying — the same distinction as <code>T145-R1</code> and <code>T144-R1</code>, which this project has now recorded three times. Four further findings followed, and the maintainer's ruling was to remove the feature rather than repair it. <strong>Five findings, two High, and not one about the warning being wrong: every one was about keeping the data.</strong></p>
+    </div>
+
+    <div class="callout" style="--accent: var(--st-approved)">
+      <h3>The seventh is <code>UX-001</code>, amended 2026-08-07 — and the amendment is a default, not a semantic</h3>
+      <ul>
+        <li><strong><code>UX-006</code>: the queue runs only once started, and is stopped at every launch.</strong> Adding a URL enqueues it and starts nothing; the row reads <em>Held</em>, the word <code>UX-005</code> already gave a waiting row. <code>Stop</code> drains exactly as <code>UX-001</code> specified — in-flight sessions finish, nothing new starts, no partial file is created, and no job ever enters <code>PAUSED</code>.</li>
+        <li><strong>It needed no new mechanism, which is the whole reason it is cheap.</strong> <code>T-080</code> built the queue-level gate and <code>T080-R1</code> already made it park a download while admitting a probe — so a stopped queue still resolves a paste, which is what makes reviewing a batch possible at all. What changed is which side of that gate the window opens on.</li>
+        <li><strong>Acceptance criterion 1 gained a <code>Start</code> press</strong>, because without it the MVP criterion is satisfied by a build that downloads nothing.</li>
+      </ul>
+      <p class="note" style="border-left-color: var(--st-approved)"><strong>It also fixes something nobody had filed.</strong> Restoring a queue currently resumes work with no user action — including after a crash, and including when the reason for relaunching was to remove something. <span class="q-why">And it deliberately does <em>not</em> answer <code>P-10</code>. Per-job pause is untouched and still arrives with <code>T-113</code>, on resume's terms, when a partial file finally has a defined meaning.</span></p>
     </div>
   </section>
 
@@ -716,14 +767,55 @@ flowchart LR
     </div>
 
     <p class="note"><strong>Criterion 2 names both platforms, and that is the one to watch.</strong> Phase 2 exited with a recorded one-platform residual — CI runs the suite on Windows but no person has looked at the window there. This criterion cannot be met that way, and the Actions quota is nearly exhausted, so the Windows evidence route wants deciding before <code>T-108</code> rather than after it.</p>
+    <p class="note"><strong><code>T-181</code> adds no exit criterion, and that is deliberate.</strong> It changes a default rather than delivering a capability the phase is measured on. Its own acceptance criteria carry the load — chiefly that a fresh launch with a full queue starts <em>nothing</em>, asserted on the pool rather than on a screenshot, because that is the behaviour change with the widest reach and the least visible symptom.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What comes after: Phase 4.5, and why it exists at all</h2>
+      <p class="lede">Added 2026-08-07 between Settings and Distribution. <strong>The premise of this application is that it is a GUI for yt-dlp, and it can currently express eleven of yt-dlp's options.</strong> Phase 3 and Phase 4 add perhaps fifteen more. The option list runs to roughly 250 across sixteen groups — so the gap is not a rounding error, and shipping a first release without closing it would mean shipping the claim without the thing.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <caption><code>ARC-010</code> · <code>REQ-030</code> · <code>REQ-031</code> · not decomposed — <code>T-183</code> is what decomposes it</caption>
+        <thead><tr><th>Task</th><th>What it is</th><th>Waiting on</th><th>Risk</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="id">T-182</td>
+            <td><strong>The <code>REQ-EXCL</code> ruling</strong> — credentials, <code>--impersonate</code>, <code>--xff</code>, <code>--exec</code>, <code>--download-archive</code>, and SponsorBlock against <code>NFR-007</code></td>
+            <td><span class="state met">nothing — it is the maintainer's</span></td>
+            <td><span class="state blocked">Blocking</span><span class="state-note">Low to take, high to skip: each family is where "capture all of yt-dlp" and a written exclusion point opposite ways</span></td>
+          </tr>
+          <tr>
+            <td class="id">T-183</td>
+            <td>The option audit: every group classified <em>typed field</em>, <em>escape-hatch only</em>, <em>application-owned</em> or <em>excluded</em> — then decomposed into tasks</td>
+            <td><code>T-182</code> <span class="state-note">for the excluded families</span></td>
+            <td><span class="state part">Medium</span><span class="state-note">It <em>is</em> the phase's plan. The classifications that hurt are options filed escape-hatch-only that a user reaches for daily</span></td>
+          </tr>
+          <tr>
+            <td class="id">T-184</td>
+            <td>The escape hatch — <em>additional yt-dlp options</em>, parsed and validated rather than passed through</td>
+            <td><code>T-182</code>, <code>T-183</code></td>
+            <td><span class="state blocked">High</span><span class="state-note">A second route to two boundaries whose breach is Critical-band: writing outside the chosen directory, and a secret in a log</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note"><strong>The target is capability parity, not flag parity, and the difference is load-bearing.</strong> A large share of yt-dlp's surface <em>is</em> the command line — <code>--simulate</code>, <code>--print</code>, <code>--dump-json</code>, <code>--batch-file</code>, the progress and quiet flags, config locations, aliases. This application is the caller of those and already sets several for the worker to function; exposing them would be exposing its own plumbing. <span class="q-why">So <code>REQ-030</code> promises that no download reachable from the command line is unreachable from the GUI, and names the exclusions rather than quietly leaving them out. <code>T-183</code>'s application-owned list is derived from <code>build_options</code> with a test asserting the two agree, so the refusal list cannot drift from what the code actually sets.</span></p>
+
+    <p class="note" style="--edge: var(--st-block)"><strong>The risk this phase accepts, stated where it can be checked later: the escape hatch becomes the interface.</strong> A text field that takes command-line syntax makes every capability reachable and none discoverable, and it would be an easy phase to declare finished with the common options still being typed as flags. <code>ARC-010</code> accepted that trade knowingly and the mitigation is an exit criterion rather than an intention — promotion of the options users actually type is deliverable work, and the phase does not exit while the common ones are still free text.</p>
+
+    <p class="note" style="--edge: var(--st-block)"><strong>Distribution is not renumbered, and that is a choice rather than an oversight.</strong> "Phase 5" names the distribution phase in five documents and in every review record that cites it. Renumbering would rewrite the meaning of references nobody can retroactively correct, to buy an integer; <code>4.5</code> is uglier and cannot mislead.</p>
   </section>
 
   <footer>
     <span>Transcribed from ai/IMPLEMENTATION_PLAN.md, ai/TASKS.md, ai/DECISIONS.md, ai/REVIEWS.md</span>
     <span>Counts parsed from the task entries, not written beside them</span>
-    <span>Head 4fcfe9f · CI 31066693863 green on all five jobs</span>
-    <span>Suite 2262 passed, 11 skipped · tests/network not run</span>
-    <span>2026-08-06</span>
+    <span>Head 76fe48d · CI last green at 1e0d0d5; this head's run still executing</span>
+    <span>Focused suites 150 passed · ruff, format, host and win32 mypy clean</span>
+    <span>2026-08-07</span>
   </footer>
 
 </div>
