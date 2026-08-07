@@ -5,11 +5,16 @@ question `REQ-003` poses is whether what a probe actually reports reaches the ta
 that constructs its own model answers a different one. `T-018`'s recorded captures are the contract
 for the fields they carry.
 
-**Four columns rest on a *derived* fixture, and that is stated rather than hidden.** The recorded
-captures predate `fps`, `tbr`, `vcodec` and `acodec` on a format — `SEC-002` commits only the
-fields the projection reads, and the projection did not read them until this task. So
-`derived_format_columns` supplies them, and **Phase 3's exit criterion 1 — the table matching
-`yt-dlp -F` — is not evidenced by it.** `T-185` owns the re-capture that would.
+**Codecs, bitrate and estimated sizes come from a recorded capture**, `wikimedia_caminandes`,
+which reports all three per format. **fps does not, from any source**: archive.org reports none and
+neither does Wikimedia, so it is exercised by `derived_format_columns` and the criterion was
+amended by the maintainer on 2026-08-07 to *populated from a recorded fixture where the source
+reports it*. `T-185` records the search so a future source can close it.
+
+**Phase 3's exit criterion 1 — the table matching `yt-dlp -F` — is evidenced** by
+`test_the_table_matches_what_yt_dlp_f_reports` against
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. Matching includes agreeing where yt-dlp
+reports nothing, which is most of what these sources say about fps and codecs.
 """
 
 import json
@@ -185,14 +190,53 @@ def test_the_table_matches_what_yt_dlp_f_reports(fixture_name: str) -> None:
         )
 
 
-def test_fps_bitrate_and_codecs_come_through_the_projection(
+def test_codecs_bitrate_and_estimated_sizes_come_from_a_recorded_capture() -> None:
+    """`T107-R1`: the columns archive.org cannot populate, from a source that can.
+
+    **`wikimedia_caminandes` is a recorded capture**, not a derived one. It reports `vcodec`,
+    `acodec` and `tbr` per format, and its sizes are `filesize_approx` — so it also exercises
+    `T107-R7`'s estimate rendering against a real report rather than a constructed one.
+
+    **fps is still not exercised by any recorded source**, and that is a property of the sources
+    rather than of the fixtures: no boring, freely licensed source found reports it. `T-185`
+    records the search rather than leaving the gap implied.
+    """
+    model = FormatTableModel(formats_from("wikimedia_caminandes"))
+    assert model.rowCount() == 5
+
+    assert column_of(model, VIDEO_CODEC_COLUMN)[:4] == ["vp9", "vp9", "theora", "vp9"]
+    assert column_of(model, AUDIO_CODEC_COLUMN)[:4] == ["opus", "opus", "vorbis", "opus"]
+    assert column_of(model, BITRATE_COLUMN)[:4] == [
+        "207 kbps",
+        "422 kbps",
+        "2796 kbps",
+        "1440 kbps",
+    ]
+    # Every one of those four sizes is an estimate in the capture, and each says so.
+    for row in range(4):
+        rendered = display(model, row, SIZE_COLUMN)
+        assert rendered.startswith(ESTIMATE_PREFIX), f"row {row} renders {rendered!r} as exact"
+    # The `source` format carries an exact size and no bitrate — the contrast in one capture.
+    assert not display(model, 4, SIZE_COLUMN).startswith(ESTIMATE_PREFIX)
+    assert display(model, 4, BITRATE_COLUMN) == UNKNOWN_TEXT
+
+    assert column_of(model, FPS_COLUMN) == [UNKNOWN_TEXT] * 5, (
+        "this source has begun reporting fps; T-185's search should be revisited"
+    )
+
+
+def test_fps_and_the_column_shapes_come_through_the_projection(
     derived: tuple[FormatInfo, ...],
 ) -> None:
-    """The four columns the recorded captures predate (`SEC-002`), from the derived fixture.
+    """**fps only**, plus the shapes no recorded source happens to have (`T107-R1`).
 
-    **Not evidence for Phase 3's exit criterion 1.** These values are synthetic; what they prove is
-    that the adapter projects `fps`/`tbr`/`vcodec`/`acodec` and the table renders them, which is
-    this task's claim. Whether yt-dlp reports them the way the fixture says is `T-185`'s.
+    Codecs, bitrate and estimated sizes moved to
+    `test_codecs_bitrate_and_estimated_sizes_come_from_a_recorded_capture`, which uses a real
+    capture. What is left here is what no recorded source supplies: **fps**, and a row carrying
+    neither fps nor bitrate nor size for the placeholder path.
+
+    These values are synthetic and this test does not pretend otherwise. It proves the projection
+    reads `fps` and the table renders it; whether any site reports it is `T-185`'s question.
     """
     model = FormatTableModel(derived)
     assert display(model, 0, FPS_COLUMN) == "24"
@@ -483,35 +527,110 @@ def test_the_wrapper_gives_the_table_its_whole_size(
         table.close()
 
 
-def test_space_on_the_header_sorts_and_sorts_back(
+def _press(qapp: QApplication, key: Qt.Key) -> None:
+    """Send `key` to whatever currently has focus — the user's route, not the widget's door.
+
+    `T107-R3` twice: both earlier attempts posted the event **at the header**, which proves the
+    header reacts and says nothing about whether a keyboard can get there. Focus is read from the
+    application, so a route that does not exist cannot be simulated into existing.
+    """
+    target = qapp.focusWidget()
+    assert target is not None, "nothing has focus, so there is no route to test"
+    qapp.sendEvent(target, QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier))
+    qapp.processEvents()
+
+
+def test_tab_reaches_the_header_and_tab_leaves_it_again(
     qapp: QApplication, derived: tuple[FormatInfo, ...]
 ) -> None:
-    """`T107-R3`: the keyboard route `docs/UX_SPEC.md` §4 declares, through the real widget.
+    """`docs/UX_SPEC.md` §4: *Tab moves between the header row, the table body and the buttons*.
 
-    **The test this replaces called `model.sort()` directly** while being named for the key press,
-    so it proved the ordering and bypassed the interaction — the defect class this project keeps
-    finding, and one I wrote. This posts a real `QKeyEvent` to the header.
+    **`QTableView` consumes Tab for cell navigation by default**, so the declared route did not
+    exist: Tab moved the current cell and focus never left the view. The reviewer's probe found
+    exactly that, twice — first that Tab stayed on the view, then that a manually focused header
+    would not release it either.
     """
     table = FormatTable(derived)
     table.show()
     qapp.processEvents()
     try:
-        header = table.table.horizontalHeader()
-        assert header.focusPolicy() != Qt.FocusPolicy.NoFocus, (
-            "the header cannot take focus, so no key can reach it"
+        table.table.setFocus()
+        qapp.processEvents()
+        assert qapp.focusWidget() is table.table
+
+        _press(qapp, Qt.Key.Key_Tab)
+        assert qapp.focusWidget() is table.header, (
+            f"Tab from the body reached {qapp.focusWidget()!r}, not the header"
         )
-        table.table.sortByColumn(SIZE_COLUMN, Qt.SortOrder.AscendingOrder)
+
+        _press(qapp, Qt.Key.Key_Tab)
+        assert qapp.focusWidget() is not table.header, (
+            "Tab did not leave the header; a keyboard user is trapped on it"
+        )
+    finally:
+        table.close()
+
+
+def test_the_keyboard_chooses_a_column_and_sorts_that_one(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`T107-R3`: *a focused section the user cannot select is not a keyboard-operable header*.
+
+    Arrives on the sorted column, moves with `→`, and `Space` sorts **the column arrived at** —
+    not whatever the indicator already pointed to, which is what the previous implementation did.
+    """
+    table = FormatTable(derived)
+    table.show()
+    qapp.processEvents()
+    try:
+        table.table.sortByColumn(RESOLUTION_COLUMN, Qt.SortOrder.DescendingOrder)
+        table.table.setFocus()
+        _press(qapp, Qt.Key.Key_Tab)
+        assert qapp.focusWidget() is table.header
+        assert table.header.current_section() == RESOLUTION_COLUMN, (
+            "the header did not arrive on the column the table is sorted by"
+        )
+
+        while table.header.current_section() != SIZE_COLUMN:
+            before = table.header.current_section()
+            _press(qapp, Qt.Key.Key_Right)
+            assert table.header.current_section() != before, "Right did not move the column"
+
+        _press(qapp, Qt.Key.Key_Space)
+        assert table.header.sortIndicatorSection() == SIZE_COLUMN, (
+            "Space sorted a column other than the one the keyboard had selected"
+        )
         ascending = [entry.filesize for entry in table.model.formats()]
 
-        qapp.sendEvent(
-            header,
-            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier),
+        _press(qapp, Qt.Key.Key_Space)
+        assert [entry.filesize for entry in table.model.formats()] == list(reversed(ascending)), (
+            "a second Space did not reverse the sort"
         )
-        qapp.processEvents()
-        descending = [entry.filesize for entry in table.model.formats()]
-        assert descending == list(reversed(ascending)), (
-            "Space on the header did not reverse the sort; the declared route does not work"
-        )
+    finally:
+        table.close()
+
+
+def test_the_header_says_which_column_it_is_on(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`NFR-005`: the selected section is announced, not only drawn.
+
+    A screen-reader user moving along the header otherwise hears nothing change, and the sort they
+    trigger lands on a column they were never told they were on.
+    """
+    table = FormatTable(derived)
+    table.show()
+    qapp.processEvents()
+    try:
+        table.table.setFocus()
+        _press(qapp, Qt.Key.Key_Tab)
+        spoken = table.header.accessibleDescription()
+        assert COLUMN_HEADERS[table.header.current_section()] in spoken, spoken
+
+        _press(qapp, Qt.Key.Key_Right)
+        moved = table.header.accessibleDescription()
+        assert moved != spoken, "moving along the header announced nothing"
+        assert COLUMN_HEADERS[table.header.current_section()] in moved, moved
     finally:
         table.close()
 

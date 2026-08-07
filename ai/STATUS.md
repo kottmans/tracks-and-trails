@@ -116,9 +116,18 @@ criterion asked rather than arguing about it:
   empty objects, predating `T-137` teaching the projection to read them.
 
 **Phase 3's exit criterion 1 is met**, with evidence in
-`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. The maintainer authorised the network capture
-and re-scoped mounting the table to `T-108`; both are amendments a task cannot make for itself, and
-both are recorded as theirs.
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. **Three maintainer amendments** made it
+possible, all recorded as theirs because a task cannot make any of them for itself: the network
+capture was authorised, mounting the table was re-scoped to `T-108`, and — after the re-review —
+`T-107`'s every-column criterion was amended to *where the source reports it*.
+
+**That last one has evidence behind it rather than convenience.** `wikimedia_caminandes` was added
+as a source precisely because it reports the codec and bitrate columns archive.org does not, so
+those are now asserted **by value from a recorded capture**. **fps is reported by nothing** — four
+Wikimedia Commons files and three archive.org items, none with it — so it stays exercised by a
+derived fixture, and `T-185` stays **open** as the record of that search. It was briefly marked
+complete and reopened the same day: closing a task whose criterion is unmet is the defect one level
+up from the one being fixed.
 
 ## 2026-08-07: `T-107` is built, and it owes one exit criterion
 
@@ -128,11 +137,11 @@ carry them** — and no migration was needed, because nothing persists a `Format
 the model, over the projection: `1080p` above `144p`, `10.1 MB` above `9.9 MB`, and keys that are
 always a `(number, text)` pair so a column holding both `137` and `hls-480` cannot raise.
 
-**Phase 3's exit criterion 1 is *not* met, and `T-107` does not claim it.** The recorded captures
-carry no `fps`, `tbr`, `vcodec` or `acodec` — `SEC-002` commits only the fields the projection
-reads, and it did not read them until now — so four of nine columns are evidenced by a **derived**
-fixture. A fixture this project wrote cannot show the table agrees with `yt-dlp -F`. **`T-185`** is
-filed for the re-capture and owns the criterion's evidence.
+*(This paragraph said the criterion was **not** met while the block above says it is, which is the
+contradiction `T107-R1`'s re-review found. Both were true when written — this one on 2026-08-07
+before the capture was authorised, the other after — and a status file that keeps both is a status
+file that answers the question twice. **The criterion is met**, and the block above is the current
+statement of it.)*
 
 **Two gates fired unprompted and both were right.**
 `test_the_allowlist_matches_what_the_adapter_actually_reads` walks the adapter's AST and failed the

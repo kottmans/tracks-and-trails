@@ -16,6 +16,9 @@ Three rules shape everything here, and each exists because of a specific defect:
 - **A missing field renders `UNKNOWN_TEXT`**, never an empty cell and never `None`. yt-dlp
   genuinely omits these — a live stream has no filesize, an audio-only format has no height — so
   the absence is information rather than an error, and the window already has a word for it.
+  **Rendering the placeholder is frequently the *correct* answer rather than a gap**: archive.org
+  reports no codec, bitrate or fps for its derivatives, and `yt-dlp -F` prints nothing for them
+  either, so agreeing means showing nothing too.
 
 **Selection is deliberately absent.** `T-107` builds the table; `T-108` (`REQ-008`) is what makes a
 chosen format mean something, and `docs/UX_SPEC.md` §4 keeps *download from the table* out
@@ -24,23 +27,25 @@ saying which format it names — the seam `T-108` consumes.
 """
 
 from collections.abc import Sequence
-from typing import Final, cast
+from typing import Final
 
 from PySide6.QtCore import (
     QAbstractTableModel,
-    QEvent,
     QModelIndex,
     QObject,
+    QRect,
     Qt,
     Signal,
 )
 from PySide6.QtCore import (
     QPersistentModelIndex as _PersistentIndex,
 )
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QFocusEvent, QKeyEvent, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
+    QStyle,
+    QStyleOptionFocusRect,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -355,6 +360,83 @@ class FormatTableModel(QAbstractTableModel):
         )
 
 
+class SortableHeader(QHeaderView):
+    """The table's header, with a **current section the keyboard can move** (`T107-R3`).
+
+    `QHeaderView` has no notion of a current section — it is a strip of labels a pointer clicks.
+    So an event filter that made a focused header react to `Space` still sorted whatever the
+    indicator already pointed at, and there was no way to choose a different column. The reviewer's
+    words: *a focused section that the user cannot select is not a keyboard-operable header*.
+
+    A subclass rather than more event filtering, because this needs to **paint** the current
+    section as well as track it. `NFR-005` forbids conveying state by colour alone, and a focus
+    rectangle a user cannot see is the same defect one sense over.
+    """
+
+    #: `column` — the user asked for this column to be sorted.
+    sort_requested = Signal(int)
+
+    def __init__(self, orientation: Qt.Orientation, parent: QWidget | None = None) -> None:
+        super().__init__(orientation, parent)
+        self._current = 0
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setSectionsClickable(True)
+
+    def current_section(self) -> int:
+        return self._current
+
+    def set_current_section(self, section: int) -> None:
+        if not 0 <= section < max(self.count(), 1):
+            return
+        self._current = section
+        # **Announced, not only drawn** (`NFR-005`). A screen-reader user moving along the header
+        # otherwise hears nothing change, and the sort they trigger lands on a column they were
+        # never told they were on.
+        self.setAccessibleDescription(f"{COLUMN_HEADERS[section]}, press Space to sort")
+        self.updateSection(section)
+        self.viewport().update()
+
+    def paintSection(
+        self,
+        painter: QPainter,
+        rect: QRect,
+        logicalIndex: int,  # noqa: N803 - Qt's name
+    ) -> None:
+        super().paintSection(painter, rect, logicalIndex)
+        if self.hasFocus() and logicalIndex == self._current:
+            option = QStyleOptionFocusRect()
+            option.initFrom(self)
+            option.rect = rect.adjusted(1, 1, -1, -1)
+            option.state |= QStyle.StateFlag.State_KeyboardFocusChange
+            self.style().drawPrimitive(
+                QStyle.PrimitiveElement.PE_FrameFocusRect, option, painter, self
+            )
+
+    def focusInEvent(self, event: QFocusEvent) -> None:
+        """Arrive on the column the table is sorted by, which is the one the user last acted on."""
+        super().focusInEvent(event)
+        indicated = self.sortIndicatorSection()
+        self.set_current_section(indicated if 0 <= indicated < self.count() else 0)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """`←` `→` choose a column; `Space` or `Enter` sorts it (`docs/UX_SPEC.md` §4).
+
+        **`Tab` is deliberately not handled**, so it falls through to Qt's focus traversal and
+        leaves the header. A widget that swallowed `Tab` would trap a keyboard user on it.
+        """
+        key = event.key()
+        if key == int(Qt.Key.Key_Left):
+            self.set_current_section(self._current - 1)
+            return
+        if key == int(Qt.Key.Key_Right):
+            self.set_current_section(self._current + 1)
+            return
+        if key in (int(Qt.Key.Key_Space), int(Qt.Key.Key_Return), int(Qt.Key.Key_Enter)):
+            self.sort_requested.emit(self._current)
+            return
+        super().keyPressEvent(event)
+
+
 class FormatTable(QWidget):
     """The table and its keyboard, over a `FormatTableModel` (`docs/UX_SPEC.md` §4).
 
@@ -380,7 +462,13 @@ class FormatTable(QWidget):
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.setAccessibleName("Available formats")
         self._table.verticalHeader().setVisible(False)
-        header = self._table.horizontalHeader()
+        # **Tab must leave the table rather than walk its cells** (`T107-R3`). `QTableView`
+        # consumes Tab for cell navigation by default, so the declared route — body, then header —
+        # could not exist: Tab moved the current cell and focus never left the view.
+        self._table.setTabKeyNavigation(False)
+        header = SortableHeader(Qt.Orientation.Horizontal, self._table)
+        self._table.setHorizontalHeader(header)
+        header.sort_requested.connect(self.sort_by)
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         # **Sample a bounded number of rows when sizing a column** (`T107-R6`).
         # `ResizeToContents` asks the model for *every* row of *every* column to decide a width:
@@ -396,9 +484,7 @@ class FormatTable(QWidget):
         # route described in the spec and reachable only with a pointer. `T-152` is the same
         # defect one surface over, and its lesson was that a declared route which needs a click
         # first is not a route.
-        header.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         header.setAccessibleName("Sort formats by column")
-        header.installEventFilter(self)
         self._header = header
 
         # **A layout, so the view actually fills the widget** (`T107-R2`). Without one the child
@@ -408,6 +494,10 @@ class FormatTable(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._table)
+        # **The header follows the body in the tab chain**, which is the order `docs/UX_SPEC.md` §4
+        # declares: body, then header, then out. Set explicitly rather than left to creation order,
+        # because the header is a child of the view and would otherwise come first.
+        QWidget.setTabOrder(self._table, self._header)
         # **Opens sorted by resolution, best first**, which is the order somebody opening a format
         # table is looking for. `sortByColumn` drives the model's own `sort` — see it for why the
         # model implements one rather than relying on Qt's default, which silently does nothing.
@@ -426,6 +516,11 @@ class FormatTable(QWidget):
     def model(self) -> FormatTableModel:
         return self._model
 
+    @property
+    def header(self) -> SortableHeader:
+        """The header, for a caller that needs to focus it or read its current column."""
+        return self._header
+
     def set_formats(self, formats: Sequence[FormatInfo]) -> None:
         self._model.set_formats(formats)
         self._select_first_row()
@@ -443,35 +538,6 @@ class FormatTable(QWidget):
         chosen = self.current_format()
         if chosen is not None:
             self.format_chosen.emit(chosen)
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        """`Space` on the focused header sorts that column, and sorts it the other way next time.
-
-        **The interaction, not the model call** (`T107-R3`). The test this replaces asserted
-        `model.sort()` directly and was named for the key press, so it proved the ordering while
-        bypassing the thing a keyboard user actually does — the shape this project keeps finding
-        and, here, one I wrote.
-
-        An event filter rather than a `QHeaderView` subclass: the header is Qt's own widget and
-        the only behaviour being added is one key, so a subclass would exist to hold a single
-        `keyPressEvent`.
-        """
-        if watched is self._header and event.type() == QEvent.Type.KeyPress:
-            key = cast("QKeyEvent", event)
-            if key.key() in (int(Qt.Key.Key_Space), int(Qt.Key.Key_Return), int(Qt.Key.Key_Enter)):
-                self.sort_by(self._focused_column())
-                return True
-        return super().eventFilter(watched, event)
-
-    def _focused_column(self) -> int:
-        """Which column the header's keyboard focus is on.
-
-        `QHeaderView` has no notion of a *current section* the way a view has a current index, so
-        the sorted column is used as the anchor and the first column before anything is sorted.
-        A caller moving with the arrow keys changes the sort indicator, which is what this reads.
-        """
-        section = self._header.sortIndicatorSection()
-        return section if 0 <= section < COLUMN_COUNT else FORMAT_COLUMN
 
     def sort_by(self, column: int) -> None:
         """Sort by `column`, reversing if it is already the sorted one (`docs/UX_SPEC.md` §4).

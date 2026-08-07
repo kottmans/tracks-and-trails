@@ -287,6 +287,23 @@ SOURCES: Final[tuple[Source, ...]] = (
         licence="Public domain test file hosted by the Internet Archive.",
     ),
     Source(
+        name="wikimedia_caminandes",
+        url="https://commons.wikimedia.org/wiki/File:Caminandes-_Llama_Drama_-_Short_Movie.ogv",
+        why=(
+            "The only recorded source that populates the codec and bitrate columns REQ-003 names "
+            "(T107-R1). archive.org's derivatives report `unknown` for both, which `yt-dlp -F` "
+            "confirms, so the columns could only ever be exercised against synthetic values. "
+            "Wikimedia reports vcodec, acodec and tbr per format, and its sizes are "
+            "`filesize_approx` - which exercises T107-R7's estimate rendering from a real capture "
+            "as well. It also has no fps for any format; no boring, freely licensed source found "
+            "does, which is recorded in T-185 rather than worked around."
+        ),
+        licence=(
+            "Caminandes: Llama Drama (c) Blender Foundation, CC BY 3.0. Hosted by Wikimedia "
+            "Commons; media URLs are unsigned."
+        ),
+    ),
+    Source(
         name="archive_org_art_of_war_playlist",
         url="https://archive.org/details/art_of_war_librivox",
         why=(

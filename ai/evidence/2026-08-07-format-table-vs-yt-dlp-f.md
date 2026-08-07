@@ -63,17 +63,52 @@ Both were real defects in the submitted implementation, and both are fixed:
    merely *unknown* was reported as having no video at all. The resolution column now reads the
    height and declines to assert what it cannot know.
 
-## What this evidence does not cover
+## A third source was added, because two columns needed one
 
-**Three columns are not exercised by these sources**, because yt-dlp reports nothing for them:
-`fps`, `bitrate` and `vcodec` are `unknown` for every format archive.org serves here. The table
-renders the placeholder, which **is** the match — but a source that reports those fields would
-exercise more of the projection than this does.
+**Amended 2026-08-07, after the re-review.** The comparison above establishes agreement for the two
+archive.org URLs, and archive.org reports **no codec, bitrate or fps** for any of its derivatives —
+so those columns were exercised only against synthetic values. That is a limit of the sources rather
+than of the fixtures, and the re-review was right that the task claimed more than it had.
 
-That is a limit of the sources, not of the fixtures, and `ai/TESTING.md` §5 chose them for being
-boring and freely licensed. Adding a source that reports fps and codecs would strengthen this
-evidence; doing so is a scope change with its own licensing question, and is deliberately not
-smuggled in here.
+`wikimedia_caminandes` was captured for exactly that gap:
+
+```
+ID     EXT  RESOLUTION |  FILESIZE   TBR PROTO | VCODEC  ACODEC
+----------------------------------------------------------------
+0      webm 426x240    | ≈ 2.22MiB  207k https | vp9     opus
+1      webm 854x480    | ≈ 4.52MiB  422k https | vp9     opus
+2      ogv  1920x1080  | ≈29.97MiB 2796k https | theora  vorbis
+3      webm 1920x1080  | ≈15.43MiB 1440k https | vp9     opus
+source ogv  1920x1080  |  29.97MiB       https | unknown unknown
+```
+
+`https://commons.wikimedia.org/wiki/File:Caminandes-_Llama_Drama_-_Short_Movie.ogv` — Caminandes:
+Llama Drama, © Blender Foundation, CC BY 3.0, unsigned URLs.
+
+**Codecs, bitrate and estimated sizes are now asserted by value from a recorded capture.** The `≈`
+sizes are `filesize_approx`, so this exercises `T107-R7`'s estimate rendering against a real report
+as well; the `source` format carries an exact size and no bitrate, giving the contrast inside one
+capture.
+
+## What is still not covered: fps
+
+**No freely licensed source found reports it.** Probed on 2026-08-07:
+
+| Source | fps | bitrate | codecs |
+|---|---|---|---|
+| `archive.org/details/BigBuckBunny_124` | no | no | no |
+| `archive.org/details/testmp3testfile` | no | no | `acodec` only |
+| `commons.wikimedia.org` — Caminandes, Big Buck Bunny, Sintel, Tears of Steel | **no** | yes | yes |
+
+Four Commons files and three archive.org items; **none carries `fps` on any format**. So the fps
+column is exercised by `derived_format_columns.json`, and `T-107`'s criterion was amended by the
+maintainer to *populated from a recorded fixture **where the source reports it***. `T-185` stays
+open as the record of this search, so the next person has somewhere to add a source rather than
+rediscovering that there wasn't one.
+
+`ai/TESTING.md` §5 wants sources that are freely licensed, unsigned and unlikely to change. A site
+that reports fps and churns weekly would satisfy the criterion's letter and break the property §5
+chose these sources for.
 
 **One platform.** Linux, `kirk`. The comparison is a property of the projection rather than of the
 window, so it is not expected to differ on Windows — but it has not been run there.

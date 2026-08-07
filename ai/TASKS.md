@@ -81,8 +81,9 @@ Phase 0 is formally exited (2026-07-26).
 ## In Review
 ### T-107 — The format table: every stream a probe found
 
-**Status:** **In Review — three High and four blocking Medium findings corrected 2026-08-07,
-awaiting re-review.** *Was blocked on Phase 2's exit and on `T-105`'s `docs/UX_SPEC.md`; both
+**Status:** **In Review — `T107-R1` and `T107-R3` corrected a second time 2026-08-07, awaiting
+re-review.** Five of the seven findings were resolved on the first correction; these two were not,
+and both re-corrections are recorded at the bottom of this entry. *Was blocked on Phase 2's exit and on `T-105`'s `docs/UX_SPEC.md`; both
 cleared, and `UX-007` ruled its surface.*
 
 **Two maintainer amendments were taken during the correction** (2026-08-07), both recorded here
@@ -122,7 +123,14 @@ class of defect `T-075` was.
 
 #### Acceptance criteria
 
-- Every column `REQ-003` names is present, populated from a recorded fixture, and asserted by value
+- Every column `REQ-003` names is present, and **populated from a recorded fixture by value where
+  the source reports it** (maintainer amendment, 2026-08-07, from `T107-R1`). `wikimedia_caminandes`
+  supplies codecs, bitrate and estimated sizes; archive.org supplies ids, extensions, resolutions,
+  exact sizes and one audio codec. **fps is reported by no freely licensed source found** — four
+  Wikimedia Commons files and three archive.org items, none with it — so it is exercised by a
+  derived fixture and `T-185` records the search. *(This read "populated from a recorded fixture"
+  unqualified, which is unmeetable for a field nothing reports; `T107-R1` is the finding that the
+  task claimed it anyway.)*
 - **The table matches `yt-dlp -F` for a fixture set** — Phase 3's own exit criterion, so this owns
   proving it rather than assuming it
 - Sorting is numeric where the value is numeric, asserted with a set that text-sorts differently
@@ -214,6 +222,44 @@ survives a different font.
 **`T107-R7` — an estimate no longer reads as a measurement.** `FormatInfo.filesize_is_estimate`
 carries the provenance `project_format` was collapsing, and the column renders `~44.8 MB`. Sorting
 is untouched: bytes either way.
+
+#### Second correction — `T107-R1` and `T107-R3`, 2026-08-07
+
+**`T107-R3` — the route existed only if you were already on the header.** `StrongFocus` plus an
+event filter made a *manually focused* header react; it did not create the route. `QTableView`
+consumes `Tab` for cell navigation, so focus never left the body, and `Space` sorted whatever the
+indicator already pointed at — there was no way to choose a column. **And my test injected the key
+event straight into the header**, which is the same bypass the reviewer named the first time, in a
+test written to answer that finding.
+
+- `setTabKeyNavigation(False)` so `Tab` leaves the view, and an explicit tab order so the header
+  follows the body.
+- `SortableHeader` — a `QHeaderView` subclass with a **current section** the arrow keys move,
+  `Space`/`Enter` sorting *that* column, and a focus rectangle painted on it. `QHeaderView` has no
+  current-section concept of its own, which is why an event filter could not supply one.
+  `NFR-005`: the section is announced through `accessibleDescription` as well as drawn.
+- **The tests send keys to `QApplication.focusWidget()`**, never to a widget by name. A route that
+  does not exist cannot be simulated into existing.
+- **Both mutants killed.** Restoring `setTabKeyNavigation(True)`: all three keyboard tests fail.
+  Sorting `sortIndicatorSection()` instead of the current section: the column-selection test fails.
+
+**`T107-R1` — a source was found for two of the three columns, and the third does not exist.**
+`wikimedia_caminandes` was added to `capture.py`: it reports `vcodec`, `acodec` and `tbr` per
+format, so **codecs and bitrate are now asserted by value from a recorded capture**. Its sizes are
+`filesize_approx`, so it exercises `T107-R7`'s estimate rendering against a real report too, and
+its `source` format carries an exact size and no bitrate — the contrast inside one capture.
+
+**fps is reported by nothing acceptable.** Four Wikimedia Commons files and three archive.org
+items, none with `fps` on any format; the probe table is in the evidence. The maintainer amended
+the criterion to *populated from a recorded fixture **where the source reports it***, and `T-185`
+stays **open** as the record of the search — it was briefly marked complete and reopened the same
+day, because closing a task whose criterion is unmet is the defect one level up from the one being
+fixed.
+
+**Everything the re-review found contradicting itself now agrees:** `T-185`'s status and
+acceptance, the module and test docstrings, and the two `STATUS.md` paragraphs — one of which said
+the criterion was met and the other that it was not. Both were true when written, hours apart,
+which is exactly how a status file comes to answer one question twice.
 
 #### What this found, and what it owes
 
@@ -2106,6 +2152,89 @@ exists after `T-175` and migration `0009`.
 
 ---
 
+### T-185 — Re-capture the fixtures so the format columns rest on a real report
+
+**Status:** **Proposed — narrowed 2026-08-07, and deliberately not closed.** Most of what this
+task was filed for happened inside `T-107`'s correction, on maintainer authorisation: the recorded
+fixtures are re-captured, `wikimedia_caminandes` was added because it reports the codec and bitrate
+columns archive.org does not, and the `yt-dlp -F` comparison is recorded in
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`. **Phase 3's exit criterion 1 is met.**
+
+**What remains is one column and one question: fps.** No freely licensed source found reports it —
+four Wikimedia Commons files and three archive.org items, none with `fps` on any format — so the
+column is exercised by a derived fixture and `T-107`'s criterion was amended to *where the source
+reports it*. This entry stays open as the place that search is recorded, so the next person to
+find a suitable source has somewhere to put it rather than rediscovering that there wasn't one.
+
+*(It briefly read "Complete — done inside `T-107`'s correction" on 2026-08-07 and was reopened the
+same day: the re-review found the work incomplete, and closing a task whose criterion was still
+unmet is the same defect one level up.)*
+**Owner:** Implementer
+**Priority:** **High for Phase 3's exit, low for anything running today.** No user-visible behaviour
+depends on it; one exit criterion does
+**Phase:** Phase 3
+**Depends on:** nothing. It needs the network and a deliberate act, not another task
+**Relevant context:** `SEC-002` (a fixture commits only the fields the projection reads),
+`tests/fixtures/capture.py` (run by hand, never by a test), `T-018`, `ai/TESTING.md` §5,
+`tests/fixtures/infodicts/derived_format_columns.json` (the stand-in this replaces the need for)
+**Affected surfaces:** `tests/fixtures/infodicts/*.json`, and `tests/ui/test_format_table.py` where
+it names the derived fixture. **No `src/`**
+**Risk:** Low to run, Medium to get wrong: a fixture is a **contract**, and a careless re-capture
+that widens what is committed is how data reaches the repository permanently (`REQ-026`, `NFR-007`)
+
+#### What is wrong
+
+`REQ-003` names fps, codecs and bitrate as columns. The recorded captures carry none of them,
+because `SEC-002` commits only the fields the projection reads and the projection did not read them
+until `T-107`. `T-107` therefore evidences four of its nine columns against
+`derived_format_columns.json` — **synthetic values in a real shape**.
+
+**A derived fixture cannot answer the question Phase 3's exit criterion 1 asks.** *"The format table
+matches `yt-dlp -F` output for a fixture set"* is a claim about agreeing with what yt-dlp actually
+reports; a fixture this project wrote agrees with itself. The criterion is **not met** and `T-107`
+does not claim it.
+
+#### Scope
+
+Re-run `python -m tests.fixtures.capture <name>` for the recorded info-dict fixtures, with the
+allowlist now carrying `fps` and `tbr` (`T-107` updated `CONSUMED_FORMAT` and
+`ALLOWED_FORMAT_KEYS`), so the committed captures carry what the projection reads.
+
+**Then compare the table against `yt-dlp -F` for those URLs** and record the comparison as the
+criterion's evidence — that is the part that makes this an exit-criterion task rather than a
+fixture refresh.
+
+#### Acceptance criteria
+
+**Everything below except the fps row is done, inside `T-107`.** They are kept rather than struck
+because this entry is the record of what the search covered.
+
+- **A source reporting `fps` is found and captured, or this task closes with the finding that
+  none of the acceptable ones do.** `ai/TESTING.md` §5's criteria are the constraint: public domain
+  or freely licensed, unsigned URLs, no reason to change. A source that churns teaches nothing when
+  it breaks, so a fixture that reports fps and changes weekly is not an improvement
+- Each recorded fixture is re-captured with its metadata regenerated: yt-dlp version, date, options
+- The committed files carry `fps`, `tbr`, `vcodec` and `acodec` **where the source reports them**,
+  and carry nothing else new — `tests/unit/test_fixtures.py`'s scanners stay clean
+- `tests/ui/test_format_table.py`'s recorded-fixture test asserts the four columns **by value**,
+  and its docstring stops saying they rest on a derived fixture
+- **The `yt-dlp -F` comparison is recorded** in `ai/evidence/`, naming the yt-dlp version and the
+  URLs, so Phase 3's exit criterion 1 has evidence rather than an assertion
+- A source that genuinely reports no fps for a format keeps the placeholder, and the test says so:
+  the criterion is that the table matches the report, not that every cell is full
+- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture and format-table
+  tests are clean
+
+#### Out of scope
+
+- Changing what the projection reads. `T-107` fixed that; this makes the fixtures catch up
+- New sources. `ai/TESTING.md` §5 chose boring, freely licensed ones deliberately, and a re-capture
+  is not the moment to reopen that
+- `derived_format_columns.json`. It keeps earning its place: `formats[4]` carries no fps, bitrate or
+  size at all, which is the placeholder path, and no recorded source is guaranteed to have one
+
+---
+
 ### T-180 — Two permitted instances share one thumbnail cache and sweep each other's pictures
 
 **Status:** Proposed — **filed out of `T179-R1`'s maintainer disposition, 2026-08-07.** The finding
@@ -2736,73 +2865,46 @@ Assert, on `windows-latest`:
 
 ## Complete
 
-### T-185 — Re-capture the fixtures so the format columns rest on a real report
+### T-187 — Remove the superseded no-Held source contract
 
-**Status:** **Complete — done inside `T-107`'s correction, 2026-08-07.** Filed the same day by
-`T-107`, which found the gap and could not close it without the maintainer authorising a network
-capture. That authorisation was given during the `T107-R1` correction, so the work happened there
-rather than here: both recorded fixtures are re-captured, the `yt-dlp -F` comparison is in
-`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md`, and **Phase 3's exit criterion 1 is met**.
-
-**Kept as an entry rather than deleted** because it is where the reasoning lives for *why* a
-re-capture was a deliberate act with its own task — and because the capture found a third stale
-fixture nobody had filed: the playlist's entries were empty objects predating `T-137`.
+**Status:** **Complete — 2026-08-07, awaiting review.** Taken inside `T-107`'s correction round
+rather than left standing: it is one comment, and a superseded rationale sitting in `main_window.py`
+while the spec above it says the opposite is exactly the drift `T105-R4` was about. Filed from
+non-blocking `T181-R2`; `T181-R1` corrected the
+row and `docs/UX_SPEC.md`, but `MainWindow.__init__` still teaches the opposite in a present-tense
+comment: that the stopped state exists only at queue level and the Held row was not built.
 **Owner:** Implementer
-**Priority:** **High for Phase 3's exit, low for anything running today.** No user-visible behaviour
-depends on it; one exit criterion does
-**Phase:** Phase 3
-**Depends on:** nothing. It needs the network and a deliberate act, not another task
-**Relevant context:** `SEC-002` (a fixture commits only the fields the projection reads),
-`tests/fixtures/capture.py` (run by hand, never by a test), `T-018`, `ai/TESTING.md` §5,
-`tests/fixtures/infodicts/derived_format_columns.json` (the stand-in this replaces the need for)
-**Affected surfaces:** `tests/fixtures/infodicts/*.json`, and `tests/ui/test_format_table.py` where
-it names the derived fixture. **No `src/`**
-**Risk:** Low to run, Medium to get wrong: a fixture is a **contract**, and a careless re-capture
-that widens what is committed is how data reaches the repository permanently (`REQ-026`, `NFR-007`)
-
-#### What is wrong
-
-`REQ-003` names fps, codecs and bitrate as columns. The recorded captures carry none of them,
-because `SEC-002` commits only the fields the projection reads and the projection did not read them
-until `T-107`. `T-107` therefore evidences four of its nine columns against
-`derived_format_columns.json` — **synthetic values in a real shape**.
-
-**A derived fixture cannot answer the question Phase 3's exit criterion 1 asks.** *"The format table
-matches `yt-dlp -F` output for a fixture set"* is a claim about agreeing with what yt-dlp actually
-reports; a fixture this project wrote agrees with itself. The criterion is **not met** and `T-107`
-does not claim it.
+**Priority:** Low — runtime behavior is correct; the residue can mislead the next change to the
+queue-state presentation
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `UX-006` item 3, `T181-R1`, `T124-R4`, `docs/UX_SPEC.md` §2 item 7 and §2.1
+**Affected surfaces:** the queue-gate explanation in `src/tracks_and_trails/ui/main_window.py` and
+a narrow sibling prose search. **No production logic or historical record**
+**Risk:** Low — preserve the distinction between one queue-level gate and its two presentations
 
 #### Scope
 
-Re-run `python -m tests.fixtures.capture <name>` for the recorded info-dict fixtures, with the
-allowlist now carrying `fps` and `tbr` (`T-107` updated `CONSUMED_FORMAT` and
-`ALLOWED_FORMAT_KEYS`), so the committed captures carry what the projection reads.
+Correct the live source comment beside `queueGateState`. The status line answers *why nothing is
+happening* for the window, while a waiting row answers *what this row is waiting for*; both read
+the same manager-owned gate and neither stores per-job hold state.
 
-**Then compare the table against `yt-dlp -F` for those URLs** and record the comparison as the
-criterion's evidence — that is the part that makes this an exit-criterion task rather than a
-fixture refresh.
+Audit current source comments and docstrings for the same superseded statement. Historical task
+and review records must remain historical rather than being rewritten.
 
 #### Acceptance criteria
 
-- Each recorded fixture is re-captured with its metadata regenerated: yt-dlp version, date, options
-- The committed files carry `fps`, `tbr`, `vcodec` and `acodec` **where the source reports them**,
-  and carry nothing else new — `tests/unit/test_fixtures.py`'s scanners stay clean
-- `tests/ui/test_format_table.py`'s recorded-fixture test asserts the four columns **by value**,
-  and its docstring stops saying they rest on a derived fixture
-- **The `yt-dlp -F` comparison is recorded** in `ai/evidence/`, naming the yt-dlp version and the
-  URLs, so Phase 3's exit criterion 1 has evidence rather than an assertion
-- A source that genuinely reports no fps for a format keeps the placeholder, and the test says so:
-  the criterion is that the table matches the report, not that every cell is full
-- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture and format-table
-  tests are clean
+- `MainWindow.__init__` no longer says the Held row is unbuilt or that the stopped state is shown
+  only at queue level
+- Current source comments and docstrings agree that queued and ready rows read `Held` while the
+  manager-owned queue gate is stopped
+- Runtime behavior is unchanged; `ruff check .` and `ruff format --check .` are clean
 
 #### Out of scope
 
-- Changing what the projection reads. `T-107` fixed that; this makes the fixtures catch up
-- New sources. `ai/TESTING.md` §5 chose boring, freely licensed ones deliberately, and a re-capture
-  is not the moment to reopen that
-- `derived_format_columns.json`. It keeps earning its place: `formats[4]` carries no fps, bitrate or
-  size at all, which is the placeholder path, and no recorded source is guaranteed to have one
+- Changing queue-gate behavior, row rendering, signal wiring or accepted decisions
+- Rewriting `ai/REVIEWS.md`, old task correction records or other historical explanations of the
+  first submission
 
 ---
 

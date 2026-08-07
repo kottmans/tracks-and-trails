@@ -357,12 +357,17 @@ class MainWindow(QMainWindow):
         #: cue, `NFR-005` forbids that being the only one, and a window where nothing happens and
         #: nothing explains why is the one state a user can reasonably read as broken.
         #:
-        #: **At queue level rather than on the rows.** `UX-001`'s distinction is that the gate is a
-        #: property of the queue and never of a job, and writing "Held" into per-row status text
-        #: would put a queue-level fact in as many places as there are jobs — the confusion that
-        #: decision exists to prevent. `docs/UX_SPEC.md` §2 item 7 does describe a waiting row
-        #: reading *Held*; it is not built, was not built before this task either, and `T-181`
-        #: records that rather than half-building it here.
+        #: **This and the row's `Held` answer different questions** (`T181-R1`, `T181-R2`). This
+        #: one is about the window — *why is nothing happening* — and `QueueModel._chip`'s `Held`
+        #: is about a row: *what is this one waiting for*. Both read the manager's gate; neither
+        #: stores a copy, so `UX-001`'s rule that the gate is a property of the queue and never of
+        #: a job is intact.
+        #:
+        #: *(This said the state was shown "at queue level rather than on the rows", that writing
+        #: `Held` on a row would put a queue-level fact in as many places as there are jobs, and
+        #: that the row was not built. All three were the rationale for departing from `UX-006`
+        #: item 3, which `T181-R1` found could not stand. The row was built; this comment outlived
+        #: the argument by one correction round, which is why `T181-R2` exists.)*
         self._gate = QLabel(self)
         self._gate.setObjectName("queueGateState")
         self._gate.setAccessibleName("Queue state")

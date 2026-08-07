@@ -11639,3 +11639,66 @@ is offered or reviewed again here.
 The reviewer appended this review record and filed the approved non-blocking T-186 follow-up only.
 No reviewed source, reviewed test, requirement, decision, implementation-plan entry, status state,
 commit, remote ref, migration, user database or CI state was changed.
+
+## 2026-08-07 — T-181 / T-107 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Original review base/head:** `1e0d0d5..dcdb2b5`
+**Correction head:** `fb3d274`
+**Focused correction diff:** `57cb469..fb3d274`; `e4ef4b6` is the preceding review record and
+`57cb469` is roadmap/planning work, neither re-reviewed here
+**Platforms verified:** Linux, Qt offscreen; Windows runtime not independently rerun
+**Verdict:** **T-181 Approved with follow-ups; T-107 Changes requested.** `T181-R1` is resolved:
+the Held row now follows the manager-owned gate in both directions and the UX spec agrees with the
+accepted decision. One stale source comment is non-blocking `T181-R2`, owned by `T-187`. Five of
+T-107's seven findings are resolved, but `T107-R1` still misses the task's recorded-column
+criterion and `T107-R3` still has no usable keyboard focus path.
+
+This is the ordinary focused correction re-review. The two surviving findings are High, so their
+correction and focused verification continue under the High/Critical rule in `AGENTS.md` §10; the
+Medium pass budget does not authorize approval while either remains.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Focused re-review result | Status |
+|---|---|---:|---|---|
+| `T181-R1` | **High** | **Yes** | `QueueModel._chip` renders `Held` for `QUEUED` and `READY` while the queue is stopped, and `queue_running` emits a data change that removes/restores it on Start/Stop. The focused row and composition tests pass, and `docs/UX_SPEC.md` §2.1 now agrees with `UX-006`. | **Resolved at `fb3d274`** |
+| `T181-R2` | **Low** | **No** | `MainWindow.__init__` still says the queue state is shown “at queue level rather than on the rows,” that writing Held on rows would be wrong, and that the Held row “is not built.” Runtime behavior is correct, but this present-tense source contract is the same superseded rationale the correction removed from the UX spec. | **Open — owner Implementer, target `T-187`** |
+| `T107-R1` | **High** | **Yes** | The authorized re-capture and recorded `yt-dlp -F` comparison establish agreement for the two selected URLs and caught two real rendering defects. They do **not** satisfy T-107's separate criterion that every named column be populated from a recorded fixture: the evidence says fps, bitrate and vcodec are unexercised, and the populated values for those columns still come from `derived_format_columns.json`. T-185's own acceptance required the recorded-fixture test to assert all four columns by value and stop saying they rest on the derived fixture; the module and test docstrings still say the opposite. `STATUS.md` also claims the phase criterion both met and unmet. | **Open** |
+| `T107-R2` | **High** | **Yes** | The maintainer amendment explicitly moves mounting to T-108 in both scope and acceptance. The wrapper now has a zero-margin layout and its shown-widget test proves the view fills a valid-sized wrapper. | **Resolved at `fb3d274`** |
+| `T107-R3` | **High** | **Yes** | `StrongFocus` and an event filter make a manually focused header react, but do not create the declared keyboard route. In a shown-widget probe, Tab from the body stayed on `QTableView` and merely moved the current cell; after manually focusing the header, Tab stayed on the header. Right did not select another section, and Space sorted the existing indicator section rather than the current/focused column. The new test repeats the original bypass by sending a `QKeyEvent` directly to `header` without first proving focus traversal. | **Open** |
+| `T107-R4` | **Medium** | **Yes** | `sort()` remaps persistent indexes by object identity, and `set_formats()` reapplies the stored sort. The selected-format and post-population regressions pass through the real table. | **Resolved at `fb3d274`** |
+| `T107-R5` | **Medium** | **Yes** | The allowance is now limited to `main_window.py`'s geometry keys. Independently inserting the exact `{"width": 1920}["width"]` mutant in `format_table.py` makes the boundary test fail on that module/key; the mutant was reverted. | **Resolved at `fb3d274`** |
+| `T107-R6` | **Medium** | **Yes** | The shown-table gate measures model reads at 100 and 800 rows. Independently removing `setResizeContentsPrecision(32)` makes it fail at **22,419 → 173,619** reads; the reviewed implementation passes and the mutant was reverted. | **Resolved at `fb3d274`** |
+| `T107-R7` | **Medium** | **Yes** | The projection preserves exact/approximate provenance, exact wins when both exist, an estimate renders with `~`, missing stays unknown, and sorting remains on bytes. The focused exact/estimate cases pass. | **Resolved at `fb3d274`** |
+
+### Required corrections
+
+- **`T107-R1`:** either provide recorded, licensed evidence that actually populates and asserts
+  every T-107 column, or obtain an explicit maintainer amendment to the every-column criterion.
+  Reconcile T-185's status/acceptance, the format-table module/test docstrings and both conflicting
+  `STATUS.md` paragraphs with that decision. The existing two-URL comparison may remain as valid,
+  bounded Phase 3 evidence; it must not be described as exercising the three columns it excludes.
+- **`T107-R3`:** test the route from the user's current focus, not by injecting into the target.
+  Tab must actually reach and leave the header, the keyboard must identify a column, and
+  Space/Enter must sort that identified column and reverse it on the next activation. A focused
+  section that the user cannot select is not a keyboard-operable header.
+- **`T181-R2`:** complete non-blocking `T-187`; it does not reopen T-181.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | The focused implementation correction is `57cb469..fb3d274` across 17 files. The separate roadmap commit was ignored as requested. `git diff --check`: **pass**. |
+| Focused suites | The combined model/adapter/fixture/add-dialog/format-table/queue/composition run produced **513 passed, 6 skipped**, plus one sandbox-denied loopback test; that isolated test passed with loopback permission. A post-mutation format-table/queue/composition rerun: **133 passed**. |
+| Keyboard probe | Tab from the body: focus remained `QTableView`; manual header focus succeeded but Tab did not leave it; Right left the resolution sort indicator unchanged; Space toggled resolution rather than the selected size column. |
+| Boundary mutant | Exact raw `width` subscript: expected failure naming `format_table.py: 'width'`; mutant reverted. |
+| Repaint mutant | Without the precision bound: expected failure at **22,419 / 173,619** reads; mutant reverted. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **191 files already formatted**; `python -m mypy src tests` and the Win32-platform variant: **success, 108 source files each**. The environment's `.venv/bin/mypy` launcher has a stale shebang, so the equivalent module invocation was used. |
+| Task placement | **14 passed** after filing T-187; task identity and placement rules remain clean. |
+| Submitted checks | The handoff reports **2242 passed, 11 skipped** and green CI at `fb3d274`; those full-suite/CI claims were not independently rerun. |
+
+The reviewer appended this focused re-review and filed the approved non-blocking T-187 follow-up.
+No reviewed source/test, roadmap, requirement, decision, implementation-plan entry, status state,
+commit, remote ref, migration, user database or CI state was changed. Temporary source mutations
+were reverted before reviewer bookkeeping.
