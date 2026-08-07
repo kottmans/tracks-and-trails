@@ -4435,7 +4435,12 @@ def test_a_manager_starts_stopped_and_runs_nothing_until_it_is_started(
 
     download = DownloadManager(repository, concurrency=2)
     try:
-        assert not download.is_running, "a freshly constructed manager was already running"
+        # Read into locals: mypy narrows a property across asserts, so asserting the opposite
+        # afterwards types the rest of the test as unreachable and stops it being a gate. The same
+        # idiom `test_the_composed_run_control_changes_the_real_manager` uses, and the one
+        # `ci.yml`'s typed-tests step exists to catch — it caught this.
+        constructed = download.is_running
+        assert not constructed, "a freshly constructed manager was already running"
 
         for job_id in ("job-1", "job-2"):
             download.start(job_id)
@@ -4456,7 +4461,8 @@ def test_a_manager_starts_stopped_and_runs_nothing_until_it_is_started(
         )
 
         download.start_queue()
-        assert download.is_running
+        started = download.is_running
+        assert started
         assert spin(lambda: len(download._sessions) == 2, timeout=60), (
             "Start did not run the jobs the stopped queue had parked"
         )

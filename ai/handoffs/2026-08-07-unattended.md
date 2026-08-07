@@ -76,13 +76,36 @@ treat this as the first pass rather than the last.
 |---|---|
 | Full suite, `--ignore=tests/network` | **2196 passed, 11 skipped** in 4m58s |
 | `ruff check .` / `ruff format --check .` | pass / all files formatted |
-| `mypy src` / `mypy --platform win32 src` | Success, 44 source files each |
+| `mypy` / `mypy --platform win32` (src **and** tests) | Success, 107 source files each — **after** CI caught that I had only run `mypy src`; see below |
 | Task placement | 14 passed |
 | `T-181` gate tests | 5 passed |
 | Mutants (gate) | `_start_when_free` alone: 5 pass · `start()` alone: 1 fail · **both: 2 fail** |
 | CI on `76fe48d` | green, all jobs (run `31191147925`) |
 
 ---
+
+## The gate I skipped, and CI caught it
+
+**I pushed red.** `ai/TESTING.md` §51-52 says a change that adds or edits a **test** file requires
+bare `mypy` and `mypy --platform win32`, not just `mypy src` — because `mypy src` does not read
+`tests/` at all. I ran `mypy src`, called the types clean, and pushed. Run `31200284439` failed
+`linux` and `windows desktop`, both on the same line:
+
+    tests/integration/test_manager.py:4460: error: Statement is unreachable  [unreachable]
+
+**And the defect is one this repository has already recorded twice.** `test_a_manager_starts_
+stopped_and_runs_nothing_until_it_is_started` asserted `not download.is_running`, then asserted
+`download.is_running` after Start; mypy narrows a property across asserts, so everything after the
+second assert typed as unreachable — the test stopped being a gate while still passing. The idiom
+that avoids it is *read the property into a local*, and it is documented in
+`test_the_composed_run_control_changes_the_real_manager`, which I **wrote in this same session**,
+and in `ci.yml`'s own step comment, which names this exact failure as the reason the step exists.
+Knowing the rule and not applying it one file over is the shape this project keeps finding.
+
+Fixed in `<follow-up commit>`; bare `mypy` and `mypy --platform win32` are clean over 107 files.
+
+**What I will do differently:** run bare `mypy` whenever a test file changes, which is what the
+table says and what I read past.
 
 ## A process failure worth recording
 
