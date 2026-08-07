@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-02
+**Last updated:** 2026-08-07
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -2040,6 +2040,13 @@ cancels it first, within the same 2-second budget `REQ-015` sets for cancel.
 a partial file has a defined meaning and per-job pause becomes coherent — at which point the
 `PAUSED` edges may be wanted back, and this entry is the record of why they were idle.
 
+> **Amended 2026-08-07 by `UX-006`.** The **default** changes; the **semantics** do not. The queue
+> no longer runs unless it has been started, so the gate this entry describes is closed at launch
+> rather than open. Everything above about *what closing it does* — drain the in-flight sessions,
+> start nothing new, create no partial file, never put a job in `PAUSED` — is carried forward
+> unchanged, which is why `UX-006` needed no new mechanism. Read `UX-006` for the default and this
+> entry for the drain.
+
 ---
 
 ## ARC-006 — The single-instance guard is a `QLocalServer` named from the resolved database path
@@ -3993,3 +4000,188 @@ type again.
 
 Whether a downloaded **file** should carry provenance — `T-171` owns that and it is not a
 prerequisite for any of the above.
+
+---
+
+## UX-006 — The queue does not run until it is started, and it is stopped at every launch
+
+**Status:** **Accepted** (2026-08-07) — maintainer decision, taken from the Implementer's
+recommendation
+**Date:** 2026-08-07
+**Supersedes:** nothing. **Amends** `UX-001` — its *default*, not its semantics — and `REQ-015`.
+Also amends `REQUIREMENTS.md` §11 criterion 1, whose casual-saver flow now has a `Start` in it.
+
+### Context
+
+A job starts the moment it is added, unless the user pressed `Pause queue` first. So the only way
+to review a batch before it runs is to have anticipated wanting to — and the cost of not
+anticipating scales with the batch: a playlist staged against the wrong preset is not one wrong
+download but sixteen, already spending bandwidth by the time the mistake is legible.
+
+**The mechanism for the alternative is already built.** `DownloadManager` holds a queue-level gate,
+and `T080-R1` established the two properties that make it usable as more than a panic button: a
+download added while the gate is closed is **parked and stays durably `QUEUED`** rather than
+refused, and a **probe is admitted anyway**, because reading is not the work pause exists to stop.
+What was missing was never machinery. It was the default.
+
+### Decision
+
+**The queue runs only after the user starts it.**
+
+1. **The gate is a mode with two states — running and stopped — and it is stopped at launch.**
+   `Start` opens it, `Stop` closes it.
+2. **A started queue stays started.** It runs what it holds and everything added afterwards, until
+   it is stopped or the application exits. Draining does not re-arm it: a queue that empties and
+   then receives a URL starts that URL.
+3. **Stopped is not refused.** Adding to a stopped queue enqueues durably and starts nothing; the
+   row reads **Held**, the word `UX-005` already gives a waiting row.
+4. **`Stop` drains, exactly as `UX-001` says.** In-flight sessions finish, nothing new starts, no
+   partial file is created by stopping, and no job ever enters `PAUSED`.
+5. **Probes are never gated** (`T080-R1`, unchanged). A stopped queue still resolves a paste — a
+   staging list that could show nothing would defeat the review this decision exists to enable.
+6. **The gate is queue-level and stays there.** No per-row `Start now`, no per-job hold. `P-10` and
+   `T-113` decide per-job control on resume's terms, later and separately.
+7. **Everything that starts work observes the gate**, including automatic retry (`UX-002`) and a
+   user's `Retry` on a failed row. A retry is a *new* session, not the continuation of a draining
+   one, so a stopped queue parks it.
+8. **The gate is not persisted, because it does not need to be.** It is stopped at every launch, so
+   there is no state to carry across one.
+
+### Rationale
+
+- **It is the review the user asked for, and nothing else changes.** Every alternative that
+  produces a checkable batch either invents a second queue state or a per-job hold; this one
+  changes which side of an existing gate the application starts on.
+- **A relaunch that downloads on its own is a defect this fixes in passing.** Today, restoring a
+  queue restores work in progress with no user action — including after a crash, and including
+  when the user's reason for relaunching is to remove something.
+- **Draining keeps `UX-001`'s best property.** Nothing the user presses produces a half-written
+  file, so Phase 3's resume work inherits no partial-file policy it did not choose.
+- **Mode rather than batch-commit, because the alternative is unexplainable.** If `Start` released
+  only what was queued at that instant, a URL added to a running queue would sit `Held` beside jobs
+  that are running, with the difference visible nowhere.
+
+### Consequences
+
+- `REQ-015` is amended and its superseded wording preserved in place; `REQUIREMENTS.md` §11
+  criterion 1 gains the `Start` press.
+- `docs/UX_SPEC.md` §2.1's `Pause queue` becomes a `Start`/`Stop` control, and §2 item 7's "there is
+  no per-job pause" is unchanged and now load-bearing for a second reason.
+- **The empty-queue and first-run states carry a new burden.** A user who pastes a URL, presses
+  *Add to queue* and waits will wait forever if `Start` is not obvious. `T-181` owns making the
+  stopped state legible — this is the risk the decision creates, not a detail of it.
+- **Automatic retry must be asserted against the gate**, not assumed to follow it. `UX-002`'s
+  backoff schedules work up to eight seconds out; the assertion is that a queue stopped in between
+  parks the attempt rather than running it.
+- `T-181` implements. Nothing else in Phase 3 depends on it.
+
+### Alternatives considered
+
+- **Batch commit, re-arming when the queue drains.** Rejected per the rationale: it is closest to
+  the literal request and produces a held row nobody can explain.
+- **A setting restoring start-on-add.** Rejected *for now* rather than on principle. It is the
+  compatibility escape, and it costs a second behaviour in every spec clause, test and support
+  answer for a preference nobody has yet expressed. It reopens if the stopped default proves
+  unwanted in use.
+- **A per-row `Start now`.** Rejected: it reopens `UX-001` and `P-10` ahead of `T-113`, and needs a
+  rule for what it means against the concurrency limit that neither this decision nor that task has
+  yet had to take.
+
+---
+
+## ARC-010 — Option coverage is typed fields plus one validated escape hatch
+
+**Status:** **Accepted** (2026-08-07) — maintainer decision, taken from the Implementer's
+recommendation
+**Date:** 2026-08-07
+**Supersedes:** nothing. **Extends** `REQ-009`'s escape-hatch pattern from format selectors to the
+rest of yt-dlp's option surface. **Constrains** `P-12` and `P-18` in `docs/UX_SPEC.md` §10, which
+asked the same question one option group at a time.
+
+### Context
+
+The product exists to be the GUI for yt-dlp (`REQUIREMENTS.md` §1), and yt-dlp exposes roughly 250
+options across sixteen groups. `DownloadRequest` can express eleven things; Phase 3 and Phase 4
+between them add perhaps fifteen more. Whole groups — video selection filters, download tuning,
+most of the filesystem group, thumbnails, extractor arguments, workarounds — have no representation
+at any layer, and no task proposes one.
+
+**Total flag parity is the wrong target and cannot be met honestly.** A large part of that surface
+*is* the command line rather than a capability: `--simulate`, `-O/--print`, `-j/--dump-json`,
+`-a/--batch-file`, the progress and quiet flags, `--config-locations`, `--alias`, `--newline`. This
+application is the caller — `ytdlp_adapter.build_options` already sets several of them for the
+worker to function at all — and exposing them would be exposing its own plumbing.
+
+### Decision
+
+**The target is capability parity: no download reachable from the command line is unreachable from
+this GUI.** It is met two ways, and both are required.
+
+1. **Typed fields for what users reach for.** Per option group, with a declared field on the model,
+   validation, and a test — the shape everything in `DownloadRequest` already has. The
+   option-coverage phase in `IMPLEMENTATION_PLAN.md` schedules them.
+2. **One escape hatch: *Additional yt-dlp options*,** per preset and overridable per job, taking
+   command-line syntax. This is what makes the parity claim true before every widget exists, and it
+   is the same trade `REQ-009` already took for format selectors — with the same justification,
+   that an expert reaching for syntax they already know is better served than blocked.
+3. **The hatch is parsed and validated, never passed through.** Three invariants bind it and none
+   is negotiable:
+   - **Containment** (`T-034`). Options that redirect where files land — `-P/--paths`, `-o`,
+     `--exec` — are subject to the same containment check as the output template, or the escape
+     hatch becomes the way to write outside the directory the user chose.
+   - **Redaction** (`DAT-003`, `DAT-004`). An option value can carry a secret. What the user types
+     here is *our* text under `DAT-004`'s provenance rule, and is redacted as such.
+   - **Typing** (`ARC-002`, `ARCHITECTURE.md` §8). It is one declared, validated member of
+     `DownloadRequest` — parsed into a checked structure at job-creation time, not an untyped dict
+     handed to `build_options`. A frozen, picklable, persisted request stays exactly that.
+4. **A refusal list exists, and refusals are stated at edit time with the reason** — never accepted
+   and silently dropped. The application owns `outtmpl`, `format`, `progress_hooks`, `logger`,
+   `quiet`, `paths` and the simulation flags; an option that would fight the GUI for control of its
+   own process is rejected where the user typed it (`UX-005` §5).
+5. **The hatch does not widen `REQ-EXCL`.** Options excluded on scope grounds are excluded here
+   too, by the same refusal list. `T-182` rules on which families those are.
+
+### Rationale
+
+- **A wrapper that cannot express what it wraps has a ceiling**, and the ceiling is where the user
+  goes back to the terminal — which is the outcome the product exists to prevent.
+- **Widgets alone never finish.** Two hundred options at one task each is not a backlog anybody
+  drains, and the options nobody built are exactly the long tail an expert needs.
+- **The hatch alone is not a GUI.** It would make every capability reachable and none discoverable,
+  which fails `REQUIREMENTS.md` §1's *approachable by default* half as completely as the current
+  state fails *complete when you dig*.
+- **Validation is what separates this from `--` passthrough.** Passthrough would make the security
+  and containment boundaries this project has already paid for optional at the user's typing.
+
+### Consequences
+
+- `REQ-030` and `REQ-031` state the coverage target and the hatch in the requirements.
+- **`P-12` is effectively answered and `P-18` is narrowed.** The five undedicated post-processing
+  options get typed fields (`P-12`: typed, not strings in `post_processors`), and the free-text
+  field `P-18` proposed refusing is granted at the *request* level with the validation above rather
+  than as a raw post-processor list. Both stay listed in §10 until `T-109`'s screen is specified
+  against them; this decision is what they are now specified against.
+- **`build_options` becomes the merge point of two sources**, and its precedence needs a rule:
+  typed fields are the request, the hatch may not override an application-owned key, and where both
+  name a user-owned key the typed field wins because it is the one with a visible control.
+- **The risk this creates is that the hatch becomes the roadmap.** An option typed into the free
+  field often enough is evidence for promoting it to a control; the phase's exit criteria name
+  promotion so it is work rather than good intentions.
+- **`requires_ffmpeg` widens.** It derives from the post-processor class hierarchy today, which is
+  the right mechanism and now has to run over processors the hatch installed.
+
+### Alternatives considered
+
+- **Typed widgets only.** Rejected: safest and most discoverable, and it leaves parity permanently
+  a phase away — the long tail is never worth one task each, so it never gets built.
+- **Escape hatch first, widgets later.** Rejected as a *sequence* while being adopted as a
+  capability: shipping the text field before the common options have controls makes the CLI the
+  real interface and the GUI a launcher for it.
+- **Raw `--` passthrough, unvalidated.** Rejected: it makes containment and redaction opt-in, and
+  those are the two boundaries whose breach `AGENTS.md` §10 puts in the Critical band.
+
+### Not decided here
+
+Which option families `REQ-EXCL` forbids, permits, or permits in a narrowed form — credentials,
+`--impersonate`, `--xff`, `--exec`, `--download-archive`. **`T-182` owns that ruling**, and no
+typed field or refusal-list entry for those families may be written until it is taken.

@@ -5,8 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
-**Last reviewed:** 2026-07-25
+**Last updated:** 2026-08-07
+**Last reviewed:** 2026-08-07
 **Update when:** Product scope, a feature, a user-facing constraint, or acceptance criteria change.
 **Does not contain:** Schema details, framework specifics, task lists, review history.
 
@@ -93,6 +93,15 @@ residue and blocks the first public release.
 - **REQ-013** — Run a bounded, user-configurable number of downloads concurrently (default 3, minimum 1).
 - **REQ-014** — Per job, show live progress: percent, downloaded/total size, speed, ETA, current stage (probing, downloading video, downloading audio, merging, post-processing).
 - **REQ-015** — Per job, support cancel, retry, and remove. Cancelling must terminate the underlying work promptly and must not leave the UI unresponsive. Removing takes a job out of the queue and never deletes a file from disk. **Pause and resume are queue-level, not per-job** (`UX-001`, maintainer, 2026-07-29): pausing lets in-flight downloads finish and starts nothing new, so no partial file is ever created by pausing. Remove never deletes a file; removing a running job cancels it first. *(This read "Per job, support cancel, pause, resume, retry, and remove" until `T-080`'s decision; `core/job_state.py` still carries `RUNNING → PAUSED → RUNNING` edges that nothing now reaches, which `T-080` owns. `UX-001` holds the rationale and its reopening condition — per-job pause becomes coherent when `REQ-017` lands resume in Phase 3.)*
+  - **The queue does not run until the user starts it** (`UX-006`, maintainer, 2026-08-07). Adding
+    a URL enqueues it and starts nothing; the user reviews the batch and presses **Start**. A
+    started queue keeps running — later additions start immediately — until **Stop**, which drains
+    exactly as above. **The queue is stopped at every launch**, so restoring a queue never resumes
+    downloading on its own. Everything that begins work observes the gate, including automatic
+    retry (`UX-002`) and a user's own *Retry*; **probing does not** — a stopped queue still resolves
+    a paste, or there would be nothing to review. *(Until 2026-08-07 a job started the moment it was
+    added unless the user had already pressed Pause. `UX-006` changes the default and keeps
+    `UX-001`'s drain semantics unchanged.)*
 - **REQ-016** — Support reordering pending jobs and clearing completed ones.
 - **REQ-017** — Resume partially completed downloads across restarts where the site and format allow it, and state clearly when resumption is not possible.
 - **REQ-018** — On failure, record the error, keep the job in the queue in a failed state, and offer retry. Never fail silently.
@@ -149,6 +158,25 @@ application is **not**, and the heading was the first place that read otherwise.
 
 - **REQ-029** — Installing and running Tracks & Trails must require **no Python installation, no virtual environment, and no developer toolchain** on the user's machine. The implementation language is not a user-facing prerequisite (`REL-001`).
 
+### Option coverage
+
+*(Added 2026-08-07, maintainer direction. `ARC-010` holds the reasoning and the boundaries.)*
+
+- **REQ-030** — **Capability parity with yt-dlp: no download reachable from the command line may be
+  unreachable from this GUI.** The target is capability, not flag count. Options that *are* the
+  command line rather than a capability — simulation, printing and JSON dumping, batch files,
+  progress and quiet formatting, config locations and aliases — are the application's own plumbing
+  and are deliberately not exposed. Everything else is either a typed control or reachable through
+  `REQ-031`.
+- **REQ-031** — Provide an **additional yt-dlp options** field, per preset and overridable per job,
+  taking command-line syntax — the escape hatch `REQ-009` already establishes for format selectors,
+  widened to the rest of the option surface. It is **parsed and validated, never passed through**:
+  path-redirecting options are subject to the same containment check as the output template, values
+  are redacted in logs like any other value this application supplies, and the parsed result is a
+  declared field of the download request rather than an untyped dictionary. An option the
+  application owns, or one `REQ-EXCL` forbids, is **refused where the user typed it, with the
+  reason** — never accepted and silently dropped.
+
 ### Cross-cutting behavior
 
 - **REQ-027** — The interface must remain responsive during all downloading and probing work. No operation blocks the UI thread.
@@ -184,11 +212,18 @@ Plus, from `REQ-010`, the audio-extraction and remux subset only.
 Deferred but intended: `REQ-004` (playlist entry selection), `REQ-007` (user presets),
 `REQ-010` in full (thumbnails, metadata, chapters, subtitles), `REQ-016` (reordering),
 `REQ-017` (cross-restart resume), `REQ-022` (duplicate detection), `REQ-025` (in-app yt-dlp
-update), `REQ-026` (cookies/auth).
+update), `REQ-026` (cookies/auth), and `REQ-030`/`REQ-031` (option coverage and its escape hatch),
+which have a phase of their own between Phase 4 and Distribution.
 
 Ideas not yet committed: scheduled/deferred downloads, per-site profiles, watch-folder or
 URL-file import, browser extension "send to Tracks & Trails", SponsorBlock integration,
 music-library organization and tagging, download bandwidth scheduling.
+
+**SponsorBlock is listed above and `REQ-030` reaches it**, which is a conflict rather than an
+oversight: yt-dlp's SponsorBlock options query a third-party API, and `NFR-007` permits outbound
+traffic only for downloads the user requested and explicit yt-dlp update checks. Capability parity
+does not silently buy a new network destination. **`T-182` owns the ruling**, with the other option
+families that touch `REQ-EXCL` and the privacy requirement.
 
 ## 8. Explicit exclusions (`REQ-EXCL`)
 
@@ -222,7 +257,7 @@ system default application).
 
 The MVP is accepted when, **on both Linux and Windows**:
 
-1. A user with no yt-dlp knowledge can paste a URL, accept the default preset, and get a playable file in the configured directory.
+1. A user with no yt-dlp knowledge can paste a URL, accept the default preset, **press Start**, and get a playable file in the configured directory. *(The `Start` press was added 2026-08-07 by `UX-006`: the queue no longer runs until it is started, so a criterion that omitted it would be satisfied by a build that downloads nothing.)*
 2. The format table for a probed URL matches what `yt-dlp -F` reports for the same URL.
 3. Three downloads run concurrently with independent, accurate live progress, and the UI stays interactive throughout.
 4. Cancelling a running download stops it within 2 seconds, leaves no orphaned process, and leaves no partial file presented as complete.

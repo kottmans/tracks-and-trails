@@ -7,7 +7,8 @@ ruling and are listed together in §10.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active — created 2026-08-06 for `T-105`, at the start of Phase 3
-**Last updated:** 2026-08-06
+**Last updated:** 2026-08-07 — `UX-006` (the queue is stopped until started) and `ARC-010`
+(option coverage), which between them amend §2, §2.1, §6 and two §10 rows
 **Update when:** A surface changes, a `UX-` entry is accepted or amended, or a §10 question is ruled on.
 **Does not contain:** Why a decision was made (`ai/DECISIONS.md`), what must be tested
 (`ai/TESTING.md`), the visual palette (`ARCHITECTURE.md` §8), or Phase 4's settings dialog
@@ -70,7 +71,10 @@ recorded as maintainer rulings that no maintainer had made.
 6. **The per-row format control appears only while `retarget()` would accept it**; it is plain text
    once a download starts.
 7. **There is no per-job pause.** `pause()` is queue-wide, in-flight sessions finish, and a waiting
-   row reads **Held**, never *Paused*.
+   row reads **Held**, never *Paused*. **[T]** `UX-006` (2026-08-07) makes that gate the queue's
+   normal resting state rather than an interruption: a queue is **stopped until started**, so a row
+   added to one reads **Held** from the moment it is enqueued. The word does not change and neither
+   does the drain; what changes is which side of the gate the window opens on.
 8. **A finished download stays in the Queue tab** with *Open* and *Show in folder* until
    *Clear finished* moves it on.
 9. ~~**History removal is selection-scoped**, its verb names its own count, and *"files are never
@@ -80,9 +84,22 @@ recorded as maintainer rulings that no maintainer had made.
 
 ### 2.1 The toolbar
 
-**[T]** `UX-005` (2026-08-04 amendment) and `DAT-005` (2026-08-05 amendment).
-`+ Add URLs` first, as the primary action; `Pause queue`; `Clear finished`; and the
-`Concurrent downloads` control that `ARC-007` put there until Phase 4's settings dialog replaces it.
+**[T]** `UX-005` (2026-08-04 amendment), `DAT-005` (2026-08-05 amendment) and `UX-006`
+(2026-08-07). `+ Add URLs` first, as the primary action; the **run control**; `Clear finished`; and
+the `Concurrent downloads` control that `ARC-007` put there until Phase 4's settings dialog
+replaces it.
+
+**[T]** **The run control is one control with two states, and the queue opens stopped** (`UX-006`).
+It reads `Start` while the queue is stopped and `Stop` while it is running — the same single
+checkable action `Pause queue` already was, renamed to what it now governs. *(It read `Pause queue`
+until 2026-08-07, when the queue stopped running by default and "pause" became the wrong word for
+the state a window opens in.)*
+
+**[D]** **A stopped queue holding work says so where the work is.** Derived from `UX-005` §5 —
+nothing is drawn that would be refused, and its converse, that a state which blocks a user's
+expectation is stated — plus `NFR-005`'s rule against colour alone. A queue that shows `Held` rows
+and nothing else is the one state in which a user can reasonably conclude the application is
+broken. **`T-181` decides the treatment**; that there *is* one is not open.
 
 **`Clear history` left the toolbar with the list it emptied** (2026-08-06), and nothing replaced it:
 `REQ-020` was withdrawn the same day, so there is nothing anywhere to clear. `Clear finished` stays
@@ -258,6 +275,12 @@ would be typed, checkable and visible to `PRESET_OWNED_FIELDS`'s drift test, at 
 a model Phase 1 froze. This file does not decide it, and flags that a UI cannot be specified past
 it: five checkboxes and one free list are different screens.
 
+> **[T]** **Answered 2026-08-07 by `ARC-010`: typed.** The five get fields of their own, and the
+> model widens. The decision took the question one level up — every option group faces it, not just
+> post-processing — and ruled that a user-facing option is a typed, validated field, with one
+> validated **escape hatch** (`REQ-031`) carrying what has no field yet. This clause stays because
+> `T-109`'s screen has not been specified against the ruling yet; the question behind it is closed.
+
 - **[P-3]** The editor is reachable **two ways**: as *"Options…"* on the format control, editing a
   one-off choice for this download only; and from the preset manager (§8), editing a saved preset.
   The same widget in both, with a different title and a different save action.
@@ -283,6 +306,13 @@ itself unspecified.
 **[P-18]** Both, and the first interacts with `P-12`: refusing a free-text post-processor field
 while `Preset.post_processors` is a list of strings means the model can express what the UI will
 not, which is an argument for typing those five options rather than a separate choice.
+
+> **[T]** **Narrowed 2026-08-07 by `ARC-010`.** A free field exists, and it is not this one: the
+> escape hatch is *additional yt-dlp options* on the **request** (`REQ-031`), parsed and validated
+> against containment, redaction and the application's own option keys — not a raw list of
+> post-processor names handed to `build_options`. So the refusal this clause proposed stands for the
+> post-processor list, and the capability it was refusing is reachable through a checked route.
+> Per-entry post-processing is untouched and still `T-110`'s question.
 
 - **No arbitrary yt-dlp post-processor list.** `REQ-010` names seven; a free-text field would be an
   unbounded surface with no way to say what it will do.
@@ -479,13 +509,13 @@ one pass rather than eleven, and so a task cannot mistake a proposal for a decis
 | P-9 | Does the template editor list supported fields inline? | §9.1 | Scope of `T-112` |
 | P-10 | **Does `REQ-017` reopen per-job pause?** `UX-001` names this as its reopening condition | §9.2 | **Reopens `UX-001` and `T-080`.** Also decides `Pause all` on a group, deferred by `T140-R5` |
 | P-11 | ~~Does the duplicate warning name the date?~~ **Withdrawn 2026-08-06** — nothing records a date | §9.3 | — |
-| P-12 | **Do remux, recode, embed-thumbnail, embed-metadata and embed-chapters get typed fields on `Preset`**, or stay strings in `post_processors`? | §6 | **Widens a Phase 1 model.** Five checkboxes and one free-text list are different screens, so `T-109` cannot be specified past it |
+| P-12 | ~~**Do remux, recode, embed-thumbnail, embed-metadata and embed-chapters get typed fields on `Preset`**, or stay strings in `post_processors`?~~ **Ruled 2026-08-07 — typed** (`ARC-010`) | §6 | The model widens, as this said it would. `T-109`'s screen is now specified *against* the ruling rather than blocked by the question |
 | P-13 | When ffmpeg is absent, is the merge mode hidden, shown-and-refused, or the table drawn without it? | §5 | `UX-005` §5 requires *some* treatment, not this one |
 | P-14 | Does the format table refuse re-probe, download-from-table, and filtering? | §4, §12 | Scope of `T-107` |
 | P-15 | Does merging refuse three-way, external audio and automatic pairing? | §5, §12 | Scope of `T-108` |
 | P-16 | **Do `T-109` and `T-111` share one screen?** The data boundary does not decide it | §6 | **Decides whether `T-109` has a screen of its own at all** |
 | P-17 | Is the subtitle language control a multi-select? | §6 | `SUBTITLE_LANGUAGES` is `("all",)` today, so the set is unspecified too |
-| P-18 | Does the editor refuse a free post-processor field and per-entry post-processing? | §6, §12 | Interacts with `P-12`: the model can express what the UI would refuse |
+| P-18 | Does the editor refuse a free post-processor field and per-entry post-processing? **Half-ruled 2026-08-07** (`ARC-010`) | §6, §12 | The post-processor list stays refused; the capability is reachable through `REQ-031`'s validated field. Per-entry post-processing is still open, under `T-110` |
 | P-19 | Is the playlist picker the staging row opened, or a dialog? | §7 | Not entailed by `UX-005` §3, which is about the two tabs |
 | P-20 | Is the preset manager a list beside a form, with buttons rather than a menu? | §8 | `T118-R5` forbids dropping a control, not this layout |
 | P-21 | Do presets refuse import/export and per-site rules? | §8, §12 | Scope of `T-111` |
@@ -504,10 +534,15 @@ found that several real choices had been presented as *derived* and that every r
 — so the first count was not a measure of how much was open, it was a measure of how much had been
 marked. Nothing was added to the design; the marks caught up with it.
 
-**Four decide more than a layout:**
+**Four decide more than a layout, and one of the four has since been ruled on:**
 
 - **`P-10`** reopens `UX-001` and `T-080` by design, and is the phase's highest uncertainty (`T-113`).
+  *(`UX-006` did **not** answer it. That decision moved the queue-level gate's default; per-job
+  control is untouched and still arrives with resume.)*
 - **`P-12`** widens a model frozen since Phase 1, and decides what `T-109`'s screen contains.
+  **Ruled 2026-08-07 by `ARC-010`: typed, and the model widens.** It was ruled from above rather
+  than answered in place — every option group faces the same question, and `REQ-030`/`REQ-031` are
+  the general answer.
 - **`P-16`** decides whether `T-109` has a screen of its own at all.
 - **`P-22`** is an accessibility trade-off rather than a preference, and `NFR-005` does not settle it.
 
