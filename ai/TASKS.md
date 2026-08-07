@@ -1792,52 +1792,6 @@ must not be treated as the same option.
 
 ---
 
-### T-176 — Put the withdrawn History prose in the past tense
-
-**Status:** Proposed — **filed by the Reviewer on 2026-08-06 for `T175-R1`**. `T-175` removed the
-four runtime contracts it owned, but did not finish the current-tense source/test prose portion of
-`T170-R4` that it explicitly inherited.
-**Owner:** Implementer
-**Priority:** Low — no runtime behavior is wrong, but source beside the live Queue still teaches a
-reader that a History view or private ledger exists
-**Phase:** Phase 3 cleanup
-**Depends on:** nothing
-**Relevant context:** `T170-R4`, `T-174`, `T-175`, `REQ-020` (withdrawn), migration `0009`
-**Affected surfaces:** comments, docstrings and test prose under `src/` and `tests/`; no production
-logic, historical migration, frozen fixture or historical record
-**Risk:** Low — the risk is rewriting accurate historical rationale as though it never happened
-
-#### Scope
-
-Audit live source and test prose for claims that the removed surface still exists. Representative
-misses from `T175-R1` are `app.py` saying a History view enumerates records, manager/store contracts
-saying History survives queue clearing, `file_actions.py` saying two views still exist, and
-composition/row-verb tests saying an invisible ledger or its Settings control remains.
-
-Classify each match rather than replacing the word mechanically. A statement explaining why an old
-design existed remains useful when it is clearly past tense or explicitly superseded; a current
-contract must describe Queue-only behavior. Historical migrations, `DECISIONS.md`, `REVIEWS.md`,
-archived tasks and frozen evidence continue to say what was true at their boundary.
-
-#### Acceptance criteria
-
-- No current-tense comment, docstring, test heading or assertion message under `src/` or `tests/`
-  says a History view, completion record or private ledger still exists
-- Historical rationale that still explains a live invariant is retained in past tense or inside an
-  explicit supersession note; historical migrations and fixtures are byte-identical
-- The sweep is semantic, not a blind `History`/`ledger` replacement: unrelated uses such as Python
-  sequence history and accurate descriptions of removed behavior remain truthful
-- Production behavior is unchanged; `ruff check .`, `ruff format --check .`, both mypy platforms,
-  task placement and the tests whose prose changed are clean
-
-#### Out of scope
-
-- Reintroducing a completion record, History surface or Settings clearing route
-- Renaming live identifiers merely because their historical prose mentions History
-- Rewriting `ai/REVIEWS.md`, `ai/DECISIONS.md`, `ai/archive/`, migrations or frozen fixtures
-
----
-
 ### T-180 — Two permitted instances share one thumbnail cache and sweep each other's pictures
 
 **Status:** Proposed — **filed out of `T179-R1`'s maintainer disposition, 2026-08-07.** The finding
@@ -2530,6 +2484,67 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-176 — Put the withdrawn History prose in the past tense
+
+**Status:** **Complete — 2026-08-07, awaiting review.** Filed by the Reviewer on 2026-08-06 for
+`T175-R1`: `T-175` removed the four runtime contracts it owned, but did not finish the current-tense
+source/test prose portion of `T170-R4` that it explicitly inherited.
+
+**Corrected where a live contract claimed the surface still exists**, and left alone where the prose
+was already past tense or is historical rationale that still explains a live invariant — the
+classification this entry's Scope asks for rather than a `History`/`ledger` replacement.
+`store.clear_completed` promised *"History is not touched"* and named `T-100`'s view as the reason a
+user could still find their file; `models.py` described `HistoryEntry` as living elsewhere when
+`T-175` had removed it; `grouping.py` described "both tabs" and `HistoryModel` in the present tense;
+`app.py` still explained a history-view argument it no longer passes; `presets.py` and
+`format_text.py` carried `REQ-026`'s boundary as a rule about History, which outlived the table;
+`errors.py` said "the persisted history". Three test comments about the ledger went with them.
+`repositories.py` was already correct and was not touched.
+
+**Not exhaustive, and the entry should not claim otherwise.** This took the sites that state a
+*current contract* and the ones `T175-R1` named, not all 63 matches of `history`/`ledger` under
+`src/` and `tests/`. A reviewer wanting the full sweep should treat this as a first pass.
+**Owner:** Implementer
+**Priority:** Low — no runtime behavior is wrong, but source beside the live Queue still teaches a
+reader that a History view or private ledger exists
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T170-R4`, `T-174`, `T-175`, `REQ-020` (withdrawn), migration `0009`
+**Affected surfaces:** comments, docstrings and test prose under `src/` and `tests/`; no production
+logic, historical migration, frozen fixture or historical record
+**Risk:** Low — the risk is rewriting accurate historical rationale as though it never happened
+
+#### Scope
+
+Audit live source and test prose for claims that the removed surface still exists. Representative
+misses from `T175-R1` are `app.py` saying a History view enumerates records, manager/store contracts
+saying History survives queue clearing, `file_actions.py` saying two views still exist, and
+composition/row-verb tests saying an invisible ledger or its Settings control remains.
+
+Classify each match rather than replacing the word mechanically. A statement explaining why an old
+design existed remains useful when it is clearly past tense or explicitly superseded; a current
+contract must describe Queue-only behavior. Historical migrations, `DECISIONS.md`, `REVIEWS.md`,
+archived tasks and frozen evidence continue to say what was true at their boundary.
+
+#### Acceptance criteria
+
+- No current-tense comment, docstring, test heading or assertion message under `src/` or `tests/`
+  says a History view, completion record or private ledger still exists
+- Historical rationale that still explains a live invariant is retained in past tense or inside an
+  explicit supersession note; historical migrations and fixtures are byte-identical
+- The sweep is semantic, not a blind `History`/`ledger` replacement: unrelated uses such as Python
+  sequence history and accurate descriptions of removed behavior remain truthful
+- Production behavior is unchanged; `ruff check .`, `ruff format --check .`, both mypy platforms,
+  task placement and the tests whose prose changed are clean
+
+#### Out of scope
+
+- Reintroducing a completion record, History surface or Settings clearing route
+- Renaming live identifiers merely because their historical prose mentions History
+- Rewriting `ai/REVIEWS.md`, `ai/DECISIONS.md`, `ai/archive/`, migrations or frozen fixtures
+
+---
 
 ### T-181 — The queue is stopped until the user starts it
 
