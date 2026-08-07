@@ -1293,8 +1293,9 @@ proposes.
 **Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
 **Phase:** Phase 3
 **Depends on:** `T-105` (the UX spec), Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **`P-1` — where the
-table opens from — and `P-14`'s refusals are unruled**), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
+**Relevant context:** `docs/UX_SPEC.md` §4 (columns, sorting, keyboard path; **ruled 2026-08-07 by
+`UX-007`** — the table opens as the **staging row, expanded**, not a modal (`P-1`, ruled against the
+spec's own proposal), and `P-14`'s three refusals stand), `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
 `downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
 **Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
 `ui/`
@@ -1402,8 +1403,11 @@ not.)*
 **Priority:** High — the largest single item in the phase
 **Phase:** Phase 3
 **Depends on:** `T-105`; `T-108` for the ffmpeg-presence rule it shares
-**Relevant context:** `docs/UX_SPEC.md` §6 (**`P-16` decides whether this shares `T-111`'s screen
-or has its own — unruled, so the out-of-scope line below is engineering scope, not a UI ruling**;
+**Relevant context:** `docs/UX_SPEC.md` §6 (**ruled 2026-08-07 by `UX-007`**: this **shares one
+screen** with `T-111`, reached as a per-download *Options…* and from the preset manager (`P-16`,
+`P-3`), a one-off never becomes a preset silently (`P-4`), and subtitle languages are a multi-select
+**populated from the probe's own languages** — which makes the list's source this task's to build
+(`P-17`). The out-of-scope line below is engineering scope, not a UI ruling.
 **`P-12` is ruled** as of 2026-08-07 — `ARC-010` says the five undedicated options get **typed
 fields** and the model widens, so this task no longer waits on it and no longer chooses), `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
 produced a file), `T-076`, `T-089`, `downloader/ytdlp_adapter.py`
@@ -1458,8 +1462,9 @@ on a guess, because `docs/UX_SPEC.md` may draw the line differently.
 **Priority:** High — it changes what a *job* is, which reaches `core/`
 **Phase:** Phase 3
 **Depends on:** `T-105`
-**Relevant context:** `docs/UX_SPEC.md` §7 (**`P-19` decides the container and `P-5` the checkbox
-model — both unruled**; the criteria below are `REQ-004`'s and hold whichever way they go), `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
+**Relevant context:** `docs/UX_SPEC.md` §7 (**ruled 2026-08-07 by `UX-007`**: the picker is the
+**staging row, opened** (`P-19`, the same mechanism `P-1` gives the format table), entries carry
+**checkboxes** with a tri-state group header (`P-5`), and filtering stays refused (`P-25`)), `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
 `persistence/repositories.py` (`append` allocates positions in one transaction), `T-078`
 **Affected surfaces:** `core/models.py`, `downloader/ytdlp_adapter.py`, `ui/add_dialog.py`,
 `persistence/`
@@ -1503,7 +1508,10 @@ playlist is a long extraction, and the dialog has to stay responsive and cancell
 **Depends on:** `T-105`; `T-109` for the option set a preset can carry
 **Relevant context:** `docs/UX_SPEC.md` §8 (**where presets persist is already decided** — TOML at
 `settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5; no new store, no migration owed. `P-20`,
-the manager's layout, is unruled), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
+the manager's layout, is **ruled 2026-08-07** by `UX-007`: **one list** holding built-ins and user
+presets together with built-ins marked (`P-6`), **a list beside a form with buttons** rather than a
+menu (`P-20`), **always exactly one default** so a paste always has something to inherit (`P-7`),
+and import/export and per-site rules refused (`P-21`)), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
 `to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
 **Affected surfaces:** `core/presets.py`, `core/settings.py`, `ui/`
 **Risk:** Medium — user presets are persisted state with a name-collision problem
@@ -1546,9 +1554,12 @@ not what an implementer opens.)*
 **Phase:** Phase 3
 **Depends on:** `T-105`
 **Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function; **`P-22`, the
-preview's focus and announcement policy, is unruled**, and **`P-23` — whether a containment failure
-is refused at edit time or at commit — is unruled with it**; one ruling covers both, and until it is
-taken this task chooses neither. *(This read "`P-23` is this task's own report-as-you-type
+preview's focus and announcement policy, is **ruled 2026-08-07** by `UX-007`: a **focusable
+read-only field**, a second stop in the tab order, ruled against this file's own proposal of an
+unfocusable live region — a user who cannot `Tab` to the preview cannot review it at their own pace.
+**`P-23` is ruled with it: a containment failure is shown at edit time, with the reason.** `P-9` too
+— the editor **lists its supported fields inline** beside the input. *(This read "`P-23` is this
+task's own report-as-you-type
 criterion", which is the unratified timing stated as task truth three lines above the criterion that
 says it is unruled — `T105-R4`, second correction.)*), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
 atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
@@ -1575,13 +1586,11 @@ must not reimplement any of it.
   including titles with characters illegal on Windows
 - **Path containment holds**: no rendered template escapes the output directory — asserted with
   `..`, absolute paths, and a template that resolves to one
-- **An invalid template never reaches a download.** *Where* the refusal is surfaced — as the user
-  types, or at commit — is `P-23` and is **unruled**, so this task cannot be started against either
-  timing until it is (`T105-R4`). Naming the containment rule is enough for the criterion; naming
-  the moment is the product choice nobody has made. *(This read "reported as the user types, not at
-  download time", which is `P-23`'s proposal stated as a requirement — the task would have
-  satisfied its own acceptance criteria with an unratified choice, which is what merely flagging
-  the contradiction in the context field did not prevent.)*
+- **An invalid template never reaches a download**, and the refusal is shown **at edit time, with
+  the reason** (`P-23`, ruled 2026-08-07 by `UX-007`). *(This required report-as-you-type before the
+  ruling, which was `P-23`'s proposal stated as a requirement; `T105-R4` took it out, and the ruling
+  puts the same behaviour back as a decision rather than an assumption. The distinction is not
+  pedantry — for three weeks the criterion and the context field said opposite things.)*
 - Long paths behave per `T-067`'s finding, which is that the default configuration is the case
   to test
 
@@ -1598,7 +1607,13 @@ must not reimplement any of it.
 **Priority:** Medium — and the highest *uncertainty* in the phase
 **Phase:** Phase 3
 **Depends on:** Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §9.2 (**`P-10` reopens `UX-001`'s per-job pause** — the
+**Relevant context:** `docs/UX_SPEC.md` §9.2 (**`P-10` is ruled 2026-08-07 by `UX-007`, and the
+ruling is that *this task decides it*** — whether per-job pause returns, whether `JobStatus.PAUSED`
+comes back, and whether a playlist header gets `Pause all` (`T140-R5`). It depends on what resume
+actually costs per site and format, which is what this task exists to find out, and **the answer
+must be recorded as a decision either way**. `P-24` is ruled outright: a non-resumable job **says so
+on its row** and offers *start again* as its own verb. The older note follows — **`P-10` reopens
+`UX-001`'s per-job pause** — the
 last criterion below is that same question, and answering one answers both), `REQ-017`, `UX-001` (this is its named reopening condition) **as amended by
 `UX-006`** — the queue-level gate is now *stopped until started*, which changes the default this
 task reopens against and changes nothing about per-job pause, `T-080`
@@ -1655,8 +1670,9 @@ record contract. Both are withdrawn, and a dependency on a withdrawn contract is
 rebuilds it. `T169-R4` caught this entry still directing an implementer to a ledger that no longer
 exists.)*
 **Relevant context:** `docs/UX_SPEC.md` §9.3 (**`P-26`, whether the warning is a staging-row state
-rather than a modal, is unruled** — this task may not pick either until it is ruled, `T105-R4`;
-`P-27`, whether ordinary *Add to queue* is the override, is unruled with it), `REQ-022`,
+rather than a modal, is **ruled 2026-08-07** by `UX-007`: **a staging-row state**. `P-27` is ruled
+with it — **ordinary *Add to queue* is the override**, and the count includes the duplicates, because
+`REQ-022` says a duplicate is confirmed rather than discouraged. `P-28`'s refusals stand), `REQ-022`,
 `ui/add_dialog.py`'s staging list, `DAT-002`'s collision policy for what happens beyond the queue
 **Affected surfaces:** `ui/add_dialog.py`. **Not `persistence/`** — this task stores nothing and
 adds no table, column or index
@@ -1676,10 +1692,10 @@ offered which would be refused cuts both ways.
 
 #### Acceptance criteria
 
-- A URL that matches a **job already in the queue** is **said before enqueueing**. Whether it is
-  said in the staging row's own state or in a modal is `P-26` and is unruled — the criterion is
-  that the user is told in time to act, not which surface tells them (`T105-R4`). *(This required
-  "the row's own state rather than a modal", which is `P-26`'s proposal as a requirement.)*
+- A URL that matches a **job already in the queue** is said **in the staging row's own state**,
+  before enqueueing, never in a modal (`P-26`, ruled 2026-08-07 by `UX-007`). *(`T105-R4` took this
+  requirement out while `P-26` was open, because it was the proposal stated as fact; the ruling puts
+  it back as a decision.)*
 - A URL repeated **within one paste** is marked the same way — the second occurrence, not the first
 - **Confirming enqueues it**, asserted on the stored queue: the duplicate is added, not skipped
 - A URL matching nothing enqueues with no prompt at all — the silent case, which an over-eager

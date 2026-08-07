@@ -2,13 +2,14 @@
 
 **Purpose:** What each surface shows, what it offers, and how a keyboard reaches it.
 **Authority:** Canonical for the **built** surfaces below, which it absorbs from the `UX-` entries at
-`DOC-002`'s trigger. **Not** authoritative for anything marked *Proposed* — those await a maintainer
-ruling and are listed together in §10.
+`DOC-002`'s trigger. **Nothing is marked *Proposed* any more** — `UX-007` ruled all twenty-five on
+2026-08-07, and §10 is now the record of what was asked and answered rather than a list of what is
+open.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active — created 2026-08-06 for `T-105`, at the start of Phase 3
-**Last updated:** 2026-08-07 — `UX-006` (the queue is stopped until started) and `ARC-010`
-(option coverage), which between them amend §2, §2.1, §6 and two §10 rows
+**Last updated:** 2026-08-07 — `UX-007` ruled every open `[P]` clause; before it, `UX-006` (the
+queue is stopped until started) and `ARC-010` (option coverage) amended §2, §2.1 and §6
 **Update when:** A surface changes, a `UX-` entry is accepted or amended, or a §10 question is ruled on.
 **Does not contain:** Why a decision was made (`ai/DECISIONS.md`), what must be tested
 (`ai/TESTING.md`), the visual palette (`ARCHITECTURE.md` §8), or Phase 4's settings dialog
@@ -43,7 +44,7 @@ recorded as maintainer rulings that no maintainer had made.
 |---|---|
 | **[T]** *Transcribed* | Restated from an accepted decision or a requirement. This file may be wrong about it; the entry rules. |
 | **[D]** *Derived* | Follows from an accepted rule applied to a new surface, taking no product choice of its own. The derivation is shown so it can be disputed. |
-| **[P]** *Proposed* | **A product choice nobody has made.** Written so it can be ruled on, not so it can be built. Every one is collected in §10, and **no task may build a [P] clause until it is ratified.** |
+| **[P]** *Proposed* | **A product choice nobody has made.** Written so it can be ruled on, not so it can be built. Every one is collected in §10, and **no task may build a [P] clause until it is ratified.** **There are none left** — `UX-007` ratified all twenty-five on 2026-08-07 — and the mark stays defined because the next surface written before it is built will need it. |
 
 ---
 
@@ -160,13 +161,16 @@ resolution, fps, codecs, bitrate, filesize/estimate, notes).*
 
 ### Where it lives
 
-**[P-1]** The table opens from the **format control** — the same *Download as* control `UX-004` put
+**[T]** The table opens from the **format control** — the same *Download as* control `UX-004` put
 on every staging row and `UX-005` §6 puts on every retargetable queue row — through an entry reading
 **`Choose specific formats…`** below the preset list.
 
-*Why it is [P] and not [D]:* `UX-005` §2 forbids a detail pane, which rules out the obvious home and
-leaves the choice between a modal dialog, a sheet over the window, and an expanding row. This
-proposes the first. Nothing accepted decides it.
+**[T]** **It opens as the staging row itself, expanded** — not as a modal dialog (`UX-007`,
+2026-08-07). *This file proposed the modal and was ruled against.* A modal opened from the add
+dialog is a modal over a modal, and the staging list is already a list of rows that open; `P-19`
+takes the same shape for the playlist picker, so the two surfaces are **one mechanism** rather than
+two. `UX-005` §2's ban on a detail pane ruled out the obvious home and left three candidates; this
+is the one that reuses something already built.
 
 ### What it shows
 
@@ -198,7 +202,7 @@ click first is not one (`T-152`).
 
 ### Deliberately not offered
 
-**[P-14]** All three. `REQ-003` asks for a sortable table and is silent on each of these, so they
+**[T]** *(ruled `P-14`, `UX-007`)* All three. `REQ-003` asks for a sortable table and is silent on each of these, so they
 are choices about scope rather than consequences of it.
 
 - **No re-probe from the table.** What it shows is the probe the row already has. A refresh button
@@ -214,10 +218,10 @@ are choices about scope rather than consequences of it.
 `REQ-008`: *allow selecting specific format IDs directly from the format table, including a separate
 video and audio stream to be merged.*
 
-- **[P-2]** The table has two selection modes: **one format**, and **video + audio**. In the second,
+- **[T]** *(ruled `P-2`, `UX-007`)* The table has two selection modes: **one format**, and **video + audio**. In the second,
   a row is chosen into whichever of the two slots its own kind matches, and the dialog shows the
   pair it will merge before it is committed.
-- **[P-13]** `Merge` is offered only while ffmpeg is present. Absent, the mode is **not drawn**, and
+- **[T]** *(ruled `P-13`, `UX-007`)* `Merge` is offered only while ffmpeg is present. Absent, the mode is **not drawn**, and
   the reason is stated where the mode would have been. `UX-005` §5's never-draw-what-would-be-refused
   rule makes *some* treatment necessary; it does not choose between hiding the mode, showing the
   table without it, or admitting the choice and refusing at commit. `REQ-024` owns the detection.
@@ -250,7 +254,7 @@ audio: 140"* rather than shown by highlight alone (`NFR-005`, no colour-only sta
 
 ### Deliberately not offered
 
-**[P-15]** Both. `REQ-008` names *"a separate video and audio stream"*, which neither entails nor
+**[T]** *(ruled `P-15`, `UX-007`)* Both. `REQ-008` names *"a separate video and audio stream"*, which neither entails nor
 forbids what follows.
 
 - **No three-way merge**, and no external audio file. yt-dlp's selector permits more than this
@@ -275,7 +279,7 @@ metadata, embed chapters — have no dedicated field and would ride in `post_pro
 `Preset` already declares. Every one of those names is in `PRESET_OWNED_FIELDS`, which is derived
 from the two dataclasses rather than listed.
 
-**[P-16]** **That `T-109` and `T-111` therefore share one screen is a choice, not a consequence**
+**[T]** *(ruled `P-16`, `UX-007`)* **That `T-109` and `T-111` therefore share one screen is a choice, not a consequence**
 (`T105-R3`). What the data boundary establishes is that these options are preset-owned and that
 `to_request()` refuses an override disagreeing with the preset the user was shown (`T015-R1`) — it
 does not follow that one widget must edit both a saved preset and a one-off. The argument for
@@ -283,7 +287,9 @@ sharing is that a separate panel is a second place to set the same fields; the a
 that a per-download tweak and a stored preset have different save semantics, which `P-3` and `P-4`
 are already circling. **Ruling on this decides whether `T-109` has a screen at all.**
 
-**[P-12]** **Whether the five undedicated options get fields of their own is `T-109`'s first
+**[T]** *(ruled `P-12` by **`ARC-010`**, not `UX-007` — it was answered from above, as part of the
+option-coverage decision, rather than in the §10 session)*
+**Whether the five undedicated options get fields of their own is `T-109`'s first
 question.** A `post_processors` list of opaque strings is what `Preset` has today; five booleans
 would be typed, checkable and visible to `PRESET_OWNED_FIELDS`'s drift test, at the cost of widening
 a model Phase 1 froze. This file does not decide it, and flags that a UI cannot be specified past
@@ -295,13 +301,13 @@ it: five checkboxes and one free list are different screens.
 > validated **escape hatch** (`REQ-031`) carrying what has no field yet. This clause stays because
 > `T-109`'s screen has not been specified against the ruling yet; the question behind it is closed.
 
-- **[P-3]** The editor is reachable **two ways**: as *"Options…"* on the format control, editing a
+- **[T]** *(ruled `P-3`, `UX-007`)* The editor is reachable **two ways**: as *"Options…"* on the format control, editing a
   one-off choice for this download only; and from the preset manager (§8), editing a saved preset.
   The same widget in both, with a different title and a different save action.
 - **[D]** Audio quality is offered only for a codec where a bitrate means something — `MP3_BITRATES`
   is MP3's scale, and `with_audio_quality` already refuses any other codec for that reason
   (`T076-R1`).
-- **[P-4]** A one-off options change **does not** silently become a preset. The editor offers
+- **[T]** *(ruled `P-4`, `UX-007`)* A one-off options change **does not** silently become a preset. The editor offers
   *"Save as preset…"* explicitly.
 
 ### Keyboard path
@@ -310,14 +316,14 @@ it: five checkboxes and one free list are different screens.
 checkbox, arrow keys move within a combo, `Enter` commits, `Esc` cancels. **[T]** Every control
 carries a screen-reader label (`NFR-005`).
 
-**[P-17]** **The subtitle language control is a labelled multi-select** rather than a
+**[T]** *(ruled `P-17`, `UX-007`)* **The subtitle language control is a labelled multi-select** rather than a
 comma-separated text field. `NFR-005` requires the control to be labelled and reachable; it does not
 choose the widget, and `SUBTITLE_LANGUAGES` is `("all",)` today, so the set a user picks from is
 itself unspecified.
 
 ### Deliberately not offered
 
-**[P-18]** Both, and the first interacts with `P-12`: refusing a free-text post-processor field
+**[T]** *(ruled `P-18`, `UX-007`)* Both, and the first interacts with `P-12`: refusing a free-text post-processor field
 while `Preset.post_processors` is a list of strings means the model can express what the UI will
 not, which is an argument for typing those five options rather than a separate choice.
 
@@ -343,11 +349,11 @@ range selection, before any download starts.*
 - **[T]** `UX-003`'s consequence: *"Phase 3's playlist picker gets its prerequisite for free"* — a
   playlist expands into entries only after a probe, which `UX-003` guarantees has happened by the
   time a row exists.
-- **[P-19]** The picker is the **staging list's own row**, opened, rather than a separate dialog.
+- **[T]** *(ruled `P-19`, `UX-007`)* The picker is the **staging list's own row**, opened, rather than a separate dialog.
   The supporting argument is that the queue and History already draw a playlist as one row that
   opens (`T-140`, `T-145`). It is **not** entailed by `UX-005` §3, whose one-anatomy rule is about
   the Queue and History tabs and says nothing about the add dialog (`T105-R3`).
-- **[P-5]** Each entry carries a **checkbox**, and the group header carries a tri-state checkbox
+- **[T]** *(ruled `P-5`, `UX-007`)* Each entry carries a **checkbox**, and the group header carries a tri-state checkbox
   reflecting its members. *Add to queue* commits only the checked entries.
 - **[D]** Unchecked entries are **not** queued and not remembered. Nothing is persisted until Add is
   pressed (`UX-003`), so there is no state to keep.
@@ -366,7 +372,7 @@ rather than new ones.
 
 ### Deliberately not offered
 
-**[T]** The first. **[P-25]** The second.
+**[T]** The first. **[T]** *(ruled `P-25`, `UX-007`)* The second.
 
 - **No reordering of entries.** `REQ-016`'s reordering predates grouping and does not say what it
   means inside one — `T-142`'s out-of-scope list already records this, so it is transcribed rather
@@ -380,17 +386,17 @@ rather than new ones.
 
 `REQ-007`: *create, edit, duplicate, delete, set one as default.*
 
-- **[P-6]** A **preset manager**, reached from the format control's `Manage presets…` and listing
+- **[T]** *(ruled `P-6`, `UX-007`)* A **preset manager**, reached from the format control's `Manage presets…` and listing
   built-ins and the user's own together, with the built-ins not deletable and marked as such.
 - **[D]** A built-in cannot be edited in place. `custom_preset` and `with_audio_quality` already
   derive a new preset rather than mutating one, because a request that disagrees with the preset the
   user was shown defeats `REQ-009`. Editing a built-in therefore **duplicates it first**, visibly.
-- **[P-7]** The default preset is what a new paste inherits. One default, always set; clearing it is
+- **[T]** *(ruled `P-7`, `UX-007`)* The default preset is what a new paste inherits. One default, always set; clearing it is
   not offered, because the dialog needs *something* to inherit.
 
 ### Keyboard path
 
-**[P-20]** **A list beside a form**, with create, duplicate and set-default as buttons in the
+**[T]** *(ruled `P-20`, `UX-007`)* **A list beside a form**, with create, duplicate and set-default as buttons in the
 list's own `Tab` order rather than a context menu. `T118-R5` establishes that a menu-only route is
 not authority to *drop* an approved visible control; it does not choose this layout, and `NFR-005`
 requires reachability rather than any particular arrangement (`T105-R3`).
@@ -418,7 +424,7 @@ that is a different question from where the file lives, and it is not open today
 
 ### Deliberately not offered
 
-**[P-21]** Both. `REQ-007` names five verbs — create, edit, duplicate, delete, set default — and is
+**[T]** *(ruled `P-21`, `UX-007`)* Both. `REQ-007` names five verbs — create, edit, duplicate, delete, set default — and is
 silent on the rest, so these are scope choices.
 
 - **No import or export of presets.** A sharing format is a compatibility commitment.
@@ -440,17 +446,16 @@ silent on the rest, so these are scope choices.
   `T-046`'s finding.
 - **[T]** Path containment is **enforced**: no rendered template escapes the output directory.
   That is Phase 3's fourth exit criterion and `ARCHITECTURE.md` §8's rule, not a choice.
-  **[P-23]** That the refusal is shown **at edit time, with the reason**, rather than at download
+  **[T]** *(ruled `P-23`, `UX-007`)* That the refusal is shown **at edit time, with the reason**, rather than at download
   time, is the choice — it is better feedback and it costs a validation path that runs on every
   keystroke.
-- **[P-22]** **Keyboard path:** a single-line input with the preview below it as **read-only
-  text**, not a second focus stop, updating as the field changes and announced on a pause rather
-  than per keystroke. `NFR-005` requires the preview to be *available* to a screen reader; whether
-  that means an unfocusable live region, a focusable read-only field, or an on-demand announcement
-  is a real accessibility trade-off this file is not entitled to settle (`T105-R3`). A user who
-  cannot `Tab` to the preview cannot review it at their own pace, which is the argument against the
-  proposal above.
-- **[P-9]** The editor lists the template fields it supports beside the input, rather than linking
+- **[T]** **Keyboard path:** a single-line input with the preview below it as a **focusable
+  read-only field** — a second stop in the tab order (`UX-007`, 2026-08-07). *This file proposed an
+  unfocusable live region and was ruled against, on its own argument:* a user who cannot `Tab` to
+  the preview cannot review it at their own pace, and a live region announces on the writer's
+  schedule rather than the reader's. It costs one tab stop, which is the price of the preview being
+  reviewable rather than merely audible.
+- **[T]** *(ruled `P-9`, `UX-007`)* The editor lists the template fields it supports beside the input, rather than linking
   to yt-dlp's documentation, because the set this application supports is not yt-dlp's whole set.
 
 ### 9.2 Resume across a restart — `REQ-017`, built by `T-113`
@@ -460,25 +465,27 @@ silent on the rest, so these are scope choices.
 - **[T]** A job that cannot resume **says so** — `REQ-017`'s *"state clearly when resumption is not
   possible"* is the requirement, and **[T]** it uses the extractor's own words where there are any
   (`NFR-006`).
-  **[P-24]** That it says so **on its row** and offers *start again* as a distinct verb rather than
+  **[T]** *(ruled `P-24`, `UX-007`)* That it says so **on its row** and offers *start again* as a distinct verb rather than
   silently restarting is the choice. The alternative — restarting transparently and saying so only
   in the log — is what most download managers do.
-- **[P-10]** **Resume does not reintroduce a per-job pause.** `UX-001` made pause a queue-level
-  drain and `T-080` deleted `JobStatus.PAUSED` outright; `UX-001` names `REQ-017` as the condition
-  under which those edges may be wanted back, so this is the moment that question is live.
-  **This file proposes that it stays a queue-level drain and that `Pause all` on a playlist header
-  stays deferred** — but it is `UX-001`'s to reopen, and `T140-R5` already deferred the group verb
-  to exactly this decision.
+- **[T]** **Whether resume reintroduces a per-job pause is `T-113`'s to decide, and it must record
+  the answer either way** (`UX-007`, 2026-08-07). *This file proposed that the queue-level drain
+  stays, and was ruled against — not reversed, but deferred to the task that will have the
+  evidence.* The answer depends on what resume actually costs per site and per format, which is
+  what `T-113` is scheduled early to find out. Its record must say whether `JobStatus.PAUSED`
+  returns and whether a playlist header gets `Pause all` (`T140-R5`). `UX-001` named `REQ-017` as
+  its reopening **condition**, not its answer. **`UX-006` did not touch this**: that decision moved
+  a queue-level default and left per-job control exactly where `UX-001` put it.
 
 ### 9.3 Duplicate-URL warning — `REQ-022`, built by `T-114`
 
 - **[T]** `REQ-022`, as rescoped 2026-08-06: a URL already in the **queue** — or twice in one paste
   — is **confirmed, not refused**. Nothing is stored, and nothing is detected beyond the queue.
-- **[P-26]** The warning is a **staging row** state rather than a modal. `UX-003` puts *probe
+- **[T]** *(ruled `P-26`, `UX-007`)* The warning is a **staging row** state rather than a modal. `UX-003` puts *probe
   failures* in the dialog; it does not decide where a *duplicate* is reported (`T105-R3`). The
   argument is that a modal per duplicate in a paste of thirty is unusable — which is a good
   argument and still not an accepted rule.
-- **[P-27]** **Ordinary *Add to queue* is the override**, and the count includes the duplicates.
+- **[T]** *(ruled `P-27`, `UX-007`)* **Ordinary *Add to queue* is the override**, and the count includes the duplicates.
   `REQ-022` requires *an* override; it does not say that committing normally is it. The alternative
   — an explicit per-row *download anyway* — is a real option, and it is the one that makes the
   override a decision rather than an omission.
@@ -486,7 +493,8 @@ silent on the rest, so these are scope choices.
   conveyed by colour alone, and a warning only sighted users receive is that rule broken.
   **[D]** It therefore joins the row's accessible text, which is where the row's other facts already
   are. **[D]** It needs no keyboard route of its own, because a row state is not a control.
-- **[P-11]** ~~The warning names **when** the URL was last downloaded and links to the History
+- **[T]** *(`P-11`, **withdrawn** 2026-08-06 — never ruled, because the question stopped existing)*
+  ~~The warning names **when** the URL was last downloaded and links to the History
   record.~~ **Withdrawn entirely, 2026-08-06.** `REQ-020` is gone and nothing records when anything
   was downloaded, so there is no date to name and no record to open. `REQ-022` is now a check
   against the **live queue**: the warning says the URL is already queued, and the row it is already
@@ -494,7 +502,7 @@ silent on the rest, so these are scope choices.
 
 ### Deliberately not offered
 
-**[P-28]** Both. `REQ-022` says *URL*, which bounds what must be detected without deciding what may
+**[T]** *(ruled `P-28`, `UX-007`)* Both. `REQ-022` says *URL*, which bounds what must be detected without deciding what may
 not be.
 
 - **No detection by content.** Two URLs for the same video are not detectable without a heuristic
@@ -504,69 +512,74 @@ not be.
 
 ---
 
-## 10 · Open questions — every [P] clause, collected
+## 10 · The questions, and how each was ruled
 
-**Nothing in this section may be built until it is ruled on.** They are gathered here so a ruling is
-one pass rather than eleven, and so a task cannot mistake a proposal for a decision — which is
-`T145-R1` and `T144-R1`'s lesson, applied before the fact this time rather than after.
+**Nothing in this file is unruled as of 2026-08-07.** Every `[P]` clause was ratified by `UX-007`,
+question by question, and §1's bar — *no task may build a `[P]` clause until it is ratified* — no
+longer stops anything. The section is kept as the record of what was asked and answered rather than
+deleted, because "what did we decide about the format table" is a question somebody will ask.
 
-| # | Question | Where | Costs, if the answer differs |
-|---|---|---|---|
-| P-1 | Does the format table open as a modal dialog, a sheet, or an expanding row? | §4 | Layout only; `T-107`'s content is unaffected |
-| P-2 | Is video+audio a **mode** on the table, or two separate pickers? | §5 | `T-108`'s interaction, not its selector |
-| P-3 | Is the post-processing editor reachable as a per-download *Options…* as well as from the preset manager? | §6 | If not, every option change becomes a saved preset |
-| P-4 | Does a one-off options change offer *Save as preset…*? | §6 | Small; follows P-3 |
-| P-5 | Checkboxes per playlist entry, with a tri-state group header? | §7 | The alternative is selection-as-checked, which collides with `ExtendedSelection` |
-| P-6 | A preset manager listing built-ins and user presets together? | §8 | Two lists is the alternative |
-| P-7 | Is there always exactly one default preset? | §8 | "No default" needs an inherit rule for the dialog |
-| ~~P-8~~ | ~~Where do user presets persist?~~ **Withdrawn — already decided** (`T105-R1`). `DAT-001` and `ARCHITECTURE.md` §5 fix it: TOML, at `user_config_dir/tracksandtrails/settings.toml`. Transcribed in §8; the number is kept so the withdrawal is legible rather than silent | §8 | — |
-| P-9 | Does the template editor list supported fields inline? | §9.1 | Scope of `T-112` |
-| P-10 | **Does `REQ-017` reopen per-job pause?** `UX-001` names this as its reopening condition | §9.2 | **Reopens `UX-001` and `T-080`.** Also decides `Pause all` on a group, deferred by `T140-R5` |
-| P-11 | ~~Does the duplicate warning name the date?~~ **Withdrawn 2026-08-06** — nothing records a date | §9.3 | — |
-| P-12 | ~~**Do remux, recode, embed-thumbnail, embed-metadata and embed-chapters get typed fields on `Preset`**, or stay strings in `post_processors`?~~ **Ruled 2026-08-07 — typed** (`ARC-010`) | §6 | The model widens, as this said it would. `T-109`'s screen is now specified *against* the ruling rather than blocked by the question |
-| P-13 | When ffmpeg is absent, is the merge mode hidden, shown-and-refused, or the table drawn without it? | §5 | `UX-005` §5 requires *some* treatment, not this one |
-| P-14 | Does the format table refuse re-probe, download-from-table, and filtering? | §4, §12 | Scope of `T-107` |
-| P-15 | Does merging refuse three-way, external audio and automatic pairing? | §5, §12 | Scope of `T-108` |
-| P-16 | **Do `T-109` and `T-111` share one screen?** The data boundary does not decide it | §6 | **Decides whether `T-109` has a screen of its own at all** |
-| P-17 | Is the subtitle language control a multi-select? | §6 | `SUBTITLE_LANGUAGES` is `("all",)` today, so the set is unspecified too |
-| P-18 | Does the editor refuse a free post-processor field and per-entry post-processing? **Half-ruled 2026-08-07** (`ARC-010`) | §6, §12 | The post-processor list stays refused; the capability is reachable through `REQ-031`'s validated field. Per-entry post-processing is still open, under `T-110` |
-| P-19 | Is the playlist picker the staging row opened, or a dialog? | §7 | Not entailed by `UX-005` §3, which is about the two tabs |
-| P-20 | Is the preset manager a list beside a form, with buttons rather than a menu? | §8 | `T118-R5` forbids dropping a control, not this layout |
-| P-21 | Do presets refuse import/export and per-site rules? | §8, §12 | Scope of `T-111` |
-| P-22 | **Is the template preview an unfocusable live region, a focusable read-only field, or announced on demand?** | §9.1 | A real accessibility trade-off — a user who cannot `Tab` to it cannot review it at their own pace |
-| P-23 | Is a containment failure shown at edit time rather than at download time? | §9.1 | Enforcement is required; *when it is surfaced* is the choice. **`T-112` already carries the same proposal as an acceptance criterion** — one ruling settles both, and they must not be answered separately |
-| P-24 | Does a non-resumable job say so on its row and offer *start again* as its own verb? | §9.2 | The alternative is restarting transparently |
-| P-25 | Does the playlist picker refuse filtering? | §7, §12 | Scope of `T-110` |
-| P-26 | Is the duplicate warning a row state rather than a modal? | §9.3 | `UX-003` places *probe failures*, not this |
-| P-27 | **Is ordinary *Add to queue* the override**, or is an explicit per-row *download anyway* wanted? | §9.3 | `REQ-022` requires an override; it does not say which |
-| P-28 | Does duplicate detection refuse content matching and automatic skipping? | §9.3, §12 | Scope of `T-114` |
+**Three were ruled *against* what this file proposed**, and they are the rows worth reading:
 
-### Reading this list
+| # | This file proposed | Ruled |
+|---|---|---|
+| **P-1** | The format table opens as a **modal dialog** | **The staging row, expanded.** A modal over a modal, when the list already has rows that open. `P-19` takes the same shape, so it is one mechanism |
+| **P-10** | Resume **keeps** the queue-level drain | **`T-113` decides, and must record it either way.** The answer depends on what resume costs per site and format, which is what `T-113` exists to find out |
+| **P-22** | The template preview is **unfocusable** read-only text | **A focusable read-only field.** This file stated the argument against itself — a user who cannot `Tab` to it cannot review it at their own pace — and that argument won |
 
-**It grew from twelve to twenty-seven under review, and that is the correction working.** `T105-R3`
-found that several real choices had been presented as *derived* and that every refusal was unmarked
-— so the first count was not a measure of how much was open, it was a measure of how much had been
-marked. Nothing was added to the design; the marks caught up with it.
+**The other twenty-two were ratified as written.**
 
-**Four decide more than a layout, and one of the four has since been ruled on:**
+| # | Question | Ruled |
+|---|---|---|
+| P-2 | Video+audio: a mode, or two pickers? | A **mode** on one table |
+| P-3 | Is the options editor reachable per-download? | **Yes**, and from the preset manager |
+| P-4 | Does a one-off change offer *Save as preset…*? | **Yes, explicitly**; never silently |
+| P-5 | Checkboxes per playlist entry? | **Checkboxes**, tri-state header |
+| P-6 | One preset list or two? | **One**, built-ins marked |
+| P-7 | Always exactly one default preset? | **Always one**; deleting promotes another |
+| ~~P-8~~ | ~~Where do user presets persist?~~ | **Withdrawn** — `DAT-001` had decided it (`T105-R1`) |
+| P-9 | Does the template editor list its fields? | **Inline**, beside the input |
+| ~~P-11~~ | ~~Does the duplicate warning name the date?~~ | **Withdrawn 2026-08-06** — nothing records a date |
+| P-12 | Do the five options get typed fields? | **Typed** — ruled by **`ARC-010`**, from above |
+| P-13 | ffmpeg absent: what happens to merge? | **Hidden, with the reason in its place** |
+| P-14 | Does the table refuse re-probe, download, filter? | **Refused** |
+| P-15 | Does merging refuse three-way, external audio, auto-pairing? | **Refused** |
+| P-16 | Do `T-109` and `T-111` share one screen? | **One screen**, reached two ways |
+| P-17 | Is the subtitle control a multi-select? | **Yes, populated from the probe's own languages** |
+| P-18 | Free post-processor field? Per-entry post-processing? | **Both refused** — the capability arrives via `REQ-031` |
+| P-19 | Playlist picker: row or dialog? | **The staging row, opened** |
+| P-20 | Preset manager: list beside a form, with buttons? | **Yes** |
+| P-21 | Do presets refuse import/export and per-site rules? | **Refused** |
+| P-23 | Containment failure at edit time or download time? | **Edit time, with the reason** |
+| P-24 | Does a non-resumable job say so on its row? | **Yes**, with *start again* as its own verb |
+| P-25 | Does the playlist picker refuse filtering? | **Refused** |
+| P-26 | Duplicate warning: row state or modal? | **Row state** |
+| P-27 | Is ordinary *Add to queue* the override? | **Yes** |
+| P-28 | Does duplicate detection refuse content matching and auto-skip? | **Refused** |
 
-- **`P-10`** reopens `UX-001` and `T-080` by design, and is the phase's highest uncertainty (`T-113`).
-  *(`UX-006` did **not** answer it. That decision moved the queue-level gate's default; per-job
-  control is untouched and still arrives with resume.)*
-- **`P-12`** widens a model frozen since Phase 1, and decides what `T-109`'s screen contains.
-  **Ruled 2026-08-07 by `ARC-010`: typed, and the model widens.** It was ruled from above rather
-  than answered in place — every option group faces the same question, and `REQ-030`/`REQ-031` are
-  the general answer.
-- **`P-16`** decides whether `T-109` has a screen of its own at all.
-- **`P-22`** is an accessibility trade-off rather than a preference, and `NFR-005` does not settle it.
+### What the session was worth, and what it did not settle
 
-**Twelve are scope refusals** — `P-14`, `P-15`, `P-18`, `P-21`, `P-25`, `P-28` and their siblings in
-§12 — and they can sensibly be ruled as a group: *this is the boundary of Phase 3's UI.*
+**It moved eight deliverables from *startable* to *finishable*.** Each could always be begun —
+nothing preceded them — and none could be completed, because completing one meant drawing a surface
+this file had not settled. That distinction was invisible on the roadmap until 2026-08-07 and was
+the phase's real blocker; no dependency ever was.
 
-**The rest are where a surface lives and what shape it is** — `P-1`, `P-2`, `P-5`, `P-6`, `P-19`,
-`P-20`. Those are the ones a **mockup** would answer faster than this table can, which is `T-130`'s
-lesson: that finding exists because a mockup and the window disagreed and nobody noticed. Ratifying
-them from prose alone is the weakest part of this document.
+**Six were scope refusals and were ruled as one line** — `P-14`, `P-15`, `P-18`, `P-21`, `P-25`,
+`P-28`. Each is a boundary of Phase 3's UI rather than a judgement that the feature is bad, which
+is what keeps it cheap to revisit as its own task.
+
+**Two rulings created new work rather than closing it:**
+
+- **`P-10` gives `T-113` an acceptance criterion** — record whether per-job pause returns, whether
+  `JobStatus.PAUSED` comes back, and whether a playlist header gets `Pause all` (`T140-R5`).
+- **`P-17` answers a question this file never asked.** `SUBTITLE_LANGUAGES` is `("all",)` today, so
+  *what the user picks from* was unspecified. The list comes from the probe's own languages, which
+  means the control belongs beside a probed row — and a **preset** carrying languages a given video
+  does not have is a case `T-109` must handle rather than assume away.
+
+**A mockup is still worth building before `T-107` starts** — six of these were shape questions, and
+`T-130`'s lesson is that a mockup and a window disagreed and nobody noticed. It would now be a check
+on the ruling rather than the thing that produces it.
 
 ---
 

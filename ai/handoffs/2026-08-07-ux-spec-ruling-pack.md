@@ -2,6 +2,8 @@
 
 **From:** Claude Code (Planner)
 **To:** Sean Kottman (Maintainer)
+**Status:** **Spent — all 25 were ruled on 2026-08-07** and the record is `UX-007`. Kept as the
+material the ruling was taken from; `docs/UX_SPEC.md` §10 is where the answers live.
 **Purpose:** Turn 25 open questions into one sitting.
 **Authority:** None. Nothing here is a decision, and no task may build any of it until you rule.
 Where I recommend, the recommendation is an implementer's opinion and is marked as one.

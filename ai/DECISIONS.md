@@ -4185,3 +4185,112 @@ this GUI.** It is met two ways, and both are required.
 Which option families `REQ-EXCL` forbids, permits, or permits in a narrowed form — credentials,
 `--impersonate`, `--xff`, `--exec`, `--download-archive`. **`T-182` owns that ruling**, and no
 typed field or refusal-list entry for those families may be written until it is taken.
+
+---
+
+## UX-007 — The Phase 3 surfaces, ruled: all 25 open `[P]` clauses
+
+**Status:** **Accepted** (2026-08-07) — maintainer decision, taken question by question from the
+Planner's recommendations in `ai/handoffs/2026-08-07-ux-spec-ruling-pack.md`
+**Date:** 2026-08-07
+**Supersedes:** nothing. **Ratifies** every `[P]` clause in `docs/UX_SPEC.md` §10, which §1 barred
+any task from building until it was ruled on. **Three are ratified against what the file
+proposed** — see below, because that is the part a reader will otherwise get wrong.
+
+### Context
+
+`docs/UX_SPEC.md` §1: *"no task may build a `[P]` clause until it is ratified."* Twenty-five were
+open, and every remaining Phase 3 deliverable's **surface** was decided by at least one — `T-107` by
+`P-1` and `P-14`, `T-108` by `P-2`, `P-13`, `P-15`, `T-109` by `P-16`, `P-3`, `P-4`, `P-17`, `P-18`,
+`T-110` by `P-19`, `P-5`, `P-25`, `T-111` by `P-6`, `P-7`, `P-20`, `P-21`, `T-112` by `P-9`, `P-22`,
+`P-23`, `T-113` by `P-10`, `P-24`, `T-114` by `P-26`, `P-27`, `P-28`.
+
+So eight deliverables were *startable* — nothing preceded them — and none was *finishable*, because
+finishing meant drawing a surface nobody had settled. That distinction was not on the roadmap board
+until 2026-08-07, and it was the phase's real blocker rather than any dependency.
+
+### Decision
+
+**Three were ruled against the proposal in the file**, and those clauses are rewritten rather than
+re-marked:
+
+- **`P-1` — the format table is an expanding row, not a modal.** §4 proposed a modal dialog. A modal
+  opened from the add dialog is a modal over a modal, and the staging list is already a list of rows
+  that open; `P-19` takes the same shape for the playlist picker, so the two surfaces are **one
+  mechanism** rather than two.
+- **`P-10` — per-job pause is `T-113`'s to decide, not this file's.** §9.2 proposed that resume
+  keeps the queue-level drain. The ruling is that the answer depends on what resume turns out to
+  cost per site and format, and `T-113` is scheduled early to find that out. **`T-113` must record
+  the answer either way**, including whether `JobStatus.PAUSED` returns and whether a playlist
+  header gets `Pause all` (`T140-R5`). `UX-001` named `REQ-017` as its reopening *condition*, not
+  its answer.
+- **`P-22` — the template preview is a focusable read-only field.** §9.1 proposed unfocusable
+  read-only text, and stated the argument against itself: a user who cannot `Tab` to the preview
+  cannot review it at their own pace. That argument won. It costs one stop in the tab order.
+
+**The remaining twenty-two are ratified as written**, and the summary is:
+
+| # | Ruled |
+|---|---|
+| `P-2` | Video+audio is a **mode** on one table, not two pickers |
+| `P-3` | The post-processing editor is reachable as a per-download *Options…* **and** from the preset manager |
+| `P-4` | A one-off change offers *Save as preset…* **explicitly**; it never becomes one silently |
+| `P-5` | Playlist entries carry **checkboxes**, the group header a tri-state |
+| `P-6` | **One** preset list, built-ins included and marked |
+| `P-7` | **Always exactly one** default preset; deleting it promotes another |
+| `P-9` | The template editor lists supported fields **inline** |
+| `P-13` | With ffmpeg absent the merge mode is **hidden, with the reason in its place** |
+| `P-14` | The format table refuses re-probe, download-from-table and filtering |
+| `P-15` | Merging refuses three-way, external audio and automatic pairing |
+| `P-16` | `T-109` and `T-111` **share one screen**, reached two ways |
+| `P-17` | Subtitle languages are a **multi-select, populated from the probe's own languages** |
+| `P-18` | The free post-processor list stays refused (`ARC-010`); **per-entry post-processing is refused too** |
+| `P-19` | The playlist picker is the **staging row, opened** |
+| `P-20` | The preset manager is a **list beside a form, with buttons** |
+| `P-21` | Presets refuse import/export and per-site rules |
+| `P-23` | A containment failure is shown **at edit time, with the reason** |
+| `P-24` | A non-resumable job **says so on its row** and offers *start again* as its own verb |
+| `P-25` | The playlist picker refuses filtering |
+| `P-26` | The duplicate warning is a **staging-row state** |
+| `P-27` | **Ordinary *Add to queue* is the override**, and the count includes duplicates |
+| `P-28` | Duplicate detection refuses content matching and automatic skipping |
+
+**`P-17` answers a second question the clause did not ask.** `SUBTITLE_LANGUAGES` is `("all",)`
+today, so *what the user picks from* was unspecified. The list comes from **the probe's own
+languages for that URL**, which is why the control belongs beside a probed row rather than in a
+preset — and a preset carrying languages a given video does not have is the case `T-109` must
+handle rather than assume away.
+
+### Rationale
+
+- **Six of these are scope refusals and were ruled as one line** (`P-14`, `P-15`, `P-18`, `P-21`,
+  `P-25`, `P-28`). Each is recorded as *the boundary of Phase 3's UI* rather than a judgement that
+  the feature is bad, which is what keeps it cheap to revisit as its own task.
+- **The shape questions went the way that reuses a mechanism** rather than adding one: an expanding
+  row twice (`P-1`, `P-19`), one table with a mode (`P-2`), one preset list (`P-6`), one editor
+  reached two ways (`P-16`, `P-3`).
+- **The accessibility questions went to the reader's control** (`P-22` focusable, `P-9` inline
+  fields, `P-24` say it on the row): in each the alternative was cheaper to build and left the user
+  with less.
+- **`P-23` also settles `T-112`'s acceptance criterion**, which carried the same proposal. One
+  ruling, two documents — they must not be answered separately.
+
+### Consequences
+
+- **`docs/UX_SPEC.md` §10 is closed.** Every clause is `[T]`, the table records what was ruled, and
+  the file's §1 bar no longer stops anything.
+- **Eight task entries lose their "unruled" caveats** — `T-107` through `T-114`. Leaving them is the
+  `T105-R4` defect exactly: a task entry stating a settled thing as open is as wrong as one stating
+  an open thing as settled.
+- **`T-113` gains an acceptance criterion**: record the `P-10` answer as a decision, either way.
+- **`T-109` gains one too**: the subtitle list's source, per `P-17`.
+- Nothing here is built. The phase is now specified, not delivered.
+
+### Alternatives considered
+
+- **Ruling in groups without reading each clause.** Rejected in practice as well as in principle:
+  three of the twenty-five were ruled *against* the file's own proposal, and a group ruling would
+  have ratified the opposite of the decision in each.
+- **Deferring the shape questions to a mockup.** Offered and declined; the six were ruled directly.
+  A mockup is still worth building before `T-107` starts, but as a check on the ruling rather than
+  as the thing that produces it.

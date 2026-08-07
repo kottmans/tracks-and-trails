@@ -70,13 +70,24 @@ a live contract.
 - **A retried *probe* is exempt from the gate, correctly**, because a `QUEUED` job's session is a
   probe. The retry test starts from `READY` for that reason.
 
-**The blocker that matters is not a dependency.** `docs/UX_SPEC.md` §1 bars a task from building a
-`[P]` clause until it is ratified, **25 are open**, and every remaining Phase 3 deliverable's surface
-is decided by at least one. So eight of the nine are startable and none is finishable; `T-181` was
-the exception only because `UX-006` settled its surface when it was accepted. A ruling pack — every
-question with options, costs and a recommendation — is at
-`ai/handoffs/2026-08-07-ux-spec-ruling-pack.md`, and the Phase 3 board now says
-**1 of 9 buildable today** rather than 9 of 9 startable.
+**The blocker that mattered was not a dependency, and it is now cleared.** `docs/UX_SPEC.md` §1 bars
+a task from building a `[P]` clause until it is ratified; 25 were open, and every remaining Phase 3
+deliverable's surface was decided by at least one — so eight of the nine were startable and none was
+finishable. `T-181` was the exception only because `UX-006` settled its surface when it was accepted.
+
+**`UX-007` ruled all 25 on 2026-08-07**, question by question, from the pack at
+`ai/handoffs/2026-08-07-ux-spec-ruling-pack.md`. **Three were ruled against what the spec
+proposed** — the format table is an expanding row rather than a modal (`P-1`), the template preview
+is focusable rather than a live region (`P-22`, on the spec's own argument against itself), and
+per-job pause is `T-113`'s to decide rather than settled here (`P-10`). A blanket ratification would
+have written the opposite of the decision into three clauses, which is why each was read before it
+was marked.
+
+**Two rulings created work rather than closing it.** `T-113` must record the `P-10` answer as a
+decision either way; `T-109` owns where the subtitle language list comes from, because `P-17` ruled
+it comes from the probe's own languages and `SUBTITLE_LANGUAGES` is `("all",)` today. Eight task
+entries lost their "unruled" caveats — leaving those would have been the `T105-R4` defect in the
+other direction.
 
 ## 2026-08-07: three verdicts, and the shape the two rejections share
 
