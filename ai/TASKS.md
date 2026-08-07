@@ -78,13 +78,14 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**One awaits a verdict as of 2026-08-06: `T-179`.** Its batch-mates `T-177` and `T-178` had their
+*(**One awaits a verdict as of 2026-08-07: `T-179`.** Its batch-mates `T-177` and `T-178` had their
 findings marked **Resolved** at checkpoint `961cada` and were split out to `## Complete` by
 maintainer instruction — the reviewer called them individually ready, and neither has an approval
-verdict of its own. `T-179` is on its **second** rejection: `T179-R1` survived the focused
-correction re-review and `T179-R2`, **High**, was introduced by the correction itself. The Medium
-pass budget for `T179-R1` is exhausted and **the maintainer authorised another pass** on
-2026-08-06; the High needs no authorization.)*
+verdict of its own. `T-179` took a **third** rejection on 2026-08-06: `T179-R2`, **High**, was
+resolved, and `T179-R1` survived at the process boundary. The Medium pass budget is spent, so
+**the maintainer dispositioned `T179-R1` on 2026-08-07** — accepted, with its false rationale
+corrected and the underlying shared-cache defect filed as `T-180`. What awaits a verdict now is
+that correction, not another mechanism.)*
 
 *(This note said "**Nothing awaits a verdict as of 2026-08-03**" — `T-118` was approved with
 follow-ups at `53b07ec` and moved to `## Complete`, and its follow-ups are `T-122` under
@@ -103,12 +104,16 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ### T-179 — Every model reset scans the thumbnail cache, including a pure reorder
 
-**Status:** **In Review — corrected twice, third mechanism, awaiting re-review 2026-08-06.**
-**Two rejections, and both were the reviewer's.** `T179-R1` survived the first correction and
-`T179-R2` — **High** — was introduced *by* it. The Medium pass budget is exhausted and **the
-maintainer authorised another pass on 2026-08-06**; the High needed no authorization. Correction
-round 2 is at the bottom of this entry, on a base of checkpoint `961cada`, which is the rejected
-state committed deliberately so this correction has a boundary of its own.
+**Status:** **In Review — the maintainer accepted `T179-R1`'s limitation on 2026-08-07; the
+corrected rationale awaits the reviewer.** `T179-R2` is Resolved at `5f469da`. `T179-R1` is
+dispositioned rather than fixed: see **Maintainer disposition** below. The task is *not* claiming
+an approval — no verdict has been issued on the correction that disposition required.
+*(This read "corrected twice, third mechanism, awaiting re-review 2026-08-06".)*
+**Three rejections, and all were the reviewer's.** `T179-R1` survived two corrections and
+`T179-R2` — **High** — was introduced *by* the first. The Medium pass budget is exhausted and
+**the maintainer authorised another pass on 2026-08-06**; the High needed no authorization.
+Correction round 2 is at the bottom of this entry, on a base of checkpoint `961cada`, which is the
+rejected state committed deliberately so this correction has a boundary of its own.
 **Owner:** Implementer
 **Priority:** Low
 **Phase:** Phase 3 cleanup
@@ -241,9 +246,13 @@ publishes is one the queue's sweep must still collect. `_DecodeTask` records the
 point the file appears in the directory, and only on success.
 
 **Its limit, stated rather than discovered later:** it does not see a write by another *process*.
-`A-004` admits one instance, so within this application's rules there is no second writer; a
-foreign process writing into our cache directory is outside what any in-process bookkeeping can
-answer, and no timestamp would have answered it reliably either.
+*(This said `A-004` admits one instance "so within this application's rules there is no second
+writer". **That was false and `T179-R1` caught it.** `A-004` forbids two instances sharing one
+*database*; `ARC-006` requires instances on different databases not to block one another, and
+`thumbnail_cache_directory()` keys off the platform cache root rather than the database path — so
+permitted concurrent instances do share this directory. The limit is real; the excuse was not.)*
+No timestamp would have answered it reliably either, which is why the mechanism is not the thing
+at fault here.
 
 **Overlapping sweeps are serialized rather than identified.** `swept` reports a count and carries
 no request identity, so with two in flight the second completion promotes the first's set — the
@@ -277,6 +286,35 @@ wrote the late file directly with `write_bytes`. Under a publication counter tha
 real: every actual publication goes through `_DecodeTask`. It now publishes through a **second real
 `ThumbnailStore` over the same cache root**, which is both faithful and strictly stronger — it is
 the add-dialog case that makes a per-store signal insufficient.
+
+#### Maintainer disposition — `T179-R1`, 2026-08-07
+
+The reviewer's round-3 record offered four exits and recommended withdrawal. **The maintainer chose
+to accept the documented limitation and have the false rationale corrected.** The decision is
+theirs; this entry records it rather than making it.
+
+**What the finding got right, verified before acting on it rather than after.** `A-004`
+([`REQUIREMENTS.md` §9](REQUIREMENTS.md)) forbids concurrent instances against one *database*;
+`ARC-006` requires instances on *different* databases not to block one another; and
+`thumbnail_cache_directory()` returns `cache_directory() / "thumbnails"`, which no database path
+enters. Permitted concurrent instances therefore share one thumbnail cache, and
+`cache_generation()`'s appeal to `A-004` was false as written. It is corrected in the docstring and
+in correction round 2 above.
+
+**What the recommendation did not weigh.** `_SweepTask.run` unlinks every entry in that shared
+directory whose name is absent from *this* instance's keep set. Two permitted instances already
+delete each other's thumbnails, on every reset, and did so before this task existed. Withdrawal
+would restore that unconditional sweep. Measured against it, a gate that skips too often fails in
+the direction that leaves a regenerable file alive one sweep too long — which is why the
+optimization is kept and the shared-cache defect is filed as its own work rather than treated as
+something `T-179` introduced.
+
+**The residual risk, named so nobody has to rediscover it.** A picture published by a second
+instance is not collected by this one until this one's own membership changes. It is a
+regenerable file in a cache, on a Low-priority task whose entire subject is background I/O.
+
+**`T-180` inherits the real question** — whether the cache should be partitioned per instance at
+all — and covers both halves: the counter's blindness and the sweep's cross-instance deletion.
 
 #### Files
 
@@ -1969,6 +2007,74 @@ archived tasks and frozen evidence continue to say what was true at their bounda
 - Reintroducing a completion record, History surface or Settings clearing route
 - Renaming live identifiers merely because their historical prose mentions History
 - Rewriting `ai/REVIEWS.md`, `ai/DECISIONS.md`, `ai/archive/`, migrations or frozen fixtures
+
+---
+
+### T-180 — Two permitted instances share one thumbnail cache and sweep each other's pictures
+
+**Status:** Proposed — **filed out of `T179-R1`'s maintainer disposition, 2026-08-07.** The finding
+was about a gate that cannot see another process; the defect underneath it is that the two
+processes are allowed to collide in this directory at all.
+**Owner:** Implementer
+**Priority:** Medium — no data is lost, but the failure is silent and gets worse the more the
+second instance is used
+**Phase:** Phase 3 cleanup, unless the partition turns out to want a migration
+**Depends on:** nothing. `T-179` is independent of this and was dispositioned without it
+**Relevant context:** `ARC-006` (the decision that permits the second instance), `A-004`,
+`T-119` (a picture goes with its job), `T118-R13`, `T179-R1`
+**Affected surfaces:** `core/paths.py`, `ui/thumbnails.py`, their tests
+**Risk:** **Medium.** The remedy moves a cache location, so a careless version strands every
+existing thumbnail — regenerable, but a wholesale refetch is not a quiet event on a large queue
+
+#### What is wrong
+
+`ARC-006` decided the single-instance guard is named from the *database* path, precisely so two
+instances against different databases are not blocked: "Two instances against *different*
+databases harm nothing and must not be blocked." `thumbnail_cache_directory()` does not carry that
+distinction — it is `cache_directory() / "thumbnails"`, one directory for the machine.
+
+Both halves of that collision are live:
+
+- **Deletion.** `_SweepTask.run` unlinks every entry whose name is not in the keep set it was
+  handed. Instance A's reset therefore deletes the pictures instance B just fetched, and B's next
+  reset returns the favour. This predates `T-179` and is the reason `T179-R1` was dispositioned
+  rather than fixed
+- **Blindness.** `cache_generation()` counts publications in *this* process, so A's sweep gate
+  cannot know B published anything. This is `T179-R1` exactly, and it is the harmless half
+
+#### Scope
+
+Decide whether the thumbnail cache is per-machine or per-database, and make the code say so. If
+per-database, derive the directory the way `ARC-006` derives the server name and state the
+derivation once, in one place, so the two cannot drift apart. If per-machine, then the sweep may
+not unlink what it cannot account for, and the keep set has to come from somewhere wider than one
+instance's queue.
+
+**This is a decision task before it is an implementation task.** Which of the two it is belongs to
+the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a commit.
+
+#### Acceptance criteria
+
+- The chosen boundary is recorded as a decision, with the alternative and why it lost, before the
+  code moves
+- Two stores over two different databases, exercised concurrently in one test, do not delete each
+  other's cached pictures — asserted on the files, not on a call count
+- `T-119`'s criterion still holds within an instance: a picture survives while any of *its* jobs
+  names it, and goes when the last one stops
+- Whatever happens to thumbnails already on disk under the old location is stated and tested —
+  migrated or deliberately abandoned, not left to chance
+- If the partition lands, `cache_generation()`'s docstring loses its residual-risk paragraph
+  because the risk is gone; if it does not, that paragraph is still true and stays
+- `ruff check .`, `ruff format --check .`, both mypy platforms, task placement, and the queue-view,
+  thumbnail and paths tests are clean
+
+#### Out of scope
+
+- Revisiting `ARC-006`. That two instances on different databases are permitted is settled; this
+  task makes the cache agree with it
+- The single-instance guard itself, its socket, or its named pipe
+- Any other directory under `cache_directory()`. If one of them has the same defect it gets its own
+  task rather than being swept into this one
 
 ---
 

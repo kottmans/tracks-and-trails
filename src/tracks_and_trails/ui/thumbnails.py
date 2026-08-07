@@ -117,10 +117,18 @@ def cache_generation(root: Path | None = None) -> int:
     picture the dialog publishes is one the queue's sweep must still collect. A per-store signal
     cannot see that; this can.
 
-    **What it does not see, stated rather than assumed:** a write by another *process*. `A-004`
-    admits one instance, so within this application's own rules there is no second writer, and a
-    foreign process writing into our cache directory is outside what any in-process bookkeeping can
-    answer.
+    **What it does not see, and the reason that is tolerable:** a write by another *process*. This
+    once claimed `A-004` left no second writer. It does not — `A-004` forbids two instances sharing
+    one *database*, and `ARC-006` explicitly requires instances on different databases not to block
+    one another. `thumbnail_cache_directory()` is derived from the platform cache root, not the
+    database path, so those permitted instances do share this directory and a process-local count
+    cannot see their publications.
+
+    What that costs is one sweep's delay on a regenerable file. What the alternative costs is
+    worse: `_SweepTask` unlinks every entry this instance's queue does not name, so a sweep that
+    *does* run deletes the other instance's live thumbnails. The cache is not partitioned per
+    instance, and until it is, failing to collect a foreign file is the safe direction to fail in.
+    `T-180` owns the partition; this docstring owns not pretending the problem is absent.
     """
     directory = thumbnail_cache_directory(root)
     with _PUBLICATIONS_LOCK:
