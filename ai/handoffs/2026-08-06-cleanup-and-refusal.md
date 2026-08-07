@@ -141,10 +141,11 @@ the cursor; the announcement dropped; the announcement carrying its own wording 
 **Suite arithmetic, since the number moved twice.** 2174 → 2166 under `T-175`: nine tests deleted
 with the code they covered, one added for the ordering gap. 2166 → 2169 under `T-158`: three added.
 
-**CI was still running when this was written.** The last full green is `e70d615`. `T-175` touches
-the worker protocol and `T-158` touches a Qt accessibility API, so **`windows desktop` is the job
-worth watching** — the accessibility tree is the thing it alone sees, and it is what caught the
-`Settings` menu two rounds ago.
+**CI is green: all five jobs at `b92ec62`**, run `31133125505`. **`windows desktop` passed**, which
+is the one worth naming: `T-158` calls a Qt accessibility API and that job is the only thing that
+sees the published UI Automation tree — it is what caught the `Settings` menu two rounds ago.
+`frozen windows` and `frozen linux` passed too, which covers `T-175`'s protocol change reaching a
+bundled build.
 
 ## What I did not do
 
