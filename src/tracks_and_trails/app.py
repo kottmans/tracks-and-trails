@@ -164,8 +164,8 @@ def run(argv: Sequence[str]) -> int:
     return app.exec()
 
 
-def queued_job_ids(repository: JobRepository) -> list[str]:
-    """The ids of jobs waiting to be downloaded, and **only** those (`T-115`, `UX-003`).
+def waiting_jobs(repository: JobRepository) -> list[tuple[str, JobStatus]]:
+    """The jobs waiting to be downloaded and **only** those, with each status kept.
 
     A named function rather than a comprehension inside `compose()` so the filter can be asserted
     directly. Without one, "admit everything" is invisible in a test: the state machine refuses
@@ -188,28 +188,30 @@ def queued_job_ids(repository: JobRepository) -> list[str]:
     and neither status can be reached by a job that a worker was holding when the application
     died. `RUNNING` is absent for exactly that reason and stays absent.
 
-    Read **after** `recover_interrupted()`, so nothing that was in flight is in this list.
-    """
-    return [job_id for job_id, _ in waiting_jobs(repository)]
-
-
-def waiting_jobs(repository: JobRepository) -> list[tuple[str, JobStatus]]:
-    """`queued_job_ids` with each id's status kept, because startup has to admit them differently.
-
-    **`QUEUED` means unprobed and `READY` means probed** (`UX-003`, `ARC-009`), and `T137-R2` is
-    what conflating them cost twice. The add dialog was corrected first: an entry built from a flat
-    extraction is `QUEUED`, and admitting it as a download skipped the probe `UX-003` promises.
-    This path had the same defect one seam over — the durable write and the callback that admits
-    its probe are separate operations, so an application that exits between them leaves a flat
-    entry `QUEUED` on disk, and the next start downloaded it unprobed.
+    **The status travels with the id because startup has to admit the two differently**
+    (`UX-003`, `ARC-009`), and `T137-R2` is what conflating them cost twice. The add dialog was
+    corrected first: an entry built from a flat extraction is `QUEUED`, and admitting it as a
+    download skipped the probe `UX-003` promises. This path had the same defect one seam over — the
+    durable write and the callback that admits its probe are separate operations, so an application
+    that exits between them leaves a flat entry `QUEUED` on disk, and the next start downloaded it
+    unprobed.
 
     Kept as a pair rather than two queries so both come from one read of the table, and so a
     caller cannot ask for one and forget the other.
+
+    **Selected in SQL rather than filtered in Python** (`T-177`); `with_statuses` keeps
+    `all_jobs()`' order, which is the part this function depends on.
+
+    Read **after** `recover_interrupted()`, so nothing that was in flight is in this list.
+
+    *(This was two functions. `queued_job_ids` returned the ids alone and had one caller — a test —
+    while production read the pair; `T-177` removed it and moved its reasoning here, which is where
+    the filter it documented actually lives.)*
     """
     from tracks_and_trails.core.job_state import JobStatus
 
     waiting = (JobStatus.QUEUED, JobStatus.READY)
-    return [(job.id, job.status) for job in repository.all_jobs() if job.status in waiting]
+    return [(job.id, job.status) for job in repository.with_statuses(waiting)]
 
 
 def default_output_directory() -> Path:

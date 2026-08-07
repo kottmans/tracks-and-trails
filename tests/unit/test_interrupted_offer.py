@@ -20,7 +20,7 @@ import pytest
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
-from tracks_and_trails.persistence import db
+from tracks_and_trails.persistence import db, repositories
 from tracks_and_trails.persistence.repositories import JobRepository
 
 
@@ -239,7 +239,7 @@ def test_only_queued_jobs_are_admitted_at_startup(
     change, and a mutation removing the filter survives every end-to-end test. Relying on that
     refusal is precisely the rule `T081-R4` was filed about.
     """
-    from tracks_and_trails.app import queued_job_ids
+    from tracks_and_trails.app import waiting_jobs
 
     request = a_request(tmp_path)
     repository.append(
@@ -272,8 +272,60 @@ def test_only_queued_jobs_are_admitted_at_startup(
     assert stored is not None
     repository.update(stored.with_status(JobStatus.PROBING).with_status(JobStatus.READY))
 
-    assert queued_job_ids(repository) == ["job-queued", "job-read"], (
+    assert [job_id for job_id, _ in waiting_jobs(repository)] == ["job-queued", "job-read"], (
         "startup would admit a job it did not leave waiting — a recovered one restarts unattended, "
         "which is T081-R4 — or would skip a READY one, which is T-115 for every queue UX-003 "
         "leaves behind"
+    )
+
+
+def test_waiting_jobs_deserializes_only_the_rows_it_returns(
+    repository: JobRepository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T177-R1`: the other half of the acceptance criterion, which had no gate.
+
+    `T-177` names both startup scans, and the deserialization-count regression covered only
+    `recover_interrupted()`. Restoring `waiting_jobs()` to `all_jobs()` plus a Python filter left
+    every new test green while putting half the startup cost back — the production code was right
+    and the claimed gate did not gate this caller.
+
+    Counted at `_row_to_job`, where the expense is: `_deserialize_request` runs a `json.loads` and
+    two enum conversions for every row handed to it. The returned pair is asserted as well, because
+    a mutation selecting nothing would deserialize nothing and satisfy a count-only test.
+    """
+    from tracks_and_trails.app import waiting_jobs
+
+    request = a_request(tmp_path)
+    repository.append([Job(id=f"job-{n}", url=request.url, request=request) for n in range(12)])
+    # One probed but never downloaded, and the rest finished — so two of twelve are waiting.
+    stored = repository.get("job-4")
+    assert stored is not None
+    repository.update(stored.with_status(JobStatus.PROBING).with_status(JobStatus.READY))
+    for n in (1, 2, 3, 5, 6, 7, 8, 9, 10, 11):
+        stored = repository.get(f"job-{n}")
+        assert stored is not None
+        for status in (
+            JobStatus.PROBING,
+            JobStatus.READY,
+            JobStatus.RUNNING,
+            JobStatus.POST_PROCESSING,
+            JobStatus.COMPLETED,
+        ):
+            stored = stored.with_status(status)
+        repository.update(stored)
+
+    deserialized: list[str] = []
+    original = repositories._row_to_job
+
+    def counting(row: sqlite3.Row) -> Job:
+        deserialized.append(row["id"])
+        return original(row)
+
+    monkeypatch.setattr(repositories, "_row_to_job", counting)
+    waiting = waiting_jobs(repository)
+
+    assert waiting == [("job-0", JobStatus.QUEUED), ("job-4", JobStatus.READY)]
+    assert sorted(deserialized) == ["job-0", "job-4"], (
+        f"waiting_jobs read {len(deserialized)} of 12 rows to return 2; it is enumerating and "
+        "filtering in Python again, on the path that runs before the window appears"
     )

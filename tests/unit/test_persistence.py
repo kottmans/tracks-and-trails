@@ -1359,3 +1359,126 @@ def test_clear_completed_touches_no_file(repository: JobRepository, tmp_path: Pa
 
 
 # --- DAT-005 / T-125: removal takes ids, and only records ------------------------------------
+
+
+# --- T-177: startup selects the rows it wants, in SQL -----------------------------------------
+
+
+def test_with_statuses_returns_all_jobs_order_not_insertion_order(
+    repository: JobRepository,
+) -> None:
+    """The order is the contract, not a side effect (`T-177`, `T-115`).
+
+    `all_jobs()` orders queued rows by position and unplaced rows by creation time, and startup
+    admits jobs in the order it is handed. So this asserts a sequence, not a set: a `WHERE` clause
+    that dropped the `ORDER BY` would return the same jobs and the same count, and only a
+    positional assertion can tell that apart.
+
+    The three are inserted in an order that matches neither the queue positions nor the creation
+    times, so insertion order cannot pass by coincidence.
+    """
+    early = datetime(2026, 7, 26, 9, 0, tzinfo=UTC)
+    later = datetime(2026, 7, 26, 17, 0, tzinfo=UTC)
+    repository.add(a_job("unplaced-late", created_at=later))
+    repository.add(a_job("queued-second", queue_position=1))
+    repository.add(a_job("unplaced-early", created_at=early))
+    repository.add(a_job("queued-first", queue_position=0))
+
+    selected = repository.with_statuses([JobStatus.QUEUED])
+
+    assert [job.id for job in selected] == [
+        "queued-first",
+        "queued-second",
+        "unplaced-early",
+        "unplaced-late",
+    ]
+    assert [job.id for job in selected] == [job.id for job in repository.all_jobs()], (
+        "with_statuses drifted from all_jobs' order, which is the order startup admits in"
+    )
+
+
+def test_with_statuses_selects_only_the_statuses_asked_for(repository: JobRepository) -> None:
+    """The filter itself, on a queue holding one row of each status a job can rest in."""
+    repository.append([a_job("waiting"), a_job("read"), a_job("done")])
+    for job_id, route in (
+        ("read", (JobStatus.PROBING, JobStatus.READY)),
+        (
+            "done",
+            (
+                JobStatus.PROBING,
+                JobStatus.READY,
+                JobStatus.RUNNING,
+                JobStatus.POST_PROCESSING,
+                JobStatus.COMPLETED,
+            ),
+        ),
+    ):
+        stored = repository.get(job_id)
+        assert stored is not None
+        for status in route:
+            stored = stored.with_status(status)
+        repository.update(stored)
+
+    assert [job.id for job in repository.with_statuses([JobStatus.QUEUED])] == ["waiting"]
+    assert [job.id for job in repository.with_statuses([JobStatus.READY])] == ["read"]
+    assert [job.id for job in repository.with_statuses([JobStatus.QUEUED, JobStatus.READY])] == [
+        "waiting",
+        "read",
+    ]
+    assert repository.with_statuses([JobStatus.CANCELLED]) == []
+
+
+def test_asking_for_no_statuses_returns_nothing(repository: JobRepository) -> None:
+    """**A third party's behaviour that this code depends on** (`T-177`).
+
+    `with_statuses` was written with an early return for the empty case, documented as necessary
+    because `status IN ()` is not valid SQL. That is true of standard SQL and false of SQLite,
+    which accepts the empty list as an extension and evaluates it false — the mutation check found
+    it by deleting the guard and watching every test still pass.
+
+    So the guard is gone and this is what remains: not a test of our branch, but a pin on the
+    engine behaviour we now rely on. If a future SQLite tightened `IN ()` to match the standard,
+    this fails here rather than raising `OperationalError` at a call site.
+    """
+    repository.append([a_job("waiting")])
+
+    assert repository.with_statuses([]) == []
+
+
+def test_recovery_deserializes_only_the_rows_it_recovers(
+    repository: JobRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T-177`: the cost is per *wanted* row now, not per stored row.
+
+    Counted at `_row_to_job`, which is where the expense actually is — `_deserialize_request` runs
+    a `json.loads` and two enum conversions for every row it is handed. Asserting the count rather
+    than a duration keeps this a statement about work done rather than about how fast this machine
+    is, which is the shape a timing bound would have got wrong.
+
+    The returned ids are asserted too: a mutation that selected nothing at all would deserialize
+    nothing and satisfy a count-only test.
+    """
+    repository.append([a_job(f"job-{n}") for n in range(12)])
+    for n in (3, 7):
+        stored = repository.get(f"job-{n}")
+        assert stored is not None
+        repository.update(stored.with_status(JobStatus.PROBING).with_status(JobStatus.READY))
+        stored = repository.get(f"job-{n}")
+        assert stored is not None
+        repository.update(stored.with_status(JobStatus.RUNNING))
+
+    deserialized: list[str] = []
+    original = repositories._row_to_job
+
+    def counting(row: sqlite3.Row) -> Job:
+        deserialized.append(row["id"])
+        return original(row)
+
+    monkeypatch.setattr(repositories, "_row_to_job", counting)
+    recovered = repository.recover_interrupted()
+
+    assert sorted(recovered) == ["job-3", "job-7"]
+    assert sorted(deserialized) == ["job-3", "job-7"], (
+        f"recovery read {len(deserialized)} of 12 rows to recover 2; it is filtering in Python "
+        "again, on the path that runs before the window appears"
+    )

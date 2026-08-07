@@ -11088,3 +11088,192 @@ resolved. The prior approval no longer carries open review work.
 
 The reviewer appended this record only. No source, test, requirement, decision, task state, commit,
 remote ref, migration, user database or CI state was changed.
+
+## 2026-08-06 — T-175 / T-158 cleanup and refusal review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `e70d615`
+**Implementation head:** `b92ec62`
+**Submission head:** `9da673b` (handoff and exact-head CI evidence only after the implementation)
+**Tasks:** `T-175`, `T-158`
+**Platforms verified:** Linux, Qt offscreen; submitted Windows CI evidence inspected but not rerun
+locally
+**Verdict:** **Approved with follow-ups at `b92ec62`.** The dead completion machinery is removed
+without changing the surviving persistence path, and the new success-signal regression observes
+the stored row at the only moment that distinguishes correct ordering. A refused Open now keeps its
+status-bar report, displays the same sentence at the selected row, and emits a Qt accessibility
+announcement. One Low prose-sweep miss remains; it does not affect behavior and is filed as
+`T-176` rather than keeping either task in review.
+
+### Finding
+
+| ID | Severity | Blocks approval | Finding | Required follow-up | Status |
+|---|---|---:|---|---|---|
+| `T175-R1` | **Low** | **No** | `T170-R4` included current-tense source/test prose that still described the removed History view or private ledger, and T-175 explicitly inherited the rule to distinguish that residue from accurate historical rationale. The four runtime items are gone, but the prose half remains. Examples include `app.py:430-432` saying a History view enumerates records, `manager.py:482-486` and `persistence/store.py:202-206` promising History survives queue clearing, `file_actions.py:8-12,93-96` saying two views still exist, and current composition/row-verb test prose saying an invisible ledger and its Settings control remain. These are maintenance claims beside live code, not historical migrations or append-only records. | Complete `T-176`: audit `src/` and `tests/`, put superseded rationale explicitly in the past, remove false live-contract claims, and preserve historical migrations/fixtures and genuinely useful reasoning. | **Open — owner Implementer, target `T-176`** |
+
+### Review judgments
+
+- **The completion collapse preserves behavior.** `PersistentJobStore.complete`,
+  `QueueWriter.complete`, `_Worker.complete`, the writer signal and the manager protocol method had
+  become duplicate one-row update paths after the ledger withdrawal. The completion branch now
+  uses `_persist`'s default `JobStore.update`; its `then` callback still emits `job_succeeded` only
+  after settlement. `requeue_at_end` remains the distinct writer selected through `_persist.write`.
+- **The new ordering test covers the gap it names.** `Recorder._on_succeeded` reads the repository
+  synchronously at signal delivery. Moving the success emission ahead of the write would therefore
+  observe the prior status even though the final row later becomes `COMPLETED`; checking only after
+  idle would not. The scripted child avoids making this specific gate depend on a loopback server,
+  while the existing real-download vertical slice remains intact.
+- **Removing `Succeeded.format_used` is accepted.** No production consumer, serializer or frozen
+  protocol fixture remains. Both worker and parent ship together under `ARC-003`; the field existed
+  to populate the withdrawn completion record. The retained docstring correctly preserves the
+  distinction between a requested selector and a resolved outcome without inventing a new log
+  feature inside a cleanup.
+- **The refusal is delivered through one path and one sentence.** `_act` reports
+  `Refusal.reason` to the existing callback, then `_say_at_the_row` sends that same value through
+  `QAccessibleAnnouncementEvent` and the injected `QToolTip.showText`-shaped seam. `row_anchor`
+  derives global coordinates from the current index's visible rectangle; the shell selects a named
+  row before pointer or overflow verbs enter `FileActions`, and keyboard activation uses that same
+  route.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `e70d615..b92ec62` is five commits and 22 files; implementation changes end at `b92ec62`. `c338ad9` adds the handoff and `9da673b` only records its green CI result. `git diff --check e70d615..9da673b`: **pass**. |
+| Focused UI/manager/worker/protocol suites | With loopback permission: **363 passed, 3 skipped** in 149.19 s. The first restricted run produced only 14 `PermissionError: Operation not permitted` loopback-bind failures and otherwise **349 passed, 3 skipped**; those environmental failures disappeared on the permitted rerun. |
+| Actual tooltip probe | A shown offscreen `QListView` using the production `QToolTip.showText` path produced a non-null row anchor, a visible tooltip whose text equalled `Refusal.reason`, and the unchanged status report. |
+| Dead-path audit | No `format_used`, `_str_or_none`, `history_group_verbs`, completion writer signal, or completion store/writer method remains in executable code. The only `.complete()` calls left are the unrelated protocol validators. |
+| Task placement | `tests/unit/test_task_placement.py`: **14 passed**. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; host mypy and `mypy --platform win32`: **success, 107 source files each**. |
+| Submitted CI | Handoff reports run `31133125505` green at exact implementation head `b92ec62` for all five jobs, including `windows desktop`, `frozen windows` and `frozen linux`. The reviewer did not query or rerun CI. |
+
+The reviewer appended this record and filed the non-blocking `T-176` follow-up only. No reviewed
+source, test, requirement, decision, handoff, commit, remote ref, migration, user database or CI
+state was changed.
+
+## 2026-08-06 — T-177 / T-178 / T-179 efficiency review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `9da673b`
+**Implementation head:** uncommitted, bounded to the nine files named below
+**Tasks:** `T-177`, `T-178`, `T-179`
+**Platforms verified:** Linux, Qt offscreen; Windows runtime unverified
+**Verdict:** **Changes requested.** T-177's SQL filtering is correct and materially faster, the
+three orphaned serializers are gone, and the ordinary removal/reorder/clear cases work. Three
+Medium findings remain: the new thumbnail gate can strand a file written after its removal sweep,
+T-177 does not gate one of the two optimized callers and retains the superseded benchmark number,
+and T-178's replacement comment misstates the credential boundary the deleted serializer enforced.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| `T179-R1` | **Medium** | **Yes** | `_swept_for` records the live set before the asynchronous sweep has completed. More importantly, a thumbnail decode already in flight can publish its cache file after the removal sweep has enumerated the directory. The next reset with unchanged membership is now suppressed, although the base implementation swept again. A deterministic probe removed a job, let its removal sweep finish, wrote the same cache path to model the late decode, emitted a pure reorder, and found the file still present. This is the exact race the new docstring accepts at `queue_view.py:1708-1713`, but T-119's carried criterion says the disk entry is removed when no job names it; calling it merely delayed also relies on a first sweep next run that construction does not itself schedule. | Preserve the no-op reorder optimization without treating a merely requested sweep as proof that the cache is clean. Cover a cache write completing after its job's removal, and audit the sibling `queue_cleared` path explicitly. The correction must still prove that ordinary unchanged reorders schedule no redundant scan. | **Open** |
+| `T177-R1` | **Medium** | **Yes** | The acceptance criterion names both startup scans, but the deserialization-count regression covers only `recover_interrupted()`. Restoring `waiting_jobs()` to its old `all_jobs()` plus Python filter leaves every new test green while restoring half of the task's startup cost. The production code is correct today, but the claimed gate does not gate that caller. Separately, `with_statuses` still says the shipped pair measured 0.2 ms (`repositories.py:487-489`), while the corrected task evidence says 0.65 ms and identifies 0.23 ms as the standalone query sketch. A fresh in-memory comparison avoiding WAL files measured 102.22 ms versus 0.55 ms at 2,000 discarded rows, confirming the scaling improvement and the stale source number. | Add a structural/count regression through `waiting_jobs()` that fails if it enumerates and filters in Python, and replace the obsolete 0.2 ms claim with the remeasured shipped result or a non-host-specific statement. | **Open** |
+| `T178-R1` | **Medium** | **Yes** | The replacement note at `repositories.py:119-124` says T159-R1's rule survives in `_serialize_request`, which “writes a request rather than a credential.” T159-R1 required History to store a narrow `FormatChoice` precisely because `DownloadRequest` can carry `cookies_from_browser`, proxy, rate and location fields. The whole-request serializer is live for the queue's settings freeze and is intentionally not the retired History safety boundary. The task explicitly required the old reasoning to be removed if it no longer described a live invariant; the new note instead reverses that distinction beside security-sensitive persistence code. | Remove the orphan-history note, or state accurately that T159-R1's narrow History representation ended with the table while `_serialize_request` remains a distinct whole-request queue serializer. Do not imply that a `DownloadRequest` is credential-free. | **Open** |
+
+### Review judgments
+
+- **T-177's implementation is otherwise sound.** `with_statuses` materializes its iterable once,
+  parameterizes every status, uses the existing `jobs_status` index, and repeats `all_jobs()`' exact
+  ordering. Recovery still constructs every validated transition before its single write
+  transaction. The empty iterable is valid SQLite and the test deliberately pins that engine
+  behavior.
+- **T-178 deletes only the orphaned implementation.** `FormatChoice` remains live elsewhere;
+  `fields`, `_serialize_request`, and `_deserialize_request` are unchanged. The finding is about
+  the new replacement explanation, not the deletion.
+- **The ordinary T-179 signal paths work.** The submitted removal tests pass, and an independent
+  `queue_cleared` probe scheduled `{url}` followed by the empty live set. The blocker is the
+  asynchronous cache-write window hidden by remembering request equality.
+- **The pre-existing `ai/REVIEWS.md` delta is not part of this implementation review.** It is the
+  byte-for-byte T-175/T-158 record appended by this reviewer in the prior pass. This review added
+  only the present section.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Base `9da673b`; before this review record the worktree contained exactly nine modified files: `ai/REVIEWS.md`, `ai/STATUS.md`, `ai/TASKS.md`, three source files and three test files. `git diff --check`: **pass**. The named handoff file was not present in the checkout or home directory, so the task entries and bounded diff were used directly. |
+| Focused suites | Persistence, interrupted-offer, queue-view, row-delegate and composition: **246 passed** in 27.96 s. |
+| Full default suite | With loopback permission: **2176 passed, 11 skipped, 2 deselected** in 364.91 s. The restricted attempt was stopped after confirmed `PermissionError: Operation not permitted` failures creating local test sockets; those environmental failures disappeared with permission. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; configured host mypy and `mypy --platform win32`: **success, 107 source files each**. |
+| Task placement | **14 passed**. |
+| T-177 measurement | Fresh in-memory databases, best of seven: 100 rows 5.34/0.43 ms, 500 rows 25.19/0.51 ms, 2,000 rows 102.22/0.55 ms (old/current). This confirms the claimed asymptotic improvement without the submitted benchmark's WAL sidecars. |
+| T-179 probes | `queue_cleared`: **pass**. Late file after removal sweep followed by unchanged-set reorder: **file survived**, reproducing `T179-R1`. |
+
+The reviewer appended this review record only. No reviewed source, reviewed test, requirement,
+decision, task state, status state, commit, remote ref, migration, user database or CI state was
+changed.
+
+## 2026-08-06 — T-177 / T-178 / T-179 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `9da673b`
+**Correction head:** uncommitted working tree; no correction-only snapshot exists
+**Tasks:** `T-177`, `T-178`, `T-179`
+**Findings re-reviewed:** `T177-R1`, `T178-R1`, `T179-R1`
+**Platforms verified:** Linux, Qt offscreen; Windows runtime unverified
+**Verdict:** **Changes requested.** `T177-R1` and `T178-R1` are Resolved. `T179-R1` remains Open:
+the directory-mtime proxy still misses supported coarse or non-updating timestamp behavior, and
+overlapping sweeps have no completion identity. The correction also introduces `T179-R2`, a High
+GUI-thread disk-I/O regression. T-177 and T-178 are individually ready; the three-task batch and
+T-179 are not.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T177-R1` | **Medium** | **No** | The new `test_waiting_jobs_deserializes_only_the_rows_it_returns` observes `_row_to_job` and the exact returned `(id, status)` pairs. Independently replacing `waiting_jobs` at runtime with the old `all_jobs()` plus Python filter makes this test fail after reading 12 of 12 rows to return 2. The executable route remains through `with_statuses`. The source docstring now states the durable scaling property and explicitly retires the standalone 0.2 ms sketch rather than presenting it as the shipped measurement. | **Resolved in the bounded working tree** |
+| `T178-R1` | **Medium** | **No** | The replacement note now states the distinction correctly: T159-R1's narrow `FormatChoice` boundary ended with History, while `_serialize_request` is a separate whole-`DownloadRequest` queue serializer justified by settings freeze. It explicitly names the network/location-bearing fields and says no `DownloadRequest` is credential-free. Keeping the former sentence only as an identified superseded reading is clear rather than misleading. | **Resolved in the bounded working tree** |
+| `T179-R1` | **Medium** | **Yes** | The submitted Linux test closes the exact simple race, but the new correctness gate depends on directory mtime changing for every cache entry change. That is not a portable invariant: Microsoft documents [filesystem-dependent timestamp behavior, including two-second FAT write-time resolution](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfiletime), and warns that [last-write values may be inaccurate because operating systems need not update them continuously](https://learn.microsoft.com/en-us/dotnet/api/system.io.directory.getlastwritetime?view=net-9.0). A deterministic coarse-timestamp probe made `_cache_fingerprint` remain constant; the late post-removal file then survived the unchanged reorder. There is a second direct failure: `swept(int)` carries no request identity while `_sweeping_for` is one mutable set. With sweeps A then B completing B then A, both callbacks promote B; a deterministic probe left orphan A present, deleted live B, and skipped the next B reset as “already swept.” Finally, when the cache directory is absent, `None` forces all three unchanged reorders to schedule scans, so the optimization's own criterion is not met in the empty-cache case. | **Open — ordinary Medium pass budget exhausted** |
+| `T179-R2` | **High** | **Yes** | `_cache_fingerprint()` calls `Path.stat()` synchronously from the `modelReset` slot on the GUI thread. NFR-001 says the UI thread is never blocked on disk and ARCHITECTURE §8 says nothing there may block; T118-R13 moved cache directory work to the pool for that exact reason. “One stat” is still an unbounded filesystem operation on a redirected, remote, stalled, or disconnected cache root. A deterministic slow-stat probe made one queue reorder block for 0.152 s, beyond the ~100 ms interaction budget. This is a direct correction regression and a documented architecture violation. | **Open — new correction regression** |
+
+### Focused review judgments
+
+- **A `ThumbnailStore.ready`-only fix would indeed be incomplete.** The add dialog and queue use
+  distinct stores over the same root. That does not make directory mtime a safe substitute: the
+  timestamp is lossy and filesystem-dependent, and reading it synchronously violates the stronger
+  responsiveness rule.
+- **The submitted reorder-test repair is valid for the simple case.** Wrapping the real sweep lets
+  `swept` promote state, and the four focused tests each pass. They do not exercise overlapping
+  sweep completion or an absent directory; manually creating the directory in the reorder test is
+  why the latter passes.
+- **Failing open on `OSError` is the safe correctness direction but not a complete gate.** It
+  conflates a genuinely unreadable directory with a directory that does not yet exist. The latter
+  is a stable state in which a completed first sweep could safely suppress later unchanged
+  reorders, but the current code scans on every one.
+- **The residue between a cache write and the next structural reset is not a new finding.** The
+  sweep has always been asynchronous and reset-driven. The blocker is that the next reset can be
+  falsely skipped, not that no timer or immediate second sweep was added.
+- **The single mutable completion marker is not merely theoretical.** `_SweepTask`s use the shared
+  pool and may finish out of request order; `swept` reports only a removal count. Correct
+  completion bookkeeping therefore needs per-request identity or serialized/coalesced ownership,
+  not a field overwritten by the newest request.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git status --short` showed exactly the same nine modified files as the initial pass; `git diff --check`: **pass**. There is still no correction-only snapshot, so the handoff's named hunks were checked against the prior review record. The two earlier `ai/REVIEWS.md` sections were unchanged before this append. |
+| Focused suites | Persistence, interrupted-offer, queue-view, row-delegate and composition: **250 passed** in 20.58 s. The four corrected T-179 tests separately passed **4/4**; the two focused waiting-job tests passed **2/2**. |
+| T177 mutation | Runtime injection of the exact old `all_jobs()` plus Python filter: **killed**; the new test failed with 12 deserializations for 2 returned rows. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **184 files already formatted**; configured host mypy and `mypy --platform win32`: **success, 107 source files each**. |
+| Task placement | **14 passed**. |
+| Slow-stat probe | A 150 ms delay in the cache-directory `Path.stat` made synchronous `queue_reordered.emit` take **0.152 s**, reproducing `T179-R2`. |
+| Coarse-time probe | Holding the fingerprint constant across a late cache write left the removed job's file present after the next unchanged reorder: **T179-R1 reproduced**. |
+| Overlap probe | Requests A then B, completions B then A: the next unchanged B reset scheduled no sweep, orphan A remained, live B's disk entry was gone, and `_swept_for` incorrectly said B: **T179-R1 reproduced**. |
+| Missing-directory probe | Three unchanged resets over a cache directory that did not exist scheduled **3 sweeps**, not 1. |
+| Implementer evidence not rerun | The handoff reports unit+UI **1882 passed, 11 skipped** and integration **298 passed**. The focused re-review did not rerun those whole partitions because the correction gate above covers the named hunks. |
+
+### Pass-budget disposition
+
+This was the ordinary focused correction re-review. `T179-R1` is a surviving blocking Medium, so
+it cannot independently trigger another agent-to-agent pass; the maintainer must authorize one of
+§10's choices for that finding. `T179-R2` is High and therefore remains in the correction loop
+without consuming or depending on the Medium pass budget. If one replacement design corrects both,
+the next review is bounded to `T179-R2`, the maintainer-authorized disposition of `T179-R1`, and
+that correction diff.
+
+The reviewer appended this re-review record only. No reviewed source, reviewed test, requirement,
+decision, task state, status state, commit, remote ref, migration, user database or CI state was
+changed.

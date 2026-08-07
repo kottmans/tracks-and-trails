@@ -29,6 +29,7 @@ from tests.ui.test_row_delegate import REPAINT_BUDGET_SECONDS, VIEWPORT_ROWS
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.core.paths import thumbnail_cache_path
 from tracks_and_trails.core.presets import AUDIO_MP3, BEST_VIDEO, MP3_QUALITY, to_request
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
@@ -2296,3 +2297,287 @@ def test_a_uniform_playlists_entries_stay_silent(
             "an entry that agrees with its group spent a line saying so, which is the economy "
             "row 9c bought"
         )
+
+
+# --- T-179: the cache is swept when membership changes, not on every reset ---------------------
+
+
+def _thumbed(job_id: str, directory: Path, url: str, position: int) -> Job:
+    return make_job(job_id, directory, thumbnail_url=url, queue_position=position)
+
+
+def test_a_reorder_that_changes_no_membership_does_not_sweep_the_cache(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T-179`. A reorder resets the model and cannot change which URLs are named.
+
+    **The first reset still sweeps**, and that is asserted here rather than in its own test,
+    because the two halves are the same rule: sweep when the set is not what was last swept, and
+    `None` is not the empty set. A gate that skipped the first sweep would leave a queue restored
+    from disk holding pictures no live job wants.
+
+    **The real sweep is wrapped rather than replaced** (`T179-R1`). A stub that only records the
+    call never lets the store finish, and the gate deliberately promotes its recorded state from
+    `swept` — so a stub would leave every reorder looking like the first one and the test would
+    assert nothing about the gate at all. It counts calls *and* lets the work happen.
+    """
+    first = "https://pics.invalid/a.jpg"
+    second = "https://pics.invalid/b.jpg"
+    root = tmp_path / "cache"
+    thumbnail_cache_path(first, root).parent.mkdir(parents=True, exist_ok=True)
+    queue.add(_thumbed("job-a", tmp_path, first, 0))
+    queue.add(_thumbed("job-b", tmp_path, second, 1))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+
+    swept: list[frozenset[str]] = []
+    real = view._thumbnails.sweep
+
+    def recording(live: Any) -> None:
+        live = frozenset(live)
+        swept.append(live)
+        real(live)
+
+    monkeypatch.setattr(view._thumbnails, "sweep", recording)
+
+    manager.queue_reordered.emit(("job-b", "job-a"))
+    assert swept == [frozenset({first, second})], (
+        "the first reset after construction did not sweep; nothing has been swept yet, so a "
+        "queue restored from disk would keep every picture it no longer names"
+    )
+    assert spin_until(qapp, lambda: not view._thumbnails.outstanding), "the first sweep never ran"
+
+    manager.queue_reordered.emit(("job-a", "job-b"))
+    manager.queue_reordered.emit(("job-b", "job-a"))
+
+    assert swept == [frozenset({first, second})], (
+        f"a reorder scheduled {len(swept)} cache scans; a reorder cannot change the live URL set, "
+        "so every one after the first can only conclude that everything is still wanted"
+    )
+
+
+def test_removing_the_last_job_naming_a_picture_still_deletes_it(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T-119`'s criterion through the view, which is the wiring `T-179` changed.
+
+    The existing proof of this calls `ThumbnailStore.sweep` directly, so it would have passed
+    unchanged had the gate skipped every sweep. Both halves are asserted in one arrangement, for
+    the reason the original gives: a URL nothing names any more goes, and a URL a surviving job
+    still names stays.
+    """
+    kept = "https://pics.invalid/kept.jpg"
+    gone = "https://pics.invalid/gone.jpg"
+    root = tmp_path / "cache"
+    for url in (kept, gone):
+        path = thumbnail_cache_path(url, root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"a picture")
+
+    queue.add(_thumbed("job-keeps", tmp_path, kept, 0))
+    queue.add(_thumbed("job-shares", tmp_path, kept, 1))
+    queue.add(_thumbed("job-goes", tmp_path, gone, 2))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+    assert view.model.rowCount() == 3
+
+    del queue.jobs["job-shares"]
+    manager.job_removed.emit("job-shares")
+    assert spin_until(qapp, lambda: not view._thumbnails.outstanding)
+    assert thumbnail_cache_path(kept, root).exists(), (
+        "the picture went when the first of two jobs naming it was removed; T-119 keeps a file "
+        "while any remaining job names it"
+    )
+
+    del queue.jobs["job-goes"]
+    manager.job_removed.emit("job-goes")
+    assert spin_until(qapp, lambda: not thumbnail_cache_path(gone, root).exists()), (
+        "the last job naming a picture was removed and the file survived"
+    )
+    assert thumbnail_cache_path(kept, root).exists(), "a picture a live job still names was deleted"
+
+
+def test_a_first_queue_that_names_no_pictures_still_sweeps_once(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """Why `_swept_for` starts at `None` and not at the empty set (`T-179`).
+
+    **This was a claim in a comment before it was a test.** The mutation that replaced `None` with
+    `frozenset()` survived the other two gate tests, because in both of them the queue names at
+    least one picture and so differs from empty either way. The case that separates them is the
+    one below: a queue naming no pictures at all, over a cache directory that still holds files
+    from a previous run. Starting at the empty set calls that "already swept" and the stale files
+    stay for the life of the process.
+    """
+    root = tmp_path / "cache"
+    stale = thumbnail_cache_path("https://pics.invalid/from-a-previous-run.jpg", root)
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"a picture no live job names")
+
+    queue.add(make_job("job-a", tmp_path, queue_position=0))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+    assert view.model.rowCount() == 1
+
+    manager.queue_reordered.emit(("job-a",))
+
+    assert spin_until(qapp, lambda: not stale.exists()), (
+        "the first sweep was skipped because the queue named no pictures, so a cache left by a "
+        "previous run is never collected"
+    )
+
+
+def test_a_picture_written_after_its_removal_sweep_is_still_collected(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T179-R1`. The reviewer's probe, as a regression.
+
+    A decode already in flight publishes its file **after** the removal sweep has enumerated the
+    directory. That sweep cannot see it. The first version of this gate remembered only the live
+    set, so every later reset was suppressed and the file stayed for the life of the process —
+    where the base implementation swept again on the next reorder and collected it.
+
+    The write is made directly rather than through the store on purpose: this must hold for a file
+    the view has no signal for, which is not hypothetical — the add dialog runs a second store over
+    the same cache root (`T118-R16`), and nothing this view is connected to fires for it.
+
+    So the gate also remembers what the cache directory looked like when the sweep **finished**,
+    and a pure reorder over a changed directory sweeps rather than skipping.
+    """
+    kept = "https://pics.invalid/kept.jpg"
+    gone = "https://pics.invalid/gone.jpg"
+    root = tmp_path / "cache"
+    kept_path = thumbnail_cache_path(kept, root)
+    kept_path.parent.mkdir(parents=True, exist_ok=True)
+    kept_path.write_bytes(b"a picture")
+
+    queue.add(_thumbed("job-keeps", tmp_path, kept, 0))
+    queue.add(_thumbed("job-goes", tmp_path, gone, 1))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+
+    del queue.jobs["job-goes"]
+    manager.job_removed.emit("job-goes")
+    assert spin_until(qapp, lambda: not view._thumbnails.outstanding), (
+        "the removal sweep never finished, so the race this is about was never set up"
+    )
+
+    # The late decode lands: its job is already gone, and the sweep that would have caught it has
+    # been and finished.
+    late = thumbnail_cache_path(gone, root)
+    late.write_bytes(b"decoded after the sweep")
+
+    manager.queue_reordered.emit(("job-keeps",))
+
+    assert spin_until(qapp, lambda: not late.exists()), (
+        "a picture written after its job's removal sweep survived a later reorder; unchanged "
+        "membership suppressed every subsequent scan, which is T179-R1"
+    )
+    assert kept_path.exists(), "a picture a live job still names was deleted"
+
+
+def test_clearing_the_queue_sweeps_every_picture_it_held(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """The sibling path `T179-R1` asked to be audited explicitly.
+
+    `queue_cleared` resets the model like the other two, and it is the case where the live set goes
+    to empty. A gate keyed on membership handles it by construction — which is exactly why it is
+    worth a test rather than an argument.
+    """
+    root = tmp_path / "cache"
+    urls = ["https://pics.invalid/one.jpg", "https://pics.invalid/two.jpg"]
+    for index, url in enumerate(urls):
+        path = thumbnail_cache_path(url, root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"a picture")
+        queue.add(_thumbed(f"job-{index}", tmp_path, url, index))
+
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+    assert view.model.rowCount() == 2
+
+    queue.jobs.clear()
+    manager.queue_cleared.emit()
+
+    assert spin_until(
+        qapp, lambda: not any(thumbnail_cache_path(url, root).exists() for url in urls)
+    ), "clearing the queue left its pictures on disk"
+
+
+def test_a_sweep_that_deleted_something_does_not_make_the_next_reorder_sweep(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Why the gate records what a sweep **finished** with, not what it was asked for (`T179-R1`).
+
+    A sweep changes the very directory the gate fingerprints — deleting a file is a change. Record
+    the fingerprint when the sweep is *requested* and it is already stale by the time the sweep
+    ends, so the next reorder sees a changed directory and scans again for nothing. That is the
+    redundant scan this task exists to remove, reintroduced one step later.
+
+    It is a performance property rather than a correctness one, which is exactly why it needed its
+    own test: the mutation that records on request survived every other test here, because none of
+    them had a sweep that actually deleted anything.
+    """
+    kept = "https://pics.invalid/kept.jpg"
+    gone = "https://pics.invalid/gone.jpg"
+    root = tmp_path / "cache"
+    for url in (kept, gone):
+        path = thumbnail_cache_path(url, root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"a picture")
+
+    queue.add(_thumbed("job-keeps", tmp_path, kept, 0))
+    queue.add(_thumbed("job-goes", tmp_path, gone, 1))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=root)
+
+    del queue.jobs["job-goes"]
+    manager.job_removed.emit("job-goes")
+    assert spin_until(qapp, lambda: not thumbnail_cache_path(gone, root).exists()), (
+        "the removal sweep did not delete the orphan, so it changed nothing and this test would "
+        "prove nothing"
+    )
+    assert spin_until(qapp, lambda: not view._thumbnails.outstanding)
+
+    swept: list[frozenset[str]] = []
+    real = view._thumbnails.sweep
+
+    def recording(live: Any) -> None:
+        live = frozenset(live)
+        swept.append(live)
+        real(live)
+
+    monkeypatch.setattr(view._thumbnails, "sweep", recording)
+    manager.queue_reordered.emit(("job-keeps",))
+
+    assert swept == [], (
+        f"a reorder after a sweep that deleted a file scheduled {len(swept)} more scans; the "
+        "recorded fingerprint was taken before the sweep changed the directory it fingerprints"
+    )

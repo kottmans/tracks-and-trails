@@ -5,8 +5,11 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-04
-**Last verified against repository:** 2026-08-04
+**Last updated:** 2026-08-06
+**Last verified against repository:** 2026-08-06 **for the Phase 3 block below** — its task states,
+verdicts and commit SHAs were checked against `ai/TASKS.md` and `git log`. The Phase 1 and Phase 2
+narrative from `## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a
+statement of what is true now.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -48,7 +51,56 @@ already held, so the maintainer ruled to purge those too (`DAT-006`'s legacy-dat
 implemented against the two superseded rulings was discarded uncommitted.
 
 **Phase 3 work completed since the exit:** `T-167`, `T-164`, `T-163`, `T-166`, `T-160` (the row
-layout range, approved at `fd15ade`/`4799136`), `T-150` and `T-156`.
+layout range, approved at `fd15ade`/`4799136`), `T-150` and `T-156`; then the withdrawal work above
+— `T-169` and `T-170`, with `T-172`, `T-173` and `T-174` **cancelled as moot** once the surface they
+proposed to rename or delete was gone — and `T-175` and `T-158`.
+
+**`T-175` and `T-158` are approved with follow-ups at `b92ec62`** (2026-08-06, base `e70d615`). The
+dead completion machinery is gone and a refused *Open* is now said at the row, in the status bar and
+to assistive technology. One **Low, non-blocking** finding is open: `T175-R1`, the current-tense
+source and test prose that still describes the withdrawn History view or ledger as live. It is owned
+by the Implementer and targeted at **`T-176`**, which is filed under `## Proposed — Phase 3`.
+
+**Two tasks are complete but have never been reviewed:** `T-168` and `T-105`, both recorded as
+*awaiting review* in their entries. They are not covered by the `b92ec62` approval, whose base is
+`e70d615`.
+
+**`T-177`, `T-178` and `T-179` are in review, corrected once** — filed 2026-08-06 from an
+efficiency audit (Codex, which changed no files) and implemented the same day on maintainer
+instruction. The initial review returned **Changes requested** with three blocking Medium findings,
+one per task; all three corrections are made and are awaiting the Reviewer's verification. Nothing
+is committed. All three are behavior-preserving:
+
+- **`T-177`** — both startup scans deserialized every stored job to select a status `jobs_status`
+  has indexed since the first migration. `JobRepository.with_statuses` selects in SQL and keeps
+  `all_jobs()`' order. Measured on this host, the pair went from 93.3 ms to 0.65 ms at 2000 queued
+  rows, and from 4.6 ms to 0.63 ms at 100 — the cost is now flat in queue size because it is
+  proportional to the rows wanted. `queued_job_ids()` went with it; `waiting_jobs()` carries its
+  reasoning.
+- **`T-178`** — the `FormatChoice` serializers migration `0009` orphaned. `T-175` removed the
+  runtime half of the same withdrawal and missed these because a serializer for a departed table
+  does not look like a queue path.
+- **`T-179`** — the thumbnail cache is swept when the live URL set changes rather than on every
+  model reset, so a pure reorder no longer schedules a scan that can only conclude everything is
+  still wanted.
+
+**Four claims written into this work were wrong, and none of them was caught by reading it** —
+which is the same lesson `ai/TESTING.md` §13 already carries, arriving four more times in one day.
+Two were found by my own mutation runs: `T-177` guarded the empty-status case because `IN ()` "is
+not valid SQL", which is true of standard SQL and not of SQLite; and `T-179`'s comment explained
+why its marker starts at `None` rather than an empty set, with no test holding it.
+
+**The other two the review found, and the shape is worth keeping.** `T179-R1` is the one that
+matters: the first gate suppressed the scan that would have collected a picture written after its
+job's removal sweep, and **my docstring described that as an accepted cost rather than treating it
+as the defect it was**. Writing down a regression is not the same as deciding it is acceptable, and
+a well-argued note beside it makes the regression harder to see, not easier. `T178-R1` is the same
+failure in one sentence: a replacement comment that said `_serialize_request` "writes a request
+rather than a credential", reversing the very boundary `T159-R1` drew, beside persistence code that
+handles cookies.
+
+The audit's fifth observation, `MainWindow.job_reader`, is deliberately untouched: it belongs to
+the deferred `JobProgressView` seam.
 
 ## The 2026-08-04 review, and where its findings stand
 
@@ -1173,7 +1225,7 @@ reproduced every asset byte-for-byte from the script — and filed Complete. See
 
 ## Next
 
-**Written 2026-08-02.** `T-115`'s re-verdict was then the only thing between here and Phase 2's exit. *(Superseded many times over — criterion 8 was added on 2026-08-04 and the phase exited on 2026-08-05 at `8de5a72`.)*
+**Written 2026-08-02.** `T-115`'s re-verdict was then the only thing between here and Phase 2's exit. *(Superseded many times over — criterion 8 was added on 2026-08-04 and the phase exited on 2026-08-05 at `38504b3`, "Phase 2 exits". This line named `8de5a72`, which is the last criterion-8 sweep rather than the exit commit.)*
 After it: the **UI rework**, `T-116` through `T-120`, filed from mockups the maintainer reviewed
 and chose between. It precedes `T-107` deliberately — Phase 3 and 4 add a format table, a stream
 chooser, a playlist picker and a preset editor **to the queue that already exists**, so what a row

@@ -78,10 +78,16 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Nothing awaits a verdict as of 2026-08-03.** `T-118` was approved with follow-ups at
-`53b07ec` and moved to `## Complete`; its follow-ups are `T-122` under `## Proposed — Phase 2` and
-`COORD-R21`. Read the sections, not this line — `T-096`'s gate compares each entry's status to the
-section it sits in, and it is what caught this move being owed.)*
+*(**Three await a re-review as of 2026-08-06:** `T-177`, `T-178` and `T-179`, whose initial review
+returned **Changes requested** with three blocking Medium findings. All three corrections are made
+and recorded in the entries below; **only the Reviewer marks a finding Resolved**, so they stay
+here until it does.)*
+
+*(This note said "**Nothing awaits a verdict as of 2026-08-03**" — `T-118` was approved with
+follow-ups at `53b07ec` and moved to `## Complete`, and its follow-ups are `T-122` under
+`## Proposed — Phase 2` and `COORD-R21`. It was still saying so on 2026-08-06 with three tasks
+sitting in this section. Read the sections, not this line — `T-096`'s gate compares each entry's
+status to the section it sits in, and it is what caught this move being owed.)*
 
 *(`COORD-R15`: this note previously said `T-115`, `T-117` and `T-120` were "filed under Complete"
 when the first two were still `In Review` entries in this very section and the third **had no entry
@@ -91,6 +97,332 @@ whose stale status agreed with their stale section passed it. All three are now 
 `## Complete` at their approved heads.)*
 
 ---
+
+### T-177 — Startup reads the whole queue to find the few rows it wants
+
+**Status:** **In Review — corrected 2026-08-06, awaiting re-review.** Filed from an efficiency
+audit (Codex) and authorised by the maintainer in the same instruction. Behavior-preserving, and
+measured before and after rather than argued. The initial review returned **Changes requested**;
+`T177-R1` is corrected and recorded below as awaiting the Reviewer's verification. **One acceptance
+criterion was written on a false premise and is corrected in place below** — `IN ()` is valid
+SQLite — which the mutation check found rather than a reading.
+**Owner:** Implementer
+**Priority:** Medium — it is on the path that runs **before the window appears**, which is the one
+place this project has already paid for a per-row cost (`T-082`)
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T-082` (the same path, the same shape of defect), `T-115`, `T081-R4`,
+`UX-003`, `ARC-009`, `NFR-002`
+**Affected surfaces:** `persistence/repositories.py`, `app.py`, their tests
+**Risk:** Low for the mechanism, **Medium for the ordering** — see below
+
+#### What is wrong
+
+Both startup scans load and deserialize **every** job to select a status SQLite already indexes:
+
+- `JobRepository.recover_interrupted()` calls `self.all_jobs()` and filters on
+  `INTERRUPTED_ON_STARTUP` in Python
+- `app.waiting_jobs()` calls `repository.all_jobs()` and filters on `QUEUED`/`READY` in Python
+
+`_row_to_job` runs `_deserialize_request` per row — a `json.loads` plus two enum conversions — so
+the cost is per stored job, not per wanted job. `0001_initial.sql` has created
+`CREATE INDEX jobs_status ON jobs (status)` since the first migration, and nothing has used it on
+this path.
+
+Measured on this host against a queue where only a handful of rows are wanted, best of seven. The
+*after* column is the **shipped** `recover_interrupted()` and `waiting_jobs()`, re-measured after
+the change rather than the standalone queries the estimate was first taken from:
+
+| Queue size | Both scans, before | Both scans, after |
+|---:|---:|---:|
+| 100 | 4.57 ms | 0.63 ms |
+| 500 | 23.16 ms | 0.62 ms |
+| 2000 | 93.27 ms | 0.65 ms |
+
+The *after* figures are larger than the 0.23 ms the query sketch showed, and the difference is
+real work rather than noise: the shipped `recover_interrupted()` also opens the transaction and
+writes the recovered rows, which the sketch did not do.
+
+`EXPLAIN QUERY PLAN` for the filtered form reports `SEARCH jobs USING INDEX jobs_status`. The
+filtered cost is flat because it is proportional to the rows *wanted*, which is what makes this
+worth doing at all — `T-007` measured cold start at 0.178 s median against `NFR-002`'s 3 s, so at
+2000 rows the two scans are about half the cold start again.
+
+#### Scope
+
+Add one repository query that selects by status in SQL and returns `JobModel`s in `all_jobs`
+order, and route both scans through it. Fold in the audit's fourth observation while the surface
+is open: `app.queued_job_ids()` wraps `waiting_jobs()` and has one caller, a test.
+
+#### Acceptance criteria
+
+- `recover_interrupted()` and `waiting_jobs()` no longer deserialize rows whose status they will
+  discard, and a test asserts the count of rows read rather than only the result
+- **Order is unchanged.** `all_jobs()` orders `queue_position IS NULL, queue_position, created_at,
+  id` and `waiting_jobs()` inherits it; the new query states the same order and a test fails if it
+  does not. This is the real risk in the change — a set-equal assertion would pass an ordering
+  regression, and `T-115` turned on startup order
+- The empty-status case is decided deliberately and its behaviour is pinned by a test. *(This
+  criterion was written as "not left to SQLite: `IN ()` is not valid SQL". **The premise is
+  wrong** — that is standard SQL, and SQLite accepts the empty list as an extension. The mutation
+  check found it, the guard written on the false premise is gone, and the test now pins the engine
+  behaviour instead of a branch of ours.)*
+- `queued_job_ids()`'s disposition is decided and stated — kept with a caller, or removed with its
+  test moved to `waiting_jobs()`
+- Recovery still writes one transaction (`T-082`), still validates each transition through
+  `with_failure`, and still computes every transition before writing any
+- `ruff check .`, `ruff format --check .`, host mypy, `mypy --platform win32`, and the persistence,
+  interrupted-offer and composition tests are clean
+
+#### Out of scope
+
+- Any change to what either scan selects. `READY` stays in the waiting set (`UX-003`) and `RUNNING`
+  stays out of it (`T081-R4`)
+- Adding an index. `jobs_status` already exists
+- Lazy or partial deserialization of `request`
+
+#### What it came to
+
+`JobRepository.with_statuses` selects in SQL and repeats `all_jobs()`' `ORDER BY` rather than
+sharing it through a constant — two orders that must agree are better stated twice and asserted.
+`recover_interrupted()` and `waiting_jobs()` both route through it; recovery still computes every
+transition before writing and still commits once (`T-082`).
+
+**`queued_job_ids` is gone.** It returned the ids alone, production read the pair, and its only
+caller was the test that proves the filter exists. Its reasoning — `T081-R4`, `T-115`, why `READY`
+is in the set and `RUNNING` is not — moved onto `waiting_jobs`, which is where the filter it
+documented actually lives, and the test now calls `waiting_jobs`.
+
+**The empty-status guard was written on a false premise and removed.** The mutation check deleted
+it and every test still passed, because SQLite accepts `IN ()` as an extension and evaluates it
+false — the "not valid SQL" the guard and its docstring both asserted is standard SQL, not this
+engine. What remains is `test_asking_for_no_statuses_returns_nothing`, which is no longer a test of
+our branch but a pin on third-party behaviour this code now depends on.
+
+Three mutants, all killed: filter ignored (fails the count and the startup-admission tests),
+`ORDER BY` dropped (fails the ordering test, and **only** the ordering test — a set-equal
+assertion would have passed it), guard deleted (survived, and was the finding above).
+
+#### Correction round 1 — `T177-R1`, 2026-08-06
+
+**Corrected, awaiting the Reviewer's verification.** The finding was right on both halves.
+
+- **The gate did not gate `waiting_jobs()`.** The acceptance criterion names both scans and only
+  recovery had a deserialization-count regression, so reverting `waiting_jobs()` to `all_jobs()`
+  plus a Python filter left every test green while restoring half the startup cost.
+  `test_waiting_jobs_deserializes_only_the_rows_it_returns` counts at `_row_to_job` and asserts the
+  returned pair as well, so a mutation selecting nothing cannot satisfy it by deserializing
+  nothing. **Mutation run: the exact revert the finding describes now fails it.**
+- **The 0.2 ms claim in `with_statuses`' docstring is gone.** It was the standalone query sketch's
+  number, left behind when the task entry was corrected to the shipped 0.65 ms. Replaced with the
+  durable statement — the cost is proportional to the rows wanted rather than the rows stored —
+  and a pointer to this entry, so a host-specific figure lives in one place that can be edited
+  rather than in source. The reviewer's independent in-memory measurement (100 rows 5.34/0.43 ms,
+  500 rows 25.19/0.51 ms, 2000 rows 102.22/0.55 ms) agrees with the scaling claim.
+
+#### Files
+
+`src/tracks_and_trails/persistence/repositories.py`, `src/tracks_and_trails/app.py`,
+`tests/unit/test_persistence.py`, `tests/unit/test_interrupted_offer.py`
+
+---
+
+### T-178 — Delete the `FormatChoice` serializers migration 0009 orphaned
+
+**Status:** **In Review — corrected 2026-08-06, awaiting re-review.** Filed from the same audit and
+authorised with it. The three names and the `FormatChoice` import are gone; `fields` and the
+request pair stay. The deletion was accepted; **the replacement comment was not** — `T178-R1` is
+corrected and recorded below.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T-175` (the same withdrawal, the runtime half), `T-159`, `T159-R1`,
+`REQ-020` (withdrawn), `REQ-026`, migration `0009`
+**Affected surfaces:** `persistence/repositories.py` only
+**Risk:** Low
+
+#### Scope
+
+`_FORMAT_CHOICE_FIELDS`, `_serialize_format_choice` and `_deserialize_format_choice` have no
+caller in `src/` or `tests/` — they reference only each other. They wrote the `history` table's
+format column, which migration `0009` dropped. Remove the block and the `FormatChoice` import that
+exists only for it. `fields` stays: `_REQUEST_FIELDS` uses it.
+
+`T-175` removed the runtime machinery the withdrawal stranded and missed this because it is a
+serializer for a table rather than a queue path.
+
+#### Acceptance criteria
+
+- The three names and the now-unused import are gone; no other import is removed
+- Nothing in `src/` or `tests/` references them, verified by search and not by assumption
+- **`_serialize_request` and `_deserialize_request` are untouched.** They are the live pair and the
+  near-identical shape is exactly how the wrong one gets deleted
+- `T159-R1`'s reasoning — that what describes a download is serialized without ever writing a whole
+  request — is not deleted with the code if it still explains a live invariant; if it does not, it
+  goes rather than being kept as a comment about nothing
+- `ruff check .`, `ruff format --check .`, both mypy platforms, and the persistence tests are clean
+
+#### Out of scope
+
+- Removing `FormatChoice` itself, which is live in the preset and row-editor paths
+- Touching migration `0007`, which created the column, or any other historical migration
+
+#### What it came to
+
+The three names and the `FormatChoice` import are gone. `fields` stays — `_REQUEST_FIELDS` uses it
+— and `_serialize_request`/`_deserialize_request` are untouched, which was the criterion the
+near-identical shape put at risk. A past-tense note stands where the block did, saying what it
+wrote and which migration ended it; `T159-R1`'s rule survives in `REQ-026` and in the request
+serializer that is still the only one here.
+
+#### Correction round 1 — `T178-R1`, 2026-08-06
+
+**Corrected, awaiting the Reviewer's verification.** The deletion was accepted; the note I left in
+its place reversed the distinction it was describing.
+
+`T159-R1` required History to store a narrow `FormatChoice` **because** a whole `DownloadRequest`
+can carry `cookies_from_browser`, `proxy` and `rate_limit_bytes` — verified in `core/models.py`,
+where `proxy` additionally rejects userinfo (`T014-R1`) but the other two are plain optional
+fields. My note said the rule "survives in `_serialize_request`, which still writes a request
+rather than a credential", which reads as a claim that a `DownloadRequest` is credential-free, and
+it sat beside security-sensitive persistence code.
+
+The note now says what is true: `T159-R1`'s boundary **ended with the table**. `_serialize_request`
+is a different thing with a different justification — it persists the queue's settings freeze,
+where the whole request is the point — and `REQ-026` governs what may be written from it. The
+original wording is kept in the note as a superseded reading rather than quietly replaced.
+
+#### Files
+
+`src/tracks_and_trails/persistence/repositories.py`
+
+---
+
+### T-179 — Every model reset scans the thumbnail cache, including a pure reorder
+
+**Status:** **In Review — corrected 2026-08-06, awaiting re-review.** Filed from the same audit and
+authorised with it. **The first gate was wrong and the review was right about why** — `T179-R1`
+found that it suppressed the scan that would have collected a picture written after its job's
+removal sweep. The gate now checks the cache directory as well as the membership, and records what
+a sweep *finished* with. Corrected and recorded below.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T-119` (the criterion this must not break), `T118-R13`, `NFR-004`,
+`ARC-005`, `NFR-001`
+**Affected surfaces:** `ui/queue_view.py`, its tests
+**Risk:** **Medium.** `T-119`'s criterion is that a picture goes with its job and survives while any
+other job names it. A gate that skips too much turns that into a cache that never shrinks
+
+#### What is wrong
+
+`QueueView._sweep_thumbnails` is connected to `modelReset`, which `job_removed`, `queue_reordered`
+and `queue_cleared` all cause. A reorder cannot change the set of live thumbnail URLs, so it
+schedules a full enumerate-and-stat of the cache directory that can only conclude that everything
+is still wanted. `ThumbnailStore.sweep()` already keeps this off the GUI thread (`T118-R13`), so
+the cost is background I/O rather than a stall — which is why this is Low and not higher.
+
+#### Scope
+
+Sweep when the live URL set actually changes, rather than on every reset. The set is already
+computed in `_sweep_thumbnails` to build the call, so the comparison is against what was last
+swept.
+
+#### Acceptance criteria
+
+- A reorder that changes no membership schedules **no** sweep, asserted on the store rather than on
+  a timer
+- A removal that drops the last job naming a URL still sweeps, and the file still goes — `T-119`'s
+  existing criterion, re-asserted through the view rather than only against the store directly,
+  because the view wiring is the part being changed and today no test covers it
+- A removal that leaves another job naming the same URL still keeps the file
+- The first sweep after construction is not skipped: nothing has been swept yet, and a queue
+  restored from disk may name pictures no live job wants
+- The gate is proven by mutation: making the comparison always-unequal, and always-equal, each
+  fails a test
+- What the gate gives up is **written down rather than implied** — a file that lands in the cache
+  after a sweep enumerated the directory is not collected until the membership changes again, and
+  the honest statement of that belongs in the docstring
+- `ruff check .`, `ruff format --check .`, both mypy platforms, and the queue-view and row-delegate
+  tests are clean
+
+#### Out of scope
+
+- Coalescing inside `ThumbnailStore`. The add dialog shares that store, and a store-level cache of
+  the last request would change a surface this task has no reason to touch
+- Sweeping on a timer, or on any schedule other than the queue changing
+- `MainWindow.job_reader`, the audit's fifth observation: it belongs to the deferred
+  `JobProgressView` seam and is left alone until that seam's fate is decided
+
+#### The third mutation, which is the part worth reading
+
+The criterion asked for two mutations — always-equal and always-unequal — and both died as
+expected: always-equal loses the deletion when the last job naming a picture is removed,
+always-unequal reproduces the sweep-per-reorder this task exists to stop.
+
+**`_swept_for` starts at `None`, and the comment saying why was a claim rather than a tested
+property.** Replacing `None` with `frozenset()` **survived both**. It survives because in each of
+those tests the queue names at least one picture, so the starting value differs from the live set
+either way. The case that separates them is a queue naming *no* pictures over a cache directory
+that still holds files from a previous run: starting at the empty set calls that "already swept"
+and the stale files stay for the life of the process.
+
+`test_a_first_queue_that_names_no_pictures_still_sweeps_once` is that case, and it kills the third
+mutant. This is `ai/TESTING.md` §13's shape again — the comment was right and nothing held it
+there.
+
+#### Correction round 1 — `T179-R1`, 2026-08-06
+
+**Corrected, awaiting the Reviewer's verification. The finding was right and the docstring I wrote
+was the tell** — it described the race as an accepted cost, which is how a behavior regression gets
+shipped with its own explanation attached.
+
+**What was wrong.** A thumbnail decode already in flight publishes its file *after* the removal
+sweep has enumerated the directory. That sweep cannot see it. A gate remembering only the live set
+then suppressed every later scan, so the file stayed for the life of the process — where the base
+implementation swept on the next reorder and collected it. Calling that "delayed" also leaned on a
+first sweep next run that construction does not itself schedule.
+
+**Two things changed.**
+
+1. The gate now also compares the cache directory's own mtime against what it was when the last
+   sweep **finished**. One `stat` of one directory, not the enumerate-and-stat of every entry that
+   `T118-R13` moved to the pool. It is the directory rather than a signal because **this
+   application runs two stores over one cache root** — the queue's and the add dialog's
+   (`T118-R16`) — so a file the dialog publishes fires nothing this view is connected to. That is
+   the production form of the reviewer's direct-write probe, and a signal-based fix would have
+   missed it.
+2. `_swept_for` is recorded from the store's `swept` completion, not when the sweep is requested. A
+   requested sweep is not proof the cache is clean.
+
+**Four tests, and the mutations that killed each.**
+
+| Test | Kills |
+|---|---|
+| `test_a_picture_written_after_its_removal_sweep_is_still_collected` | the membership-only gate (`T179-R1` itself), and a fingerprint that ignores the directory |
+| `test_a_sweep_that_deleted_something_does_not_make_the_next_reorder_sweep` | recording at request time — a sweep changes the directory it fingerprints, so the stale fingerprint reintroduces the redundant scan one step later |
+| `test_clearing_the_queue_sweeps_every_picture_it_held` | the sibling `queue_cleared` path the finding asked be audited explicitly |
+| `test_a_reorder_that_changes_no_membership_does_not_sweep_the_cache` | the optimization itself — still proves an ordinary unchanged reorder schedules no scan |
+
+**The reorder test had to change to be worth anything.** It stubbed `sweep` to record calls, and
+the gate now promotes its state from `swept` — so a stub that never completes leaves every reorder
+looking like the first, and the test would have asserted nothing about the gate. It wraps the real
+sweep now: counts the call *and* lets the work happen.
+
+**One mutation was malformed the first time and is worth recording.** The "record on request"
+mutant initially *added* the request-time assignment while leaving the completion handler in place,
+which is behaviourally the same as the correct code, and it survived. Reformed to also neuter the
+completion handler, it dies. A surviving mutant is only evidence if the mutant is the change it
+claims to be.
+
+#### Files
+
+`src/tracks_and_trails/ui/queue_view.py`, `tests/ui/test_queue_view.py`
+
+---
+
 
 ## Ready
 
@@ -1732,6 +2064,52 @@ must not be treated as the same option.
 
 ---
 
+### T-176 — Put the withdrawn History prose in the past tense
+
+**Status:** Proposed — **filed by the Reviewer on 2026-08-06 for `T175-R1`**. `T-175` removed the
+four runtime contracts it owned, but did not finish the current-tense source/test prose portion of
+`T170-R4` that it explicitly inherited.
+**Owner:** Implementer
+**Priority:** Low — no runtime behavior is wrong, but source beside the live Queue still teaches a
+reader that a History view or private ledger exists
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T170-R4`, `T-174`, `T-175`, `REQ-020` (withdrawn), migration `0009`
+**Affected surfaces:** comments, docstrings and test prose under `src/` and `tests/`; no production
+logic, historical migration, frozen fixture or historical record
+**Risk:** Low — the risk is rewriting accurate historical rationale as though it never happened
+
+#### Scope
+
+Audit live source and test prose for claims that the removed surface still exists. Representative
+misses from `T175-R1` are `app.py` saying a History view enumerates records, manager/store contracts
+saying History survives queue clearing, `file_actions.py` saying two views still exist, and
+composition/row-verb tests saying an invisible ledger or its Settings control remains.
+
+Classify each match rather than replacing the word mechanically. A statement explaining why an old
+design existed remains useful when it is clearly past tense or explicitly superseded; a current
+contract must describe Queue-only behavior. Historical migrations, `DECISIONS.md`, `REVIEWS.md`,
+archived tasks and frozen evidence continue to say what was true at their boundary.
+
+#### Acceptance criteria
+
+- No current-tense comment, docstring, test heading or assertion message under `src/` or `tests/`
+  says a History view, completion record or private ledger still exists
+- Historical rationale that still explains a live invariant is retained in past tense or inside an
+  explicit supersession note; historical migrations and fixtures are byte-identical
+- The sweep is semantic, not a blind `History`/`ledger` replacement: unrelated uses such as Python
+  sequence history and accurate descriptions of removed behavior remain truthful
+- Production behavior is unchanged; `ruff check .`, `ruff format --check .`, both mypy platforms,
+  task placement and the tests whose prose changed are clean
+
+#### Out of scope
+
+- Reintroducing a completion record, History surface or Settings clearing route
+- Renaming live identifiers merely because their historical prose mentions History
+- Rewriting `ai/REVIEWS.md`, `ai/DECISIONS.md`, `ai/archive/`, migrations or frozen fixtures
+
+---
+
 
 ## Blocked
 
@@ -2196,7 +2574,8 @@ that one of the two callers was about to go.)*
 
 ### T-158 — A refused Open is reported where nobody is looking
 
-**Status:** **Complete — 2026-08-06.** A refusal is now said three times: at the row, in the status
+**Status:** **Complete — approved with follow-ups at `b92ec62`, 2026-08-06**, with no finding of its
+own. A refusal is now said three times: at the row, in the status
 bar, and to assistive technology. **Nothing was broken and nothing was rewritten** — the sentence
 `reveal.Refusal` already carried is delivered to two more places.
 
@@ -2243,8 +2622,10 @@ reporting that nothing happened at all.)*
 
 ### T-175 — Remove the machinery the withdrawal left with no caller
 
-**Status:** **Complete — 2026-08-06.** All four items resolved. **The fourth found a hole in the
-suite**, which is the part worth reading.
+**Status:** **Complete — approved with follow-ups at `b92ec62`, 2026-08-06.** All four items
+resolved. **The fourth found a hole in the suite**, which is the part worth reading. The one
+follow-up is `T175-R1`, **Low and Open** — the prose half of `T170-R4` that this task inherited and
+did not finish; owner Implementer, target `T-176`.
 
 | | What happened |
 |---|---|

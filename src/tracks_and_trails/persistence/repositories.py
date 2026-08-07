@@ -24,7 +24,7 @@ and belongs to `T-038`.
 
 import json
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import fields, replace
 from datetime import datetime
 from typing import Any, Final
@@ -33,7 +33,6 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import REORDERABLE, TERMINAL, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.models import Job as JobModel
-from tracks_and_trails.core.presets import FormatChoice
 
 #: Statuses that cannot still be true at startup (`ARCHITECTURE.md` §5).
 #:
@@ -117,37 +116,22 @@ def _deserialize_request(raw: str) -> DownloadRequest:
     return DownloadRequest(**{name: payload[name] for name in _REQUEST_FIELDS})
 
 
-#: The fields a stored `FormatChoice` holds, derived from the dataclass for `_REQUEST_FIELDS`'
-#: reason — and, here, so that a field **outside** `PRESET_OWNED_FIELDS` cannot be added by hand.
-_FORMAT_CHOICE_FIELDS: Final = tuple(field.name for field in fields(FormatChoice))
-
-
-def _serialize_format_choice(choice: FormatChoice) -> str:
-    """Serialize what describes a download. **Never a whole request** (`T159-R1`, `REQ-026`).
-
-    Its own serializer rather than `_serialize_request` narrowed at the call site: the narrowing is
-    the safety property, and a shared function with a field list passed in would put that property
-    in whichever caller was written next. `FormatChoice` cannot hold a credential, so this cannot
-    write one.
-    """
-    return json.dumps(
-        {name: getattr(choice, name) for name in _FORMAT_CHOICE_FIELDS}, sort_keys=True
-    )
-
-
-def _deserialize_format_choice(raw: str) -> FormatChoice:
-    """Rebuild a `FormatChoice`, restoring the tuple and enum types the model requires.
-
-    `_deserialize_request`'s reasoning: JSON has no tuples and no enums, so a naive round-trip
-    hands the dataclass lists and bare strings — the kind of near-miss that passes a shallow test
-    and fails a whole-object comparison.
-    """
-    payload: dict[str, Any] = json.loads(raw)
-    payload["post_processors"] = tuple(payload.get("post_processors", ()))
-    payload["subtitle_languages"] = tuple(payload.get("subtitle_languages", ()))
-    payload["media_kind"] = MediaKind(payload["media_kind"])
-    payload["audio_codec"] = AudioCodec(payload["audio_codec"])
-    return FormatChoice(**{name: payload[name] for name in _FORMAT_CHOICE_FIELDS})
+# *(`_FORMAT_CHOICE_FIELDS`, `_serialize_format_choice` and `_deserialize_format_choice` stood
+# here until `T-178`. They wrote the `history` table's format column, which migration `0009`
+# dropped, and by then referenced only each other — `T-175` removed the runtime machinery the
+# withdrawal stranded and missed these because a serializer for a departed table does not look
+# like a queue path.
+#
+# **`T159-R1`'s boundary ended with the table, and did not move to the survivor.** It required
+# History to store a narrow `FormatChoice` *because* a whole `DownloadRequest` can carry
+# `cookies_from_browser`, `proxy` and `rate_limit_bytes`. `_serialize_request` below is a different
+# thing with a different justification: it persists the queue's settings freeze, where the request
+# is the point, and `REQ-026` governs what may be written from it. Nothing here makes a
+# `DownloadRequest` credential-free.
+#
+# *(This note first said the rule "survives in `_serialize_request`, which still writes a request
+# rather than a credential" — which reversed the distinction it was describing, beside
+# security-sensitive persistence code. `T178-R1`.)*)*
 
 
 def _to_iso(moment: datetime | None) -> str | None:
@@ -498,6 +482,45 @@ class JobRepository:
         ).fetchall()
         return [_row_to_job(row) for row in rows]
 
+    def with_statuses(self, statuses: Iterable[JobStatus]) -> list[JobModel]:
+        """Jobs whose status is one of `statuses`, **in `all_jobs()` order** (`T-177`).
+
+        The order is not a convenience here, it is the contract: `waiting_jobs()` hands startup the
+        queue to admit, and `T-115` is about what that order produces. Repeating `all_jobs()`'
+        `ORDER BY` rather than deriving it is deliberate — two orders that must agree are better
+        stated twice and asserted than shared through a constant nobody reads.
+
+        **Why this exists rather than a filter at the call site.** Both startup scans wanted a
+        handful of rows and read every one, because `_row_to_job` deserializes each row's request —
+        a `json.loads` and two enum conversions per stored job, on the path that runs before the
+        window appears. `0001_initial.sql` has indexed `status` since the first migration and
+        nothing used it.
+
+        **The cost is now proportional to the rows wanted rather than the rows stored**, which is
+        the durable statement; the measured figures live in `T-177`'s task entry, where they can be
+        corrected without editing source. *(This said "from 93.3 ms to 0.2 ms". The second number
+        was from a standalone query sketch that never opened recovery's write transaction, and it
+        stayed here after the task entry was corrected to the shipped 0.65 ms — `T177-R1`.)*
+
+        **The empty case is SQLite's, and it is pinned by a test rather than assumed.** This was
+        written with an early return, on the reasoning that `status IN ()` is not valid SQL — true
+        of standard SQL and **not** of SQLite, which accepts the empty list as an extension and
+        evaluates it false. The mutation check caught it: deleting the guard changed nothing any
+        test could see, which is this project's own standard for a branch that has not earned its
+        place. So the guard is gone and
+        `test_asking_for_no_statuses_returns_nothing` holds the behaviour we are relying on a third
+        party for.
+        """
+        values = sorted({status.value for status in statuses})
+        placeholders = ", ".join("?" for _ in values)
+        rows = self._connection.execute(
+            # S608: `placeholders` is generated `?` marks; the status values are parameterised.
+            f"SELECT * FROM jobs WHERE status IN ({placeholders}) "  # noqa: S608
+            "ORDER BY queue_position IS NULL, queue_position, created_at, id",
+            values,
+        ).fetchall()
+        return [_row_to_job(row) for row in rows]
+
     def next_queue_position(self) -> int:
         row = self._connection.execute("SELECT MAX(queue_position) FROM jobs").fetchone()
         return 0 if row[0] is None else int(row[0]) + 1
@@ -528,6 +551,11 @@ class JobRepository:
         status it cannot legally move, and doing that inside the transaction would leave some rows
         recovered and some not if it ever fired — an application that half-recovers on startup is
         worse than one that refuses to.
+
+        **The three statuses are selected in SQL** (`T-177`). This read the whole table and filtered
+        in Python, so a queue of finished downloads was deserialized in full to find the two or
+        three rows an unclean exit had left behind — on this same before-the-window path that
+        `T-082` already fixed a per-row cost on.
         """
         finished_at = now if now is not None else datetime.now().astimezone()
         pending = [
@@ -535,8 +563,7 @@ class JobRepository:
                 job.with_failure(ErrorKind.INTERRUPTED, _INTERRUPTED_MESSAGE),
                 finished_at=finished_at,
             )
-            for job in self.all_jobs()
-            if job.status in INTERRUPTED_ON_STARTUP
+            for job in self.with_statuses(INTERRUPTED_ON_STARTUP)
         ]
         # No early return for the empty case. `with connection` issues **nothing** when no
         # statement runs inside it — measured, and a mutation removing the guard survived because
