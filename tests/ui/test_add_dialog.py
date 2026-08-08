@@ -3778,8 +3778,10 @@ def test_the_preview_follows_every_keystroke(
     QApplication.processEvents()
 
     preview = panel.editor.preview_text()
-    assert preview.endswith("clips/A video with formats.ext"), preview
-    assert "clips" in Path(preview).parts, "the subfolder the template asked for is not in the path"
+    # Compared as path components, not as a string: the template is written with `/`, but the
+    # preview is a native path, so `endswith("clips/...")` held on Linux and failed on Windows
+    # against the same correct `clips\...`. One assertion covers the subfolder and the name.
+    assert Path(preview).parts[-2:] == ("clips", "A video with formats.ext"), preview
 
 
 def test_an_invalid_template_is_refused_at_edit_time_and_never_reaches_the_request(
