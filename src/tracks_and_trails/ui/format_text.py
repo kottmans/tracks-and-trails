@@ -11,7 +11,11 @@ syntax. A user reading their own download history was told a number with no expl
 anywhere in the window.
 
 So the project had fixed this twice and still shipped it once, and each fix was a copy of the
-rule rather than a use of it. This module is the rule, and the three surfaces call it.
+rule rather than a use of it. This module is the rule, and its callers use it rather than
+restating it. *(This said "the three surfaces call it" — there were three when `T-159` collapsed
+the copies, and History was one of them (`T-169`/`T-170`). The count is deliberately not restated
+here: a number in prose is a thing that goes stale, and what matters is that nobody copies the
+rule again. `T-186`.)*
 
 ## It reads **what was asked for**, never the chosen preset
 

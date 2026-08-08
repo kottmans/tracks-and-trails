@@ -15,9 +15,9 @@ that owns it (`QueueModel._group_data`). That separation was worth having with o
 
 *(This described "both tabs" and `HistoryModel._group_data` in the present tense — `T-176`.)*
 
-## The rules the two tabs must not disagree about
+## The rules a second caller must not disagree about
 
-These are `T140-R4`'s, and they are here rather than in either model because a second copy is a
+These are `T140-R4`'s, and they are here rather than inside a model because a second copy is a
 second chance to get one of them wrong:
 
 1. **A header takes the position of its first member**, so a list the user ordered keeps reading
@@ -78,7 +78,7 @@ def flatten[T](
     """Turn `items` into headers and rows, plus a map from id to the line it is drawn on.
 
     `membership` answers `(group_id, title)` for an item that belongs to a group and `None` for one
-    that does not — which is where each tab's own idea of a group lives. `identity` names an item
+    that does not — which is where a caller's own idea of a group lives. `identity` names an item
     for the returned map. `expanded` holds the ids of the groups that are open.
 
     `order` sorts the members **within** a group when the list's own order is not the order they

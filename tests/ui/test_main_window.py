@@ -349,8 +349,8 @@ def test_the_toolbar_holds_nothing_that_acts_on_a_selection(qapp: QApplication) 
 
     assert before == with_selection == without, (
         f"a toolbar action changed with the selection: {before} -> {with_selection} -> {without}. "
-        "UX-005 chose row verbs over a toolbar acting on a selection because with two tabs that "
-        "toolbar has to guess which list it means"
+        "UX-005 chose row verbs over a toolbar acting on a selection: with the two tabs it then "
+        "had, such a toolbar would have had to guess which list it meant"
     )
 
 

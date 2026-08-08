@@ -317,8 +317,10 @@ def describe_preset(row: Row, effective: Preset) -> str:
     the bitrate itself, through a `describe_quality` helper that lived here — so the dialog held one
     opinion about how to name a download and the queue and History held another, which is the split
     `T-159` wrote that module to end. It now carries the bitrate because `format_name` does, and the
-    three surfaces say the same words about the same request by construction rather than by anyone
-    keeping them in step.
+    surfaces that name a download say the same words about the same request by construction rather
+    than by anyone keeping them in step. *(This said "the three surfaces"; History was one of them
+    and went with `T-169`/`T-170`. The count is not restated, because a number in prose goes stale
+    and the property does not — `T-186`.)*
     """
     source = "this row only" if isinstance(row.preset, Preset) else "following the batch"
     selector = preset_registry.effective_selector(effective)

@@ -64,8 +64,11 @@ APP_NAME: Final = "Tracks & Trails"
 #: platformdirs slug, matching the paths in `ARCHITECTURE.md` §5.
 APP_SLUG: Final = "tracksandtrails"
 
-#: The two tabs `UX-005` names. The count is appended at runtime, so these are the stems rather
+#: The tab names `UX-005` named. The count is appended at runtime, so these are the stems rather
 #: than what is displayed — a test asserting on the visible text must expect "Queue (3)".
+#:
+#: *(This said "the two tabs". `UX-005` named two and `T-169`/`T-170` removed one, so there is a
+#: single surface now — `T-186`.)*
 
 #: What the toolbar's primary action reads (`UX-005`'s 2026-08-04 amendment, `T-130`).
 #:
@@ -610,9 +613,13 @@ class MainWindow(QMainWindow):
     def _row_menu(self, view: QueueView, row_id: str, offered: Sequence[Verb]) -> QMenu | None:
         """One overflow menu, for whichever list asked (`T124-R1`).
 
-        Both tabs draw the same row anatomy (`UX-005` §3), so they get the same overflow rather
-        than two that drift. `trigger_verb` is the shared entry point each view already exposes,
-        and it is what makes the menu take *the route a click takes* instead of reimplementing it.
+        One overflow rather than one per list, because `UX-005` §3's row anatomy is one shape.
+        `trigger_verb` is the shared entry point each view already exposes, and it is what makes
+        the menu take *the route a click takes* instead of reimplementing it.
+
+        *(This began "Both tabs draw the same row anatomy … so they get the same overflow rather
+        than two that drift". There is one tab since `T-169`/`T-170`; the argument survives it,
+        because what it prevents is a **second** caller drifting from this one — `T-186`.)*
         """
         if not offered:
             return None
@@ -651,8 +658,9 @@ class MainWindow(QMainWindow):
                 # one. `_output_directory` is not `None` here — the guard above returned.
                 output_directory=lambda: cast("Path", self._output_directory),
                 report=self._report_transiently,
-                # **The row's `⋯` owns the context menu on these two lists** (`T124-R1`,
-                # `UX-005` §4). A table has one `customContextMenuRequested`, and the row menu
+                # **The row's `⋯` owns the context menu on this list** (`T124-R1`,
+                # `UX-005` §4). *(Said "these two lists" while History was the second — `T-186`.)*
+                # A table has one `customContextMenuRequested`, and the row menu
                 # already carries *Open* and *Show in folder* — through these very actions, for
                 # the rows that have a file — plus everything else the row's state permits.
                 # Leaving both connected popped two menus on one right-click or Menu key.

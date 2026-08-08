@@ -1,8 +1,11 @@
 """Open and Show-in-folder, attached to a table (`T-086`, `REQ-021`).
 
 `test_reveal.py` holds the argv and refusal criteria, which need no Qt. This file holds the half
-that does: **that the actions are on both tables `REQ-021` names**, that they act on the row the
+that does: **that the actions are on the table `REQ-021` names**, that they act on the row the
 user selected, and that a refusal reaches the user rather than the console.
+
+*(This said "both tables". `REQ-021` named the history and queue views; History went with
+`T-169`/`T-170`, leaving one — `T-186`.)*
 """
 
 from __future__ import annotations

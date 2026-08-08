@@ -2298,7 +2298,8 @@ def test_the_probes_uploader_and_duration_reach_the_durable_row(
 ) -> None:
     """**`T124-R4`.** `UX-005` §3's row anatomy has to hold after the dialog closes.
 
-    §3 names *thumbnail, title, uploader and duration, progress and state* in both tabs. The
+    §3 names *thumbnail, title, uploader and duration, progress and state* for a row. *(It said
+    "in both tabs"; one of the two went with `T-169`/`T-170` — `T-186`.)* The
     staging row drew all of it; `Job` carried the title and the thumbnail and nothing else, so
     everything the probe had learned about *who* and *how long* died with the dialog — and the
     queue, which is the surface the user actually watches, could not render two of the six.

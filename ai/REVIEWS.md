@@ -12626,3 +12626,55 @@ independently repeated. The workflow was inspected but not executed or linted by
 tool. Windows runtime and real sites remain unverified. Only `ai/REVIEWS.md` was changed by the
 reviewer; reviewed source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or
 push was made.
+
+
+## 2026-08-08 — T189-R1 / T186-R1 focused correction re-review
+
+**Reviewer:** Codex
+
+**Review base:** `6a0d97f`
+**Correction head:** `365182c`
+**Scope:** `T189-R1`, `T186-R1`, and regressions in their correction commits. The T-188 survey and
+process bookkeeping in the boundary were awareness-only and received no verdict.
+
+**T-189 verdict:** **Approved at `365182c`.** `T189-R1` is **Resolved**. No open T-189 finding
+remains.
+
+**T-186 verdict:** **Changes requested.** `T186-R1` remains **Open — High, blocks approval**. The
+correction fixes the ten claims it names but leaves seven examples from the original finding
+unchanged. High correction passes remain authorized by `AGENTS.md` §10.
+
+### Finding results
+
+| ID | Re-review result | Evidence |
+|---|---|---|
+| `T189-R1` | **Resolved.** The self-hosted environment-recording comment now says that it records without installing or gating in that step, while the later Full suite refuses a missing tool through `TRACKSANDTRAILS_REQUIRE_FFMPEG`. The superseded “counts are identical” measurement is explicitly dated to the pre-T108-R1 suite rather than presented as current evidence. | Correction diff inspection. The existing capability proof remains sound: the exact merged-file case skips only in an ordinary tool-less run and exits non-zero when the required-run variable is set. The workflow itself still has no Actions execution at this head. |
+| `T186-R1` | **Open — High, blocks approval.** The correction successfully rewrites the four `queue_view.py` claims, the row-delegate shape, `file_actions.py`'s two-selection rationale, the format-prefix record clause, and the named test prose. It remains incomplete because its new method enumerated mentions of “History” and again missed false contracts expressed without that word. Seven examples explicitly listed in the original finding remain: `main_window.py:67-68` (“The two tabs UX-005 names”) and `:613-615` (“Both tabs draw…”); `ui/grouping.py:18` (“The rules the two tabs must not disagree about”) and `:81-82` (“each tab's own idea”); `ui/format_text.py:14` (“the three surfaces call it”); `tests/ui/test_file_actions.py:4-5` (“both tables REQ-021 names”); and `tests/ui/test_add_dialog.py:2301` (“in both tabs”). These are present-tense claims about the removed surface, not the four legitimate survivors described in the handoff. | Direct inspection at `365182c`. The four nominated keep cases are correctly classified: the persistence fixtures genuinely contain history rows that the migration must remove, “queue history” means growth over time, and the format-text test is explicit historical provenance. Those legitimate cases do not cure the seven false survivors. |
+
+### Required continuation for `T186-R1`
+
+Complete the original correction list, including descriptions of the removed surface that do not
+spell “History.” The next audit must search the concepts as well as the name—at minimum *two/both
+tabs*, *both tables*, and *three surfaces*—then classify surrounding history exactly as this batch
+did for literal mentions. Preserve the four verified keep cases. No production behavior or test
+logic change is requested.
+
+### Reviewer verification at `365182c`
+
+| Check | Result |
+|---|---|
+| `git diff --check 6a0d97f..365182c` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass**, 218 files |
+| `.venv/bin/python -m mypy src tests` | **pass**, 125 files |
+| `.venv/bin/python -m mypy --platform win32 src tests` | **pass**, 125 files |
+| T-189 capability tests plus task placement | **33 passed** |
+| Corrected T-186 UI prose modules | **219 passed** |
+| T-186 semantic re-audit | **failed the acceptance property** on the seven unchanged original examples above |
+
+The implementer's full-suite result (**2787 passed, 14 skipped, 2 deselected**) was not
+independently repeated. `ci.yml` remains structurally inspected but unexecuted. One process note:
+git topology places `365182c` after both correction commits (`69bac49` and `9a9024f`), not before
+them as the handoff states; the review text itself is unmodified and append-only, so this does not
+affect either verdict. Windows runtime and real sites remain unverified. Only `ai/REVIEWS.md` was
+changed by the reviewer, and no commit or push was made.
