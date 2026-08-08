@@ -40,6 +40,7 @@ from tracks_and_trails.core import presets
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo
+from tracks_and_trails.core.paths import thumbnail_cache_path
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Probed,
@@ -1644,3 +1645,87 @@ def test_choosing_a_format_on_a_queued_row_changes_the_durable_request(
     assert spin(
         lambda: view.model.data(view.model.index(row, 0), PRESET_ROLE) == chosen.name, timeout=60
     ), "the stored request changed and the row still reports the old format"
+
+
+# --- T-180: the partition, through the wiring composition actually builds ------------------
+
+
+def test_two_databases_get_two_thumbnail_caches_through_composition(
+    composed: Callable[..., application.Composition],
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+) -> None:
+    """**`T180-R2`.** The partition asserted at the seam that derives it, not at the helper.
+
+    The first version of this proof derived two roots itself, wrote both files by hand and built
+    **one** store. That shows `cache_root_for` separates roots handed to it — and it stays green if
+    `compose` stops deriving a root from the database, or if `MainWindow` stops passing one to the
+    store it builds. The production seam was outside the gate, which is the finding.
+
+    So this builds **two whole applications** over two databases and reads the store each one's own
+    queue view actually holds. Nothing here names `cache_root_for`: if the wiring is cut anywhere
+    between the database path and the widget that sweeps, the two roots collapse into one and the
+    sweep reaches the other instance's picture — which is `ARC-006`'s permitted second instance
+    losing its cache, and the whole of `T-180`.
+    """
+    cache = tmp_path / "cache"
+    first = composed(database=tmp_path / "one.sqlite3", cache_directory=cache)
+    second = composed(database=tmp_path / "two.sqlite3", cache_directory=cache)
+
+    assert first.cache_root != second.cache_root, (
+        "composition handed two databases one cache root; every sweep now reaches the other's files"
+    )
+
+    ours = first.window.queue_view
+    theirs = second.window.queue_view
+    assert ours is not None and theirs is not None
+
+    # Written through each store's *own* resolved path, so a store built with the wrong root puts
+    # its file in the wrong place and the assertions below fail rather than silently pass.
+    unnamed = "https://pics.invalid/ours-and-unnamed.jpg"
+    live = "https://pics.invalid/theirs-and-live.jpg"
+    for url, composition in ((unnamed, first), (live, second)):
+        path = thumbnail_cache_path(url, composition.cache_root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"a picture")
+
+    # One instance sweeps, naming nothing: everything in *its* directory is collectable and
+    # nothing in anyone else's is reachable.
+    ours.thumbnails.sweep(())
+
+    assert spin(lambda: not thumbnail_cache_path(unnamed, first.cache_root).exists(), timeout=60), (
+        "the sweeping instance did not collect its own unnamed picture, so this proves nothing"
+    )
+    assert thumbnail_cache_path(live, second.cache_root).exists(), (
+        "one instance's sweep deleted another database's live picture — T-180's defect, reached "
+        "through the composition that builds the wiring rather than through the helper"
+    )
+
+
+def test_the_window_hands_the_partitioned_root_to_both_of_its_stores(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """`T180-R2`'s other half: the queue's store and the add dialog's must share one root.
+
+    `cache_generation` is keyed by directory precisely so a picture the add dialog publishes is one
+    the queue's sweep can still see (`T118-R16`). Two roots would put that count back out of reach —
+    and a window that partitioned only the queue's store would pass the test above while leaving the
+    dialog writing into the shared location this task exists to empty.
+    """
+    composition = composed(database=tmp_path / "one.sqlite3", cache_directory=tmp_path / "cache")
+    view = composition.window.queue_view
+    assert view is not None
+
+    dialog = composition.window.open_add_dialog()
+    try:
+        assert view.thumbnails.cache_root == composition.cache_root, (
+            "the queue's store did not get the partitioned root"
+        )
+        assert dialog.thumbnails.cache_root == composition.cache_root, (
+            "the add dialog's store did not get the partitioned root, so a picture it publishes "
+            "lands outside the directory the queue's sweep accounts for"
+        )
+    finally:
+        dialog.deleteLater()

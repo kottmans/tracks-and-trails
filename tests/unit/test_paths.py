@@ -22,6 +22,8 @@ from tracks_and_trails.core.paths import (
     MAX_COMPONENT_BYTES,
     MAX_PATH_CHARACTERS,
     UnsafePathError,
+    adopt_legacy_cache,
+    cache_root_for,
     contained_output_path,
     derived_component,
     is_contained,
@@ -29,6 +31,8 @@ from tracks_and_trails.core.paths import (
     safe_output_path,
     sanitize_component,
     sanitize_filename,
+    thumbnail_cache_directory,
+    thumbnail_cache_path,
 )
 
 #: Traversal and absolute-path attempts. Each must be **neutralized**, not merely escaped into
@@ -934,3 +938,123 @@ def test_a_crafted_key_cannot_name_anything_outside_the_directory(tmp_path: Path
 
     assert is_contained(joined, inside)
     assert is_contained(joined, tmp_path)
+
+
+# --- the per-database cache partition (`T-180`, `ARC-006`) --------------------------------------
+#
+# The defect these cover is destructive rather than merely untidy: `_SweepTask` unlinks every entry
+# the sweeping instance's queue does not name, and `ARC-006` explicitly permits a second instance on
+# a different database. One shared directory therefore meant each instance deleting the other's live
+# pictures on every sweep. The partition is what makes a sweep safe, so it is asserted on the
+# directories two databases actually get, not on the shape of the derived name.
+
+
+def test_two_databases_get_two_cache_roots(tmp_path: Path) -> None:
+    """`ARC-006`'s distinction, carried into the cache. **The whole of `T-180`'s deletion half.**
+
+    Two instances against different databases are explicitly permitted, so a directory one of them
+    sweeps must not be one the other writes to.
+    """
+    first = cache_root_for(tmp_path / "one.sqlite3", tmp_path / "cache")
+    second = cache_root_for(tmp_path / "two.sqlite3", tmp_path / "cache")
+
+    assert first != second, "two databases share a cache root, so each sweep deletes the other's"
+    assert thumbnail_cache_directory(first) != thumbnail_cache_directory(second)
+
+
+def test_one_database_spelled_two_ways_is_one_cache(tmp_path: Path) -> None:
+    """Resolved, for `lock_path_for`'s reason: the guard and the cache must agree on identity.
+
+    If they disagreed, one instance could hold the lock for a database while writing to a cache
+    partition a second spelling of the same database does not use.
+    """
+    database = tmp_path / "queue.sqlite3"
+    database.touch()
+    indirect = tmp_path / "nested" / ".." / "queue.sqlite3"
+
+    assert cache_root_for(database, tmp_path / "cache") == cache_root_for(
+        indirect, tmp_path / "cache"
+    )
+
+
+def test_a_cache_root_is_stable_across_calls(tmp_path: Path) -> None:
+    """Stable, or every launch strands the last one's pictures in a directory nothing reads."""
+    database = tmp_path / "queue.sqlite3"
+
+    assert cache_root_for(database, tmp_path / "cache") == cache_root_for(
+        database, tmp_path / "cache"
+    )
+
+
+def test_a_thumbnail_lands_inside_its_databases_partition(tmp_path: Path) -> None:
+    """The property, asserted on the file a fetch actually writes rather than on the directory."""
+    root = cache_root_for(tmp_path / "one.sqlite3", tmp_path / "cache")
+    other = cache_root_for(tmp_path / "two.sqlite3", tmp_path / "cache")
+
+    picture = thumbnail_cache_path("https://pics.invalid/a.jpg", root)
+
+    assert is_contained(picture, root)
+    assert not is_contained(picture, other), "a picture landed where another database sweeps"
+
+
+def test_the_shared_cache_is_adopted_rather_than_stranded(tmp_path: Path) -> None:
+    """`T-180`'s risk, which is the reason this is a rename and not a fresh directory.
+
+    *"A careless version strands every existing thumbnail — regenerable, but a wholesale refetch is
+    not a quiet event on a large queue."* The picture that was there before the upgrade is the
+    assertion.
+    """
+    cache = tmp_path / "cache"
+    legacy = cache / "thumbnails"
+    legacy.mkdir(parents=True)
+    (legacy / "kept.img").write_bytes(b"a picture from before the partition")
+    database = tmp_path / "queue.sqlite3"
+
+    assert adopt_legacy_cache(database, cache) is True
+
+    adopted = thumbnail_cache_directory(cache_root_for(database, cache)) / "kept.img"
+    assert adopted.exists(), "the upgrade stranded the cache it was supposed to carry over"
+    assert not legacy.exists(), "the legacy directory survived its own adoption"
+
+
+def test_adoption_happens_once_and_never_overwrites(tmp_path: Path) -> None:
+    """A second launch must not move a second directory over a partition already holding pictures.
+
+    The dangerous version of this function is one that runs every launch: the legacy directory can
+    reappear — an older build writing beside a newer one — and a rename onto a populated partition
+    would take this database's whole cache with it.
+    """
+    cache = tmp_path / "cache"
+    database = tmp_path / "queue.sqlite3"
+    (cache / "thumbnails").mkdir(parents=True)
+    assert adopt_legacy_cache(database, cache) is True
+
+    partition = thumbnail_cache_directory(cache_root_for(database, cache))
+    (partition / "fetched-since.img").write_bytes(b"fetched after the partition landed")
+    (cache / "thumbnails").mkdir(parents=True)
+
+    assert adopt_legacy_cache(database, cache) is False
+    assert (partition / "fetched-since.img").exists(), "adoption ran twice and ate the live cache"
+
+
+def test_a_first_run_with_no_shared_cache_adopts_nothing(tmp_path: Path) -> None:
+    """The ordinary case on a machine that never ran a pre-`T-180` build. Silent, and `False`."""
+    assert adopt_legacy_cache(tmp_path / "queue.sqlite3", tmp_path / "cache") is False
+
+
+def test_a_failed_adoption_is_not_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cache is regenerable, so losing this race costs one refetch and must never stop a launch.
+
+    Cross-device renames, a directory another process is reading and a permission the user does not
+    have are all the same answer: leave the legacy alone and say nothing moved.
+    """
+    cache = tmp_path / "cache"
+    (cache / "thumbnails").mkdir(parents=True)
+
+    def refuse(self: Path, target: object) -> Path:
+        raise OSError("cross-device link")
+
+    monkeypatch.setattr(Path, "rename", refuse)
+
+    assert adopt_legacy_cache(tmp_path / "queue.sqlite3", cache) is False
+    assert (cache / "thumbnails").exists(), "a failed adoption destroyed what it could not move"

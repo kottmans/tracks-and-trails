@@ -315,9 +315,15 @@ class MainWindow(QMainWindow):
         manage_presets: Callable[[], None] | None = None,
         presets: Callable[[], Sequence[Preset]] | None = None,
         default_preset: Callable[[], str] | None = None,
+        cache_root: Path | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
+        #: The cache root both thumbnail stores write under (`T-180`). Composition derives it from
+        #: the database so two permitted instances stop sweeping each other's pictures; this window
+        #: only carries it to the two widgets that fetch, and never learns what a database is.
+        #: `None` is the pre-`T-180` shared location, which is what a test that names no root means.
+        self._cache_root = cache_root
         self._job_reader = job_reader
         self._retry = retry
         self._row_counts: dict[int, int] = {}
@@ -433,7 +439,7 @@ class MainWindow(QMainWindow):
         # to know (`T-119`'s anatomy). The manager and reader are still held: what becomes of
         # `T-017`'s `JobProgressView` is deferred by `UX-005` rather than decided, so nothing here
         # deletes its collaborators.
-        self._queue = build_queue_view(queue, self._manager, None)
+        self._queue = build_queue_view(queue, self._manager, None, cache_root=self._cache_root)
         self._connect_row_verbs(self._queue)
         self.setCentralWidget(self._queue)
         self._attach_file_actions()
@@ -749,6 +755,10 @@ class MainWindow(QMainWindow):
             # leaves the dialog's own `BUILT_IN_PRESETS` default in place.
             presets=self._presets() if self._presets is not None else presets.BUILT_IN_PRESETS,
             default_preset=self._default_preset() if self._default_preset is not None else "",
+            # `T-180`: the same root the queue's store uses. `cache_generation` is keyed by
+            # directory precisely so a picture this dialog publishes is one the queue's sweep can
+            # still see (`T118-R16`), and two roots would put that count back out of reach.
+            cache_root=self._cache_root,
             parent=self,
         )
         # **Adding a job is the one queue change nothing announces.** The manager emits

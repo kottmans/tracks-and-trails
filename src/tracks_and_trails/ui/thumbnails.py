@@ -117,18 +117,18 @@ def cache_generation(root: Path | None = None) -> int:
     picture the dialog publishes is one the queue's sweep must still collect. A per-store signal
     cannot see that; this can.
 
-    **What it does not see, and the reason that is tolerable:** a write by another *process*. This
-    once claimed `A-004` left no second writer. It does not — `A-004` forbids two instances sharing
-    one *database*, and `ARC-006` explicitly requires instances on different databases not to block
-    one another. `thumbnail_cache_directory()` is derived from the platform cache root, not the
-    database path, so those permitted instances do share this directory and a process-local count
-    cannot see their publications.
+    **A process-local count is now a complete one, because the directory is not shared** (`T-180`).
+    This paragraph used to record the opposite, and the reasoning is worth keeping: `A-004` forbids
+    two instances sharing one *database*, and `ARC-006` explicitly requires instances on *different*
+    databases not to block one another — so the permitted second instance was a second writer this
+    counter could not see. The cost named here was one sweep's delay on a regenerable file; the
+    cost not named was `_SweepTask` unlinking every entry the sweeping instance's queue did not
+    name, which is the other instance's live pictures.
 
-    What that costs is one sweep's delay on a regenerable file. What the alternative costs is
-    worse: `_SweepTask` unlinks every entry this instance's queue does not name, so a sweep that
-    *does* run deletes the other instance's live thumbnails. The cache is not partitioned per
-    instance, and until it is, failing to collect a foreign file is the safe direction to fail in.
-    `T-180` owns the partition; this docstring owns not pretending the problem is absent.
+    `core/paths.cache_root_for` partitions the cache by database, so each permitted instance now
+    owns its directory alone: nothing foreign is in it to miss, and nothing foreign is in it to
+    delete. Composition derives the root; this function is keyed by directory and inherited the
+    fix rather than needing one.
     """
     directory = thumbnail_cache_directory(root)
     with _PUBLICATIONS_LOCK:
@@ -358,6 +358,9 @@ class ThumbnailStore(QObject):
         super().__init__(parent)
         self._loader: ThumbnailLoader = loader or NetworkThumbnailLoader(self)
         self._cache_root = cache_root
+        #: Exposed read-only so a test can assert the root this store was *given* (`T180-R2`).
+        #: The partition is only real if it survives every hand it passes through, and a store
+        #: holding the wrong root is indistinguishable from a correct one until something sweeps.
         self._limit = max(pixmap_limit, 1)
 
         #: The bounded cache. `OrderedDict` rather than a plain dict because eviction needs an
@@ -404,6 +407,11 @@ class ThumbnailStore(QObject):
             return existing
         self._begin(thumbnail_url)
         return None
+
+    @property
+    def cache_root(self) -> Path | None:
+        """The root this store was given, or `None` for the platform default (`T-180`)."""
+        return self._cache_root
 
     def peek(self, thumbnail_url: str | None) -> QPixmap | None:
         """This URL's picture if it is already in memory, **without starting anything**.

@@ -521,6 +521,37 @@ def cache_directory() -> Path:
     return Path(user_cache_dir(APP_SLUG, appauthor=False))
 
 
+def cache_root_for(database: Path, root: Path | None = None) -> Path:
+    """The cache root belonging to `database`. **`DAT-007`'s partition, derived in one place.**
+
+    `ARC-006` decided the single-instance guard is named from the *database* path, precisely so two
+    instances against different databases are not blocked: *"Two instances against different
+    databases harm nothing and must not be blocked."* Everything else under the cache root inherited
+    that permission without inheriting the distinction — one `thumbnails/` directory for the
+    machine — so both permitted instances swept each other's pictures. `_SweepTask` unlinks every
+    entry this instance's queue does not name, which is correct for a directory it owns alone and
+    destructive for one it shares.
+
+    **Per-database by `DAT-007`, which is a decision rather than a derivation** (`T180-R1`). This
+    docstring used to say the boundary was "the one `ARC-006` already drew", and that was the error
+    the finding names: `ARC-006` *permits* the second instance and says nothing about where its
+    cache lives, so a machine-wide cache with a coordinated sweep was equally available and had to
+    be rejected on the record rather than skipped. `DAT-007` rejects it on cost against benefit and
+    records why. What is true of `ARC-006` is narrower and still worth stating: the boundary agrees
+    with the guard's, so the two cannot answer *"the same database"* differently — this states the
+    derivation once and `lock_path_for` states the other half of it.
+
+    Resolved for `lock_path_for`'s reason — two spellings of one database are one cache, not two —
+    and `strict=False` because a first run partitions its cache before anything creates the file.
+
+    `derived_component` rather than the path itself: a database path carries separators, drive
+    letters and a length no single component may have, and it is the same *"a name of my own,
+    derived from that text"* question `T113-R1` answered. It is not a secret and nothing reads it
+    back; it only has to be stable across launches and distinct between databases.
+    """
+    return (root or cache_directory()) / derived_component(str(database.resolve(strict=False)))
+
+
 def thumbnail_cache_directory(root: Path | None = None) -> Path:
     """Where fetched thumbnails are kept between launches.
 
@@ -528,8 +559,53 @@ def thumbnail_cache_directory(root: Path | None = None) -> Path:
     into the developer's real cache — the same injection point `core/logging.py` takes, and for
     the same reason: a test that writes to `user_cache_dir` is a test that pollutes the machine
     running it.
+
+    **The partition is in the root, not here** (`T-180`). Composition passes `cache_root_for(db)`,
+    so this appends `thumbnails` to a directory only one database's instance writes to. Called with
+    no root it still answers the shared pre-`T-180` location, which is what `adopt_legacy_cache`
+    exists to move and what a caller with no database to name has always meant.
     """
     return (root or cache_directory()) / "thumbnails"
+
+
+def adopt_legacy_cache(database: Path, root: Path | None = None) -> bool:
+    """Move the pre-`T-180` shared thumbnail cache into `database`'s partition. Once, at startup.
+
+    Returns whether anything moved — for the log line, and for the test that asserts it did.
+
+    **Adopted rather than stranded**, which is the whole reason this function exists rather than
+    the partition simply landing. `T-180`'s risk is that *"the remedy moves a cache location, so a
+    careless version strands every existing thumbnail — regenerable, but a wholesale refetch is not
+    a quiet event on a large queue"*. One rename spends nothing and keeps every picture; the version
+    without it makes every user with a queue refetch all of it on the launch after an upgrade.
+
+    **The first database to launch adopts it. `DAT-007` accepts that as a choice, not a
+    derivation** (`T180-R1`). The shared directory is exactly the mixture the collision produced —
+    pictures from every database that ever ran here — so no partition has a better claim than any
+    other, and the ones that do not adopt it start empty and refetch, which is what they would have
+    done anyway. The adopter's own sweep then reclaims whatever it does not name, so the mixture is
+    collected rather than inherited for ever. Recorded in the decision because it is a durable
+    trade-off a later reader would otherwise have to reconstruct from this function.
+
+    **Never fatal.** A cache is regenerable by definition, so every failure here — a cross-device
+    rename, a directory another process is reading, a permission the user does not have — leaves
+    the legacy directory alone and answers `False`. The cost of losing this race is one refetch;
+    the cost of raising would be an application that will not start over a picture.
+    """
+    legacy = thumbnail_cache_directory()  # deliberately unpartitioned: the location being retired
+    if root is not None:
+        legacy = root / "thumbnails"
+    destination = thumbnail_cache_directory(cache_root_for(database, root))
+    if destination.exists() or not legacy.is_dir():
+        # Already partitioned, or nothing was ever shared. Both are the ordinary case on every
+        # launch after the first, and neither is worth a word.
+        return False
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        legacy.rename(destination)
+    except OSError:
+        return False
+    return True
 
 
 def thumbnail_cache_path(thumbnail_url: str, root: Path | None = None) -> Path:

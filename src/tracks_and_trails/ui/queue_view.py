@@ -1893,14 +1893,18 @@ def build_queue_view(
     jobs: QueueReader,
     manager: DownloadManager,
     on_selected: Callable[[str], None] | None = None,
+    cache_root: Path | None = None,
 ) -> QueueView:
     """Construct the table and connect its selection to whatever composition supplies.
 
     A named function for the same reason `build_progress_view` is one: "what happens when a user
     picks a row" is the wiring decision this widget deliberately does not make, and burying it in
     composition is how it comes to be forgotten.
+
+    `cache_root` is carried straight through to the thumbnail store (`T-180`). `None` keeps the
+    pre-partition shared location, which is what every caller that names no database means.
     """
-    view = QueueView(jobs=jobs, manager=manager)
+    view = QueueView(jobs=jobs, manager=manager, cache_root=cache_root)
     if on_selected is not None:
         view.job_selected.connect(on_selected)
     return view

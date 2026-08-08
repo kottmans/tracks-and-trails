@@ -4611,3 +4611,86 @@ deleted. And every path the download *reports* is resolved and contained before 
 - **Discard the partial on failure too, as the old `finally` did.** Rejected: a network failure is
   precisely the case resume exists for, and `UX-002` already retries those automatically. Keeping it
   is what makes the automatic retry cheap instead of a second full download.
+
+---
+
+## DAT-007 — The thumbnail cache partitions by database, and the shared one is adopted once
+
+**Status:** **Accepted** (2026-08-08) — maintainer ratification, required by the Reviewer in
+`T180-R1` and given explicitly
+**Date:** 2026-08-08
+**Supersedes:** nothing. **Extends** `ARC-006`'s boundary to a second directory, and settles the
+choice `T-180` reserved for the maintainer.
+
+### Context
+
+`ARC-006` decided the single-instance guard is named from the **resolved database path**, precisely
+so two instances against different databases are not blocked: *"two instances against different
+databases harm nothing and must not be blocked."*
+
+Everything else under the cache root inherited that permission without inheriting the distinction.
+`thumbnail_cache_directory()` was `cache_directory() / "thumbnails"` — one directory for the
+machine — and `_SweepTask.run` unlinks every entry the sweeping instance's queue does not name. So
+the second instance `ARC-006` deliberately permits had its live pictures deleted by the first, and
+returned the favour on its next sweep. `T179-R1` found the harmless half of this (a publication
+count that cannot see another process) and was dispositioned rather than fixed, because the
+destructive half needed this decision.
+
+**`ARC-006` permits the second instance; it does not say where that instance's cache lives.** That
+is the gap `T180-R1` names, and treating the boundary as derived from `ARC-006` was the error — it
+is a choice `ARC-006` makes possible, not one it makes.
+
+### Decision
+
+**The thumbnail cache is per database.** `core/paths.cache_root_for` derives the root from the
+resolved database path through `derived_component`, and the derivation is stated once so it cannot
+drift from `lock_path_for`'s. Composition derives it; `ui/` is handed a root and never learns what a
+database is.
+
+**The pre-existing shared cache is adopted, once, by the first database to launch.** On first run,
+if the legacy shared `thumbnails/` directory exists and this database's partition does not, it is
+renamed into place. Later databases start empty and refetch. Every failure — a cross-device rename,
+a directory in use, a permission — leaves the legacy directory alone and costs one refetch.
+
+### Why
+
+- **It is the boundary the project already draws.** A user's mental model of "a separate library" is
+  a separate database, and the instance guard already says so. A second, different boundary for the
+  cache is two rules that must agree and will eventually not.
+- **It makes the sweep correct rather than cautious.** The alternative below leaves the sweep unable
+  to reclaim what it cannot account for; this one gives it a directory it owns alone, so
+  `T-119`'s "a picture goes with its job" holds without qualification.
+- **`cache_generation` inherited the fix.** It is keyed by directory, so a process-local publication
+  count is now complete — `T179-R1` closes without its own mechanism.
+- **Adoption is the difference between an upgrade and a refetch.** `T-180`'s risk line says a
+  careless version *"strands every existing thumbnail — regenerable, but a wholesale refetch is not a
+  quiet event on a large queue."* One rename spends nothing and keeps every picture for the
+  single-database user, who is nearly everyone.
+
+### Rejected
+
+- **A machine-wide cache with a safely coordinated sweep.** The honest version of this is
+  cross-process coordination — a lock, or a keep-set assembled from every live database — so a sweep
+  can prove a file is unwanted before unlinking it. **Rejected for cost against benefit**: it is
+  materially more machinery than the defect justifies, and the fallback available without it is a
+  sweep that may not unlink what it cannot account for, which means the cache grows and stops being
+  reclaimable. A cache that never shrinks is a worse answer than one that is partitioned.
+- **Per database, with no adoption.** Simpler, and it removes a rename path that must be certain
+  what it owns. **Rejected** because it is exactly the stranding `T-180`'s risk line warns about,
+  paid by every existing user on one launch, to save a single `rename` guarded by an existence check.
+- **Keying the cache by something other than the database** — a machine id, a profile, a config
+  value. **Rejected**: none of them is the thing the user is actually separating, and each would be
+  a third identity to keep in step with the lock and the database.
+
+### Consequences
+
+- **Existing thumbnails move once, for one database.** A machine with two databases gives the
+  legacy cache to whichever launches first; the other refetches. Both are correct, and the adopter's
+  own sweep then collects the mixture it inherited.
+- **First-to-launch is a choice, not a derivation**, and it is recorded here so a later reader does
+  not mistake it for a consequence of `ARC-006`. The shared directory holds pictures from every
+  database that ever ran on the machine, so no partition has a better claim to it.
+- **The cache root joins the object graph.** `Composition.cache_root` exposes it, because a
+  partition nothing can reach is a partition nothing can check (`T180-R2`).
+- **`ARC-006` is unchanged.** This decides where a permitted second instance's cache lives; it does
+  not revisit which instances are permitted.

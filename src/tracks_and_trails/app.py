@@ -262,6 +262,10 @@ class Composition:
     output_directory: Path
     database_path: Path
     settings_path: Path
+    #: The cache root this database's instance owns alone (`T-180`). Held for `database_path`'s
+    #: reason — the partition is a claim about the assembled graph, and a root nothing can reach
+    #: is a root nothing can check (`T180-R2`).
+    cache_root: Path
     shutdown: OrderlyShutdown
     instance: InstanceLock
 
@@ -274,6 +278,7 @@ def compose(
     ffmpeg_override: Path | None = None,
     geometry_file: Path | None = None,
     settings_file: Path | None = None,
+    cache_directory: Path | None = None,
     entry_point: Callable[..., None] | None = None,
 ) -> Composition:
     """Build the object graph and wire it up, then admit what the last run left queued.
@@ -292,6 +297,7 @@ def compose(
     *assembled* application is exactly what `T-036` has to prove, and proving it against a real
     extractor would make the proof depend on a site staying up.
     """
+    from tracks_and_trails.core import paths
     from tracks_and_trails.core import settings as app_settings
     from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.downloader import worker
@@ -497,6 +503,23 @@ def compose(
         """Route a clear-finished to the manager (`REQ-016`, `T-081`)."""
         manager.clear_completed()
 
+    # **The thumbnail cache belongs to this database, not to this machine** (`T-180`, `ARC-006`).
+    # One shared directory let two permitted instances — which `ARC-006` explicitly requires not to
+    # block one another — sweep each other's pictures, because `_SweepTask` unlinks every entry the
+    # sweeping instance's own queue does not name. Composition derives the partition because
+    # composition is what knows which database this process opened; `ui/` is handed a root and never
+    # learns what a database is.
+    #
+    # `cache_directory` overrides the platform root for the reason `settings_file` and
+    # `geometry_file` do: without it a test of this seam writes into the developer's real cache,
+    # which `ai/TESTING.md` §5 forbids — and `T180-R2` is exactly the finding that this seam had
+    # no test at all, only one proving `cache_root_for` separates roots handed to it by hand.
+    cache_root = paths.cache_root_for(database_path, cache_directory)
+    if paths.adopt_legacy_cache(database_path, cache_directory):
+        logging.getLogger("tracksandtrails.app").info(
+            "adopted the shared thumbnail cache into this database's partition (T-180)"
+        )
+
     window = MainWindow(
         geometry_file,
         manager=manager,
@@ -504,6 +527,9 @@ def compose(
         output_directory=downloads,
         job_reader=store,
         retry=retry,
+        # Both thumbnail stores in the window get this root, so the queue's sweep and the add
+        # dialog's publications stay in one directory this instance owns alone (`T118-R16`).
+        cache_root=cache_root,
         concurrency=settings.concurrency,
         on_concurrency_changed=choose_concurrency,
         on_run_changed=choose_run,
@@ -608,6 +634,7 @@ def compose(
         output_directory=downloads,
         database_path=database_path,
         settings_path=settings_file if settings_file is not None else app_settings.settings_path(),
+        cache_root=cache_root,
         shutdown=shutdown,
         instance=instance,
     )

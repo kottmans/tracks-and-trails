@@ -36,7 +36,7 @@ from tests.ui.test_row_delegate import (
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
-from tracks_and_trails.core.paths import thumbnail_cache_path
+from tracks_and_trails.core.paths import cache_root_for, thumbnail_cache_path
 from tracks_and_trails.core.presets import AUDIO_MP3, BEST_VIDEO, MP3_QUALITY, to_request
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
@@ -2495,6 +2495,60 @@ def test_removing_the_last_job_naming_a_picture_still_deletes_it(
         "the last job naming a picture was removed and the file survived"
     )
     assert thumbnail_cache_path(kept, root).exists(), "a picture a live job still names was deleted"
+
+
+def test_a_sweep_cannot_reach_another_databases_pictures(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """**`T-180`'s destructive half, asserted end to end.**
+
+    `ARC-006` explicitly permits a second instance on a *different* database — *"two instances
+    against different databases harm nothing and must not be blocked"* — and `_SweepTask` unlinks
+    every entry the sweeping instance's queue does not name. While one directory served the whole
+    machine, the second instance's live pictures were exactly the entries this one did not name, so
+    each sweep deleted the other's cache and the next one returned the favour.
+
+    Arranged as the collision actually happens: two databases, a picture each, and only one of them
+    with a queue that names anything. The sweeping instance must not be able to reach the other's
+    file — not merely decline to, which is what the pre-`T-180` publication gate did and what
+    `T179-R1` recorded as the harmless half of the same defect.
+
+    **This is the narrower half of the claim, and `T180-R2` is why that is said out loud.** It
+    derives the two roots itself and builds one store, so it proves `cache_root_for` separates roots
+    handed to it — and it would stay green if `compose` stopped deriving one from the database, or
+    if `MainWindow` stopped passing it on. The production seam is asserted in
+    `tests/integration/test_composition.py`; both are kept, because a unit claim and a wiring claim
+    fail for different reasons and a suite that only has the second one cannot say which broke.
+    """
+    cache = tmp_path / "cache"
+    ours = cache_root_for(tmp_path / "ours.sqlite3", cache)
+    theirs = cache_root_for(tmp_path / "theirs.sqlite3", cache)
+
+    gone = "https://pics.invalid/ours-and-unnamed.jpg"
+    foreign = "https://pics.invalid/theirs-and-live.jpg"
+    for url, root in ((gone, ours), (foreign, theirs)):
+        path = thumbnail_cache_path(url, root)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"a picture")
+
+    queue.add(_thumbed("job-goes", tmp_path, gone, 0))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, cache_root=ours)
+    assert view.model.rowCount() == 1
+
+    del queue.jobs["job-goes"]
+    manager.job_removed.emit("job-goes")
+    assert spin_until(qapp, lambda: not thumbnail_cache_path(gone, ours).exists()), (
+        "this instance's own unnamed picture survived its sweep, so the arrangement proves nothing"
+    )
+    assert thumbnail_cache_path(foreign, theirs).exists(), (
+        "a sweep deleted a picture belonging to another database's instance — the T-180 defect, "
+        "and ARC-006 requires that instance to be able to run at all"
+    )
 
 
 def test_a_first_queue_that_names_no_pictures_still_sweeps_once(
