@@ -479,13 +479,21 @@ def test_sorting_a_column_of_mixed_ids_does_not_raise(derived: tuple[FormatInfo,
 
     A key that returned an `int` for one row and a `str` for another raises `TypeError` the moment
     `sorted` compares them. The numeric ids order numerically and the named ones follow.
+
+    **Asserted as the rule, not as one id.** This pinned `hls-480` as the last row, which held only
+    while it was the alphabetically last named id in the fixture — adding `storyboard` for a
+    different reason broke it, and the ordering was never wrong. What the column promises is that
+    every numeric id precedes every named one and that each group is ordered within itself.
     """
     model = FormatTableModel(derived)
     model.sort(FORMAT_COLUMN, Qt.SortOrder.AscendingOrder)
     ids = column_of(model, FORMAT_COLUMN)
-    assert ids[-1] == "hls-480", ids
-    numeric = [int(value) for value in ids if value.isdigit()]
-    assert numeric == sorted(numeric), numeric
+    numeric = [value for value in ids if value.isdigit()]
+    named = [value for value in ids if not value.isdigit()]
+    assert numeric and named, f"the fixture no longer mixes both kinds of id: {ids}"
+    assert ids == numeric + named, f"a named id sorted in among the numeric ones: {ids}"
+    assert [int(value) for value in numeric] == sorted(int(value) for value in numeric), numeric
+    assert named == sorted(named, key=str.casefold), named
 
 
 def test_the_sort_role_answers_the_projection_not_the_text(

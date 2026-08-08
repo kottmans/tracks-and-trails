@@ -103,6 +103,60 @@ def test_video_with_nothing_said_about_audio_is_unknown_not_video_only() -> None
         FormatSelection(mode=SelectionMode.PAIR).choose(entry)
 
 
+def test_an_audio_rendition_is_the_audio_half_even_with_no_codec_named() -> None:
+    """The `'none'` is the signal; the other side may be silent (`T108-R1`).
+
+    **Found by driving a real HLS presentation through yt-dlp**, not by reading the spec. An
+    `EXT-X-MEDIA:TYPE=AUDIO` group comes through as `vcodec: 'none'` with **no `acodec` at all**,
+    because the `CODECS` list lives on the variant rather than on the group. The first version of
+    `kind_of` required both answers, which made the commonest real audio half unpairable — the
+    end-to-end test for the merge criterion is what surfaced it.
+
+    Contrast `h264-hd` above: silence about audio, with video *named* rather than denied, stays
+    unknown. An explicit `none` on the other stream is what distinguishes them.
+    """
+    entry = by_id(formats_from("derived_format_columns"), "hls-audio")
+    assert (entry.has_video, entry.has_audio) == (False, None)
+    assert kind_of(entry) is FormatKind.AUDIO_ONLY
+    assert entry.is_audio_only and not entry.is_video_only
+
+
+def test_a_format_denied_both_streams_is_neither_half() -> None:
+    """A storyboard is `vcodec: 'none'` **and** `acodec: 'none'` — not the audio half.
+
+    The rule keys on one stream being denied, so the case where *both* are has to be excluded
+    deliberately rather than falling out of the ordering of two branches.
+    """
+    entry = by_id(formats_from("derived_format_columns"), "storyboard")
+    assert (entry.has_video, entry.has_audio) == (False, False)
+    assert kind_of(entry) is FormatKind.UNKNOWN
+    assert not entry.is_audio_only and not entry.is_video_only
+
+    with pytest.raises(UnplaceableFormatError):
+        FormatSelection(mode=SelectionMode.PAIR).choose(entry)
+    # Still choosable on its own: `REQ-008` is about picking format ids, and a user may want one.
+    assert FormatSelection().choose(entry).selector() == "storyboard"
+
+
+def test_the_routing_and_the_projection_cannot_disagree() -> None:
+    """`kind_of` is defined in terms of `is_video_only`/`is_audio_only`, and stays that way.
+
+    Two spellings of *"is this the audio half"* is two places for it to drift, and this project has
+    a standing record of exactly that — a value computed in one place and re-derived in another.
+    Asserted across every format of every fixture rather than on an example.
+    """
+    for name in (
+        "derived_format_columns",
+        "archive_org_big_buck_bunny",
+        "wikimedia_caminandes",
+        "peertube_big_buck_bunny_60fps",
+    ):
+        for entry in formats_from(name):
+            kind = kind_of(entry)
+            assert (kind is FormatKind.VIDEO_ONLY) == entry.is_video_only, entry.format_id
+            assert (kind is FormatKind.AUDIO_ONLY) == entry.is_audio_only, entry.format_id
+
+
 def test_a_format_carrying_both_streams_is_complete_not_a_half() -> None:
     """`wikimedia_caminandes` names a vcodec **and** an acodec per format — a real recording."""
     formats = formats_from("wikimedia_caminandes")

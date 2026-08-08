@@ -169,6 +169,72 @@ def test_the_writer_refuses_to_record_an_extractor_yt_dlp_contradicts() -> None:
     assert provenance(source, "2026.07.04", {})["extractor"] == source.extractor
 
 
+def test_the_recorded_policy_names_every_entry_field_that_is_actually_kept() -> None:
+    """`T185-R2`: the provenance must not understate what is permanently committed.
+
+    It said playlist entries were **"counted rather than recorded"**. That was true until
+    `SEC-002`'s 2026-08-04 amendment for `T-137`, after which an entry keeps its address, title,
+    duration and thumbnail — and `archive_org_art_of_war_playlist.json` contains them. Every
+    fixture carried the old sentence, so the record of a **data boundary** was wrong in the one
+    direction that matters: it claimed less was kept than is.
+
+    **Derived from `CONSUMED_ENTRY`, not transcribed** (`ai/TESTING.md` §13). A sentence written
+    beside a machine-read allowlist is two statements of one fact, and they had already drifted
+    once. Each field is asserted by name, so adding one to the allowlist and not to the sentence
+    fails here.
+    """
+    from tests.fixtures.capture import CONSUMED_ENTRY, _policy_record
+
+    policy = _policy_record()
+    for field in CONSUMED_ENTRY:
+        assert field in policy, f"the recorded policy does not mention the retained entry {field!r}"
+    assert "counted rather than recorded" not in policy, (
+        "the policy still claims playlist entries are only counted, which SEC-002's amendment "
+        "and the committed playlist fixture both contradict"
+    )
+
+
+@pytest.mark.parametrize("path", all_fixtures(), ids=fixture_id)
+def test_the_committed_policy_matches_the_writer(path: Path) -> None:
+    """Every committed fixture states the policy the writer currently promises (`T185-R2`).
+
+    **The half that catches a stale file rather than a stale sentence.** Correcting
+    `_policy_record` alone would leave seven fixtures on disk still describing the superseded rule,
+    and they are what a reader actually opens. Equality rather than a keyword, so a future
+    amendment cannot land in the writer and quietly not reach the committed provenance.
+
+    Error fixtures carry no `policy` — they record an exception, not an allowlisted extraction —
+    and are skipped rather than asserted into having one.
+    """
+    from tests.fixtures.capture import _policy_record
+
+    meta = load(path)["_fixture"]
+    if "policy" not in meta:
+        pytest.skip(f"{path.name} records a failure and carries no policy")
+    assert meta["policy"] == _policy_record(), (
+        f"{path.name}'s recorded policy is not the one the writer promises today"
+    )
+
+
+def test_a_playlist_fixture_actually_contains_the_entry_fields_the_policy_names() -> None:
+    """The claim is checked against the data, not only against the writer (`T185-R2`).
+
+    A policy sentence and an allowlist that agree with each other can still both be wrong about
+    what is on disk. This is the third side of that triangle: the committed playlist is opened and
+    its first entry read.
+    """
+    from tests.fixtures.capture import CONSUMED_ENTRY
+
+    playlists = [path for path in info_fixtures() if load(path)["info_dict"].get("entries")]
+    assert playlists, "no committed fixture has playlist entries, so this asserts nothing"
+    for path in playlists:
+        for entry in load(path)["info_dict"]["entries"]:
+            unexpected = set(entry) - set(CONSUMED_ENTRY)
+            assert not unexpected, f"{path.name} keeps {sorted(unexpected)} on a playlist entry"
+        first = load(path)["info_dict"]["entries"][0]
+        assert first, f"{path.name}'s entries are empty, so the policy's claim is untested here"
+
+
 def test_the_recorded_sources_do_not_all_come_from_one_extractor() -> None:
     """The property that makes the test above able to fail (`T107-R8`).
 

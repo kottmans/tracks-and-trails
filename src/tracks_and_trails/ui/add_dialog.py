@@ -645,6 +645,13 @@ class StagingModel(QAbstractListModel):
         self.beginResetModel()
         self._shown = rows
         self.endResetModel()
+        # **A reset drops the open panel's index widget, and nothing was putting it back**
+        # (`T108-R2`). Qt forgets the widget-to-index association, so the row stayed tall and blank
+        # while `_expanded` still pointed at it — and `open_format_table` then returned early
+        # because the row *was* the expanded one, so it could never be reopened. Remounting by row
+        # identity is what makes a reset survivable; the editor above is committed rather than
+        # remounted because a combo box holds no state the row does not already have.
+        self._dialog.remount_format_table()
 
 
 class AddUrlDialog(QDialog):
@@ -937,6 +944,25 @@ class AddUrlDialog(QDialog):
         # paste is unbounded and measuring every row costs; one open row makes the sizes genuinely
         # non-uniform, so the promise has to be withdrawn while it is open and restored after. Left
         # on, Qt draws every row at the open one's height.
+        # **Mounted on the next turn, because Qt keeps index widgets and item editors in one map**
+        # (`T108-R2`). This is reached from `StagingModel.setData`, which Qt calls from inside
+        # `commitData` while the row's combo box is still open — and `setIndexWidget` on that index
+        # *destroys the editor Qt is in the middle of using*. The delegate went on holding the dead
+        # pointer, and the next structural reset called `commitData` on it: **libshiboken: Internal
+        # C++ object already deleted.** Deferring by one turn lets the view finish closing the
+        # editor first, which is the only ordering in which both can exist.
+        QTimer.singleShot(0, self._mount_format_table)
+
+    def _mount_format_table(self) -> None:
+        """Put the panel on its row, once the editor that opened it is gone (`T108-R2`)."""
+        row, panel = self._expanded, self._panel
+        if row is None or panel is None:
+            return
+        index = self._index_of(row)
+        if not index.isValid():
+            # The row went away between the choice and this turn — a retype in the same breath.
+            self.close_format_table(keep=True)
+            return
         self._list.setUniformItemSizes(False)
         # **Re-lay the items before handing Qt the widget** (`T-108`). `QListView` caches each
         # item's rectangle, and it sizes an index widget to the rectangle it believes in *at the
@@ -990,6 +1016,34 @@ class AddUrlDialog(QDialog):
         self._list.setUniformItemSizes(True)
         self.refresh()
         self._list.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def remount_format_table(self) -> None:
+        """Put the open panel back on its row after a model reset, or close it if the row is gone.
+
+        **`T108-R2`.** A structural reset — adding a URL, removing one, retyping, reordering —
+        drops the index widget, and the panel was left pointing at a row it was no longer mounted
+        on: the row stayed tall and blank, and `open_format_table` refused to reopen it because
+        `_expanded is row` was still true. Every one of those is an ordinary thing to do while
+        choosing a format, not a teardown path.
+
+        **By row identity, never by row number** (`T118-R14`'s rule). Reconciling A/B to B/A leaves
+        row 0 valid and meaning a *different URL*, so remounting by position would hang one row's
+        format table under another's — the same class of defect as writing a chosen preset to the
+        wrong row, and with the same consequence.
+
+        A row that is gone takes its panel with it, **keeping** what was chosen: the selection was
+        already written to the row when it was made, and the row itself no longer exists.
+        """
+        row, panel = self._expanded, self._panel
+        if row is None or panel is None:
+            return
+        index = self._index_of(row)
+        if not index.isValid():
+            self.close_format_table(keep=True)
+            return
+        self._list.setUniformItemSizes(False)
+        self._list.setIndexWidget(index, panel)
+        panel.setGeometry(self._list.visualRect(index))
 
     @property
     def open_panel(self) -> FormatPanel | None:

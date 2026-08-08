@@ -381,23 +381,36 @@ class FormatInfo:
 
     @property
     def is_audio_only(self) -> bool:
-        """Audio and **explicitly** no video (`T-108`).
+        """yt-dlp said this format has **no video**, and did not deny it audio (`T-108`).
 
         *Was* `video_codec is None and audio_codec is not None`, which read a missing `vcodec` as an
         absent video stream — `T107-R1`, where a format with an unknown video codec was reported as
         having no video at all. `has_video` keeps yt-dlp's `'none'` apart from its silence, so the
         property can mean what its name says.
 
-        **This is narrower than before and deliberately so.** A format nobody has said anything
-        about is no longer audio-only here; it is unknown, and `format_selection.kind_of` gives it
-        its own answer rather than folding it in with the certain cases.
+        **The `'none'` is the whole signal; the other side may be silent.** A real HLS
+        `EXT-X-MEDIA:TYPE=AUDIO` rendition arrives as `vcodec: 'none'` with **no `acodec` at all**,
+        because the codec list lives on the variant rather than on the group — so requiring a named
+        audio codec would make the commonest real audio stream not audio-only. Silence on its own
+        still says nothing: `has_video` must be an explicit `False`.
+
+        A format denied *both* streams — a storyboard — is neither half, which is why `has_audio is
+        not False` is part of it rather than an afterthought.
+
+        **`format_selection.kind_of` is defined in terms of this property**, so the routing and the
+        model cannot come to differ about what "audio only" means.
         """
-        return self.has_video is False and self.has_audio is True
+        return self.has_video is False and self.has_audio is not False
 
     @property
     def is_video_only(self) -> bool:
-        """Video and **explicitly** no audio — the other half of a merge pair (`REQ-008`)."""
-        return self.has_video is True and self.has_audio is False
+        """The mirror image: **no audio**, and video not denied — the other half of a merge pair.
+
+        Deliberately symmetrical with `is_audio_only`, down to the `is not False`: media.ccc.de
+        publishes `vcodec: 'h264'` with no `acodec` for recordings that certainly have sound, and
+        that is `has_audio is None` rather than `False`, so it is **not** video-only.
+        """
+        return self.has_audio is False and self.has_video is not False
 
 
 @dataclass(frozen=True, slots=True)

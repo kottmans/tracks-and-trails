@@ -237,13 +237,25 @@ def _keep_entry(item: Any) -> dict[str, Any]:
 def _policy_record() -> str:
     """What the fixture writer promised, recorded beside the fixture.
 
-    A sentence rather than a structure: it describes a rule that no longer depends on
-    recognising anything, so there is no marker list to reproduce here.
+    **The entries clause was false and had been since 2026-08-04** (`T185-R2`). It said playlist
+    entries were *"counted rather than recorded"*, which was true when `CONSUMED_ENTRY` was empty
+    and stopped being true when `SEC-002` was amended for `T-137`: an entry now keeps its address,
+    title, duration and thumbnail, and `archive_org_art_of_war_playlist.json` demonstrably contains
+    them. Every fixture carried the old sentence, so the provenance **understated what is
+    permanently committed** — which is the one direction a data-boundary record must never be wrong
+    in.
+
+    **The entry fields are listed from `CONSUMED_ENTRY` rather than transcribed** (`ai/TESTING.md`
+    §13). That is the whole correction: a hand-written sentence beside a machine-read allowlist is
+    two statements of one fact, and this is the second time they drifted. Derived, the sentence
+    cannot outlive the list — and `test_the_committed_policy_matches_the_writer` fails if a
+    committed fixture still carries an older one.
     """
+    entries = ", ".join(CONSUMED_ENTRY)
     return (
-        "allowlist: only fields ytdlp_adapter reads carry values, and playlist entries are "
-        "counted rather than recorded; every other key is dropped and nothing about it is kept. "
-        "URLs lose query, userinfo and fragment; user-directory paths are removed"
+        "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps "
+        f"exactly {entries} and nothing else; every other key is dropped and nothing about it is "
+        "kept. URLs lose query, userinfo and fragment; user-directory paths are removed"
     )
 
 

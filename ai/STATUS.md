@@ -206,11 +206,17 @@ a commit message and a status paragraph is one no reviewer can check.
 
 **That last one has evidence behind it rather than convenience.** `wikimedia_caminandes` was added
 as a source precisely because it reports the codec and bitrate columns archive.org does not, so
-those are now asserted **by value from a recorded capture**. **fps is reported by nothing** — four
-Wikimedia Commons files and three archive.org items, none with it — so it stays exercised by a
-derived fixture, and `T-185` stays **open** as the record of that search. It was briefly marked
+those are now asserted **by value from a recorded capture**. **fps was reported by nothing** — four
+Wikimedia Commons files and three archive.org items, none with it — so it stayed exercised by a
+derived fixture, and `T-185` stayed **open** as the record of that search. It was briefly marked
 complete and reopened the same day: closing a task whose criterion is unmet is the defect one level
 up from the one being fixed.
+
+***Superseded the same day, and left standing rather than edited.*** *`T-185` found a source
+reporting fps — see the block at the top of this file. The paragraph above was true when the
+ratification happened and is the reason `OPS-013` exists; what it must not do is read as the current
+answer, which is why it is now in the past tense and pointed forward. `T185-R1` is the finding that
+this file and `TASKS.md` were both still stating a solved problem in the present tense.*
 
 ## 2026-08-07: `T-107` is built, and it owes one exit criterion
 

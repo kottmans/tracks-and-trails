@@ -41,7 +41,13 @@ from typing import Any, Final
 
 import psutil
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
+    QApplication,
+    QComboBox,
+    QListView,
+    QWidget,
+)
 
 from tracks_and_trails import app as application
 from tracks_and_trails.core.errors import ErrorKind, is_retryable
@@ -51,6 +57,8 @@ from tracks_and_trails.core.presets import BUILT_IN_PRESETS
 from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
+from tracks_and_trails.ui.format_selection import FormatKind, kind_of
+from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_DATA, ROW_PRESET_NAME
 
 REPO_ROOT = Path(__file__).parents[2]
 
@@ -1285,3 +1293,239 @@ def test_recovery_is_the_applications_own_and_not_the_tests(
     finally:
         composition.shutdown.begin()
         assert spin(lambda: composition.shutdown.finished, timeout=60)
+
+
+# --- T-108: a chosen video + audio pair produces one merged file (REQ-008) --------------------
+#
+# **`T108-R1`.** The criterion is *"a video-only and an audio-only selection produce one merged
+# file, on both platforms"*, and the first submission stopped at a `DownloadRequest` carrying
+# `137+140`. A request is not a file: everything between the selector and the output — yt-dlp's
+# format resolution, two downloads, and the ffmpeg mux — was unexercised, and that span is exactly
+# where `T-061` lived.
+#
+# The presentation below is what makes the criterion reachable without a network: a master playlist
+# with a **video-only variant** and a separate `EXT-X-MEDIA:TYPE=AUDIO` group, which yt-dlp reports
+# as two formats — one `vcodec: 'none'`, one `acodec: 'none'`. `hls_media_url`'s single variant
+# carries both streams and can never need merging.
+#
+# **It also corrected the routing rule.** The audio group arrives with *no `acodec` at all*, because
+# HLS puts the codec list on the variant rather than on the group — so `kind_of`'s first version,
+# which required both answers, made the commonest real audio half unpairable. Building this is what
+# found that; see `format_selection.kind_of`.
+
+
+def build_split_hls(ffmpeg_path: str, source: Path, directory: Path) -> None:
+    """Render `source` into an HLS presentation whose video and audio are **separate formats**.
+
+    Two renditions rather than one: `-an` drops the audio from the video playlist and `-vn` drops
+    the video from the audio one, so neither is playable alone and a merge is genuinely required.
+
+    The master deliberately declares only the **video** codec in `CODECS`. That is what a real
+    packager emits — the audio group's codec is not part of the variant's list — and it is why the
+    audio format arrives with no `acodec`. Adding one here would make the fixture kinder than
+    reality and hide the case `kind_of` had to learn.
+    """
+    for arguments, playlist, segments in (
+        (["-an", "-c:v", "libx264", "-preset", "ultrafast"], "v0.m3u8", "v0_%d.ts"),
+        (["-vn", "-c:a", "aac"], "a0.m3u8", "a0_%d.ts"),
+    ):
+        subprocess.run(
+            [
+                ffmpeg_path,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(source),
+                *arguments,
+                "-f",
+                "hls",
+                "-hls_time",
+                "1",
+                "-hls_playlist_type",
+                "vod",
+                "-hls_segment_filename",
+                str(directory / segments),
+                str(directory / playlist),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    (directory / "master.m3u8").write_text(
+        "#EXTM3U\n#EXT-X-VERSION:3\n"
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",DEFAULT=YES,AUTOSELECT=YES,'
+        'URI="a0.m3u8"\n'
+        "#EXT-X-STREAM-INF:BANDWIDTH=400000,RESOLUTION=320x240,"
+        'CODECS="avc1.42c01e",AUDIO="aud"\n'
+        "v0.m3u8\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.fixture
+def split_media_url(ffmpeg: tuple[str, str], tmp_path: Path) -> Iterator[Callable[[], str]]:
+    """A localhost HLS presentation whose video and audio are separate formats.
+
+    Nothing leaves the machine.
+    """
+    servers: list[ThreadingHTTPServer] = []
+    root = tmp_path / "split-hls"
+    root.mkdir()
+    source = tmp_path / "split-source.mp4"
+    build_media(ffmpeg[0], source)
+    build_split_hls(ffmpeg[0], source, root)
+
+    def serve() -> str:
+        handler = functools.partial(SimpleHTTPRequestHandler, directory=str(root))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        servers.append(server)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{server.server_address[1]}/master.m3u8"
+
+    yield serve
+
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
+def choose_pair_and_queue(composition: application.Composition, url: str) -> str:
+    """Paste `url`, open the format table, pick the two halves, and Add — the user's whole route.
+
+    **Through the dialog rather than by building a request**, for `queue_one`'s reason and one
+    more: `T-108`'s criterion is about a *selection* producing a merged file, so a test that
+    assembled the selector itself would skip the part under review — the control's entry, the
+    panel, the mode, and the routing of each row into its slot.
+    """
+    dialog = composition.window.open_add_dialog()
+    dialog._urls.setPlainText(url)
+    # **The batch preset is set before resolving, and it has to be.** A probe runs yt-dlp with the
+    # selector the batch currently names, so the default `…[ext=mp4]+…[ext=m4a]` preset makes this
+    # presentation fail to resolve at all — *"Requested format is not available"* — before any of
+    # `T-108` is reached. The row's own choice replaces this selector entirely once it is made; what
+    # this affects is whether the URL can be read in the first place.
+    names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
+    dialog._preset_choice.setCurrentIndex(names.index(END_TO_END_PRESET))
+    dialog.resolve()
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and not (
+        dialog.rows and all(row.committable for row in dialog.rows)
+    ):
+        composition.app.processEvents()
+        time.sleep(0.005)
+    assert dialog.rows and all(row.committable for row in dialog.rows), (
+        f"the URL never resolved: {dialog.status_text()}"
+    )
+
+    control = dialog.edit_row(0)
+    assert control, "the resolved row offered no format control"
+    editor = staging_editor(dialog)
+    entry = editor.findData(CHOOSE_FORMATS_DATA)
+    assert entry >= 0, (
+        "the control offers no 'Choose specific formats…' entry for a row with formats: "
+        f"{[editor.itemText(i) for i in range(editor.count())]}"
+    )
+    editor.setCurrentIndex(entry)
+    listing = dialog.findChild(QListView, "stagingList")
+    assert listing is not None
+    listing.commitData(editor)
+    listing.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+    composition.app.processEvents()
+
+    panel = dialog.open_panel
+    assert panel is not None, "the row did not open into its format table"
+    mode = panel.table.mode_control
+    assert mode is not None, (
+        "the merge mode was not offered for a presentation that has a video-only and an "
+        "audio-only format — the routing rule disagrees with what yt-dlp reported"
+    )
+    mode.setChecked(True)
+
+    formats = panel.table.model.formats()
+    kinds = {kind_of(entry_): entry_ for entry_ in formats}
+    assert FormatKind.VIDEO_ONLY in kinds and FormatKind.AUDIO_ONLY in kinds, (
+        f"yt-dlp reported {[(f.format_id, str(kind_of(f))) for f in formats]}, which is not a pair"
+    )
+    for kind in (FormatKind.VIDEO_ONLY, FormatKind.AUDIO_ONLY):
+        wanted = kinds[kind]
+        row = next(index for index in range(len(formats)) if formats[index] is wanted)
+        panel.table.table.setCurrentIndex(panel.table.model.index(row, 0))
+        panel.table.choose_current()
+        composition.app.processEvents()
+
+    assert dialog.open_panel is None, "the pair completed and the panel stayed open"
+    dialog.add_to_queue()
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and not dialog.queued_job_ids:
+        composition.app.processEvents()
+        time.sleep(0.005)
+    assert dialog.queued_job_ids, f"the pair never persisted: {dialog.status_text()}"
+    return dialog.queued_job_ids[0]
+
+
+def staging_editor(dialog: QWidget) -> QComboBox:
+    """The one open row control, by the name it is declared under.
+
+    Exactly one, because `T118-R10` builds one editor rather than one per row.
+    """
+    open_controls = dialog.findChildren(QComboBox, ROW_PRESET_NAME)
+    assert len(open_controls) == 1, f"{len(open_controls)} row controls are open at once"
+    editor = open_controls[0]
+    assert isinstance(editor, QComboBox)
+    return editor
+
+
+def test_a_chosen_video_and_audio_pair_produce_one_merged_file(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    ffmpeg: tuple[str, str],
+    split_media_url: Callable[[], str],
+) -> None:
+    """**`T-108`'s acceptance criterion**, as a file rather than as a request (`REQ-008`).
+
+    *"A video-only and an audio-only selection produce one merged file."* Everything is real except
+    the server: the user's route through the dialog, yt-dlp's own format resolution, two downloads,
+    and ffmpeg's mux. The output is inspected with `ffprobe`, so a merge that produced a video-only
+    file — which is what selecting one half would do — fails here.
+
+    **Both platforms**: this runs wherever the suite runs, and CI runs the whole suite on Windows
+    as well as Linux. Nothing in it is POSIX-only.
+    """
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+    )
+    composition.manager.start_queue()
+    try:
+        job_id = choose_pair_and_queue(composition, split_media_url())
+        assert spin(
+            lambda: shown_status(composition, job_id) is JobStatus.COMPLETED,
+            timeout=180,
+        ), f"the merge never completed — {why(composition, job_id)}"
+
+        job = composition.store.get(job_id)
+        assert job is not None and job.output_path is not None
+        # **The selector is the two ids joined**, which is what the selection produced — asserted
+        # here as well as on the file, because a request that happened to resolve to a progressive
+        # format would produce a perfectly good merged-looking file and prove nothing.
+        assert "+" in job.request.format_selector, job.request.format_selector
+
+        output = Path(job.output_path)
+        assert output.exists(), f"the queue recorded {output} and no such file exists"
+        outputs = sorted(p.name for p in output.parent.iterdir() if p.is_file())
+        assert len(outputs) == 1, f"a merge left {outputs}, not one file"
+
+        streams = streams_in(ffmpeg[1], output)
+        kinds = sorted(stream["codec_type"] for stream in streams)
+        assert kinds == ["audio", "video"], (
+            f"the merged file carries {kinds}. Two half-streams were chosen and the output must "
+            "contain both; one of them means the merge did not happen"
+        )
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=120)

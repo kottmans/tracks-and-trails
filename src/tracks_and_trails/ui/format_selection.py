@@ -74,21 +74,33 @@ class SelectionMode(StrEnum):
 def kind_of(entry: FormatInfo) -> FormatKind:
     """Which slot `entry` can fill, from what the projection was actually told.
 
-    **Every branch requires both answers to be known.** A format with video and no statement about
-    audio is `UNKNOWN`, not `VIDEO_ONLY`: media.ccc.de publishes exactly that shape — `vcodec:
-    'h264'` with no `acodec` — for recordings that certainly do have sound, and pairing one with an
-    audio stream would ask yt-dlp to merge audio into a file that already has it.
+    **The `'none'` is the signal, and the other side may be silent.** A format is the audio half
+    when yt-dlp said there is **no video** in it; whether it also named the audio codec is a
+    different question, and requiring it was wrong. A real HLS presentation is what showed this:
+    an `EXT-X-MEDIA:TYPE=AUDIO` rendition comes through as `vcodec: 'none'` with **no `acodec` at
+    all**, because the codec list lives on the variant rather than on the group. Requiring both
+    answers made the commonest real audio half unpairable, and the criterion's own end-to-end test
+    is what found it.
+
+    **Silence alone still says nothing.** `has_audio is None` is not `False`: media.ccc.de publishes
+    `vcodec: 'h264'` with no `acodec` for recordings that certainly do have sound, and reading that
+    as video-only would ask yt-dlp to merge audio into a file that already has it. So a half needs
+    an explicit `none` on the *other* stream — never merely an absence on its own.
+
+    A format with `'none'` for both — a storyboard or a thumbnail track — is neither half. Both
+    branches below exclude it, because *"no video"* and *"no audio"* together describe something
+    that cannot be either side of a merge.
     """
-    if entry.has_video is None or entry.has_audio is None:
-        return FormatKind.UNKNOWN
-    if entry.has_video and entry.has_audio:
+    if entry.has_video is True and entry.has_audio is True:
         return FormatKind.COMPLETE
-    if entry.has_video:
+    # **Asked of the model, not restated here.** Two spellings of "is this the audio half" is two
+    # places for it to drift, and the routing and the projection have to agree by construction.
+    if entry.is_video_only:
         return FormatKind.VIDEO_ONLY
-    if entry.has_audio:
+    if entry.is_audio_only:
         return FormatKind.AUDIO_ONLY
-    # Neither stream: a storyboard or a thumbnail track. Selectable in `SINGLE` — a user may
-    # genuinely want it — but it fills no slot in a merge.
+    # Either nothing was said, or both streams were denied. Selectable in `SINGLE` — a user may
+    # genuinely want a storyboard — but it fills no slot in a merge.
     return FormatKind.UNKNOWN
 
 

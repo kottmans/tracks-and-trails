@@ -5,7 +5,7 @@
     "content_licence": "No content: the structure of a real capture with DRM flags set.",
     "derived_from": "archive_org_test_mp3",
     "note": "Derived, not recorded. It exercises DRM detection against a realistically shaped info_dict, which an inline dict in a test cannot.",
-    "policy": "allowlist: only fields ytdlp_adapter reads carry values, and playlist entries are counted rather than recorded; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
+    "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
     "what_is_synthetic": [
       "_has_drm",
       "formats[].has_drm",

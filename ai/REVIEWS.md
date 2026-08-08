@@ -11757,3 +11757,65 @@ source that supplies fps.
 The reviewer appended this record and added `T107-R8` to already-open T-185. No reviewed source or
 test, roadmap, requirement, decision, implementation-plan entry, commit, remote ref, migration,
 user database or CI state was changed. Mutations ran only in an extracted `/tmp` tree.
+
+## 2026-08-07 — T-108 / T-185 implementation review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `e97efd1`
+**Submitted head:** `931dcce`
+**Tasks:** `T-108`, `T-185`
+**Platforms verified:** Linux, Qt offscreen; Windows runtime not independently rerun
+**Verdict:** **T-108 Changes requested; T-185 Changes requested.** T-108 mounts the table and
+carries a single or paired choice into one submitted request, but its required real merged-file
+result remains expressly unverified on either platform, and a structural staging-list reset can
+orphan the mounted panel. T-185 supplies real 30/60 fps values and corrects the extractor writer,
+but its current task text still says that evidence is absent and every fixture still records a
+capture policy superseded by SEC-002's accepted playlist-entry amendment.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| `T108-R1` | **High** | **Yes** | T-108's acceptance criterion requires a video-only plus audio-only choice to produce **one merged file on both platforms**. The submitted tests stop at a `DownloadRequest` with selector `137+140`; the handoff explicitly says no real merge produced a real file on either platform. Existing worker tests establish the ffmpeg gate and the progressive no-ffmpeg path, not the new pair's successful output. Green CI therefore does not exercise the criterion. | Add an end-to-end test that makes or serves distinct video-only and audio-only inputs, drives the chosen pair through the real download/ffmpeg path, inspects one output containing both streams, and runs on Linux and Windows. If the criterion is no longer intended, it needs a maintainer amendment rather than an implementation note. | **Open** |
+| `T108-R2` | **Medium** | **Yes** | A structural reset of the staging model removes the row's index widget but leaves `_expanded` and `_panel` pointing at it. Independently opening row A's table and reordering resolved URLs from A/B to B/A changed the state from `mounted=True, visible=True` to `mounted=False, visible=False` while `open_panel` remained non-null. The row stayed tall and blank, and `open_format_table(A)` returned early because `_expanded is row`, so the same row could not reopen its table. Adding or removing another URL takes the same reset path. | Before a structural reset, close/commit the panel, or remount it by row identity afterward; keep the index widget, `_expanded`/`_panel`, size role, and uniform-size setting in one state. Add shown-dialog cases for adding, removing, and reordering URL lines while a panel is open, including reopening the same row. | **Open** |
+| `T185-R1` | **Medium** | **Yes** | T-185's current status says fps was found and Phase 3 exit criterion 1 is evidenced, but its `What is wrong` block still says the recorded captures carry none of fps/codecs/bitrate and concludes **“The criterion is not met and T-107 does not claim it.”** Its scope still instructs a future re-capture and its Out of scope still excludes the new source this implementation added. `TASKS.md` is current truth, and this contradiction materially misstates a required phase gate rather than preserving useful review history. | Rewrite the task's problem/scope/out-of-scope text to describe the completed capture and comparison. Keep prior failed searches only as explicitly historical rationale; do not leave mutually exclusive current answers in the entry. Audit the corresponding current `STATUS.md` prose for the same unknown-to-fact drift. | **Open** |
+| `T185-R2` | **Medium** | **Yes** | The new PeerTube fixture, the re-captured Wikimedia fixture, and every sibling info fixture record: **“playlist entries are counted rather than recorded.”** `capture.py::_policy_record()` still writes that sentence. SEC-002 was acceptedly amended on 2026-08-04 to retain each entry's address, title, duration and thumbnail, and `archive_org_art_of_war_playlist.json` demonstrably contains those values. The provenance therefore understates what is permanently committed and contradicts the accepted security/data boundary. | Make `_policy_record()` state the amended allowlist accurately, update every affected fixture's provenance without pretending a network re-capture occurred, and add a gate that would fail if the writer or committed metadata returns to the count-only policy. Audit all siblings because the false writer populated all of them. | **Open** |
+
+### Carried finding and review judgments
+
+- **`T107-R8` is Resolved at `931dcce`.** `Source.extractor` is keyword-only and required,
+  `provenance()` records that declaration, and a capture refuses a contradictory extractor from
+  yt-dlp. The writer is tested independently of committed fixture files, so restoring its former
+  hardcode fails before a network re-capture.
+- **T-185's real-column evidence is otherwise sound.** The recorded PeerTube fixture supplies
+  five values split across 30 and 60 fps; the table asserts them by value and sorts in both
+  directions. The source page resolves to the declared Blender-hosted item, and Big Buck Bunny's
+  CC BY 3.0 status is independently documented by
+  [Creative Commons](https://wiki.creativecommons.org/wiki/Big_Buck_Bunny). No credential-bearing
+  query, userinfo or fragment appears in its committed media URLs.
+- **The UI-to-request seam works in the stable-row case.** Single selection closes after its
+  choice is written; a completed pair produces one durable job with `137+140`; signal order is
+  pinned; the panel receives non-zero first geometry; and absent-ffmpeg versus no-known-pair
+  reasons are distinct.
+- **Hiding pair mode when there is no explicitly classifiable pair is not a finding.** The code
+  does not infer that unknown formats are progressive halves; it declines an impossible-to-fill
+  mode and states why, consistent with UX-005's rule that the surface not offer an action it will
+  refuse. `T-188` appropriately owns replacing the synthetic routing fixture if an acceptable
+  recorded pair is found; it does not supply T108-R1's real merged-file result.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `e97efd1..931dcce`: 23 files, **+3028/-250**; `HEAD == origin/main == 931dcce`; working tree clean before reviewer bookkeeping; `git diff --check`: **pass**. |
+| Focused model/adapter/fixture/UI suites | **497 passed, 7 skipped** in 52.58 s. The restricted first run had one sandbox-denied loopback bind; the permitted rerun passed it. |
+| Existing ffmpeg/merge integration cases | Worker ffmpeg/merge cases plus the end-to-end progressive-without-ffmpeg case: **12 passed, 74 deselected**. None creates the new two-stream merged output, which is T108-R1. |
+| Structural-reset probe | Two resolved rows A/B; open A, reconcile B/A, refresh: before `open=True, mounted=True`; after `open=True, mounted=False, visible=False`; asking to reopen A remained unmounted. |
+| Provenance probe | The playlist fixture's recorded policy says entries are counts; its first committed entry contains `url`, `webpage_url`, `title` and `duration`. SEC-002's 2026-08-04 amendment permits and names those retained values. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **195 files already formatted**; host and Win32-platform mypy over `src tests`: **success, 110 source files each**. |
+| Task placement | **14 passed**. |
+| Submitted evidence | The handoff reports **2333 passed, 12 skipped** and all five CI jobs green at `931dcce`. The reviewer did not rerun the complete suite or query CI. |
+
+The reviewer appended this record only. No reviewed source/test, task state, status state,
+requirement, decision, implementation-plan entry, fixture, commit, remote ref, migration, user
+database or CI state was changed.

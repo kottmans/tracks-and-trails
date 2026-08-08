@@ -82,6 +82,7 @@ from tracks_and_trails.ui.add_dialog import (
     STATE_TEXT,
     UNKNOWN_TEXT,
     AddUrlDialog,
+    FormatPanel,
     describe_kind,
     format_duration,
     headline_text,
@@ -3026,3 +3027,188 @@ def test_a_single_choice_still_queues_without_ffmpeg(
         f"a single chosen format was refused without ffmpeg: {text_of(dialog, 'statusMessage')!r}"
     )
     assert sink.submissions[0][0].request.format_selector == "137"
+
+
+# --- T108-R2: an open panel survives the URL list changing under it ---------------------------
+
+
+def _two_resolved_rows(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    urls: str,
+) -> AddUrlDialog:
+    """A dialog whose every pasted line has resolved, with formats on each."""
+    dialog = dialogs(managers())
+    type_urls(dialog, urls)
+    dialog.resolve()
+    count = len(urls.split())
+    assert spin(lambda: len(dialog.rows) == count and all(row.job_id for row in dialog.rows))
+    payload = json.loads((INFODICTS / "derived_format_columns.json").read_text(encoding="utf-8"))
+    formats = adapter.project_media(payload["info_dict"]).formats
+    for row in dialog.rows:
+        assert row.job_id is not None
+        dialog._on_media_probed(row.job_id, MediaInfo(url=row.url, title=row.url, formats=formats))
+    QApplication.processEvents()
+    return dialog
+
+
+def _open_the_table(dialog: AddUrlDialog, index: int) -> FormatPanel:
+    """Open one row's format table through the control, and wait for it to be mounted.
+
+    The mount is deferred by one event-loop turn (`T108-R2`): Qt keeps index widgets and item
+    editors in one map, so mounting while the combo box is still open destroys it under the
+    delegate. Draining here rather than in every caller.
+    """
+    control = open_row_editor(dialog, index)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    QApplication.processEvents()
+    panel = dialog.open_panel
+    assert panel is not None, f"row {index} did not open into its format table"
+    return panel
+
+
+def _mounted_on(dialog: AddUrlDialog, row: Row, panel: FormatPanel) -> bool:
+    """Whether `panel` is actually the index widget of `row`'s current index.
+
+    **The panel is passed in rather than read from the dialog.** Comparing against
+    `dialog.open_panel` made the helper answer `True` once both were `None` — so "is it still
+    mounted?" said yes about a row with no widget and a dialog with no panel, which is exactly the
+    question this exists to answer.
+    """
+    listing = staging_list(dialog)
+    model = listing.model()
+    assert model is not None
+    for position in range(model.rowCount()):
+        if dialog.model.row_at(position) is row:
+            return listing.indexWidget(model.index(position, 0)) is panel
+    return False
+
+
+@pytest.mark.parametrize(
+    ("started", "retyped", "case"),
+    [
+        (
+            "https://example.invalid/one\nhttps://example.invalid/two",
+            "https://example.invalid/two\nhttps://example.invalid/one",
+            "reordering the lines",
+        ),
+        (
+            "https://example.invalid/one\nhttps://example.invalid/two",
+            "https://example.invalid/one\nhttps://example.invalid/two\nhttps://example.invalid/3",
+            "adding a line",
+        ),
+        (
+            "https://example.invalid/one\nhttps://example.invalid/two",
+            "https://example.invalid/one",
+            "removing the other line",
+        ),
+    ],
+)
+def test_the_open_format_table_survives_the_url_list_changing(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    started: str,
+    retyped: str,
+    case: str,
+) -> None:
+    """`T108-R2`: a structural reset must not orphan the panel.
+
+    A reset drops the index widget, and `_expanded`/`_panel` kept pointing at the row anyway — so
+    the row stayed **tall and blank**, and reopening it returned early because it was still "the
+    expanded one". Every case here is an ordinary thing to do while choosing a format.
+
+    **Remounted by identity, never by position**: reconciling A/B to B/A leaves row 0 valid and
+    meaning a different URL, so a positional remount would hang one row's table under another's.
+    """
+    dialog = _two_resolved_rows(dialogs, managers, spin, started)
+    first = dialog.rows[0]
+    panel = _open_the_table(dialog, 0)
+    assert _mounted_on(dialog, first, panel)
+
+    type_urls(dialog, retyped)
+    dialog.resolve()
+    QApplication.processEvents()
+
+    assert dialog.open_panel is panel, f"{case} closed the panel"
+    assert panel.row is first, f"{case} moved the panel to another row"
+    assert _mounted_on(dialog, first, panel), (
+        f"{case} left the panel orphaned: the row is expanded and carries no widget"
+    )
+
+    # **The reviewer's exact second symptom.** Asking to open the row again returns early because
+    # it *is* the expanded one — which is right only if it is also still mounted. Orphaned, that
+    # early return was what made the blank row permanent: closing was the only way out and nothing
+    # offered it.
+    dialog.open_format_table(first)
+    QApplication.processEvents()
+    assert dialog.open_panel is panel
+    assert _mounted_on(dialog, first, panel), (
+        f"after {case}, reopening the row left it expanded and blank"
+    )
+
+
+def test_a_row_whose_line_is_deleted_takes_its_open_table_with_it(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """The one case that cannot be remounted: the row itself is gone.
+
+    Closing rather than remounting somewhere plausible — there is nowhere plausible. `keep=True`
+    because the selection was written to the row when it was made, and the row is what left.
+    """
+    dialog = _two_resolved_rows(
+        dialogs,
+        managers,
+        spin,
+        "https://example.invalid/one\nhttps://example.invalid/two",
+    )
+    _open_the_table(dialog, 0)
+
+    type_urls(dialog, "https://example.invalid/two")
+    dialog.resolve()
+    QApplication.processEvents()
+
+    assert dialog.open_panel is None, "the panel outlived the row it belonged to"
+
+
+def test_the_same_row_can_open_its_table_again_after_a_reset(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`T108-R2`'s second half: the row could never be reopened once orphaned.
+
+    `open_format_table` returns early when the row is already the expanded one — correct, and it
+    made the blank row permanent, because closing was the only way out and nothing offered it.
+    Asserted after a close as well as after a reset, so the early return is exercised in the state
+    it is meant for.
+    """
+    dialog = _two_resolved_rows(
+        dialogs,
+        managers,
+        spin,
+        "https://example.invalid/one\nhttps://example.invalid/two",
+    )
+    first = dialog.rows[0]
+    opened = _open_the_table(dialog, 0)
+
+    type_urls(dialog, "https://example.invalid/two\nhttps://example.invalid/one")
+    dialog.resolve()
+    QApplication.processEvents()
+
+    dialog.close_format_table(keep=True)
+    assert dialog.open_panel is None
+    assert not _mounted_on(dialog, first, opened), "the closed panel is still the row's widget"
+
+    position = next(
+        index for index in range(len(dialog.model.shown)) if dialog.model.shown[index] is first
+    )
+    reopened = _open_the_table(dialog, position)
+    assert reopened.row is first, "reopening after a reset landed on a different row"
+    assert _mounted_on(dialog, first, reopened)

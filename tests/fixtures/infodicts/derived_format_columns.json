@@ -5,7 +5,7 @@
     "content_licence": "Big Buck Bunny (c) Blender Foundation, CC BY 3.0. Media URLs are unsigned.",
     "derived_from": "archive_org_big_buck_bunny",
     "note": "Derived, not recorded. The recorded captures predate `fps`, `tbr`, `vcodec` and `acodec` on a format (SEC-002: a fixture carries only what the projection reads, and the projection did not read them until T-107). REQ-003 names all four as columns, so the format table's tests need a fixture that has them. This is that fixture, and it is NOT evidence for Phase 3's exit criterion 1 \u2014 matching `yt-dlp -F` needs a recorded capture, which T-185 owns.",
-    "policy": "allowlist: only fields ytdlp_adapter reads carry values, and playlist entries are counted rather than recorded; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
+    "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
     "what_is_synthetic": [
       "formats[].fps",
       "formats[].tbr",
@@ -14,9 +14,11 @@
       "formats[3]",
       "formats[4]",
       "formats[5]",
-      "formats[6]"
+      "formats[6]",
+      "formats[7]",
+      "formats[8]"
     ],
-    "why_this_source": "The same public-domain item the recorded capture uses, so the shape is real; only the fields the recorded capture could not carry are synthetic. formats[3] and formats[4] are an explicitly audio-only and an explicitly video-only stream - `vcodec: none` and `acodec: none`, yt-dlp's own spelling - which is the pair REQ-008 merges and which NO acceptable recorded source supplies: media.ccc.de reports `vcodec: none` beside a named acodec, but its API states no licence for any event, so ai/TESTING.md 5's freely-licensed rule rules it out. T-188 owns that search; OPS-013 is what permits the gap while it is owned and declared. formats[5] carries neither fps nor bitrate nor size, so the table's placeholder path has a row too. formats[6] names a vcodec and no acodec at all - media.ccc.de's real shape for a video recording - which is UNKNOWN rather than video-only, because the file certainly has sound and nothing said so. It is here because a mutation reading that as video-only survived every other fixture.",
+    "why_this_source": "The same public-domain item the recorded capture uses, so the shape is real; only the fields the recorded capture could not carry are synthetic. formats[3] and formats[4] are an explicitly audio-only and an explicitly video-only stream - `vcodec: none` and `acodec: none`, yt-dlp's own spelling - which is the pair REQ-008 merges and which NO acceptable recorded source supplies: media.ccc.de reports `vcodec: none` beside a named acodec, but its API states no licence for any event, so ai/TESTING.md 5's freely-licensed rule rules it out. T-188 owns that search; OPS-013 is what permits the gap while it is owned and declared. formats[5] carries neither fps nor bitrate nor size, so the table's placeholder path has a row too. formats[6] names a vcodec and no acodec at all - media.ccc.de's real shape for a video recording - which is UNKNOWN rather than video-only, because the file certainly has sound and nothing said so. It is here because a mutation reading that as video-only survived every other fixture. formats[7] is an HLS audio rendition - `vcodec: none` with no acodec at all, which is what a real EXT-X-MEDIA:TYPE=AUDIO group produces - and formats[8] denies both streams, as a storyboard does. The first is the audio half; the second is neither half. Both boundaries were found by driving a real local HLS presentation through yt-dlp for T108-R1.",
     "yt_dlp_version": "2026.07.04"
   },
   "info_dict": {
@@ -96,6 +98,22 @@
         "height": 1080,
         "vcodec": "h264",
         "width": 1920
+      },
+      {
+        "ext": "mp4",
+        "format_id": "hls-audio",
+        "format_note": "audio group, codec not stated",
+        "tbr": 128.0,
+        "vcodec": "none"
+      },
+      {
+        "acodec": "none",
+        "ext": "mhtml",
+        "format_id": "storyboard",
+        "format_note": "storyboard",
+        "height": 90,
+        "vcodec": "none",
+        "width": 160
       }
     ],
     "original_url": "https://archive.org/details/BigBuckBunny_124",
