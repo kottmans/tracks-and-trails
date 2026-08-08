@@ -447,17 +447,13 @@ def compose(
         """
         from tracks_and_trails.ui.preset_manager import PresetManager
 
-        # **`requires_ffmpeg` is deliberately not wired yet, and the manager treats that as "say
-        # nothing".** The definitive answer is `adapter.requires_ffmpeg`, which reads a
-        # `DownloadRequest` — and a preset has no URL, so asking it here would mean inventing one
-        # to build a request nobody downloads. `ARC-002` forbids `ui/` asking yt-dlp directly, so
-        # the honest options are a `DownloadManager` method taking a preset or a preset-level
-        # predicate in `core/`, and choosing between them is a decision rather than wiring. The
-        # download itself still refuses through `worker._ffmpeg_gap`, which is unchanged: what is
-        # missing is only the advisory sentence while the preset is being written.
         screen = PresetManager(
             held.settings,
             save=save_settings,
+            # `ARC-002`: `ui/` may not ask yt-dlp anything, so `REQ-024`'s question travels through
+            # the manager — one answer, derived from yt-dlp's own postprocessor hierarchy, rather
+            # than a second one written against the preset's fields.
+            requires_ffmpeg=manager.requires_ffmpeg,
             ffmpeg_available=ffmpeg.available,
             parent=window,
         )

@@ -103,6 +103,8 @@ from tracks_and_trails.ui.row_delegate import (
     GAP,
     HEADLINE_ROLE,
     INHERITED_TEXT,
+    MANAGE_PRESETS_DATA,
+    MANAGE_PRESETS_TEXT,
     OPTIONS_DATA,
     OPTIONS_TEXT,
     PADDING,
@@ -4322,3 +4324,73 @@ def test_a_default_naming_nothing_in_the_catalogue_falls_back(
     dialog = dialogs(managers(), presets=catalogue, default_preset="Never existed")
 
     assert dialog.selected_preset.name == catalogue[0].name
+
+
+# --- T-111: the Manage presets… entry on the format control (UX_SPEC §8's P-6) --------------
+
+
+def test_the_format_control_offers_the_preset_manager_where_a_store_is_wired(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """*"A preset manager, reached from the format control's `Manage presets…`"* — `UX_SPEC` §8.
+
+    Below the three editors, for the reason each of those is below the one before it, so the order
+    is asserted rather than only the presence.
+    """
+    dialog, _row = _staged(dialogs, managers, spin, manage_presets=lambda: None)
+    control = open_row_editor(dialog, 0)
+    entries = [control.itemText(index) for index in range(control.count())]
+
+    assert MANAGE_PRESETS_TEXT in entries, entries
+    assert entries.index(MANAGE_PRESETS_TEXT) > entries.index(TEMPLATE_TEXT), entries
+    assert control.itemData(entries.index(MANAGE_PRESETS_TEXT)) == MANAGE_PRESETS_DATA, (
+        "the entry carries a preset name, so choosing it would be looked up as a preset and would "
+        "silently clear the row's format"
+    )
+
+
+def test_the_entry_is_absent_where_nothing_is_wired_behind_it(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-005` §5: nothing is drawn that would be refused.
+
+    A dialog composed without a preset store has nowhere for the manager to save, so the entry is
+    not offered at all — the same rule `OptionsDialog` applies to *Save as preset…*.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    entries = [control.itemText(index) for index in range(control.count())]
+
+    assert MANAGE_PRESETS_TEXT not in entries, entries
+
+
+def test_choosing_the_entry_opens_the_manager_and_keeps_the_row_s_format(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """The sentinel must reach `open_preset_manager` and **not** the preset lookup.
+
+    `setData` looks any string up as a preset name and writes the answer onto the row, so a
+    sentinel that fell through would find nothing and silently clear the format the user chose.
+    Asserted on the row as well as the call, because the call being made does not by itself mean
+    the lookup was skipped — which is the defect the three sibling sentinels each guard against.
+    """
+    opened: list[bool] = []
+    dialog, row = _staged(dialogs, managers, spin, manage_presets=lambda: opened.append(True))
+    row.preset = preset_registry.AUDIO_MP3
+
+    index = dialog.model.index(0, 0)
+    assert dialog.model.setData(index, MANAGE_PRESETS_DATA, PRESET_ROLE)
+
+    assert opened == [True]
+    assert row.preset is preset_registry.AUDIO_MP3, (
+        "the sentinel reached the preset lookup and cleared the row's chosen format"
+    )

@@ -77,7 +77,7 @@ from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core import output_template
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition, is_terminal
-from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo
+from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, Preset
 from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.core.paths import UnsafePathError, contained_output_path
 from tracks_and_trails.downloader import process_tree, worker
@@ -1157,6 +1157,39 @@ class DownloadManager(QObject):
             output_template.PROVISIONAL_NOTE if worker.preview_is_provisional(request) else None
         )
         return OutputPreview(path=str(path), provisional=provisional)
+
+    def requires_ffmpeg(self, preset: Preset) -> bool:
+        """Whether `preset`'s post-processing needs ffmpeg (`REQ-024`, `T-111`).
+
+        **Here for `preview_output_path`'s reason**: `ARC-002` puts every yt-dlp access behind this
+        class, and the preset manager has to say `REQ-024`'s fact while a preset is being written —
+        which is the only moment the user can do anything about it. `ui/` may not ask yt-dlp
+        itself, so the question travels through here.
+
+        **One answer, not a second one.** `adapter.requires_ffmpeg` derives it from yt-dlp's class
+        hierarchy — every ffmpeg-backed processor subclasses `FFmpegPostProcessor` — precisely so it
+        cannot drift as processors are added upstream. A predicate reading the preset's own fields
+        would be the hardcoded list that docstring records as having already missed processors once,
+        and it would pass every test written today.
+
+        **The URL and directory are placeholders, and the answer does not depend on either.** A
+        preset carries neither, and `DownloadRequest` refuses both empty; `build_postprocessors`
+        reads only
+        the post-processing fields, so any valid pair yields the same answer — asserted by
+        `test_the_answer_does_not_depend_on_the_placeholder`. `.invalid` is reserved by RFC 2606 for
+        exactly this and is the stand-in `_freeze_probe` already uses. No request is built to be
+        downloaded and nothing here touches the network.
+
+        Synchronous, and one of the two yt-dlp calls that may be (`NFR-001`, `ARC-005`): it inspects
+        a postprocessor list already in memory rather than extracting anything.
+        """
+        from tracks_and_trails.core import presets as preset_registry
+        from tracks_and_trails.downloader import ytdlp_adapter as adapter
+
+        request = preset_registry.to_request(
+            preset, url="https://example.invalid/preset", output_directory="."
+        )
+        return adapter.requires_ffmpeg(request)
 
     def start(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Spawn a worker for `job_id` and move it to the status that says a worker holds it.

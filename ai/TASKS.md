@@ -102,23 +102,26 @@ each part of the deliverable is, and where it is asserted:
 | one list, built-ins marked (`P-6`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
 | always exactly one default (`P-7`) | `settings.default_preset_of` | both files |
 | a list beside a form, buttons in `Tab` order (`P-20`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
-| `Manage presets…` on the format control | `ui/row_delegate.py`, `ui/add_dialog.py` | — **not yet asserted**, see below |
+| `Manage presets…` on the format control | `ui/row_delegate.py`, `ui/add_dialog.py` | `tests/ui/test_add_dialog.py`, 3 cases |
+| a new paste inherits the default (`P-7`) | `ui/add_dialog.py` | `tests/ui/test_add_dialog.py`, 3 cases |
+| a preset needing ffmpeg says so (`REQ-024`) | `DownloadManager.requires_ffmpeg` | `tests/integration/test_manager.py`, 3 cases |
 
-**Two things a reviewer should not assume are done:**
+**What a reviewer should look at hardest**, since all six acceptance criteria now have assertions
+behind them:
 
-1. **The `Manage presets…` entry has no test.** The sentinel, the role and the interception follow
-   the three that precede them (`T-108`, `T-109`, `T-112`) exactly, and the whole existing suite
-   passes — but *"it is offered where a store is wired and opens the manager"* is asserted nowhere.
-2. **`requires_ffmpeg` is not wired in composition**, so the manager never draws its ffmpeg
-   sentence in the real application. The widget implements and tests the behaviour; `app.py`
-   passes nothing and documents why. The definitive answer reads a `DownloadRequest`, a preset has
-   no URL, and `ARC-002` forbids `ui/` asking yt-dlp — so the choice between a `DownloadManager`
-   method taking a preset and a preset-level predicate in `core/` is a decision, not wiring. The
-   download itself still refuses through `worker._ffmpeg_gap`, unchanged. **This leaves the fifth
-   acceptance criterion partly met**, and it is the honest place to stop.
-*(A third gap — *a new paste does not inherit the default* — was closed on the same day. The batch
-control now opens on `default_preset_of`'s answer, asserted through `selected_preset` rather than
-the combo's index, because what the download uses is the question `REQ-009` cares about.)*
+- **The ffmpeg question is asked with a placeholder URL.** A preset carries neither URL nor output
+  directory and `DownloadRequest` refuses both empty, so `requires_ffmpeg` builds a request against
+  `https://example.invalid/preset` — RFC 2606's reserved name, and the stand-in `_freeze_probe`
+  already uses. That is only honest because the answer does not depend on it, which
+  `test_the_answer_does_not_depend_on_the_placeholder` asserts across every built-in rather than
+  asserting it once. **The alternative was rejected deliberately**: a predicate reading the
+  preset's own fields needs no placeholder, and would be the hardcoded list
+  `adapter.requires_ffmpeg`'s docstring records as having already missed processors once. One
+  answer, derived from yt-dlp's class hierarchy, was preferred to two that can drift.
+- **`Delete` on a built-in does nothing and is not drawn disabled.** That is `docs/UX_SPEC.md` §8's
+  clause and it is implemented literally, including the silence. It is marked `[D]`, not `[T]`, so
+  it is derived rather than ruled — and a button that visibly does nothing is the kind of thing
+  `T-139` argues against elsewhere. Worth a second look at whether the mark alone is enough.
 
 *(Was: Proposed — **Phase 3 decomposition, 2026-08-01.**)*
 **Owner:** Implementer

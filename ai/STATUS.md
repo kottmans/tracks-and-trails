@@ -36,11 +36,17 @@ which is what `T105-R1` settled. 30 new unit cases and 24 new UI cases; `ruff`, 
 A new paste inherits the default, which is what having one is for: the batch control opens on
 `default_preset_of`'s answer.
 
-**Two gaps are recorded in `T-111`'s own entry rather than smoothed over**, and a reviewer should
-read them before treating the deliverable as whole: the `Manage presets…` entry point has no test,
-and `requires_ffmpeg` is not wired in composition, so the fifth acceptance criterion is only partly
-met. The integration suite passes unchanged (364 cases), so nothing here regressed what was already
-approved.
+**All six acceptance criteria now have assertions behind them.** The three gaps this entry first
+recorded are closed: the `Manage presets…` entry point is asserted, a new paste inherits the
+default, and `REQ-024`'s ffmpeg fact reaches the manager through
+`DownloadManager.requires_ffmpeg` — one answer derived from yt-dlp's own postprocessor hierarchy
+rather than a second one written against the preset's fields, which is the drift
+`adapter.requires_ffmpeg` was written to avoid.
+
+**Two things are still the maintainer's to weigh**, and they are judgements rather than gaps: the
+ffmpeg question is asked with a placeholder URL, and `Delete` on a built-in does nothing while not
+being drawn disabled — `docs/UX_SPEC.md` §8's clause, implemented literally, and marked `[D]`
+rather than `[T]`. Both are argued in `T-111`'s entry.
 
 ## 2026-08-08: `T-113` approved — eight of nine deliverables, five of six exit criteria
 

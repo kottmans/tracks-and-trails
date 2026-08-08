@@ -38,6 +38,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 
 from tests.qt_lifecycle import drain
+from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition
 from tracks_and_trails.core.models import DownloadRequest, Job
@@ -6668,3 +6669,63 @@ def test_a_crafted_job_id_cannot_make_removal_delete_outside_the_output_folder(
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- REQ-024 / T-111: does this preset's post-processing need ffmpeg? -----------------------
+
+
+def test_requires_ffmpeg_discriminates_between_presets(
+    manager: Callable[..., DownloadManager],
+) -> None:
+    """`REQ-024`'s fact, asked about a preset rather than a resolved download.
+
+    Both directions are asserted, because a predicate that answered `True` for everything would
+    satisfy a one-sided test while making the manager's warning permanent furniture.
+    """
+    built = manager()
+
+    assert built.requires_ffmpeg(preset_registry.AUDIO_MP3) is True, "converting needs ffmpeg"
+    assert built.requires_ffmpeg(preset_registry.VIDEO_WITH_SUBTITLES) is True, "embedding does"
+    assert built.requires_ffmpeg(preset_registry.BEST_VIDEO) is False, (
+        "a preset that post-processes nothing was reported as needing ffmpeg"
+    )
+
+
+def test_the_answer_does_not_depend_on_the_placeholder(
+    manager: Callable[..., DownloadManager],
+) -> None:
+    """A preset has no URL, so one is invented to build the request the adapter reads.
+
+    That is only honest if the answer is independent of what was invented. `build_postprocessors`
+    reads the post-processing fields alone — this is what stops the placeholder from becoming a
+    thing anybody has to reason about.
+    """
+    from tracks_and_trails.downloader import ytdlp_adapter as adapter
+
+    built = manager()
+
+    for preset in preset_registry.BUILT_IN_PRESETS:
+        elsewhere = adapter.requires_ffmpeg(
+            preset_registry.to_request(
+                preset, url="https://other.invalid/x", output_directory="somewhere-else"
+            )
+        )
+        assert built.requires_ffmpeg(preset) == elsewhere, (
+            f"{preset.name}'s answer changed with the URL and directory it was asked about"
+        )
+
+
+def test_requires_ffmpeg_touches_no_network_and_starts_no_worker(
+    manager: Callable[..., DownloadManager], existing_children: set[int]
+) -> None:
+    """`NFR-001`/`ARC-005`: one of the two yt-dlp calls that may be synchronous.
+
+    It inspects a postprocessor list already in memory. A spawned worker here would mean the preset
+    manager forked a process for every row the user clicked.
+    """
+    built = manager()
+
+    built.requires_ffmpeg(preset_registry.AUDIO_MP3)
+
+    after = {child.pid for child in psutil.Process(os.getpid()).children(recursive=True)}
+    assert after <= existing_children, "asking about a preset spawned a process"
