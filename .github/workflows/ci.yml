@@ -592,13 +592,26 @@ jobs:
         # The same artifact `check` writes, for the same reason — a Windows failure has to be
         # diagnosable without sitting at the machine.
         #
-        # **ffmpeg is recorded, not installed.** `check` runs `choco install ffmpeg` because a
-        # hosted runner is discarded afterwards. This one is somebody's desktop, and the rule
-        # this job already carries is that it never provisions itself: the first run of it
-        # launched the real Python installer and deadlocked against `msiexec` for the whole
-        # timeout. Recording is affordable because the default suite does not need ffmpeg —
-        # measured on Linux with it removed from PATH, the counts are identical. So this line
-        # is what says *which* configuration the run below measured, rather than a gate.
+        # **ffmpeg is recorded, not installed — and since `T-189` its absence *is* a gate.**
+        # `check` runs `choco install ffmpeg` because a hosted runner is discarded afterwards.
+        # This one is somebody's desktop, and the rule this job already carries is that it never
+        # provisions itself: the first run of it launched the real Python installer and deadlocked
+        # against `msiexec` for the whole timeout. That rule is unchanged — nothing here installs
+        # anything, and restoring the tool stays a deliberate maintainer act (`OPS-005`).
+        #
+        # What changed is the consequence of it being missing. This said *"recording is affordable
+        # because the default suite does not need ffmpeg — measured on Linux with it removed from
+        # PATH, the counts are identical. So this line is what says which configuration the run
+        # below measured, rather than a gate."* **That stopped being true when `T108-R1` put the
+        # merged-file proof in the default suite**, and `T-189` is the correction: the *Full suite*
+        # step below sets `TRACKSANDTRAILS_REQUIRE_FFMPEG`, so a missing tool fails it rather than
+        # skipping the one case that evidences exit criterion 2 on Windows.
+        #
+        # *(The counts-are-identical measurement is why the claim survived as long as it did. It
+        # was taken before the merged-file case existed, and nothing re-took it — `T189-R1`.)*
+        #
+        # This step still records rather than gates: it says **which** configuration ran, and the
+        # step below is what refuses to accept the wrong one.
         run: |
           {
             echo "runner:  self-hosted STARBASE"
