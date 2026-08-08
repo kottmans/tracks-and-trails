@@ -4274,3 +4274,51 @@ def test_a_dialog_told_nothing_about_the_queue_reports_no_duplicates(
     assert spin(lambda: bool(dialog.rows) and all(state in SETTLED for state in states(dialog)))
 
     assert role_values(dialog, STATE_ROLE)[0] == STATE_TEXT[RowState.READY]
+
+
+# --- REQ-007 / P-7: a new paste inherits the default preset (T-111) -------------------------
+
+
+def test_the_batch_opens_on_the_default_preset(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+) -> None:
+    """*The default preset is what a new paste inherits* — the point of there always being one.
+
+    Asserted on `selected_preset`, which is what `preset_for` hands every row that has not
+    overridden it, rather than on the combo's index: the index is how it is drawn, and what the
+    download uses is the question `REQ-009` cares about.
+    """
+    catalogue = preset_registry.BUILT_IN_PRESETS
+    dialog = dialogs(managers(), presets=catalogue, default_preset=catalogue[2].name)
+
+    assert dialog.selected_preset.name == catalogue[2].name
+
+
+def test_no_default_leaves_the_batch_on_the_first_entry(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+) -> None:
+    """What the control did before there was a default, kept for callers that name none."""
+    catalogue = preset_registry.BUILT_IN_PRESETS
+    dialog = dialogs(managers(), presets=catalogue)
+
+    assert dialog.selected_preset.name == catalogue[0].name
+
+
+def test_a_default_naming_nothing_in_the_catalogue_falls_back(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+) -> None:
+    """Not reachable through `default_preset_of`, which only answers with a preset that exists.
+
+    This dialog is constructible directly, so falling back is cheaper than requiring every caller
+    to have resolved the name first — and a control on *nothing* would be the real failure.
+    """
+    catalogue = preset_registry.BUILT_IN_PRESETS
+    dialog = dialogs(managers(), presets=catalogue, default_preset="Never existed")
+
+    assert dialog.selected_preset.name == catalogue[0].name

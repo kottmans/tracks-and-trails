@@ -5,9 +5,9 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — **`T-109`, `T-110`, `T-112`, `T-113` and `T-114` are all Approved**,
-and `## In Review` is empty. **`T-111` is the last Phase 3 deliverable outstanding.** `UX-008`
-accepted and amended.
+**Last updated:** 2026-08-08 — **`T-109`, `T-110`, `T-112`, `T-113` and `T-114` are all Approved**.
+**`T-111`, the last Phase 3 deliverable, is implemented and sits in `## In Review`** with three
+gaps named in its own entry; it is submitted, not ratified. `UX-008` accepted and amended.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -85,8 +85,86 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-*Empty. Every task submitted in this session — `T-109`, `T-110`, `T-112`, `T-113`, `T-114` — is
-approved and in `## Complete`.*
+*`T-111` is submitted and unreviewed. The five approved in this session — `T-109`,
+`T-110`, `T-112`, `T-113`, `T-114` — are in `## Complete`.*
+
+### T-111 — User presets: create, edit, duplicate, delete, set default
+
+**Status:** In Review — **implemented 2026-08-08, awaiting the maintainer's verdict.** *(Built by
+the Implementer; no criterion is claimed approved, and ratification is not assumed.)*
+
+All five operations exist in `core/settings.py` and are performed on `ui/preset_manager.py`. What
+each part of the deliverable is, and where it is asserted:
+
+| Piece | Where | Asserted by |
+|---|---|---|
+| create / edit / duplicate / delete / set default | `core/settings.py` | `tests/unit/test_settings.py`, 30 new cases |
+| one list, built-ins marked (`P-6`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
+| always exactly one default (`P-7`) | `settings.default_preset_of` | both files |
+| a list beside a form, buttons in `Tab` order (`P-20`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
+| `Manage presets…` on the format control | `ui/row_delegate.py`, `ui/add_dialog.py` | — **not yet asserted**, see below |
+
+**Two things a reviewer should not assume are done:**
+
+1. **The `Manage presets…` entry has no test.** The sentinel, the role and the interception follow
+   the three that precede them (`T-108`, `T-109`, `T-112`) exactly, and the whole existing suite
+   passes — but *"it is offered where a store is wired and opens the manager"* is asserted nowhere.
+2. **`requires_ffmpeg` is not wired in composition**, so the manager never draws its ffmpeg
+   sentence in the real application. The widget implements and tests the behaviour; `app.py`
+   passes nothing and documents why. The definitive answer reads a `DownloadRequest`, a preset has
+   no URL, and `ARC-002` forbids `ui/` asking yt-dlp — so the choice between a `DownloadManager`
+   method taking a preset and a preset-level predicate in `core/` is a decision, not wiring. The
+   download itself still refuses through `worker._ffmpeg_gap`, unchanged. **This leaves the fifth
+   acceptance criterion partly met**, and it is the honest place to stop.
+*(A third gap — *a new paste does not inherit the default* — was closed on the same day. The batch
+control now opens on `default_preset_of`'s answer, asserted through `selected_preset` rather than
+the combo's index, because what the download uses is the question `REQ-009` cares about.)*
+
+*(Was: Proposed — **Phase 3 decomposition, 2026-08-01.**)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-105`; `T-109` for the option set a preset can carry
+**Relevant context:** `docs/UX_SPEC.md` §8 (**where presets persist is already decided** — TOML at
+`settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5; no new store, no migration owed. `P-20`,
+the manager's layout, is **ruled 2026-08-07** by `UX-007`: **one list** holding built-ins and user
+presets together with built-ins marked (`P-6`), **a list beside a form with buttons** rather than a
+menu (`P-20`), **always exactly one default** so a paste always has something to inherit (`P-7`),
+and import/export and per-site rules refused (`P-21`)), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
+`to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
+**Affected surfaces:** `core/presets.py`, `core/settings.py`, `ui/`
+**Risk:** Medium — user presets are persisted state with a name-collision problem
+
+#### Scope
+
+`REQ-007`: create, edit, duplicate, delete, and set a default. The built-in presets (`REQ-006`) stay
+and must not be editable into something that no longer matches its own name.
+
+**Where they live is already decided, and this task does not reopen it** (`T105-R1`, High). User
+presets persist as **TOML in the existing `settings.toml`**, per `DAT-001` and `ARCHITECTURE.md` §5.
+No new store, no sibling file, no table, and no migration is owed.
+
+*(This read "a decision this task must take or raise", and argued for a sibling file. It was wrong
+twice over: the decision existed before the task was written, and an implementer following the
+paragraph would have built the store `T105-R1` forbids. `docs/UX_SPEC.md` §8 was corrected on
+2026-08-06 and this entry was not, which is exactly the drift the finding is about — the spec is
+not what an implementer opens.)*
+
+#### Acceptance criteria
+
+- All five operations, each asserted on what is stored afterwards
+- A built-in preset cannot be edited or deleted; duplicating one is how you start from it
+- A user preset with a colliding name is refused or disambiguated, stated either way
+- The default survives a restart, and deleting the default leaves a defined default
+- A preset carrying options that need ffmpeg behaves like `T-108`/`T-109` when it is absent
+- A hand-edited preset file that is malformed reports rather than reverting silently (`ARC-008`)
+
+#### Out of scope
+
+- Sharing or importing presets
+
+---
+
 
 
 
@@ -1264,86 +1342,6 @@ proposes.
 - Changing what pause does. It already admits probes
 
 ---
-
-### T-111 — User presets: create, edit, duplicate, delete, set default
-
-**Status:** **Implemented, awaiting review — 2026-08-08.** *(Built by the Implementer; no criterion
-is claimed approved, and the maintainer's ratification is not assumed.)*
-
-All five operations exist in `core/settings.py` and are performed on `ui/preset_manager.py`. What
-each part of the deliverable is, and where it is asserted:
-
-| Piece | Where | Asserted by |
-|---|---|---|
-| create / edit / duplicate / delete / set default | `core/settings.py` | `tests/unit/test_settings.py`, 30 new cases |
-| one list, built-ins marked (`P-6`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
-| always exactly one default (`P-7`) | `settings.default_preset_of` | both files |
-| a list beside a form, buttons in `Tab` order (`P-20`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
-| `Manage presets…` on the format control | `ui/row_delegate.py`, `ui/add_dialog.py` | — **not yet asserted**, see below |
-
-**Three things a reviewer should not assume are done:**
-
-1. **The `Manage presets…` entry has no test.** The sentinel, the role and the interception follow
-   the three that precede them (`T-108`, `T-109`, `T-112`) exactly, and the whole existing suite
-   passes — but *"it is offered where a store is wired and opens the manager"* is asserted nowhere.
-2. **`requires_ffmpeg` is not wired in composition**, so the manager never draws its ffmpeg
-   sentence in the real application. The widget implements and tests the behaviour; `app.py`
-   passes nothing and documents why. The definitive answer reads a `DownloadRequest`, a preset has
-   no URL, and `ARC-002` forbids `ui/` asking yt-dlp — so the choice between a `DownloadManager`
-   method taking a preset and a preset-level predicate in `core/` is a decision, not wiring. The
-   download itself still refuses through `worker._ffmpeg_gap`, unchanged. **This leaves the fifth
-   acceptance criterion partly met**, and it is the honest place to stop.
-3. **A new paste does not yet inherit the default.** `presets` now reaches the add dialog as a
-   callable so a saved preset is offered, and `default_preset_of` answers what the default *is* —
-   but nothing makes the batch control open on it. That is the remaining half of `P-7`'s purpose.
-
-*(Was: Proposed — **Phase 3 decomposition, 2026-08-01.**)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 3
-**Depends on:** `T-105`; `T-109` for the option set a preset can carry
-**Relevant context:** `docs/UX_SPEC.md` §8 (**where presets persist is already decided** — TOML at
-`settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5; no new store, no migration owed. `P-20`,
-the manager's layout, is **ruled 2026-08-07** by `UX-007`: **one list** holding built-ins and user
-presets together with built-ins marked (`P-6`), **a list beside a form with buttons** rather than a
-menu (`P-20`), **always exactly one default** so a paste always has something to inherit (`P-7`),
-and import/export and per-site rules refused (`P-21`)), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
-`to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
-**Affected surfaces:** `core/presets.py`, `core/settings.py`, `ui/`
-**Risk:** Medium — user presets are persisted state with a name-collision problem
-
-#### Scope
-
-`REQ-007`: create, edit, duplicate, delete, and set a default. The built-in presets (`REQ-006`) stay
-and must not be editable into something that no longer matches its own name.
-
-**Where they live is already decided, and this task does not reopen it** (`T105-R1`, High). User
-presets persist as **TOML in the existing `settings.toml`**, per `DAT-001` and `ARCHITECTURE.md` §5.
-No new store, no sibling file, no table, and no migration is owed.
-
-*(This read "a decision this task must take or raise", and argued for a sibling file. It was wrong
-twice over: the decision existed before the task was written, and an implementer following the
-paragraph would have built the store `T105-R1` forbids. `docs/UX_SPEC.md` §8 was corrected on
-2026-08-06 and this entry was not, which is exactly the drift the finding is about — the spec is
-not what an implementer opens.)*
-
-#### Acceptance criteria
-
-- All five operations, each asserted on what is stored afterwards
-- A built-in preset cannot be edited or deleted; duplicating one is how you start from it
-- A user preset with a colliding name is refused or disambiguated, stated either way
-- The default survives a restart, and deleting the default leaves a defined default
-- A preset carrying options that need ffmpeg behaves like `T-108`/`T-109` when it is absent
-- A hand-edited preset file that is malformed reports rather than reverting silently (`ARC-008`)
-
-#### Out of scope
-
-- Sharing or importing presets
-
----
-
-
-
 
 ### T-171 — Decide whether files carry provenance
 

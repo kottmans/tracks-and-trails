@@ -33,11 +33,14 @@ top-level `default_preset` key in the existing `settings.toml`; **no new store a
 which is what `T105-R1` settled. 30 new unit cases and 24 new UI cases; `ruff`, `mypy`,
 `mypy --platform win32` and the 2370-test unit/UI suite all pass.
 
-**Three gaps are recorded in `T-111`'s own entry rather than smoothed over**, and a reviewer should
+A new paste inherits the default, which is what having one is for: the batch control opens on
+`default_preset_of`'s answer.
+
+**Two gaps are recorded in `T-111`'s own entry rather than smoothed over**, and a reviewer should
 read them before treating the deliverable as whole: the `Manage presets…` entry point has no test,
-`requires_ffmpeg` is not wired in composition so the fifth acceptance criterion is only partly met,
-and a new paste does not yet inherit the default. The integration suite passes unchanged (364
-cases), so nothing here regressed what was already approved.
+and `requires_ffmpeg` is not wired in composition, so the fifth acceptance criterion is only partly
+met. The integration suite passes unchanged (364 cases), so nothing here regressed what was already
+approved.
 
 ## 2026-08-08: `T-113` approved — eight of nine deliverables, five of six exit criteria
 

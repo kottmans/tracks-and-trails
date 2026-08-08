@@ -978,6 +978,7 @@ class AddUrlDialog(QDialog):
         queued_urls: QueuedUrls | None = None,
         save_preset: PresetSink | None = None,
         manage_presets: Callable[[], None] | None = None,
+        default_preset: str = "",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -1001,6 +1002,12 @@ class AddUrlDialog(QDialog):
         #: lifetime and parent belong to whoever composed it. `None` means the entry is not offered
         #: at all — a control with nothing behind it is what `UX-005` §5 forbids drawing.
         self._manage_presets = manage_presets
+        #: The name of the preset a new paste inherits (`REQ-007`, `P-7`, `T-111`).
+        #:
+        #: A resolved *name* rather than a `Settings`, for `presets`' reason: this dialog is handed
+        #: the catalogue and what to start on, and does not learn where either is stored. Empty
+        #: means the first entry, which is what the control did before there was a default at all.
+        self._default_preset = default_preset
         self._output_directory = output_directory
         self._presets = tuple(presets)
         #: Whether a merge is possible at all on this installation (`REQ-024`, `P-13`).
@@ -1183,6 +1190,20 @@ class AddUrlDialog(QDialog):
         self._preset_choice.setAccessibleName("Download preset")
         for preset in self._presets:
             self._preset_choice.addItem(preset.name)
+        # **The batch opens on the default preset** (`REQ-007`, `P-7`, `T-111`). *"The default
+        # preset is what a new paste inherits"* — the whole purpose of there always being exactly
+        # one, and until this the control opened on whatever happened to be first in the catalogue.
+        #
+        # **Set before the signal is connected**, so construction stays as silent as it was when
+        # the answer was always index 0: `setCurrentIndex` emits, and `_on_preset_changed` refreshes
+        # a dialog that has not finished being built.
+        #
+        # A name that is not in the catalogue leaves the control on the first entry. That is not
+        # reachable through `default_preset_of`, which only ever answers with a preset that exists —
+        # but this dialog is constructible directly, and falling back is cheaper than requiring
+        # every caller to have resolved the name first.
+        wanted = self._preset_choice.findText(self._default_preset) if self._default_preset else -1
+        self._preset_choice.setCurrentIndex(max(wanted, 0))
         self._preset_choice.currentIndexChanged.connect(self._on_preset_changed)
         layout.addWidget(self._preset_choice)
 

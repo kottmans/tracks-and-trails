@@ -314,6 +314,7 @@ class MainWindow(QMainWindow):
         save_preset: PresetSink | None = None,
         manage_presets: Callable[[], None] | None = None,
         presets: Callable[[], Sequence[Preset]] | None = None,
+        default_preset: Callable[[], str] | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -343,6 +344,9 @@ class MainWindow(QMainWindow):
         #: window was built could not be. `None` falls back to the dialog's own built-ins, which is
         #: the honest answer for a caller that never said what the catalogue is.
         self._presets = presets
+        #: What a new paste inherits (`REQ-007`, `P-7`). A callable for `presets`' reason: the
+        #: default changes in the manager, and the *next* dialog has to open on the new one.
+        self._default_preset = default_preset
         self.setObjectName("mainWindow")
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
@@ -744,6 +748,7 @@ class MainWindow(QMainWindow):
             # last one is offered by this one. Omitted where composition supplied nothing, which
             # leaves the dialog's own `BUILT_IN_PRESETS` default in place.
             presets=self._presets() if self._presets is not None else presets.BUILT_IN_PRESETS,
+            default_preset=self._default_preset() if self._default_preset is not None else "",
             parent=self,
         )
         # **Adding a job is the one queue change nothing announces.** The manager emits

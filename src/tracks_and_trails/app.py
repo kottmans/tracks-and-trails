@@ -522,6 +522,7 @@ def compose(
         # the *next* add dialog offers, which a snapshot taken at startup could not do.
         manage_presets=manage_presets,
         presets=lambda: app_settings.all_presets(held.settings),
+        default_preset=lambda: app_settings.default_preset_of(held.settings).name,
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
