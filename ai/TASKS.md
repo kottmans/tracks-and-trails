@@ -103,8 +103,13 @@ criterion 6, the exit review itself.*
 `T188-R1` (High): the recorded fixture was added *beside* the synthetic evidence rather than
 **adopted**, leaving criteria 3 and 4 unmet. Both are now met — the shared `pair` fixture reads the
 recorded manifest, so every routing, slot, mode-switch and ffmpeg assertion runs on it, and
-`derived_format_columns` no longer claims the pair. *(Built by the Implementer; no criterion is
-claimed approved.)* The maintainer ruled on the surveyed candidate — **take it, and label it
+`derived_format_columns` **no longer contains the pair at all** — the synthetic `137`/`140` entries
+are removed, not relabelled. *(Built by the Implementer; no criterion is claimed approved.)*
+
+*(The first correction reworded them as "no longer the evidence" and left them in
+`what_is_synthetic`. `T188-R1`'s re-review is that criterion 4 says the field must **stop claiming
+the pair**, and rewording is not removing — the third time this session a document was adjusted to
+describe a change instead of making it.)* The maintainer ruled on the surveyed candidate — **take it, and label it
 honestly** — and `tests/fixtures/infodicts/dash_akamai_big_buck_bunny.json` is that fixture.
 
 **Criterion 2 was amended rather than left unmet — maintainer ruling, 2026-08-08.** It required the
