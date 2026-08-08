@@ -89,7 +89,7 @@ Phase 0 is formally exited (2026-07-26).
 ### T-109 — Post-processing: audio, container, thumbnail, metadata, chapters, subtitles
 
 **Status:** **In Review** — implemented 2026-08-07; reviewed 2026-08-08 at `4cb549d`, verdict
-**Changes requested**, seven findings `T109-R1`..`T109-R7`. **`T109-R6` is corrected** at `5425e02`
+**Changes requested**, seven findings `T109-R1`..`T109-R7`. **`T109-R6` is corrected** at `da7f97b`
 — its two type errors failed `mypy` and `mypy --platform win32`, which `ai/TESTING.md` §3 requires
 of every task that touches a test file, so they blocked work that has nothing to do with T-109.
 The other six are the correction batch and are **not** started.

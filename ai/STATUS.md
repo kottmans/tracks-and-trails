@@ -154,7 +154,7 @@ is handed an `int` and not a `Qt.CheckState`, which is `T-109`'s `currentData()`
 over; the guard is written for the `int` and a test pins it.
 
 **`T-109`'s review came back Changes requested** (`T109-R1`..`T109-R7`, at `4cb549d`). Only
-**`T109-R6`** is corrected, at `5425e02`: its two type errors failed bare `mypy` and
+**`T109-R6`** is corrected, at `da7f97b`: its two type errors failed bare `mypy` and
 `mypy --platform win32`, which `ai/TESTING.md` §3 requires of *any* task that edits a test file, so
 they were blocking work unrelated to `T-109`. The other six findings are untouched and are that
 task's correction batch.
