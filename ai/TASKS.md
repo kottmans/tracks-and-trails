@@ -97,81 +97,6 @@ criterion 6, the exit review itself.*
 
 ---
 
-### T-186 — Finish the withdrawn-History prose sweep
-
-**Status:** **In Review — implemented 2026-08-08.** *(Built by the Implementer; no criterion is
-claimed approved.)* *(Was: Proposed — filed from non-blocking `T176-R1`, 2026-08-07.)* `T-176`
-corrected a useful first set; this finished the semantic audit.
-
-**Eight false present-tense claims, in seven files.** Both survivors this entry names by hand were
-among them:
-
-| Where | What it claimed |
-|---|---|
-| `downloader/manager.py` | *"**History is untouched**, so this announces a smaller queue and never a smaller record"* — clearing now removes the only trace a finished row leaves |
-| `downloader/manager.py` | *"`T-085`'s history keeps a completed job's record"* — it does not; removal leaves the file and nothing else |
-| `ui/main_window.py` | *"`REQ-020` **is now** a private ledger with nothing to browse"* — true for part of one day, until `T-170` withdrew that too |
-| `ui/main_window.py` | a comment deferring its reason to `_confirm_history_removal`, **which no longer exists** |
-| `ui/row_delegate.py` | *"how `HistoryModel` gets the right answer"* — present tense about a removed class |
-| `ui/reveal.py` | *"a `history` row **is** durable"* ×2 |
-| `ui/queue_view.py` | *"History **needs** the same answer from a record"* |
-| `tests/unit/test_presets.py` | four: a section heading, a docstring, and two assertion messages |
-
-**The sweep is semantic, and two findings are the evidence for that.**
-
-- **`manager.py` keeps a `history` that is not History.** *"a second `READY` revision to every
-  probed job's **history** … asserts that history as a sequence (`ARC-004`)"* is the job's **status
-  sequence**. A word replacement would have corrupted a correct comment about a different thing.
-- **Two of the eight were reasoning worth keeping, not text worth deleting.** `row_delegate.py`'s
-  *"absent means no"* default and `queue_view.py`'s one-shared-rule argument were both **justified**
-  by History and remain correct without it. Each now states the surviving reason rather than losing
-  it with the sentence that carried it.
-
-**`_confirm_history_removal` is the one that could not be repaired by rewording**: a comment whose
-whole content was a pointer to a departed function, so its justification was unreadable from the
-code. The reason is stated in place instead.
-
-**Owner:** Implementer
-**Priority:** Low — runtime behavior is correct; the remaining defect is the contract taught to
-the next maintainer
-**Phase:** Phase 3 cleanup
-**Depends on:** nothing
-**Relevant context:** `T170-R4`, `T175-R1`, `T176-R1`, `T-176`, withdrawn `REQ-020`, migration
-`0009`
-**Affected surfaces:** comments, docstrings, test headings and assertion messages under `src/` and
-`tests/`. **No production logic, historical migration, frozen fixture or historical record**
-**Risk:** Low — the sweep must distinguish a false present-tense contract from accurate history
-
-#### Scope
-
-Finish the semantic audit `T-176` began. Representative survivors include
-`downloader/manager.py` saying clearing leaves History untouched and removal leaves a History
-record, `ui/main_window.py` saying `REQ-020` is still a private ledger and that both tabs draw the
-same rows, and `tests/unit/test_presets.py` saying `FormatChoice` still narrows data for History.
-
-Preserve historical rationale when it still explains a live invariant, but put it in the past or
-inside an explicit supersession note. A current contract must describe the Queue-only product that
-exists after `T-175` and migration `0009`.
-
-#### Acceptance criteria
-
-- No current-tense comment, docstring, test heading or assertion message under `src/` or `tests/`
-  says a History view, completion record or private ledger still exists
-- Historical rationale remains truthful and explicitly historical; migrations, frozen fixtures,
-  `ai/DECISIONS.md`, `ai/REVIEWS.md` and `ai/archive/` are byte-identical
-- The sweep is semantic rather than a blind word replacement; unrelated sequence history and
-  accurate descriptions of removed behavior remain
-- Production behavior is unchanged; `ruff check .`, `ruff format --check .`, bare `mypy`,
-  `mypy --platform win32`, task placement and the tests whose prose changes are clean
-
-#### Out of scope
-
-- Reintroducing a History surface, completion record or Settings clearing route
-- Renaming identifiers solely because their historical rationale mentions History
-- Rewriting historical records, migrations or frozen evidence
-
----
-
 ### T-188 — A recorded source with a separate video and audio stream
 
 **Status:** **In Review — corrected 2026-08-08, awaiting re-review.** Reviewed and **Blocked** on
@@ -2096,6 +2021,88 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-186 — Finish the withdrawn-History prose sweep
+
+**Status:** **Complete — Approved 2026-08-08 at `7dd5d8d`.** `T186-R1` (High) is **Resolved** after
+**three passes**, and the third is the one that worked because it changed *method* rather than
+effort. *(Was: Proposed — filed from non-blocking `T176-R1`, 2026-08-07.)* `T-176` corrected a
+useful first set; this finished the semantic audit.
+
+**The reusable lesson, and it cost two rejected passes to learn:** the first pass grepped
+present-tense verbs beside *History*, the second enumerated all 129 mentions of *History* — **both
+were searches for a name, while the false contract is a claim about cardinality.** *"The two tabs"*
+is wrong whether or not the word appears in it. Only the third pass searched
+`both|two|either|each|three` against `tab|table|view|surface|list|model` and found the rest.
+
+**Eight false present-tense claims, in seven files.** Both survivors this entry names by hand were
+among them:
+
+| Where | What it claimed |
+|---|---|
+| `downloader/manager.py` | *"**History is untouched**, so this announces a smaller queue and never a smaller record"* — clearing now removes the only trace a finished row leaves |
+| `downloader/manager.py` | *"`T-085`'s history keeps a completed job's record"* — it does not; removal leaves the file and nothing else |
+| `ui/main_window.py` | *"`REQ-020` **is now** a private ledger with nothing to browse"* — true for part of one day, until `T-170` withdrew that too |
+| `ui/main_window.py` | a comment deferring its reason to `_confirm_history_removal`, **which no longer exists** |
+| `ui/row_delegate.py` | *"how `HistoryModel` gets the right answer"* — present tense about a removed class |
+| `ui/reveal.py` | *"a `history` row **is** durable"* ×2 |
+| `ui/queue_view.py` | *"History **needs** the same answer from a record"* |
+| `tests/unit/test_presets.py` | four: a section heading, a docstring, and two assertion messages |
+
+**The sweep is semantic, and two findings are the evidence for that.**
+
+- **`manager.py` keeps a `history` that is not History.** *"a second `READY` revision to every
+  probed job's **history** … asserts that history as a sequence (`ARC-004`)"* is the job's **status
+  sequence**. A word replacement would have corrupted a correct comment about a different thing.
+- **Two of the eight were reasoning worth keeping, not text worth deleting.** `row_delegate.py`'s
+  *"absent means no"* default and `queue_view.py`'s one-shared-rule argument were both **justified**
+  by History and remain correct without it. Each now states the surviving reason rather than losing
+  it with the sentence that carried it.
+
+**`_confirm_history_removal` is the one that could not be repaired by rewording**: a comment whose
+whole content was a pointer to a departed function, so its justification was unreadable from the
+code. The reason is stated in place instead.
+
+**Owner:** Implementer
+**Priority:** Low — runtime behavior is correct; the remaining defect is the contract taught to
+the next maintainer
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T170-R4`, `T175-R1`, `T176-R1`, `T-176`, withdrawn `REQ-020`, migration
+`0009`
+**Affected surfaces:** comments, docstrings, test headings and assertion messages under `src/` and
+`tests/`. **No production logic, historical migration, frozen fixture or historical record**
+**Risk:** Low — the sweep must distinguish a false present-tense contract from accurate history
+
+#### Scope
+
+Finish the semantic audit `T-176` began. Representative survivors include
+`downloader/manager.py` saying clearing leaves History untouched and removal leaves a History
+record, `ui/main_window.py` saying `REQ-020` is still a private ledger and that both tabs draw the
+same rows, and `tests/unit/test_presets.py` saying `FormatChoice` still narrows data for History.
+
+Preserve historical rationale when it still explains a live invariant, but put it in the past or
+inside an explicit supersession note. A current contract must describe the Queue-only product that
+exists after `T-175` and migration `0009`.
+
+#### Acceptance criteria
+
+- No current-tense comment, docstring, test heading or assertion message under `src/` or `tests/`
+  says a History view, completion record or private ledger still exists
+- Historical rationale remains truthful and explicitly historical; migrations, frozen fixtures,
+  `ai/DECISIONS.md`, `ai/REVIEWS.md` and `ai/archive/` are byte-identical
+- The sweep is semantic rather than a blind word replacement; unrelated sequence history and
+  accurate descriptions of removed behavior remain
+- Production behavior is unchanged; `ruff check .`, `ruff format --check .`, bare `mypy`,
+  `mypy --platform win32`, task placement and the tests whose prose changes are clean
+
+#### Out of scope
+
+- Reintroducing a History surface, completion record or Settings clearing route
+- Renaming identifiers solely because their historical rationale mentions History
+- Rewriting historical records, migrations or frozen evidence
+
+---
 
 ### T-189 — Make the required ffmpeg CI cases fail instead of skip
 
