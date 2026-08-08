@@ -19,6 +19,33 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: `T-114` is built, and it is the rescoping that made it possible
+
+**In Review, and it stores nothing.** A URL the queue already holds, or one repeated within the
+paste being staged, says so **in the staging row's own state** (`P-26`) — and *Add to queue*
+adds it anyway, because `REQ-022` as rescoped says a duplicate is confirmed rather than refused.
+
+**The task as originally written could not have been built.** It wanted *"warn when a URL has been
+downloaded before"*, which needs a durable record; `REQ-020` is withdrawn and migration `0009`
+dropped the table. The 2026-08-06 rescoping to *the live queue and the current paste* is what turned
+it into a check with an answer, and the acceptance criterion that **nothing is written** is there
+because the old design is what an implementation would drift back toward. A test asserts the store
+saw no write at all.
+
+**No database read either** (`T079-R2`). The check runs on every refresh — every keystroke, through
+the debounce — so the dialog is handed a **callable** answered by `QueueModel.queued_urls()` over
+rows already in memory. A callable rather than a snapshot: a job finishing while the dialog is open
+must stop the row claiming it is a duplicate, and a test drives exactly that.
+
+**Two kinds of duplicate, because they point at different things.** *Already in the queue* names a
+row elsewhere the user can go and look at; *Also pasted above* points at the list in front of them.
+The second occurrence is marked and not the first — marking both would say the first line is a
+duplicate of the second, which is not what happened.
+
+**Matching is an exact string comparison and a test pins it** (`P-28`). `?t=30` and a different case
+are not detected. A near-miss matcher that is occasionally wrong would be worse than one that is
+narrow always, and adding one now has to change the ruling first.
+
 ## 2026-08-08: `T-113` is built, and the phase's biggest unknown was a `mkdtemp` call
 
 **In Review, and the decision `P-10` demanded is `UX-008`.** The entry called this *"the highest

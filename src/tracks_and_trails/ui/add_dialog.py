@@ -150,7 +150,14 @@ from tracks_and_trails.ui.row_delegate import (
     RowDelegate,
     minimum_row_width,
 )
-from tracks_and_trails.ui.staging import Row, RowState, Staging, placeholder_hue, summarise
+from tracks_and_trails.ui.staging import (
+    DUPLICATE_TEXT,
+    Row,
+    RowState,
+    Staging,
+    placeholder_hue,
+    summarise,
+)
 from tracks_and_trails.ui.template_editor import TemplateEditor
 from tracks_and_trails.ui.thumbnails import (
     THUMBNAIL_SIZE,
@@ -195,6 +202,10 @@ WITHDRAW_FAILED_PREFIX: Final = "Still queued:"
 
 #: What each row state says, in words (`NFR-005`). Derived from the state rather than written
 #: beside it, so a state cannot acquire a colour and no sentence.
+#: How a duplicate is joined to the row's state (`P-26`, `T-114`). One separator, named once,
+#: because the drawn state and the accessible text both compose it.
+DUPLICATE_SEPARATOR: Final = " · "
+
 STATE_TEXT: Final[dict[RowState, str]] = {
     RowState.PENDING: "Waiting",
     RowState.SAVING: "Saving",
@@ -216,6 +227,22 @@ class JobSink(Protocol):
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None: ...
 
 
+class QueuedUrls(Protocol):
+    """What the queue currently holds, for `REQ-022`'s duplicate check (`T-114`).
+
+    **A callable over an in-memory list, and never a query** (`T079-R2`). The check runs on every
+    refresh — which is every keystroke, through the debounce — so a database read here would put
+    one on the GUI thread's path for each of them, which is the shape `T016-R3` measured at 0.302 s
+    of frozen window. `QueueModel` already holds every visible row, so the answer is a list
+    comprehension over memory the application has anyway.
+
+    A protocol rather than a `QueueModel` parameter, so this dialog does not learn what a queue view
+    is and a test can hand it a tuple.
+    """
+
+    def __call__(self) -> Sequence[str]: ...
+
+
 def split_urls(text: str) -> list[str]:
     """One URL per line, blank lines discarded, order preserved (`REQ-001`).
 
@@ -235,6 +262,26 @@ def format_duration(seconds: float | None) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def state_text(row: Row) -> str:
+    """What the row's state reads, including whether it repeats something (`P-26`, `REQ-022`).
+
+    **In the state, and `UX-007` ruled that it is not a modal.** A modal per duplicate in a paste
+    of thirty is unusable, and the row is where every other fact about a staged line already is.
+
+    **A statement, not a warning.** `REQ-022` as rescoped says a duplicate is *confirmed rather
+    than refused*: wanting the same URL twice — at two formats, or after a failure — is an ordinary
+    thing to want, so the row says what is true and *Add to queue* remains the one action (`P-27`).
+
+    Composed here rather than in the delegate so the drawn state, `row_text` and the accessible
+    text are one sentence — `T118-R8`'s rule, which this project has had to relearn twice.
+    """
+    said = STATE_TEXT[row.state]
+    kind = row.duplicate
+    if kind is None:
+        return said
+    return f"{said}{DUPLICATE_SEPARATOR}{DUPLICATE_TEXT[kind]}"
 
 
 def describe_kind(media: MediaInfo) -> str:
@@ -365,7 +412,7 @@ def row_text(row: Row, effective: Preset | None = None) -> str:
     construction — which is the property the old two-writers arrangement kept losing, most
     recently as `T118-R8`.
     """
-    second = " — ".join(part for part in (detail_text(row), STATE_TEXT[row.state]) if part)
+    second = " — ".join(part for part in (detail_text(row), state_text(row)) if part)
     tail = selector_text(row, effective)
     return f"{headline_text(row)}\n{second}" + (f"\n{tail}" if tail else "")
 
@@ -721,7 +768,7 @@ class StagingModel(QAbstractListModel):
         if role == DETAIL_ROLE:
             return detail_text(row)
         if role == STATE_ROLE:
-            return STATE_TEXT[row.state]
+            return state_text(row)
         if role == SELECTOR_ROLE:
             return selector_text(row, effective)
         if role == HUE_ROLE:
@@ -913,11 +960,19 @@ class AddUrlDialog(QDialog):
         cache_root: Path | None = None,
         resolve_delay_ms: int = DEFAULT_RESOLVE_DELAY_MS,
         ffmpeg_available: bool = True,
+        queued_urls: QueuedUrls | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._manager = manager
         self._jobs = jobs
+        #: What the queue holds right now, asked afresh on every refresh (`REQ-022`, `T-114`).
+        #:
+        #: **Defaults to nothing rather than to a lookup.** A dialog built without it — every test
+        #: that is about something else, and any future caller — reports no duplicates, which is
+        #: the honest answer for a caller that never said what the queue contains. Guessing would
+        #: mean this dialog deciding where a queue lives.
+        self._queued_urls: QueuedUrls = queued_urls if queued_urls is not None else (lambda: ())
         self._output_directory = output_directory
         self._presets = tuple(presets)
         #: Whether a merge is possible at all on this installation (`REQ-024`, `P-13`).
@@ -2294,6 +2349,12 @@ class AddUrlDialog(QDialog):
             self._refreshing = False
 
     def _refresh_once(self) -> None:
+        # **Recomputed here, on every refresh, and never accumulated** (`REQ-022`, `T-114`). The
+        # queue moves underneath an open dialog — a job finishes, a row is removed — so a marking
+        # set once would go on saying *already in the queue* about a job that has left it. An
+        # in-memory scan of a list the user can see the length of; see `QueuedUrls` for why it is
+        # never a query (`T079-R2`).
+        self._staging.mark_duplicates(self._queued_urls())
         visible = self._staging.visible
         # **By identity, not by row number** (`T118-R14`). A value-only refresh no longer resets
         # the model at all, so nothing needs restoring; a structural one may have moved or removed

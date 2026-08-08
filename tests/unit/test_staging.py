@@ -6,7 +6,15 @@ asserted directly. What the widget does *with* them is `tests/ui/test_add_dialog
 
 import pytest
 
-from tracks_and_trails.ui.staging import Row, RowState, Staging, placeholder_hue, summarise
+from tracks_and_trails.ui.staging import (
+    DUPLICATE_TEXT,
+    Duplicate,
+    Row,
+    RowState,
+    Staging,
+    placeholder_hue,
+    summarise,
+)
 
 
 def a_staging(*urls: str) -> Staging:
@@ -271,3 +279,108 @@ def test_the_summary_pluralises_the_failures_it_reports() -> None:
         Row(url=f"https://a.invalid/{n}", generation=1, state=RowState.FAILED) for n in range(2)
     ]
     assert summarise(rows) == "0 ready · 2 URLs could not be read"
+
+
+# --- T-114: which rows repeat something (REQ-022, UX_SPEC §9.3) --------------------------------
+
+
+def test_a_url_the_queue_already_holds_is_marked() -> None:
+    """`REQ-022` as rescoped: the comparison is against **the live queue**, in memory.
+
+    There is no record of past downloads to consult — `REQ-020` is withdrawn and migration `0009`
+    dropped the table — so *downloaded before* is not a question this can ask.
+    """
+    staging = Staging()
+    staging.reconcile(["https://a.invalid/one", "https://a.invalid/two"])
+
+    staging.mark_duplicates(["https://a.invalid/two"])
+
+    assert [row.duplicate for row in staging.visible] == [None, Duplicate.QUEUED]
+
+
+def test_the_second_occurrence_in_a_paste_is_marked_and_not_the_first() -> None:
+    """`T-114`'s own criterion, and the direction matters.
+
+    Marking both would say the first line is a duplicate of the second, which is not a thing that
+    happened: the user pasted one link and then repeated it.
+    """
+    staging = Staging()
+    staging.reconcile(["https://a.invalid/one", "https://a.invalid/one", "https://a.invalid/one"])
+
+    staging.mark_duplicates([])
+
+    assert [row.duplicate for row in staging.visible] == [None, Duplicate.PASTED, Duplicate.PASTED]
+
+
+def test_a_url_that_is_both_queued_and_repeated_says_it_is_queued() -> None:
+    """The stronger statement wins: there is a row elsewhere to go and look at."""
+    staging = Staging()
+    staging.reconcile(["https://a.invalid/one", "https://a.invalid/one"])
+
+    staging.mark_duplicates(["https://a.invalid/one"])
+
+    assert [row.duplicate for row in staging.visible] == [Duplicate.QUEUED, Duplicate.QUEUED]
+
+
+def test_a_url_matching_nothing_is_marked_nothing() -> None:
+    """The silent case, which an over-eager implementation breaks."""
+    staging = Staging()
+    staging.reconcile(["https://a.invalid/one", "https://a.invalid/two"])
+
+    staging.mark_duplicates(["https://a.invalid/three"])
+
+    assert staging.duplicates() == ()
+    assert all(row.duplicate is None for row in staging.visible)
+
+
+def test_a_marking_is_recomputed_rather_than_accumulated() -> None:
+    """The queue moves underneath an open dialog: a job finishes, a row is removed.
+
+    A marking that was only ever *set* would go on saying *already in the queue* about a queue that
+    no longer holds it — and the user would be told a fact that had stopped being true while they
+    were looking at it.
+    """
+    staging = Staging()
+    staging.reconcile(["https://a.invalid/one"])
+    staging.mark_duplicates(["https://a.invalid/one"])
+    assert staging.visible[0].duplicate is Duplicate.QUEUED
+
+    staging.mark_duplicates([])
+
+    assert staging.visible[0].duplicate is None, "the marking outlived the job it was about"
+
+
+def test_a_superseded_row_is_never_a_duplicate() -> None:
+    """A retyped line is not on screen, so it cannot be reported as repeating anything — and it
+    must not make the line that replaced it look like a repeat of itself."""
+    staging = Staging()
+    staging.reconcile(["https://a.invalid/one"])
+    staging.reconcile(["https://a.invalid/two"])
+
+    staging.mark_duplicates(["https://a.invalid/one"])
+
+    assert staging.duplicates() == ()
+    assert all(row.duplicate is None for row in staging.rows)
+
+
+def test_matching_is_exact_rather_than_clever() -> None:
+    """`P-28`, ruled 2026-08-07: **no detection by content**.
+
+    Two URLs for the same video are not detectable without a heuristic nobody has specified, and
+    `REQ-022` says *URL*. A near-miss matcher that was wrong occasionally would be worse than one
+    that is narrow always — this test is what stops one being added without the ruling changing.
+    """
+    staging = Staging()
+    staging.reconcile(["https://a.invalid/one?t=30", "https://A.INVALID/one"])
+
+    staging.mark_duplicates(["https://a.invalid/one"])
+
+    assert staging.duplicates() == (), (
+        "a URL that merely resembles a queued one was marked; P-28 refuses detection by content"
+    )
+
+
+def test_every_kind_of_duplicate_has_words() -> None:
+    """`NFR-005`: the row says it. A kind with no sentence is a state carried by nothing."""
+    for kind in Duplicate:
+        assert DUPLICATE_TEXT.get(kind), f"{kind.value} has no words to say on the row"

@@ -461,6 +461,20 @@ class QueueModel(QAbstractTableModel):
         """The rows, in the order they are shown."""
         return tuple(row.job.id for row in self._rows)
 
+    def queued_urls(self) -> tuple[str, ...]:
+        """Every URL the queue currently holds, for `REQ-022`'s duplicate check (`T-114`).
+
+        **In memory, and that is the requirement rather than an optimisation** (`T079-R2`). The
+        add dialog asks this on every refresh, so a database read here would put a query on the GUI
+        thread's path once per keystroke — `T016-R3` measured that shape at 0.302 s of frozen
+        window. These rows are already in memory because the table draws them.
+
+        **Every row, whatever its status.** A completed download is still *in the queue* until
+        `Clear finished` (`UX-005` §8), and it is exactly the case a user is most likely to
+        re-paste by accident. A failed one is worth saying too: the row is there to retry.
+        """
+        return tuple(row.job.url for row in self._rows)
+
     def _in_a_drawn_group(self, row: _Row) -> bool:
         """Whether this job is a member of a playlist the table is actually drawing as a group."""
         playlist_id = row.job.playlist_id

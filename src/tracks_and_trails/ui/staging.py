@@ -34,6 +34,36 @@ from enum import StrEnum
 from typing import Final
 
 
+class Duplicate(StrEnum):
+    """Why a staged row is a repeat of something (`REQ-022`, `T-114`).
+
+    **Two kinds, because they point at different things.** One says *there is a row in the queue
+    already downloading this*, which the user can go and look at; the other says *you pasted this
+    twice*, which is above them in the list they are reading. A single flag would have to pick one
+    sentence for both.
+
+    Not a `RowState`: a duplicate is orthogonal to whether the URL has been read. A row can be
+    `PROBING` and a duplicate, `FAILED` and a duplicate, or `READY` and not one, and folding the
+    two into one enum would make nine states out of two facts.
+    """
+
+    #: A job the queue already holds has this exact URL.
+    QUEUED = "queued"
+    #: An earlier line of this same paste has it.
+    PASTED = "pasted"
+
+
+#: What each kind says on the row, in words (`NFR-005`, `P-26`).
+#:
+#: **Neither sentence discourages** (`REQ-022`, `UX-005` §5). Wanting the same URL twice — at two
+#: formats, or after a failure — is an ordinary thing to want, so these state a fact and offer no
+#: opinion about it. *Add to queue* is the override and needs no wording of its own (`P-27`).
+DUPLICATE_TEXT: Final[dict[Duplicate, str]] = {
+    Duplicate.QUEUED: "Already in the queue",
+    Duplicate.PASTED: "Also pasted above",
+}
+
+
 class RowState(StrEnum):
     """Where one pasted line has got to.
 
@@ -117,6 +147,12 @@ class Row:
     #: and is a state the dialog reports rather than silently treating as *all*. The dialog fills
     #: this in when a probe returns entries, so the two cases stay distinguishable.
     entry_selection: object | None = None
+    #: Why this row is a repeat, or `None` (`REQ-022`, `T-114`).
+    #:
+    #: **Recomputed on every refresh, never accumulated.** The queue changes underneath an open
+    #: dialog — a job finishes, a row is removed — and a duplicate marking that was only ever set
+    #: would keep saying *already in the queue* about a queue that no longer holds it.
+    duplicate: Duplicate | None = None
     #: The extractor's own words, character for character (`NFR-006`). `None` unless `FAILED`.
     message: str | None = None
 
@@ -203,6 +239,44 @@ class Staging:
         # order and the superseded ones sit outside it rather than interleaved.
         self._rows = [*already_superseded, *available, *kept]
         return tuple(fresh)
+
+    def mark_duplicates(self, queued_urls: Iterable[str]) -> None:
+        """Say which visible rows repeat something, and which repeat nothing (`REQ-022`).
+
+        **Cleared and recomputed, not accumulated.** The queue moves underneath an open dialog, so
+        a marking that was only ever set would go on claiming a URL is queued after the job that
+        held it finished or was removed.
+
+        **The second occurrence is marked, not the first** — `T-114`'s own criterion. A paste of
+        the same link twice is one thing the user asked for and one repeat of it, and marking both
+        would say the first line is a duplicate of the second.
+
+        **`QUEUED` outranks `PASTED`** for a URL that is both. It is the stronger statement and the
+        actionable one: there is a row elsewhere in the application to go and look at, where *also
+        pasted above* only points at the list already on screen.
+
+        **Compared as exact strings** (`P-28`, ruled 2026-08-07). Two URLs for the same video are
+        not detectable without a heuristic nobody has specified, and `REQ-022` says *URL*. So this
+        finds what it can prove and says nothing about the rest — a near-miss matcher that was
+        wrong occasionally would be worse than one that is narrow always.
+        """
+        already = set(queued_urls)
+        seen: set[str] = set()
+        for row in self._rows:
+            if row.state is RowState.SUPERSEDED:
+                row.duplicate = None
+                continue
+            if row.url in already:
+                row.duplicate = Duplicate.QUEUED
+            elif row.url in seen:
+                row.duplicate = Duplicate.PASTED
+            else:
+                row.duplicate = None
+            seen.add(row.url)
+
+    def duplicates(self) -> tuple[Row, ...]:
+        """The visible rows currently marked as a repeat, in entry order."""
+        return tuple(row for row in self.visible if row.duplicate is not None)
 
     def for_job(self, job_id: str) -> Row | None:
         """The row that owns `job_id`, superseded or not.

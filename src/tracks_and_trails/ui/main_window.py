@@ -709,6 +709,11 @@ class MainWindow(QMainWindow):
             output_directory=self._output_directory,
             # `P-13`: the merge mode is drawn only where a merge could actually run (`REQ-024`).
             ffmpeg_available=self._ffmpeg_available,
+            # `REQ-022`, `T-114`: what the queue holds now, read from the rows the table already
+            # has in memory rather than from the database (`T079-R2`). Bound as a callable rather
+            # than a snapshot, because the dialog outlives any one answer — a job finishing while
+            # it is open must stop being reported as a duplicate.
+            queued_urls=self._queued_urls,
             parent=self,
         )
         # **Adding a job is the one queue change nothing announces.** The manager emits
@@ -719,6 +724,15 @@ class MainWindow(QMainWindow):
         dialog.finished.connect(self.refresh_queue)
         dialog.open()
         return dialog
+
+    def _queued_urls(self) -> tuple[str, ...]:
+        """Every URL the queue is showing, or nothing before a queue view exists (`T-114`).
+
+        Empty rather than an error for a window that has not been given one: this is asked by a
+        dialog that reports *no duplicates found*, which is the honest answer when there is nothing
+        to compare against.
+        """
+        return () if self._queue is None else self._queue.model.queued_urls()
 
     def _build_concurrency_control(self, initial: int) -> None:
         """One control for `REQ-013`'s limit, in this window rather than a dialog (`ARC-007`).

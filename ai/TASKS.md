@@ -5,7 +5,8 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — `T-110`, `T-112` and `T-113` implemented and In Review; `UX-008` accepted. `T-109`'s review returned
+**Last updated:** 2026-08-08 — `T-110`, `T-112`, `T-113` and `T-114` implemented and In
+Review; `UX-008` accepted. `T-109`'s review returned
 **Changes requested** (`T109-R1`..`T109-R7`); only `T109-R6`'s two type errors are corrected so far,
 because they failed the gate every later task has to pass.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
@@ -465,6 +466,94 @@ is sometimes lost, and yt-dlp loses it silently and correctly.
 #### Out of scope
 
 - Resuming across a *format* change, which is a different download
+
+---
+
+### T-114 — Confirm before queueing a URL the queue already holds
+
+**Status:** **In Review** — implemented 2026-08-08, awaiting a verdict.
+
+*(It was **Proposed — rescoped 2026-08-06 by maintainer decision**, and the rescoping is what made
+it implementable: the note below is kept because the withdrawn design is what a reader would
+otherwise reconstruct.)* **Rescoped 2026-08-06 by maintainer decision.** It was *"warn when a URL has
+been downloaded before"*, which needs durable history. `REQ-020` is withdrawn and there is none:
+this is now a check against the **live queue and the current paste**, in memory, with nothing
+stored.
+
+**A duplicate is allowed and confirmed, not refused.** Wanting the same URL twice — at two formats,
+or after a failure — is an ordinary thing to want, so proceeding is one action and is not
+discouraged.
+**Owner:** Implementer
+**Priority:** Low — the smallest item in the phase
+**Phase:** Phase 3
+**Depends on:** nothing. *(This read `T-085` and `T-169` — the completion records and the narrowed
+record contract. Both are withdrawn, and a dependency on a withdrawn contract is how a task
+rebuilds it. `T169-R4` caught this entry still directing an implementer to a ledger that no longer
+exists.)*
+**Relevant context:** `docs/UX_SPEC.md` §9.3 (**`P-26`, whether the warning is a staging-row state
+rather than a modal, is **ruled 2026-08-07** by `UX-007`: **a staging-row state**. `P-27` is ruled
+with it — **ordinary *Add to queue* is the override**, and the count includes the duplicates, because
+`REQ-022` says a duplicate is confirmed rather than discouraged. `P-28`'s refusals stand), `REQ-022`,
+`ui/add_dialog.py`'s staging list, `DAT-002`'s collision policy for what happens beyond the queue
+**Affected surfaces:** `ui/add_dialog.py`. **Not `persistence/`** — this task stores nothing and
+adds no table, column or index
+**Risk:** Low
+
+#### Scope
+
+`REQ-022`, as rescoped: **a URL already in the live queue, or repeated within the paste being
+staged, is confirmed rather than refused.** The comparison is in memory against rows that exist
+right now. There is no record of past downloads to consult — `REQ-020` is withdrawn and migration
+`0009` dropped the table — so "downloaded before" is not a question this task can ask or should
+try to.
+
+**Allowed, not prevented.** Proceeding is one action and is not discouraged: the same URL twice, at
+two formats or after a failure, is an ordinary thing to want, and `UX-005` §5's rule that nothing is
+offered which would be refused cuts both ways.
+
+#### Acceptance criteria
+
+- A URL that matches a **job already in the queue** is said **in the staging row's own state**,
+  before enqueueing, never in a modal (`P-26`, ruled 2026-08-07 by `UX-007`). *(`T105-R4` took this
+  requirement out while `P-26` was open, because it was the proposal stated as fact; the ruling puts
+  it back as a decision.)*
+- A URL repeated **within one paste** is marked the same way — the second occurrence, not the first
+- **Confirming enqueues it**, asserted on the stored queue: the duplicate is added, not skipped
+- A URL matching nothing enqueues with no prompt at all — the silent case, which an over-eager
+  implementation breaks
+- The comparison runs on the staged set and the live queue with no query added to the GUI thread's
+  path (`T079-R2`'s rule). If a scan is ever too slow it is a scan of the queue, which has a
+  user-visible size
+- **Nothing is written.** A test asserts the schema is unchanged and no new row survives the
+  dialog, because the previous design of this task is exactly what that would drift back toward
+
+#### What landed
+
+- **`Duplicate` and `Staging.mark_duplicates`** in `ui/staging.py`, Qt-free: two kinds, because
+  *there is a row in the queue already* and *you pasted this twice* point at different things.
+  Recomputed on every refresh rather than accumulated — the queue moves underneath an open dialog,
+  and a marking that was only ever set goes on describing a job that has left it.
+- **`add_dialog.state_text`**, which joins the duplicate to the row's own state (`P-26`). One
+  author for the sentence, so the drawn row, `row_text` and the accessible text agree by
+  construction (`T118-R8`).
+- **`QueuedUrls`, a callable the dialog is handed**, answered by `QueueModel.queued_urls()` over
+  rows already in memory. `T079-R2`: no query on the GUI thread's path. A callable rather than a
+  snapshot, because the dialog outlives any one answer.
+- **Nothing else.** No table, no column, no migration, no signal — and a test asserts the store saw
+  no write at all while a paste full of duplicates was staged and marked.
+
+**The comparison is an exact string match** (`P-28`). Two URLs for the same video are not detected,
+and a test pins that: a near-miss matcher that was occasionally wrong would be worse than one that
+is narrow always, and adding one has to change the ruling first.
+
+#### Out of scope
+
+- Detecting the same *video* at a different URL, and any URL normalisation. `core/urls.py` was
+  deleted with the ledger; a comparison clever enough to match two spellings is the design that
+  `DAT-006` §2 warned would one day treat two different downloads as one
+- **Any record of past downloads**, in any form, to make the check outlive the queue
+- Warning that a *file* of the same name exists on disk. Declined 2026-08-06: a repeat lands as
+  `name (1)` under `DAT-002`, which is what most downloaders do and what a user can see
 
 ---
 
@@ -1692,70 +1781,6 @@ not what an implementer opens.)*
 
 
 
-### T-114 — Confirm before queueing a URL the queue already holds
-
-**Status:** Proposed — **rescoped 2026-08-06 by maintainer decision.** It was *"warn when a URL has
-been downloaded before"*, which needs durable history. `REQ-020` is withdrawn and there is none:
-this is now a check against the **live queue and the current paste**, in memory, with nothing
-stored.
-
-**A duplicate is allowed and confirmed, not refused.** Wanting the same URL twice — at two formats,
-or after a failure — is an ordinary thing to want, so proceeding is one action and is not
-discouraged.
-**Owner:** Implementer
-**Priority:** Low — the smallest item in the phase
-**Phase:** Phase 3
-**Depends on:** nothing. *(This read `T-085` and `T-169` — the completion records and the narrowed
-record contract. Both are withdrawn, and a dependency on a withdrawn contract is how a task
-rebuilds it. `T169-R4` caught this entry still directing an implementer to a ledger that no longer
-exists.)*
-**Relevant context:** `docs/UX_SPEC.md` §9.3 (**`P-26`, whether the warning is a staging-row state
-rather than a modal, is **ruled 2026-08-07** by `UX-007`: **a staging-row state**. `P-27` is ruled
-with it — **ordinary *Add to queue* is the override**, and the count includes the duplicates, because
-`REQ-022` says a duplicate is confirmed rather than discouraged. `P-28`'s refusals stand), `REQ-022`,
-`ui/add_dialog.py`'s staging list, `DAT-002`'s collision policy for what happens beyond the queue
-**Affected surfaces:** `ui/add_dialog.py`. **Not `persistence/`** — this task stores nothing and
-adds no table, column or index
-**Risk:** Low
-
-#### Scope
-
-`REQ-022`, as rescoped: **a URL already in the live queue, or repeated within the paste being
-staged, is confirmed rather than refused.** The comparison is in memory against rows that exist
-right now. There is no record of past downloads to consult — `REQ-020` is withdrawn and migration
-`0009` dropped the table — so "downloaded before" is not a question this task can ask or should
-try to.
-
-**Allowed, not prevented.** Proceeding is one action and is not discouraged: the same URL twice, at
-two formats or after a failure, is an ordinary thing to want, and `UX-005` §5's rule that nothing is
-offered which would be refused cuts both ways.
-
-#### Acceptance criteria
-
-- A URL that matches a **job already in the queue** is said **in the staging row's own state**,
-  before enqueueing, never in a modal (`P-26`, ruled 2026-08-07 by `UX-007`). *(`T105-R4` took this
-  requirement out while `P-26` was open, because it was the proposal stated as fact; the ruling puts
-  it back as a decision.)*
-- A URL repeated **within one paste** is marked the same way — the second occurrence, not the first
-- **Confirming enqueues it**, asserted on the stored queue: the duplicate is added, not skipped
-- A URL matching nothing enqueues with no prompt at all — the silent case, which an over-eager
-  implementation breaks
-- The comparison runs on the staged set and the live queue with no query added to the GUI thread's
-  path (`T079-R2`'s rule). If a scan is ever too slow it is a scan of the queue, which has a
-  user-visible size
-- **Nothing is written.** A test asserts the schema is unchanged and no new row survives the
-  dialog, because the previous design of this task is exactly what that would drift back toward
-
-#### Out of scope
-
-- Detecting the same *video* at a different URL, and any URL normalisation. `core/urls.py` was
-  deleted with the ledger; a comparison clever enough to match two spellings is the design that
-  `DAT-006` §2 warned would one day treat two different downloads as one
-- **Any record of past downloads**, in any form, to make the check outlive the queue
-- Warning that a *file* of the same name exists on disk. Declined 2026-08-06: a repeat lands as
-  `name (1)` under `DAT-002`, which is what most downloaders do and what a user can see
-
----
 
 ### T-171 — Decide whether files carry provenance
 

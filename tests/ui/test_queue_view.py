@@ -3009,3 +3009,51 @@ def test_start_again_is_routed_the_same_way_retry_is(
     view._on_verb("live", Verb.START_AGAIN)
 
     assert asked == ["live"]
+
+
+# --- T-114: what the queue tells the add dialog about duplicates (REQ-022) ---------------------
+
+
+def test_the_queue_reports_every_url_it_holds_from_memory(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """`REQ-022`'s comparison set, and `T079-R2`'s constraint on how it is obtained.
+
+    **Every row whatever its status.** A completed download is still in the queue until *Clear
+    finished* (`UX-005` §8) and is exactly what a user re-pastes by accident; a failed one has a
+    row there to retry. Filtering to the running ones would make the check quietly narrower than
+    the queue it claims to describe.
+    """
+    queue.add(make_job("a", tmp_path, status=JobStatus.RUNNING, url="https://x.invalid/a"))
+    queue.add(make_job("b", tmp_path, status=JobStatus.COMPLETED, url="https://x.invalid/b"))
+    queue.add(make_job("c", tmp_path, status=JobStatus.FAILED, url="https://x.invalid/c"))
+    view = views(jobs=queue, manager=managers())
+
+    assert set(view.model.queued_urls()) == {
+        "https://x.invalid/a",
+        "https://x.invalid/b",
+        "https://x.invalid/c",
+    }
+
+
+def test_two_jobs_for_one_url_are_both_reported(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """A tuple rather than a set: `REQ-022` allows the same URL twice, so the queue can hold it.
+
+    Nothing downstream needs the count today — the dialog asks *is this in there* — and answering
+    with a set would be this method deciding a question it was not asked.
+    """
+    queue.add(make_job("a", tmp_path, url="https://x.invalid/same"))
+    queue.add(make_job("b", tmp_path, url="https://x.invalid/same"))
+    view = views(jobs=queue, manager=managers())
+
+    assert view.model.queued_urls() == ("https://x.invalid/same", "https://x.invalid/same")

@@ -47,6 +47,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QLabel,
     QListView,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QStyleOptionViewItem,
@@ -111,6 +112,7 @@ from tracks_and_trails.ui.row_delegate import (
     ROW_PRESET_NAME,
     SELECTOR_LINES,
     SELECTOR_ROLE,
+    STATE_ROLE,
     TEMPLATE_AVAILABLE_ROLE,
     TEMPLATE_DATA,
     TEMPLATE_TEXT,
@@ -4041,3 +4043,232 @@ def test_a_very_long_title_is_previewed_under_the_name_it_will_be_shortened_to(
     assert name == contained_output_path(dialog._output_directory, "t" * 400 + ".ext").name, (
         "the preview shortened the name differently from the function the download uses"
     )
+
+
+# --- T-114: a URL the queue already holds is confirmed, not refused (REQ-022, UX_SPEC §9.3) ----
+#
+# The marking rules are `tests/unit/test_staging.py`. What is here is the dialog: that the row
+# says it, that Add still adds it, that a URL matching nothing says nothing at all — and that this
+# whole feature writes nothing, which is the design the previous version of the task would have
+# drifted back toward.
+
+
+def _with_queue(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    *,
+    holding: Sequence[str],
+    pasted: Sequence[str],
+) -> AddUrlDialog:
+    """A dialog over a queue that already holds `holding`, with `pasted` entered and resolved."""
+    dialog = dialogs(managers(entry_point=child_replaying_a_fixture), queued_urls=lambda: holding)
+    type_urls(dialog, "\n".join(pasted))
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and all(state in SETTLED for state in states(dialog)))
+    return dialog
+
+
+def test_a_url_already_in_the_queue_is_said_on_the_rows_own_state(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`P-26`, ruled 2026-08-07: **a staging-row state**, never a modal.
+
+    A modal per duplicate in a paste of thirty is unusable, and the row is where every other fact
+    about a staged line already lives. Asserted through `STATE_ROLE` — the row's *state*, which is
+    what the ruling names — rather than anywhere it merely happens to be visible.
+    """
+    single, playlist = fixture_url(SINGLE_ITEM), fixture_url(PLAYLIST)
+    dialog = _with_queue(dialogs, managers, spin, holding=[playlist], pasted=[single, playlist])
+
+    said = role_values(dialog, STATE_ROLE)
+    assert "Already in the queue" not in said[0], said[0]
+    assert "Already in the queue" in said[1], said[1]
+    assert dialog.findChild(QMessageBox) is None, (
+        "a modal was raised for a duplicate, which is what UX-007 ruled against"
+    )
+
+
+def test_a_url_repeated_within_one_paste_marks_the_second_occurrence(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T-114`'s criterion, in the dialog: *the second occurrence, not the first*."""
+    single = fixture_url(SINGLE_ITEM)
+    dialog = _with_queue(dialogs, managers, spin, holding=[], pasted=[single, single])
+
+    said = role_values(dialog, STATE_ROLE)
+    assert "Also pasted above" not in said[0], f"the first line was called a repeat: {said[0]!r}"
+    assert "Also pasted above" in said[1], said[1]
+
+
+def test_a_url_matching_nothing_says_nothing_at_all(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The silent case, **which an over-eager implementation breaks** — the entry says so.
+
+    A check that marked everything would pass both tests above and make the feature noise.
+    """
+    single, playlist = fixture_url(SINGLE_ITEM), fixture_url(PLAYLIST)
+    dialog = _with_queue(dialogs, managers, spin, holding=[playlist], pasted=[single])
+
+    said = role_values(dialog, STATE_ROLE)[0]
+    assert "Already" not in said and "pasted" not in said, said
+    assert said == STATE_TEXT[RowState.READY], (
+        f"a row repeating nothing says {said!r} rather than its plain state"
+    )
+
+
+def test_confirming_enqueues_the_duplicate_rather_than_skipping_it(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    store: FakeStore,
+) -> None:
+    """**`REQ-022`'s subject**: a duplicate is *confirmed*, not refused (`P-27`).
+
+    Ordinary *Add to queue* is the override and the count includes the duplicates. Asserted on the
+    stored queue, because a marking that quietly dropped the row would satisfy every test above.
+    """
+    single = fixture_url(SINGLE_ITEM)
+    dialog = _with_queue(dialogs, managers, spin, holding=[single], pasted=[single, single])
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    submitted = sink.submissions[0]
+    assert [job.url for job in submitted] == [single, single], (
+        "a duplicate was skipped; REQ-022 says it is confirmed, and both lines were asked for"
+    )
+    assert len(store.jobs) == 2
+
+
+def test_the_count_the_dialog_reports_includes_the_duplicates(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """`P-27`: *the count includes the duplicates*, because they are being added."""
+    single = fixture_url(SINGLE_ITEM)
+    dialog = _with_queue(dialogs, managers, spin, holding=[single], pasted=[single])
+    sink.defer = True
+
+    dialog.add_to_queue()
+
+    assert "Adding 1 to the queue" in dialog.status_text(), dialog.status_text()
+    sink.release()
+
+
+def test_a_duplicate_is_spoken_and_not_only_drawn(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`NFR-005`: a state carried by a chip alone is a warning only sighted users receive.
+
+    It joins the row's accessible text, which is where the row's other facts already are, and it
+    needs no keyboard route of its own — a row state is not a control.
+    """
+    single = fixture_url(SINGLE_ITEM)
+    dialog = _with_queue(dialogs, managers, spin, holding=[single], pasted=[single])
+
+    spoken = role_values(dialog, Qt.ItemDataRole.AccessibleTextRole)[0]
+    assert "Already in the queue" in spoken, spoken
+
+
+def test_a_job_leaving_the_queue_stops_the_row_calling_itself_a_duplicate(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The queue moves underneath an open dialog, and the marking has to move with it.
+
+    This is why the dialog holds a **callable** rather than a snapshot: a job finishing or being
+    removed while the dialog is open must stop the row claiming a fact that has stopped being true.
+    """
+    single = fixture_url(SINGLE_ITEM)
+    holding = [single]
+    dialog = dialogs(managers(entry_point=child_replaying_a_fixture), queued_urls=lambda: holding)
+    type_urls(dialog, single)
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and all(state in SETTLED for state in states(dialog)))
+    assert "Already in the queue" in role_values(dialog, STATE_ROLE)[0]
+
+    holding.clear()
+    dialog.refresh()
+
+    assert "Already in the queue" not in role_values(dialog, STATE_ROLE)[0], (
+        "the row went on reporting a job the queue no longer holds"
+    )
+
+
+def test_the_duplicate_check_writes_nothing(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    store: FakeStore,
+) -> None:
+    """**`T-114`'s last criterion**, and the one the previous design of this task would break.
+
+    It used to depend on a durable record of completed downloads; `REQ-020` is withdrawn and
+    migration `0009` dropped the table. So the check must add no row, no table and no column —
+    asserted as *no write of any kind reached the store* while a paste with duplicates in it was
+    staged and marked.
+    """
+    single = fixture_url(SINGLE_ITEM)
+    _with_queue(dialogs, managers, spin, holding=[single], pasted=[single, single])
+
+    assert store.jobs == {}, "staging a duplicate wrote a row"
+    assert store.writes == [], f"staging a duplicate wrote something: {store.writes}"
+
+
+def test_the_check_asks_the_queue_in_memory_rather_than_querying_it(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T079-R2`: no query is added to the GUI thread's path.
+
+    The scan runs on every refresh — which is every keystroke, through the debounce — so what is
+    asserted is that the dialog asks a **callable it was handed** rather than reading a database.
+    That the answer comes from rows already in memory is `QueueModel.queued_urls`'s claim.
+    """
+    asked = 0
+
+    def queued() -> tuple[str, ...]:
+        nonlocal asked
+        asked += 1
+        return ()
+
+    dialog = dialogs(managers(entry_point=child_replaying_a_fixture), queued_urls=queued)
+    type_urls(dialog, fixture_url(SINGLE_ITEM))
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and all(state in SETTLED for state in states(dialog)))
+
+    assert asked > 0, "the dialog never asked what the queue holds, so nothing can be a duplicate"
+
+
+def test_a_dialog_told_nothing_about_the_queue_reports_no_duplicates(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The default is *no duplicates*, not a guess about where a queue lives.
+
+    A caller that never said what the queue contains gets the honest answer, and this dialog does
+    not learn what a queue view is in order to find out.
+    """
+    single = fixture_url(SINGLE_ITEM)
+    dialog = dialogs(managers(entry_point=child_replaying_a_fixture))
+    type_urls(dialog, single)
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and all(state in SETTLED for state in states(dialog)))
+
+    assert role_values(dialog, STATE_ROLE)[0] == STATE_TEXT[RowState.READY]
