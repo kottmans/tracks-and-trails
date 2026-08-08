@@ -19,6 +19,153 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: all nine Phase 3 deliverables are approved, and `## In Review` is empty
+
+**`T-143` and `T-180` are Approved.** `T143-R1`, `T180-R1` and `T180-R2` are all **Resolved**, no
+open finding remains on either, and with `T-111` complete **every Phase 3 deliverable is through**.
+
+**What is actually left before the phase can exit**, and it is not code:
+
+1. **Four loose items need a disposition** — `T-189`, `T-171`, `T-186`, `T-188`. The maintainer
+   ruled all six into the phase on 2026-08-08 and two are now done; the remaining four each need a
+   ruling, **which is not the same as needing an implementation**. `T-188` is already dispositioned
+   by `OPS-013` and `T-171` is a maintainer decision with its measurement already taken.
+2. **Exit criterion 6, the exit review itself.** Criteria 1–5 are met.
+
+**`T-189` is the one worth doing rather than dispositioning**, and the reason is on this page
+already: exit criterion 2 is **marked Met**, and its proof takes an `ffmpeg` fixture that *skips*
+when the tool is absent, on a self-hosted runner that records rather than installs it. The evidence
+is real today and nothing forces it to stay real. A criterion that has already been signed is the
+worst place to leave that.
+
+**One defect of my own, found by the reviewer and worth recording:** `git diff --check` flagged a
+trailing space in this file, introduced by the entry below. Non-blocking, and fixed — but it is the
+kind of thing a gate catches and a human does not, which is what gates are for.
+
+## 2026-08-08: `T-111` approved — the ninth deliverable is done; `T-143` and `T-180` came back Blocked
+
+**`T-111` is Approved and Complete.** `T111-R1`, `T111-R2` and `T111-R3` are all **Resolved** and no
+open finding remains. **That is nine of nine Phase 3 deliverables.** What stands between here and
+the exit is the four loose items still open, two verdicts, and criterion 6 itself.
+
+**`T-143` and `T-180` were both Blocked, and both Highs were refused as implementer work —
+correctly.** The reusable half is one sentence: **this project's entries had already named both
+problems, and naming is not deciding.** `T-143`'s entry said size was out of reach and named the
+schema change it needed; `T-180`'s said the boundary followed `ARC-006`. Both readings were right,
+and both read as though a ruling had been taken because an argument had been made.
+
+- **`T143-R1` (High) — amended, not implemented.** The first criterion required pre-download *size*.
+  **A pasted URL's row has no pre-download size either**, so the wording described a field the
+  application has for no row at all — it was not describing the gap this task closes. The maintainer
+  narrowed it to the `UX-005` §3 anatomy and **deferred size to `T-191`** (Phase 4, Low), because a
+  criterion narrowed into nowhere is a criterion deleted. No source changed.
+- **`T180-R1` (High) — `DAT-007`, accepted.** The task's own text required the boundary decision in
+  `ai/DECISIONS.md` **before code moved**, and the code moved first. **`ARC-006` permits an instance
+  on a different database and says nothing about where its cache lives**, so a machine-wide cache
+  with a coordinated sweep was genuinely available and is now rejected on the record rather than
+  passed over. First-launch adoption is recorded as a choice, not a derivation.
+- **`T180-R2` (Medium) — the mutation check was aimed in the wrong place.** The principal test
+  derived both roots itself and built one store, so it proved `cache_root_for` separates roots
+  handed to it and would have survived composition dropping the partition entirely. Two regressions
+  now run through real `compose`, and the mutation check moved to the seam: **all three cuts
+  caught** — composition, the queue store, the add dialog. **A mutation check is only worth what it
+  is aimed at**, and this one was aimed inside the helper it was meant to be guarding the use of.
+
+## 2026-08-08: the Phase 3 board left the repository
+
+**`ai/roadmap-phase-3.html` is deleted** — maintainer decision, 2026-08-08. The board is now
+published rather than committed:
+<https://claude.ai/code/artifact/d96b44f6-73c2-4090-abfa-ccd09a711d24>, updated with everything
+below. Nothing is lost: the file's whole history is in git through `bf30d82`, and the published
+page carries the current state.
+
+**The dated entries below still name the file, and that is correct rather than stale.** They say
+things like *"`bf30d82` touches only `ai/roadmap-phase-3.html`"* and *"the board is redrawn" —*
+statements about what happened on a date, which deleting a file does not falsify. Rewriting them
+would be editing the record rather than correcting it.
+
+**`ai/roadmap-phase-2.html` is deleted too**, by the same decision extended on the same day. Unlike
+the Phase 3 board it was **never published**, so git history through this commit's parent is the
+only copy — deliberate, and recorded here so nobody later reads its absence as an accident.
+
+## 2026-08-08: `T-111` reviewed — Changes requested, three findings, all corrected
+
+**Codex reviewed `T-111` at `bf30d82` and requested changes**, with three findings: two High, one
+Medium. All three are corrected and awaiting re-review; **none is claimed closed**, which is the
+reviewer's call. `ai/handoffs/2026-08-08-T-111-r2.md` is the re-review handoff.
+
+- **`T111-R1` (High) — the route the code's own docstring promised.** `_build_form` said the seven
+  post-processing options have an editor already and that a second set of controls would be two
+  screens answering one question. That was right and only half-built: nothing ever opened the other
+  screen, so on a **saved** preset a user could edit name, selector and template and could not edit
+  media kind, codec, quality, remux, recode, thumbnail, metadata, chapters or subtitles. An
+  `Options…` button now opens the same `OptionsDialog`, and accepting writes through
+  `update_preset`.
+- **`T111-R2` (High) — the collision policy was enforced everywhere except where a file enters.**
+  `add_preset` and `update_preset` refused a taken name; `_presets_from` checked each entry's shape
+  and nothing about its name. A hand-edited preset called `Audio only (MP3)` loaded clean, drew two
+  rows of one name, and `preset_named` answered with the built-in while the saved row held a
+  different selector — and **every operation this module has addresses a preset by name**. Now
+  refused and reported per `ARC-008`, which applies the stated policy rather than inventing one: a
+  name in a hand-edited file was typed by the user, and `add_preset` refuses those.
+- **`T111-R3` (Medium) — the test bypassed the stack the defect lives on.** The manager opened
+  synchronously from `StagingModel.setData`, which Qt reaches inside `commitData` with the row's
+  combo still open; `open_options` defers one turn for exactly that reason and `T108-R2` records the
+  dead-editor class. The shipped test called `setData` directly, so it exercised every part of the
+  route **except where it runs** — which is how a Medium survived a green suite.
+
+**Each correction is mutation-checked**, because all three are the class where a test passes without
+the fix. Removing the collision guard fails three of four new load cases; removing the deferral
+fails both manager-route cases; opening the options screen and discarding its answer fails the
+stored-fields case.
+
+*(The reviewer's three judgments were left alone and nothing was built against them: criterion 3's
+two-policy reading stands, criterion 6 remains distributed across tasks, and the built-in `Delete`
+no-op stays a product ruling rather than a reviewer substitution.)*
+
+## 2026-08-08: the loose Phase 3 items are ruled in, and two of them are built
+
+**Maintainer ruling: all six loose Phase 3 tasks are in Phase 3's scope**, so Phase 4 opens without
+Phase 3 questions still attached to it. They had accumulated as findings and maintainer reports
+during the phase and had never been ruled in or out — the position both prior exit reviews found
+wrong rows in. `IMPLEMENTATION_PLAN.md` §Phase 3 now names all six with their dispositions, and
+`T-171` moved from *"Phase 4 or later"* to Phase 3 by the same ruling.
+
+**`T-143` and `T-180` are implemented and in `## In Review`.** Neither is approved and neither is
+claimed to be.
+
+**`T-143`'s premise was stale, and that is the finding worth carrying forward.** Its title —
+*"a playlist's entries are never probed"* — had been false since `T137-R2` was resolved: both
+admission routes admit an unprobed row as `PROBE`, and `_probe_settled` carries it into its
+download. The entry still asserted the defect in the present tense four days later. **A finding
+resolved against one task can close another task's premise, and nothing walks the entries to say
+so** — the same shape as `T105-R1`, which was a task entry outliving the decision that settled it.
+
+What was actually left was a real defect the title does not describe: `_claim_outcome`'s `Probed`
+branch persisted `title`, `thumbnail_url` and `is_live` and **dropped `uploader` and
+`duration_seconds`**, while `add_dialog._durable_job` carried the whole set across for a pasted URL.
+So a playlist entry probed and still showed no uploader and no duration beside a pasted row that
+showed both — *"their rows stay bare"*, as reported, for a different reason than the title gives.
+`T124-R4` had already corrected this in the add dialog and warned in its own docstring that *"adding
+the next one is a schema change and not a second omission"*. This was the second omission.
+
+**One criterion word was never satisfiable and is flagged rather than claimed:** "size". A size
+lives per-format in `FormatInfo.filesize`; `Job` carries `bytes_total`, which a *download* reports.
+A pasted URL's row has no size before it runs either, so an entry is now consistent with one — and
+making an unstarted row show a size is a schema change and a separate decision.
+
+**`T-180` partitions the thumbnail cache per database**, which is the boundary `ARC-006` already
+drew for the single-instance guard. Both halves of `T179-R1` close: the *deletion* half because a
+sweep now iterates a directory this instance owns alone, and the *blindness* half for free, because
+`cache_generation` is keyed by directory. The existing cache is **adopted by one rename rather than
+stranded** — the task's own risk line says a careless version forces a wholesale refetch, so that
+sentence is answered rather than accepted. The partition wanted no migration, so `T-180` stayed in
+Phase 3.
+
+The cross-database sweep test was **mutation-checked**: with the partition removed from
+`cache_root_for` it fails on the foreign picture being deleted. A test that passed either way would
+have proved nothing about the one property this task exists for.
+
 ## 2026-08-08: `T-111` implemented and awaiting review — the ninth deliverable is written
 
 **Not approved, and not claimed to be.** `T-111` is submitted, not ratified: `## In Review` now

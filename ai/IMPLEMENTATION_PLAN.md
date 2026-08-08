@@ -562,7 +562,7 @@ work depended on itself. One task is now filed and the other is a tombstone poin
 | Separate video/audio selection and merge (`REQ-008`) | `T-108` | Medium — `T-061` is what a wrong ffmpeg check costs |
 | Post-processing, seven options (`REQ-010`) | `T-109` | **High** — `T-077` found four of five Phase 1 options never produced a file |
 | Playlist probing and per-entry selection (`REQ-004`) | `T-110` | **High** — one URL is one job today; a playlist is one probe producing N |
-| User-defined presets (`REQ-007`) | `T-111` | **Implemented 2026-08-08, awaiting review.** All five verbs in `core/settings.py`, performed on `ui/preset_manager.py`; the default persists as a top-level `default_preset` key in the existing `settings.toml` — no new store, no migration (`DAT-001`, `ARCHITECTURE.md` §5, `T105-R1`). Three gaps are listed in the task entry and the deliverable is not claimed whole. |
+| User-defined presets (`REQ-007`) | `T-111` | **Approved 2026-08-08 — the ninth and last deliverable.** All five verbs in `core/settings.py`, performed on `ui/preset_manager.py`; the default persists as a top-level `default_preset` key in the existing `settings.toml` — no new store, no migration (`DAT-001`, `ARCHITECTURE.md` §5, `T105-R1`). Review returned three findings, two High, all corrected and resolved: the saved-preset options screen was unreachable, the name-collision rule was not applied where a hand-edited file enters, and a modal opened inside Qt's `commitData`. |
 | Output template editor with live preview (`REQ-011`) | `T-112` | Medium — preview and real path must be one function |
 | Cross-restart resume of partial downloads (`REQ-017`) | `T-113` | **High** — reopens `UX-001` and `T-080`'s `PAUSED` removal |
 | **In-queue duplicate confirmation** (`REQ-022`, rescoped 2026-08-06) | `T-114` | Low — a live-queue comparison that stores nothing |
@@ -585,6 +585,25 @@ already carried and which had no task behind it until 2026-08-01.
 Phase 2 despite listing fewer deliverables: `T-110` changes what a *job* is, and `T-113` reopens two
 accepted decisions by design.
 
+**Six tasks filed against this phase are in its scope and are not deliverables** — maintainer
+ruling, 2026-08-08, so that Phase 4 opens without Phase 3 questions still attached to it. They
+accumulated as findings and maintainer reports during the phase and had never been ruled in or out,
+which is the position both prior exit reviews found wrong rows in. **The exit is not clear while any
+of them is unresolved**, and "resolved" includes an explicit refusal:
+
+| Task | What it is | Disposition |
+|---|---|---|
+| `T-143` | A playlist's entries are never probed, so their rows stay bare | **Approved 2026-08-08.** Its premise was already half-closed by `T137-R2`; the criterion was **amended** and pre-download size deferred to `T-191` |
+| `T-180` | Two permitted instances share one thumbnail cache and sweep each other's pictures | **Approved 2026-08-08**, on `DAT-007` and a production-seam regression |
+| `T-189` | The required ffmpeg CI cases skip instead of failing | **Open.** It guards exit criterion 2's evidence: the proof takes a fixture that skips when the tool is absent, and the self-hosted Windows runner records rather than installs it |
+| `T-171` | Whether files carry provenance | **Open, and the maintainer's** — the measurement is done and the decision is not. Moved here from "Phase 4 or later" by the same ruling |
+| `T-186` | Finish the withdrawn-History prose sweep | **Open.** Comments and docstrings only; no runtime behaviour |
+| `T-188` | A recorded source with a separate video and audio stream | **Open, and held open by `OPS-013`** — it needs a licensed public source to exist, which no amount of work here produces |
+
+*(`T-146` and `T-190` also sit under `## Proposed — Phase 3` and are **not** in this set. `T-146` is
+a Settings screen `ARC-007` deferred to Phase 4 deliberately; `T-190` is a `docs/UX_SPEC.md` §6
+correction. Named here so their absence reads as a decision rather than an oversight.)*
+
 ### Exit criteria
 
 - The format table matches `yt-dlp -F` output for a fixture set of URLs
@@ -594,6 +613,11 @@ accepted decisions by design.
 - Path containment holds: no rendered template escapes the output directory
 - A partial download resumes after restart, or clearly states it cannot
 - Reviewed and signed off
+
+**All nine deliverables are approved as of 2026-08-08**, and criteria 1–5 are met. **Criterion 6 is
+the only one outstanding**, and it is gated on the four loose items above being dispositioned, not
+on any deliverable. *(`T-189` is the one that touches an already-signed criterion: exit criterion 2
+is marked Met on evidence that can silently become a skip.)*
 
 ---
 

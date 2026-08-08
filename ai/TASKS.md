@@ -85,91 +85,13 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-*`T-111` is submitted and unreviewed. The five approved in this session — `T-109`,
-`T-110`, `T-112`, `T-113`, `T-114` — are in `## Complete`.*
+*Empty. Everything submitted on 2026-08-08 is approved and in `## Complete` — `T-109`, `T-110`,
+`T-112`, `T-113`, `T-114`, then `T-111` (the ninth and last Phase 3 deliverable), then `T-143` and
+`T-180` out of the loose Phase 3 items the maintainer ruled into the phase the same day.*
 
-### T-111 — User presets: create, edit, duplicate, delete, set default
-
-**Status:** In Review — **implemented 2026-08-08, awaiting the maintainer's verdict.** *(Built by
-the Implementer; no criterion is claimed approved, and ratification is not assumed.)*
-
-All five operations exist in `core/settings.py` and are performed on `ui/preset_manager.py`. What
-each part of the deliverable is, and where it is asserted:
-
-| Piece | Where | Asserted by |
-|---|---|---|
-| create / edit / duplicate / delete / set default | `core/settings.py` | `tests/unit/test_settings.py`, 30 new cases |
-| one list, built-ins marked (`P-6`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
-| always exactly one default (`P-7`) | `settings.default_preset_of` | both files |
-| a list beside a form, buttons in `Tab` order (`P-20`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
-| `Manage presets…` on the format control | `ui/row_delegate.py`, `ui/add_dialog.py` | `tests/ui/test_add_dialog.py`, 3 cases |
-| a new paste inherits the default (`P-7`) | `ui/add_dialog.py` | `tests/ui/test_add_dialog.py`, 3 cases |
-| a preset needing ffmpeg says so (`REQ-024`) | `DownloadManager.requires_ffmpeg` | `tests/integration/test_manager.py`, 3 cases |
-
-**What a reviewer should look at hardest**, since all six acceptance criteria now have assertions
-behind them:
-
-- **The ffmpeg question is asked with a placeholder URL.** A preset carries neither URL nor output
-  directory and `DownloadRequest` refuses both empty, so `requires_ffmpeg` builds a request against
-  `https://example.invalid/preset` — RFC 2606's reserved name, and the stand-in `_freeze_probe`
-  already uses. That is only honest because the answer does not depend on it, which
-  `test_the_answer_does_not_depend_on_the_placeholder` asserts across every built-in rather than
-  asserting it once. **The alternative was rejected deliberately**: a predicate reading the
-  preset's own fields needs no placeholder, and would be the hardcoded list
-  `adapter.requires_ffmpeg`'s docstring records as having already missed processors once. One
-  answer, derived from yt-dlp's class hierarchy, was preferred to two that can drift.
-- **`Delete` on a built-in does nothing and is not drawn disabled.** That is `docs/UX_SPEC.md` §8's
-  clause and it is implemented literally, including the silence. It is marked `[D]`, not `[T]`, so
-  it is derived rather than ruled — and a button that visibly does nothing is the kind of thing
-  `T-139` argues against elsewhere. Worth a second look at whether the mark alone is enough.
-
-*(Was: Proposed — **Phase 3 decomposition, 2026-08-01.**)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 3
-**Depends on:** `T-105`; `T-109` for the option set a preset can carry
-**Relevant context:** `docs/UX_SPEC.md` §8 (**where presets persist is already decided** — TOML at
-`settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5; no new store, no migration owed. `P-20`,
-the manager's layout, is **ruled 2026-08-07** by `UX-007`: **one list** holding built-ins and user
-presets together with built-ins marked (`P-6`), **a list beside a form with buttons** rather than a
-menu (`P-20`), **always exactly one default** so a paste always has something to inherit (`P-7`),
-and import/export and per-site rules refused (`P-21`)), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
-`to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
-**Affected surfaces:** `core/presets.py`, `core/settings.py`, `ui/`
-**Risk:** Medium — user presets are persisted state with a name-collision problem
-
-#### Scope
-
-`REQ-007`: create, edit, duplicate, delete, and set a default. The built-in presets (`REQ-006`) stay
-and must not be editable into something that no longer matches its own name.
-
-**Where they live is already decided, and this task does not reopen it** (`T105-R1`, High). User
-presets persist as **TOML in the existing `settings.toml`**, per `DAT-001` and `ARCHITECTURE.md` §5.
-No new store, no sibling file, no table, and no migration is owed.
-
-*(This read "a decision this task must take or raise", and argued for a sibling file. It was wrong
-twice over: the decision existed before the task was written, and an implementer following the
-paragraph would have built the store `T105-R1` forbids. `docs/UX_SPEC.md` §8 was corrected on
-2026-08-06 and this entry was not, which is exactly the drift the finding is about — the spec is
-not what an implementer opens.)*
-
-#### Acceptance criteria
-
-- All five operations, each asserted on what is stored afterwards
-- A built-in preset cannot be edited or deleted; duplicating one is how you start from it
-- A user preset with a colliding name is refused or disambiguated, stated either way
-- The default survives a restart, and deleting the default leaves a defined default
-- A preset carrying options that need ffmpeg behaves like `T-108`/`T-109` when it is absent
-- A hand-edited preset file that is malformed reports rather than reverting silently (`ARC-008`)
-
-#### Out of scope
-
-- Sharing or importing presets
-
----
-
-
-
+***All nine Phase 3 deliverables are approved.*** What stands between here and the phase exit is the
+four loose items still open — `T-189`, `T-171`, `T-186`, `T-188` — each needing a disposition rather
+than necessarily an implementation, and then exit criterion 6, the exit review itself.*
 
 ## Ready
 
@@ -1291,61 +1213,6 @@ broken down. Phase 1 listed nine deliverables and produced fifty tasks; these ei
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
 
-### T-143 — A playlist's entries are never probed, so their rows stay bare
-
-**Status:** Proposed — **found by the maintainer, 2026-08-04**, downloading a real 16-item
-playlist. Reported as two things; they are one.
-**Owner:** Implementer
-**Priority:** Medium-High — `UX-003` promises a queued job is a probed one, and these are not
-**Phase:** Phase 3
-**Depends on:** `T-137` (done)
-**Relevant context:** `UX-003`, `T080-R1`, `UX-001`, `ARC-004`, `downloader/manager.py`,
-`ui/add_dialog.py`
-**Affected surfaces:** `downloader/manager.py` or `ui/`, depending on the ruling below
-**Risk:** Medium — it adds N extractions per playlist, at a time the user is not waiting
-
-#### Scope
-
-Reported as *"no thumbnails were downloaded for any of the playlist"* and *"even if the queue is
-paused it should still probe each of the tracks"*. **Both are the same gap**, and neither is what
-it looks like:
-
-- **Pause already exempts probes.** `T080-R1` records it and the manager says so in as many words:
-  *"a paused queue admits a probe and parks a download."* Nothing needs changing there.
-- **The entries are never probed at all.** `T-137` builds them from a *flat* extraction — an
-  address and a name — and marks them `QUEUED` rather than `READY` precisely because no probe ran.
-  Nothing then probes a queued job before it downloads, so an entry has no duration, no size, and
-  (until this task) no picture, however long it sits there.
-
-*The thumbnail half is separately fixed*: a flat entry carries `thumbnails`, not `thumbnail`, and
-reading only the singular is why every entry drew the derived tile. That is corrected under `T-137`
-and does **not** close this — an entry still has no duration or size until it runs.
-
-**`UX-003` is the requirement in tension.** It makes every queued job a probed one, which is why a
-pasted URL resolves before it is added. A playlist deliberately skipped that to avoid one
-extraction per item during the add — the cost `project_media` has refused since `T-016`. Doing it
-*after* admission moves the cost to a moment nobody is waiting, which is the shape this task
-proposes.
-
-#### Acceptance criteria
-
-- A playlist's entries acquire title, duration, size and picture **without being downloaded**,
-  asserted against a recorded fixture
-- It happens **while the queue is paused**, since that is when a user is most likely to be looking
-- The probes are **bounded** — a 200-item playlist must not open 200 extractions at once; the
-  concurrency limit or a smaller one governs them
-- A probe failure marks that entry and does not stop the others, nor the playlist
-- Cancelling or removing an entry cancels its probe (`T118-R1`'s lesson: a probe outliving the row
-  that asked for it)
-- `ARC-004`'s state machine is respected: there is no `READY → PROBING` edge, so this decides what
-  an entry's status is while its probe runs
-
-#### Out of scope
-
-- Changing what pause does. It already admits probes
-
----
-
 ### T-171 — Decide whether files carry provenance
 
 **Status:** **Proposed — the measurement is done, the decision is not, and the decision is the
@@ -1386,7 +1253,9 @@ permission to write private download context into every output.)*
 **Owner:** Planner
 **Priority:** Low — useful if it survives the user's later processing, and unnecessary for the
 History removal
-**Phase:** Phase 4 or later
+**Phase:** **Phase 3 — maintainer ruling, 2026-08-08.** *(Was "Phase 4 or later".)* The decision is
+Phase 3's to take, so that Phase 4 opens without a Phase 3 question still attached to it. The
+measurement is already done; what is outstanding is the ruling, not the work.
 **Depends on:** nothing. *(This read "`T-169` for the boundary between the ledger and file-owned
 provenance". There is no ledger, so there is no boundary to draw — if provenance is adopted, a file
 is the only place it could go, which strengthens the case rather than removing it.)*
@@ -1480,80 +1349,6 @@ exists after `T-175` and migration `0009`.
 - Reintroducing a History surface, completion record or Settings clearing route
 - Renaming identifiers solely because their historical rationale mentions History
 - Rewriting historical records, migrations or frozen evidence
-
----
-
-### T-180 — Two permitted instances share one thumbnail cache and sweep each other's pictures
-
-**Status:** Proposed — **filed out of `T179-R1`'s maintainer disposition, 2026-08-07.** The finding
-was about a gate that cannot see another process; the defect underneath it is that the two
-processes are allowed to collide in this directory at all.
-**Owner:** Implementer
-**Priority:** Medium — no data is lost, but the failure is silent and gets worse the more the
-second instance is used
-**Phase:** Phase 3 cleanup, unless the partition turns out to want a migration
-**Depends on:** nothing. `T-179` is independent of this and was dispositioned without it
-**Relevant context:** `ARC-006` (the decision that permits the second instance), `A-004`,
-`T-119` (a picture goes with its job), `T118-R13`, `T179-R1`
-**Affected surfaces:** `core/paths.py`, `ui/thumbnails.py`, their tests
-**Risk:** **Medium.** The remedy moves a cache location, so a careless version strands every
-existing thumbnail — regenerable, but a wholesale refetch is not a quiet event on a large queue
-
-#### What is wrong
-
-`ARC-006` decided the single-instance guard is named from the *database* path, precisely so two
-instances against different databases are not blocked: "Two instances against *different*
-databases harm nothing and must not be blocked." `thumbnail_cache_directory()` does not carry that
-distinction — it is `cache_directory() / "thumbnails"`, one directory for the machine.
-
-Both halves of that collision are live:
-
-- **Deletion.** `_SweepTask.run` unlinks every entry whose name is not in the keep set it was
-  handed. Instance A's reset therefore deletes the pictures instance B just fetched, and B's next
-  reset returns the favour. This predates `T-179` and is the reason `T179-R1` was dispositioned
-  rather than fixed
-- **Blindness.** `cache_generation()` counts publications in *this* process, so A's sweep gate
-  cannot know B published anything. This is `T179-R1` exactly, and it is the harmless half
-
-#### Scope
-
-Decide whether the thumbnail cache is per-machine or per-database, and make the code say so. If
-per-database, derive the directory the way `ARC-006` derives the server name and state the
-derivation once, in one place, so the two cannot drift apart. If per-machine, then the sweep may
-not unlink what it cannot account for, and the keep set has to come from somewhere wider than one
-instance's queue.
-
-**This is a decision task before it is an implementation task.** Which of the two it is belongs to
-the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a commit.
-
-#### Acceptance criteria
-
-- The chosen boundary is recorded as a decision, with the alternative and why it lost, before the
-  code moves
-- Two stores over two different databases, exercised concurrently in one test, do not delete each
-  other's cached pictures — asserted on the files, not on a call count
-- `T-119`'s criterion still holds within an instance: a picture survives while any of *its* jobs
-  names it, and goes when the last one stops
-- Whatever happens to thumbnails already on disk under the old location is stated and tested —
-  migrated or deliberately abandoned, not left to chance
-- If the partition lands, `cache_generation()`'s docstring loses its residual-risk paragraph
-  because the risk is gone; if it does not, that paragraph is still true and stays
-- **`T179-R3` is discharged either way** (Low, non-blocking, assigned here 2026-08-07). That
-  paragraph says a foreign publication survives "one sweep's delay" (`ui/thumbnails.py:127`), and
-  sweeps are **event-driven, not periodic** — so the elapsed time can be the rest of the process
-  lifetime. Whichever way this task goes, the paragraph is rewritten to the precise trigger the
-  task record already uses — *until this one's own membership changes* — or removed with the risk.
-  The finding does not reopen `T-179`, which is approved at `1e0d0d5`
-- `ruff check .`, `ruff format --check .`, both mypy platforms, task placement, and the queue-view,
-  thumbnail and paths tests are clean
-
-#### Out of scope
-
-- Revisiting `ARC-006`. That two instances on different databases are permitted is settled; this
-  task makes the cache agree with it
-- The single-instance guard itself, its socket, or its named pipe
-- Any other directory under `cache_directory()`. If one of them has the same defect it gets its own
-  task rather than being swept into this one
 
 ---
 
@@ -1711,6 +1506,60 @@ careless capture is how data reaches the repository permanently
 - Relaxing `ai/TESTING.md` §5 to admit a source whose licence is unstated or which churns. That
   trade was declined for `fps` in `OPS-013` and nothing here reopens it
 - Changing what the projection reads. `T-108` did that; this makes the fixtures catch up
+
+---
+
+### T-191 — A queued row shows no size until it downloads
+
+**Status:** Proposed — **filed 2026-08-08 by the `T143-R1` amendment**, which deferred pre-download
+size here rather than declining it. A criterion cannot be narrowed into nowhere, so this is where it
+went.
+**Owner:** Implementer
+**Priority:** Low — no defect, and no user has reported it. `UX-005` §3 does not promise a size
+before a download starts, which is why `T-143` was amended rather than expanded
+**Phase:** Phase 4 — polish, and it is a schema change, so it does not belong in a phase that is
+exiting
+**Depends on:** nothing
+**Relevant context:** `T-143`, `T143-R1`, `UX-005` §3, `DAT-001`, `core/models.py` (`Job`,
+`FormatInfo.filesize`, `FormatInfo.filesize_is_estimate`), `persistence/` migrations
+**Affected surfaces:** `core/models.py`, `persistence/`, `ui/queue_view.py`, a migration
+**Risk:** Low in mechanism, **Medium in honesty.** A size shown before a download is a *prediction*,
+and `FormatInfo.filesize_is_estimate` exists because yt-dlp's own number is sometimes
+`filesize_approx`. A row that states an estimate as a fact is the class of confident lie
+`Job.progress` already refuses to tell
+
+#### What is wrong
+
+Nothing, today — and that is why this is Low. **No row of any kind shows a size before it runs.**
+A pasted URL and a playlist entry are equally bare, so there is no inconsistency for a user to
+notice; there is a field the application could show and does not.
+
+`T-143`'s first acceptance criterion asked for it and could not have delivered it: a size lives
+per-format in `FormatInfo.filesize`, and `Job` carries only `bytes_total`, which a *download*
+reports. `T143-R1` found the criterion unmet, the maintainer amended it to the `UX-005` §3 anatomy,
+and the deferred half is this entry.
+
+#### Scope
+
+Decide whether a queued row shows a predicted size, and if so store it. That means a field on `Job`
+populated from the chosen format, a migration for it, and a decision on what the row says when the
+number is `filesize_approx` rather than `filesize`.
+
+**The estimate question is the real work.** Storing a number is a morning; deciding what a row says
+when the number is a guess is the part that needs a ruling, because `REQ-003` already names the
+column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exactly this reason.
+
+#### Acceptance criteria
+
+- A queued row shows the size of the format it will actually download, before it downloads
+- An estimated size is **shown as an estimate**, distinguishable from a size the site stated
+- A format with no size at all leaves the row saying nothing rather than zero
+- The stored size survives a restart, and a re-probe that changes the chosen format updates it
+- Changing the format on a row changes the size it shows
+
+#### Out of scope
+
+- Predicting a size for a format the user has not chosen. The row shows what it will download
 
 ---
 
@@ -2267,6 +2116,365 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-143 — A playlist's entries are never probed, so their rows stay bare
+
+**Status:** **Complete — Approved 2026-08-08.** Reviewed at `bf30d82` and **Blocked** on `T143-R1`
+(High): the first acceptance criterion required pre-download *size*, which no row of any kind
+carries. **The maintainer amended the criterion** to the `UX-005` §3 row anatomy and deferred
+pre-download size to `T-191`; **no source changed for that amendment**, and the focused
+documentation re-review **resolved `T143-R1`**. The code itself drew no finding at any point.
+
+**The title describes a defect that was half-fixed before this task was opened, and the entry below
+said so in the present tense for four days.** `T137-R2` — a **High** filed against `T-137` and
+marked **Resolved** — is *"route each new entry through a real probe before its download is
+admitted"*, which is this task's first clause. Both admission routes have carried it since:
+`ui/add_dialog.py` admits an unprobed row as `PROBE` rather than `DOWNLOAD`, and `app.py` applies
+the same rule at startup so a crash between the durable write and the admit cannot bypass it.
+`_probe_settled` then carries the probe on into the download (`ARC-009`).
+
+*(Recorded rather than quietly deleted, because the mistake is the reusable part and it is the
+second time: `T105-R1` was the same shape — a task entry outliving the thing that settled it, read
+by an implementer as current truth. **A finding resolved against one task can close another task's
+premise, and nothing walks the entries to say so.**)*
+
+**What was actually left, and is what this task built:** the probe landed but its result did not
+survive the write. `_claim_outcome`'s `Probed` branch persisted `title`, `thumbnail_url` and
+`is_live` and dropped `uploader` and `duration_seconds` on the floor, while `add_dialog`'s
+`_durable_job` carried the whole set across for a **pasted** URL. So a playlist entry probed,
+acquired a title and a picture, and still showed no uploader and no duration beside a pasted row
+that showed both — *"their rows stay bare"*, exactly as reported, for a different reason than the
+title gives. `T124-R4` had already corrected this omission in the add dialog and its docstring says
+*"adding the next one is a schema change and not a second omission"*; this was the second omission.
+
+**Owner:** Implementer
+**Priority:** Medium-High — `UX-003` promises a queued job is a probed one, and these are not
+**Phase:** Phase 3
+**Depends on:** `T-137` (done)
+**Relevant context:** `UX-003`, `T080-R1`, `T137-R2`, `T124-R4`, `UX-001`, `UX-005` §3, `ARC-004`,
+`ARC-009`, `downloader/manager.py`, `ui/add_dialog.py`
+**Affected surfaces:** `downloader/manager.py`, `tests/integration/test_manager.py`
+**Risk:** Low as built — one write gained two fields it already had in hand. *(Was Medium, on the
+assumption this task would add N extractions per playlist. `T137-R2` had already added them.)*
+
+#### Scope
+
+Reported as *"no thumbnails were downloaded for any of the playlist"* and *"even if the queue is
+paused it should still probe each of the tracks"*. **Both are the same gap**, and neither is what
+it looks like:
+
+- **Pause already exempts probes.** `T080-R1` records it and the manager says so in as many words:
+  *"a paused queue admits a probe and parks a download."* Nothing needs changing there.
+- **The entries are never probed at all.** ~~`T-137` builds them from a *flat* extraction — an
+  address and a name — and marks them `QUEUED` rather than `READY` precisely because no probe
+  ran.~~ **Struck 2026-08-08: closed by `T137-R2` before this task was picked up.** The flat
+  extraction and the `QUEUED` marking are still exactly as described; what changed is that both
+  admission routes now admit an unprobed row as `PROBE`, so a queued entry *is* probed before it
+  downloads. The premise survived four days after the thing that falsified it.
+
+*The thumbnail half is separately fixed*: a flat entry carries `thumbnails`, not `thumbnail`, and
+reading only the singular is why every entry drew the derived tile. That is corrected under `T-137`.
+
+**`UX-003` is the requirement in tension.** It makes every queued job a probed one, which is why a
+pasted URL resolves before it is added. A playlist deliberately skipped that to avoid one
+extraction per item during the add — the cost `project_media` has refused since `T-016`. Doing it
+*after* admission moves the cost to a moment nobody is waiting, which is the shape `T137-R2` built.
+
+#### Acceptance criteria
+
+| Criterion | Where it is met | Asserted by |
+|---|---|---|
+| Entries acquire the `UX-005` §3 row anatomy — **title, uploader, duration and picture** — without being downloaded *(amended 2026-08-08; see below)* | `manager._claim_outcome`'s `Probed` branch — **this task's change** | `test_a_probed_entry_carries_everything_the_row_draws` |
+| It happens **while the queue is paused** | `_gate_closed` exempts `PROBE` — pre-existing (`T080-R1`, and `UX-006` made it load-bearing) | `test_a_paused_queue_still_reads_urls`, `test_pause_does_not_refuse_a_probe_the_user_just_asked_for` |
+| The probes are **bounded** | `_probe_limit`, a lane of its own rather than a share of one budget (`T-116`) — pre-existing | the probe-lane ceiling cases in `test_manager.py` |
+| A probe failure marks that entry and does not stop the others | pre-existing per-entry outcome handling; **previously unasserted** | `test_one_entrys_failed_probe_does_not_stop_its_neighbours` |
+| Cancelling or removing an entry cancels its probe | `remove` → `cancel`, pre-existing; **previously unasserted for a probe** | `test_removing_an_entry_stops_the_probe_it_asked_for` |
+| `ARC-004` respected — no `READY → PROBING` edge | `QUEUED → PROBING → READY`, already the legal path; no edge was added | the exhaustive transition table tests (`ai/TESTING.md` §7) |
+
+#### The first criterion was amended, and by whom
+
+**Amended by maintainer ruling, 2026-08-08, on `T143-R1` (High).** The row read *"title, duration,
+**size** and picture"*. It now reads the `UX-005` §3 anatomy this task can actually deliver, and
+**pre-download size is explicitly deferred** to `T-191`.
+
+**Why the wording was wrong rather than unmet.** A size lives per-format in `FormatInfo.filesize`;
+`Job` carries `bytes_total`, which is what a *download* reports. **A pasted URL's row has no
+pre-download size either** — so the criterion as written was not describing a gap between a playlist
+entry and a pasted one, which is what this task exists to close. It was describing a field the
+application does not have for any row, and no implementation of *this* task could have met it.
+
+**The correction is the reviewer's, not the implementer's, and that distinction is the finding.**
+The entry already said in as many words that size was out of reach and named the schema change it
+would need — and `T143-R1` is that an honest diagnosis is not satisfaction of a stated criterion.
+*"A reviewer cannot silently remove an acceptance condition or authorize the schema expansion"*, and
+neither can an implementer. Flagging a criterion and amending one are different acts with different
+authority, and this task did the first while reading as though it had done the second.
+
+#### Out of scope
+
+- Changing what pause does. It already admits probes
+- Storing a pre-download size on the job — **deferred to `T-191` by the amendment above**, not
+  declined. A criterion cannot be narrowed into nowhere
+
+---
+
+### T-180 — Two permitted instances share one thumbnail cache and sweep each other's pictures
+
+**Status:** **Complete — Approved 2026-08-08.** Reviewed at `bf30d82` and **Blocked** on two
+findings, both corrected and **Resolved** on re-review: `T180-R1` (High) — the boundary and the
+adoption policy were implemented without the accepted decision this entry itself required first,
+now **`DAT-007`, accepted 2026-08-08**; `T180-R2` (Medium) — the principal test bypassed production
+composition, now asserted through two composed applications and mutation-checked at three seam
+points. *(Was: Proposed — **filed out of `T179-R1`'s maintainer disposition, 2026-08-07.** The
+finding was about a gate that cannot see another process; the defect underneath it is that the two
+processes are allowed to collide in this directory at all.)*
+
+**The cache is partitioned per database, and that is `DAT-007` — accepted 2026-08-08.**
+`core/paths.cache_root_for` derives a root from the resolved database path via `derived_component`
+— the same two primitives `lock_path_for` and `T113-R1` already use, so the guard and the cache
+cannot disagree about what "the same database" means. Composition derives it and hands `ui/` a
+root; no widget learns what a database is.
+
+*(**This entry and the source both said the boundary was "the one `ARC-006` already drew", and
+`T180-R1` is that this was an unratified choice wearing a derivation's clothes.** `ARC-006` permits
+an instance on a different database; it does not say where that instance's cache lives, so a
+machine-wide cache with a coordinated sweep was equally available and had to be rejected on the
+record rather than passed over. `DAT-007` now carries the boundary, the rejected alternative, the
+first-launch adoption trade-off, and why each lost. This task's own text required that decision
+**before code moved**, and the code moved first — the decision is the reusable half of the finding.)*
+
+**Both halves of `T179-R1` close, and only one of them was the destructive one.** *Deletion*:
+`_SweepTask` now iterates a directory this instance owns alone, so there is nothing foreign in it
+to unlink. *Blindness*: `cache_generation` is keyed by directory, so a process-local publication
+count is now a complete one — it inherited the fix rather than needing its own.
+
+**The existing cache is adopted, not stranded.** The risk line below is the reason: on first run,
+a legacy shared `thumbnails/` is renamed into this database's partition rather than left behind, so
+the launch after an upgrade refetches nothing. First database to launch adopts it — the shared
+directory is the mixture the collision produced, so no partition has a better claim, and the
+adopter's own sweep then collects what it does not name. Every failure mode (cross-device rename,
+a directory in use, a permission) leaves the legacy alone and costs one refetch; a cache is
+regenerable, and none of it may stop a launch.
+
+**Owner:** Implementer
+**Priority:** Medium — no data is lost, but the failure is silent and gets worse the more the
+second instance is used
+**Phase:** **Phase 3 cleanup. The partition did not want a migration** — a directory rename touches
+no schema and needs no version bump, so the condition this line carried did not fire.
+**Depends on:** nothing. `T-179` is independent of this and was dispositioned without it
+**Relevant context:** `ARC-006` (the decision that permits the second instance), `A-004`,
+`T-119` (a picture goes with its job), `T113-R1` (`derived_component`), `T118-R13`, `T179-R1`
+**Affected surfaces:** `core/paths.py`, `app.py`, `ui/main_window.py`, `ui/queue_view.py`,
+`ui/thumbnails.py`, their tests
+**Risk:** **Medium as filed, and the remedy is shaped by it.** The remedy moves a cache location,
+so a careless version strands every existing thumbnail — regenerable, but a wholesale refetch is not
+a quiet event on a large queue. `adopt_legacy_cache` is that sentence answered rather than accepted.
+
+#### What a reviewer should look at hardest
+
+- **The criterion is asserted at the production seam** (`T180-R2`, corrected 2026-08-08).
+  `test_two_databases_get_two_thumbnail_caches_through_composition` builds **two whole
+  applications** over two databases and reads the store each one's queue view actually holds;
+  `test_the_window_hands_the_partitioned_root_to_both_of_its_stores` covers the add dialog, because
+  `cache_generation` is keyed by directory and two roots would put `T118-R16`'s count back out of
+  reach. **Mutation-checked at three seam points**, all caught: composition not deriving the root,
+  `MainWindow` not passing it to the queue store, and not passing it to the dialog.
+  *(This bullet used to name `test_a_sweep_cannot_reach_another_databases_pictures` as "the
+  criterion". It is not — it derives both roots itself and builds one store, so it proves
+  `cache_root_for` separates roots handed to it and would stay green through all three of those
+  mutations. It is kept as the narrower unit claim, now saying so in its own docstring. A mutation
+  check is only worth what it is aimed at, and this one was aimed inside the helper.)*
+- **Adoption runs at most once, and never onto a populated partition.** The dangerous version is
+  one that renames on every launch: a legacy directory can reappear (an older build writing beside
+  a newer one) and a second rename would take this database's live cache with it.
+  `test_adoption_happens_once_and_never_overwrites` is that case.
+- **First-to-launch adopts.** A choice rather than a derivation, and now **accepted as one** in
+  `DAT-007` with the alternative it beat: on a machine with two databases the second starts with an
+  empty cache and refetches, which is what it would have done under any partition.
+
+#### What is wrong
+
+`ARC-006` decided the single-instance guard is named from the *database* path, precisely so two
+instances against different databases are not blocked: "Two instances against *different*
+databases harm nothing and must not be blocked." `thumbnail_cache_directory()` does not carry that
+distinction — it is `cache_directory() / "thumbnails"`, one directory for the machine.
+
+Both halves of that collision are live:
+
+- **Deletion.** `_SweepTask.run` unlinks every entry whose name is not in the keep set it was
+  handed. Instance A's reset therefore deletes the pictures instance B just fetched, and B's next
+  reset returns the favour. This predates `T-179` and is the reason `T179-R1` was dispositioned
+  rather than fixed
+- **Blindness.** `cache_generation()` counts publications in *this* process, so A's sweep gate
+  cannot know B published anything. This is `T179-R1` exactly, and it is the harmless half
+
+#### Scope
+
+Decide whether the thumbnail cache is per-machine or per-database, and make the code say so. If
+per-database, derive the directory the way `ARC-006` derives the server name and state the
+derivation once, in one place, so the two cannot drift apart. If per-machine, then the sweep may
+not unlink what it cannot account for, and the keep set has to come from somewhere wider than one
+instance's queue.
+
+**This is a decision task before it is an implementation task.** Which of the two it is belongs to
+the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a commit.
+
+#### Acceptance criteria
+
+- The chosen boundary is recorded as a decision, with the alternative and why it lost, before the
+  code moves
+- Two stores over two different databases, exercised concurrently in one test, do not delete each
+  other's cached pictures — asserted on the files, not on a call count
+- `T-119`'s criterion still holds within an instance: a picture survives while any of *its* jobs
+  names it, and goes when the last one stops
+- Whatever happens to thumbnails already on disk under the old location is stated and tested —
+  migrated or deliberately abandoned, not left to chance
+- If the partition lands, `cache_generation()`'s docstring loses its residual-risk paragraph
+  because the risk is gone; if it does not, that paragraph is still true and stays
+- **`T179-R3` is discharged either way** (Low, non-blocking, assigned here 2026-08-07). That
+  paragraph says a foreign publication survives "one sweep's delay" (`ui/thumbnails.py:127`), and
+  sweeps are **event-driven, not periodic** — so the elapsed time can be the rest of the process
+  lifetime. Whichever way this task goes, the paragraph is rewritten to the precise trigger the
+  task record already uses — *until this one's own membership changes* — or removed with the risk.
+  The finding does not reopen `T-179`, which is approved at `1e0d0d5`
+- `ruff check .`, `ruff format --check .`, both mypy platforms, task placement, and the queue-view,
+  thumbnail and paths tests are clean
+
+#### Out of scope
+
+- Revisiting `ARC-006`. That two instances on different databases are permitted is settled; this
+  task makes the cache agree with it
+- The single-instance guard itself, its socket, or its named pipe
+- Any other directory under `cache_directory()`. If one of them has the same defect it gets its own
+  task rather than being swept into this one
+
+---
+
+### T-111 — User presets: create, edit, duplicate, delete, set default
+
+**Status:** **Complete — Approved 2026-08-08.** Reviewed by Codex at `bf30d82` (*Changes
+requested*, three findings), corrected the same day, and **approved on re-review**: `T111-R1`,
+`T111-R2` and `T111-R3` are all **Resolved** and no open finding remains. **The ninth and last
+Phase 3 deliverable.**
+
+*(The approval covers the reviewed uncommitted correction diff over `bf30d82`. The reviewer did not
+re-run the full suite or mutation results, and Windows runtime remains unverified — as with every
+review this phase.)*
+
+#### The review's three findings, and what each correction was
+
+| Finding | Disposition |
+|---|---|
+| `T111-R1` **High** | **Corrected.** The `P-3`/`P-16` route exists: an `Options…` button opens the same `OptionsDialog` on the selected saved preset, and accepting feeds the whole result through `update_preset` |
+| `T111-R2` **High** | **Corrected.** `_presets_from` enforces one unique name across built-ins and saved presets, refusing a colliding entry and reporting it per `ARC-008` |
+| `T111-R3` **Medium** | **Corrected.** `open_preset_manager` defers by one turn, exactly as `open_options` does |
+
+- **`T111-R1` — the route the form's own docstring promised.** `_build_form` said the seven options
+  have an editor already and that a second set of controls here would be two screens answering one
+  question. That was right, and it was only half-built: nothing ever opened the other screen, so
+  media kind, codec, quality, remux, recode, thumbnail, metadata, chapters and subtitles were not
+  editable on a saved preset at all. The button opens the **same widget** as the one-off path, with
+  a title naming the preset. **No sink is passed**, so *Save as preset…* is not drawn: a creation
+  route inside the editor of a preset would leave two presets where the user meant to change one.
+  A built-in opens nothing, which is `_delete`'s clause and `§8`'s.
+- **`T111-R2` — the collision policy was enforced everywhere except where a file enters.**
+  `add_preset` and `update_preset` refused a taken name; `_presets_from` checked each entry's shape
+  and nothing about its name. A hand-edited preset called `Audio only (MP3)` therefore loaded with
+  `problem=None`, drew two rows of one name, and `preset_named` answered with the built-in while
+  the saved row held a different selector — and every operation this module has addresses a preset
+  **by name**. **Refused rather than disambiguated**, which applies the stated policy rather than
+  inventing one: a name in a hand-edited file was typed by the user, and renaming it silently is
+  the thing `ARC-008` exists to report rather than do. Earlier entries win, so the file's order
+  decides; built-ins are checked first, so nothing can shadow one that ships.
+- **`T111-R3` — the test bypassed the stack the defect lives on.** The route reached composition's
+  modal manager synchronously from `StagingModel.setData`, which Qt calls inside `commitData` with
+  the row's combo still open — the nested-event-loop ordering `T108-R2` records as a dead editor.
+  The shipped test called `setData` directly, so it exercised everything about the route except
+  where it runs. The new test drives the real combo through `commitData`, asserts nothing opens
+  underneath it, and proves the editor is reaped and the row can be edited again.
+
+**Each correction is mutation-checked**, because all three findings are of the class where a test
+can pass without the fix: removing the collision guard fails three of the four new load cases (the
+fourth is anti-vacuity and correctly still passes); removing the deferral fails both manager-route
+cases; and discarding the options screen's answer while still opening it fails the stored-fields
+case.
+
+*(Was: In Review — implemented 2026-08-08, awaiting the maintainer's verdict.)*
+
+All five operations exist in `core/settings.py` and are performed on `ui/preset_manager.py`. What
+each part of the deliverable is, and where it is asserted:
+
+| Piece | Where | Asserted by |
+|---|---|---|
+| create / edit / duplicate / delete / set default | `core/settings.py` | `tests/unit/test_settings.py`, 30 new cases |
+| one list, built-ins marked (`P-6`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
+| always exactly one default (`P-7`) | `settings.default_preset_of` | both files |
+| a list beside a form, buttons in `Tab` order (`P-20`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
+| `Manage presets…` on the format control | `ui/row_delegate.py`, `ui/add_dialog.py` | `tests/ui/test_add_dialog.py`, 3 cases |
+| a new paste inherits the default (`P-7`) | `ui/add_dialog.py` | `tests/ui/test_add_dialog.py`, 3 cases |
+| a preset needing ffmpeg says so (`REQ-024`) | `DownloadManager.requires_ffmpeg` | `tests/integration/test_manager.py`, 3 cases |
+
+**What a reviewer should look at hardest**, since all six acceptance criteria now have assertions
+behind them:
+
+- **The ffmpeg question is asked with a placeholder URL.** A preset carries neither URL nor output
+  directory and `DownloadRequest` refuses both empty, so `requires_ffmpeg` builds a request against
+  `https://example.invalid/preset` — RFC 2606's reserved name, and the stand-in `_freeze_probe`
+  already uses. That is only honest because the answer does not depend on it, which
+  `test_the_answer_does_not_depend_on_the_placeholder` asserts across every built-in rather than
+  asserting it once. **The alternative was rejected deliberately**: a predicate reading the
+  preset's own fields needs no placeholder, and would be the hardcoded list
+  `adapter.requires_ffmpeg`'s docstring records as having already missed processors once. One
+  answer, derived from yt-dlp's class hierarchy, was preferred to two that can drift.
+- **`Delete` on a built-in does nothing and is not drawn disabled.** That is `docs/UX_SPEC.md` §8's
+  clause and it is implemented literally, including the silence. It is marked `[D]`, not `[T]`, so
+  it is derived rather than ruled — and a button that visibly does nothing is the kind of thing
+  `T-139` argues against elsewhere. Worth a second look at whether the mark alone is enough.
+
+*(Was: Proposed — **Phase 3 decomposition, 2026-08-01.**)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-105`; `T-109` for the option set a preset can carry
+**Relevant context:** `docs/UX_SPEC.md` §8 (**where presets persist is already decided** — TOML at
+`settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5; no new store, no migration owed. `P-20`,
+the manager's layout, is **ruled 2026-08-07** by `UX-007`: **one list** holding built-ins and user
+presets together with built-ins marked (`P-6`), **a list beside a form with buttons** rather than a
+menu (`P-20`), **always exactly one default** so a paste always has something to inherit (`P-7`),
+and import/export and per-site rules refused (`P-21`)), `DAT-001`, `ARCHITECTURE.md` §5, `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
+`to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
+**Affected surfaces:** `core/presets.py`, `core/settings.py`, `ui/`
+**Risk:** Medium — user presets are persisted state with a name-collision problem
+
+#### Scope
+
+`REQ-007`: create, edit, duplicate, delete, and set a default. The built-in presets (`REQ-006`) stay
+and must not be editable into something that no longer matches its own name.
+
+**Where they live is already decided, and this task does not reopen it** (`T105-R1`, High). User
+presets persist as **TOML in the existing `settings.toml`**, per `DAT-001` and `ARCHITECTURE.md` §5.
+No new store, no sibling file, no table, and no migration is owed.
+
+*(This read "a decision this task must take or raise", and argued for a sibling file. It was wrong
+twice over: the decision existed before the task was written, and an implementer following the
+paragraph would have built the store `T105-R1` forbids. `docs/UX_SPEC.md` §8 was corrected on
+2026-08-06 and this entry was not, which is exactly the drift the finding is about — the spec is
+not what an implementer opens.)*
+
+#### Acceptance criteria
+
+- All five operations, each asserted on what is stored afterwards
+- A built-in preset cannot be edited or deleted; duplicating one is how you start from it
+- A user preset with a colliding name is refused or disambiguated, stated either way
+- The default survives a restart, and deleting the default leaves a defined default
+- A preset carrying options that need ffmpeg behaves like `T-108`/`T-109` when it is absent
+- A hand-edited preset file that is malformed reports rather than reverting silently (`ARC-008`)
+
+#### Out of scope
+
+- Sharing or importing presets
+
+---
 
 ### T-113 — Resume a partial download across a restart
 
