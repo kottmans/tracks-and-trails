@@ -562,7 +562,7 @@ work depended on itself. One task is now filed and the other is a tombstone poin
 | Separate video/audio selection and merge (`REQ-008`) | `T-108` | Medium — `T-061` is what a wrong ffmpeg check costs |
 | Post-processing, seven options (`REQ-010`) | `T-109` | **High** — `T-077` found four of five Phase 1 options never produced a file |
 | Playlist probing and per-entry selection (`REQ-004`) | `T-110` | **High** — one URL is one job today; a playlist is one probe producing N |
-| User-defined presets (`REQ-007`) | `T-111` | Medium — persisted state with a name-collision problem. **Where it lives is settled**: TOML in the existing `settings.toml` (`DAT-001`, `ARCHITECTURE.md` §5). *(This said it "needs a decision"; the decision predates the row — `T105-R1`.)* |
+| User-defined presets (`REQ-007`) | `T-111` | **Implemented 2026-08-08, awaiting review.** All five verbs in `core/settings.py`, performed on `ui/preset_manager.py`; the default persists as a top-level `default_preset` key in the existing `settings.toml` — no new store, no migration (`DAT-001`, `ARCHITECTURE.md` §5, `T105-R1`). Three gaps are listed in the task entry and the deliverable is not claimed whole. |
 | Output template editor with live preview (`REQ-011`) | `T-112` | Medium — preview and real path must be one function |
 | Cross-restart resume of partial downloads (`REQ-017`) | `T-113` | **High** — reopens `UX-001` and `T-080`'s `PAUSED` removal |
 | **In-queue duplicate confirmation** (`REQ-022`, rescoped 2026-08-06) | `T-114` | Low — a live-queue comparison that stores nothing |

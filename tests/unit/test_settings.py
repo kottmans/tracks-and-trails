@@ -19,9 +19,17 @@ from tracks_and_trails.core.settings import (
     CONCURRENCY_MINIMUM,
     Settings,
     add_preset,
+    all_presets,
+    default_preset_of,
+    duplicate_preset,
+    free_preset_name,
     load,
+    preset_named,
+    remove_preset,
     save,
+    set_default_preset,
     settings_path,
+    update_preset,
     with_concurrency,
 )
 
@@ -736,3 +744,281 @@ def test_a_failed_write_leaves_the_previous_file_intact(tmp_path: Path) -> None:
     assert failure is not None
     assert target.read_text(encoding="utf-8") == before, "a failed write damaged the good file"
     assert [preset.name for preset in load(target).settings.presets] == ["Weekend"]
+
+
+# --- T-111: the five operations REQ-007 names -----------------------------------------------
+#
+# `add_preset` is create and was built by `T-109` as `P-4`'s seam; the four below are the rest.
+# Every case asserts on **what is stored afterwards** rather than on the return value alone,
+# which is this task's first acceptance criterion.
+
+
+def test_editing_a_saved_preset_replaces_it_in_place() -> None:
+    """Edit, asserted on the stored list — and on the *position*, which is easy to lose.
+
+    Rebuilding the tuple by filtering and appending would pass a "the edit is stored" assertion
+    while quietly moving the preset to the end. The list is in the order the user saved them, and
+    an edit is not a save.
+    """
+    settings = add_preset(add_preset(Settings(), a_preset(name="First")), a_preset(name="Second"))
+
+    edited = update_preset(settings, "First", a_preset(name="First", audio_quality="320"))
+
+    assert [preset.name for preset in edited.presets] == ["First", "Second"]
+    assert edited.presets[0].audio_quality == "320"
+
+
+def test_editing_can_rename_and_the_new_name_is_what_is_stored() -> None:
+    settings = add_preset(Settings(), a_preset(name="Weekend viewing"))
+
+    edited = update_preset(settings, "Weekend viewing", a_preset(name="Weeknight viewing"))
+
+    assert [preset.name for preset in edited.presets] == ["Weeknight viewing"]
+
+
+def test_editing_into_a_name_already_taken_is_refused() -> None:
+    """The same rule `add_preset` applies, at the other door into the same list.
+
+    A rename is a creation as far as the name is concerned, and a check on one path only is how
+    two presets end up sharing a name that `REQ-009` promises identifies the download.
+    """
+    settings = add_preset(add_preset(Settings(), a_preset(name="First")), a_preset(name="Second"))
+
+    with pytest.raises(ValueError, match="already exists"):
+        update_preset(settings, "First", a_preset(name="Second"))
+
+
+def test_editing_into_a_built_ins_name_is_refused() -> None:
+    settings = add_preset(Settings(), a_preset(name="Mine"))
+
+    with pytest.raises(ValueError, match="already exists"):
+        update_preset(settings, "Mine", a_preset(name=preset_registry.AUDIO_MP3.name))
+
+
+def test_a_preset_may_be_edited_without_renaming_it() -> None:
+    """The collision check must not fire on the preset's *own* name, which is the obvious trap."""
+    settings = add_preset(Settings(), a_preset(name="Weekend viewing"))
+
+    edited = update_preset(
+        settings, "Weekend viewing", a_preset(name="Weekend viewing", embed_metadata=True)
+    )
+
+    assert edited.presets[0].embed_metadata is True
+
+
+def test_a_built_in_cannot_be_edited_and_the_refusal_says_what_to_do_instead() -> None:
+    """`REQ-006`/`REQ-009`: a built-in edited in place no longer matches the name it ships under.
+
+    `docs/UX_SPEC.md` §8 makes duplication the way to start from one, so the refusal names it —
+    a caller reading this message does not have to find the route themselves.
+    """
+    with pytest.raises(ValueError, match="built-in"):
+        update_preset(Settings(), preset_registry.AUDIO_MP3.name, a_preset(name="Anything"))
+
+
+def test_editing_an_unknown_preset_is_refused() -> None:
+    with pytest.raises(ValueError, match="no saved preset"):
+        update_preset(Settings(), "Never existed", a_preset())
+
+
+def test_deleting_removes_it_from_what_is_stored() -> None:
+    settings = add_preset(add_preset(Settings(), a_preset(name="First")), a_preset(name="Second"))
+
+    assert [preset.name for preset in remove_preset(settings, "First").presets] == ["Second"]
+
+
+def test_a_built_in_cannot_be_deleted() -> None:
+    """`docs/UX_SPEC.md` §8: built-ins are marked as undeletable rather than drawn disabled."""
+    with pytest.raises(ValueError, match="built-in"):
+        remove_preset(Settings(), preset_registry.AUDIO_MP3.name)
+
+
+def test_deleting_an_unknown_preset_is_refused() -> None:
+    with pytest.raises(ValueError, match="no saved preset"):
+        remove_preset(Settings(), "Never existed")
+
+
+def test_duplicating_stores_a_copy_under_a_free_name() -> None:
+    settings = add_preset(Settings(), a_preset(name="Weekend viewing", audio_quality="320"))
+
+    duplicated, copy = duplicate_preset(settings, "Weekend viewing")
+
+    assert copy.name == "Weekend viewing (copy)"
+    assert copy.audio_quality == "320", "the copy did not carry the original's fields"
+    assert [preset.name for preset in duplicated.presets] == [
+        "Weekend viewing",
+        "Weekend viewing (copy)",
+    ]
+
+
+def test_duplicating_a_built_in_is_how_you_start_from_one() -> None:
+    """The other half of the built-in rule, and the reason editing one can be refused at all."""
+    duplicated, copy = duplicate_preset(Settings(), preset_registry.AUDIO_MP3.name)
+
+    assert copy.name == f"{preset_registry.AUDIO_MP3.name} (copy)"
+    assert copy.built_in is False, "a duplicate of a built-in would claim to ship with the app"
+    assert copy.format_selector == preset_registry.AUDIO_MP3.format_selector
+    assert duplicated.presets == (copy,)
+
+
+def test_duplicating_twice_keeps_finding_a_free_name() -> None:
+    """A second copy must not collide with the first, which `add_preset` would refuse outright."""
+    settings, _ = duplicate_preset(Settings(), preset_registry.AUDIO_MP3.name)
+    settings, second = duplicate_preset(settings, preset_registry.AUDIO_MP3.name)
+
+    assert second.name == f"{preset_registry.AUDIO_MP3.name} (copy 2)"
+
+
+def test_duplicating_an_unknown_preset_is_refused() -> None:
+    with pytest.raises(ValueError, match="no preset called"):
+        duplicate_preset(Settings(), "Never existed")
+
+
+def test_a_free_name_is_the_base_itself_when_nothing_holds_it() -> None:
+    assert free_preset_name(Settings(), "Nothing has this") == "Nothing has this"
+
+
+def test_setting_a_default_stores_the_name() -> None:
+    settings = add_preset(Settings(), a_preset(name="Weekend viewing"))
+
+    assert set_default_preset(settings, "Weekend viewing").default_preset == "Weekend viewing"
+
+
+def test_a_built_in_may_be_the_default() -> None:
+    """`P-7` is about there always being one, not about whose it is."""
+    chosen = set_default_preset(Settings(), preset_registry.AUDIO_MP3.name)
+
+    assert default_preset_of(chosen) == preset_registry.AUDIO_MP3
+
+
+def test_setting_an_unknown_default_is_refused() -> None:
+    with pytest.raises(ValueError, match="no preset called"):
+        set_default_preset(Settings(), "Never existed")
+
+
+# --- T-111: P-7 — always exactly one default ------------------------------------------------
+
+
+def test_a_fresh_install_already_has_a_default() -> None:
+    """*Always exactly one, always set*: the dialog needs something to inherit on first run."""
+    assert default_preset_of(Settings()) == preset_registry.BUILT_IN_PRESETS[0]
+
+
+def test_the_default_survives_a_restart(tmp_path: Path) -> None:
+    """This task's fourth criterion, read through the file rather than around it."""
+    target = tmp_path / "settings.toml"
+    settings = add_preset(Settings(), a_preset(name="Weekend viewing"))
+
+    save(set_default_preset(settings, "Weekend viewing"), target)
+    read = load(target)
+
+    assert read.problem is None, read.problem
+    assert read.settings.default_preset == "Weekend viewing"
+    assert default_preset_of(read.settings).name == "Weekend viewing"
+
+
+def test_a_built_in_default_survives_a_restart(tmp_path: Path) -> None:
+    """The default may name a preset that has no `[[preset]]` table of its own to be written in."""
+    target = tmp_path / "settings.toml"
+
+    save(set_default_preset(Settings(), preset_registry.AUDIO_MP3.name), target)
+
+    assert load(target).settings.default_preset == preset_registry.AUDIO_MP3.name
+
+
+def test_deleting_the_default_leaves_a_defined_default() -> None:
+    """The rest of the fourth criterion. Deleting a preset must not leave the field dangling."""
+    settings = set_default_preset(
+        add_preset(Settings(), a_preset(name="Weekend viewing")), "Weekend viewing"
+    )
+
+    after = remove_preset(settings, "Weekend viewing")
+
+    assert after.default_preset == "", "the stored name still points at a deleted preset"
+    assert default_preset_of(after) == preset_registry.BUILT_IN_PRESETS[0]
+
+
+def test_deleting_a_different_preset_leaves_the_default_alone() -> None:
+    settings = add_preset(add_preset(Settings(), a_preset("Keep")), a_preset("Drop"))
+
+    after = remove_preset(set_default_preset(settings, "Keep"), "Drop")
+
+    assert after.default_preset == "Keep"
+
+
+def test_renaming_the_default_carries_the_default_with_it() -> None:
+    """A rename is not a deletion, and must not behave like one.
+
+    The default is stored as a name, so renaming the preset holding it would otherwise leave the
+    field naming nothing — handing the user back the registry's first preset for what they
+    experienced as an edit.
+    """
+    settings = set_default_preset(
+        add_preset(Settings(), a_preset(name="Weekend viewing")), "Weekend viewing"
+    )
+
+    after = update_preset(settings, "Weekend viewing", a_preset(name="Weeknight viewing"))
+
+    assert after.default_preset == "Weeknight viewing"
+    assert default_preset_of(after).name == "Weeknight viewing"
+
+
+def test_a_default_naming_nothing_is_reported_and_falls_back(tmp_path: Path) -> None:
+    """`ARC-008`, and this task's sixth criterion: a hand-edit reports rather than reverting.
+
+    The commonest route here is worth naming — a preset earlier in the same file was malformed,
+    was dropped, and was the one the default named.
+    """
+    target = write(tmp_path, 'default_preset = "Gone"\n[queue]\nconcurrency = 4\n')
+
+    read = load(target)
+
+    assert read.problem is not None, "a discarded choice was not reported"
+    assert "Gone" in read.problem.reason
+    assert read.settings.concurrency == 4, "an unusable default cost the setting beside it"
+    assert default_preset_of(read.settings) == preset_registry.BUILT_IN_PRESETS[0]
+
+
+def test_a_default_that_is_not_a_name_is_reported(tmp_path: Path) -> None:
+    target = write(tmp_path, "default_preset = 3\n[queue]\nconcurrency = 4\n")
+
+    read = load(target)
+
+    assert read.problem is not None
+    assert "not a preset name" in read.problem.reason
+    assert read.settings.concurrency == 4
+
+
+def test_a_file_that_omits_the_default_reports_nothing(tmp_path: Path) -> None:
+    """Omission stays silent, because the file this application writes promises it does."""
+    target = write(tmp_path, "[queue]\nconcurrency = 4\n")
+
+    assert load(target).problem is None
+
+
+def test_settings_refuses_a_default_that_is_not_a_name_in_code() -> None:
+    """A file is corrected; a caller is not. The same split every other field here follows."""
+    with pytest.raises(TypeError, match="default_preset"):
+        Settings(default_preset=3)  # type: ignore[arg-type]
+
+
+# --- T-111: the one list the manager shows --------------------------------------------------
+
+
+def test_all_presets_puts_the_built_ins_first_and_the_users_after() -> None:
+    """`P-6`: one list holding both, with the built-ins marked — not two lists."""
+    settings = add_preset(Settings(), a_preset(name="Mine"))
+
+    listed = all_presets(settings)
+
+    assert listed[: len(preset_registry.BUILT_IN_PRESETS)] == preset_registry.BUILT_IN_PRESETS
+    assert listed[-1].name == "Mine"
+    assert [preset.built_in for preset in listed][-1] is False
+
+
+def test_preset_named_finds_both_kinds_and_answers_none_for_neither() -> None:
+    settings = add_preset(Settings(), a_preset(name="Mine"))
+
+    assert preset_named(settings, "Mine") is not None
+    assert preset_named(settings, preset_registry.AUDIO_MP3.name) == preset_registry.AUDIO_MP3
+    assert preset_named(settings, "Never existed") is None

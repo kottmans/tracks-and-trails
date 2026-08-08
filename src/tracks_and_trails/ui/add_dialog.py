@@ -136,11 +136,13 @@ from tracks_and_trails.ui.row_delegate import (
     HUE_ROLE,
     INHERITED_TEXT,
     JOB_ID_ROLE,
+    MANAGE_PRESETS_DATA,
     OPTIONS_AVAILABLE_ROLE,
     OPTIONS_DATA,
     PRESET_CHOICES_ROLE,
     PRESET_INHERITABLE_ROLE,
     PRESET_ROLE,
+    PRESETS_MANAGEABLE_ROLE,
     ROW_PRESET_NAME,
     SELECTOR_ROLE,
     STATE_ROLE,
@@ -815,6 +817,13 @@ class StagingModel(QAbstractListModel):
             # which is the whole of `REQ-011`'s *intended path* amendment. What it does need is a
             # row whose request has not been written yet.
             return row.committable and not self._dialog.is_saving
+        if role == PRESETS_MANAGEABLE_ROLE:
+            # **Not a question about this row** (`T-111`). The manager edits the catalogue every row
+            # chooses from, so the only condition is that composition wired somewhere to save to —
+            # a control with nowhere to write is the one `UX-005` §5 forbids drawing. Not gated on
+            # `committable` or `is_saving`: a batch being written still has a preset list, and
+            # editing it changes nothing about the requests already in flight.
+            return self._dialog.can_manage_presets
         if role == EXPANDED_ROLE:
             # **Three-valued, and the third value is what makes it correct** (`T-140`'s rule).
             # Absent means *not a playlist*, which draws no disclosure at all; `False` means a
@@ -881,6 +890,12 @@ class StagingModel(QAbstractListModel):
         if value == TEMPLATE_DATA:
             # The third sentinel, intercepted for the same reason as the first two (`T-112`).
             self._dialog.open_template_editor(row)
+            return True
+        if value == MANAGE_PRESETS_DATA:
+            # The fourth, and the only one that does not edit this row (`T-111`). Intercepted for
+            # the same reason regardless: no preset is called this, so the lookup below would clear
+            # the row's format instead of opening the manager.
+            self._dialog.open_preset_manager()
             return True
         name = value if isinstance(value, str) else None
         own = row.preset
@@ -962,6 +977,7 @@ class AddUrlDialog(QDialog):
         ffmpeg_available: bool = True,
         queued_urls: QueuedUrls | None = None,
         save_preset: PresetSink | None = None,
+        manage_presets: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -978,6 +994,13 @@ class AddUrlDialog(QDialog):
         #: options editor, which draws the control only where there is one — this dialog does not
         #: learn what a preset store is, for `QueuedUrls`' reason.
         self._save_preset = save_preset
+        #: How `docs/UX_SPEC.md` §8's *Manage presets…* opens (`T-111`).
+        #:
+        #: **A callable rather than a `Settings`**, for `_save_preset`'s reason one step further on:
+        #: this dialog does not learn what a preset store is, and the manager is a screen whose
+        #: lifetime and parent belong to whoever composed it. `None` means the entry is not offered
+        #: at all — a control with nothing behind it is what `UX-005` §5 forbids drawing.
+        self._manage_presets = manage_presets
         self._output_directory = output_directory
         self._presets = tuple(presets)
         #: Whether a merge is possible at all on this installation (`REQ-024`, `P-13`).
@@ -1760,6 +1783,22 @@ class AddUrlDialog(QDialog):
     def presets(self) -> tuple[Preset, ...]:
         """The batch's choices, which are also each row's. Read by `StagingModel`."""
         return self._presets
+
+    @property
+    def can_manage_presets(self) -> bool:
+        """Whether *Manage presets…* is offered. Read by `StagingModel` (`T-111`)."""
+        return self._manage_presets is not None
+
+    def open_preset_manager(self) -> None:
+        """Open `docs/UX_SPEC.md` §8's manager. **Does not touch this dialog's row** (`T-111`).
+
+        The catalogue a row chooses from is composition's, not this dialog's: `presets` was handed
+        over at construction and the manager writes to the settings store behind it. Whoever wired
+        `manage_presets` decides whether a change is reflected here, which is the same division
+        `save_preset` already has.
+        """
+        if self._manage_presets is not None:
+            self._manage_presets()
 
     @property
     def model(self) -> StagingModel:

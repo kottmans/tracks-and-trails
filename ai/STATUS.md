@@ -19,6 +19,26 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: `T-111` implemented and awaiting review — the ninth deliverable is written
+
+**Not approved, and not claimed to be.** `T-111` is submitted, not ratified: `## In Review` now
+holds it, and whether it discharges Phase 3's ninth deliverable is the maintainer's call, not the
+Implementer's.
+
+All five of `REQ-007`'s verbs exist in `core/settings.py` and are performed on a new
+`ui/preset_manager.py` — one list with built-ins marked (`P-6`), a list beside a form with every
+operation as a button (`P-20`), and a default that is always exactly one (`P-7`, resolved by
+`settings.default_preset_of` rather than stored as a guarantee). The default persists as a
+top-level `default_preset` key in the existing `settings.toml`; **no new store and no migration**,
+which is what `T105-R1` settled. 30 new unit cases and 24 new UI cases; `ruff`, `mypy`,
+`mypy --platform win32` and the 2370-test unit/UI suite all pass.
+
+**Three gaps are recorded in `T-111`'s own entry rather than smoothed over**, and a reviewer should
+read them before treating the deliverable as whole: the `Manage presets…` entry point has no test,
+`requires_ffmpeg` is not wired in composition so the fifth acceptance criterion is only partly met,
+and a new paste does not yet inherit the default. The integration suite passes unchanged (364
+cases), so nothing here regressed what was already approved.
+
 ## 2026-08-08: `T-113` approved — eight of nine deliverables, five of six exit criteria
 
 **`T-113` is Approved at `476cf60`** and `## In Review` is empty. Every task submitted in this

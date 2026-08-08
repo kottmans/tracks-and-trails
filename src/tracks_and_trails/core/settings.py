@@ -103,6 +103,19 @@ _PRESET_TABLE: Final = "preset"
 #: and a hand-edited `built_in = true` would let a saved preset claim to ship with the application.
 _PRESET_FIELDS: Final = tuple(field.name for field in fields(Preset) if field.name != "built_in")
 
+#: The name of the preset a newly pasted URL inherits (`REQ-007`, `P-7`, `UX-007`).
+#:
+#: **A top-level key, not a member of `[queue]` or of `[[preset]]`.** It is not a queue setting, and
+#: it cannot live inside a preset table because the default may name a *built-in* — which has no
+#: table in this file at all. TOML requires bare keys to precede the first table, so `save()` writes
+#: it above `[queue]`, which is also where a reader looks for it first.
+#:
+#: **A name rather than an index or a copy.** An index would silently re-point at a different preset
+#: when one earlier in the list is deleted, and a copy would be a second answer to what the preset
+#: contains — the bug `REQ-009` exists to prevent. A name that resolves to nothing is handled by
+#: `default_preset_of`, which is total.
+_DEFAULT_PRESET_KEY: Final = "default_preset"
+
 
 def settings_path() -> Path:
     """`user_config_dir/tracksandtrails/settings.toml`, per `ARCHITECTURE.md` §5.
@@ -133,6 +146,19 @@ class Settings:
     #: by `T-109`.
     presets: tuple[Preset, ...] = ()
 
+    #: The name of the preset a new paste inherits (`REQ-007`, `P-7` ruled by `UX-007`).
+    #:
+    #: **Empty means "the registry's first", not "no default".** `P-7` requires that there is always
+    #: exactly one default, because the dialog needs *something* to inherit — so this field is a
+    #: stored *preference*, and `default_preset_of` is the function that turns it into a preset.
+    #: Storing `BUILT_IN_PRESETS[0].name` here instead would freeze today's registry into every
+    #: settings file ever written, so that a user who never chose a default would keep inheriting a
+    #: preset this application had since replaced.
+    #:
+    #: May name a built-in or one of `presets`. Nothing here checks that it names anything: a file
+    #: is hand-editable, a preset can be deleted, and the resolver answers in every case.
+    default_preset: str = ""
+
     def __post_init__(self) -> None:
         # A `Settings` built in code is held to the bound; a file is not. `load()` corrects what it
         # reads because a malformed file is not a programming error, and a caller passing 0 is.
@@ -144,6 +170,11 @@ class Settings:
             raise ValueError(
                 f"Settings.concurrency is {self.concurrency}; REQ-013's minimum is "
                 f"{CONCURRENCY_MINIMUM}. A pool of zero starts nothing, which looks like a hang."
+            )
+        if not isinstance(self.default_preset, str):
+            raise TypeError(
+                "Settings.default_preset must be a preset name, not a "
+                f"{type(self.default_preset).__name__}"
             )
         if any(preset.built_in for preset in self.presets):
             raise ValueError(
@@ -301,13 +332,14 @@ def load(path: Path | None = None) -> SettingsFile:
     # limit: they are separate values in one file, and `ARC-008` asks what was *discarded*, not
     # what the file's worst part was.
     presets, preset_reason = _presets_from(document)
+    default, default_reason = _default_preset_from(document, presets)
 
     def answer(concurrency: int, reason: str | None = None) -> SettingsFile:
-        both = [part for part in (reason, preset_reason) if part]
-        settings = Settings(concurrency=concurrency, presets=presets)
-        if not both:
+        parts = [part for part in (reason, preset_reason, default_reason) if part]
+        settings = Settings(concurrency=concurrency, presets=presets, default_preset=default)
+        if not parts:
             return SettingsFile(settings)
-        return SettingsFile(settings, SettingsProblem(target, "\n\n".join(both)))
+        return SettingsFile(settings, SettingsProblem(target, "\n\n".join(parts)))
 
     table = document.get(_TABLE)
     if table is None:
@@ -390,6 +422,40 @@ def _presets_from(document: dict[str, Any]) -> tuple[tuple[Preset, ...], str | N
     )
 
 
+def _default_preset_from(
+    document: dict[str, Any], presets: tuple[Preset, ...]
+) -> tuple[str, str | None]:
+    """The stored default preset name, and what had to be discarded to get it (`ARC-008`).
+
+    Read as its own value, like `[queue]` and `[[preset]]` before it: a default naming a preset that
+    is not there must not cost the user their presets, and a preset that failed to parse must not go
+    unreported because the default was fine.
+
+    **A name that resolves to nothing is reported, not silently corrected.** `default_preset_of`
+    already answers with the registry's first, so the application works either way — but the user's
+    stored choice *was* discarded, and `ARC-008`'s rule is that a discard is reported. The commonest
+    way to reach this is the one worth naming: a preset earlier in the same file was malformed, was
+    dropped, and was the default.
+
+    Omission stays silent, for the reason `save()`'s header promises: every value falls back to its
+    default, and a deleted line is not a broken file.
+    """
+    raw = document.get(_DEFAULT_PRESET_KEY)
+    if raw is None:
+        return "", None
+    if not isinstance(raw, str):
+        return "", f"{_DEFAULT_PRESET_KEY} is {raw!r}, which is not a preset name."
+
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+
+    if any(preset.name == raw for preset in (*BUILT_IN_PRESETS, *presets)):
+        return raw, None
+    return "", (
+        f"{_DEFAULT_PRESET_KEY} is {raw!r}, and no preset of that name exists. "
+        "A new download will inherit the first built-in preset instead."
+    )
+
+
 def _toml_string(value: str) -> str:
     """`value` as a TOML basic string. **Total for every string** (`T109-R9`).
 
@@ -461,14 +527,174 @@ def add_preset(settings: Settings, preset: Preset) -> Settings:
     in front of it and can ask for another name; picking one for them is how *Audio only (MP3) (2)*
     appears in a list nobody meant to create.
     """
-    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
-
     if preset.built_in:
         raise ValueError("a built-in preset is not the user's to save")
-    taken = {existing.name for existing in (*BUILT_IN_PRESETS, *settings.presets)}
-    if preset.name in taken:
+    if preset.name in _taken_names(settings):
         raise ValueError(f"a preset called {preset.name!r} already exists")
     return replace(settings, presets=(*settings.presets, preset))
+
+
+def _taken_names(settings: Settings) -> set[str]:
+    """Every preset name that is spoken for, built-in and saved alike.
+
+    Imported inside the function, as `add_preset` did before these five operations shared it:
+    `core.presets` is the registry this module stores *around*, and a module-level import would
+    make the settings layer and the preset registry one import cycle apart for no gain.
+    """
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+
+    return {existing.name for existing in (*BUILT_IN_PRESETS, *settings.presets)}
+
+
+def all_presets(settings: Settings) -> tuple[Preset, ...]:
+    """**One list**, built-ins first and the user's after (`P-6`, ruled by `UX-007`).
+
+    The manager shows a single list rather than two, and the dialog offers the same sequence, so
+    both read it from here instead of concatenating it themselves — two concatenations would be two
+    orders the moment one of them was edited.
+    """
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+
+    return (*BUILT_IN_PRESETS, *settings.presets)
+
+
+def preset_named(settings: Settings, name: str) -> Preset | None:
+    """The preset called `name`, built-in or saved, or `None`.
+
+    `None` rather than `KeyError` because every caller here is asking a question about user input —
+    a name typed into a form, a name read from a hand-edited file — where absence is an ordinary
+    answer. `presets.by_name` keeps raising, for the different question it answers.
+    """
+    return next((preset for preset in all_presets(settings) if preset.name == name), None)
+
+
+def default_preset_of(settings: Settings) -> Preset:
+    """The preset a new paste inherits. **Total: there is always exactly one** (`P-7`, `UX-007`).
+
+    Three ways the stored name can fail to name a preset, and all three answer the same way — the
+    first built-in, which is the registry's own first offer:
+
+    - nothing was ever chosen, which is every first run;
+    - the preset it named was deleted, and `remove_preset` clears the field for exactly this reason;
+    - the file was hand-edited to a name that does not exist.
+
+    Falling back rather than raising is what makes `P-7` true. *"Always exactly one default, always
+    set"* is a promise the dialog relies on to have something to inherit, and a resolver that could
+    raise would move the problem into the paste path instead of solving it.
+    """
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+
+    chosen = preset_named(settings, settings.default_preset) if settings.default_preset else None
+    return chosen if chosen is not None else BUILT_IN_PRESETS[0]
+
+
+def set_default_preset(settings: Settings, name: str) -> Settings:
+    """`settings` with `name` as the preset a new paste inherits (`REQ-007`'s fifth verb).
+
+    **A built-in may be the default, and clearing it is not offered** (`P-7`). The five verbs are
+    create, edit, duplicate, delete and *set default* — there is no *unset*, because the dialog
+    needs something to inherit and `default_preset_of` would answer with the registry's first
+    anyway. A caller wanting that writes the built-in's name.
+
+    Raises for a name that names nothing: the caller is a list the user selected a row in, so an
+    unknown name is a programming error rather than a preference to honour.
+    """
+    if preset_named(settings, name) is None:
+        raise ValueError(f"no preset called {name!r}")
+    return replace(settings, default_preset=name)
+
+
+def update_preset(settings: Settings, name: str, preset: Preset) -> Settings:
+    """`settings` with the saved preset called `name` replaced by `preset`. **Edit**, of the five.
+
+    **A built-in is refused here rather than disabled in the widget** (`REQ-006`). Editing one in
+    place would leave a preset whose contents no longer match the name it ships under, which is
+    `REQ-009`'s promise broken at the source; `docs/UX_SPEC.md` §8 makes duplicating it the way to
+    start from one, and `duplicate_preset` is that route.
+
+    **The position is kept**, so editing a preset does not move it to the end of the user's own
+    list. The list is in the order they were saved, and an edit is not a save.
+
+    **A rename carries the default with it.** The default is stored as a name, so renaming the
+    preset that holds it would otherwise leave the field naming nothing and silently hand the user
+    back the registry's first preset — a deletion's behaviour for what was only an edit.
+    """
+    if preset.built_in:
+        raise ValueError("a saved preset cannot be built_in")
+    index = next(
+        (position for position, saved in enumerate(settings.presets) if saved.name == name), None
+    )
+    if index is None:
+        from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+
+        if any(built_in.name == name for built_in in BUILT_IN_PRESETS):
+            raise ValueError(
+                f"{name!r} is a built-in preset and cannot be edited; duplicate it to start from it"
+            )
+        raise ValueError(f"no saved preset called {name!r}")
+    if preset.name != name and preset.name in _taken_names(settings):
+        raise ValueError(f"a preset called {preset.name!r} already exists")
+
+    saved = (*settings.presets[:index], preset, *settings.presets[index + 1 :])
+    default = preset.name if settings.default_preset == name else settings.default_preset
+    return replace(settings, presets=saved, default_preset=default)
+
+
+def remove_preset(settings: Settings, name: str) -> Settings:
+    """`settings` without the saved preset called `name`. **Delete**, of the five.
+
+    **Deleting the default leaves a defined default**, which is this task's own acceptance
+    criterion and `P-7`'s requirement. The field is cleared rather than re-pointed at a neighbour:
+    `default_preset_of` then answers with the registry's first, which is a defined answer the user
+    can predict, where "whichever preset happened to be next in the list" is not.
+    """
+    if not any(saved.name == name for saved in settings.presets):
+        from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+
+        if any(built_in.name == name for built_in in BUILT_IN_PRESETS):
+            raise ValueError(f"{name!r} is a built-in preset and cannot be deleted")
+        raise ValueError(f"no saved preset called {name!r}")
+
+    saved = tuple(preset for preset in settings.presets if preset.name != name)
+    default = "" if settings.default_preset == name else settings.default_preset
+    return replace(settings, presets=saved, default_preset=default)
+
+
+def free_preset_name(settings: Settings, base: str) -> str:
+    """`base`, or the first `base (copy)` / `base (copy 2)` … that nothing is called yet.
+
+    **This is not `add_preset` disambiguating**, which it still refuses to do. The difference is who
+    proposed the name: a user who typed one is asked for another, because picking for them is how
+    *Audio only (MP3) (2)* appears in a list nobody meant to create. Duplication proposes no name at
+    all, so there is nothing to refuse — and the proposal lands in the form, where it is edited
+    before it is saved.
+    """
+    taken = _taken_names(settings)
+    if base not in taken:
+        return base
+    candidate = f"{base} (copy)"
+    counter = 2
+    while candidate in taken:
+        candidate = f"{base} (copy {counter})"
+        counter += 1
+    return candidate
+
+
+def duplicate_preset(settings: Settings, name: str) -> tuple[Settings, Preset]:
+    """`settings` with a copy of `name` saved under a free name, and the copy itself.
+
+    **Built-ins are duplicable and that is the point** (`docs/UX_SPEC.md` §8): a built-in cannot be
+    edited, so duplicating it is how a user starts from one. The copy is the user's — `built_in` is
+    dropped, which `Settings` would refuse to store anyway.
+
+    Returns the copy as well as the settings so the caller can select it. Finding it again by name
+    would work and would be a second place that knows how `free_preset_name` chose.
+    """
+    source = preset_named(settings, name)
+    if source is None:
+        raise ValueError(f"no preset called {name!r}")
+    copy = replace(source, name=free_preset_name(settings, name), built_in=False)
+    return add_preset(settings, copy), copy
 
 
 def save(settings: Settings, path: Path | None = None) -> str | None:
@@ -500,9 +726,19 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
     scratch = target.with_name(f"{target.name}.writing")
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
+        # **Above `[queue]` because TOML requires it.** A bare key written after the first table
+        # header would belong to that table, so `default_preset` would silently become
+        # `queue.default_preset` and `load()` would never find it.
+        default_line = (
+            f"# The preset a newly pasted URL inherits. May name a built-in.\n"
+            f"{_DEFAULT_PRESET_KEY} = {_toml_string(settings.default_preset)}\n\n"
+            if settings.default_preset
+            else ""
+        )
         scratch.write_text(
             "# Tracks & Trails settings.\n"
             "# Safe to delete: every value falls back to its default.\n"
+            f"{default_line}"
             f"[{_TABLE}]\n"
             f"# How many downloads run at once. Minimum {CONCURRENCY_MINIMUM}, "
             f"maximum {CONCURRENCY_MAXIMUM}, default {CONCURRENCY_DEFAULT}.\n"

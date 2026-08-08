@@ -246,6 +246,26 @@ TEMPLATE_TEXT: Final = "Where it goes…"
 #: ever looked up as a preset name.
 TEMPLATE_DATA: Final = "\x00open-template-editor"
 
+#: Whether this surface can open the preset manager (`T-111`, `UX-SPEC` §8).
+#:
+#: **A fifth question, and the only one that is not about the row.** The four above ask what may be
+#: done to *this* download; managing presets edits the catalogue every row chooses from, so the
+#: answer depends on whether composition wired a settings store rather than on the row's state.
+#: Absent means no, which is the honest answer where there is nowhere to save to — the same rule
+#: `OptionsDialog` applies to `Save as preset…` (`UX-005` §5, `P-13`).
+PRESETS_MANAGEABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 22
+
+#: The control's entry that opens the preset manager (`docs/UX_SPEC.md` §8's `P-6`).
+#:
+#: *"A preset manager, reached from the format control's `Manage presets…`"* — the spec names the
+#: words. Below the three editors for the reason each of those is below the one before it: the
+#: entries a user has learned the positions of do not move when a new one appears.
+MANAGE_PRESETS_TEXT: Final = "Manage presets…"
+
+#: Its data, a sentinel for `CHOOSE_FORMATS_DATA`'s reason and with the same consequence if it were
+#: ever looked up as a preset name.
+MANAGE_PRESETS_DATA: Final = "\x00open-preset-manager"
+
 #: Padding inside the state chip, and its corner radius. Small: it shares the title's line and must
 #: not compete with the title for height.
 CHIP_PADDING: Final = 5
@@ -1703,6 +1723,8 @@ class RowDelegate(QStyledItemDelegate):
             choice.addItem(OPTIONS_TEXT, OPTIONS_DATA)
         if index.data(TEMPLATE_AVAILABLE_ROLE):
             choice.addItem(TEMPLATE_TEXT, TEMPLATE_DATA)
+        if index.data(PRESETS_MANAGEABLE_ROLE):
+            choice.addItem(MANAGE_PRESETS_TEXT, MANAGE_PRESETS_DATA)
         return choice
 
     def destroyEditor(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:

@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails import __version__
 from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import REORDERABLE
+from tracks_and_trails.core.models import Preset
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
@@ -311,6 +312,8 @@ class MainWindow(QMainWindow):
         on_clear_requested: Callable[[], None] | None = None,
         queue: QueueReader | None = None,
         save_preset: PresetSink | None = None,
+        manage_presets: Callable[[], None] | None = None,
+        presets: Callable[[], Sequence[Preset]] | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -329,6 +332,17 @@ class MainWindow(QMainWindow):
         #: Where `P-4`'s *Save as preset…* writes (`T109-R5`). Composition owns `settings.toml`
         #: (`ARC-007`), so it supplies this rather than the window reading the file.
         self._save_preset = save_preset
+        #: How `docs/UX_SPEC.md` §8's *Manage presets…* opens (`T-111`). Passed straight through to
+        #: the add dialog, which draws the entry only where there is one — this window does not
+        #: learn what a preset store is, for `save_preset`'s reason.
+        self._manage_presets = manage_presets
+        #: The catalogue the add dialog offers (`REQ-007`).
+        #:
+        #: **A callable, not a sequence**, for `queued_urls`' reason: a preset created or renamed in
+        #: the manager must be in the list the *next* dialog offers, and a snapshot taken when this
+        #: window was built could not be. `None` falls back to the dialog's own built-ins, which is
+        #: the honest answer for a caller that never said what the catalogue is.
+        self._presets = presets
         self.setObjectName("mainWindow")
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
@@ -723,6 +737,13 @@ class MainWindow(QMainWindow):
             # somewhere to save. Composition supplies it; a window built without one says so in
             # the button's place rather than offering a control that cannot act.
             save_preset=self._save_preset,
+            # `T-111`: the same division one surface further on — composition owns the store, and
+            # the entry is drawn only where something is behind it.
+            manage_presets=self._manage_presets,
+            # Read at the moment the dialog is built, so a preset created in the manager during the
+            # last one is offered by this one. Omitted where composition supplied nothing, which
+            # leaves the dialog's own `BUILT_IN_PRESETS` default in place.
+            presets=self._presets() if self._presets is not None else presets.BUILT_IN_PRESETS,
             parent=self,
         )
         # **Adding a job is the one queue change nothing announces.** The manager emits

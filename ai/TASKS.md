@@ -1267,7 +1267,37 @@ proposes.
 
 ### T-111 — User presets: create, edit, duplicate, delete, set default
 
-**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
+**Status:** **Implemented, awaiting review — 2026-08-08.** *(Built by the Implementer; no criterion
+is claimed approved, and the maintainer's ratification is not assumed.)*
+
+All five operations exist in `core/settings.py` and are performed on `ui/preset_manager.py`. What
+each part of the deliverable is, and where it is asserted:
+
+| Piece | Where | Asserted by |
+|---|---|---|
+| create / edit / duplicate / delete / set default | `core/settings.py` | `tests/unit/test_settings.py`, 30 new cases |
+| one list, built-ins marked (`P-6`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
+| always exactly one default (`P-7`) | `settings.default_preset_of` | both files |
+| a list beside a form, buttons in `Tab` order (`P-20`) | `ui/preset_manager.py` | `tests/ui/test_preset_manager.py` |
+| `Manage presets…` on the format control | `ui/row_delegate.py`, `ui/add_dialog.py` | — **not yet asserted**, see below |
+
+**Three things a reviewer should not assume are done:**
+
+1. **The `Manage presets…` entry has no test.** The sentinel, the role and the interception follow
+   the three that precede them (`T-108`, `T-109`, `T-112`) exactly, and the whole existing suite
+   passes — but *"it is offered where a store is wired and opens the manager"* is asserted nowhere.
+2. **`requires_ffmpeg` is not wired in composition**, so the manager never draws its ffmpeg
+   sentence in the real application. The widget implements and tests the behaviour; `app.py`
+   passes nothing and documents why. The definitive answer reads a `DownloadRequest`, a preset has
+   no URL, and `ARC-002` forbids `ui/` asking yt-dlp — so the choice between a `DownloadManager`
+   method taking a preset and a preset-level predicate in `core/` is a decision, not wiring. The
+   download itself still refuses through `worker._ffmpeg_gap`, unchanged. **This leaves the fifth
+   acceptance criterion partly met**, and it is the honest place to stop.
+3. **A new paste does not yet inherit the default.** `presets` now reaches the add dialog as a
+   callable so a saved preset is offered, and `default_preset_of` answers what the default *is* —
+   but nothing makes the batch control open on it. That is the remaining half of `P-7`'s purpose.
+
+*(Was: Proposed — **Phase 3 decomposition, 2026-08-01.**)*
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 3

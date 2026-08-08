@@ -422,6 +422,47 @@ def compose(
         held.settings = updated
         return None
 
+    def save_settings(settings: AppSettings) -> str | None:
+        """Where the preset manager writes (`T-111`, `ARC-007`).
+
+        `save_preset`'s shape for the whole settings object rather than one preset: the manager's
+        five operations each produce a complete `AppSettings`, because `core/settings` returns new
+        frozen values rather than mutating one.
+
+        **`held` is advanced only on a successful write**, which is `save_preset`'s rule and for its
+        reason: settings the file does not have must not be what the rest of the session believes.
+        """
+        failure = app_settings.save(settings, settings_file)
+        if failure is not None:
+            return failure
+        held.settings = settings
+        return None
+
+    def manage_presets() -> None:
+        """Open `docs/UX_SPEC.md` §8's manager (`REQ-007`, `T-111`).
+
+        Modal against the window that asked, so the catalogue cannot be edited in two places at
+        once — the add dialog reads the presets afresh each time it is built, and two open managers
+        would be two answers to what the list contains.
+        """
+        from tracks_and_trails.ui.preset_manager import PresetManager
+
+        # **`requires_ffmpeg` is deliberately not wired yet, and the manager treats that as "say
+        # nothing".** The definitive answer is `adapter.requires_ffmpeg`, which reads a
+        # `DownloadRequest` — and a preset has no URL, so asking it here would mean inventing one
+        # to build a request nobody downloads. `ARC-002` forbids `ui/` asking yt-dlp directly, so
+        # the honest options are a `DownloadManager` method taking a preset or a preset-level
+        # predicate in `core/`, and choosing between them is a decision rather than wiring. The
+        # download itself still refuses through `worker._ffmpeg_gap`, which is unchanged: what is
+        # missing is only the advisory sentence while the preset is being written.
+        screen = PresetManager(
+            held.settings,
+            save=save_settings,
+            ffmpeg_available=ffmpeg.available,
+            parent=window,
+        )
+        screen.exec()
+
     def choose_run(running: bool) -> None:
         """Start or stop the queue (`UX-001`, `UX-006`, `T-181`).
 
@@ -476,6 +517,11 @@ def compose(
         # `P-4`: the options editor offers *Save as preset…*, and composition is what owns the
         # file it saves to (`ARC-007`).
         save_preset=save_preset,
+        # `REQ-007`, `T-111`: the manager, and the catalogue it edits. `presets` is a callable for
+        # the reason `queued_urls` is one — a preset created in the manager has to be in the list
+        # the *next* add dialog offers, which a snapshot taken at startup could not do.
+        manage_presets=manage_presets,
+        presets=lambda: app_settings.all_presets(held.settings),
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
