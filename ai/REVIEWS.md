@@ -12563,3 +12563,66 @@ The implementer's full-suite result (**2768 passed, 14 skipped, 2 deselected**) 
 were not independently repeated. Windows runtime and real sites remain unverified. Only
 `ai/REVIEWS.md` was changed by the reviewer; reviewed source, tests, `ai/TASKS.md`, `ai/STATUS.md`,
 and `ai/DECISIONS.md` were not edited, and no commit or push was made.
+
+
+## 2026-08-08 — T-189 / T-186 implementation review
+
+**Reviewer:** Codex
+
+**Review base:** `4b430de`
+**Review head:** `6a0d97f`
+**Scope:** the committed T-189 and T-186 implementations and their acceptance criteria. `T-171`,
+`DAT-008`, and the one-commit-per-task process ruling were read as boundary context but were not
+given verdicts. `T-188` is outside this boundary.
+
+**T-189 verdict:** **Changes requested.** The fail-versus-skip mechanism works and its regression
+does not silently become a skip, but the self-hosted workflow still carries the exact false gate
+comment T-189 says it replaces.
+
+**T-186 verdict:** **Changes requested.** The eight edited claims are corrected without changing
+production behavior, but the required repository-wide semantic sweep is incomplete; multiple
+current-tense History contracts remain under `src/` and `tests/`, including three in an already
+edited file.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| `T189-R1` | **High** | **Yes** | The self-hosted *Record the environment* comment still says “the default suite does not need ffmpeg,” that counts are identical without it, and recording “rather than a gate” is sufficient (`ci.yml:595-601`). Seven steps later, T-189 correctly makes that same Full suite require ffmpeg. The old comment is now a direct contradiction beside the new gate and is the workflow claim the task entry itself identifies as false. Criterion 3 therefore remains unmet, and the comment materially misstates a required gate rather than merely carrying stale history. | Rewrite the environment-recording comment to distinguish that this step records without provisioning or failing on its own, while the later Full suite is the gate and must fail if either tool is absent. Remove the no-longer-true “default suite does not need ffmpeg / counts are identical” conclusion or make its old measurement explicitly historical and superseded. | **Open** |
+| `T186-R1` | **High** | **Yes** | The first criterion requires no current-tense prose under `src/` or `tests/` to claim History, a completion record, or the private ledger still exists. The sweep missed several direct survivors. In `queue_view.py`, History still “names the same download” (`:383-384`), “does not” draw a chip (`:612-616`), and “now flattens” under the same rules (`:915-918`). Other examples include `main_window.py:67-68` (“The two tabs UX-005 names”) and `:613-615` (“Both tabs draw…”), `row_delegate.py:1454-1455` (“the history row's shape”), `ui/grouping.py:18` and `:81-82` (“the two tabs” / “each tab”), `ui/format_text.py:14` (“the three surfaces call it”), `tests/ui/test_file_actions.py:4-5`, `:346-347`, and `:433-435`, `tests/ui/test_reveal.py:222`, and `tests/ui/test_add_dialog.py:2301`. Several are in `queue_view.py`, which this task already edited, so this is not an adjacent new surface; it is the same unfinished defect class. | Complete the semantic search across `src/` and `tests/`. Convert each false live contract to the Queue-only truth or make genuinely useful provenance explicitly historical, while preserving unrelated uses such as a job's status history and migrations proving removal. Re-run a broad text search after correction rather than limiting the pass to the originally nominated files. | **Open** |
+
+### Review judgments
+
+- **T-189's regression test catches its own original failure mode.** With `PATH` empty, the exact
+  merged-file case is a normal developer skip when the variable is absent and a non-zero setup
+  error—not a skip—when `TRACKSANDTRAILS_REQUIRE_FFMPEG=1`. The explicit `pytest.skip.Exception`
+  arm in the unit test would turn the rejected mutation red.
+- **The two workflow `env:` blocks are structurally attached to the intended pytest steps.** No
+  workflow parser is installed locally and the branch is ahead of `origin/main`, so no Actions run
+  at `6a0d97f` exists. The first CI run remains the first genuine execution of the workflow change;
+  that unverified external run is recorded but is not a separate finding.
+- **T-186 did not change production behavior.** The changed production files contain comment or
+  docstring edits only, and `tests/unit/test_presets.py` changes headings, docstrings, and assertion
+  messages. `ai/DECISIONS.md`'s additive DAT-008 commit belongs to T-171 and does not violate the
+  T-186 commit's historical-record criterion.
+
+### Reviewer verification at `6a0d97f`
+
+| Check | Result |
+|---|---|
+| `git diff --check 4b430de..6a0d97f` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass**, 217 files |
+| `.venv/bin/python -m mypy src tests` | **pass**, 125 files |
+| `.venv/bin/python -m mypy --platform win32 src tests` | **pass**, 125 files |
+| T-189 capability unit module | **19 passed** |
+| Exact merged-file case, `PATH` empty, ordinary developer run | **1 skipped, exit 0**, with the actionable missing-ffmpeg reason |
+| Exact merged-file case, `PATH` empty, ffmpeg required | **1 setup error, exit 1**, with the provisioning-failure reason; it did not skip |
+| Preset prose tests plus task placement | **161 passed** |
+| T-186 semantic search | **failed the acceptance property**; the current-tense survivors listed in `T186-R1` remain |
+
+The implementer's full-suite result (**2787 passed, 14 skipped, 2 deselected**) was not
+independently repeated. The workflow was inspected but not executed or linted by a YAML-aware
+tool. Windows runtime and real sites remain unverified. Only `ai/REVIEWS.md` was changed by the
+reviewer; reviewed source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or
+push was made.
