@@ -1811,13 +1811,25 @@ class AddUrlDialog(QDialog):
         return self._manage_presets is not None
 
     def open_preset_manager(self) -> None:
-        """Open `docs/UX_SPEC.md` §8's manager. **Does not touch this dialog's row** (`T-111`).
+        """Open `docs/UX_SPEC.md` §8's manager, once the control that asked has closed.
 
-        The catalogue a row chooses from is composition's, not this dialog's: `presets` was handed
-        over at construction and the manager writes to the settings store behind it. Whoever wired
-        `manage_presets` decides whether a change is reflected here, which is the same division
-        `save_preset` already has.
+        **Does not touch this dialog's row** (`T-111`). The catalogue a row chooses from is
+        composition's, not this dialog's: `presets` was handed over at construction and the manager
+        writes to the settings store behind it. Whoever wired `manage_presets` decides whether a
+        change is reflected here, which is the same division `save_preset` already has.
+
+        **Deferred by one turn, exactly as `open_options` is** (`T111-R3`, `T108-R2`). This is
+        reached from `StagingModel.setData`, which Qt calls from inside `commitData` while the row's
+        combo box is still open, and composition's callback opens a *modal* manager — so calling it
+        synchronously runs a nested event loop underneath a widget Qt is in the middle of closing.
+        That is the dead-editor class `T108-R2` records, and the sibling route already defers for
+        this reason; this one was written without the deferral and its test called `setData`
+        directly, so it exercised everything about the route except the stack it actually runs on.
         """
+        QTimer.singleShot(0, self._show_preset_manager)
+
+    def _show_preset_manager(self) -> None:
+        """Hand off to composition's manager callback, a turn after the row editor closed."""
         if self._manage_presets is not None:
             self._manage_presets()
 

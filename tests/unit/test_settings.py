@@ -614,6 +614,88 @@ def test_one_malformed_preset_is_reported_and_the_rest_survive(tmp_path: Path) -
     assert "Broken" in read.problem.reason, read.problem.reason
 
 
+def _preset_table(name: str, selector: str = "worst") -> str:
+    """A syntactically valid `[[preset]]` entry, so only its *name* is in question."""
+    return (
+        f'\n[[preset]]\nname = "{name}"\nmedia_kind = "video"\n'
+        f'format_selector = "{selector}"\noutput_template = "%(title)s.%(ext)s"\n'
+    )
+
+
+def test_a_hand_edited_preset_cannot_shadow_a_built_in(tmp_path: Path) -> None:
+    """**`T111-R2`.** A saved entry taking a built-in's name is refused at the load boundary.
+
+    This loaded clean before: `problem=None`, two rows of one name in the manager, and
+    `preset_named` answering with the built-in while the saved row held a different selector. Every
+    operation this module offers addresses a preset by name, so the duplicate is a row the code
+    cannot address correctly rather than a cosmetic one.
+    """
+    shadowed = preset_registry.BUILT_IN_PRESETS[0].name
+    target = tmp_path / "settings.toml"
+    save(add_preset(Settings(), a_preset(name="Mine")), target)
+    target.write_text(
+        target.read_text(encoding="utf-8") + _preset_table(shadowed), encoding="utf-8"
+    )
+
+    read = load(target)
+
+    assert [preset.name for preset in read.settings.presets] == ["Mine"], (
+        "a saved preset shadowed a built-in's name; every name-addressed operation is now ambiguous"
+    )
+    assert read.problem is not None, "ARC-008: something was discarded and nothing said so"
+    assert shadowed in read.problem.reason, read.problem.reason
+    assert preset_named(read.settings, shadowed) == preset_registry.BUILT_IN_PRESETS[0]
+
+
+def test_two_saved_presets_cannot_share_one_name(tmp_path: Path) -> None:
+    """**`T111-R2`**, the saved/saved half. The earlier entry wins, so the file's order decides."""
+    target = tmp_path / "settings.toml"
+    save(add_preset(Settings(), a_preset(name="Keeper")), target)
+    target.write_text(
+        target.read_text(encoding="utf-8") + _preset_table("Keeper", selector="worst"),
+        encoding="utf-8",
+    )
+
+    read = load(target)
+
+    assert len(read.settings.presets) == 1, "two saved presets kept one name between them"
+    kept = read.settings.presets[0]
+    assert kept.format_selector != "worst", (
+        "the later duplicate won; earlier entries must win so the answer does not depend on which "
+        "duplicate was written last"
+    )
+    assert read.problem is not None and "Keeper" in read.problem.reason
+
+
+def test_a_colliding_entry_does_not_cost_the_entries_around_it(tmp_path: Path) -> None:
+    """`ARC-008` again: the collision is dropped, and the presets either side of it survive."""
+    target = tmp_path / "settings.toml"
+    save(add_preset(Settings(concurrency=7), a_preset(name="First")), target)
+    target.write_text(
+        target.read_text(encoding="utf-8") + _preset_table("First") + _preset_table("Third"),
+        encoding="utf-8",
+    )
+
+    read = load(target)
+
+    assert [preset.name for preset in read.settings.presets] == ["First", "Third"], (
+        "a colliding entry took an innocent one with it"
+    )
+    assert read.settings.concurrency == 7, "a colliding preset reset the setting beside it"
+    assert read.problem is not None
+
+
+def test_a_file_with_no_collisions_reports_nothing(tmp_path: Path) -> None:
+    """The anti-vacuity half: the new check must not report a file that is simply fine."""
+    target = tmp_path / "settings.toml"
+    save(add_preset(add_preset(Settings(), a_preset(name="One")), a_preset(name="Two")), target)
+
+    read = load(target)
+
+    assert [preset.name for preset in read.settings.presets] == ["One", "Two"]
+    assert read.problem is None, read.problem
+
+
 def test_a_broken_queue_section_does_not_cost_the_user_their_presets(tmp_path: Path) -> None:
     """The two halves are read independently, and both reasons are reported when both apply."""
     target = tmp_path / "settings.toml"

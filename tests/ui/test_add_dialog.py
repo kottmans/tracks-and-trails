@@ -4390,7 +4390,58 @@ def test_choosing_the_entry_opens_the_manager_and_keeps_the_row_s_format(
     index = dialog.model.index(0, 0)
     assert dialog.model.setData(index, MANAGE_PRESETS_DATA, PRESET_ROLE)
 
+    assert opened == [], (
+        "the manager opened inside setData, i.e. underneath Qt's commitData stack (T111-R3)"
+    )
+    QApplication.processEvents()
+
     assert opened == [True]
     assert row.preset is preset_registry.AUDIO_MP3, (
         "the sentinel reached the preset lookup and cleared the row's chosen format"
     )
+
+
+def test_the_manager_opens_a_turn_after_the_row_editor_closes(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T111-R3`**, driven through the real combo rather than through `setData`.
+
+    The route that shipped called composition's modal manager synchronously from
+    `StagingModel.setData`, which Qt reaches from inside `commitData` while the row's combo box is
+    still open. `open_options` defers by one turn for exactly this reason and `T108-R2` records the
+    dead-editor class it prevents. The test that shipped called `setData` directly, so it exercised
+    every part of the route except the stack it actually runs on — which is why a Medium survived a
+    passing suite.
+
+    Asserted in three parts, because only the last two are new: the manager does not open while the
+    editor is being committed, it opens on the next turn, and the row editor is reaped afterwards so
+    the row can be edited again without Qt being handed a widget it has already let go of.
+    """
+    opened: list[bool] = []
+    dialog, row = _staged(dialogs, managers, spin, manage_presets=lambda: opened.append(True))
+    row.preset = preset_registry.AUDIO_MP3
+
+    control = open_row_editor(dialog, 0)
+    control.setCurrentIndex(control.findData(MANAGE_PRESETS_DATA))
+    listing = staging_list(dialog)
+    listing.commitData(control)
+
+    assert opened == [], (
+        "the manager opened underneath commitData, with the row's editor still standing — the "
+        "nested-event-loop ordering T108-R2 records as a dead editor"
+    )
+
+    listing.closeEditor(control, QAbstractItemDelegate.EndEditHint.NoHint)
+    QApplication.processEvents()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+    assert opened == [True], "the deferred manager never opened at all"
+    assert row.preset is preset_registry.AUDIO_MP3, (
+        "the sentinel reached the preset lookup and cleared the row's chosen format"
+    )
+
+    reopened = open_row_editor(dialog, 0)
+    assert reopened is not control, "the row was handed back the editor that had already closed"

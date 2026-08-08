@@ -13,20 +13,31 @@ The store is a fake that records what it was handed, so every assertion is on wh
 written rather than on what the widget is showing about itself.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
-from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton
+from PySide6.QtWidgets import QApplication, QCheckBox, QDialog, QLineEdit, QPushButton
 
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.models import MediaKind, Preset
-from tracks_and_trails.core.settings import Settings, add_preset, default_preset_of
+from tracks_and_trails.core.settings import (
+    Settings,
+    add_preset,
+    default_preset_of,
+    preset_named,
+)
+from tracks_and_trails.ui.options_dialog import (
+    EMBED_THUMBNAIL_NAME,
+    SAVE_PRESET_NAME,
+    OptionsDialog,
+)
 from tracks_and_trails.ui.preset_manager import (
     APPLY_NAME,
     BUILT_IN_MARK,
     DEFAULT_MARK,
     DELETE_NAME,
     DUPLICATE_NAME,
+    EDIT_OPTIONS_NAME,
     NEW_NAME,
     NO_FFMPEG_REASON,
     PRESET_LIST_NAME,
@@ -35,6 +46,12 @@ from tracks_and_trails.ui.preset_manager import (
     SET_DEFAULT_NAME,
     PresetManager,
 )
+
+
+def box(dialog: OptionsDialog, name: str) -> QCheckBox:
+    found = dialog.findChild(QCheckBox, name)
+    assert found is not None, f"no checkbox called {name}"
+    return found
 
 
 class FakeStore:
@@ -99,6 +116,145 @@ def labels(manager: PresetManager) -> list[str]:
 def select(manager: PresetManager, name: str) -> None:
     manager._select(name)
     manager._show_selected()
+
+
+def drive_options(
+    monkeypatch: pytest.MonkeyPatch, edit: Callable[[OptionsDialog], None], *, accept: bool = True
+) -> list[OptionsDialog]:
+    """Intercept the modal `OptionsDialog`, apply `edit` to the real widget, and answer instead.
+
+    **The real dialog is built and its real controls are set** — only `exec()` is replaced, because
+    a modal event loop in a test hangs it. That keeps the assertion about `OptionsDialog`'s own
+    projection of a preset rather than about a stand-in that agrees with the manager by
+    construction.
+    """
+    opened: list[OptionsDialog] = []
+
+    def instead(self: OptionsDialog) -> int:
+        opened.append(self)
+        edit(self)
+        return int(QDialog.DialogCode.Accepted if accept else QDialog.DialogCode.Rejected)
+
+    monkeypatch.setattr(OptionsDialog, "exec", instead)
+    return opened
+
+
+# --- T111-R1: the saved preset's own options screen ----------------------------------------
+
+
+def test_options_on_a_saved_preset_stores_what_the_screen_changed(
+    manager: PresetManager, store: FakeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T111-R1`.** The accepted `P-3`/`P-16` route, asserted on what is stored.
+
+    `_build_form` deliberately draws only name, selector and template and says the seven options
+    have an editor already — and nothing here ever opened it, so `REQ-010`'s options could not be
+    changed on a saved preset at all. That is most of what `T-109` put in a preset: media kind,
+    codec, quality, remux, recode, thumbnail, metadata, chapters and subtitles.
+
+    Asserted through the **real** `OptionsDialog` widget and on the settings handed to the sink,
+    because a route that opens the screen and then writes something else is the same defect wearing
+    a different hat.
+    """
+    select(manager, "Weekend viewing")
+    opened = drive_options(
+        monkeypatch, lambda dialog: box(dialog, EMBED_THUMBNAIL_NAME).setChecked(True)
+    )
+
+    press(manager, EDIT_OPTIONS_NAME)
+
+    assert len(opened) == 1, "the Options… button did not open the shared editor"
+    assert store.written, "the options were accepted and nothing was written"
+    stored = preset_named(store.written[-1], "Weekend viewing")
+    assert stored is not None, "the preset lost its name on the way through the options screen"
+    assert stored.embed_thumbnail is True, (
+        "the options screen was opened and its answer was discarded; REQ-010's fields are not "
+        "editable on a saved preset"
+    )
+
+
+def test_the_options_screen_names_the_preset_it_is_editing(
+    manager: PresetManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saved-preset semantics rather than the one-off route's generic title.
+
+    This editor is reached from a list of presets, so "Options for this download" would not say
+    which one is about to change.
+    """
+    select(manager, "Weekend viewing")
+    opened = drive_options(monkeypatch, lambda dialog: None)
+
+    press(manager, EDIT_OPTIONS_NAME)
+
+    assert opened[0].windowTitle() == "Options for Weekend viewing"
+
+
+def test_the_options_screen_offers_no_second_way_to_create_a_preset(
+    manager: PresetManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No sink, so no *Save as preset…* — `UX-005` §5, nothing drawn that would be refused.
+
+    Saving a preset from inside the editor of a preset is a second creation route on the screen
+    whose whole job is managing them, and it leaves two presets where the user meant to change one.
+    """
+    select(manager, "Weekend viewing")
+    opened = drive_options(monkeypatch, lambda dialog: None)
+
+    press(manager, EDIT_OPTIONS_NAME)
+
+    assert opened[0].findChild(QPushButton, SAVE_PRESET_NAME) is None
+
+
+def test_cancelling_the_options_screen_writes_nothing(
+    manager: PresetManager, store: FakeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rejected is not accepted, and a modal that was dismissed must leave the preset alone."""
+    select(manager, "Weekend viewing")
+    drive_options(
+        monkeypatch,
+        lambda dialog: box(dialog, EMBED_THUMBNAIL_NAME).setChecked(True),
+        accept=False,
+    )
+
+    press(manager, EDIT_OPTIONS_NAME)
+
+    assert store.written == [], "a cancelled options screen still wrote to the store"
+
+
+def test_options_on_a_built_in_opens_nothing_and_writes_nothing(
+    manager: PresetManager, store: FakeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same clause `_delete` transcribes: a built-in is not the user's to edit (`§8`).
+
+    The button is not drawn disabled, for `UX-005` §5's reason and `T-111`'s recorded reading of it;
+    what it must not do is write.
+    """
+    select(manager, preset_registry.BUILT_IN_PRESETS[0].name)
+    opened = drive_options(
+        monkeypatch, lambda dialog: box(dialog, EMBED_THUMBNAIL_NAME).setChecked(True)
+    )
+
+    press(manager, EDIT_OPTIONS_NAME)
+
+    assert opened == [], "a built-in's options screen opened; §8 says it cannot be edited"
+    assert store.written == []
+
+
+def test_editing_options_keeps_the_preset_as_the_default(
+    manager: PresetManager, store: FakeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`P-7` survives the round trip: the name is unchanged, so the default must be too."""
+    press_default = "Weekend viewing"
+    select(manager, press_default)
+    press(manager, SET_DEFAULT_NAME)
+    select(manager, press_default)
+    drive_options(monkeypatch, lambda dialog: box(dialog, EMBED_THUMBNAIL_NAME).setChecked(True))
+
+    press(manager, EDIT_OPTIONS_NAME)
+
+    assert default_preset_of(store.written[-1]).name == press_default, (
+        "editing a preset's options took away its default"
+    )
 
 
 # --- P-6: one list, built-ins marked -------------------------------------------------------

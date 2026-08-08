@@ -398,6 +398,25 @@ def _presets_from(document: dict[str, Any]) -> tuple[tuple[Preset, ...], str | N
     **A bad entry is dropped and reported; the good ones survive.** The alternative — discarding
     every preset because one is malformed — punishes a user for a typo in the tenth of ten, and
     `ARC-008`'s rule is that something discarded is *reported*, not that everything is.
+
+    **A name already spoken for is as unreadable as a malformed entry** (`T111-R2`). This checked
+    each entry's *shape* and nothing about its name, so a hand-edited file naming a preset
+    `Audio only (MP3)` loaded clean: two rows of that name in the manager, `problem=None`, and
+    `preset_named` answering with the built-in while the saved row held a different selector. Every
+    operation this module offers addresses a preset **by name** — `preset_named`, `update_preset`,
+    `remove_preset`, `set_default_preset` — so a duplicate name is not untidy, it is a row the code
+    cannot address correctly, and `REQ-009`'s promise that the name names the download fails with
+    it.
+
+    **Refused rather than disambiguated, which is the stated policy applied and not a new one.**
+    `add_preset` refuses a name the *user typed* and `free_preset_name` disambiguates one *nobody
+    proposed*; a name in a hand-edited file is the first of those, typed in an editor instead of a
+    dialog. Renaming it here would also be this module quietly editing a file the user wrote by
+    hand — the thing `ARC-008` exists to report rather than do.
+
+    **Built-ins are in the check and are checked first**, so a saved entry cannot shadow one that
+    ships; earlier entries win over later ones, so the file's own order decides and the answer does
+    not depend on `dict` iteration or on which duplicate was written last.
     """
     entries = document.get(_PRESET_TABLE)
     if entries is None:
@@ -405,15 +424,27 @@ def _presets_from(document: dict[str, Any]) -> tuple[tuple[Preset, ...], str | N
     if not isinstance(entries, list):
         return (), f"[[{_PRESET_TABLE}]] is a {type(entries).__name__}, not a list of presets."
 
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+
     kept: list[Preset] = []
     refused: list[str] = []
+    taken = {preset.name for preset in BUILT_IN_PRESETS}
     for position, entry in enumerate(entries):
+        named = entry.get("name") if isinstance(entry, dict) else None
+        which = f"{named!r}" if isinstance(named, str) else f"number {position + 1}"
         try:
-            kept.append(_preset_from(entry))
+            preset = _preset_from(entry)
         except (TypeError, ValueError) as error:
-            named = entry.get("name") if isinstance(entry, dict) else None
-            which = f"{named!r}" if isinstance(named, str) else f"number {position + 1}"
             refused.append(f"preset {which}: {error}")
+            continue
+        if preset.name in taken:
+            refused.append(
+                f"preset {which}: a preset called {preset.name!r} already exists, and every "
+                "operation addresses a preset by name"
+            )
+            continue
+        taken.add(preset.name)
+        kept.append(preset)
     if not refused:
         return tuple(kept), None
     return tuple(kept), (

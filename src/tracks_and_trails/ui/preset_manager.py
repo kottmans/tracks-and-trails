@@ -61,6 +61,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core import settings as settings_store
 from tracks_and_trails.core.models import Preset
 from tracks_and_trails.core.settings import Settings
+from tracks_and_trails.ui.options_dialog import OptionsDialog
 
 #: Object names, so a test reaches a control by identity rather than by the text on it — the habit
 #: every other dialog in `ui/` follows, and what keeps a reworded label from breaking a test that
@@ -74,6 +75,7 @@ DUPLICATE_NAME: Final = "presetManagerDuplicate"
 DELETE_NAME: Final = "presetManagerDelete"
 SET_DEFAULT_NAME: Final = "presetManagerSetDefault"
 APPLY_NAME: Final = "presetManagerApply"
+EDIT_OPTIONS_NAME: Final = "presetManagerOptions"
 RESULT_NAME: Final = "presetManagerResult"
 
 NEW_TEXT: Final = "New"
@@ -81,6 +83,12 @@ DUPLICATE_TEXT: Final = "Duplicate"
 DELETE_TEXT: Final = "Delete"
 SET_DEFAULT_TEXT: Final = "Set as default"
 APPLY_TEXT: Final = "Save changes"
+#: `docs/UX_SPEC.md` §6's screen, reached for a *saved* preset (`P-3`, `P-16`, `T111-R1`). The
+#: ellipsis is the same promise every other entry that opens a screen makes.
+EDIT_OPTIONS_TEXT: Final = "Options…"
+#: Says which preset is being edited, because this editor is reached from a list of them — the
+#: one-off route has only one subject and can afford a generic title.
+OPTIONS_TITLE: Final = "Options for {name}"
 
 #: How a built-in is marked in the one list `P-6` requires. A suffix rather than an icon: it is read
 #: aloud by a screen reader in the row's own text (`NFR-005`), where a decoration would not be.
@@ -222,6 +230,9 @@ class PresetManager(QDialog):
             (DUPLICATE_NAME, DUPLICATE_TEXT, self._duplicate),
             (DELETE_NAME, DELETE_TEXT, self._delete),
             (SET_DEFAULT_NAME, SET_DEFAULT_TEXT, self._set_default),
+            # Between the operations that change *which* preset and the one that saves the form:
+            # it edits the selected preset, like `Save changes`, but through the other screen.
+            (EDIT_OPTIONS_NAME, EDIT_OPTIONS_TEXT, self._edit_options),
             (APPLY_NAME, APPLY_TEXT, self._apply),
         ):
             button = QPushButton(text, self)
@@ -421,6 +432,49 @@ class PresetManager(QDialog):
             )
             settings = settings_store.update_preset(self._settings, preset.name, edited)
         except (TypeError, ValueError) as refusal:
+            self._result.setText(str(refusal))
+            return
+        self._store(settings, select=edited.name, message=f"Saved {edited.name}.")
+
+    def _edit_options(self) -> None:
+        """`REQ-010`'s seven options, on a **saved** preset. **`T111-R1`'s missing route.**
+
+        `_build_form` has always said these fields have an editor already and that building a second
+        set here would be two screens answering one question. That was the right call and it was
+        only half-built: `P-3`/`P-16` rule that the *same* `OptionsDialog` is reached from this
+        manager, `T-109` built it to be opened *"from the preset manager, editing a saved preset"* —
+        and nothing here ever opened it. A user could therefore edit a saved preset's name, selector
+        and template and **not** its media kind, codec, quality, remux, recode, thumbnail, metadata,
+        chapters or subtitles, which is most of what `T-109` put in a preset.
+
+        **The same widget as the one-off path**, not a copy of it: one screen means one set of
+        controls, one validation and one answer to what an option does.
+
+        **No *Save as preset…* inside it.** The sink is deliberately omitted, so the control is not
+        drawn (`UX-005` §5 — nothing offered that would be refused). Saving a preset *from* the
+        editor of a preset is a second creation route to the screen whose whole job is managing
+        them, and it would leave the user with two presets where they meant to change one.
+
+        **Name and default identity survive.** `OptionsDialog` neither edits nor returns a name of
+        its own, but this re-states the stored name on the way back rather than trusting that: this
+        is the write path, and `update_preset` carries the default across when a name is unchanged.
+        The unsaved contents of the form are deliberately not merged in — this button edits the
+        stored preset, `Save changes` edits the form's, and silently combining them would make the
+        result depend on which control the user touched last.
+        """
+        preset = self.selected_preset
+        if preset is None or preset.built_in:
+            # A built-in is not the user's to edit, and the button is not drawn disabled — the same
+            # clause and the same reasoning as `_delete`.
+            return
+        dialog = OptionsDialog(preset, title=OPTIONS_TITLE.format(name=preset.name), parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        edited = replace(dialog.result_preset(), name=preset.name, built_in=False)
+        try:
+            settings = settings_store.update_preset(self._settings, preset.name, edited)
+        except (TypeError, ValueError) as refusal:
+            # For `_apply`'s reason: a refusal is words beside the form, and nothing is written.
             self._result.setText(str(refusal))
             return
         self._store(settings, select=edited.name, message=f"Saved {edited.name}.")
