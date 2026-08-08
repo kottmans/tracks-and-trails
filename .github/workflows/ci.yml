@@ -323,6 +323,13 @@ jobs:
         # The `process_tree` tests are back in this run as of `T-019`. They had their own step
         # for one day, because `T019-R1` found the marker excluding them from CI as well as
         # locally; the marker is gone now, so a separate step would run them twice.
+        #
+        # **This job carries T-108's merge proof, so a missing ffmpeg fails rather than skips**
+        # (`T-189`). The step above installs the tool on both hosted runners, so the variable
+        # should never fire here — which is the point: if the install ever silently stops working,
+        # the required end-to-end case goes red instead of turning into a green SKIPPED line.
+        env:
+          TRACKSANDTRAILS_REQUIRE_FFMPEG: "1"
         run: pytest -v --junitxml="reports/pytest.xml" 2>&1 | tee "reports/pytest.txt"
 
       - name: Upload evidence
@@ -626,8 +633,17 @@ jobs:
         # `T-019` process-tree cases and `test_end_to_end.py` are both in the default run, so a
         # separate step would execute them twice. Their evidence now lives in this run's junit
         # XML — the same place `check` has always kept it.
+        #
+        # **This is the Windows half of T-108's merge proof, and the runner does not install
+        # ffmpeg** — it records it (`OPS-005`: the maintainer's own machine, which a test run may
+        # not provision). So the requirement is declared here rather than assumed: if `STARBASE`
+        # ever loses the tool, `test_a_chosen_video_and_audio_pair_produce_one_merged_file` fails
+        # loudly instead of skipping inside a passing job and leaving exit criterion 2 evidenced by
+        # nothing (`T-189`). Restoring ffmpeg is a deliberate maintainer act, which is why this
+        # fails rather than installs.
         env:
           QT_QPA_PLATFORM: offscreen
+          TRACKSANDTRAILS_REQUIRE_FFMPEG: "1"
         run: pytest -v --junitxml="reports/pytest.xml" 2>&1 | tee "reports/pytest.txt"
 
       - name: Report any crash dump

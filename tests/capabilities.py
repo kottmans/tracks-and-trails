@@ -20,7 +20,9 @@ constraint from the other direction.
 """
 
 import contextlib
+import os
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -65,15 +67,73 @@ def symlinks(tmp_path: Path) -> None:
 
 #: Why a machine may not be able to run the conversion tests, in words that name the fix.
 #:
-#: CI installs ffmpeg on both platforms (`T-062`), and the application requires it for any preset
-#: that converts or merges — so this is a developer-machine gap rather than a product one. Naming
-#: the tool matters: without it these fail somewhere inside yt-dlp's postprocessor with a message
-#: about a missing executable, which reads as a broken checkout.
+#: The application requires ffmpeg for any preset that converts or merges, so on a developer's
+#: machine this is a local gap rather than a product one. Naming the tool matters: without it these
+#: fail somewhere inside yt-dlp's postprocessor with a message about a missing executable, which
+#: reads as a broken checkout.
+#:
+#: **Which runners install it and which merely require it** (`T-189`). This used to say "CI installs
+#: it (T-062)" flatly, and that stopped being true when the Windows gate moved to a self-hosted
+#: machine:
+#:
+#: | Runner | ffmpeg |
+#: |---|---|
+#: | Hosted Linux (`check`) | **installed** by the workflow, `apt-get` |
+#: | Hosted Windows (`check`) | **installed** by the workflow, `choco` |
+#: | Self-hosted Windows (`windows-desktop`) | **required, not installed** — recorded only |
+#:
+#: `OPS-005` is why the last row cannot simply install: the maintainer's own machine is the runner,
+#: and a test run does not get to mutate software on it.
 NO_FFMPEG = (
     "this machine has no ffmpeg/ffprobe on PATH. The conversion tests need it to build their "
-    "source media and to inspect what came out — see T-077. CI installs it (T-062); locally, "
-    "install ffmpeg or accept that preset conversion is unverified here."
+    "source media and to inspect what came out — see T-077. Install ffmpeg, or accept that "
+    "preset conversion is unverified here."
 )
+
+#: Set by the CI jobs that own `T-108`'s cross-platform merge proof, so a missing tool **fails**
+#: rather than skipping (`T-189`).
+#:
+#: **The defect this closes is a green run that proved nothing.**
+#: `test_a_chosen_video_and_audio_pair_produce_one_merged_file` is exit criterion 2's evidence on
+#: both platforms, and it takes the ordinary `ffmpeg` fixture below — which skips. The self-hosted
+#: Windows runner *records* ffmpeg rather than installing it, so the day that machine loses the
+#: tool, the required proof becomes a `SKIPPED` line inside a passing job and the criterion is
+#: silently unevidenced. Nothing would have gone red.
+#:
+#: **An opt-in variable rather than a hostname or a `CI` check.** `CI` is set on every runner
+#: including ones that legitimately have no ffmpeg, and detecting the self-hosted machine by name
+#: would put the runner's identity in the test suite. The workflow states which jobs carry the
+#: proof; this reads that statement.
+#:
+#: **It does not install anything.** `T-189`'s scope is explicit that a test run must not provision
+#: software on `STARBASE` — the gate fails with the missing capability and the maintainer restores
+#: it deliberately.
+REQUIRE_FFMPEG_VAR = "TRACKSANDTRAILS_REQUIRE_FFMPEG"
+
+#: Why a *required* run refuses, as opposed to why a developer's run skips. Names the variable, so
+#: whoever meets this can tell a provisioning failure from a test that should not have been asked.
+FFMPEG_REQUIRED_BUT_MISSING = (
+    "ffmpeg/ffprobe are absent and this run requires them: {var} is set, which the CI jobs "
+    "carrying T-108's cross-platform merge proof do. This is a provisioning failure on the "
+    "runner, not a test defect — the required end-to-end case must not become a green skip "
+    "(T-189). Restore ffmpeg on the runner; nothing here installs it (OPS-005)."
+)
+
+
+def ffmpeg_is_required(environment: Mapping[str, str] | None = None) -> bool:
+    """Whether a missing ffmpeg must fail this run rather than skip it.
+
+    Reads the environment at call time rather than at import, so a test can set the variable and
+    observe the change — which is what makes `T-189`'s "a deterministic probe makes the gate fail"
+    criterion assertable rather than a claim about CI nobody can run locally.
+
+    Any non-empty value that is not a recognised negative counts as set: a workflow writing `1`,
+    `true` or `yes` all mean the same thing, and a variable someone exported as `0` to turn this
+    *off* should not silently turn it on.
+    """
+    source = os.environ if environment is None else environment
+    value = source.get(REQUIRE_FFMPEG_VAR, "").strip().lower()
+    return value not in ("", "0", "false", "no", "off")
 
 
 def ffmpeg_tools() -> tuple[str, str] | None:
@@ -89,10 +149,33 @@ def ffmpeg_tools() -> tuple[str, str] | None:
     return ffmpeg, ffprobe
 
 
-@pytest.fixture
-def ffmpeg() -> tuple[str, str]:
-    """`(ffmpeg, ffprobe)` paths, skipping with a reason a human can act on."""
+def resolve_ffmpeg() -> tuple[str, str]:
+    """`(ffmpeg, ffprobe)`, or raise the outcome this run has earned. **Skip or fail** (`T-189`).
+
+    The helpful local skip is deliberately kept: a developer without ffmpeg gets an actionable
+    reason and a suite that still runs, which is what `T-070` built this module for. What changes is
+    that the CI jobs carrying `T-108`'s cross-platform merge proof set `REQUIRE_FFMPEG_VAR`, and
+    there an absent tool is a **failure** — because the alternative is a required end-to-end case
+    quietly becoming `SKIPPED` inside a green job, leaving exit criterion 2 evidenced by nothing.
+
+    **A function rather than only a fixture body, so the decision can be probed.** `T-189`'s fourth
+    criterion asks for a deterministic probe that hides a tool and makes the gate fail; a fixture
+    can only be exercised by the tests that request it, and every one of those runs where ffmpeg is
+    *present*. `tests/unit/test_capabilities.py` calls this with `PATH` emptied instead, which asks
+    `shutil.which` the same question the runner will.
+
+    `pytrace=False` on the failure: the traceback would point into this module, and the reader needs
+    to be looking at the runner rather than at the suite.
+    """
     tools = ffmpeg_tools()
     if tools is None:
+        if ffmpeg_is_required():
+            pytest.fail(FFMPEG_REQUIRED_BUT_MISSING.format(var=REQUIRE_FFMPEG_VAR), pytrace=False)
         pytest.skip(NO_FFMPEG)
     return tools
+
+
+@pytest.fixture
+def ffmpeg() -> tuple[str, str]:
+    """`(ffmpeg, ffprobe)` paths. See `resolve_ffmpeg` for which runs skip and which fail."""
+    return resolve_ffmpeg()
