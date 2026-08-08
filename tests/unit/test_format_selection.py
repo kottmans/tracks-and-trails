@@ -5,9 +5,21 @@ Qt-free: these are the rules `REQ-008` states, and a test that had to build a wi
 would be asserting the widget as well.
 
 **The fixture is loaded through the adapter**, not hand-built, wherever the question is *"does what
-a probe reports reach the rule"*. `derived_format_columns` is the only fixture carrying an
-explicitly video-only and an explicitly audio-only format, and it says so in its own
-`what_is_synthetic` — no acceptable recorded source publishes such a pair, which is `T-188`.
+a probe reports reach the rule"*.
+
+**Two fixtures carry the merge pair, and the difference between them is the point.**
+`derived_format_columns` is **synthetic** and says so in its own `what_is_synthetic`; it exists
+because for a long time no acceptable recorded source published an explicitly video-only beside an
+explicitly audio-only format. `dash_akamai_big_buck_bunny` is **recorded** — a real DASH manifest,
+ten video-only formats carrying `acodec: 'none'` beside one audio-only carrying `vcodec: 'none'`
+(`T-188`, accepted 2026-08-08).
+
+*(The recorded one's extractor is `generic`: yt-dlp parses the `.mpd` directly rather than running
+site-specific code, so it pins DASH manifest parsing rather than a site's output. That is where the
+literal `'none'` originates — an `AdaptationSet` declares `mimeType` `video/mp4` or `audio/mp4` and
+yt-dlp fills the codec it lacks — so it is the seam this rule depends on, and it is still not a site
+extractor. Both fixtures are kept: the synthetic one names its own shapes and stays legible, and the
+recorded one is what shows something published has them.)*
 """
 
 import json
@@ -343,3 +355,57 @@ def test_a_single_choice_is_never_refused_for_ffmpeg(pair: tuple[FormatInfo, For
         assert merge_refusal(selection, ffmpeg_available=False) is None, (
             f"{selection.describe()!r} was refused for ffmpeg without a merge being stated"
         )
+
+
+# --- T-188: the same routing, against a recorded source rather than a synthetic one -----------
+
+
+def test_a_real_manifest_publishes_the_pair_this_rule_routes() -> None:
+    """**`T-188`.** `REQ-008`'s subject, shown to exist outside a fixture this project wrote.
+
+    Everything above proves `kind_of` routes the pair correctly. None of it proved **anything
+    published has that shape** — `derived_format_columns` is synthetic and says so, and `T-108`'s
+    end-to-end case drives a local HLS presentation this project generates. A rule that only ever
+    meets its own inputs is a rule with no evidence behind it.
+
+    Asserted by *counting what the routing returns* rather than by naming format ids: the ids are
+    the manifest's own (`bbb_a64k`, `bbb_30fps_320x180_200k`), and pinning them would make a
+    re-encode of the reference stream fail this for a reason that is not about routing.
+    """
+    formats = formats_from("dash_akamai_big_buck_bunny")
+    kinds = [kind_of(entry) for entry in formats]
+
+    assert kinds.count(FormatKind.VIDEO_ONLY) == 10, (
+        f"expected ten video-only formats, routed {kinds.count(FormatKind.VIDEO_ONLY)}"
+    )
+    assert kinds.count(FormatKind.AUDIO_ONLY) == 1, (
+        f"expected one audio-only format, routed {kinds.count(FormatKind.AUDIO_ONLY)}"
+    )
+    assert FormatKind.COMPLETE not in kinds, (
+        "a DASH manifest separates the streams by construction, so no format carries both; a "
+        "COMPLETE here means the projection stopped reading the explicit 'none' this fixture "
+        "exists for"
+    )
+
+
+def test_the_recorded_pair_is_pairable_and_merges() -> None:
+    """The pair from a real manifest reaches the same rules the synthetic one does.
+
+    The point is not that `pairable` works — the cases above establish that — but that a
+    **recorded** video-only and audio-only format satisfy it, so `REQ-008`'s merge is evidenced
+    against something published rather than only against shapes this project authored.
+    """
+    formats = formats_from("dash_akamai_big_buck_bunny")
+    video = next(entry for entry in formats if kind_of(entry) is FormatKind.VIDEO_ONLY)
+    audio = next(entry for entry in formats if kind_of(entry) is FormatKind.AUDIO_ONLY)
+
+    assert pairable(formats), (
+        "a source publishing both halves must be pairable; this is the property archive.org, "
+        "PeerTube and Wikimedia cannot satisfy, which is why the fixture was needed"
+    )
+
+    merged = FormatSelection(mode=SelectionMode.PAIR).choose(video).choose(audio)
+    assert merge_refusal(merged, ffmpeg_available=False) is not None, (
+        "a stated merge of two recorded formats must still be refused without ffmpeg (REQ-024)"
+    )
+    assert merge_refusal(merged, ffmpeg_available=True) is None

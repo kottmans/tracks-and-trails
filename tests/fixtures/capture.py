@@ -405,6 +405,35 @@ SOURCES: Final[tuple[Source, ...]] = (
         extractor="archive.org",
         options={"noplaylist": False},
     ),
+    Source(
+        name="dash_akamai_big_buck_bunny",
+        url="https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
+        why=(
+            "The only source found that publishes REQ-008's merge pair: ten video-only formats "
+            "carrying acodec 'none' beside one audio-only carrying vcodec 'none'. Every other "
+            "acceptable source publishes complete progressive files, so kind_of's routing was "
+            "exercised only against a synthetic fixture and a locally generated HLS presentation "
+            "— neither of which shows that anything published has this shape (T-188).\n"
+            "\n"
+            "**The extractor is `generic`, and that is the whole caveat.** yt-dlp recognises the "
+            ".mpd and parses the manifest directly rather than running site-specific code, so "
+            "this pins DASH manifest parsing rather than a site's output. That is where the "
+            "literal 'none' comes from — an AdaptationSet declares mimeType video/mp4 or "
+            "audio/mp4, and yt-dlp fills the codec it lacks with 'none' rather than leaving it "
+            "unknown — so it is the seam the routing actually depends on. It is not a substitute "
+            "for a site extractor publishing the same shape, and T-188 records that the "
+            "maintainer accepted it knowing the difference."
+        ),
+        licence=(
+            "Big Buck Bunny (c) Blender Foundation, CC BY 3.0 — the same film this project "
+            "already records from archive.org and PeerTube. Served as the DASH-IF reference "
+            "stream from Akamai; the manifest and its segments are plain unsigned HTTPS paths. "
+            "**The licence is known from the content's identity, not stated by the source** — "
+            "weaker than PeerTube, which reports it in its API, and stronger than media.ccc.de, "
+            "which states none for any of 16,828 events (T-188's 2026-08-08 survey)."
+        ),
+        extractor="generic",
+    ),
 )
 
 #: Failures worth recording, and the taxonomy kind `ARCHITECTURE.md` §7 says each must become.

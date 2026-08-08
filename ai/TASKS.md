@@ -172,6 +172,159 @@ exists after `T-175` and migration `0009`.
 
 ---
 
+### T-188 — A recorded source with a separate video and audio stream
+
+**Status:** **In Review — implemented 2026-08-08.** *(Built by the Implementer; no criterion is
+claimed approved.)* The maintainer ruled on the surveyed candidate — **take it, and label it
+honestly** — and `tests/fixtures/infodicts/dash_akamai_big_buck_bunny.json` is that fixture.
+
+**What it proves and what it does not.** Ten video-only formats carrying `acodec: 'none'` beside
+one audio-only carrying `vcodec: 'none'` — `REQ-008`'s pair, from a real published manifest.
+Until now `kind_of`'s routing met only shapes this project authored: `derived_format_columns` is
+synthetic and says so, and `T-108`'s end-to-end case drives a local HLS presentation this project
+generates. **A rule that only ever meets its own inputs has no evidence behind it**, and that is
+the gap this closes. It does **not** show a site *extractor* produces the shape — see the caveat.
+
+**The caveat is in the fixture, not only here.** Its `why` and `content_licence` blocks record that
+the extractor is `generic`, that yt-dlp parses the `.mpd` directly rather than running
+site-specific code, and that the licence is known from the content's identity rather than stated by
+the source. Anyone reading the fixture meets the limitation without reading this entry.
+
+**Why `generic` is the right seam anyway**, which is the argument for accepting it: the literal
+`'none'` originates in DASH parsing. An `AdaptationSet` declares `mimeType` `video/mp4` or
+`audio/mp4`, yt-dlp fills the codec the representation lacks with `'none'` rather than leaving it
+unknown, and `_as_stream_presence` maps that to `False`. So this pins the exact mechanism the
+routing depends on. A site extractor would be *additional* evidence, not different evidence.
+
+**Both fixtures are kept.** The synthetic one names its own shapes and stays legible; the recorded
+one shows something published has them.
+
+#### A side-finding for `OPS-013` and `T-185`, not acted on here
+
+**This source reports `fps` on all ten video formats.** `OPS-013` states that *"`fps` is reported
+by none of the seven acceptable sources probed"* on 2026-08-07 and amended Phase 3's exit criterion
+1 on exactly that basis, leaving `fps` covered by the derived fixture *"until `T-185` finds an
+acceptable source"*.
+
+**This is recorded rather than acted on**, because whether it changes anything turns on the same
+judgement the maintainer just made here — is a DASH reference stream an *acceptable source* for
+that purpose too? That is `OPS-013`'s question and `T-185`'s, not this task's. Flagged because a
+fixture that happens to satisfy another decision's reopening condition is precisely the kind of
+thing that gets discovered once and then lost.
+
+*(Was: Proposed — filed 2026-08-07 by `T-108`; the gap `OPS-013` is holding open. Surveyed
+2026-08-08, one candidate found, needing a maintainer ruling rather than more searching.)*
+
+#### The 2026-08-08 survey
+
+**`media.ccc.de` is now closed rather than unresolved.** This entry says *"if a conference is found
+whose API states a licence, this task is nearly done"*, and the original probe sampled **one**
+conference — 0 of 222 for 38c3. The whole archive has now been swept: **452 conferences, 16,828
+events, zero with a stated licence.** The right shape and no licence, permanently. That is a
+disposition rather than a pending search, and nobody needs to look there again.
+
+**The recorded sources are confirmed dead ends, not merely unpromising.** `video.blender.org`
+serves five progressive MP4s reporting `vcodec: None` — *unknown*, not the explicit `'none'` the
+routing needs — and its API returns **zero `streamingPlaylists`**, so no HLS split-track variant is
+hiding behind the extractor.
+
+**One viable candidate: a DASH manifest.** DASH is separate-track by construction, and the
+DASH-IF / Akamai reference stream produces exactly the pair `T-108` merges:
+
+| | `vcodec` | `acodec` | count |
+|---|---|---|---|
+| video-only | `avc1.64000d` | **`none`** | 10 |
+| audio-only | **`none`** | `mp4a.40.5` | 1 |
+
+`https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd` — **Big Buck Bunny, CC BY 3.0, Blender
+Foundation**, which this project already records from two other sources. Unsigned, and a stable
+reference stream for years. It meets `ai/TESTING.md` §5's three stated tests.
+
+**Why it is not simply committed — two weaknesses, and they are the maintainer's to weigh:**
+
+1. **The extractor is `generic`, not a site extractor.** Every existing fixture pins a real site's
+   output; this would pin yt-dlp's **DASH manifest parsing**. That is arguably where `vcodec: 'none'`
+   comes from and so exactly what the routing should be proven against — but it is a different kind
+   of evidence from what the recorded set holds.
+2. **The licence is known from the content's identity, not stated by the source.** Stronger than
+   `media.ccc.de`, which states nothing; weaker than PeerTube, which states it in the API.
+
+This entry asks for *"a committed fixture from a public source"* and warns that a presentation this
+project generates *"does not show that any real site publishes that shape"*. **A CDN-hosted
+reference stream sits between those two**, which is why it is put to the maintainer rather than
+quietly counted.
+
+**Recommendation: take it**, recording the `generic` extractor and the licence provenance in the
+fixture's own `content_licence` block. If a real site extractor is wanted instead, `T-188` stays
+open and `OPS-013` keeps holding it — which is already a disposition and not a gap.
+
+**No acceptable source this project records publishes a merge pair.** `REQ-008`'s subject is *"a
+separate video and audio stream to be merged"*, and routing a format into the video or the audio
+slot needs yt-dlp's explicit `vcodec: 'none'` / `acodec: 'none'` — the distinction `T-108` widened
+the projection to keep. Every recorded fixture publishes complete progressive files: archive.org,
+Wikimedia Commons and PeerTube all name codecs for both streams or for neither. So the pair
+`T-108` merges is exercised by `derived_format_columns`, which says so in its own
+`what_is_synthetic`.
+
+**One source was found and rejected, and that is the useful half of this entry.** `media.ccc.de`
+sets `vcodec: 'none'` for its `mp3` and `opus` recordings beside a named `acodec`, and `'h264'` with
+no `acodec` for its video ones — a real, recorded example of all three states in one item. It is
+**not committed**, because its API states no licence for any event of any conference sampled
+(0 of 222 for 38c3), and `ai/TESTING.md` §5 requires freely licensed. CCC talks are widely believed
+to be CC BY; belief is not what §5 asks for. *If a conference is found whose API states a licence,
+this task is nearly done.*
+
+**It also has no video-only half**, so even committed it would only close part of this: it gives a
+genuine `AUDIO_ONLY`, not a `VIDEO_ONLY` to pair with it. A DASH or adaptive-streaming source is
+what supplies both.
+
+**Narrowed 2026-08-07 by `T108-R1`.** The routing is no longer evidenced *only* against a synthetic
+fixture: `test_a_chosen_video_and_audio_pair_produce_one_merged_file` builds a **local HLS
+presentation** with a video-only variant and a separate audio group, and drives it through real
+yt-dlp — so `kind_of` is exercised against a real extractor's output on every run, and that is what
+corrected the rule (an `EXT-X-MEDIA:TYPE=AUDIO` group reports no `acodec` at all). What remains
+unclosed is narrower and worth being exact about: **a committed fixture from a public source**, for
+the unit-level routing tests and for `ai/TESTING.md` §5's recorded set. A presentation this project
+generates proves the code reads yt-dlp correctly; it does not prove any real site publishes that
+shape.
+
+**Owner:** Implementer
+**Priority:** Low — no user-visible behaviour depends on it, and `T-108`'s routing is asserted
+against a declared-synthetic fixture in the meantime
+**Phase:** Phase 3
+**Depends on:** nothing. It needs the network and a deliberate act, like `T-185`
+**Relevant context:** `OPS-013` (what permits the gap, and on what conditions), `T-185` (the same
+search, for `fps`, which succeeded), `ai/TESTING.md` §5, `tests/fixtures/capture.py`,
+`src/tracks_and_trails/ui/format_selection.py` (`kind_of`, `pairable`)
+**Affected surfaces:** `tests/fixtures/infodicts/*.json`, `tests/unit/test_format_selection.py`,
+`tests/ui/test_add_dialog.py` where they name the derived fixture. **No `src/`**
+**Risk:** Low to run; Medium to get wrong, for `T-185`'s reason — a fixture is a contract, and a
+careless capture is how data reaches the repository permanently
+
+#### Acceptance criteria
+
+- **A source publishing a video-only and an audio-only format in one item is found and captured, or
+  this task closes with the finding that no acceptable one does.** `OPS-013`'s conditions are the
+  bar: freely licensed, unsigned, unlikely to change
+- The licence is **stated by the source**, not inferred from what the publisher usually does
+- `tests/unit/test_format_selection.py`'s routing assertions read the recorded fixture rather than
+  the derived one, and say which
+- `derived_format_columns` keeps its place for the shapes no source happens to have, and its
+  `what_is_synthetic` stops claiming the pair
+- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture, selection and
+  dialog tests are clean
+
+#### Out of scope
+
+- Relaxing `ai/TESTING.md` §5 to admit a source whose licence is unstated or which churns. That
+  trade was declined for `fps` in `OPS-013` and nothing here reopens it
+- Changing what the projection reads. `T-108` did that; this makes the fixtures catch up
+
+---
+
+
+---
+
 
 ---
 
@@ -1323,119 +1476,6 @@ filed this rather than editing it.
   than saying it arrives with `T-111`. `T-111` still owns the other four operations.
 - Nothing else in §6 changes: the ruled clauses are the contract the implementation was built
   against.
-
----
-
-### T-188 — A recorded source with a separate video and audio stream
-
-**Status:** **Proposed — filed 2026-08-07 by `T-108`.** The gap `OPS-013` is holding open, one
-deliverable later than the one it was written for. **Surveyed 2026-08-08; one candidate found and
-it needs a maintainer ruling, not more searching.**
-
-#### The 2026-08-08 survey
-
-**`media.ccc.de` is now closed rather than unresolved.** This entry says *"if a conference is found
-whose API states a licence, this task is nearly done"*, and the original probe sampled **one**
-conference — 0 of 222 for 38c3. The whole archive has now been swept: **452 conferences, 16,828
-events, zero with a stated licence.** The right shape and no licence, permanently. That is a
-disposition rather than a pending search, and nobody needs to look there again.
-
-**The recorded sources are confirmed dead ends, not merely unpromising.** `video.blender.org`
-serves five progressive MP4s reporting `vcodec: None` — *unknown*, not the explicit `'none'` the
-routing needs — and its API returns **zero `streamingPlaylists`**, so no HLS split-track variant is
-hiding behind the extractor.
-
-**One viable candidate: a DASH manifest.** DASH is separate-track by construction, and the
-DASH-IF / Akamai reference stream produces exactly the pair `T-108` merges:
-
-| | `vcodec` | `acodec` | count |
-|---|---|---|---|
-| video-only | `avc1.64000d` | **`none`** | 10 |
-| audio-only | **`none`** | `mp4a.40.5` | 1 |
-
-`https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd` — **Big Buck Bunny, CC BY 3.0, Blender
-Foundation**, which this project already records from two other sources. Unsigned, and a stable
-reference stream for years. It meets `ai/TESTING.md` §5's three stated tests.
-
-**Why it is not simply committed — two weaknesses, and they are the maintainer's to weigh:**
-
-1. **The extractor is `generic`, not a site extractor.** Every existing fixture pins a real site's
-   output; this would pin yt-dlp's **DASH manifest parsing**. That is arguably where `vcodec: 'none'`
-   comes from and so exactly what the routing should be proven against — but it is a different kind
-   of evidence from what the recorded set holds.
-2. **The licence is known from the content's identity, not stated by the source.** Stronger than
-   `media.ccc.de`, which states nothing; weaker than PeerTube, which states it in the API.
-
-This entry asks for *"a committed fixture from a public source"* and warns that a presentation this
-project generates *"does not show that any real site publishes that shape"*. **A CDN-hosted
-reference stream sits between those two**, which is why it is put to the maintainer rather than
-quietly counted.
-
-**Recommendation: take it**, recording the `generic` extractor and the licence provenance in the
-fixture's own `content_licence` block. If a real site extractor is wanted instead, `T-188` stays
-open and `OPS-013` keeps holding it — which is already a disposition and not a gap.
-
-**No acceptable source this project records publishes a merge pair.** `REQ-008`'s subject is *"a
-separate video and audio stream to be merged"*, and routing a format into the video or the audio
-slot needs yt-dlp's explicit `vcodec: 'none'` / `acodec: 'none'` — the distinction `T-108` widened
-the projection to keep. Every recorded fixture publishes complete progressive files: archive.org,
-Wikimedia Commons and PeerTube all name codecs for both streams or for neither. So the pair
-`T-108` merges is exercised by `derived_format_columns`, which says so in its own
-`what_is_synthetic`.
-
-**One source was found and rejected, and that is the useful half of this entry.** `media.ccc.de`
-sets `vcodec: 'none'` for its `mp3` and `opus` recordings beside a named `acodec`, and `'h264'` with
-no `acodec` for its video ones — a real, recorded example of all three states in one item. It is
-**not committed**, because its API states no licence for any event of any conference sampled
-(0 of 222 for 38c3), and `ai/TESTING.md` §5 requires freely licensed. CCC talks are widely believed
-to be CC BY; belief is not what §5 asks for. *If a conference is found whose API states a licence,
-this task is nearly done.*
-
-**It also has no video-only half**, so even committed it would only close part of this: it gives a
-genuine `AUDIO_ONLY`, not a `VIDEO_ONLY` to pair with it. A DASH or adaptive-streaming source is
-what supplies both.
-
-**Narrowed 2026-08-07 by `T108-R1`.** The routing is no longer evidenced *only* against a synthetic
-fixture: `test_a_chosen_video_and_audio_pair_produce_one_merged_file` builds a **local HLS
-presentation** with a video-only variant and a separate audio group, and drives it through real
-yt-dlp — so `kind_of` is exercised against a real extractor's output on every run, and that is what
-corrected the rule (an `EXT-X-MEDIA:TYPE=AUDIO` group reports no `acodec` at all). What remains
-unclosed is narrower and worth being exact about: **a committed fixture from a public source**, for
-the unit-level routing tests and for `ai/TESTING.md` §5's recorded set. A presentation this project
-generates proves the code reads yt-dlp correctly; it does not prove any real site publishes that
-shape.
-
-**Owner:** Implementer
-**Priority:** Low — no user-visible behaviour depends on it, and `T-108`'s routing is asserted
-against a declared-synthetic fixture in the meantime
-**Phase:** Phase 3
-**Depends on:** nothing. It needs the network and a deliberate act, like `T-185`
-**Relevant context:** `OPS-013` (what permits the gap, and on what conditions), `T-185` (the same
-search, for `fps`, which succeeded), `ai/TESTING.md` §5, `tests/fixtures/capture.py`,
-`src/tracks_and_trails/ui/format_selection.py` (`kind_of`, `pairable`)
-**Affected surfaces:** `tests/fixtures/infodicts/*.json`, `tests/unit/test_format_selection.py`,
-`tests/ui/test_add_dialog.py` where they name the derived fixture. **No `src/`**
-**Risk:** Low to run; Medium to get wrong, for `T-185`'s reason — a fixture is a contract, and a
-careless capture is how data reaches the repository permanently
-
-#### Acceptance criteria
-
-- **A source publishing a video-only and an audio-only format in one item is found and captured, or
-  this task closes with the finding that no acceptable one does.** `OPS-013`'s conditions are the
-  bar: freely licensed, unsigned, unlikely to change
-- The licence is **stated by the source**, not inferred from what the publisher usually does
-- `tests/unit/test_format_selection.py`'s routing assertions read the recorded fixture rather than
-  the derived one, and say which
-- `derived_format_columns` keeps its place for the shapes no source happens to have, and its
-  `what_is_synthetic` stops claiming the pair
-- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture, selection and
-  dialog tests are clean
-
-#### Out of scope
-
-- Relaxing `ai/TESTING.md` §5 to admit a source whose licence is unstated or which churns. That
-  trade was declined for `fps` in `OPS-013` and nothing here reopens it
-- Changing what the projection reads. `T-108` did that; this makes the fixtures catch up
 
 ---
 
