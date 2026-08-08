@@ -11819,3 +11819,52 @@ capture policy superseded by SEC-002's accepted playlist-entry amendment.
 The reviewer appended this record only. No reviewed source/test, task state, status state,
 requirement, decision, implementation-plan entry, fixture, commit, remote ref, migration, user
 database or CI state was changed.
+
+## 2026-08-07 — T-108 / T-185 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `931dcce`
+**Correction head:** `870d56f`
+**Tasks:** `T-108`, `T-185`
+**Platforms verified:** Linux, Qt offscreen; Windows 11 self-hosted CI, Qt offscreen
+**Verdict by task:** **T-108 Approved with follow-up T-189; T-185 Approved.** All four blocking
+findings are Resolved. The paired choice now produces and inspects a real merged file on both
+required platforms; staging resets remount the panel by row identity; T-185's current task/status
+prose agrees with the completed evidence; and every fixture records the amended entry allowlist.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T108-R1` | **High** | **Yes** | The new end-to-end test builds separate video-only and audio-only HLS renditions, drives paste/probe/table/pair/queue through the application, requires one `+` request and one output, and uses ffprobe to require audio plus video streams. It passed independently on Linux and passed—not skipped—on Windows run `31233348009`, with ffmpeg 8.1.2 present. The test also exposed and corrected real HLS audio-group output (`vcodec: 'none'`, no `acodec`); silence alone and both-stream absence remain unpairable. | **Resolved at `870d56f`** |
+| `T108-R2` | **Medium** | **Yes** | Refresh remounts after `endResetModel`; the current index is found from the original `Row` identity, or the panel closes when that row is gone. The first mount is deferred until the editor's synchronous `commitData`/`closeEditor` calls finish. Cases cover reorder, add, sibling removal, own-row removal and reopen. | **Resolved at `870d56f`** |
+| `T185-R1` | **Medium** | **Yes** | T-185 now separates historical absence from current three-source evidence, says Phase 3 exit criterion 1 is met, describes completed work, and marks the new-source exclusion superseded. STATUS makes the same old claim explicitly historical. | **Resolved at `870d56f`** |
+| `T185-R2` | **Medium** | **Yes** | `_policy_record()` derives its retained entry fields from `CONSUMED_ENTRY`; all seven info fixtures carry that policy without false capture/version churn. Tests bind writer to allowlist, committed policies to writer, and actual playlist-entry keys to the allowlist. | **Resolved at `870d56f`** |
+| `T108-R3` | **Medium** | **No** | The required merge test uses a fixture that skips when ffmpeg/ffprobe is absent, while the self-hosted Windows job records but does not require those tools. This run had both and the exact proof passed, so T-108 is met; a later missing installation could nevertheless leave CI green with the proof skipped. The workflow's claim that the default suite does not need ffmpeg is now false. **Owner/target:** Implementer, `T-189`. | **Open, non-blocking follow-up** |
+
+### Review judgments
+
+- The HLS classification is evidence-backed: explicit absence of the other stream is required,
+  while a missing key alone still says `UNKNOWN`; a both-`none` storyboard is neither half.
+- The reset fix has no row-number fallback. The original `Row` is resolved after reconciliation,
+  and remounting occurs outside the editor's `commitData` stack.
+- T-188 remains correctly open and narrower. Local HLS proves real yt-dlp routing and a merged
+  result; it is not a recorded public source merely because its server is real.
+- T108-R3 does not reopen T-108: the exact Windows proof passed. The focused re-review rule sends
+  this new Medium gate-hardening issue to T-189 instead of another correction pass.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `931dcce..870d56f`: 20 files, **+995/-73**; `HEAD == origin/main == 870d56f`; tree clean before reviewer bookkeeping; `git diff --check`: **pass**. |
+| Real pair → merged file | Exact Linux case: **1 passed in 1.97 s**. A restricted first attempt hit only the sandbox's loopback denial; the permitted rerun passed. |
+| Focused correction suites | Format selection, fixture, add-dialog and format-table files: **298 passed, 8 skipped in 58.80 s**. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **196 files already formatted**; host and Win32 mypy over `src tests`: **success, 110 source files each**. |
+| Task placement | **14 passed** after filing T-189. |
+| Windows CI | [Run `31233348009`](https://github.com/kottmans/tracks-and-trails/actions/runs/31233348009): all five jobs green. Windows recorded ffmpeg 8.1.2; the exact merged-file test **PASSED**; full suite **2339 passed, 24 skipped, 32 deselected**. |
+| Submitted full suite | The handoff reports **2351 passed, 14 skipped** locally and clean static/task gates. The reviewer did not rerun the entire local suite. |
+
+The reviewer appended this record and filed non-blocking follow-up T-189. No reviewed source or
+test, T-108/T-185 task state, STATUS state, requirement, decision, implementation-plan entry,
+fixture, commit, remote ref, migration, user database or CI state was changed.

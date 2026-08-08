@@ -5,8 +5,7 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-07 — `T-181` filed under Phase 3, and `T-182`–`T-184` under the new
-Phase 4.5
+**Last updated:** 2026-08-07 — `T-189` filed as the non-blocking `T108-R3` CI-gate follow-up
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -80,268 +79,11 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-### T-185 — Re-capture the fixtures so the format columns rest on a real report
-
-**Status:** **In Review — done 2026-08-07.** Both halves landed: `T107-R8`'s false provenance is
-corrected and gated, and **a source that reports `fps` was found** — so the column `OPS-013` was
-ratified to excuse now rests on a recording after all.
-
-**`fps` is closed by `peertube_big_buck_bunny_60fps`.** yt-dlp's PeerTube extractor reads `fps` from
-each published file, and the Blender Foundation runs its own instance carrying the open movies under
-CC BY with unsigned object-storage URLs — freely licensed, boring, and unlikely to change, which is
-`ai/TESTING.md` §5's whole list. **The item chosen reports two different framerates** (30 for its
-240p–480p renditions, 60 for 720p and 1080p), so the column is *sorted* by real values rather than
-merely filled; a source with one framerate everywhere would have populated the column without
-exercising `REQ-003`'s "sortable". It also gives height-with-no-width resolutions and exact
-`filesize`s, so `describe_resolution`'s `1080p` branch and the exact half of `T107-R7`'s
-exact-vs-estimate contrast now come from recordings too.
-
-**How it was found, because "none exists" was nearly the answer.** The seven earlier probes were all
-*sources*; this one came from asking **which extractors populate the field at all** — grepping
-yt-dlp's own extractor sources for `fps` — and then looking for a freely licensed instance of one.
-`archiveorg.py` matched only inside `YoutubeWebArchive`'s itag table; `peertube.py` matched in the
-live path. That is the search worth recording, more than the URL.
-
-**`T107-R8` is corrected by declaring the extractor per `Source` and checking it against the
-capture.** The literal `"archive.org"` is gone. `Source` now takes `extractor` **keyword-only and
-required**, so a new source cannot inherit another's provenance by omission — that is `T107-R8`'s
-"gate a second extractor", made a `TypeError` at the point the source is written rather than a wrong
-value in a committed file months later. `capture_info` additionally **refuses to write** when
-yt-dlp's own `info["extractor"]` disagrees with the declaration, so the committed value is
-hand-written (`SEC-002`'s line intact) *and* cannot be false. Only `wikimedia_caminandes.json` was
-re-captured: the other three were already correct, and churning their dates would say something
-changed when nothing did.
-
-*(Its "out of scope — new sources" line was written when this task was a re-capture, and its own
-acceptance criterion — *"a source reporting `fps` is found and captured, or this closes with the
-finding that none do"* — overrides it. The tension is left visible rather than edited away.)*
-
-*(It briefly read "Complete — done inside `T-107`'s correction" on 2026-08-07 and was reopened the
-same day: the re-review found the work incomplete, and closing a task whose criterion was still
-unmet is the same defect one level up.)*
-**Owner:** Implementer
-**Priority:** **High for Phase 3's exit, low for anything running today.** No user-visible behaviour
-depends on it; one exit criterion does
-**Phase:** Phase 3
-**Depends on:** nothing. It needs the network and a deliberate act, not another task
-**Relevant context:** `SEC-002` (a fixture commits only the fields the projection reads),
-`tests/fixtures/capture.py` (run by hand, never by a test), `T-018`, `ai/TESTING.md` §5,
-`tests/fixtures/infodicts/derived_format_columns.json` (the stand-in this replaces the need for)
-**Affected surfaces:** `tests/fixtures/infodicts/*.json`, and `tests/ui/test_format_table.py` where
-it names the derived fixture. **No `src/`**
-**Risk:** Low to run, Medium to get wrong: a fixture is a **contract**, and a careless re-capture
-that widens what is committed is how data reaches the repository permanently (`REQ-026`, `NFR-007`)
-
-#### What this was for, and what it did
-
-**Rewritten 2026-08-07 for `T185-R1`.** This section stated the problem in the present tense — *"the
-recorded captures carry none of them"*, *"the criterion is **not met**"* — and kept saying so after
-the work was done. `TASKS.md` is current truth, so an entry whose status says the criterion is
-evidenced and whose body says it is unmet **misstates a phase gate**. The history is worth keeping;
-stating it as the current answer is not.
-
-**What was wrong, historically.** `REQ-003` names fps, codecs and bitrate as columns, and the
-recorded captures carried none of them: `SEC-002` commits only the fields the projection reads, and
-the projection did not read them until `T-107`. Four of nine columns were therefore evidenced
-against `derived_format_columns.json` — synthetic values in a real shape — and a fixture this
-project wrote cannot answer a question about agreeing with what yt-dlp reports.
-
-**What is true now.** Three recorded sources between them populate every column `REQ-003` names:
-archive.org (ids, extensions, `WxH` resolutions, exact sizes, one audio codec), `wikimedia_caminandes`
-(codecs, bitrate, estimated sizes) and `peertube_big_buck_bunny_60fps` (**fps**, at 30 and 60,
-height-only resolutions, exact sizes). The `yt-dlp -F` comparison is recorded in
-`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md` and asserted per row and per fact by
-`test_the_table_matches_what_yt_dlp_f_reports`. **Phase 3's exit criterion 1 is met**, and `T-107`
-is approved.
-
-#### What was done
-
-Re-captured the recorded info-dict fixtures with the allowlist carrying `fps` and `tbr`, added
-`wikimedia_caminandes` and then `peertube_big_buck_bunny_60fps`, recorded the `yt-dlp -F`
-comparison, and corrected the capture writer's provenance — the hardcoded extractor (`T107-R8`) and
-the policy sentence that still claimed playlist entries were only counted (`T185-R2`).
-
-#### Acceptance criteria
-
-**All met.** Kept in full rather than struck, because this entry is the record of what the search
-covered and each line names something that is now asserted somewhere.
-
-- **A source reporting `fps` is found and captured, or this task closes with the finding that
-  none of the acceptable ones do.** `ai/TESTING.md` §5's criteria are the constraint: public domain
-  or freely licensed, unsigned URLs, no reason to change. **Found** —
-  `peertube_big_buck_bunny_60fps`, on the Blender Foundation's own instance, reporting two different
-  framerates so the column is sorted as well as filled
-- Each recorded fixture is re-captured with its metadata regenerated: yt-dlp version, date, options
-- Each fixture's recorded extractor matches its source; the capture writer does not hardcode
-  `archive.org`, and a non-Archive fixture makes that regression fail. **`Source.extractor` is
-  keyword-only and required, the capture refuses a contradictory answer from yt-dlp, and the writer
-  is tested independently of the committed files** — a re-hardcoded writer changes no file until
-  someone re-captures, so the file-reading assertion alone could not catch it
-- The committed files carry `fps`, `tbr`, `vcodec` and `acodec` **where the source reports them**,
-  and carry nothing else new — `tests/unit/test_fixtures.py`'s scanners stay clean
-- `tests/ui/test_format_table.py`'s recorded-fixture test asserts the four columns **by value**,
-  and its docstring stops saying they rest on a derived fixture
-- **The `yt-dlp -F` comparison is recorded** in `ai/evidence/`, naming the yt-dlp version and the
-  URLs, so Phase 3's exit criterion 1 has evidence rather than an assertion
-- A source that genuinely reports no fps for a format keeps the placeholder, and the test says so:
-  the criterion is that the table matches the report, not that every cell is full
-- **The recorded provenance describes what is actually committed** (`T185-R2`): the policy sentence
-  is derived from `CONSUMED_ENTRY` rather than transcribed beside it, every committed fixture
-  carries the current one, and a gate fails if either drifts
-- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture and format-table
-  tests are clean
-
-#### Out of scope
-
-- Changing what the projection reads. `T-107` fixed that; this made the fixtures catch up
-- ~~New sources.~~ **This line was wrong for the task it ended up being.** It was written when this
-  was a re-capture, and the acceptance criterion above — *find a source reporting fps, or close with
-  the finding that none do* — cannot be met without considering new ones. Struck rather than deleted
-  so the contradiction is visible: two sources were added, and `ai/TESTING.md` §5's bar was applied
-  to both rather than relaxed
-- `derived_format_columns.json`. It keeps earning its place, and gained rather than lost work:
-  the placeholder row, a fractional framerate no source reports, and the video-only/audio-only pair
-  `T-188` owns finding for real
-
----
-
-
-### T-108 — Choose a video and an audio stream, and merge them
-
-**Status:** **In Review — built 2026-08-07, corrected the same day for `T108-R1` and `T108-R2`.**
-The table is mounted, both selection modes work, both ffmpeg facts are separately asserted, and
-**a chosen pair now produces a real merged file**.
-
-**`T108-R1`: the criterion is met, as a file.** The first submission stopped at a `DownloadRequest`
-carrying `137+140` and said so plainly — a request is not a file, and everything between the
-selector and the output was unexercised. `test_a_chosen_video_and_audio_pair_produce_one_merged_file`
-drives the user's whole route through the dialog against a **local HLS presentation whose video and
-audio are separate renditions**, then inspects the output with `ffprobe`: one file, carrying both an
-audio and a video stream. Everything is real except the server, which is `ai/TESTING.md` §6's
-recorded exception. It runs wherever the suite runs, and CI runs the suite on Windows.
-
-**Building that test corrected the routing rule.** An `EXT-X-MEDIA:TYPE=AUDIO` group arrives from
-yt-dlp as `vcodec: 'none'` with **no `acodec` at all**, because HLS puts the codec list on the
-variant rather than on the group — so `kind_of`'s first version, which required *both* answers,
-made the commonest real audio half unpairable. The rule now keys on the explicit `'none'` and
-tolerates silence on the other side, while still refusing silence *alone*: media.ccc.de's
-`vcodec: 'h264'` with no `acodec` stays unknown. `is_audio_only`/`is_video_only` carry the rule and
-`kind_of` asks them, so the routing and the projection cannot drift apart.
-
-**`T108-R2`: an open panel survives the URL list changing.** A structural reset dropped the index
-widget while `_expanded`/`_panel` went on pointing at the row, so the row stayed **tall and blank**
-and could never be reopened — `open_format_table` returned early because it *was* the expanded one.
-`remount_format_table` puts it back **by row identity** after the reset, or closes it if the row is
-gone. Reordering A/B to B/A leaves row 0 valid and meaning a different URL, so a positional remount
-would hang one row's table under another's.
-
-**A second Qt collision surfaced while fixing it**: `setIndexWidget` and item editors share one map,
-so mounting the panel from inside `setData` — which Qt calls during `commitData`, with the combo box
-still open — **destroyed the editor under the delegate**, and the next reset called `commitData` on
-the dead pointer. The mount is deferred by one event-loop turn.
-
-**One projection widening was needed and it is the interesting part.** `REQ-008` routes a row into
-*"whichever of the two slots its own kind matches"* (`P-2`), and the projection could not answer
-that question: `_as_optional_codec` maps yt-dlp's explicit `vcodec: 'none'` **and** a missing key
-to the same `None`. `T107-R1` is what reading it anyway cost — the table announced *audio only* for
-a format whose video codec was merely unknown — and `format_table.describe_resolution` names this
-widening as the thing it was waiting for. `FormatInfo` gains `has_video`/`has_audio` as **tri-state**
-(`True`/`False`/`None` for *nobody said*), projected in the adapter, which is the only place the
-difference is still visible (`NFR-008`). `is_audio_only` narrows accordingly and gains
-`is_video_only`; a format with a codec for a stream it says it lacks is refused at construction.
-
-**Most formats from most sources come out `UNKNOWN`, and that is the honest answer.** archive.org
-and PeerTube name no codecs at all, so nothing about their formats can be classified — which is why
-the merge mode is *not drawn* for them, with its own sentence, separate from ffmpeg's.
-
-**A live defect was found by the dialog tests and is worth recording**: `choose_current` emitted
-`format_chosen` before `selection_changed`. The dialog closes the panel on the first and writes the
-choice on the second, so closing tore the panel off its row before the write, the write found
-nothing to write to, and **the chosen format was silently discarded while the row kept its old
-one** — this project's recurring "computed correctly and then not acted on", live in new code. The
-order is now pinned by a test of its own.
-
-*(Was: Proposed — Phase 3 decomposition, 2026-08-01.)*
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 3
-**Depends on:** `T-107`
-**Relevant context:** `docs/UX_SPEC.md` §5 (the selection modes, and the ffmpeg rule stated the
-right way round: the worker's gate reads the **resolved** formats and falls back to the selector
-only when nothing resolved), `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
-(`effective_selector`, `custom_preset`), `T-061` (**the selector-reading gate refused a merge that
-never happened** — see the Scope below), `T-075`
-**Affected surfaces:** `core/presets.py`, `ui/`, `downloader/ytdlp_adapter.py`
-**Risk:** Medium — a merge needs ffmpeg, and `T-061` is what happens when the check reads the wrong
-thing
-
-#### Scope
-
-**This task also mounts the table** (maintainer amendment, 2026-08-07, from `T107-R2`). `T-107`
-built the widget — model, sorting, keyboard, layout contract — and does **not** place it. `UX-007`
-ruled `P-1`: it opens as the **staging row, expanded**, from the format control's *Choose specific
-formats…* entry, the same mechanism `P-19` gives the playlist picker. The staging list has no
-expansion mechanism today, so building one is part of this task rather than a correction to the
-last one — it lands on exactly the surface selection is added to.
-
-`REQ-008`: select specific format IDs from `T-107`'s table, **including a separate video and audio
-stream to be merged**. The selector this produces is `bestvideo[...]+bestaudio[...]`-shaped, so it
-flows through the existing `custom_preset` path rather than a new one.
-
-**ffmpeg is required for a merge and optional otherwise, and there are two different questions
-here** (`T105-R2`, corrected 2026-08-07):
-
-1. **The table knows its own pair needs a merge.** A user who has explicitly chosen a video format
-   and an audio format has *stated* a merge. Nothing is inferred and no selector is parsed, so with
-   ffmpeg absent that pair is refused before the download starts.
-2. **The worker's gate is the definitive one and it reads the *resolved* formats.** `_ffmpeg_gap`
-   asks `_will_merge(info)` — yt-dlp records the decision by populating `requested_formats` with
-   more than one entry — and consults `request.format_selector` **only when resolution supplied no
-   answer at all** (a playlist, or an extraction that stopped before format selection), where being
-   wrong costs a refusal rather than the user's bandwidth.
-
-**`T-061`'s defect was the selector-reading gate, and it ran the other way from how this entry used
-to describe it.** `bestvideo+bestaudio/best` against a source offering one progressive format
-resolves through `/best` to no merge at all, and the selector-reading gate **refused it anyway** —
-measured 2026-07-28. It did not approve a merge it could not perform.
-
-*(This entry said the gate "read the selector rather than the format actually chosen, so it
-approved a merge it could not perform", and asked for a pair "a selector-only check would wrongly
-approve". Both stated the rejected reading as `T-061`'s rule and would have directed an
-implementer straight back into it. `docs/UX_SPEC.md` §5 was corrected on 2026-08-06 and this was
-not.)*
-
-#### Acceptance criteria
-
-- **The table is reachable from the product**: the format control offers *Choose specific
-  formats…*, the staging row expands to show `T-107`'s widget, and the widget fills the space it
-  is given (asserted on a shown row, which is how `T107-R2`'s layout defect escaped)
-- A video-only and an audio-only selection produce one merged file, on **both** platforms.
-  **Met** — `test_a_chosen_video_and_audio_pair_produce_one_merged_file` drives the dialog route
-  against a local HLS presentation with separate video and audio renditions and inspects the output
-  with `ffprobe`. Linux here; Windows from CI, which runs the whole suite. *(The first submission
-  claimed only a `DownloadRequest`, which is `T108-R1`.)*
-- **With ffmpeg absent, an explicitly chosen video + audio pair is refused before the download
-  starts**, naming ffmpeg — not at merge time, which `REQ-024` is explicit about
-- **A selector that contains `+` but resolves to a single progressive format is not refused**, with
-  ffmpeg absent — `T-061`'s measured defect, asserted in the direction it actually failed. The gate
-  under test is the resolved-format one; a selector-only check passes the criterion above and fails
-  this one, which is why both are here
-- The effective selector is visible, per `REQ-009`'s learn-the-syntax rule
-- A single progressive format still downloads with no ffmpeg involvement
-
-#### Out of scope
-
-- Post-processing (`T-109`), even though it shares the ffmpeg dependency
-
----
-
-
-*(**Nothing awaits a verdict as of 2026-08-07.** `T-107` was approved at `09c57c3` once the
-maintainer ratified its criterion amendment as `OPS-013`, and moved to `## Complete`; `T-181` and
-`T-187` were approved before it. `T-107`'s open follow-up is `T107-R8`, carried by `T-185` under
-`## Proposed — Phase 3`. Read the sections, not this line — `T-096`'s gate compares each entry's
-status to the section it sits in, and this parenthetical is prose it does not check.)*
+*(**Nothing awaits a verdict as of 2026-08-07.** `T-108` was approved with follow-up `T-189` and
+`T-185` approved outright, both at `870d56f` — the third and fourth Phase 3 approvals of the day.
+Their open follow-ups are `T-189` and `T-188`, under `## Proposed — Phase 3`. Read the sections, not
+this line: `T-096`'s gate compares each entry's status to the section it sits in, and this
+parenthetical is prose it does not check.)*
 
 ## Ready
 
@@ -2051,6 +1793,65 @@ the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a comm
 ---
 
 
+### T-189 — Make the required ffmpeg CI cases fail instead of skip
+
+**Status:** **Proposed — filed 2026-08-07 by the `T-108` correction re-review (`T108-R3`).**
+The current Windows evidence is real and green; this task keeps a later missing tool from turning
+that required gate into a silent skip.
+
+**Owner:** Implementer
+**Priority:** Medium — no current product defect, but a required cross-platform acceptance test can
+disappear while CI remains green
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T-108`, `T108-R1`, `T-062`, `OPS-005`, `OPS-010`,
+`tests/capabilities.py::ffmpeg`, `.github/workflows/ci.yml`
+**Affected surfaces:** `.github/workflows/ci.yml`, the ffmpeg capability fixture or a CI-specific
+preflight, and focused tests for the gate. No product source
+**Risk:** Low. This changes failure accounting, not application behaviour; the self-hosted machine
+must still not be provisioned without maintainer authority
+
+#### What is wrong
+
+`test_a_chosen_video_and_audio_pair_produce_one_merged_file` is now T-108's required proof on
+Linux and Windows. It takes the ordinary `ffmpeg` fixture, which deliberately skips on a developer
+machine missing either `ffmpeg` or `ffprobe`. The self-hosted Windows workflow deliberately
+**records but does not install** ffmpeg, and its Full suite step has no preflight that makes absence
+an error. STARBASE had ffmpeg 8.1.2 for run `31233348009`, and the exact test passed there, so this
+does not reopen T-108. But if the tool disappears later, the required case becomes `SKIPPED` and
+the job can stay green.
+
+The workflow comment that says the default suite does not need ffmpeg became false when T108-R1
+added the merged-file proof. The capability fixture also says CI installs ffmpeg; that is true on
+hosted runners and not on the self-hosted Windows runner now carrying the Windows gate.
+
+#### Scope
+
+Keep the helpful local skip, but make the CI configurations responsible for T-108's platform proof
+require both tools. A clear preflight in the job is sufficient; changing the fixture to fail under
+an explicit CI-only flag is also acceptable. Do not install or mutate software on STARBASE as part
+of the test run — fail with the missing capability and let the maintainer restore it deliberately.
+
+#### Acceptance criteria
+
+- Linux and Windows CI jobs that own the T-108 platform proof fail clearly when `ffmpeg` or
+  `ffprobe` is absent; the required end-to-end test cannot turn into a green skip
+- An ordinary developer run without the tools still skips conversion cases with the actionable
+  reason `tests/capabilities.py` already gives
+- The workflow and capability comments state which runners install the tools and which merely
+  require a pre-provisioned installation
+- A deterministic probe or mutation hides one tool from the CI gate and makes the gate fail
+- The real merged-file case still passes on Linux and Windows when both tools are present
+
+#### Out of scope
+
+- Provisioning the self-hosted desktop from CI
+- Making ffmpeg a Python dependency or bundling it with the application
+- Changing the product's runtime missing-ffmpeg behaviour (`REQ-024`)
+
+---
+
+
 ### T-188 — A recorded source with a separate video and audio stream
 
 **Status:** **Proposed — filed 2026-08-07 by `T-108`.** The gap `OPS-013` is holding open, one
@@ -2674,6 +2475,272 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+### T-185 — Re-capture the fixtures so the format columns rest on a real report
+
+**Status:** **Complete — Approved at `870d56f`** (2026-08-07). Both halves landed: `T107-R8`'s
+false provenance is corrected and gated, `T185-R2`'s false policy sentence is derived from the
+allowlist rather than written beside it, and **a source that reports `fps` was found** — so the
+column `OPS-013` was ratified to excuse rests on a recording after all.
+
+**`fps` is closed by `peertube_big_buck_bunny_60fps`.** yt-dlp's PeerTube extractor reads `fps` from
+each published file, and the Blender Foundation runs its own instance carrying the open movies under
+CC BY with unsigned object-storage URLs — freely licensed, boring, and unlikely to change, which is
+`ai/TESTING.md` §5's whole list. **The item chosen reports two different framerates** (30 for its
+240p–480p renditions, 60 for 720p and 1080p), so the column is *sorted* by real values rather than
+merely filled; a source with one framerate everywhere would have populated the column without
+exercising `REQ-003`'s "sortable". It also gives height-with-no-width resolutions and exact
+`filesize`s, so `describe_resolution`'s `1080p` branch and the exact half of `T107-R7`'s
+exact-vs-estimate contrast now come from recordings too.
+
+**How it was found, because "none exists" was nearly the answer.** The seven earlier probes were all
+*sources*; this one came from asking **which extractors populate the field at all** — grepping
+yt-dlp's own extractor sources for `fps` — and then looking for a freely licensed instance of one.
+`archiveorg.py` matched only inside `YoutubeWebArchive`'s itag table; `peertube.py` matched in the
+live path. That is the search worth recording, more than the URL.
+
+**`T107-R8` is corrected by declaring the extractor per `Source` and checking it against the
+capture.** The literal `"archive.org"` is gone. `Source` now takes `extractor` **keyword-only and
+required**, so a new source cannot inherit another's provenance by omission — that is `T107-R8`'s
+"gate a second extractor", made a `TypeError` at the point the source is written rather than a wrong
+value in a committed file months later. `capture_info` additionally **refuses to write** when
+yt-dlp's own `info["extractor"]` disagrees with the declaration, so the committed value is
+hand-written (`SEC-002`'s line intact) *and* cannot be false. Only `wikimedia_caminandes.json` was
+re-captured: the other three were already correct, and churning their dates would say something
+changed when nothing did.
+
+*(Its "out of scope — new sources" line was written when this task was a re-capture, and its own
+acceptance criterion — *"a source reporting `fps` is found and captured, or this closes with the
+finding that none do"* — overrides it. The tension is left visible rather than edited away.)*
+
+*(It briefly read "Complete — done inside `T-107`'s correction" on 2026-08-07 and was reopened the
+same day: the re-review found the work incomplete, and closing a task whose criterion was still
+unmet is the same defect one level up.)*
+**Owner:** Implementer
+**Priority:** **High for Phase 3's exit, low for anything running today.** No user-visible behaviour
+depends on it; one exit criterion does
+**Phase:** Phase 3
+**Depends on:** nothing. It needs the network and a deliberate act, not another task
+**Relevant context:** `SEC-002` (a fixture commits only the fields the projection reads),
+`tests/fixtures/capture.py` (run by hand, never by a test), `T-018`, `ai/TESTING.md` §5,
+`tests/fixtures/infodicts/derived_format_columns.json` (the stand-in this replaces the need for)
+**Affected surfaces:** `tests/fixtures/infodicts/*.json`, and `tests/ui/test_format_table.py` where
+it names the derived fixture. **No `src/`**
+**Risk:** Low to run, Medium to get wrong: a fixture is a **contract**, and a careless re-capture
+that widens what is committed is how data reaches the repository permanently (`REQ-026`, `NFR-007`)
+
+#### What this was for, and what it did
+
+**Rewritten 2026-08-07 for `T185-R1`.** This section stated the problem in the present tense — *"the
+recorded captures carry none of them"*, *"the criterion is **not met**"* — and kept saying so after
+the work was done. `TASKS.md` is current truth, so an entry whose status says the criterion is
+evidenced and whose body says it is unmet **misstates a phase gate**. The history is worth keeping;
+stating it as the current answer is not.
+
+**What was wrong, historically.** `REQ-003` names fps, codecs and bitrate as columns, and the
+recorded captures carried none of them: `SEC-002` commits only the fields the projection reads, and
+the projection did not read them until `T-107`. Four of nine columns were therefore evidenced
+against `derived_format_columns.json` — synthetic values in a real shape — and a fixture this
+project wrote cannot answer a question about agreeing with what yt-dlp reports.
+
+**What is true now.** Three recorded sources between them populate every column `REQ-003` names:
+archive.org (ids, extensions, `WxH` resolutions, exact sizes, one audio codec), `wikimedia_caminandes`
+(codecs, bitrate, estimated sizes) and `peertube_big_buck_bunny_60fps` (**fps**, at 30 and 60,
+height-only resolutions, exact sizes). The `yt-dlp -F` comparison is recorded in
+`ai/evidence/2026-08-07-format-table-vs-yt-dlp-f.md` and asserted per row and per fact by
+`test_the_table_matches_what_yt_dlp_f_reports`. **Phase 3's exit criterion 1 is met**, and `T-107`
+is approved.
+
+#### What was done
+
+Re-captured the recorded info-dict fixtures with the allowlist carrying `fps` and `tbr`, added
+`wikimedia_caminandes` and then `peertube_big_buck_bunny_60fps`, recorded the `yt-dlp -F`
+comparison, and corrected the capture writer's provenance — the hardcoded extractor (`T107-R8`) and
+the policy sentence that still claimed playlist entries were only counted (`T185-R2`).
+
+#### Acceptance criteria
+
+**All met.** Kept in full rather than struck, because this entry is the record of what the search
+covered and each line names something that is now asserted somewhere.
+
+- **A source reporting `fps` is found and captured, or this task closes with the finding that
+  none of the acceptable ones do.** `ai/TESTING.md` §5's criteria are the constraint: public domain
+  or freely licensed, unsigned URLs, no reason to change. **Found** —
+  `peertube_big_buck_bunny_60fps`, on the Blender Foundation's own instance, reporting two different
+  framerates so the column is sorted as well as filled
+- Each recorded fixture is re-captured with its metadata regenerated: yt-dlp version, date, options
+- Each fixture's recorded extractor matches its source; the capture writer does not hardcode
+  `archive.org`, and a non-Archive fixture makes that regression fail. **`Source.extractor` is
+  keyword-only and required, the capture refuses a contradictory answer from yt-dlp, and the writer
+  is tested independently of the committed files** — a re-hardcoded writer changes no file until
+  someone re-captures, so the file-reading assertion alone could not catch it
+- The committed files carry `fps`, `tbr`, `vcodec` and `acodec` **where the source reports them**,
+  and carry nothing else new — `tests/unit/test_fixtures.py`'s scanners stay clean
+- `tests/ui/test_format_table.py`'s recorded-fixture test asserts the four columns **by value**,
+  and its docstring stops saying they rest on a derived fixture
+- **The `yt-dlp -F` comparison is recorded** in `ai/evidence/`, naming the yt-dlp version and the
+  URLs, so Phase 3's exit criterion 1 has evidence rather than an assertion
+- A source that genuinely reports no fps for a format keeps the placeholder, and the test says so:
+  the criterion is that the table matches the report, not that every cell is full
+- **The recorded provenance describes what is actually committed** (`T185-R2`): the policy sentence
+  is derived from `CONSUMED_ENTRY` rather than transcribed beside it, every committed fixture
+  carries the current one, and a gate fails if either drifts
+- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture and format-table
+  tests are clean
+
+#### Out of scope
+
+- Changing what the projection reads. `T-107` fixed that; this made the fixtures catch up
+- ~~New sources.~~ **This line was wrong for the task it ended up being.** It was written when this
+  was a re-capture, and the acceptance criterion above — *find a source reporting fps, or close with
+  the finding that none do* — cannot be met without considering new ones. Struck rather than deleted
+  so the contradiction is visible: two sources were added, and `ai/TESTING.md` §5's bar was applied
+  to both rather than relaxed
+- `derived_format_columns.json`. It keeps earning its place, and gained rather than lost work:
+  the placeholder row, a fractional framerate no source reports, and the video-only/audio-only pair
+  `T-188` owns finding for real
+
+---
+
+### T-108 — Choose a video and an audio stream, and merge them
+
+**Status:** **Complete — Approved with follow-up `T-189` at `870d56f`** (2026-08-07). The table
+is mounted, both selection modes work, both ffmpeg facts are separately asserted, and **a chosen
+pair produces a real merged file on both platforms** — Windows run `31233348009` recorded ffmpeg
+8.1.2 and the merge test **passed rather than skipped**. `T108-R3` is the non-blocking follow-up:
+that test *skips* without ffmpeg while the Windows job only records it, so a later missing install
+could leave CI green with the required proof silently absent. `T-189` owns it.
+
+**`T108-R1`: the criterion is met, as a file.** The first submission stopped at a `DownloadRequest`
+carrying `137+140` and said so plainly — a request is not a file, and everything between the
+selector and the output was unexercised. `test_a_chosen_video_and_audio_pair_produce_one_merged_file`
+drives the user's whole route through the dialog against a **local HLS presentation whose video and
+audio are separate renditions**, then inspects the output with `ffprobe`: one file, carrying both an
+audio and a video stream. Everything is real except the server, which is `ai/TESTING.md` §6's
+recorded exception. It runs wherever the suite runs, and CI runs the suite on Windows.
+
+**Building that test corrected the routing rule.** An `EXT-X-MEDIA:TYPE=AUDIO` group arrives from
+yt-dlp as `vcodec: 'none'` with **no `acodec` at all**, because HLS puts the codec list on the
+variant rather than on the group — so `kind_of`'s first version, which required *both* answers,
+made the commonest real audio half unpairable. The rule now keys on the explicit `'none'` and
+tolerates silence on the other side, while still refusing silence *alone*: media.ccc.de's
+`vcodec: 'h264'` with no `acodec` stays unknown. `is_audio_only`/`is_video_only` carry the rule and
+`kind_of` asks them, so the routing and the projection cannot drift apart.
+
+**`T108-R2`: an open panel survives the URL list changing.** A structural reset dropped the index
+widget while `_expanded`/`_panel` went on pointing at the row, so the row stayed **tall and blank**
+and could never be reopened — `open_format_table` returned early because it *was* the expanded one.
+`remount_format_table` puts it back **by row identity** after the reset, or closes it if the row is
+gone. Reordering A/B to B/A leaves row 0 valid and meaning a different URL, so a positional remount
+would hang one row's table under another's.
+
+**A second Qt collision surfaced while fixing it**: `setIndexWidget` and item editors share one map,
+so mounting the panel from inside `setData` — which Qt calls during `commitData`, with the combo box
+still open — **destroyed the editor under the delegate**, and the next reset called `commitData` on
+the dead pointer. The mount is deferred by one event-loop turn.
+
+**One projection widening was needed and it is the interesting part.** `REQ-008` routes a row into
+*"whichever of the two slots its own kind matches"* (`P-2`), and the projection could not answer
+that question: `_as_optional_codec` maps yt-dlp's explicit `vcodec: 'none'` **and** a missing key
+to the same `None`. `T107-R1` is what reading it anyway cost — the table announced *audio only* for
+a format whose video codec was merely unknown — and `format_table.describe_resolution` names this
+widening as the thing it was waiting for. `FormatInfo` gains `has_video`/`has_audio` as **tri-state**
+(`True`/`False`/`None` for *nobody said*), projected in the adapter, which is the only place the
+difference is still visible (`NFR-008`). `is_audio_only` narrows accordingly and gains
+`is_video_only`; a format with a codec for a stream it says it lacks is refused at construction.
+
+**Most formats from most sources come out `UNKNOWN`, and that is the honest answer.** archive.org
+and PeerTube name no codecs at all, so nothing about their formats can be classified — which is why
+the merge mode is *not drawn* for them, with its own sentence, separate from ffmpeg's.
+
+**A live defect was found by the dialog tests and is worth recording**: `choose_current` emitted
+`format_chosen` before `selection_changed`. The dialog closes the panel on the first and writes the
+choice on the second, so closing tore the panel off its row before the write, the write found
+nothing to write to, and **the chosen format was silently discarded while the row kept its old
+one** — this project's recurring "computed correctly and then not acted on", live in new code. The
+order is now pinned by a test of its own.
+
+*(Was: Proposed — Phase 3 decomposition, 2026-08-01.)*
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 3
+**Depends on:** `T-107`
+**Relevant context:** `docs/UX_SPEC.md` §5 (the selection modes, and the ffmpeg rule stated the
+right way round: the worker's gate reads the **resolved** formats and falls back to the selector
+only when nothing resolved), `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
+(`effective_selector`, `custom_preset`), `T-061` (**the selector-reading gate refused a merge that
+never happened** — see the Scope below), `T-075`
+**Affected surfaces:** `core/presets.py`, `ui/`, `downloader/ytdlp_adapter.py`
+**Risk:** Medium — a merge needs ffmpeg, and `T-061` is what happens when the check reads the wrong
+thing
+
+#### Scope
+
+**This task also mounts the table** (maintainer amendment, 2026-08-07, from `T107-R2`). `T-107`
+built the widget — model, sorting, keyboard, layout contract — and does **not** place it. `UX-007`
+ruled `P-1`: it opens as the **staging row, expanded**, from the format control's *Choose specific
+formats…* entry, the same mechanism `P-19` gives the playlist picker. The staging list has no
+expansion mechanism today, so building one is part of this task rather than a correction to the
+last one — it lands on exactly the surface selection is added to.
+
+`REQ-008`: select specific format IDs from `T-107`'s table, **including a separate video and audio
+stream to be merged**. The selector this produces is `bestvideo[...]+bestaudio[...]`-shaped, so it
+flows through the existing `custom_preset` path rather than a new one.
+
+**ffmpeg is required for a merge and optional otherwise, and there are two different questions
+here** (`T105-R2`, corrected 2026-08-07):
+
+1. **The table knows its own pair needs a merge.** A user who has explicitly chosen a video format
+   and an audio format has *stated* a merge. Nothing is inferred and no selector is parsed, so with
+   ffmpeg absent that pair is refused before the download starts.
+2. **The worker's gate is the definitive one and it reads the *resolved* formats.** `_ffmpeg_gap`
+   asks `_will_merge(info)` — yt-dlp records the decision by populating `requested_formats` with
+   more than one entry — and consults `request.format_selector` **only when resolution supplied no
+   answer at all** (a playlist, or an extraction that stopped before format selection), where being
+   wrong costs a refusal rather than the user's bandwidth.
+
+**`T-061`'s defect was the selector-reading gate, and it ran the other way from how this entry used
+to describe it.** `bestvideo+bestaudio/best` against a source offering one progressive format
+resolves through `/best` to no merge at all, and the selector-reading gate **refused it anyway** —
+measured 2026-07-28. It did not approve a merge it could not perform.
+
+*(This entry said the gate "read the selector rather than the format actually chosen, so it
+approved a merge it could not perform", and asked for a pair "a selector-only check would wrongly
+approve". Both stated the rejected reading as `T-061`'s rule and would have directed an
+implementer straight back into it. `docs/UX_SPEC.md` §5 was corrected on 2026-08-06 and this was
+not.)*
+
+#### Acceptance criteria
+
+- **The table is reachable from the product**: the format control offers *Choose specific
+  formats…*, the staging row expands to show `T-107`'s widget, and the widget fills the space it
+  is given (asserted on a shown row, which is how `T107-R2`'s layout defect escaped)
+- A video-only and an audio-only selection produce one merged file, on **both** platforms.
+  **Met** — `test_a_chosen_video_and_audio_pair_produce_one_merged_file` drives the dialog route
+  against a local HLS presentation with separate video and audio renditions and inspects the output
+  with `ffprobe`. Linux here; Windows from CI, which runs the whole suite. *(The first submission
+  claimed only a `DownloadRequest`, which is `T108-R1`.)*
+- **With ffmpeg absent, an explicitly chosen video + audio pair is refused before the download
+  starts**, naming ffmpeg — not at merge time, which `REQ-024` is explicit about
+- **A selector that contains `+` but resolves to a single progressive format is not refused**, with
+  ffmpeg absent — `T-061`'s measured defect, asserted in the direction it actually failed. The gate
+  under test is the resolved-format one; a selector-only check passes the criterion above and fails
+  this one, which is why both are here
+- The effective selector is visible, per `REQ-009`'s learn-the-syntax rule
+- A single progressive format still downloads with no ffmpeg involvement
+
+#### Out of scope
+
+- Post-processing (`T-109`), even though it shares the ffmpeg dependency
+
+---
+
+
+*(**Nothing awaits a verdict as of 2026-08-07.** `T-107` was approved at `09c57c3` once the
+maintainer ratified its criterion amendment as `OPS-013`, and moved to `## Complete`; `T-181` and
+`T-187` were approved before it. `T-107`'s open follow-up is `T107-R8`, carried by `T-185` under
+`## Proposed — Phase 3`. Read the sections, not this line — `T-096`'s gate compares each entry's
+status to the section it sits in, and this parenthetical is prose it does not check.)*
+
 ### T-107 — The format table: every stream a probe found
 
 **Status:** **Complete — Approved at `09c57c3`** (2026-08-07). Five of the seven findings resolved

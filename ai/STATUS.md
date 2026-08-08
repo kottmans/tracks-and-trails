@@ -19,6 +19,34 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-07: `T-108` and `T-185` approved, and Phase 3's second exit criterion is met
+
+**`T-108` Approved with follow-up `T-189`; `T-185` Approved**, both at `870d56f`. That is **three of
+nine Phase 3 deliverables** approved — `T-181`, `T-107`, `T-108` — and `## In Review` is empty
+again.
+
+**Exit criterion 2 is met, on both platforms, with real evidence.** *"A separate video + audio
+selection merges correctly via ffmpeg on both platforms."* Windows CI run `31233348009` recorded
+**ffmpeg 8.1.2** and the merged-file test **passed rather than skipped**: 2339 passed, 24 skipped,
+32 deselected, all five jobs green. **This is the first Phase 3 criterion naming both platforms to
+have Windows evidence rather than a residual**, which is what Phase 2 exited with.
+
+**It took a correction round to get there, and the reason is worth keeping.** The first submission
+proved a `DownloadRequest` carrying `137+140` and said plainly that no file had been produced —
+which was honest and not enough. `T108-R1` is the finding that a request is not a file, and the span
+between them is exactly where `T-061` lived.
+
+**Writing that test corrected the code.** A real `EXT-X-MEDIA:TYPE=AUDIO` group arrives from yt-dlp
+as `vcodec: 'none'` with **no `acodec` at all**, so the classification rule — which required both
+answers — made the commonest real audio half unpairable and would never have offered the merge mode
+for it. The rule had looked right and passed a review; only an end-to-end test through a real
+extractor said otherwise.
+
+**One follow-up, `T-189`, and it is the honest kind.** The merged-file test *skips* when ffmpeg is
+absent, and the self-hosted Windows job records the tool without requiring it — so a later missing
+install would leave CI green with a required cross-platform proof silently gone. Nothing is wrong
+today; the gate can become theatre tomorrow.
+
 ## 2026-08-07: `T-108` and `T-185` are built, and `OPS-013`'s gap closed itself
 
 **Both are In Review.** `T-108` mounts the format table in the staging row and makes a chosen
