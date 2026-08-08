@@ -343,8 +343,10 @@ def test_a_recorded_path_outside_the_download_folder_is_refused_at_the_moment_of
 ) -> None:
     """**The stored path is data, not a permission** (`SEC-001`).
 
-    A `history` row outlives the setting that produced it, and `T-079` lets the user change where
+    A stored path outlives the setting that produced it, and `T-079` lets the user change where
     downloads go. A row written when the folder was elsewhere must not open a file elsewhere now.
+    *(This said "a `history` row"; the table went with `T-169`/`T-170` and the property is about
+    any row holding a path this application wrote earlier — `T-186`.)*
     """
     outside = tmp_path / "elsewhere.mp4"
     outside.write_bytes(b"")
@@ -430,8 +432,8 @@ def test_a_double_click_opens(qapp: QApplication, downloads: Path) -> None:
 def test_the_queue_view_offers_the_actions_for_a_finished_job_and_not_a_running_one(
     qapp: QApplication, downloads: Path
 ) -> None:
-    """**`REQ-021` names the queue view too**, so the wiring is asserted there and not only on
-    history.
+    """**`REQ-021` names the queue view**, and since `T-169`/`T-170` it is the only view there is,
+    so the wiring is asserted on it. *(This read "too … and not only on history" — `T-186`.)*
 
     A job that has not finished has no `output_path` — `T-046` writes into a staging directory and
     the final name does not exist until the download succeeds — so the actions stay disabled for

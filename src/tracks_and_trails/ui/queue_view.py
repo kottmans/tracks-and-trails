@@ -322,9 +322,11 @@ class _Row:
 
 #: A playlist's rows, gathered under one header (`T-140`, `UX-005` row 9).
 #:
-#: **Shared with History since `T-145`** (`ui/grouping.py`). The class this replaced held exactly
-#: what `Group` holds, and the flattening below was the hundred lines History would otherwise have
-#: copied — which is how two tabs that `UX-005` §3 requires to read as one shape start to drift.
+#: **Extracted to `ui/grouping.py` by `T-145`, when History shared it.** The class this replaced
+#: held exactly what `Group` holds, and the flattening below was the hundred lines History would
+#: otherwise have copied — which was how two tabs that `UX-005` §3 required to read as one shape
+#: would have started to drift. **The queue is the only caller now** (`T-169`/`T-170`), and the
+#: split is kept because the shape is worth naming, not because two surfaces still share it.
 #: What stayed here is everything that knows about a `Job`: the header's roles, its verbs and its
 #: bar. What moved is the part that does not.
 _Group = Group[_Row]
@@ -380,8 +382,10 @@ def _effective_format_text(job: Job) -> str:
 
     **The rule lives in `ui/format_text.py` since `T-159`**, which is where its reasoning now is:
     the built-in's name when one describes the request, the literal selector otherwise, read from
-    the request and never from a preset held elsewhere. History names the same download with the
-    same function, so the two surfaces cannot drift.
+    the request and never from a preset held elsewhere. *(This ended "History names the same
+    download with the same function, so the two surfaces cannot drift" — there is one surface
+    now, `T-169`/`T-170`. The rule still lives in one place, which is what stops the **next**
+    caller drifting from this one. `T-186`.)*
     """
     return effective_format_text(format_choice_of(job.request))
 
@@ -609,11 +613,13 @@ class QueueModel(QAbstractTableModel):
         if role == STATE_ROLE:
             return self._text(row, STATUS_COLUMN)
         if role == STATE_CHIP_ROLE:
-            # **The queue draws its state as a chip; History does not** (`T-130`, `UX-005`'s
-            # 2026-08-04 amendment). A queue is a list of rows in different states and the state is
-            # what the eye is hunting for. Every history row is finished, so the same chip there
-            # would read *Done* on all of them and be furniture — which is why this is a role the
-            # model answers rather than something the shared delegate decides for both.
+            # **The queue draws its state as a chip** (`T-130`, `UX-005`'s 2026-08-04 amendment).
+            # A queue is a list of rows in different states and the state is what the eye is
+            # hunting for. *(This continued "; History does not … every history row is finished,
+            # so the same chip there would read *Done* on all of them and be furniture" — History
+            # was removed by `T-169`/`T-170`. The **consequence** stands and is why this is a role
+            # the model answers rather than something the delegate decides: a model that never
+            # sets it gets no chip, without knowing the role exists. `T-186`.)*
             return self._chip(row)
         if role == DETAIL_ROLE:
             return self._detail(row)
@@ -912,10 +918,11 @@ class QueueModel(QAbstractTableModel):
     def _rebuild_visible(self) -> None:
         """Flatten the rows into what the table shows: headers, and the rows not hidden (`T-140`).
 
-        **The rules live in `ui/grouping.flatten` since `T-145`**, because History now flattens the
-        same way and `UX-005` §3 makes the two tabs one shape. `T140-R4`'s rulings — the header at
-        its first member's position, the members contiguous under it, a group of one dissolved —
-        are stated there once rather than in each tab.
+        **The rules live in `ui/grouping.flatten` since `T-145`**, which extracted them when
+        History flattened the same way and `UX-005` §3 made the two tabs one shape. `T140-R4`'s
+        rulings — the header at its first member's position, the members contiguous under it, a
+        group of one dissolved — are stated there once. **The queue is the only tab now**
+        (`T-169`/`T-170`); the rules stayed where they were put rather than moving back.
 
         What is passed in is the only part that is the queue's: a job's membership, and the order
         the list is already in. No `order` argument, because `self._rows` is in queue order and that

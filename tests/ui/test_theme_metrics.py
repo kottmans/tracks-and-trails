@@ -167,7 +167,9 @@ def test_a_themed_button_fills_with_the_themes_own_hover_colour(themed: QApplica
 
     Styling `QPushButton` switches it to style-sheet rendering, and Qt then draws hover exactly
     like the normal state unless the sheet says otherwise — so every button on every row was inert
-    under the pointer, including *Open*, *Show in folder* and *Remove* on the history rows.
+    under the pointer, including *Open*, *Show in folder* and *Remove* on the rows carrying them.
+    *(This said "the history rows", which were the rows in question when it was measured and are
+    gone since `T-169`/`T-170`. The measurement is unaffected — `T-186`.)*
 
     Measured, with the rule deleted: the hover fill stays `surface`, identical to normal.
     """

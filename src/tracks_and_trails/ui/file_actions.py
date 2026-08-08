@@ -8,8 +8,13 @@ menu tests need no file manager.
 ## A context menu on each table, not a toolbar button
 
 `REQ-021` names *the history and queue views*, and `T-100` put both on screen at once in a splitter.
-A toolbar Open would then be ambiguous — it would act on "the selection", and there are two. The
-context menu belongs to the table it was opened on, which removes the question entirely.
+A toolbar Open was ambiguous while that held — it would act on "the selection", and there were two.
+The context menu belongs to the table it was opened on, which removed the question entirely.
+
+*(Written when there were two tables. History went with `T-169`/`T-170`, so there is one selection
+now and the ambiguity this argument answers no longer arises. Kept because the arrangement it chose
+is still the one in place, and because a second table is what `REQ-021` would need again —
+`T-186`, which found this paragraph still saying "there are two" in the present tense.)*
 
 `CustomContextMenu` is used rather than overriding `contextMenuEvent` because Qt raises
 `customContextMenuRequested` for the **Menu key and Shift+F10** as well as for the mouse, so the

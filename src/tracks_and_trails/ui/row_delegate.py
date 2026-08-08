@@ -1451,9 +1451,11 @@ class RowDelegate(QStyledItemDelegate):
             # explicitly *not* a promise at larger ones — see that constant, and `T118-R15`.
             # **The verbs own the last line, so the selector gives up that line** (`UX-005` §4).
             # Without this the selector wraps across lines 2 and 3 and the buttons are drawn over
-            # its second line — which is the history row's shape exactly, since the saved path is
-            # long. A row with no verbs keeps both lines, which is the add dialog's case and the
-            # one `T118-R15` sized `SELECTOR_LINES` for.
+            # its second line. *(This said "which is the history row's shape exactly, since the
+            # saved path is long" — the history row is gone, `T-169`/`T-170`. The geometry it
+            # described is the live one: any row carrying verbs and a long selector. `T-186`.)*
+            # A row with no verbs keeps both lines, which is the add dialog's case and the one
+            # `T118-R15` sized `SELECTOR_LINES` for.
             selector_lines = max(SELECTOR_LINES - (0 if verbs_left is None else 1), 1)
             # **The line it keeps is at the full width, whatever the verbs are doing** (`T-166`).
             # This used to stop at `verbs_left` as well, and the verbs are on the line *below*: the

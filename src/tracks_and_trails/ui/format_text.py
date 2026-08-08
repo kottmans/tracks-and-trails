@@ -61,8 +61,9 @@ __all__ = ["FORMAT_PREFIX", "effective_format_text", "format_name", "preset_name
 #: How a queue row states the format it is running as, once the control is gone (`UX-005` §6).
 #:
 #: The same three words the add dialog's row uses, so one download is described the same way in
-#: the dialog that queued it and in the queue that runs it. History did not use it — a record is
-#: not going to be downloaded as anything, it already was — and History is gone (`T-176`).
+#: the dialog that queued it and in the queue that runs it. History did not use it — a record was
+#: not going to be downloaded as anything, it already had been — and History is gone (`T-176`,
+#: `T-186`: the clause explaining the absence was itself in the present tense).
 FORMAT_PREFIX: Final = "Download as: "
 
 #: What each of `REQ-010`'s five adjustable options means *unset* (`T-109`).

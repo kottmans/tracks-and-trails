@@ -219,7 +219,7 @@ def test_containment_is_checked_before_existence(tmp_path: Path, downloads: Path
 
 
 def test_a_file_that_has_been_moved_says_so(downloads: Path) -> None:
-    """The ordinary case for a history record: `UX-001` means users move their downloads freely."""
+    """The ordinary case for any stored path: `UX-001` means users move their downloads freely."""
     spawner = RecordingSpawner()
     gone = downloads / "moved-away.mp4"
 
