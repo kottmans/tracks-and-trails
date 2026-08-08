@@ -11,7 +11,7 @@ position — the audio group, the bitrate, and the subtitle list — and each is
 its reason on screen rather than merely absent.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import pytest
 from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QListWidget, QRadioButton
@@ -36,7 +36,7 @@ from tracks_and_trails.ui.options_dialog import (
 
 
 @pytest.fixture
-def editor(qapp: QApplication) -> Callable[..., OptionsDialog]:
+def editor(qapp: QApplication) -> Iterator[Callable[..., OptionsDialog]]:
     """Build an editor and keep it alive for the test, closing it afterwards."""
     built: list[OptionsDialog] = []
 

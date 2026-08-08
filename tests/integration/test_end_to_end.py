@@ -711,13 +711,22 @@ def streams_in(ffprobe_path: str, path: Path, *, language: bool = False) -> list
     )
     assert result.returncode == 0, f"ffprobe could not read {path}: {result.stderr}"
     report = json.loads(result.stdout)
-    streams: list[dict[str, str]] = list(report.get("streams", []))
-    for stream in streams:
-        stream["_format_bit_rate"] = report.get("format", {}).get("bit_rate", "")
-        # Flattened out of `tags` so a caller reads one dict rather than two shapes, and named
-        # with the same leading underscore as the bitrate — both are this helper's additions
-        # rather than ffprobe's own stream keys.
-        stream["_language"] = str(dict(stream.get("tags") or {}).get("language", ""))
+    # **Read as the nested shape ffprobe actually returns, and flattened into the flat one this
+    # helper promises** (`T109-R6`). The raw report was annotated `list[dict[str, str]]` and then
+    # indexed for `tags`, which is itself a dict — so mypy resolved the key type to `Never` and
+    # every read of it was an error. One conversion, in one direction, at the boundary.
+    raw: list[dict[str, Any]] = list(report.get("streams") or [])
+    container: dict[str, Any] = report.get("format") or {}
+    bit_rate = str(container.get("bit_rate", ""))
+    streams: list[dict[str, str]] = []
+    for stream in raw:
+        # `tags` is flattened out so a caller reads one dict rather than two shapes, and the
+        # additions are named with a leading underscore — both are this helper's, not ffprobe's.
+        tags: dict[str, Any] = stream.get("tags") or {}
+        flattened = {key: str(value) for key, value in stream.items() if key != "tags"}
+        flattened["_format_bit_rate"] = bit_rate
+        flattened["_language"] = str(tags.get("language", ""))
+        streams.append(flattened)
     return streams
 
 
