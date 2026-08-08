@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from dataclasses import replace
 from pathlib import Path
 from queue import Queue
 from typing import Any
@@ -1934,3 +1935,264 @@ def test_asking_about_a_partial_that_does_not_exist_is_not_an_error(tmp_path: Pa
     # Idempotent, and safe for a directory that was never created.
     worker_module.discard_staging_for(tmp_path, "never-ran")
     worker_module.discard_staging_for(tmp_path, "never-ran")
+
+
+# --- T109-R3 / T109-R4: the media and its sidecars are one family ------------------------------
+
+
+def _staged_with_subtitle(directory: Path, *languages: str) -> tuple[Path, dict[str, Any]]:
+    """A staging directory holding a finished media file and one subtitle per language."""
+    staging = directory / f"{worker_module.STAGING_PREFIX}-job-1"
+    staging.mkdir(parents=True)
+    (staging / "Clip.mp4").write_bytes(b"media")
+    requested: dict[str, Any] = {}
+    for language in languages:
+        path = staging / f"Clip.{language}.vtt"
+        path.write_text(f"{language} subtitles", encoding="utf-8")
+        requested[language] = {"filepath": str(path)}
+    return staging, {"requested_subtitles": requested}
+
+
+def test_a_sidecar_collision_moves_the_whole_family(tmp_path: Path) -> None:
+    """**`T109-R4`.** With `Clip.mp4` free and `Clip.de.vtt` taken, the subtitle used to land as
+    `Clip.de (2).vtt` — no longer the conventional sidecar for `Clip.mp4`, so a player associates
+    the *old* one and ignores what was just downloaded.
+
+    Both must move together or neither: the index is chosen for the family.
+    """
+    staging, result = _staged_with_subtitle(tmp_path, "de")
+    stale = tmp_path / "Clip.de.vtt"
+    stale.write_text("an older subtitle", encoding="utf-8")
+
+    written, kept = worker_module.claim_outputs(
+        result,
+        staging=staging,
+        stem="Clip",
+        target=tmp_path / "Clip.mp4",
+        produced=staging / "Clip.mp4",
+        writing_subtitles=True,
+    )
+
+    assert written.name == "Clip (2).mp4", (
+        f"the media took the free name {written.name!r} and left its subtitle behind"
+    )
+    assert [path.name for path in kept] == ["Clip (2).de.vtt"]
+    assert stale.read_text(encoding="utf-8") == "an older subtitle", "a pre-existing file was lost"
+
+
+def test_a_family_keeps_one_basename_when_both_names_are_occupied(tmp_path: Path) -> None:
+    """The other collision: media *and* subtitle taken. One index, chosen for both."""
+    staging, result = _staged_with_subtitle(tmp_path, "de", "en")
+    (tmp_path / "Clip.mp4").write_bytes(b"older media")
+    (tmp_path / "Clip.de.vtt").write_text("older de", encoding="utf-8")
+
+    written, kept = worker_module.claim_outputs(
+        result,
+        staging=staging,
+        stem="Clip",
+        target=tmp_path / "Clip.mp4",
+        produced=staging / "Clip.mp4",
+        writing_subtitles=True,
+    )
+
+    assert written.name == "Clip (2).mp4"
+    assert sorted(path.name for path in kept) == ["Clip (2).de.vtt", "Clip (2).en.vtt"]
+    assert all(path.name.startswith(written.stem) for path in kept), (
+        "a member of the family took a different basename, which is what T109-R4 is"
+    )
+
+
+def test_an_uncollided_family_keeps_the_plain_name(tmp_path: Path) -> None:
+    """The common case, asserted so the family logic cannot quietly number everything."""
+    staging, result = _staged_with_subtitle(tmp_path, "de")
+
+    written, kept = worker_module.claim_outputs(
+        result,
+        staging=staging,
+        stem="Clip",
+        target=tmp_path / "Clip.mp4",
+        produced=staging / "Clip.mp4",
+        writing_subtitles=True,
+    )
+
+    assert written.name == "Clip.mp4"
+    assert [path.name for path in kept] == ["Clip.de.vtt"]
+    assert kept[0].read_text(encoding="utf-8") == "de subtitles"
+
+
+def test_a_requested_subtitle_that_never_arrived_fails_the_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T109-R3`**: the job must not report success having discarded an output.
+
+    Driven through `run_session` rather than through `claim_outputs`, because the finding is about
+    the *outcome*: the claim failure was logged, `_run` ignored it, the cleanup deleted the file,
+    and `Succeeded` went back. The staging directory is asserted intact too — `T-113` keeps a
+    failed attempt's work, so nothing the download produced is thrown away with the verdict.
+    """
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.mp4")
+
+    def extract(
+        _adapter: Any,
+        _request: Any,
+        _resolved: Any,
+        _reporter: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+        if probe_only:
+            return info
+        asked = Path(output_template or "")
+        asked.parent.mkdir(parents=True, exist_ok=True)
+        asked.write_bytes(b"media")
+        # yt-dlp names a subtitle it was asked to write and does not produce the file.
+        return {
+            **info,
+            "requested_downloads": [{"filepath": str(asked)}],
+            "requested_subtitles": {"de": {"filepath": str(asked.with_suffix(".de.vtt"))}},
+        }
+
+    monkeypatch.setattr(worker_module, "_extract", extract)
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD,
+        "job-1",
+        replace(
+            request_for(tmp_path, format_selector="best"),
+            subtitle_languages=("de",),
+            embed_subtitles=False,
+        ),
+        queue,
+    )
+
+    messages = drain(queue)
+    assert not any(isinstance(message, Succeeded) for message in messages), (
+        "the job reported success without the subtitle file the user asked for"
+    )
+    failure = next(message for message in messages if isinstance(message, Failed))
+    assert failure.kind is ErrorKind.DISK
+    assert "Clip.de.vtt" in failure.message, failure.message
+    assert worker_module.staging_directory(tmp_path, "job-1").is_dir(), (
+        "the cleanup ran on a failed session and took the downloaded media with it"
+    )
+
+
+def test_an_embedded_subtitle_that_was_deleted_is_not_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The valid case the missing-file check must not swallow (`T109-R3`).
+
+    `FFmpegEmbedSubtitle` runs with `already_have_subtitle` false, so yt-dlp deletes each file once
+    it is inside the container — the entry survives in `requested_subtitles` with a `filepath` that
+    no longer exists, and that absence *is* the embed having worked. Only the request can tell the
+    two apart, which is why `writing_subtitles` is passed rather than inferred.
+
+    ffmpeg is reported present because embedding needs it (`REQ-024`) — the gate refuses the
+    request otherwise, and the session would fail for a reason that has nothing to do with this.
+    """
+    monkeypatch.setattr(
+        worker_module,
+        "find_ffmpeg",
+        lambda **_: FfmpegReport(path=tmp_path / "ffmpeg", source="supplied for the test"),
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.mp4")
+
+    def extract(
+        _adapter: Any,
+        _request: Any,
+        _resolved: Any,
+        _reporter: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+        if probe_only:
+            return info
+        asked = Path(output_template or "")
+        asked.parent.mkdir(parents=True, exist_ok=True)
+        asked.write_bytes(b"media")
+        return {
+            **info,
+            "requested_downloads": [{"filepath": str(asked)}],
+            "requested_subtitles": {"de": {"filepath": str(asked.with_suffix(".de.vtt"))}},
+        }
+
+    monkeypatch.setattr(worker_module, "_extract", extract)
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD,
+        "job-1",
+        replace(
+            request_for(tmp_path, format_selector="best"),
+            subtitle_languages=("de",),
+            embed_subtitles=True,
+        ),
+        queue,
+    )
+
+    messages = drain(queue)
+    failed = [m for m in messages if isinstance(m, Failed)]
+    assert not failed, (
+        f"an embedded subtitle's expected absence was reported as a failure: {failed}"
+    )
+    succeeded = next(m for m in messages if isinstance(m, Succeeded))
+    assert Path(succeeded.output_path).name == "Clip.mp4"
+
+
+def test_a_partially_claimed_multi_language_set_leaves_nothing_half_moved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A claim that fails partway must give every reservation back (`T109-R3`).
+
+    Otherwise the family's failure leaves zero-byte files standing in for outputs that are still in
+    staging — the shape `release_output_path` exists to prevent, one level up.
+    """
+    staging, result = _staged_with_subtitle(tmp_path, "de", "en")
+    moved: list[Path] = []
+    original = Path.replace
+
+    def fail_on_the_second_move_out(self: Path, target: Any) -> Path:
+        """Break the second move *out of staging*, and let the rollback's moves back work.
+
+        Patching every `replace` would also break the recovery this test is about, and the test
+        would then be asserting that a broken filesystem stays broken rather than that the code
+        puts things back.
+        """
+        if self.parent == staging:
+            if len(moved) >= 1:
+                raise OSError("the disk went away")
+            moved.append(Path(target))
+        return original(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_on_the_second_move_out)
+
+    with pytest.raises(UnsafePathError):
+        worker_module.claim_outputs(
+            result,
+            staging=staging,
+            stem="Clip",
+            target=tmp_path / "Clip.mp4",
+            produced=staging / "Clip.mp4",
+            writing_subtitles=True,
+        )
+
+    monkeypatch.undo()
+    leftovers = sorted(path.name for path in tmp_path.iterdir() if path.is_file())
+    assert leftovers == [], (
+        f"reservations or half-moved outputs were left in the download folder: {leftovers}"
+    )
+    assert sorted(path.name for path in staging.iterdir()) == [
+        "Clip.de.vtt",
+        "Clip.en.vtt",
+        "Clip.mp4",
+    ], "the download's own work did not all end up back in staging for the retry"

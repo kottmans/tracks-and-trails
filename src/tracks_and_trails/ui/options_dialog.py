@@ -11,10 +11,17 @@ and from the preset manager, editing a saved preset. Only the first exists today
 manager is `T-111`, and `T-109`'s scope explicitly excludes its CRUD — so the dialog takes its
 title and its accept text from the caller rather than deciding it is always editing a one-off.
 
-**There is no `Save as preset…` button yet, and its absence is deliberate.** `P-4` requires that a
-one-off never silently becomes a preset, and offering a control that cannot save anywhere would be
-worse than not offering it: `UX-005` §5 forbids drawing what would be refused. `T-111` owns where a
-saved preset lives, and the button arrives with the place to put it.
+**`Save as preset…` is here, and `P-4` is why** (`T109-R5`). *"A one-off options change does not
+silently become a preset. The editor offers `Save as preset…` explicitly."* An earlier version of
+this module argued the button should wait for `T-111` because there was nowhere to save to — which
+was a description of a gap, not a reading of the ruling, and `UX-005` §5's never-draw-what-would-be-
+refused does not license omitting a control an accepted decision requires. So the place to put it
+exists: `core/settings.add_preset`, in the `settings.toml` `T-111`'s own entry records as already
+decided. This screen creates; `T-111`'s manager edits, duplicates, deletes and chooses a default.
+
+**The caller supplies the sink, and without one the button is not drawn.** A control that cannot
+save is the thing `UX-005` §5 actually forbids, and the reason takes its place — `P-13`'s shape,
+one surface over. Every route a user can reach this by supplies one.
 
 ## Everything the model refuses is unreachable here
 
@@ -31,11 +38,29 @@ it looked like a choice and was not. The same rule is applied three times here �
 live only for an audio request, the bitrate only for MP3, and the subtitle list only where the
 probe found languages. Each disabled control keeps a sentence saying why, because a greyed control
 with no explanation is a dead end rather than an answer.
+
+**And a disabled control does not decide anything either** (`T109-R2`). Disabling was only half the
+rule: `result_preset` went on reading every field, so a value the user could neither see nor clear
+still reached the request. Changing codec away from MP3 left its `192` attached, and yt-dlp reads a
+quality above 10 as `-b:a 192k` for AAC and every other lossy codec — a hidden control changing the
+output, which is the `T-075` shape the disabling was introduced to prevent. Every group now answers
+one question first: *could the user have said this?* Where the answer is no, the preset's own value
+is carried through untouched, and where a field is meaningless for the choice that **was** made it
+is cleared rather than inherited.
+
+## `all` is a selector, and the list is a set of languages
+
+**`T109-R1`.** `VIDEO_WITH_SUBTITLES` carries `subtitle_languages=("all",)` — yt-dlp's way of
+saying *every subtitle this source publishes* — and the language list holds what the probe actually
+found. Matching the two by string meant a preset promising *all* checked nothing against a source
+offering `en` and `de`, so an untouched accept answered with no languages and `embed_subtitles`
+off: the built-in silently lost the option its own name promises. Displaying `all` therefore means
+checking everything offered, which is what the selector says.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
-from typing import Final
+from typing import Final, Protocol
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -45,9 +70,11 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QGroupBox,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QRadioButton,
     QVBoxLayout,
     QWidget,
@@ -55,9 +82,9 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core.models import CONTAINER_FORMATS, AudioCodec, MediaKind, Preset
 from tracks_and_trails.core.presets import (
+    ALL_SUBTITLE_LANGUAGES,
     MP3_BITRATES,
     format_choice_of,
-    with_audio_quality,
     with_post_processing,
 )
 from tracks_and_trails.ui.format_text import format_name
@@ -76,12 +103,37 @@ EMBED_METADATA_NAME: Final = "optionsEmbedMetadata"
 EMBED_CHAPTERS_NAME: Final = "optionsEmbedChapters"
 SUBTITLE_LANGUAGES_NAME: Final = "optionsSubtitleLanguages"
 EMBED_SUBTITLES_NAME: Final = "optionsEmbedSubtitles"
+SAVE_PRESET_NAME: Final = "optionsSavePreset"
+SAVE_RESULT_NAME: Final = "optionsSaveResult"
+
+#: What `P-4`'s control reads. The ellipsis is the platform's promise that it will ask something.
+SAVE_PRESET_TEXT: Final = "Save as preset…"
+
+#: Asked when the button is pressed. The name is the preset's identity everywhere else in this
+#: application — the row shows it, and `T-159` makes it what a surface compares — so it is the one
+#: thing worth interrupting for.
+SAVE_PRESET_PROMPT: Final = "Save these options as a preset called:"
+
+#: Said in the button's place where the caller supplied nowhere to save (`UX-005` §5, `P-13`).
+NO_SINK_REASON: Final = "These options cannot be saved as a preset from here."
 
 #: Said where a control is disabled, so the reason is on screen rather than inferred (`T-139`).
 NO_AUDIO_REASON: Final = "This download keeps its video, so there is no audio track to convert."
 NO_BITRATE_REASON: Final = "A bitrate applies to MP3. Other codecs carry their own quality scale."
 NO_SUBTITLES_REASON: Final = "This source publishes no subtitles."
 SUBTITLES_HINT: Final = "Chosen languages are written beside the file unless they are embedded."
+
+
+class PresetSink(Protocol):
+    """Where a saved preset goes. Answers `None` on success, or why it was refused.
+
+    **A protocol, so this dialog does not learn where settings live.** `core/settings.add_preset`
+    is what composition wires in; a test hands over a list. Refusals travel back as words rather
+    than as an exception, because the only refusal that exists — a name already taken — is a thing
+    the user fixes by typing a different one, not an error.
+    """
+
+    def __call__(self, preset: Preset) -> str | None: ...
 
 
 class OptionsDialog(QDialog):
@@ -99,10 +151,17 @@ class OptionsDialog(QDialog):
         subtitle_languages: Sequence[str] = (),
         parent: QWidget | None = None,
         title: str = "Options for this download",
+        save_preset: PresetSink | None = None,
+        ask_name: Callable[[], tuple[str, bool]] | None = None,
     ) -> None:
         super().__init__(parent)
         self._preset = preset
         self._offered_languages = tuple(subtitle_languages)
+        self._save_preset = save_preset
+        #: How the name is asked for. Injected so a test drives `P-4`'s whole route without a modal
+        #: — `QInputDialog.getText` runs a nested event loop, and a test that entered one would
+        #: never reach its assertions (`open_add_dialog`'s reason for `open()` over `exec()`).
+        self._ask_name = ask_name if ask_name is not None else self._ask_name_modally
         self.setWindowTitle(title)
         self.setObjectName("optionsDialog")
         self._build()
@@ -118,10 +177,34 @@ class OptionsDialog(QDialog):
         layout.addWidget(self._build_embedding())
         layout.addWidget(self._build_subtitles())
 
+        self._save_result = QLabel("", self)
+        self._save_result.setObjectName(SAVE_RESULT_NAME)
+        self._save_result.setWordWrap(True)
+        # A refusal names the preset the user tried to save over, which is their own text
+        # (`T016-R6`), and so is the name they typed.
+        self._save_result.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._save_result)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
+        # **`P-4`'s explicit action** (`T109-R5`). `ActionRole`, so pressing it saves and leaves the
+        # dialog open: saving a preset is not accepting the one-off, and closing on it would make
+        # *Save as preset…* a second OK. That is also what keeps *"never silently"* true from the
+        # other side — the user still has to accept, or cancel, on purpose.
+        if self._save_preset is not None:
+            self._save_button = QPushButton(SAVE_PRESET_TEXT, self)
+            self._save_button.setObjectName(SAVE_PRESET_NAME)
+            self._save_button.setAccessibleName(SAVE_PRESET_TEXT)
+            self._save_button.setAccessibleDescription(
+                "Keep these options under a name, so other downloads can use them. This does not "
+                "change what happens to this one."
+            )
+            self._save_button.clicked.connect(self._on_save_preset)
+            buttons.addButton(self._save_button, QDialogButtonBox.ButtonRole.ActionRole)
+        else:
+            self._save_result.setText(NO_SINK_REASON)
         # `docs/UX_SPEC.md` §6: *Enter commits, Esc cancels* — which is what a `QDialogButtonBox`
         # with a default Ok already does, so the keyboard path is the platform's rather than a
         # second implementation of it.
@@ -254,10 +337,15 @@ class OptionsDialog(QDialog):
         self._embed_metadata.setChecked(preset.embed_metadata)
         self._embed_chapters.setChecked(preset.embed_chapters)
         self._embed_subtitles.setChecked(preset.embed_subtitles)
+        # **`all` is a selector, not a language** (`T109-R1`). It means *every subtitle this source
+        # publishes*, so displaying it means every offered language checked. Compared as a set
+        # against the literals, a preset carrying `("all",)` matched nothing the probe found and an
+        # untouched accept then answered with no languages at all.
+        everything = ALL_SUBTITLE_LANGUAGES in preset.subtitle_languages
         wanted = set(preset.subtitle_languages)
         for index in range(self._languages.count()):
             item = self._languages.item(index)
-            checked = item.text() in wanted
+            checked = everything or item.text() in wanted
             item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
 
     def _update_enabled(self) -> None:
@@ -277,6 +365,41 @@ class OptionsDialog(QDialog):
         self._languages.setEnabled(offered)
         self._embed_subtitles.setEnabled(offered)
         self._subtitle_reason.setText(SUBTITLES_HINT if offered else NO_SUBTITLES_REASON)
+
+    # --- `P-4`: saving these options under a name -----------------------------------------
+
+    def _ask_name_modally(self) -> tuple[str, bool]:
+        """Ask for a name, offering the one these options already describe as the default.
+
+        `format_name` produces something like *Audio only (MP3), 320 kbps* — descriptive, and
+        almost never what the user wants to keep it as, which is the point of putting it in an
+        editable field rather than using it silently.
+        """
+        return QInputDialog.getText(
+            self, SAVE_PRESET_TEXT, SAVE_PRESET_PROMPT, text=self.result_preset().name
+        )
+
+    def _on_save_preset(self) -> None:
+        """Save these options under a name the user gives (`P-4`, `REQ-007`'s create).
+
+        **Nothing happens on a cancelled or empty name.** `QInputDialog` reports the two
+        separately — an empty string with `True` is somebody who cleared the field and pressed OK —
+        and both mean *not this time*, so neither is worth a message.
+
+        The outcome is said in the dialog rather than in a second modal: a refusal is *"that name
+        is taken"*, which the user answers by pressing the button again.
+        """
+        if self._save_preset is None:  # pragma: no cover - the button only exists with a sink
+            return
+        name, accepted = self._ask_name()
+        if not accepted or not name.strip():
+            return
+        refusal = self._save_preset(replace(self.result_preset(), name=name.strip()))
+        self._save_result.setText(refusal if refusal is not None else f"Saved as {name.strip()}.")
+
+    def save_result_text(self) -> str:
+        """What the last save attempt said. A method, so a test reads what the user reads."""
+        return self._save_result.text()
 
     # --- what the user chose ------------------------------------------------------------
 
@@ -337,19 +460,59 @@ class OptionsDialog(QDialog):
             embed_metadata=self._embed_metadata.isChecked(),
             embed_chapters=self._embed_chapters.isChecked(),
         )
-        languages = self.chosen_languages()
+        codec, quality = self._chosen_audio()
+        languages, embed = self._chosen_subtitles()
         derived = replace(
             derived,
-            audio_codec=self.chosen_codec(),
+            audio_codec=codec,
+            audio_quality=quality,
             subtitle_languages=languages,
-            # **Embedding needs something to embed.** `build_postprocessors` installs
-            # `FFmpegEmbedSubtitle` only when both are set, so a ticked box with no language
-            # chosen would be a control that does nothing — and `writesubtitles` would not be set
-            # either, so nothing would be written beside the file to notice its absence.
-            embed_subtitles=self._embed_subtitles.isChecked() and bool(languages),
+            embed_subtitles=embed,
         )
-        if derived.audio_codec is AudioCodec.MP3 and self._audio_quality.isEnabled():
-            quality = self._audio_quality.currentData()
-            if isinstance(quality, str):
-                derived = with_audio_quality(derived, quality)
         return replace(derived, name=format_name(format_choice_of(derived)))
+
+    def _chosen_audio(self) -> tuple[AudioCodec, str | None]:
+        """The codec and quality the user chose — or the preset's own, where they could not choose.
+
+        **A disabled group decides nothing** (`T109-R2`). Disabling the controls was only half the
+        rule; reading them anyway is what let a value the user can neither see nor clear reach the
+        request. Two cases, and they are different:
+
+        - **The whole group is disabled** — this download keeps its video, so there is no audio to
+          convert. Nothing here was a choice, so the preset's own fields are carried through.
+        - **The group is live and the codec is not MP3** — the bitrate control is disabled, and its
+          value is *cleared* rather than inherited. `MP3_BITRATES` is MP3's scale (`T076-R1`), and
+          yt-dlp reads a `preferredquality` above 10 as `-b:a 192k` for AAC, Opus, Vorbis and every
+          other lossy codec — so carrying `192` through a codec change was a hidden control quietly
+          changing the output, which is exactly the contract `T-076` and `T-089` established
+          against.
+
+        The quality goes through `with_audio_quality`, which refuses a bitrate for a codec that has
+        no use for one, rather than being set here — a second route to the field is a second
+        opinion about when it applies.
+        """
+        if not self._audio_group.isEnabled():
+            return self._preset.audio_codec, self._preset.audio_quality
+        codec = self.chosen_codec()
+        if codec is not AudioCodec.MP3:
+            return codec, None
+        quality = self._audio_quality.currentData()
+        return codec, quality if isinstance(quality, str) else self._preset.audio_quality
+
+    def _chosen_subtitles(self) -> tuple[tuple[str, ...], bool]:
+        """The languages and the embed flag — or the preset's own, where the list was disabled.
+
+        **A source publishing no subtitles offers no choice** (`T109-R1`, `T109-R2`'s rule applied
+        to its sibling). The list and the checkbox are both disabled then, so accepting must not
+        rewrite what the preset asked for: a preset carrying `("all",)` opened against a source with
+        nothing to show would otherwise come back empty, having been told nothing.
+
+        **Embedding needs something to embed.** `build_postprocessors` installs
+        `FFmpegEmbedSubtitle` only when both are set, so a ticked box with no language chosen would
+        be a control that does nothing — and `writesubtitles` would not be set either, so nothing
+        would be written beside the file to notice its absence.
+        """
+        if not self._languages.isEnabled():
+            return self._preset.subtitle_languages, self._preset.embed_subtitles
+        languages = self.chosen_languages()
+        return languages, self._embed_subtitles.isChecked() and bool(languages)

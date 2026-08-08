@@ -19,6 +19,46 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: `T-109`'s seven findings are corrected, and two of them were defect classes
+
+**Awaiting re-review.** Codex returned **Changes requested** at `4cb549d` — four High, two Medium,
+one Low. All seven are corrected; only the Reviewer marks one `Resolved`.
+
+**`T109-R2` was not one field.** *Changing codec away from MP3 leaves its hidden `192` attached*,
+and yt-dlp reads a quality above 10 as `-b:a 192k` for every lossy codec — a control the user can
+neither see nor clear still changing the output. Disabling it had been treated as the whole rule;
+reading it anyway was the other half. The audit found the same shape twice more: the audio codec
+read from a group disabled for a video download, and the subtitle fields read from a list disabled
+because the source publishes none. Every group now answers *could the user have said this?* first.
+
+**`T109-R1` is the same rule meeting a selector.** `VIDEO_WITH_SUBTITLES` carries `("all",)` —
+yt-dlp's *every subtitle this source publishes* — and the list holds the languages a probe found.
+Matching the two by string checked nothing, so the built-in silently lost the option its own name
+promises. `all` is now named in `core/presets.py` and displaying it means checking everything
+offered.
+
+**`T109-R3` and `T109-R4` turned out to be one fix.** The media and its sidecars were claimed
+independently: a subtitle whose name was taken landed as `Clip.de (2).vtt` beside `Clip.mp4`, which
+a player associates with the *old* subtitle; and a claim that failed was logged, swallowed, and
+then deleted by the cleanup while the job reported success. Reserving the **whole family at one
+index, all-or-nothing**, answers both — the collision moves everything together, and an output that
+cannot be placed is discovered before the media is claimed, so failing leaves nothing half-moved.
+Writing that fix found a third thing: a move that fails partway now puts what it moved back into
+staging, because a reservation is only released while still empty and the media would otherwise
+have stood at its final name under a failing session.
+
+**`T109-R5` is the one where the code argued with an accepted decision.** The module docstring said
+*Save as preset…* was deliberately absent because `T-111` owns where a preset lives — which is a
+description of a gap, not a reading of `P-4`, and `UX-005` §5 does not license omitting a control a
+ruling requires. The place to save now exists: `core/settings.add_preset`, in the `settings.toml`
+that `T-111`'s own entry records as already decided. **Create only** — edit, duplicate, delete and
+set-default remain `T-111`'s, built on this seam.
+
+**Six mutations, one per correction, all killed.** And one stated limit, recorded rather than left
+for the re-review: a subtitle yt-dlp named and did not write now fails the session when the request
+asked for it to be written. That is `T-109`'s first acceptance criterion read honestly, and it is
+broader than the reported path.
+
 ## 2026-08-08: `T-114` is built, and it is the rescoping that made it possible
 
 **In Review, and it stores nothing.** A URL the queue already holds, or one repeated within the

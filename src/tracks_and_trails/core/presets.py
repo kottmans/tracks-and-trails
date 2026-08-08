@@ -76,12 +76,21 @@ MP3_QUALITY: Final = "192"
 #: a choice nobody should make is a control that has to be explained rather than read.
 MP3_BITRATES: Final[tuple[str, ...]] = ("320", "256", "192", "160", "128")
 
+#: yt-dlp's selector for *every subtitle this source publishes*, named rather than spelled.
+#:
+#: **A selector, not a language code**, and the distinction is load-bearing (`T109-R1`). The
+#: options editor holds the languages a probe actually found, and matching this against those
+#: literals finds nothing — so a preset promising all of them displayed as none chosen, and an
+#: untouched accept answered with none. Anything comparing a preset's languages to a real list has
+#: to ask about this value first, which is why it stopped being a bare string in a tuple.
+ALL_SUBTITLE_LANGUAGES: Final = "all"
+
 #: The subtitle languages the embedded-subtitles preset asks for.
 #:
 #: `"all"` rather than `"en"`, deliberately: a built-in preset must not assume the user's
 #: language, and "embed the subtitles that exist" is what the preset's name actually promises.
 #: Narrowing it per user is a settings decision (Phase 4), not a default.
-SUBTITLE_LANGUAGES: Final = ("all",)
+SUBTITLE_LANGUAGES: Final = (ALL_SUBTITLE_LANGUAGES,)
 
 
 BEST_VIDEO_1080P: Final = Preset(

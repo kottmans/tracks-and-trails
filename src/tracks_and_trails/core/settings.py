@@ -48,11 +48,13 @@ deleted rather than amended, because it described behaviour that no longer exist
 """
 
 import tomllib
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any, Final
 
 from platformdirs import user_config_dir
+
+from tracks_and_trails.core.models import AudioCodec, MediaKind, Preset
 
 #: Duplicated from `downloader/environment.py` and `ui/main_window.py`, which each define their own.
 #: Hoisting it into one place would touch two approved modules for no behavioural gain, so this
@@ -84,6 +86,22 @@ CONCURRENCY_MAXIMUM: Final = 16
 _TABLE: Final = "queue"
 _CONCURRENCY_KEY: Final = "concurrency"
 
+#: The array-of-tables a user's saved presets live in (`DAT-001`, `T109-R5`).
+#:
+#: **This file, and no other** — `T-111`'s entry records it as already decided: *"User presets
+#: persist as TOML in the existing `settings.toml`, per `DAT-001` and `ARCHITECTURE.md` §5. No new
+#: store, no sibling file, no table, and no migration is owed."* An array of tables rather than one
+#: table per name, because a preset's name is user text and a TOML key is not the place for it.
+_PRESET_TABLE: Final = "preset"
+
+#: The `Preset` fields a saved preset carries. Derived from the dataclass rather than listed, for
+#: `_REQUEST_FIELDS`' reason: a field added to `Preset` and forgotten here would be silently
+#: dropped on every save, and the round-trip test compares whole objects.
+#:
+#: `built_in` is excluded and is the one field that must be: everything in this file is the user's,
+#: and a hand-edited `built_in = true` would let a saved preset claim to ship with the application.
+_PRESET_FIELDS: Final = tuple(field.name for field in fields(Preset) if field.name != "built_in")
+
 
 def settings_path() -> Path:
     """`user_config_dir/tracksandtrails/settings.toml`, per `ARCHITECTURE.md` §5.
@@ -105,6 +123,15 @@ class Settings:
 
     concurrency: int = CONCURRENCY_DEFAULT
 
+    #: The presets the user saved, in the order they were saved (`REQ-007`, `T109-R5`).
+    #:
+    #: **Create only, so far, and the rest is `T-111`'s.** `P-4` requires the options editor to
+    #: offer *Save as preset…* explicitly, which needs somewhere to save to; editing, duplicating,
+    #: deleting and choosing a default are `T-111`'s five operations built on this. Storing them
+    #: here rather than in a store of their own is `T-111`'s entry's own ruling, not a choice made
+    #: by `T-109`.
+    presets: tuple[Preset, ...] = ()
+
     def __post_init__(self) -> None:
         # A `Settings` built in code is held to the bound; a file is not. `load()` corrects what it
         # reads because a malformed file is not a programming error, and a caller passing 0 is.
@@ -116,6 +143,12 @@ class Settings:
             raise ValueError(
                 f"Settings.concurrency is {self.concurrency}; REQ-013's minimum is "
                 f"{CONCURRENCY_MINIMUM}. A pool of zero starts nothing, which looks like a hang."
+            )
+        if any(preset.built_in for preset in self.presets):
+            raise ValueError(
+                "a saved preset cannot be built_in: everything in settings.toml is the user's, "
+                "and a preset claiming otherwise would be indistinguishable from one that ships "
+                "with the application"
             )
         if self.concurrency > CONCURRENCY_MAXIMUM:
             raise ValueError(
@@ -217,6 +250,11 @@ def load(path: Path | None = None) -> SettingsFile:
     | Parses, `[queue]` is a table, `concurrency` is not an `int` | **Yes** |
     | Parses and simply omits `concurrency` | **No** |
     | Parses, `concurrency` is an `int` out of range | **No** — clamped, see `_concurrency_from` |
+    | Parses, a `[[preset]]` entry is malformed | **Yes** — that entry only; the rest survive |
+
+    **The two halves are read independently** (`T109-R5`). A broken `[queue]` section must not cost
+    the user their saved presets, and a typo in the tenth preset must not reset the concurrency
+    limit. Both reasons are reported when both apply.
 
     **Omission is silent because `save()` promises it is.** The file this application writes says
     *"Safe to delete: every value falls back to its default."* A user who takes that at its word and
@@ -257,31 +295,158 @@ def load(path: Path | None = None) -> SettingsFile:
             ),
         )
 
+    # **Read independently, and reported together.** A broken `[queue]` section must not cost the
+    # user their saved presets, and a preset with a typo in it must not reset the concurrency
+    # limit: they are separate values in one file, and `ARC-008` asks what was *discarded*, not
+    # what the file's worst part was.
+    presets, preset_reason = _presets_from(document)
+
+    def answer(concurrency: int, reason: str | None = None) -> SettingsFile:
+        both = [part for part in (reason, preset_reason) if part]
+        settings = Settings(concurrency=concurrency, presets=presets)
+        if not both:
+            return SettingsFile(settings)
+        return SettingsFile(settings, SettingsProblem(target, "\n\n".join(both)))
+
     table = document.get(_TABLE)
     if table is None:
         # Parsed, and says nothing about the queue. Same promise as a deleted line.
-        return SettingsFile(Settings())
+        return answer(CONCURRENCY_DEFAULT)
     if not isinstance(table, dict):
-        return SettingsFile(
-            Settings(),
-            SettingsProblem(
-                target,
-                f"The [{_TABLE}] section is a {type(table).__name__}, not a section.",
-            ),
+        return answer(
+            CONCURRENCY_DEFAULT,
+            f"The [{_TABLE}] section is a {type(table).__name__}, not a section.",
         )
     if _CONCURRENCY_KEY not in table:
-        return SettingsFile(Settings())
+        return answer(CONCURRENCY_DEFAULT)
 
     raw = table[_CONCURRENCY_KEY]
     if isinstance(raw, bool) or not isinstance(raw, int):
-        return SettingsFile(
-            Settings(),
-            SettingsProblem(
-                target,
-                f"{_TABLE}.{_CONCURRENCY_KEY} is {raw!r}, which is not a whole number.",
-            ),
+        return answer(
+            CONCURRENCY_DEFAULT,
+            f"{_TABLE}.{_CONCURRENCY_KEY} is {raw!r}, which is not a whole number.",
         )
-    return SettingsFile(Settings(concurrency=_concurrency_from(raw)))
+    return answer(_concurrency_from(raw))
+
+
+def _preset_from(raw: Any) -> Preset:
+    """One `[[preset]]` table as a `Preset`. **Raises** for anything the model would refuse.
+
+    Every value is handed to `Preset`, which validates it — a name that is not text, a container
+    yt-dlp does not accept, a remux *and* a recode together. Re-checking here would be a second
+    opinion about what a preset may be, and the model is the one that has to be right because the
+    download reads it.
+
+    Enums are rebuilt from their values rather than cast, because TOML has none. An unknown codec
+    or media kind raises `ValueError` from the enum itself, which is what the caller reports.
+    """
+    if not isinstance(raw, dict):
+        raise TypeError(f"a preset must be a table, not a {type(raw).__name__}")
+    unknown = sorted(set(raw) - set(_PRESET_FIELDS))
+    if unknown:
+        # Named rather than ignored: a key this version does not know is either a typo the user
+        # wants to hear about or a field from a future version, and silently dropping it would
+        # write the file back without it.
+        raise ValueError(f"unknown key(s) {', '.join(unknown)}")
+    values = dict(raw)
+    if "media_kind" in values:
+        values["media_kind"] = MediaKind(values["media_kind"])
+    if "audio_codec" in values:
+        values["audio_codec"] = AudioCodec(values["audio_codec"])
+    for name in ("post_processors", "subtitle_languages"):
+        if name in values:
+            values[name] = tuple(values[name])
+    return Preset(**values, built_in=False)
+
+
+def _presets_from(document: dict[str, Any]) -> tuple[tuple[Preset, ...], str | None]:
+    """Every readable saved preset, and what had to be discarded to get them (`ARC-008`).
+
+    **A bad entry is dropped and reported; the good ones survive.** The alternative — discarding
+    every preset because one is malformed — punishes a user for a typo in the tenth of ten, and
+    `ARC-008`'s rule is that something discarded is *reported*, not that everything is.
+    """
+    entries = document.get(_PRESET_TABLE)
+    if entries is None:
+        return (), None
+    if not isinstance(entries, list):
+        return (), f"[[{_PRESET_TABLE}]] is a {type(entries).__name__}, not a list of presets."
+
+    kept: list[Preset] = []
+    refused: list[str] = []
+    for position, entry in enumerate(entries):
+        try:
+            kept.append(_preset_from(entry))
+        except (TypeError, ValueError) as error:
+            named = entry.get("name") if isinstance(entry, dict) else None
+            which = f"{named!r}" if isinstance(named, str) else f"number {position + 1}"
+            refused.append(f"preset {which}: {error}")
+    if not refused:
+        return tuple(kept), None
+    return tuple(kept), (
+        f"{len(refused)} saved preset(s) could not be read and were left out:\n"
+        + "\n".join(refused)
+    )
+
+
+def _toml_string(value: str) -> str:
+    """`value` as a TOML basic string.
+
+    Hand-written because this project has no TOML *writer* — `tomllib` is read-only in the standard
+    library, and `save()` and `window.toml` are both hand-formatted for that reason. A preset name
+    is user text, so the escaping is not optional: a name containing a quote or a backslash would
+    otherwise produce a file this module cannot read back, which is the round trip breaking itself.
+    """
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    escaped = escaped.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    return f'"{escaped}"'
+
+
+def _toml_value(value: Any) -> str:
+    """One preset field, rendered. Only the shapes `Preset` can hold are handled."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, tuple | list):
+        return "[" + ", ".join(_toml_string(str(item)) for item in value) + "]"
+    return _toml_string(str(value))
+
+
+def _preset_lines(preset: Preset) -> str:
+    """One `[[preset]]` table. `None` fields are omitted, because TOML has no null."""
+    lines = [f"\n[[{_PRESET_TABLE}]]"]
+    for name in _PRESET_FIELDS:
+        value = getattr(preset, name)
+        if value is None:
+            continue
+        lines.append(f"{name} = {_toml_value(value)}")
+    return "\n".join(lines) + "\n"
+
+
+def add_preset(settings: Settings, preset: Preset) -> Settings:
+    """`settings` with `preset` saved. **The creation half of `REQ-007`** (`P-4`, `T109-R5`).
+
+    `T-111` owns edit, duplicate, delete and set-default; this is the seam they build on, and it
+    exists now because `P-4` requires the options editor to offer *Save as preset…* and a control
+    with nowhere to save to is one `UX-005` §5 forbids drawing.
+
+    **A colliding name is refused, and refused loudly.** `REQ-009`'s promise is that the name names
+    the download, and the staging list decides *"this row already has that format"* by comparing
+    names (`T-159`) — so two presets sharing one would make a row's choice ambiguous to the code as
+    well as to the reader. Built-ins are included in the check: a saved preset called *Audio only
+    (MP3)* would shadow the one that ships.
+
+    Raises `ValueError` rather than disambiguating silently. The caller is an editor with the user
+    in front of it and can ask for another name; picking one for them is how *Audio only (MP3) (2)*
+    appears in a list nobody meant to create.
+    """
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+
+    if preset.built_in:
+        raise ValueError("a built-in preset is not the user's to save")
+    taken = {existing.name for existing in (*BUILT_IN_PRESETS, *settings.presets)}
+    if preset.name in taken:
+        raise ValueError(f"a preset called {preset.name!r} already exists")
+    return replace(settings, presets=(*settings.presets, preset))
 
 
 def save(settings: Settings, path: Path | None = None) -> None:
@@ -304,7 +469,8 @@ def save(settings: Settings, path: Path | None = None) -> None:
             f"# How many downloads run at once. Minimum {CONCURRENCY_MINIMUM}, "
             f"maximum {CONCURRENCY_MAXIMUM}, default {CONCURRENCY_DEFAULT}.\n"
             "# Each one is a separate worker process, so a higher number is not always faster.\n"
-            f"{_CONCURRENCY_KEY} = {settings.concurrency}\n",
+            f"{_CONCURRENCY_KEY} = {settings.concurrency}\n"
+            + "".join(_preset_lines(preset) for preset in settings.presets),
             encoding="utf-8",
         )
     except OSError:

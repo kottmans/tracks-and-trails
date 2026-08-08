@@ -663,8 +663,15 @@ class DownloadRequest:
     #: Three flags rather than one because yt-dlp treats them as three: the thumbnail is
     #: `EmbedThumbnail` and needs the picture downloaded alongside, while metadata and chapters
     #: are two arguments to a single `FFmpegMetadata` — which is exactly the kind of shape a
-    #: hand-written list of postprocessor names gets wrong, since naming it twice would be
-    #: deduplicated to one and lose whichever flag came second.
+    #: hand-written list of postprocessor names gets wrong. Naming that postprocessor twice, once
+    #: per option, **adds** rather than loses: `FFmpegMetadata` defaults *both* arguments to
+    #: `True`, so a spec that omits one turns it on, and a user asking only to keep chapter marks
+    #: would find their title, uploader and source URL written into the file as well.
+    #:
+    #: *(This said the opposite — that the two would be deduplicated and "lose whichever flag came
+    #: second". A mutation splitting them into one spec per option survived the whole suite, which
+    #: is what disproved it: nothing was lost, something was added. `T109-R7` found this sibling
+    #: copy still saying so after `build_postprocessors`' own docstring was corrected.)*
     embed_thumbnail: bool = False
     embed_metadata: bool = False
     embed_chapters: bool = False

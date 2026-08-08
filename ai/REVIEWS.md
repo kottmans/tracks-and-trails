@@ -11868,3 +11868,191 @@ prose agrees with the completed evidence; and every fixture records the amended 
 The reviewer appended this record and filed non-blocking follow-up T-189. No reviewed source or
 test, T-108/T-185 task state, STATUS state, requirement, decision, implementation-plan entry,
 fixture, commit, remote ref, migration, user database or CI state was changed.
+
+## 2026-08-08 — T-109 implementation review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `99c33cb`
+**Submitted head:** `4cb549d`
+**Task:** `T-109`
+**Platforms verified:** Linux, Qt offscreen; Windows runtime not independently rerun
+**Verdict:** **Changes requested.** The typed model, yt-dlp translation, real-file option tests,
+old-request compatibility and ordinary sidecar claim all work at the submitted head. Approval is
+blocked by four user-visible correctness defects, the omission of `UX-007`'s explicit
+*Save as preset…* action, and the required bare-mypy gate failing on changed tests.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| `T109-R1` | **High** | **Yes** | The editor does not round-trip the built-in *Video with embedded subtitles* preset. That preset carries `subtitle_languages=("all",)`, but `_show_preset` checks only whether each offered literal is in `{"all"}`. Against a probe offering `en` and `de`, nothing is checked; accepting without touching the dialog returns `subtitle_languages=()` and `embed_subtitles=False`. This silently removes the core option the selected built-in promises. The existing identity test covers only the five new fields and misses both subtitle fields. | Treat yt-dlp's `all` selector as every language the probe offered while displaying the preset, and preserve the preset's effective subtitle intent on an untouched accept. Add an identity case starting from `VIDEO_WITH_SUBTITLES` with at least two offered languages; it must fail if either the language tuple or embed flag is lost. | **Open** |
+| `T109-R2` | **High** | **Yes** | Changing codec from the MP3 preset leaves its hidden `audio_quality="192"` attached. `result_preset()` replaces `audio_codec`, but applies a quality only when the new codec is MP3 and never clears the old value otherwise. The AAC probe returned `audio_codec=AAC, audio_quality="192"` and a row name of bare `bestaudio/best`; yt-dlp interprets a quality above 10 as `-b:a 192k` for AAC and other lossy codecs. A disabled control therefore continues changing the output with a value the user cannot see or clear, contradicting the MP3-only contract established by T-076/T-089. | When the chosen codec is not MP3, clear MP3's quality rather than carrying it through `replace`. Test transitions from `AUDIO_MP3` to every other codec, including the resulting request and displayed name; no non-MP3 result may retain an MP3 bitrate. | **Open** |
+| `T109-R3` | **High** | **Yes** | A sidecar claim failure is logged and swallowed, `_run` ignores the empty result, and the unconditional `finally` then deletes the staging directory before returning `Succeeded`. A deterministic `UnsafePathError` probe left the requested subtitle in staging after `claim_sidecars`, then `_discard_staging` deleted it while the media remained. The job would tell the user it completed even though one of the outputs they requested was deliberately discarded. This violates T-109's first acceptance criterion; `_discard_staging`'s cleanup rationale does not apply to a requested output. | Make an unclaimed written subtitle part of the session outcome, not cleanup noise. Do not report success after deleting it; distinguish the written-subtitle path from the valid embedded-subtitle case where the intermediate is expected to be absent. Add deterministic missing-file and failed-claim cases, including a partially claimed multi-language set. | **Open** |
+| `T109-R4` | **Medium** | **Yes** | Sidecar collisions are resolved independently after the media name is fixed. With `Clip.mp4` free but an existing `Clip.de.vtt`, a new requested subtitle lands as `Clip.de (2).vtt`. That is no longer the conventional sidecar for `Clip.mp4`; a player can associate the old `Clip.de.vtt` and ignore the newly downloaded file. The implementation comment acknowledges the odd compound name, while the acceptance criterion requires the sidecar to follow the media's actual name. | Choose one free basename for the media and its requested sidecar family, or otherwise keep every collision variant under the same media stem (`Clip (2).mp4` / `Clip (2).de.vtt`). Add collisions where only a subtitle is occupied and where both media and subtitle names are occupied. | **Open** |
+| `T109-R5` | **High** | **Yes** | `UX-007` ratified P-4 as: a one-off editor explicitly offers *Save as preset…*. The submitted dialog has only OK and Cancel, and its module docstring expressly defers the action to T-111. T-109's task context links the accepted ruling and says this is the §6 editor; its narrower out-of-scope statement cannot override the accepted decision. | Implement the explicit action through an agreed T-111 creation seam, or obtain a maintainer amendment that deliberately moves P-4 out of T-109. Do not describe the omission as satisfying the ruling that requires the control. | **Open** |
+| `T109-R6` | **Medium** | **Yes** | `ai/TESTING.md` §3 requires bare `mypy` and `mypy --platform win32` whenever a test file changes. Both fail at `4cb549d`: `tests/ui/test_options_dialog.py:39` annotates a yielding fixture as `Callable` instead of a generator type, and `tests/integration/test_end_to_end.py:720` constructs an untyped `dict` from a value declared as `str`. The handoff reports only the narrower `mypy src` variants, which do not read tests. | Correct both annotations/types and run the required bare host and Win32-platform commands to success. Preserve the narrower source checks as well; they are not substitutes for the test-reading gate. | **Open** |
+| `T109-R7` | **Low** | **No** | `core/models.py` still says two `FFmpegMetadata` entries would be deduplicated and “lose whichever flag came second.” The mutation evidence established the opposite: constructor defaults turn an omitted flag on. The adapter docstring was corrected, but this sibling current-source explanation was not. | Correct the model comment in the T-109 correction batch. If it is not corrected there, assign it to a named documentation follow-up before approval. | **Open — owner Implementer, target T-109 correction batch** |
+
+### Review judgments
+
+- **The model and persistence widening are otherwise sound.** The five fields are typed, validated,
+  preset-owned and round-trip through the database. Reading an absent defaulted field from a
+  historical JSON blob as the dataclass default is the right compatibility boundary; the four
+  required fields remain required.
+- **The yt-dlp translation is evidence-backed.** The seven requested behaviors reach real files,
+  option ordering matches the pinned library, thumbnail download is enabled, metadata/chapters
+  state both flags, and the ffmpeg gate covers each ffmpeg-backed option. The direct chapter
+  postprocessor test is acceptable bounded evidence: it proves the request-built spec changes a
+  real file and states honestly that extractor-supplied chapters remain unverified.
+- **The ordinary sidecar path is safe from overwrite.** `O_CREAT | O_EXCL` protects each final
+  move, written subtitles survive normal cleanup, and a collision cannot destroy a pre-existing
+  file. T109-R3 and T109-R4 concern completion truth and family naming, not overwrite safety.
+- **The five-field describing fallback does not weaken identity.** `preset_name_for` remains strict;
+  only `format_name` retries after clearing the five adjustable fields, as the handoff intended.
+- **Windows and real-site behavior remain known-unverified.** No finding is based solely on either
+  gap; the submitted Linux/local-site behavior passed independently.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Reviewed the immutable `99c33cb..4cb549d` snapshot extracted under `/tmp`; concurrent live-tree work was excluded. `git diff --check 99c33cb 4cb549d`: **pass**. |
+| Focused T-109/UI/end-to-end/preset/fixture suites | **449 passed, 8 skipped** across 457 unique cases. The restricted run's 21 localhost denials all passed when the two loopback modules were rerun with socket permission: **29 passed**. |
+| Model/persistence/adapter/worker suites | **375 passed, 1 skipped** across 376 unique cases. The sole restricted localhost denial passed on an isolated permitted rerun. |
+| Static gates | `ruff check .`: **pass**; `ruff format --check .`: **201 files already formatted**. Bare host and Win32 mypy: **failed identically with 3 errors in 2 changed test files** (`test_options_dialog.py:39`; two diagnostics at `test_end_to_end.py:720`). |
+| Editor probes | Untouched `VIDEO_WITH_SUBTITLES`: `('all',), True -> (), False`; MP3-to-AAC: `AAC, '192', 'bestaudio/best'`; button box: `OK`, `Cancel` only. |
+| Sidecar probes | Forced claim failure returned no claimed file, cleanup deleted the requested subtitle, and media remained. A subtitle-only collision produced `Clip.de (2).vtt` beside `Clip.mp4` and the pre-existing `Clip.de.vtt`. |
+| Submitted evidence | The handoff reports `2435 passed, 14 skipped, 2 deselected`, clean ruff, and clean `mypy src` host/Win32 checks. The reviewer did not rerun the full suite or Windows CI; the omitted bare mypy checks fail as recorded above. |
+
+The reviewer appended this initial review record only. No reviewed source/test, task state, status
+state, requirement, decision, implementation-plan entry, commit, remote ref, migration, user
+database or CI state was changed. Claude's concurrent live-tree source work was left untouched.
+
+## 2026-08-08 — T-109 gate re-review and T-110/T-112/T-113/T-114 implementation review
+
+**Reviewer:** Codex (Reviewer)
+**Submitted chain:** `4cb549d..4786417`
+**Per-task boundaries:** T-109 gate `4cb549d..da7f97b`; T-110 `da7f97b..3a53d66`;
+T-112 `3a53d66..3d6f9bc`; T-113 `3d6f9bc..04abf85`; T-114
+`04abf85..4786417`
+**Platforms verified:** Linux, Qt offscreen; Win32 static typing only; Windows runtime not
+independently rerun
+**Verdict by task:** **T-109 remains Changes requested, with T109-R6 Resolved; T-110 Approved;
+T-112 Approved; T-113 Changes requested; T-114 Approved.** The playlist selection, live output
+preview and duplicate-URL state meet their bounded acceptance criteria. T-113 resumes a killed
+download in the ordinary safe-id case, but approval is blocked by an outside-directory deletion
+path, loss of the partial on an orderly restart, and incomplete cleanup after forced cancellation.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| `T113-R1` | **Critical** | **Yes** | `Job.id` is validated only as non-empty text, while `worker.staging_directory()` concatenates it directly into a filesystem path. `_run()` then creates that path with `parents=True` and treats it as private, including `overwrites=True`; `discard_staging_for()` recursively removes it. In the immutable head, the id `../../../../outside` under a nested output directory resolved to a pre-existing directory outside the chosen output directory. After the same `mkdir` the worker performs, `discard_staging_for()` deleted a sentinel file there. A malformed or tampered persisted row can therefore write into and delete user data outside the selected directory. | Derive the staging leaf from an encoded or fixed-width digest of the id, or otherwise validate and contain it before any create/write/remove. The invariant must hold for separators, repeated `..`, absolute/drive-like forms and both platforms without making legacy job ids unloadable. Add negative tests that pre-create outside files, exercise worker creation and manager cleanup, and prove none is touched. Audit every T-113 staging entry point as one defect class. | **Open** |
+| `T113-R2` | **High** | **Yes** | An orderly application restart cannot use the new resume mechanism. `DownloadManager.shutdown()` calls `cancel()` for every active session; the cooperative worker cancellation path calls `discard_staging_for()` and reports cancellation, so the partial is deleted and the durable job becomes `CANCELLED`. On launch there is neither a partial to continue nor a retryable interrupted job. This contradicts `REQ-017`'s resume-across-restarts promise; the new end-to-end proof covers only `SIGKILL`, even though its own commentary distinguishes orderly teardown as a separate behavior. | Give shutdown interruption semantics distinct from the user's per-row Cancel: preserve the job's partial and leave/recover the row as retryable work while still reaping the process tree. Add an orderly close/reopen test with bytes genuinely in flight and require a ranged continuation plus byte-exact output, alongside the existing hard-kill proof. Record the resulting lifetime rule in UX-008. | **Open** |
+| `T113-R3` | **Medium** | **Yes** | Cancel/remove cleanup is guaranteed only when the worker cooperatively raises its cancellation exception. The manager's documented `terminate()`/`kill()` escalation bypasses that handler, and `_release()` performs no partial cleanup. `remove()` deletes the staging directory *before* the still-live process is stopped, so that process can recreate it; `_release()` then deletes the row without a second cleanup. An uncooperative download can therefore leave an invisible partial after Cancel, or after Remove has eliminated the only row that explained it. This violates T-113's explicit partial-lifetime criterion. | After the process tree is gone, clean the safely derived per-job staging directory for a genuine user Cancel/Remove, including forced termination; do not apply that cleanup to the orderly-shutdown interruption required by T113-R2. Add a deterministic child that ignores cooperative cancellation, recreates/writes its staging path after the request, and reaches terminate/kill for both Cancel and Remove. | **Open** |
+
+### T-109 focused correction
+
+`T109-R6` is **Resolved at `da7f97b`**. The yielding fixture is now annotated as an iterator, and
+the ffprobe helper reads the raw nested dictionaries before deliberately flattening them to
+`dict[str, str]`. At the exact correction head, bare host and Win32-platform mypy both report
+**success across 114 source files**; the options-dialog file reports **14 passed**. The original
+`4cb549d` diagnostics were independently reproduced in the initial review, so the correction is
+specific to the failed gate rather than a narrowed invocation.
+
+T-109 as a whole remains **Changes requested**: blocking `T109-R1` through `T109-R5` remain open,
+and non-blocking `T109-R7` remains assigned to its correction batch. This focused pass neither
+re-reviewed nor resolved them.
+
+### Approved-task judgments
+
+- **T-110:** the picker is the staging row's shared `RowPanel` mechanism; title, duration and
+  one-based display index reach the table; tri-state, range and select-all keyboard behavior reach
+  the immutable selection; only checked entries are submitted in one batch with original playlist
+  positions; an unopened playlist keeps all entries; empty selection is refused visibly; and a
+  single item remains one job. The existing flat-probe lane supplies cancellation without blocking
+  the GUI, and the delegate design does not create one widget per entry.
+- **T-112:** the parent and worker both end template rendering at `contained_output_path`, and both
+  use the worker's postprocessed-name/collision path. The UI reaches yt-dlp only through the manager,
+  validates on every edit, shows no stale path on refusal, commits only a valid template, exposes a
+  focusable read-only preview and lists the supported fields inline. The real local download case
+  matched the preview through a subdirectory, Windows-illegal title characters and MP3 conversion.
+- **T-114:** duplicate comparison is exact and Qt-free, distinguishes queued from repeated-in-paste,
+  marks the second pasted occurrence, joins the fact to drawn and accessible row state, and leaves
+  ordinary Add as the override. The queue supplies URLs from its in-memory model; the commit adds no
+  persistence surface and staging the duplicates performs no write.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Immutable boundaries | Both `da7f97b` and `4786417` were extracted under `/tmp`; `PYTHONPATH` resolved imports to the extracted head. Each per-commit `git diff --check` passed. Concurrent trunk commits and Claude's live source edit were excluded. |
+| Static gates at `4786417` | `ruff check .`: **pass**; `ruff format --check .`: **209 files already formatted**; `mypy src`: **success, 50 files**; bare host and Win32-platform mypy: **success, 122 files each**. The environment's generated mypy launcher has a stale absolute shebang, so the equivalent `.venv/bin/python -m mypy` entry point was used. |
+| Required layer suites | `tests/unit`: **1591 passed, 12 skipped**; `tests/integration`: **327 passed**. The first restricted unit attempt had one loopback denial after 1590 passes; the permitted rerun was green. Integration ran alone with process and loopback access. |
+| Focused UI | Add-dialog, playlist-picker, template-editor, queue-view and row-verbs: **246 passed**; row-delegate and main-window: **117 passed**. |
+| T-109 correction | Exact `da7f97b`: bare host and Win32 mypy **success, 114 files each**; options-dialog tests **14 passed**. |
+| T113-R1 probe | A temporary pre-existing `outside/user-file.txt` survived path computation alone, then was deleted after the reviewed `staging.mkdir(parents=True)` plus `discard_staging_for()` sequence for `../../../../outside`. Only the disposable `/tmp` probe was touched. |
+| Known-unverified | Windows runtime behavior and real public media sites were not rerun. No finding or approval rests solely on either gap. |
+
+During the review, trunk advanced beyond the submitted head to `2c0ea45`, which corrects the stale
+T109-R6 commit reference in `TASKS.md` and `STATUS.md`; it is outside this review boundary and was
+not included in the verdicts. Claude's concurrent uncommitted `core/models.py` correction was also
+left untouched.
+
+The reviewer appended this record only. No reviewed source/test, task state, status state,
+requirement, decision, implementation-plan entry, commit, remote ref, migration, user database or
+CI state was changed.
+
+
+## 2026-08-08 — T-109 correction batch
+
+**Implementer:** Claude Code
+**Corrects:** the 2026-08-08 review above (`T109-R1`..`T109-R7`)
+**Review base:** `4cb549d` (the reviewed head) · **Correction head:** see `ai/TASKS.md`
+**Status of each finding:** corrected and **awaiting re-review**. Only the Reviewer marks a finding
+`Resolved`, after independent verification (`AGENTS.md` §10).
+
+`T109-R6` was corrected separately at `da7f97b`, ahead of this batch: bare `mypy` and
+`mypy --platform win32` are required of *any* task that edits a test file, so its three errors were
+blocking `T-110`, `T-112`, `T-113` and `T-114` as well. The other six are here, in one batch.
+
+| ID | What changed | Evidence |
+|---|---|---|
+| `T109-R1` | `ALL_SUBTITLE_LANGUAGES` is named in `core/presets.py`, and `_show_preset` treats it as *every language the probe offered* rather than as a literal to match. A source offering none disables the list, and a disabled list now carries the preset's own fields through instead of rewriting them. | `test_the_embedded_subtitles_preset_survives_being_opened_and_accepted`, `test_the_offered_languages_open_already_checked_for_an_all_preset`, `test_a_source_with_no_subtitles_does_not_rewrite_what_the_preset_asked_for`, `test_a_preset_naming_specific_languages_still_checks_only_those` |
+| `T109-R2` | `result_preset` reads the audio group through `_chosen_audio`: a disabled group carries the preset's fields, and a live one with a non-MP3 codec **clears** the quality rather than inheriting it. | `test_changing_codec_away_from_mp3_clears_its_bitrate` over **every** non-MP3 codec, asserting the preset, the request and the displayed name; plus `test_choosing_mp3_still_carries_its_bitrate` and `test_a_video_preset_keeps_its_audio_fields_untouched` |
+| `T109-R3` | `claim_sidecars` is gone; `claim_outputs` raises rather than logging, so an output that cannot be placed fails the session. `requested_sidecars` reports presence instead of filtering, and `writing_subtitles` distinguishes a deleted embed intermediate from a lost written output. A partial move is rolled back into staging before the reservations are released. | `test_a_requested_subtitle_that_never_arrived_fails_the_session`, `test_an_embedded_subtitle_that_was_deleted_is_not_a_failure`, `test_a_partially_claimed_multi_language_set_leaves_nothing_half_moved` |
+| `T109-R4` | The media and its sidecars are reserved as one family at one index, all-or-nothing, so a collision moves the whole family. | `test_a_sidecar_collision_moves_the_whole_family`, `test_a_family_keeps_one_basename_when_both_names_are_occupied`, `test_an_uncollided_family_keeps_the_plain_name` |
+| `T109-R5` | `Save as preset…` exists, as an `ActionRole` button that does not accept the dialog. It writes through `core/settings.add_preset` — the creation seam, in the `settings.toml` `T-111`'s own entry records as already decided. `T-111` still owns edit, duplicate, delete and set-default. | `test_the_editor_offers_save_as_preset` and five siblings; the store is `tests/unit/test_settings.py`'s nine new cases |
+| `T109-R7` | The `core/models.py` comment now says what the mutation evidence established: two `FFmpegMetadata` specs **add** rather than lose, because the constructor defaults both arguments to `True`. | Prose; the behaviour it describes is asserted by `test_requested_chapters_are_written_into_the_file` |
+
+### What the corrections cost beyond the findings
+
+- **`claim_output_path` is deleted.** `claim_outputs` supersedes it and nothing else called it;
+  `reserve_output_path` now shares `_reserve_exactly` with it, so the `O_CREAT | O_EXCL` call has
+  one site rather than two.
+- **`Settings` carries `presets`, and `save()` writes them.** Composition holds the current
+  settings in a `_Held` cell, because `save()` writes the whole file and two writers — the
+  concurrency control and *Save as preset…* — would otherwise erase each other.
+- **`T109-R2` was treated as a defect class, not one field.** The audit found the same shape twice
+  more: the audio codec read from a disabled group, and the subtitle fields read from a disabled
+  list. Both now carry the preset's own value through. The container combo was already safe.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `ruff check .` / `ruff format --check .` | **pass**, 209 files |
+| `mypy src` | **pass**, 50 files |
+| Bare `mypy` and `mypy --platform win32` | **pass**, 122 files each — `T109-R6`'s gate |
+| Full default suite | **2619 passed, 14 skipped, 2 deselected** |
+| Mutation checks | Six, one per correction, **all killed**: not expanding `all`; carrying the MP3 quality through a codec change; swallowing a missing requested subtitle; claiming each family member at its own index; dropping the *Save as preset…* button; dropping the name-collision refusal. |
+| Windows runtime, real sites | **Still unverified**, unchanged by this batch. |
+
+### Stated limit of the `T109-R3` correction
+
+A subtitle yt-dlp named in `requested_subtitles` and did not write now **fails** the session when
+the request asked for it to be written. That is the honest reading of `T-109`'s first acceptance
+criterion — an option that produces no file is the defect the task exists to prevent — and it is a
+behaviour change beyond the reported claim-failure path. The risk is a site that lists a language
+and serves nothing turning a mostly-successful download into a failure. It is recorded here rather
+than left for the re-review to find; the embedded case is explicitly exempt and tested.

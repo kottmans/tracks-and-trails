@@ -54,6 +54,7 @@ from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
 from tracks_and_trails.ui.job_detail import JobReader
+from tracks_and_trails.ui.options_dialog import PresetSink
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
 
@@ -309,6 +310,7 @@ class MainWindow(QMainWindow):
         on_reorder_requested: Callable[[list[str]], None] | None = None,
         on_clear_requested: Callable[[], None] | None = None,
         queue: QueueReader | None = None,
+        save_preset: PresetSink | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -324,6 +326,9 @@ class MainWindow(QMainWindow):
         self._manager = manager
         self._jobs = jobs
         self._output_directory = output_directory
+        #: Where `P-4`'s *Save as preset…* writes (`T109-R5`). Composition owns `settings.toml`
+        #: (`ARC-007`), so it supplies this rather than the window reading the file.
+        self._save_preset = save_preset
         self.setObjectName("mainWindow")
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
@@ -714,6 +719,10 @@ class MainWindow(QMainWindow):
             # than a snapshot, because the dialog outlives any one answer — a job finishing while
             # it is open must stop being reported as a duplicate.
             queued_urls=self._queued_urls,
+            # `P-4`, `T109-R5`: the options editor draws *Save as preset…* only where there is
+            # somewhere to save. Composition supplies it; a window built without one says so in
+            # the button's place rather than offering a control that cannot act.
+            save_preset=self._save_preset,
             parent=self,
         )
         # **Adding a job is the one queue change nothing announces.** The manager emits

@@ -122,7 +122,7 @@ from tracks_and_trails.ui.format_selection import (
 )
 from tracks_and_trails.ui.format_table import FormatTable
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX, format_name
-from tracks_and_trails.ui.options_dialog import OptionsDialog
+from tracks_and_trails.ui.options_dialog import OptionsDialog, PresetSink
 from tracks_and_trails.ui.playlist_picker import PlaylistPicker
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection, describe_chosen
 from tracks_and_trails.ui.row_delegate import (
@@ -961,6 +961,7 @@ class AddUrlDialog(QDialog):
         resolve_delay_ms: int = DEFAULT_RESOLVE_DELAY_MS,
         ffmpeg_available: bool = True,
         queued_urls: QueuedUrls | None = None,
+        save_preset: PresetSink | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -973,6 +974,10 @@ class AddUrlDialog(QDialog):
         #: the honest answer for a caller that never said what the queue contains. Guessing would
         #: mean this dialog deciding where a queue lives.
         self._queued_urls: QueuedUrls = queued_urls if queued_urls is not None else (lambda: ())
+        #: Where `P-4`'s *Save as preset…* writes (`T109-R5`). Passed straight through to the
+        #: options editor, which draws the control only where there is one — this dialog does not
+        #: learn what a preset store is, for `QueuedUrls`' reason.
+        self._save_preset = save_preset
         self._output_directory = output_directory
         self._presets = tuple(presets)
         #: Whether a merge is possible at all on this installation (`REQ-024`, `P-13`).
@@ -1659,6 +1664,7 @@ class AddUrlDialog(QDialog):
         dialog = OptionsDialog(
             self.preset_for(row),
             subtitle_languages=(media.subtitle_languages if isinstance(media, MediaInfo) else ()),
+            save_preset=self._save_preset,
             parent=self,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:

@@ -512,13 +512,22 @@ def _run(
             overwrites=True,
         )
         produced = _written_path(result, staging / target.name)
-        # The destination keeps the *final* extension, not the template's. This is the name
-        # the user will see and the one that has to be free.
-        written = claim_output_path(target.with_name(produced.name), produced)
-        # **Everything else the user asked to keep, before the directory goes** (`T046-R3`,
-        # `T-109`). Claimed after the media file so the sidecars follow the name it actually
-        # landed under.
-        claim_sidecars(result, staging=staging, stem=Path(target.name).stem, written=written)
+        # **The media and everything the user asked to keep, claimed as one family** (`T046-R3`,
+        # `T-109`, `T109-R3`, `T109-R4`). The destination keeps the *final* extension, not the
+        # template's — that is the name the user will see and the one that has to be free — and the
+        # sidecars take the same basename, so a collision moves the whole family rather than
+        # separating a subtitle from the file it belongs to. An output that cannot be placed raises,
+        # and is caught below as a failed job: the two used to be claimed independently and a
+        # sidecar failure was swallowed while the outcome said the download had worked.
+        written, _kept = claim_outputs(
+            result,
+            staging=staging,
+            stem=Path(target.name).stem,
+            target=target.with_name(produced.name),
+            produced=produced,
+            # What tells a deleted intermediate from a lost output — see `claim_outputs`.
+            writing_subtitles=bool(request.subtitle_languages) and not request.embed_subtitles,
+        )
         # **Discarded here, on the success path, and no longer in a `finally`** (`T-113`).
         # A `finally` threw the partial away whichever way the session ended, which is right for
         # a download that landed and wrong for one that failed: a network error is precisely when
@@ -936,14 +945,8 @@ def reserve_output_path(target: Path) -> Path:
     """
     target.parent.mkdir(parents=True, exist_ok=True)
     for candidate in _candidates(target):
-        try:
-            handle = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-        except FileExistsError:
-            continue
-        except OSError as error:
-            raise UnsafePathError(f"cannot write to {str(candidate)!r}: {error}") from error
-        os.close(handle)
-        return candidate
+        if _reserve_exactly(candidate):
+            return candidate
     raise UnsafePathError(
         f"{str(target)!r} and {MAX_COLLISION_ATTEMPTS} numbered alternatives are all taken"
     )
@@ -1010,8 +1013,8 @@ def discard_staging_for(directory: Path, job_id: str) -> None:
     _discard_staging(staging_directory(directory, job_id))
 
 
-def requested_sidecars(result: Mapping[str, Any]) -> tuple[Path, ...]:
-    """The files yt-dlp wrote **beside** the media because the user asked for them (`T-109`).
+def requested_sidecars(result: Mapping[str, Any]) -> tuple[tuple[Path, bool], ...]:
+    """Every file yt-dlp was asked to write **beside** the media, and whether it is there.
 
     Today that means subtitle files: `REQ-010` offers *embed or write*, and a written subtitle is
     an output in its own right rather than an intermediate. Read from `requested_subtitles`, which
@@ -1020,15 +1023,16 @@ def requested_sidecars(result: Mapping[str, Any]) -> tuple[Path, ...]:
     for `*.srt` would also find a subtitle that was embedded and then deleted, and would find one
     nobody asked for.
 
-    **Embedding leaves nothing here, correctly.** `FFmpegEmbedSubtitle` runs with
-    `already_have_subtitle` false, so yt-dlp deletes the file once it is inside the container; the
-    entry survives in `requested_subtitles` with a `filepath` that no longer exists. Missing files
-    are skipped rather than reported, because the absence *is* the embed having worked.
+    **Presence is reported rather than filtered** (`T109-R3`). This used to drop the missing ones
+    silently, on the reasoning that *"the absence is the embed having worked"* — which is true when
+    the request embeds and says nothing at all when it writes. The two cases need different
+    answers, and a function that cannot tell them apart cannot give either: `claim_outputs` knows
+    which the request asked for, so the fact travels there instead of being decided here.
     """
     requested = result.get("requested_subtitles")
     if not isinstance(requested, Mapping):
         return ()
-    found: list[Path] = []
+    found: list[tuple[Path, bool]] = []
     for entry in requested.values():
         if not isinstance(entry, Mapping):
             continue
@@ -1036,54 +1040,139 @@ def requested_sidecars(result: Mapping[str, Any]) -> tuple[Path, ...]:
         if not isinstance(filepath, str) or not filepath:
             continue
         candidate = Path(filepath)
-        if candidate.is_file():
-            found.append(candidate)
+        found.append((candidate, candidate.is_file()))
     return tuple(found)
 
 
-def claim_sidecars(
-    result: Mapping[str, Any], *, staging: Path, stem: str, written: Path
-) -> tuple[Path, ...]:
-    """Move every requested sidecar out of `staging` to sit beside `written` (`T046-R3`).
+def _reserve_exactly(path: Path) -> bool:
+    """Take `path` with `O_CREAT | O_EXCL`, or answer `False` because something already has it.
 
-    **The finding this exists to answer.** `_discard_staging` removes the directory wholesale
-    except the single path the media file was claimed from — correct while every other file in
-    there was an intermediate, and wrong the moment a request asks for an output it wants kept.
-    `embed_subtitles=False` with `subtitle_languages` set produces `.vtt` files beside the media,
-    and until `T-109` they were deleted with the directory: the user asked for subtitles, the
-    download fetched them, and the cleanup threw them away. Nothing exposed that combination in
-    the UI before now, which is why it was a latent defect rather than a live one.
-
-    **Renamed to follow the media, because collision policy may have moved it.** The download is
-    written under the staging template's stem and the claim can land on `Clip (2).mp4`; a
-    subtitle left as `Clip.en.vtt` beside it belongs to a file that is not there. The stem is
-    replaced rather than the name rebuilt, so `.en.vtt` — two suffixes, which `Path.suffix` alone
-    cannot see — survives intact.
-
-    **Each one is claimed with the same reservation the media file uses**, so a sidecar can never
-    overwrite something of the user's. A name that is already taken lands on a numbered variant,
-    which for a two-suffix name reads a little oddly (`Clip (2).en (2).vtt`); that is the safe
-    direction, and it needs a collision *inside* an already-collided name to happen at all.
-
-    Failures are swallowed per file for `_discard_staging`'s reason: the download has succeeded,
-    and a subtitle that could not be moved must not turn a completed job into a failed one. It is
-    reported to the log rather than silently dropped.
+    `reserve_output_path`'s primitive, split out for `claim_outputs`, which has to reserve a whole
+    family at one index and give the lot back if any member is taken — a per-file loop over
+    candidates cannot do that, because it would settle each name independently and that is
+    precisely `T109-R4`.
     """
-    claimed: list[Path] = []
-    for sidecar in requested_sidecars(result):
-        if staging not in sidecar.parents:
-            # Not ours to move. yt-dlp was given a literal template inside `staging`, so anything
-            # outside it was not written by this session and is not this function's to touch.
-            continue
-        suffixes = sidecar.name[len(stem) :] if sidecar.name.startswith(stem) else sidecar.name
-        beside = written.with_name(f"{written.stem}{suffixes}")
-        try:
-            claimed.append(claim_output_path(beside, sidecar))
-        except (UnsafePathError, OSError) as error:
-            logging.getLogger(f"{APP_SLUG}.worker").warning(
-                "could not keep the subtitle file %s: %s", sidecar.name, error
+    try:
+        handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return False
+    except OSError as error:
+        raise UnsafePathError(f"cannot write to {str(path)!r}: {error}") from error
+    os.close(handle)
+    return True
+
+
+def _sidecar_suffix(name: str, stem: str) -> str:
+    """What follows the media's stem in a sidecar's name — `.en.vtt`, not `.vtt`.
+
+    Two suffixes, which `Path.suffix` alone cannot see, so the stem is stripped rather than the
+    name rebuilt.
+    """
+    return name[len(stem) :] if name.startswith(stem) else name
+
+
+def claim_outputs(
+    result: Mapping[str, Any],
+    *,
+    staging: Path,
+    stem: str,
+    target: Path,
+    produced: Path,
+    writing_subtitles: bool,
+) -> tuple[Path, tuple[Path, ...]]:
+    """Move the media **and every requested sidecar** out of staging, under one shared name.
+
+    Returns `(written, kept)`. Raises `UnsafePathError` when the outputs the request asked for
+    cannot all be placed — which `_run` turns into a failed job, and which leaves the staging
+    directory where it is so nothing the download produced is thrown away.
+
+    **One free basename for the whole family** (`T109-R4`). The media and its sidecars used to be
+    claimed independently, so with `Clip.mp4` free and `Clip.de.vtt` taken the subtitle landed as
+    `Clip.de (2).vtt` — no longer the conventional sidecar for `Clip.mp4`, and a player would
+    associate the *old* `Clip.de.vtt` and ignore the one just downloaded. The index is now chosen
+    for the family: either `Clip.mp4` and `Clip.de.vtt`, or `Clip (2).mp4` and `Clip (2).de.vtt`,
+    and never a mixture. That is also why the reservation is all-or-nothing per index — settling
+    the media first and then looking for a subtitle name is how the two came apart.
+
+    **A requested output that cannot be placed fails the job** (`T109-R3`). The failure used to be
+    logged and swallowed: `claim_sidecars` returned nothing, `_run` ignored it, the cleanup deleted
+    the subtitle still sitting in staging, and the job reported success. The user had asked for that
+    file, it had been downloaded, and it was deliberately discarded while the outcome said
+    everything worked. `T-109`'s first acceptance criterion is that each option produces a file, so
+    an output that did not arrive is not a detail of cleanup.
+
+    **The claim and the move are one step, and the claim comes first** (`T046-R1`). Every member is
+    taken with `O_CREAT | O_EXCL`, so the kernel decides between two processes racing for a name;
+    `os.replace` then puts each file into the name this process holds. Because a reservation is a
+    zero-byte file this process just created, replacing it cannot destroy anything of the user's —
+    which is the guarantee `overwrites=True` used to be claimed to have and did not, for every
+    extension-changing postprocessor. `os.replace` rather than `shutil.move`: it is atomic within a
+    filesystem, and the staging directory is deliberately created inside the destination's own
+    directory so that it is one.
+
+    **`writing_subtitles` is what tells a deleted intermediate from a lost output.** With
+    `embed_subtitles` set, `FFmpegEmbedSubtitle` runs with `already_have_subtitle` false and yt-dlp
+    deletes each file once it is inside the container — the entry stays in `requested_subtitles`
+    with a `filepath` that no longer exists, and that absence *is* the embed having worked. With the
+    subtitles written instead, the same absence means a file the user asked for is not there.
+    """
+    sidecars = [
+        (path, exists)
+        for path, exists in requested_sidecars(result)
+        # Not ours to move. yt-dlp was given a literal template inside `staging`, so anything
+        # outside it was not written by this session and is not this function's to touch.
+        if staging in path.parents
+    ]
+    if writing_subtitles:
+        absent = [path.name for path, exists in sidecars if not exists]
+        if absent:
+            raise UnsafePathError(
+                "the download finished without the subtitle file(s) it was asked to write: "
+                f"{', '.join(sorted(absent))}"
             )
-    return tuple(claimed)
+    present = [path for path, exists in sidecars if exists]
+    suffixes = [_sidecar_suffix(path.name, stem) for path in present]
+
+    for candidate in _candidates(target):
+        family = [candidate, *(candidate.with_name(f"{candidate.stem}{s}") for s in suffixes)]
+        reserved: list[Path] = []
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        for member in family:
+            if not _reserve_exactly(member):
+                break
+            reserved.append(member)
+        if len(reserved) != len(family):
+            # Somebody has part of this name. Give back what was taken and try the next index,
+            # rather than keeping the free half and splitting the family across two basenames.
+            for member in reserved:
+                release_output_path(member)
+            continue
+        sources = [produced, *present]
+        placed: list[tuple[Path, Path]] = []
+        try:
+            for source, destination in zip(sources, family, strict=True):
+                source.replace(destination)
+                placed.append((destination, source))
+        except OSError as error:
+            # **Everything already moved goes back into staging first** (`T109-R3`). A reservation
+            # is only released while it is still empty — correctly, since one with bytes in it is
+            # somebody's file — so releasing after a partial move would leave the media standing at
+            # its final name under a session that is about to report failure. Putting each file
+            # back restores the invariant a failed session depends on: what the download produced
+            # is in staging, all of it, ready for the retry `T-113` keeps it for.
+            for destination, source in reversed(placed):
+                with suppress(OSError):
+                    destination.replace(source)
+            for member in family:
+                release_output_path(member)
+            raise UnsafePathError(
+                f"cannot move the finished download to {str(candidate)!r}: {error}"
+            ) from error
+        return family[0], tuple(family[1:])
+
+    raise UnsafePathError(
+        f"{str(target)!r} and {MAX_COLLISION_ATTEMPTS} numbered alternatives are all taken"
+    )
 
 
 def _discard_staging(staging: Path) -> None:
@@ -1092,7 +1181,7 @@ def _discard_staging(staging: Path) -> None:
     Anything still here after the claim is yt-dlp's intermediate work — the pre-conversion audio,
     a `.part` file from a failed attempt, a thumbnail that was embedded rather than kept. None of
     it is the user's, because nothing of the user's could ever be in a directory this process
-    created for itself. **Except what `claim_sidecars` has already taken out of it** (`T-109`):
+    created for itself. **Except what `claim_outputs` has already taken out of it** (`T-109`):
     a subtitle the request asked to *write* is an output, and it is moved beside the media before
     this runs.
 
@@ -1102,33 +1191,6 @@ def _discard_staging(staging: Path) -> None:
     """
     with suppress(OSError):
         shutil.rmtree(staging)
-
-
-def claim_output_path(target: Path, produced: Path) -> Path:
-    """Move `produced` to the first free candidate for `target`, and return where it landed.
-
-    **The claim and the move are one step, and the claim comes first** (`T046-R1`).
-    `reserve_output_path` takes the name with `O_CREAT | O_EXCL`, so the kernel decides between
-    two processes racing for it; `os.replace` then puts the file into the name we hold. Because
-    the reservation is a zero-byte file this process just created, replacing it cannot destroy
-    anything of the user's — which is the guarantee `overwrites=True` used to be claimed to have
-    and did not, for every extension-changing postprocessor.
-
-    `os.replace` rather than `shutil.move`: it is atomic within a filesystem, and the staging
-    directory is deliberately created inside the destination's own directory so that it is one.
-
-    A failure to move gives the reservation back rather than leaving a zero-byte file standing in
-    for a download that is still sitting in staging.
-    """
-    reserved = reserve_output_path(target)
-    try:
-        produced.replace(reserved)
-    except OSError as error:
-        release_output_path(reserved)
-        raise UnsafePathError(
-            f"cannot move the finished download to {str(reserved)!r}: {error}"
-        ) from error
-    return reserved
 
 
 def release_output_path(reserved: Path) -> None:

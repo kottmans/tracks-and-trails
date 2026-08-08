@@ -11,11 +11,14 @@ from pathlib import Path
 
 import pytest
 
+from tracks_and_trails.core import presets as preset_registry
+from tracks_and_trails.core.models import AudioCodec, MediaKind, Preset
 from tracks_and_trails.core.settings import (
     CONCURRENCY_DEFAULT,
     CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
     Settings,
+    add_preset,
     load,
     save,
     settings_path,
@@ -475,3 +478,173 @@ def test_the_summary_names_the_file_and_the_reason(tmp_path: Path) -> None:
     assert "overwrite" in summary, (
         "the summary does not warn that saving settings replaces the file the user hand-edited"
     )
+
+
+# --- T109-R5: the creation seam P-4's Save as preset… writes through ---------------------------
+#
+# `T-111` owns edit, duplicate, delete and set-default. This is create, and it exists now because
+# `P-4` requires the options editor to offer the action — a control with nowhere to save to is one
+# `UX-005` §5 forbids drawing. `T-111`'s own entry records that presets live in this file.
+
+
+def a_preset(name: str = "Weekend viewing", **overrides: object) -> Preset:
+    fields: dict[str, object] = {
+        "name": name,
+        "media_kind": MediaKind.VIDEO,
+        "format_selector": "bestvideo+bestaudio/best",
+        "output_template": "%(title)s.%(ext)s",
+    }
+    return Preset(**{**fields, **overrides})  # type: ignore[arg-type]
+
+
+def test_a_saved_preset_survives_the_round_trip_whole(tmp_path: Path) -> None:
+    """**Every field, compared as a whole object.**
+
+    A per-field assertion goes green when a field stops being written; comparing the objects is
+    what makes a `Preset` widening — which `ARC-010` has already done once — fail here rather than
+    silently drop on the next save.
+    """
+    target = tmp_path / "settings.toml"
+    preset = a_preset(
+        media_kind=MediaKind.AUDIO,
+        format_selector="bestaudio/best",
+        audio_codec=AudioCodec.MP3,
+        audio_quality="320",
+        subtitle_languages=("en", "de"),
+        embed_subtitles=True,
+        remux_container="m4a",
+        embed_metadata=True,
+    )
+
+    save(add_preset(Settings(concurrency=5), preset), target)
+    read = load(target)
+
+    assert read.problem is None, read.problem
+    assert read.settings.presets == (preset,)
+    assert read.settings.concurrency == 5, "the presets displaced the setting beside them"
+
+
+def test_a_name_carrying_quotes_or_backslashes_survives(tmp_path: Path) -> None:
+    """A preset name is user text, so the escaping is not optional.
+
+    Hand-written TOML with no escaping produces a file this module cannot read back — the round
+    trip breaking itself, silently, on a name somebody was entitled to type.
+    """
+    target = tmp_path / "settings.toml"
+    preset = a_preset(name='My "best" \\ pick')
+
+    save(add_preset(Settings(), preset), target)
+
+    assert load(target).settings.presets == (preset,)
+
+
+def test_a_colliding_name_is_refused_rather_than_disambiguated() -> None:
+    """`REQ-009`: the name names the download, and `T-159` makes surfaces compare by it.
+
+    Two presets sharing one would make a row's choice ambiguous to the code as well as to the
+    reader. Refused loudly, because the caller is an editor with the user in front of it — picking
+    a name for them is how *Audio only (MP3) (2)* appears in a list nobody meant to create.
+    """
+    settings = add_preset(Settings(), a_preset())
+
+    with pytest.raises(ValueError, match="already exists"):
+        add_preset(settings, a_preset())
+
+
+def test_a_name_that_shadows_a_built_in_is_refused() -> None:
+    """A saved *Audio only (MP3)* would shadow the one that ships, which is the worse collision."""
+    with pytest.raises(ValueError, match="already exists"):
+        add_preset(Settings(), a_preset(name=preset_registry.AUDIO_MP3.name))
+
+
+def test_a_built_in_cannot_be_saved_as_the_users_own() -> None:
+    """Everything in this file is the user's, and a stored `built_in` would claim otherwise."""
+    with pytest.raises(ValueError, match="not the user's to save"):
+        add_preset(Settings(), preset_registry.AUDIO_MP3)
+
+
+def test_a_preset_read_back_is_never_built_in(tmp_path: Path) -> None:
+    """A hand-edited `built_in = true` must not let a saved preset claim to ship with the app.
+
+    Asserted through the file rather than through the constructor, because the file is the
+    surface a user can actually edit.
+    """
+    target = tmp_path / "settings.toml"
+    target.write_text(
+        '[[preset]]\nname = "Sneaky"\nmedia_kind = "video"\n'
+        'format_selector = "best"\noutput_template = "%(title)s.%(ext)s"\nbuilt_in = true\n',
+        encoding="utf-8",
+    )
+
+    read = load(target)
+
+    assert read.settings.presets == (), "a hand-edited built_in was accepted"
+    assert read.problem is not None and "built_in" in read.problem.reason, read.problem
+
+
+def test_one_malformed_preset_is_reported_and_the_rest_survive(tmp_path: Path) -> None:
+    """`ARC-008`: something discarded is *reported*, not that everything is discarded.
+
+    Dropping all ten presets because the tenth has a typo punishes a user for the typo. Asserted
+    with the good one *after* the bad, because a loop that stopped at the first failure would pass
+    the other way round.
+    """
+    target = tmp_path / "settings.toml"
+    save(add_preset(Settings(concurrency=7), a_preset(name="Good")), target)
+    target.write_text(
+        target.read_text(encoding="utf-8")
+        + '\n[[preset]]\nname = "Broken"\nmedia_kind = "nonsense"\n'
+        'format_selector = "best"\noutput_template = "%(title)s.%(ext)s"\n',
+        encoding="utf-8",
+    )
+
+    read = load(target)
+
+    assert [preset.name for preset in read.settings.presets] == ["Good"]
+    assert read.settings.concurrency == 7, "a bad preset reset the setting beside it"
+    assert read.problem is not None
+    assert "Broken" in read.problem.reason, read.problem.reason
+
+
+def test_a_broken_queue_section_does_not_cost_the_user_their_presets(tmp_path: Path) -> None:
+    """The two halves are read independently, and both reasons are reported when both apply."""
+    target = tmp_path / "settings.toml"
+    save(add_preset(Settings(), a_preset(name="Good")), target)
+    target.write_text(
+        target.read_text(encoding="utf-8").replace("concurrency = 3", 'concurrency = "three"'),
+        encoding="utf-8",
+    )
+
+    read = load(target)
+
+    assert [preset.name for preset in read.settings.presets] == ["Good"]
+    assert read.settings.concurrency == CONCURRENCY_DEFAULT
+    assert read.problem is not None and "concurrency" in read.problem.reason
+
+
+def test_saving_the_concurrency_limit_keeps_the_presets(tmp_path: Path) -> None:
+    """`save()` writes the whole file, so two writers can erase each other (`_Held`'s reason).
+
+    Asserted here rather than only in composition, because the property belongs to this module: a
+    caller that saves a `Settings` carrying presets must get the presets back.
+    """
+    target = tmp_path / "settings.toml"
+    stored = add_preset(Settings(), a_preset(name="Good"))
+    save(stored, target)
+
+    save(with_concurrency(load(target).settings, 9), target)
+
+    read = load(target)
+    assert [preset.name for preset in read.settings.presets] == ["Good"]
+    assert read.settings.concurrency == 9
+
+
+def test_a_file_with_no_presets_reports_nothing(tmp_path: Path) -> None:
+    """The ordinary case, and the one an over-eager reader breaks."""
+    target = tmp_path / "settings.toml"
+    save(Settings(concurrency=4), target)
+
+    read = load(target)
+
+    assert read.problem is None
+    assert read.settings.presets == ()

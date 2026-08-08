@@ -12,13 +12,24 @@ its reason on screen rather than merely absent.
 """
 
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 
 import pytest
-from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QListWidget, QRadioButton
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QListWidget,
+    QPushButton,
+    QRadioButton,
+)
 
 from tracks_and_trails.core import presets as preset_registry
-from tracks_and_trails.core.models import AudioCodec
+from tracks_and_trails.core.models import AudioCodec, Preset
 from tracks_and_trails.ui.options_dialog import (
+    AUDIO_CODEC_NAME,
     AUDIO_QUALITY_NAME,
     CONTAINER_CHOICE_NAME,
     CONTAINER_KEEP_NAME,
@@ -29,7 +40,10 @@ from tracks_and_trails.ui.options_dialog import (
     EMBED_SUBTITLES_NAME,
     EMBED_THUMBNAIL_NAME,
     NO_AUDIO_REASON,
+    NO_SINK_REASON,
     NO_SUBTITLES_REASON,
+    SAVE_PRESET_NAME,
+    SAVE_PRESET_TEXT,
     SUBTITLE_LANGUAGES_NAME,
     OptionsDialog,
 )
@@ -324,3 +338,267 @@ def _labels(dialog: OptionsDialog) -> list[str]:
     from PySide6.QtWidgets import QLabel
 
     return [label.text() for label in dialog.findChildren(QLabel)]
+
+
+# --- T109-R1: `all` is a selector, and an untouched accept keeps what the preset promised -----
+
+
+def test_the_embedded_subtitles_preset_survives_being_opened_and_accepted(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**`T109-R1`.** The built-in carries `("all",)`; the list holds what the probe found.
+
+    Matching the selector against those literals checked nothing, so an untouched accept answered
+    with no languages and `embed_subtitles` off — the preset silently lost the option its own name
+    promises. Not a literal identity assertion: `all` *means* every offered language, so the
+    derived preset names them, which is the same download stated precisely.
+    """
+    preset = preset_registry.VIDEO_WITH_SUBTITLES
+    assert preset.subtitle_languages == (preset_registry.ALL_SUBTITLE_LANGUAGES,), (
+        "this test is about the `all` selector and the preset no longer carries it"
+    )
+
+    result = editor(preset, subtitle_languages=("en", "de")).result_preset()
+
+    assert result.subtitle_languages == ("en", "de"), (
+        f"opening and accepting the preset answered with {result.subtitle_languages}; the "
+        "languages it asked for were lost"
+    )
+    assert result.embed_subtitles is True, "the embed flag was lost with the languages"
+
+
+def test_the_offered_languages_open_already_checked_for_an_all_preset(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The user has to *see* what will happen, not only get it on accept.
+
+    A dialog that answered correctly while showing nothing checked would pass the test above and
+    still tell the user their subtitles were off.
+    """
+    dialog = editor(preset_registry.VIDEO_WITH_SUBTITLES, subtitle_languages=("en", "de"))
+    languages = dialog.findChild(QListWidget, SUBTITLE_LANGUAGES_NAME)
+    assert languages is not None
+
+    states = [languages.item(index).checkState() for index in range(languages.count())]
+    assert states == [Qt.CheckState.Checked, Qt.CheckState.Checked], states
+
+
+def test_a_source_with_no_subtitles_does_not_rewrite_what_the_preset_asked_for(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A disabled control decides nothing — `T109-R2`'s rule applied to its sibling.
+
+    The list and the checkbox are both disabled where the probe found no languages, so accepting
+    must carry the preset's own fields through. Otherwise opening the editor on a source with
+    nothing to show would strip a preset that asked for everything.
+    """
+    result = editor(preset_registry.VIDEO_WITH_SUBTITLES, subtitle_languages=()).result_preset()
+
+    assert result.subtitle_languages == preset_registry.VIDEO_WITH_SUBTITLES.subtitle_languages
+    assert result.embed_subtitles is True
+
+
+def test_a_preset_naming_specific_languages_still_checks_only_those(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The `all` expansion must not swallow the ordinary case, which is the mutation to fear."""
+    preset = replace(
+        preset_registry.BEST_VIDEO,
+        name="just german",
+        subtitle_languages=("de",),
+        embed_subtitles=True,
+    )
+
+    result = editor(preset, subtitle_languages=("en", "de")).result_preset()
+
+    assert result.subtitle_languages == ("de",), (
+        "a preset naming one language came back with every offered one"
+    )
+
+
+# --- T109-R2: a disabled control does not decide anything -------------------------------------
+
+
+@pytest.mark.parametrize("codec", [c for c in AudioCodec if c is not AudioCodec.MP3])
+def test_changing_codec_away_from_mp3_clears_its_bitrate(
+    editor: Callable[..., OptionsDialog], codec: AudioCodec
+) -> None:
+    """**`T109-R2`, over every codec rather than the one that was reported.**
+
+    `MP3_BITRATES` is MP3's scale (`T076-R1`), and yt-dlp reads a `preferredquality` above 10 as
+    `-b:a 192k` for AAC, Opus, Vorbis and the rest — so a `192` carried through a codec change was
+    a control the user could neither see nor clear still changing the output. Asserted on the
+    request as well as the preset, because the request is what runs.
+    """
+    dialog = editor(preset_registry.AUDIO_MP3)
+    assert preset_registry.AUDIO_MP3.audio_quality == preset_registry.MP3_QUALITY
+    control = combo(dialog, AUDIO_CODEC_NAME)
+    control.setCurrentIndex(control.findData(codec))
+
+    result = dialog.result_preset()
+    request = preset_registry.to_request(
+        result, url="https://example.invalid/x", output_directory="/downloads"
+    )
+
+    assert result.audio_codec is codec
+    assert result.audio_quality is None, (
+        f"{codec.value} kept MP3's {result.audio_quality!r}, which yt-dlp reads as a bitrate"
+    )
+    assert request.audio_quality is None, "the leaked bitrate reached the request"
+    assert preset_registry.MP3_QUALITY not in result.name, (
+        f"the row would read {result.name!r}, naming a bitrate this codec does not use"
+    )
+
+
+def test_choosing_mp3_still_carries_its_bitrate(editor: Callable[..., OptionsDialog]) -> None:
+    """The clearing must not take the one case the control exists for."""
+    dialog = editor(preset_registry.AUDIO_MP3)
+    quality = combo(dialog, AUDIO_QUALITY_NAME)
+    quality.setCurrentIndex(quality.findData("320"))
+
+    result = dialog.result_preset()
+
+    assert result.audio_codec is AudioCodec.MP3
+    assert result.audio_quality == "320"
+
+
+def test_a_video_preset_keeps_its_audio_fields_untouched(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The whole audio group is disabled for a video download, so it decides nothing.
+
+    The codec combo shows the preset's value and is read anyway — harmless today because the two
+    agree, and a defect waiting for the first change that makes them differ. Carrying the preset's
+    own fields through is the rule stated once rather than relied on by coincidence.
+    """
+    preset = preset_registry.with_audio_quality(preset_registry.AUDIO_MP3, "320")
+    video = preset_registry.with_post_processing(
+        preset_registry.BEST_VIDEO, name="video", embed_thumbnail=True
+    )
+
+    assert editor(video).result_preset().audio_quality is video.audio_quality
+    assert editor(video).result_preset().audio_codec is video.audio_codec
+    # The MP3 preset is audio, so its group *is* live — the contrast is the point.
+    assert editor(preset).result_preset().audio_quality == "320"
+
+
+# --- T109-R5: P-4's explicit Save as preset… --------------------------------------------------
+
+
+def save_button(dialog: OptionsDialog) -> QPushButton:
+    """`P-4`'s control, by the name it is declared under."""
+    found = dialog.findChild(QPushButton, SAVE_PRESET_NAME)
+    assert found is not None, "the ratified Save as preset… action is absent"
+    return found
+
+
+def collecting(kept: list[Preset]) -> Callable[[Preset], str | None]:
+    """A `PresetSink` that records rather than stores, and never refuses."""
+
+    def sink(preset: Preset) -> str | None:
+        kept.append(preset)
+        return None
+
+    return sink
+
+
+def test_the_editor_offers_save_as_preset(editor: Callable[..., OptionsDialog]) -> None:
+    """`P-4`, ratified by `UX-007`: *the editor offers `Save as preset…` explicitly*.
+
+    An earlier version of this module argued the control should wait for `T-111`. That was a
+    description of a gap rather than a reading of the ruling — `T109-R5`.
+    """
+    dialog = editor(preset_registry.BEST_VIDEO, save_preset=lambda _preset: None)
+
+    assert save_button(dialog).text() == SAVE_PRESET_TEXT
+
+
+def test_saving_a_preset_hands_over_what_the_user_chose_under_the_name_they_gave(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`REQ-007`'s create, through the seam `T-111` will build its other four operations on."""
+    saved: list[Preset] = []
+    dialog = editor(
+        preset_registry.BEST_VIDEO,
+        save_preset=collecting(saved),
+        ask_name=lambda: ("Weekend viewing", True),
+    )
+    box(dialog, EMBED_THUMBNAIL_NAME).setChecked(True)
+
+    save_button(dialog).click()
+
+    assert len(saved) == 1
+    kept = saved[0]
+    assert kept.name == "Weekend viewing"
+    assert kept.embed_thumbnail is True, "the options on screen were not what was saved"
+    assert kept.built_in is False
+    assert "Saved as Weekend viewing" in dialog.save_result_text()
+
+
+def test_saving_a_preset_does_not_accept_the_dialog(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**`P-4`'s other half**: a one-off never *silently* becomes a preset, and saving one is not
+    the same act as committing the one-off. A button that closed the dialog would make
+    *Save as preset…* a second OK, and the user would have committed without meaning to."""
+    dialog = editor(
+        preset_registry.BEST_VIDEO,
+        save_preset=lambda _preset: None,
+        ask_name=lambda: ("Weekend viewing", True),
+    )
+
+    save_button(dialog).click()
+
+    assert dialog.result() != QDialog.DialogCode.Accepted, (
+        "saving a preset accepted the one-off too, so the user committed without meaning to"
+    )
+    assert "Saved as" in dialog.save_result_text(), (
+        "the save did not happen, so this proves nothing"
+    )
+
+
+def test_a_cancelled_or_empty_name_saves_nothing(editor: Callable[..., OptionsDialog]) -> None:
+    """Two ways of saying *not this time*, and neither is worth a message."""
+    saved: list[Preset] = []
+    for answer in (("Weekend", False), ("", True), ("   ", True)):
+        dialog = editor(
+            preset_registry.BEST_VIDEO,
+            save_preset=collecting(saved),
+            ask_name=lambda answer=answer: answer,
+        )
+        save_button(dialog).click()
+        assert dialog.save_result_text() == "", dialog.save_result_text()
+
+    assert saved == []
+
+
+def test_a_refused_name_is_reported_beside_the_button(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A refusal is *"that name is taken"*, which the user answers by pressing the button again.
+
+    Reported in the dialog rather than in a second modal for `P-26`'s reason one surface over.
+    """
+    dialog = editor(
+        preset_registry.BEST_VIDEO,
+        save_preset=lambda _preset: "a preset called 'Audio only (MP3)' already exists",
+        ask_name=lambda: ("Audio only (MP3)", True),
+    )
+
+    save_button(dialog).click()
+
+    assert "already exists" in dialog.save_result_text()
+
+
+def test_without_somewhere_to_save_the_button_is_not_drawn_and_the_reason_is(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`UX-005` §5, and `P-13`'s shape: not drawn, with the reason in its place.
+
+    This is the case the old module docstring was really describing — and it is a property of the
+    *caller*, not of the ruling. Every route a user can reach this by supplies a sink.
+    """
+    dialog = editor(preset_registry.BEST_VIDEO)
+
+    assert dialog.findChild(QPushButton, SAVE_PRESET_NAME) is None
+    assert dialog.save_result_text() == NO_SINK_REASON

@@ -5,10 +5,9 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — `T-110`, `T-112`, `T-113` and `T-114` implemented and In
-Review; `UX-008` accepted. `T-109`'s review returned
-**Changes requested** (`T109-R1`..`T109-R7`); only `T109-R6`'s two type errors are corrected so far,
-because they failed the gate every later task has to pass.
+**Last updated:** 2026-08-08 — `T-110`, `T-112`, `T-113` and `T-114` implemented and In Review;
+`UX-008` accepted; `T-109`'s review returned **Changes requested** and all seven findings are now
+corrected and awaiting re-review.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -89,10 +88,10 @@ Phase 0 is formally exited (2026-07-26).
 ### T-109 — Post-processing: audio, container, thumbnail, metadata, chapters, subtitles
 
 **Status:** **In Review** — implemented 2026-08-07; reviewed 2026-08-08 at `4cb549d`, verdict
-**Changes requested**, seven findings `T109-R1`..`T109-R7`. **`T109-R6` is corrected** at `da7f97b`
-— its two type errors failed `mypy` and `mypy --platform win32`, which `ai/TESTING.md` §3 requires
-of every task that touches a test file, so they blocked work that has nothing to do with T-109.
-The other six are the correction batch and are **not** started.
+**Changes requested**, seven findings `T109-R1`..`T109-R7`. **All seven are corrected and awaiting
+re-review**: `T109-R6` separately at `da7f97b`, because its two type errors failed the gate every
+later task has to pass, and the other six as one batch. The correction record is in
+`ai/REVIEWS.md`. Only the Reviewer marks a finding `Resolved` (`AGENTS.md` §10).
 **Owner:** Implementer
 **Priority:** High — the largest single item in the phase
 **Phase:** Phase 3

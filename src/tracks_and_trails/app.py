@@ -47,6 +47,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from tracks_and_trails import __version__
+from tracks_and_trails.core.models import Preset
+from tracks_and_trails.core.settings import Settings as AppSettings
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
@@ -227,6 +229,19 @@ def default_output_directory() -> Path:
     return Path(user_downloads_dir())
 
 
+@dataclass
+class _Held:
+    """The settings currently in force, so two writers cannot erase each other (`T109-R5`).
+
+    `save()` writes the whole file. The concurrency control and *Save as preset…* each change one
+    part of it, and both close over composition's settings — so a closure holding the value read at
+    startup would write it back without whatever the other had added since. One cell, replaced on
+    every write, is the smallest thing that makes the two composable.
+    """
+
+    settings: AppSettings
+
+
 @dataclass(frozen=True)
 class Composition:
     """Everything the running application owns, constructed exactly once.
@@ -334,6 +349,11 @@ def compose(
     # file exists and could not be used. The problem is carried to the window rather than logged
     # here — `core/` cannot show a dialog and composition has no window yet.
     settings_read = app_settings.load(settings_file)
+    # **Mutable, because two things now write this file.** The concurrency control and `P-4`'s
+    # *Save as preset…* each change one part of `settings.toml`, and `save()` writes the whole
+    # file — so a closure holding the settings as they were at startup would erase whatever the
+    # other one had added. One current value, replaced on every write.
+    held = _Held(settings_read.settings)
     settings = settings_read.settings
     manager = DownloadManager(
         store,
@@ -372,9 +392,28 @@ def compose(
         outside `REQ-013`'s range stores a usable one. The spinbox's own range already prevents it;
         this is the bound on the *value*, which is where `ARC-007` puts it.
         """
-        chosen = app_settings.with_concurrency(settings, limit)
+        chosen = app_settings.with_concurrency(held.settings, limit)
         manager.set_concurrency(chosen.concurrency)
+        held.settings = chosen
         app_settings.save(chosen, settings_file)
+
+    def save_preset(preset: Preset) -> str | None:
+        """Keep the options editor's answer under a name (`P-4`, `REQ-007`, `T109-R5`).
+
+        **Composition owns `settings.toml`** (`ARC-007`), which is why this lives here rather than
+        in the dialog: `ui/` holds no writer, exactly as it holds no queue writer (`T036-R1`).
+
+        Returns the refusal rather than raising it. The only one that exists is a name already
+        taken, which the user answers by typing a different one — `add_preset` states it and the
+        editor shows it beside the button.
+        """
+        try:
+            updated = app_settings.add_preset(held.settings, preset)
+        except ValueError as refusal:
+            return str(refusal)
+        held.settings = updated
+        app_settings.save(updated, settings_file)
+        return None
 
     def choose_run(running: bool) -> None:
         """Start or stop the queue (`UX-001`, `UX-006`, `T-181`).
@@ -427,6 +466,9 @@ def compose(
         on_remove_requested=remove_job,
         on_reorder_requested=reorder_queue,
         on_clear_requested=clear_finished,
+        # `P-4`: the options editor offers *Save as preset…*, and composition is what owns the
+        # file it saves to (`ARC-007`).
+        save_preset=save_preset,
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
