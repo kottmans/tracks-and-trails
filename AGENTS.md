@@ -129,6 +129,19 @@ non-negotiable invariant. If an instruction appears to require that, say so and 
 - If a task begins on a non-`main` branch, do not switch, merge, rebase, or delete it without
   explicit instruction; report the branch in the handoff.
 - Do **not** commit or push unless explicitly instructed.
+- **One commit per task.** When a commit is instructed, each task gets its own — never one
+  commit spanning several tasks, and never a session-sized batch. A commit whose message has
+  to enumerate three unrelated tasks is one that cannot be reverted, reviewed, or bisected
+  against any of them.
+  - This holds even when the tasks were built in one sitting and share a working tree, which
+    is the usual case in serial mode. Stage that task's files and commit before starting the
+    next one.
+  - **Coordination files are the exception that proves it.** `ai/TASKS.md`, `ai/STATUS.md`
+    and `ai/IMPLEMENTATION_PLAN.md` accumulate interleaved edits from every task in flight, so
+    a hunk-level split is often not clean. Put each task's own entry with that task where it
+    separates; where it does not, say so in the commit message rather than silently batching.
+  - If several tasks are already finished and uncommitted when the instruction arrives, split
+    them retroactively — one commit each, in the order they were done.
 - Do **not** name AI tools as commit authors or co-authors. No `Co-Authored-By:` trailers
   for AI tools, no "generated with" footers. Commit history names the human maintainer only.
 - Never force-push, rewrite published history, or delete branches without confirmation.
