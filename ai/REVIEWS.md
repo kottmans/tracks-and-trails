@@ -12678,3 +12678,68 @@ git topology places `365182c` after both correction commits (`69bac49` and `9a90
 them as the handoff states; the review text itself is unmodified and append-only, so this does not
 affect either verdict. Windows runtime and real sites remain unverified. Only `ai/REVIEWS.md` was
 changed by the reviewer, and no commit or push was made.
+
+
+## 2026-08-08 — T186-R1 third pass and T-188 review
+
+**Reviewer:** Codex
+
+**Review base:** `365182c`
+**Review head:** `7dd5d8d`
+**Scope:** The third correction of `T186-R1` and the complete bounded implementation of `T-188`.
+The T-189 status move, the recorded process errors, and the `OPS-013`/`T-185` fps observation were
+awareness-only except where they bore directly on an acceptance criterion.
+
+**T-186 verdict:** **Approved at `7dd5d8d`.** `T186-R1` is **Resolved**. No open T-186 finding
+remains.
+
+**T-188 verdict:** **Changes requested.** One **High, blocking** finding is open.
+
+### Finding results
+
+| ID | Severity | Blocks approval | Status | Evidence |
+|---|---|---|---|---|
+| `T186-R1` | High | Yes | **Resolved.** The third pass changes method as the finding required: it searches claims about cardinality rather than another spelling of “History.” All seven examples from the focused re-review are corrected, and the four additional claims found by that method are corrected with them. The retained cases were inspected individually: the staging list and queue are a real pair; the manager and queue table are a real pair; the preset, migration and Windows-enumeration statements describe their actual subjects; the two frozen fixtures genuinely contain history rows; “queue history” means growth over time; and the format-text passage is explicit provenance. | Direct inspection of the eleven corrections and the ten classified survivors. The replacement text is truthful and explicitly historical where history supplies the rationale. No production behavior or test logic changed; the only executable-line edit is an assertion message. |
+| `T188-R1` | **High** | **Yes** | **Open.** The recorded fixture is valid evidence, but it was added beside the old synthetic evidence instead of being adopted at both places the task explicitly requires. `tests/unit/test_format_selection.py:57-60` still makes the shared `pair` fixture read `derived_format_columns`, so the established routing, slot, selector, mode-switch and ffmpeg assertions continue to use the project-authored pair; the two recorded-source tests are additive. More directly, `derived_format_columns.json:14-21` still declares formats 3 and 4 synthetic and says **“NO acceptable recorded source supplies”** the pair, that `T-188` owns the search, and that `OPS-013` permits the gap. Those claims now contradict `dash_akamai_big_buck_bunny` and the task’s current account. This leaves acceptance criteria 3 and 4 unmet. | `ai/TASKS.md:310-313` requires the routing assertions to read the recorded fixture rather than the derived one and requires `derived_format_columns` to stop claiming the pair. Move the shared pair-routing evidence to the recorded fixture, retain the derived fixture only for shapes for which it still supplies unique evidence, and make its provenance identify only what remains synthetic. |
+
+### T-188 evidence accepted in this pass
+
+The maintainer’s explicit ruling to take the DASH reference stream and label its limitations is
+the authority for accepting the source despite the older criterion that required the licence to be
+stated by the source. The exception is not hidden: both the source declaration and committed
+fixture say that the licence comes from the content’s identity and that `generic` parses the
+manifest rather than running a site extractor.
+
+The seam argument is correct against the pinned yt-dlp source. Its MPD parser derives
+`content_type` from `mimeType`; `parse_codecs` returns literal `"none"` for the absent audio or
+video counterpart when it recognizes the other codec; and this project’s `_as_stream_presence`
+maps that literal to `False`. The fixture therefore pins the upstream mechanism the routing reads,
+not an invented spelling. The capture declaration is also covered on both sides: capture refuses
+an extractor mismatch, and the offline fixture contract checks the committed declaration.
+
+The new fixture contains ten `VIDEO_ONLY` and one `AUDIO_ONLY` projections, is pairable, and reaches
+the merge refusal. Its three fixture-contract skips are genuine absent optional values (duration,
+uploader and thumbnail), not filtered evidence. No security, allowlist or runtime defect was found.
+
+### Reviewer verification at `7dd5d8d`
+
+| Check | Result |
+|---|---|
+| `git diff --check 365182c..7dd5d8d` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass**, 219 files |
+| `.venv/bin/python -m mypy src tests` | **pass**, 125 files |
+| `.venv/bin/python -m mypy --platform win32 src tests` | **pass**, 125 files |
+| Task placement, fixture contract, format selection, and affected UI suites | **406 passed, 11 skipped** |
+| T-186 semantic correction audit | **pass** |
+| T-188 criteria 3–4 adoption audit | **fail**, `T188-R1` above |
+
+The implementer’s full-suite result (**2802 passed, 17 skipped, 2 deselected**) was not
+independently repeated. The source was not re-captured from the network, and Windows runtime and
+the first real CI execution remain unverified.
+
+One process note does not affect the verdicts: `4b4c158` accidentally committed the reviewer’s
+already-written, append-only 52-line review record together with the T-186 correction. That breaks
+the repository’s commit-partition rule, but it neither edits the historical record nor changes the
+correction’s substance, so it does not reopen `T186-R1`. Only `ai/REVIEWS.md` was modified in this
+review; no commit or push was made.
