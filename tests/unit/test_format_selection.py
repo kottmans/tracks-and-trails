@@ -7,12 +7,16 @@ would be asserting the widget as well.
 **The fixture is loaded through the adapter**, not hand-built, wherever the question is *"does what
 a probe reports reach the rule"*.
 
-**Two fixtures carry the merge pair, and the difference between them is the point.**
-`derived_format_columns` is **synthetic** and says so in its own `what_is_synthetic`; it exists
-because for a long time no acceptable recorded source published an explicitly video-only beside an
-explicitly audio-only format. `dash_akamai_big_buck_bunny` is **recorded** — a real DASH manifest,
-ten video-only formats carrying `acodec: 'none'` beside one audio-only carrying `vcodec: 'none'`
-(`T-188`, accepted 2026-08-08).
+**The routing assertions read `dash_akamai_big_buck_bunny`, which is recorded** — a real DASH
+manifest publishing ten video-only formats with `acodec: 'none'` beside one audio-only with
+`vcodec: 'none'` (`T-188`). The shared `pair` fixture is built from it, so every routing, slot,
+mode-switch and ffmpeg assertion below is evidenced against something published.
+
+`derived_format_columns` is **synthetic** and keeps its place for four shapes no recorded source
+happens to publish: a format with no fps, bitrate or size; one naming a vcodec and no acodec at all
+(*unknown*, not video-only); an HLS audio rendition; and a storyboard denying both streams. **It is
+no longer the evidence for the pair** — it was, until `T-188` found a recorded source, and leaving
+the assertions on it would have made the recorded fixture decorative (`T188-R1`).
 
 *(The recorded one's extractor is `generic`: yt-dlp parses the `.mpd` directly rather than running
 site-specific code, so it pins DASH manifest parsing rather than a site's output. That is where the
@@ -55,9 +59,16 @@ def by_id(formats: tuple[FormatInfo, ...], format_id: str) -> FormatInfo:
 
 @pytest.fixture
 def pair() -> tuple[FormatInfo, FormatInfo]:
-    """The video-only and audio-only formats, projected from the fixture."""
-    formats = formats_from("derived_format_columns")
-    return by_id(formats, "137"), by_id(formats, "140")
+    """The video-only and audio-only formats — **from the recorded manifest** (`T188-R1`).
+
+    Every routing, slot, mode-switch and ffmpeg assertion below runs on this pair, so they are
+    evidenced against something published rather than against shapes this project authored. It
+    read `derived_format_columns` until `T-188` captured a real source; that was the only pair
+    available, and leaving it here once one existed would have made the recorded fixture
+    decorative — additive evidence beside the synthetic evidence still doing the work.
+    """
+    formats = formats_from("dash_akamai_big_buck_bunny")
+    return by_id(formats, "bbb_30fps_320x180_200k"), by_id(formats, "bbb_a64k")
 
 
 # --- which slot a format can fill ------------------------------------------------------------
@@ -158,6 +169,7 @@ def test_the_routing_and_the_projection_cannot_disagree() -> None:
     Asserted across every format of every fixture rather than on an example.
     """
     for name in (
+        "dash_akamai_big_buck_bunny",
         "derived_format_columns",
         "archive_org_big_buck_bunny",
         "wikimedia_caminandes",
@@ -180,10 +192,14 @@ def test_a_format_carrying_both_streams_is_complete_not_a_half() -> None:
 def test_only_a_source_with_both_halves_can_be_paired() -> None:
     """`pairable` is the *source's* reason a merge is impossible, distinct from ffmpeg's.
 
-    Every recorded source publishes complete files only, so offering *video + audio* on one is
-    offering a mode that can never be completed (`UX-005` §5).
+    Most recorded sources publish complete files only, so offering *video + audio* on one is
+    offering a mode that can never be completed (`UX-005` §5). **`dash_akamai_big_buck_bunny` is
+    the exception and is why the positive case is recorded rather than synthetic** (`T-188`).
+
+    *(This said "**every** recorded source publishes complete files only", which stopped being
+    true the moment `T-188` captured one that does not — `T188-R1`.)*
     """
-    assert pairable(formats_from("derived_format_columns"))
+    assert pairable(formats_from("dash_akamai_big_buck_bunny"))
     for name in ("archive_org_big_buck_bunny", "wikimedia_caminandes"):
         assert not pairable(formats_from(name)), f"{name} was reported pairable"
 
@@ -202,7 +218,9 @@ def test_a_row_goes_into_the_slot_its_kind_matches(pair: tuple[FormatInfo, Forma
     assert selection.audio is audio
     assert selection.video is video
     assert selection.is_complete and selection.is_merge
-    assert selection.selector() == "137+140", "the selector is not video+audio"
+    assert selection.selector() == f"{video.format_id}+{audio.format_id}", (
+        "the selector is not video+audio"
+    )
 
 
 def test_the_pair_selector_puts_video_first_whatever_order_it_was_chosen_in(
@@ -216,7 +234,7 @@ def test_the_pair_selector_puts_video_first_whatever_order_it_was_chosen_in(
     video, audio = pair
     forwards = FormatSelection(mode=SelectionMode.PAIR).choose(video).choose(audio)
     backwards = FormatSelection(mode=SelectionMode.PAIR).choose(audio).choose(video)
-    assert forwards.selector() == backwards.selector() == "137+140"
+    assert forwards.selector() == backwards.selector() == f"{video.format_id}+{audio.format_id}"
 
 
 def test_a_complete_format_is_refused_from_a_slot_and_says_why() -> None:
@@ -280,7 +298,7 @@ def test_switching_back_keeps_the_video_half_as_the_single_choice(
         SelectionMode.SINGLE
     )
     assert back.single is video
-    assert back.selector() == "137"
+    assert back.selector() == video.format_id
 
 
 def test_switching_to_the_mode_already_active_changes_nothing(
@@ -310,16 +328,20 @@ def test_an_incomplete_selection_refuses_to_produce_a_selector() -> None:
 def test_the_pair_is_announced_in_words_with_both_slots_named(
     pair: tuple[FormatInfo, FormatInfo],
 ) -> None:
-    """`docs/UX_SPEC.md` §5: announced as *"video: 137, audio: 140"*, not by highlight.
+    """`docs/UX_SPEC.md` §5: announced as *"video: <id>, audio: <id>"*, not by highlight.
 
     `NFR-005` forbids conveying state by colour alone, and a highlighted row is exactly that.
+
+    The ids are the fixture's rather than literals, for the reason `T-188` gives: they are the
+    manifest's own, and pinning them would make a re-encode of the reference stream fail this for
+    a reason that has nothing to do with how a selection is announced.
     """
     video, audio = pair
     both = FormatSelection(mode=SelectionMode.PAIR).choose(video).choose(audio)
-    assert both.describe() == "video: 137, audio: 140"
+    assert both.describe() == f"video: {video.format_id}, audio: {audio.format_id}"
 
     half = FormatSelection(mode=SelectionMode.PAIR).choose(video)
-    assert half.describe() == f"video: 137, audio: {NOTHING_CHOSEN}"
+    assert half.describe() == f"video: {video.format_id}, audio: {NOTHING_CHOSEN}"
     assert NOTHING_CHOSEN in FormatSelection().describe()
 
 
@@ -343,8 +365,8 @@ def test_a_single_choice_is_never_refused_for_ffmpeg(pair: tuple[FormatInfo, For
     Nothing here reads a selector — a half-filled pair and a single choice are both statements that
     no merge has been asked for, so neither can be refused for ffmpeg.
 
-    The video-only format is used deliberately: its id is one half of `137+140`, so a check that had
-    drifted into scanning ids or selectors would have something to find.
+    The video-only format is used deliberately: its id is one half of the pair's selector, so a
+    check that had drifted into scanning ids or selectors would have something to find.
     """
     video, audio = pair
     for selection in (
@@ -386,26 +408,3 @@ def test_a_real_manifest_publishes_the_pair_this_rule_routes() -> None:
         "COMPLETE here means the projection stopped reading the explicit 'none' this fixture "
         "exists for"
     )
-
-
-def test_the_recorded_pair_is_pairable_and_merges() -> None:
-    """The pair from a real manifest reaches the same rules the synthetic one does.
-
-    The point is not that `pairable` works — the cases above establish that — but that a
-    **recorded** video-only and audio-only format satisfy it, so `REQ-008`'s merge is evidenced
-    against something published rather than only against shapes this project authored.
-    """
-    formats = formats_from("dash_akamai_big_buck_bunny")
-    video = next(entry for entry in formats if kind_of(entry) is FormatKind.VIDEO_ONLY)
-    audio = next(entry for entry in formats if kind_of(entry) is FormatKind.AUDIO_ONLY)
-
-    assert pairable(formats), (
-        "a source publishing both halves must be pairable; this is the property archive.org, "
-        "PeerTube and Wikimedia cannot satisfy, which is why the fixture was needed"
-    )
-
-    merged = FormatSelection(mode=SelectionMode.PAIR).choose(video).choose(audio)
-    assert merge_refusal(merged, ffmpeg_available=False) is not None, (
-        "a stated merge of two recorded formats must still be refused without ffmpeg (REQ-024)"
-    )
-    assert merge_refusal(merged, ffmpeg_available=True) is None

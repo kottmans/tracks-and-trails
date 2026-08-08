@@ -174,9 +174,19 @@ exists after `T-175` and migration `0009`.
 
 ### T-188 — A recorded source with a separate video and audio stream
 
-**Status:** **In Review — implemented 2026-08-08.** *(Built by the Implementer; no criterion is
+**Status:** **In Review — corrected 2026-08-08, awaiting re-review.** Reviewed and **Blocked** on
+`T188-R1` (High): the recorded fixture was added *beside* the synthetic evidence rather than
+**adopted**, leaving criteria 3 and 4 unmet. Both are now met — the shared `pair` fixture reads the
+recorded manifest, so every routing, slot, mode-switch and ffmpeg assertion runs on it, and
+`derived_format_columns` no longer claims the pair. *(Built by the Implementer; no criterion is
 claimed approved.)* The maintainer ruled on the surveyed candidate — **take it, and label it
 honestly** — and `tests/fixtures/infodicts/dash_akamai_big_buck_bunny.json` is that fixture.
+
+**`T188-R1` is the session's own defect class, one more time.** A fixture was captured that closed
+a gap, and the sibling asserting that gap was left saying *"NO acceptable recorded source
+supplies"* the pair — falsified by the very commit that added it. `T-143`'s stale premise and the
+whole of `T-186` are the same shape: **a document outliving the thing that changed it.** Recorded
+because three instances in one session is a pattern rather than a coincidence.
 
 **What it proves and what it does not.** Ten video-only formats carrying `acodec: 'none'` beside
 one audio-only carrying `vcodec: 'none'` — `REQ-008`'s pair, from a real published manifest.
