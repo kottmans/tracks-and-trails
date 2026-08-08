@@ -227,6 +227,25 @@ OPTIONS_TEXT: Final = "Options…"
 #: wrong download rather than a no-op.
 OPTIONS_DATA: Final = "\x00open-options-editor"
 
+#: Whether this row can have `REQ-011`'s output template edited (`T-112`, `UX-SPEC` §9.1).
+#:
+#: **A fourth question, and it is `OPTIONS_AVAILABLE_ROLE`'s twin rather than a copy of it.** The
+#: template needs no probe result of its own — the preview renders from whatever the row knows and
+#: says so where it cannot — but it does need a row that can still be retargeted, for the reason a
+#: durable job cannot: its request is frozen at creation (`ARCHITECTURE.md` §8), so an editor there
+#: would be a control that silently does nothing. Absent means no.
+TEMPLATE_AVAILABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 21
+
+#: The control's entry that opens the output template editor (`docs/UX_SPEC.md` §9.1).
+#:
+#: Below `OPTIONS_TEXT` for the reason that one is below `CHOOSE_FORMATS_TEXT`: entries a user has
+#: learned the positions of do not move when a new one appears.
+TEMPLATE_TEXT: Final = "Where it goes…"
+
+#: Its data, a sentinel for `CHOOSE_FORMATS_DATA`'s reason and with the same consequence if it were
+#: ever looked up as a preset name.
+TEMPLATE_DATA: Final = "\x00open-template-editor"
+
 #: Padding inside the state chip, and its corner radius. Small: it shares the title's line and must
 #: not compete with the title for height.
 CHIP_PADDING: Final = 5
@@ -1682,6 +1701,8 @@ class RowDelegate(QStyledItemDelegate):
             choice.addItem(CHOOSE_FORMATS_TEXT, CHOOSE_FORMATS_DATA)
         if index.data(OPTIONS_AVAILABLE_ROLE):
             choice.addItem(OPTIONS_TEXT, OPTIONS_DATA)
+        if index.data(TEMPLATE_AVAILABLE_ROLE):
+            choice.addItem(TEMPLATE_TEXT, TEMPLATE_DATA)
         return choice
 
     def destroyEditor(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:

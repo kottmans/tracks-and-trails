@@ -59,9 +59,8 @@ from tracks_and_trails.core.errors import ErrorKind, FailureDetail
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.paths import (
     UnsafePathError,
-    escapes_directory,
+    contained_output_path,
     numbered_variant,
-    safe_output_path,
 )
 from tracks_and_trails.core.presets import selector_merges
 from tracks_and_trails.downloader import process_tree
@@ -862,14 +861,11 @@ def _validated_target(
         adapter.build_options(request, request.output_template, probe_only=True)
     ).prepare_filename(info)
 
-    # The rendered path, made relative to the working directory yt-dlp rendered it against, so
-    # an absolute render is judged on what the user asked for rather than on where we are.
-    if escapes_directory(rendered):
-        raise UnsafePathError(
-            f"the output template rendered outside the chosen directory: {rendered!r}. "
-            "Templates may create subdirectories but may not leave the download folder."
-        )
-    return safe_output_path(directory, rendered)
+    # **The same function `REQ-011`'s preview calls** (`T-112`). The escape refusal and the
+    # containment call used to be written out here, where the parent process could not reach them —
+    # so the preview would have been a second copy, and `docs/UX_SPEC.md` §9.1 says in as many
+    # words that two would drift.
+    return contained_output_path(directory, rendered)
 
 
 #: How many alternatives are tried before a collision is called a loop (`T-046`). A directory
@@ -1232,12 +1228,27 @@ def preview_path(request: DownloadRequest, info: dict[str, Any], resolved: Resol
     """
     from tracks_and_trails.downloader import ytdlp_adapter as adapter
 
-    return free_output_path(
-        postprocessed_name(
-            _validated_target(Path(request.output_directory), request, adapter, resolved, info),
-            request,
-        )
+    return previewed_path(
+        _validated_target(Path(request.output_directory), request, adapter, resolved, info),
+        request,
     )
+
+
+def previewed_path(target: Path, request: DownloadRequest) -> Path:
+    """`target` as the user will see it: the real container, and the collision already resolved.
+
+    **Split out so the GUI's live preview is this code and not a copy of it** (`T-112`,
+    `REQ-011`). `preview_path` above needs a real extraction and a resolved yt-dlp, neither of
+    which exists in the parent process; everything after the render does not, and this is that
+    part. `DownloadManager.preview_output_path` calls it with a target it produced through
+    `contained_output_path` — the same function `_validated_target` ends on.
+
+    Two steps, in this order and for `T-046`'s reasons. `postprocessed_name` puts the container the
+    postprocessor chain will actually produce on the name, so an MP3 request does not preview
+    `Clip.webm`; `free_output_path` then shows the numbered variant the write would take, because a
+    resolution applied silently afterwards means the user is shown one filename and gets another.
+    """
+    return free_output_path(postprocessed_name(target, request))
 
 
 def _extract(

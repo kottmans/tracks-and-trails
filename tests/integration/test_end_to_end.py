@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import quote
 
 import psutil
 import pytest
@@ -674,6 +675,31 @@ def real_media_url(ffmpeg: tuple[str, str], tmp_path: Path) -> Iterator[Callable
         servers.append(server)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         return f"http://127.0.0.1:{server.server_address[1]}/clip.mp4"
+
+    yield serve
+
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.fixture
+def named_media_url(ffmpeg: tuple[str, str], tmp_path: Path) -> Iterator[Callable[[str], str]]:
+    """A localhost URL serving a real MP4 **under a filename the caller chooses** (`T-112`).
+
+    yt-dlp's generic extractor derives the title from the URL's last path component, so this is how
+    a test gets a real extraction whose title contains characters Windows forbids — which is the
+    case Phase 3's exit criterion names, and the one where a preview written by a second renderer
+    would diverge from the write.
+    """
+    servers: list[ThreadingHTTPServer] = []
+    payload = build_media(ffmpeg[0], tmp_path / "named-source.mp4")
+
+    def serve(filename: str) -> str:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), serve_bytes(payload, "video/mp4"))
+        servers.append(server)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{server.server_address[1]}/{quote(filename)}"
 
     yield serve
 
@@ -1585,6 +1611,105 @@ def test_a_chosen_video_and_audio_pair_produce_one_merged_file(
         assert kinds == ["audio", "video"], (
             f"the merged file carries {kinds}. Two half-streams were chosen and the output must "
             "contain both; one of them means the merge did not happen"
+        )
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=120)
+
+
+# --- T-112: the preview is the path (REQ-011, Phase 3's exit criterion) ------------------------
+
+
+def test_the_previewed_path_is_the_path_the_download_actually_writes(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    named_media_url: Callable[[str], str],
+) -> None:
+    """**Phase 3's exit criterion for `T-112`**, and the only test that can establish it.
+
+    *The preview matches the written path in every tested case, including titles with characters
+    illegal on Windows.* Everything smaller — the field set, the containment, the widget — can be
+    correct while the two answers still differ, because the thing under test is that they are the
+    same two steps run twice rather than two implementations that agree today.
+
+    Three deliberate choices in the setup:
+
+    - **The MP3 preset**, because `REQ-011` as amended promises an *exact* path only where the
+      request decides the container. A named audio codec does; a video download does not, and
+      asserting equality against one would be asserting the amendment is wrong.
+    - **A subfolder in the template**, so `REQ-011`'s *path* control is exercised and not only its
+      filename control — the download has to create a directory that the preview named.
+    - **A title carrying `:`, `?` and `"`**, which is the exit criterion's own wording. yt-dlp
+      replaces them with fullwidth characters of its own during rendering, and `core/paths.py`
+      would have replaced them with underscores. A preview that did its own substitution would
+      show the underscores and the file would land under the fullwidth ones.
+
+    Read from the **editor**, not from `manager.preview_output_path`: what the criterion is about
+    is what the user was shown.
+    """
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+    )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
+    try:
+        url = named_media_url('A: Song? "Live".mp4')
+        dialog = composition.window.open_add_dialog()
+        names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
+        dialog._preset_choice.setCurrentIndex(names.index("Audio only (MP3)"))
+        dialog._urls.setPlainText(url)
+        dialog.resolve()
+        assert spin(
+            lambda: bool(dialog.rows) and all(row.committable for row in dialog.rows), timeout=60
+        ), f"the URL never resolved: {dialog.status_text()}"
+
+        row = dialog.rows[0]
+        dialog.open_template_editor(row)
+        qapp.processEvents()
+        panel = dialog.open_template_panel
+        assert panel is not None, "the template editor did not open"
+        panel.editor.set_template("music/%(title)s.%(ext)s")
+        panel.editor.template_changed.emit("music/%(title)s.%(ext)s")
+        qapp.processEvents()
+
+        previewed = panel.editor.preview_text()
+        assert previewed, f"no path was previewed: {panel.editor.message_text()}"
+        assert panel.editor.message_text() == "", (
+            f"an MP3 conversion was presented as uncertain: {panel.editor.message_text()}"
+        )
+        assert previewed.endswith(".mp3"), previewed
+        dialog.close_panel(keep=True)
+
+        dialog.add_to_queue()
+        assert spin(lambda: bool(dialog.queued_job_ids), timeout=30), dialog.status_text()
+        job_id = dialog.queued_job_ids[0]
+        dialog.close()
+
+        assert spin(
+            lambda: (
+                (stored := composition.store.get(job_id)) is not None
+                and stored.status is JobStatus.COMPLETED
+            ),
+            timeout=180,
+        ), f"the download never completed — {why(composition, job_id)}"
+
+        stored = composition.store.get(job_id)
+        assert stored is not None and stored.output_path is not None
+        written = Path(stored.output_path)
+
+        assert written.exists(), f"the queue recorded {written} and nothing is there"
+        assert str(written) == previewed, (
+            f"the preview promised {previewed!r} and the download wrote {str(written)!r}"
+        )
+        assert written.parent == tmp_path / "downloads" / "music", (
+            "the subfolder the template asked for was not created where the preview said"
+        )
+        assert not set(written.name) & set('<>:"/\\|?*'), (
+            f"a character illegal on Windows survived into {written.name!r}"
         )
     finally:
         composition.shutdown.begin()

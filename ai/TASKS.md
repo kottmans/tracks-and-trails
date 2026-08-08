@@ -5,7 +5,7 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — `T-110` implemented and In Review. `T-109`'s review returned
+**Last updated:** 2026-08-08 — `T-110` and `T-112` implemented and In Review. `T-109`'s review returned
 **Changes requested** (`T109-R1`..`T109-R7`); only `T109-R6`'s two type errors are corrected so far,
 because they failed the gate every later task has to pass.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
@@ -308,6 +308,86 @@ one `submit` — the atomicity itself being
 #### Out of scope
 
 - Per-entry format choice; the selection applies one preset to the chosen entries
+
+---
+
+### T-112 — The output template editor, with a live path preview
+
+**Status:** **In Review** — implemented 2026-08-08, awaiting a verdict.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-105`
+**Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function; **`P-22`, the
+preview's focus and announcement policy, is **ruled 2026-08-07** by `UX-007`: a **focusable
+read-only field**, a second stop in the tab order, ruled against this file's own proposal of an
+unfocusable live region — a user who cannot `Tab` to the preview cannot review it at their own pace.
+**`P-23` is ruled with it: a containment failure is shown at edit time, with the reason.** `P-9` too
+— the editor **lists its supported fields inline** beside the input. *(This read "`P-23` is this
+task's own report-as-you-type
+criterion", which is the unratified timing stated as task truth three lines above the criterion that
+says it is unruled — `T105-R4`, second correction.)*), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
+atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
+**Affected surfaces:** `core/paths.py`, `ui/`
+**Risk:** Medium — the preview must be the same function the download uses, or it lies
+
+#### Scope
+
+`REQ-011`: output path and filename control via a configurable template, **with a live preview of
+the resulting path for the current item**.
+
+**The preview and the real path must come from one function.** Two implementations of "where will
+this go" is the `T-059` shape — one widget answering a question two ways — and here the two answers
+are visible side by side, so a divergence is a promise broken in front of the user.
+
+`T-034`, `T-045` and `T-046` already own sanitizing and containment. This adds the *template*, and
+must not reimplement any of it.
+
+#### Acceptance criteria
+
+- The preview is produced by the same code path that names the actual output, asserted by
+  downloading and comparing
+- **Phase 3's exit criterion:** the preview matches the written path in every tested case,
+  including titles with characters illegal on Windows
+- **Path containment holds**: no rendered template escapes the output directory — asserted with
+  `..`, absolute paths, and a template that resolves to one
+- **An invalid template never reaches a download**, and the refusal is shown **at edit time, with
+  the reason** (`P-23`, ruled 2026-08-07 by `UX-007`). *(This required report-as-you-type before the
+  ruling, which was `P-23`'s proposal stated as a requirement; `T105-R4` took it out, and the ruling
+  puts the same behaviour back as a decision rather than an assumption. The distinction is not
+  pedantry — for three weeks the criterion and the context field said opposite things.)*
+- Long paths behave per `T-067`'s finding, which is that the default configuration is the case
+  to test
+
+#### What landed
+
+- **`contained_output_path` in `core/paths.py`** — the escape refusal and the containment call,
+  lifted out of `worker._validated_target` where they were correct and unreachable from the parent
+  process. The preview and the write now call one function, which is what `docs/UX_SPEC.md` §9.1
+  asks for in as many words.
+- **`worker.previewed_path`** — `postprocessed_name` then `free_output_path`, split off `T-046`'s
+  own `preview_path` so the GUI runs that code rather than a copy of it.
+- **`core/output_template.py`** — the supported field set `P-9` requires listing, the refusal for a
+  field this application cannot fill, and the projection a preview renders against. **It does not
+  classify containers.** `T-046`'s `preview_is_provisional` and `postprocessed_name` already do,
+  reading yt-dlp's `ACODECS`, and restating that table is exactly the mistake `T046-R4` was.
+- **`ytdlp_adapter.render_output_template` / `template_syntax_error`** — yt-dlp's own
+  `prepare_filename` and `validate_outtmpl`, over a reused `YoutubeDL` because constructing one
+  costs 15.7 ms and rendering on an existing one costs 0.07 ms.
+- **`DownloadManager.preview_output_path`** — the seam `ARC-002` requires, and the one yt-dlp call
+  that may be synchronous: it is a substitution over a projection already in memory.
+- **`ui/template_editor.py` and `TemplatePanel`** — the third `RowPanel`, which needed no new
+  mechanism because `T-110` made the row-that-opens one class.
+
+**One design correction, found by its own test.** The editor first wrote the template to the row on
+every keystroke and refused to write an invalid one. Typing `%(title)s` passes through `%`, `%(`
+and `%(title` — each of which yt-dlp accepts — so an abandoned edit left the row holding whichever
+half-typed prefix was valid last. It now writes on close, through a `commit` callback symmetric with
+the `undo` one `Esc` uses.
+
+#### Out of scope
+
+- Collision policy (`T-046`, already delivered)
 
 ---
 
@@ -1533,59 +1613,6 @@ not what an implementer opens.)*
 
 ---
 
-### T-112 — The output template editor, with a live path preview
-
-**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 3
-**Depends on:** `T-105`
-**Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function; **`P-22`, the
-preview's focus and announcement policy, is **ruled 2026-08-07** by `UX-007`: a **focusable
-read-only field**, a second stop in the tab order, ruled against this file's own proposal of an
-unfocusable live region — a user who cannot `Tab` to the preview cannot review it at their own pace.
-**`P-23` is ruled with it: a containment failure is shown at edit time, with the reason.** `P-9` too
-— the editor **lists its supported fields inline** beside the input. *(This read "`P-23` is this
-task's own report-as-you-type
-criterion", which is the unratified timing stated as task truth three lines above the criterion that
-says it is unruled — `T105-R4`, second correction.)*), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
-atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
-**Affected surfaces:** `core/paths.py`, `ui/`
-**Risk:** Medium — the preview must be the same function the download uses, or it lies
-
-#### Scope
-
-`REQ-011`: output path and filename control via a configurable template, **with a live preview of
-the resulting path for the current item**.
-
-**The preview and the real path must come from one function.** Two implementations of "where will
-this go" is the `T-059` shape — one widget answering a question two ways — and here the two answers
-are visible side by side, so a divergence is a promise broken in front of the user.
-
-`T-034`, `T-045` and `T-046` already own sanitizing and containment. This adds the *template*, and
-must not reimplement any of it.
-
-#### Acceptance criteria
-
-- The preview is produced by the same code path that names the actual output, asserted by
-  downloading and comparing
-- **Phase 3's exit criterion:** the preview matches the written path in every tested case,
-  including titles with characters illegal on Windows
-- **Path containment holds**: no rendered template escapes the output directory — asserted with
-  `..`, absolute paths, and a template that resolves to one
-- **An invalid template never reaches a download**, and the refusal is shown **at edit time, with
-  the reason** (`P-23`, ruled 2026-08-07 by `UX-007`). *(This required report-as-you-type before the
-  ruling, which was `P-23`'s proposal stated as a requirement; `T105-R4` took it out, and the ruling
-  puts the same behaviour back as a decision rather than an assumption. The distinction is not
-  pedantry — for three weeks the criterion and the context field said opposite things.)*
-- Long paths behave per `T-067`'s finding, which is that the default configuration is the case
-  to test
-
-#### Out of scope
-
-- Collision policy (`T-046`, already delivered)
-
----
 
 ### T-113 — Resume a partial download across a restart
 

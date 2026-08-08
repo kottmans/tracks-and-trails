@@ -111,6 +111,7 @@ from tracks_and_trails.core.models import (
     MediaInfo,
     Preset,
 )
+from tracks_and_trails.core.output_template import OutputPreview
 from tracks_and_trails.core.paths import sanitize_component
 from tracks_and_trails.core.presets import format_choice_of
 from tracks_and_trails.downloader.manager import DownloadManager
@@ -143,11 +144,14 @@ from tracks_and_trails.ui.row_delegate import (
     ROW_PRESET_NAME,
     SELECTOR_ROLE,
     STATE_ROLE,
+    TEMPLATE_AVAILABLE_ROLE,
+    TEMPLATE_DATA,
     THUMBNAIL_URL_ROLE,
     RowDelegate,
     minimum_row_width,
 )
 from tracks_and_trails.ui.staging import Row, RowState, Staging, placeholder_hue, summarise
+from tracks_and_trails.ui.template_editor import TemplateEditor
 from tracks_and_trails.ui.thumbnails import (
     THUMBNAIL_SIZE,
     NetworkThumbnailLoader,
@@ -625,6 +629,53 @@ class PlaylistPanel(RowPanel):
         return self._picker.table
 
 
+class TemplatePanel(RowPanel):
+    """A staging row opened onto its output template (`REQ-011`, `docs/UX_SPEC.md` §9.1, `T-112`).
+
+    **The third panel, and it needed no new mechanism.** `P-19` made the row-that-opens one class
+    when the playlist picker arrived; this is what that buys — the editor supplies a body and a
+    focus order and nothing else, and `Esc`, the mount, the reset survival and the height all come
+    from `RowPanel`.
+
+    A row rather than a dialog for the same reason as the other two: the add dialog is already
+    modal, and a modal over a modal to type one line into is a window the user has to dismiss
+    before they can look at the row it is about.
+    """
+
+    def __init__(
+        self,
+        row: Row,
+        summary: str,
+        *,
+        template: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        self._initial_template = template
+        super().__init__(
+            row,
+            summary,
+            object_name="templatePanel",
+            summary_name="The URL this name is for",
+            done_name="Use this template and close",
+            parent=parent,
+        )
+
+    def _build_body(self, row: Row) -> QWidget:
+        self._editor = TemplateEditor(self._initial_template, self)
+        return self._editor
+
+    @property
+    def editor(self) -> TemplateEditor:
+        return self._editor
+
+    def focus_chain(self) -> list[QWidget]:
+        return [*self._editor.focus_chain(), self._close]
+
+    def initial_focus(self) -> QWidget:
+        """The input, which is the only thing here a user came to change."""
+        return self._editor.input_field
+
+
 class StagingModel(QAbstractListModel):
     """The staging rows, answered through `row_delegate`'s roles (`T118-R7`, `T-119`).
 
@@ -711,6 +762,12 @@ class StagingModel(QAbstractListModel):
             )
         if role == FORMAT_PANEL_HEIGHT_ROLE:
             return self._dialog.panel_height_for(row)
+        if role == TEMPLATE_AVAILABLE_ROLE:
+            # **One condition fewer than the options editor** (`T-112`). `REQ-011`'s preview does
+            # not need a probe: it renders whatever the row knows and labels what it cannot promise,
+            # which is the whole of `REQ-011`'s *intended path* amendment. What it does need is a
+            # row whose request has not been written yet.
+            return row.committable and not self._dialog.is_saving
         if role == EXPANDED_ROLE:
             # **Three-valued, and the third value is what makes it correct** (`T-140`'s rule).
             # Absent means *not a playlist*, which draws no disclosure at all; `False` means a
@@ -773,6 +830,10 @@ class StagingModel(QAbstractListModel):
             # Intercepted before the preset lookup for `CHOOSE_FORMATS_DATA`'s reason: no preset is
             # called this, so the lookup would clear the row's format instead of opening anything.
             self._dialog.open_options(row)
+            return True
+        if value == TEMPLATE_DATA:
+            # The third sentinel, intercepted for the same reason as the first two (`T-112`).
+            self._dialog.open_template_editor(row)
             return True
         name = value if isinstance(value, str) else None
         own = row.preset
@@ -874,9 +935,16 @@ class AddUrlDialog(QDialog):
         self._expanded: Row | None = None
         self._panel: RowPanel | None = None
         #: How to put the row back to what it was before the panel opened, so `Esc` can mean
-        #: *choosing nothing*. Supplied by whichever `open_…` built the panel, because only it
-        #: knows which of the row's fields its panel edits.
+        #: *choosing nothing*, and what to write onto the row when it closes keeping the choice.
+        #: Both are supplied by whichever `open_…` built the panel, because only it knows which of
+        #: the row's fields its panel edits.
+        #:
+        #: **Two panels write as the user acts and one writes on close**, which is why `commit`
+        #: exists at all rather than every panel behaving the same way. A format and a set of
+        #: checked entries are each a complete choice the moment they are made; a template is a
+        #: string that passes through half-typed states its own validator accepts.
         self._undo_panel: Callable[[], None] | None = None
+        self._commit_panel: Callable[[], None] | None = None
         #: Fetches, decodes and caches thumbnails, and is asked for one **only while painting**
         #: (`T-119`). The dialog no longer holds pixmaps: a row that scrolls out of view has its
         #: picture released by the cache's own bound, which a dict keyed by job id could not do.
@@ -1157,6 +1225,91 @@ class AddUrlDialog(QDialog):
         before = row.entry_selection
         self._open_panel(row, build, undo=lambda: setattr(row, "entry_selection", before))
 
+    def open_template_editor(self, row: Row) -> None:
+        """Open `row` into `REQ-011`'s template editor and its live preview (`T-112`).
+
+        **The preview is asked for as the panel opens**, not on the first keystroke: a field that
+        shows a path only once you have typed into it makes the user prove the feature works before
+        it tells them anything, and the interesting case — *what does the template I already have
+        produce?* — is the one they arrived with.
+        """
+        template = self.preset_for(row).output_template
+
+        panel_holder: list[TemplatePanel] = []
+
+        def build() -> RowPanel:
+            panel = TemplatePanel(
+                row,
+                row_text(row, self.preset_for(row)),
+                template=template,
+                parent=self._list,
+            )
+            panel.editor.template_changed.connect(
+                lambda text: panel.editor.show_preview(self.preview_for(row, text))
+            )
+            panel.editor.show_preview(self.preview_for(row, template))
+            panel_holder.append(panel)
+            return panel
+
+        # **Nothing is written until the panel closes**, which is what makes *"an invalid template
+        # never reaches a download"* enforceable at one point rather than at every keystroke. It
+        # is also the only correct answer: a user typing `%(title)s` passes through `%`, `%(` and
+        # `%(title` — each of which yt-dlp accepts as a literal — so writing as they type left the
+        # row holding whichever half-typed prefix happened to be valid last. The first version of
+        # this did exactly that and its own test caught it.
+        self._open_panel(
+            row,
+            build,
+            undo=lambda: None,
+            commit=lambda: self._commit_template(row, panel_holder),
+        )
+
+    def preview_for(self, row: Row, template: str) -> OutputPreview:
+        """Where `row` would be written under `template` (`REQ-011`).
+
+        **Through the manager**, which is the only route `ARC-002` leaves open — `ui/` may not
+        reach yt-dlp, and rendering an output template is a yt-dlp operation. It is also what makes
+        the preview and the write one function rather than two: `DownloadManager` composes the same
+        `contained_output_path` the worker calls, over the same `prepare_filename`.
+
+        A row with no probe result yet is previewed against what the row *does* know — its URL as a
+        title — so the shape of the path is visible before the probe lands. That is a weaker claim
+        than the probed one and the field says so, because the title is what most templates are
+        mostly made of.
+        """
+        media = row.media
+        described = (
+            media
+            if isinstance(media, MediaInfo)
+            else MediaInfo(url=row.url, title=row.url, is_playlist=False)
+        )
+        request = preset_registry.to_request(
+            preset_registry.with_output_template(self.preset_for(row), template or " "),
+            url=row.url,
+            output_directory=str(self._output_directory),
+        )
+        return self._manager.preview_output_path(request, described)
+
+    def _commit_template(self, row: Row, panel_holder: Sequence[TemplatePanel]) -> None:
+        """Write the edited template onto `row`, unless it is one that would be refused.
+
+        **`T-112`'s criterion, and this is the single point that enforces it**: *an invalid
+        template never reaches a download*. Closing with a refused template keeps the one the row
+        already had and says so, rather than either queueing it or discarding the edit in silence —
+        the message is the same one the editor was showing, so the reason does not disappear with
+        the panel that carried it.
+        """
+        if not panel_holder:
+            return
+        text = panel_holder[-1].editor.template
+        preview = self.preview_for(row, text)
+        if preview.is_refused:
+            self._show_message(
+                f"{headline_text(row)} keeps its existing file name template. {preview.refusal}"
+            )
+            return
+        row.preset = preset_registry.with_output_template(self.preset_for(row), text)
+
     def toggle_playlist(self, job_id: str) -> None:
         """Open or close the playlist a staging row holds — the disclosure's own route.
 
@@ -1173,7 +1326,12 @@ class AddUrlDialog(QDialog):
         self.open_playlist_picker(row)
 
     def _open_panel(
-        self, row: Row, build: Callable[[], RowPanel], *, undo: Callable[[], None]
+        self,
+        row: Row,
+        build: Callable[[], RowPanel],
+        *,
+        undo: Callable[[], None],
+        commit: Callable[[], None] = lambda: None,
     ) -> None:
         """Mount one panel on `row`, closing whatever was open (`T-108`, `T-110`).
 
@@ -1190,6 +1348,7 @@ class AddUrlDialog(QDialog):
 
         self._expanded = row
         self._undo_panel = undo
+        self._commit_panel = commit
         panel = build()
         panel.closed.connect(self._on_panel_closed)
         self._panel = panel
@@ -1260,9 +1419,13 @@ class AddUrlDialog(QDialog):
         index = self._index_of(row)
         self._expanded = None
         self._panel = None
-        if not keep and self._undo_panel is not None:
+        if keep:
+            if self._commit_panel is not None:
+                self._commit_panel()
+        elif self._undo_panel is not None:
             self._undo_panel()
         self._undo_panel = None
+        self._commit_panel = None
         if index.isValid():
             # `None` is how Qt is told to drop the widget, and it is what `QAbstractItemView`
             # documents; PySide's stub declares the parameter as `QWidget`, so the cast is a
@@ -1324,6 +1487,11 @@ class AddUrlDialog(QDialog):
     def open_playlist_panel(self) -> PlaylistPanel | None:
         """The open panel **when it is the playlist picker** (`T-110`)."""
         return self._panel if isinstance(self._panel, PlaylistPanel) else None
+
+    @property
+    def open_template_panel(self) -> TemplatePanel | None:
+        """The open panel **when it is the output template editor** (`T-112`)."""
+        return self._panel if isinstance(self._panel, TemplatePanel) else None
 
     def _index_of(self, row: Row) -> QModelIndex:
         """The model index `row` currently occupies, or an invalid one (`T118-R14`'s rule).

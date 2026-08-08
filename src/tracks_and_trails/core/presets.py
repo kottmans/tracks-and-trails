@@ -256,6 +256,22 @@ def with_audio_quality(preset: Preset, quality: str) -> Preset:
     return replace(preset, audio_quality=quality)
 
 
+def with_output_template(preset: Preset, template: str) -> Preset:
+    """`preset`, writing to `template` instead of its own (`REQ-011`, `T-112`).
+
+    A derived preset for `with_audio_quality`'s reason: `output_template` is a field both `Preset`
+    and `DownloadRequest` declare, so it is preset-owned and `to_request` refuses to override it.
+    Deriving keeps the template the user was shown and the one that runs the same object.
+
+    Refuses an empty template rather than letting `DownloadRequest` refuse it later. The caller is
+    an editor, and the point of `P-23` is that the refusal arrives beside the field being typed in
+    rather than when a download starts.
+    """
+    if not template.strip():
+        raise ValueError("an output template cannot be empty")
+    return replace(preset, output_template=template)
+
+
 #: The preset fields `REQ-010` lets a user adjust **on top of** a preset, rather than fields that
 #: say which streams are fetched (`T-109`).
 #:

@@ -66,6 +66,7 @@ from tracks_and_trails.core.models import (
     PlaylistEntry,
     Preset,
 )
+from tracks_and_trails.core.paths import MAX_COMPONENT_BYTES, contained_output_path
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.downloader.manager import (
     DEFAULT_PROBE_CONCURRENCY,
@@ -110,6 +111,9 @@ from tracks_and_trails.ui.row_delegate import (
     ROW_PRESET_NAME,
     SELECTOR_LINES,
     SELECTOR_ROLE,
+    TEMPLATE_AVAILABLE_ROLE,
+    TEMPLATE_DATA,
+    TEMPLATE_TEXT,
     VERBS_ROLE,
     RowDelegate,
     selector_line_width,
@@ -3690,4 +3694,350 @@ def test_a_large_playlist_probe_leaves_the_dialog_responsive_and_cancellable(
 
     assert spin(lambda: probing not in manager.active_job_ids()), (
         "the probe outlived the row it belonged to, so a long playlist cannot be cancelled"
+    )
+
+
+# --- T-112: the output template editor and its live preview (REQ-011, UX_SPEC §9.1) ------------
+#
+# The widget is `tests/ui/test_template_editor.py`, the field set is
+# `tests/unit/test_output_template.py`, the containment is `tests/unit/test_paths.py`, and the
+# preview equalling the written path is `tests/integration/test_end_to_end.py`. What is here is the
+# **dialog**: that the editor is reachable, that the preview is live, and — the one that matters —
+# that a refused template never becomes a request.
+
+
+def _open_the_template_editor(dialog: AddUrlDialog, index: int = 0) -> Any:
+    """Open one row's template editor through the control, and wait for the deferred mount."""
+    control = open_row_editor(dialog, index)
+    choose_in_editor(dialog, control, TEMPLATE_DATA)
+    QApplication.processEvents()
+    panel = dialog.open_template_panel
+    assert panel is not None, f"row {index} did not open into its template editor"
+    return panel
+
+
+def test_the_format_control_offers_the_template_editor_below_the_options_entry(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """Below `Options…`, for the reason that one is below `Choose specific formats…`.
+
+    The entries a user has learned the positions of do not move when a new one appears — which is
+    also why this asserts the *order* rather than only the presence.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    entries = [control.itemText(index) for index in range(control.count())]
+
+    assert TEMPLATE_TEXT in entries, entries
+    assert entries.index(TEMPLATE_TEXT) > entries.index(OPTIONS_TEXT), entries
+    assert control.itemData(entries.index(TEMPLATE_TEXT)) == TEMPLATE_DATA, (
+        "the entry carries a preset name, so choosing it would be looked up as a preset and would "
+        "silently clear the row's format"
+    )
+
+
+def test_the_editor_opens_showing_the_template_the_row_already_has(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """A preview that appears only once you type makes the user prove the feature before it helps.
+
+    The interesting question is *what does the template I already have produce* — so the panel
+    opens with the row's own template in the input and a path already under it.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    panel = _open_the_template_editor(dialog)
+
+    assert panel.row is row
+    assert panel.editor.template == preset_registry.DEFAULT_OUTPUT_TEMPLATE
+    assert panel.editor.preview_text().endswith("A video with formats.ext"), (
+        panel.editor.preview_text()
+    )
+    assert panel.editor.preview_text().startswith(str(dialog._output_directory))
+
+
+def test_the_preview_follows_every_keystroke(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`REQ-011`'s *live* preview, driven by typing rather than by calling the slot (`P-23`)."""
+    dialog, _row = _staged(dialogs, managers, spin)
+    panel = _open_the_template_editor(dialog)
+
+    panel.editor.input_field.clear()
+    QTest.keyClicks(panel.editor.input_field, "clips/%(title)s.%(ext)s")
+    QApplication.processEvents()
+
+    preview = panel.editor.preview_text()
+    assert preview.endswith("clips/A video with formats.ext"), preview
+    assert "clips" in Path(preview).parts, "the subfolder the template asked for is not in the path"
+
+
+def test_an_invalid_template_is_refused_at_edit_time_and_never_reaches_the_request(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """**`T-112`'s criterion, both halves of it.**
+
+    *An invalid template never reaches a download, and the refusal is shown at edit time, with the
+    reason* (`P-23`). The second half is where most of the risk is: a dialog that showed the error
+    and wrote the template anyway would satisfy the visible half and queue a broken download the
+    moment the default button was pressed.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    panel = _open_the_template_editor(dialog)
+    good = dialog.preset_for(row).output_template
+
+    panel.editor.input_field.clear()
+    QTest.keyClicks(panel.editor.input_field, "%(title)")
+    QApplication.processEvents()
+
+    assert panel.editor.preview_text() == "", "a refused template still showed a path"
+    message = panel.editor.message_text()
+    assert "incomplete format" in message, message
+    assert dialog.preset_for(row).output_template == good, (
+        "the refused template was written to the row, so Add would queue it"
+    )
+
+    dialog.close_panel(keep=True)
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    assert sink.submissions[0][0].request.output_template == good
+
+
+def test_a_template_that_leaves_the_download_folder_is_refused(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """Phase 3's fourth exit criterion, reached through the control a user actually types into.
+
+    `tests/unit/test_paths.py` proves `contained_output_path` refuses these; this proves the editor
+    is wired to it, which is a different claim and the one a user experiences.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    panel = _open_the_template_editor(dialog)
+    good = dialog.preset_for(row).output_template
+
+    # `/etc` rather than `/tmp`: the point is an absolute path leaving the download folder, and a
+    # `/tmp` literal reads to the linter as a test writing there — which is the one thing this
+    # asserts cannot happen.
+    for escape in ("../outside/%(title)s.%(ext)s", "/etc/outside/%(title)s.%(ext)s"):
+        panel.editor.input_field.setText("")
+        QTest.keyClicks(panel.editor.input_field, escape)
+        QApplication.processEvents()
+
+        assert panel.editor.preview_text() == "", f"{escape!r} previewed a path"
+        assert "outside the chosen directory" in panel.editor.message_text(), (
+            panel.editor.message_text()
+        )
+        assert dialog.preset_for(row).output_template == good, f"{escape!r} reached the row"
+
+
+def test_an_accepted_template_becomes_the_rows_own_request(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """Asserted on the submitted `DownloadRequest`, not on the row: the request is what runs."""
+    dialog, _row = _staged(dialogs, managers, spin)
+    panel = _open_the_template_editor(dialog)
+
+    panel.editor.input_field.clear()
+    QTest.keyClicks(panel.editor.input_field, "%(uploader)s/%(title)s.%(ext)s")
+    QApplication.processEvents()
+    dialog.close_panel(keep=True)
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    assert sink.submissions[0][0].request.output_template == "%(uploader)s/%(title)s.%(ext)s"
+
+
+def test_escape_puts_the_earlier_template_back(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`Esc` *closes, choosing nothing*, which for this panel means the template it opened with.
+
+    **Both directions**, because a panel that never writes at all would pass the `Esc` half on its
+    own. `Done` on the same edit has to land it, or *"choosing nothing"* is the only thing the
+    panel can do.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    panel = _open_the_template_editor(dialog)
+    before = dialog.preset_for(row).output_template
+    edited = "elsewhere/%(title)s.%(ext)s"
+
+    panel.editor.input_field.clear()
+    QTest.keyClicks(panel.editor.input_field, edited)
+    QApplication.processEvents()
+
+    QTest.keyClick(panel, Qt.Key.Key_Escape)
+    QApplication.processEvents()
+
+    assert dialog.open_panel is None, "Esc left the panel open"
+    assert dialog.preset_for(row).output_template == before
+
+    reopened = _open_the_template_editor(dialog)
+    reopened.editor.input_field.clear()
+    QTest.keyClicks(reopened.editor.input_field, edited)
+    QApplication.processEvents()
+    button(dialog, "formatPanelDone").click()
+    QApplication.processEvents()
+
+    assert dialog.preset_for(row).output_template == edited, (
+        "Done discarded the edit too, so the panel can only ever choose nothing"
+    )
+
+
+def test_an_mp3_row_previews_its_real_extension_and_a_video_row_says_it_cannot(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`REQ-011` as amended: exact where the request decides the container, *intended* where not.
+
+    The two cases in one test because the distinction is the claim — a preview that said
+    *provisional* about everything would pass a test of either half on its own.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+
+    row.preset = preset_registry.AUDIO_MP3
+    exact = dialog.preview_for(row, "%(title)s.%(ext)s")
+    assert exact.path.endswith(".mp3"), exact.path
+    assert exact.provisional is None, "an MP3 conversion was presented as uncertain"
+
+    row.preset = preset_registry.BEST_VIDEO
+    intended = dialog.preview_for(row, "%(title)s.%(ext)s")
+    assert intended.provisional is not None, (
+        "a merge was presented as an exact path; yt-dlp picks that container itself"
+    )
+    assert intended.path.endswith(".ext"), intended.path
+
+
+def test_a_windows_illegal_title_is_previewed_as_the_name_it_will_actually_get(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """Phase 3's exit criterion names this case, and it is where a second renderer would show.
+
+    yt-dlp replaces `:` `?` `"` with fullwidth characters of its own on the way out, and
+    `core/paths.py` would replace them with `_`. Both preview and write run the same two steps in
+    the same order, so the preview shows what yt-dlp did — and a hand-written substituter in `ui/`
+    would have shown the underscores instead.
+    """
+    dialog = dialogs(managers())
+    type_urls(dialog, "https://example.invalid/one")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    dialog._on_media_probed(row.job_id, MediaInfo(url=row.url, title='A: Song? "Live" <x>|y*'))
+    QApplication.processEvents()
+
+    preview = dialog.preview_for(row, "%(title)s.%(ext)s")
+
+    name = Path(preview.path).name
+    assert not set(name) & set('<>:"/\\|?*'), f"an illegal character survived into {name!r}"
+    assert "Song" in name and "Live" in name, f"the title was lost rather than cleaned: {name!r}"
+
+
+def test_the_editor_is_not_offered_on_a_row_that_cannot_be_committed(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-005` §5: nothing is offered that would be refused.
+
+    A row still probing has no request to change and no editor at all — the whole control is
+    absent, which is what `PRESET_CHOICES_ROLE` answering `None` means.
+    """
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    type_urls(dialog, "https://example.invalid/slow")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
+
+    assert role_values(dialog, TEMPLATE_AVAILABLE_ROLE) == [False]
+    assert not dialog.edit_row(0), "an unresolved row offered a control"
+
+
+def test_a_template_too_long_for_the_default_windows_configuration_is_refused(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`T-067`'s finding: **the default configuration is the case to test.**
+
+    `LongPathsEnabled` is `0` on a default Windows and `1` on GitHub's runners, so a path budget
+    gated only on CI is gated only under a setting most users do not have. `MAX_PATH_CHARACTERS`
+    is enforced in `core/paths.py` before anything touches the filesystem, which is what makes the
+    behaviour identical on both platforms and assertable here.
+
+    What `T-112` adds is *when* the user finds out. The refusal arrives at edit time with the
+    reason (`P-23`), rather than as a failed download after the bytes have been paid for.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    good = dialog.preset_for(row).output_template
+
+    preview = dialog.preview_for(row, f"{'d' * 300}/%(title)s.%(ext)s")
+
+    assert preview.is_refused, f"a path past the budget previewed as {preview.path!r}"
+    assert preview.refusal is not None and "no room for a filename" in preview.refusal, (
+        preview.refusal
+    )
+    assert dialog.preset_for(row).output_template == good
+
+
+def test_a_very_long_title_is_previewed_under_the_name_it_will_be_shortened_to(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """The other half of the budget: a title too long is **shortened**, not refused.
+
+    `T-045`'s digest keeps two long titles apart, and the preview has to show the shortened name —
+    otherwise the user is shown one filename and gets another, which is the whole of `T-046`'s
+    finding one field over. Asserted against `contained_output_path` directly, so what is compared
+    is the preview and the function the download names its file with.
+    """
+    dialog = dialogs(managers())
+    type_urls(dialog, "https://example.invalid/one")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    dialog._on_media_probed(row.job_id, MediaInfo(url=row.url, title="t" * 400))
+    QApplication.processEvents()
+
+    preview = dialog.preview_for(row, "%(title)s.%(ext)s")
+
+    name = Path(preview.path).name
+    assert not preview.is_refused, preview.refusal
+    assert len(name.encode("utf-8")) <= MAX_COMPONENT_BYTES, (
+        f"{len(name.encode('utf-8'))} bytes previewed, over the {MAX_COMPONENT_BYTES}-byte budget"
+    )
+    assert name == contained_output_path(dialog._output_directory, "t" * 400 + ".ext").name, (
+        "the preview shortened the name differently from the function the download uses"
     )

@@ -359,6 +359,36 @@ def safe_output_path(directory: Path, candidate: str) -> Path:
     return result
 
 
+def contained_output_path(directory: Path, rendered: str) -> Path:
+    """Where a **rendered** output template writes inside `directory`, or `UnsafePathError`.
+
+    **The one function `REQ-011`'s preview and the real write both call** (`T-112`,
+    `docs/UX_SPEC.md` §9.1: *"Preview and the real write are one function. Two would drift, which is
+    the whole of `T-046`'s finding."*). It used to be five lines inlined in
+    `downloader/worker.py::_validated_target`, which was correct and unreachable from the parent
+    process — so a preview would have had to restate the escape refusal and the containment call,
+    and the first change to either would have made the two disagree in front of the user.
+
+    Two different treatments of an escape, and the difference is deliberate:
+
+    - The **template** is what the user typed, so an escape is *refused*. `T-012`'s criterion is
+      that a template rendering outside the target directory is rejected rather than written, and
+      silently rewriting `../elsewhere/%(title)s.%(ext)s` into the chosen folder tells the user
+      their template worked when it did not.
+    - The **title** inside it is not, so an escape there is *neutralized* by `safe_output_path`. A
+      video called `../../etc/passwd` should download, safely.
+
+    Takes the rendered string rather than the template, because rendering needs yt-dlp's own
+    mechanism and this module may not import it (`ARCHITECTURE.md` §6).
+    """
+    if escapes_directory(rendered):
+        raise UnsafePathError(
+            f"the output template rendered outside the chosen directory: {rendered!r}. "
+            "Templates may create subdirectories but may not leave the download folder."
+        )
+    return safe_output_path(directory, rendered)
+
+
 def numbered_variant(path: Path, index: int) -> Path:
     """`clip.mp4` at index 2 becomes `clip (2).mp4` — the next candidate when a path is taken.
 

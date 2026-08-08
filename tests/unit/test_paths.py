@@ -21,6 +21,7 @@ from tracks_and_trails.core.paths import (
     MAX_COMPONENT_BYTES,
     MAX_PATH_CHARACTERS,
     UnsafePathError,
+    contained_output_path,
     is_contained,
     numbered_variant,
     safe_output_path,
@@ -773,3 +774,102 @@ def test_a_multibyte_name_is_cut_to_the_byte_budget_not_the_character_one() -> N
         "component budget: the character budget cannot stand in for it"
     )
     assert result.name.endswith(" (2).mp4")
+
+
+# --- T-112: the one function a preview and a write both call (`REQ-011`) -----------------------
+#
+# `contained_output_path` was five lines inside `worker._validated_target`, where the parent
+# process could not reach them — so `REQ-011`'s live preview would have had to restate the escape
+# refusal and the containment call. `docs/UX_SPEC.md` §9.1 says in as many words that two would
+# drift, and `T-046` is what drift here costs.
+
+
+#: The rendered paths a **template** must be refused for, transcribed rather than filtered out of
+#: `ESCAPE_ATTEMPTS`. That list is about what `safe_output_path` must *neutralize*, and the two
+#: questions have different answers: `....//....//evil.mp4` names no `..` component at all, so it
+#: never leaves the directory and is cleaned rather than rejected. Deriving one list from the other
+#: would hide exactly that difference — `T010-R1`'s lesson, which this file has already relearned
+#: once.
+TEMPLATE_ESCAPES = [
+    "../evil.mp4",
+    "../../../../etc/passwd",
+    "..\\..\\windows\\system32\\evil.mp4",
+    "/etc/passwd",
+    "C:\\Windows\\System32\\evil.mp4",
+    "C:/Windows/evil.mp4",
+    "\\\\server\\share\\evil.mp4",
+    "//server/share/evil.mp4",
+    "subdir/../../escape.mp4",
+    "clip/../../../evil.mp4",
+]
+
+
+@pytest.mark.parametrize("rendered", TEMPLATE_ESCAPES)
+def test_a_template_that_escapes_the_directory_is_refused_not_redirected(
+    tmp_path: Path, rendered: str
+) -> None:
+    """`T-012`'s criterion: a template rendering outside the target directory is **rejected**.
+
+    The distinction from `safe_output_path` is the whole reason this function exists. A *title*
+    that escapes is neutralized, because a video called `../../etc/passwd` should still download.
+    A *template* that escapes is the user's own instruction, and quietly rewriting it into the
+    chosen folder tells them it worked when it did not.
+    """
+    with pytest.raises(UnsafePathError, match="outside the chosen directory"):
+        contained_output_path(tmp_path, rendered)
+
+    # The neutralizing path is still available and still neutralizes, so the two have not merged.
+    assert is_contained(safe_output_path(tmp_path, rendered), tmp_path)
+
+
+def test_a_decoy_that_never_actually_leaves_is_cleaned_rather_than_refused(
+    tmp_path: Path,
+) -> None:
+    """`....//....//evil.mp4` looks like traversal and is not: no component of it is `..`.
+
+    Refusing it would mean refusing a legal, if odd, filename on the strength of how it looks —
+    and the refusal a user is shown has to be about what would actually have happened.
+    """
+    result = contained_output_path(tmp_path, "....//....//evil.mp4")
+
+    assert is_contained(result, tmp_path)
+    assert result.name == "evil.mp4"
+
+
+def test_a_template_resolving_to_an_absolute_path_is_refused(tmp_path: Path) -> None:
+    """Not only a literal `..`: a rendered field can produce a root or a drive on its own.
+
+    Both spellings, on both platforms, because `_components` reads either separator whatever the
+    host is — a Windows escape must not survive being judged by POSIX rules.
+    """
+    for rendered in (
+        "/etc/cron.d/payload.mp4",
+        "C:\\Windows\\System32\\evil.mp4",
+        "//host/share/x",
+    ):
+        with pytest.raises(UnsafePathError):
+            contained_output_path(tmp_path, rendered)
+
+
+def test_a_subdirectory_inside_the_directory_is_kept(tmp_path: Path) -> None:
+    """`REQ-011` is *path and filename* control, so a template may make folders — and only inside.
+
+    Asserted alongside the refusals rather than apart from them: a containment check that refused
+    everything would pass every test above and make the feature useless.
+    """
+    result = contained_output_path(tmp_path, "Some Artist/Some Album/Track.mp3")
+
+    assert result == tmp_path / "Some Artist" / "Some Album" / "Track.mp3"
+    assert is_contained(result, tmp_path)
+
+
+def test_the_title_inside_a_contained_template_is_still_sanitized(tmp_path: Path) -> None:
+    """The two treatments meet here, and the sanitizing half must not be lost.
+
+    A rendered name carrying characters NTFS forbids is cleaned rather than refused: the template
+    is the user's and the title is not.
+    """
+    result = contained_output_path(tmp_path, 'A<title>with"illegal|characters?.mp4')
+
+    assert is_contained(result, tmp_path)
+    assert not set(result.name) & set('<>:"/\\|?*'), result.name

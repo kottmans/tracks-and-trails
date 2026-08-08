@@ -19,6 +19,41 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: `T-112` is built, and the preview is now the same code as the write
+
+**In Review, and Phase 3's fourth exit criterion has its evidence.** A real download of a title
+carrying `:`, `?` and `"` into a template with a subfolder lands at **exactly** the path the editor
+showed before Add was pressed — asserted as string equality against `stored.output_path`, in
+`tests/integration/test_end_to_end.py`.
+
+**Most of this task was deleting the second implementation before it was written.** The naming
+pipeline already existed in three pieces and none of them was reachable from the GUI process:
+`worker._validated_target` inlined the escape refusal and the containment call, and `T-046`'s
+`preview_path` composed `postprocessed_name` and `free_output_path` behind an argument only a
+worker has. So the work was to split those at the seam rather than to build a preview —
+`contained_output_path` and `previewed_path` are now called by both sides.
+
+**The first draft did restate one thing, and it would have been the wrong one.** A
+`core/output_template.AUDIO_CONTAINERS` table was written before `worker.audio_extension_for` was
+found — which reads yt-dlp's own `ACODECS` precisely because the codec is not the extension, and
+`aac` and `alac` both landing in `m4a` is what `T046-R4` was. It is deleted; the classification is
+imported.
+
+**`P-9`'s field list is not a courtesy, it is what makes the preview honest.** yt-dlp renders an
+unknown field as the literal `NA` and says nothing, so `%(upload_date)s` produces a file called
+`NA.mp4` — and a preview would agree with it, truthfully and uselessly. The supported set is
+therefore exactly what `MediaInfo` carries, and anything else is refused at edit time with the
+reason. `%(playlist_index)s` is the interesting exclusion: the dialog *could* fill it, and the
+download could not, so it is the one field whose preview and write would have disagreed.
+
+**A design correction, caught by the test written for it.** The editor wrote the template to the
+row on every keystroke and refused invalid ones — and typing `%(title)s` passes through `%`, `%(`
+and `%(title`, each of which yt-dlp accepts, so an abandoned edit left the row holding a half-typed
+prefix. It commits on close now, through a callback symmetric with the one `Esc` already used.
+
+**Two mutations were run and both were killed**: dropping the containment step from the preview,
+and committing a refused template.
+
 ## 2026-08-08: `T-110` is built, and the structural task turned out to be structural already
 
 **In Review.** `REQ-004`'s picker exists: a playlist row opens into its entries, each with a

@@ -848,3 +848,67 @@ def _as_stream_presence(value: object) -> bool | None:
     if codec is None or codec.casefold() == "unknown":
         return None
     return codec != "none"
+
+
+# --- REQ-011: rendering an output template for the preview (`T-112`) -----------------------------
+#
+# **The preview renders through yt-dlp, exactly as the download does.** `ARCHITECTURE.md` §6 makes
+# this module one of the two allowed to know that syntax, and `docs/UX_SPEC.md` §9.1 requires the
+# preview and the write to be one function — so a hand-written `%(field)s` substituter in `ui/`
+# would break both rules at once and would be wrong the first time yt-dlp's conversion syntax was
+# used. What differs between the two callers is the *info* being rendered, not the renderer: the
+# worker has the real extraction, and the dialog has the declared projection `core/output_template`
+# builds from `MediaInfo`.
+#
+# `ARC-002` keeps `ui/` away from here regardless; `DownloadManager.preview_output_path` is the seam
+# the dialog actually calls.
+
+#: One `YoutubeDL`, reused for every preview.
+#:
+#: **Construction is the cost, and it is not small.** Measured at 15.7 ms per instance against
+#: yt-dlp 2026.07.04 versus 0.07 ms to render a template on an existing one — so building one per
+#: keystroke would spend a fifth of `NFR-001`'s whole interaction budget on setup for a string
+#: substitution. It holds no session state that a render can dirty: `prepare_filename` takes both
+#: the template and the info dict as arguments, so nothing about one preview reaches the next.
+_previewer: Any = None
+
+
+def _preview_renderer() -> Any:
+    global _previewer
+    if _previewer is None:
+        from yt_dlp import YoutubeDL
+
+        _previewer = YoutubeDL({"quiet": True, "no_warnings": True, "noprogress": True})
+    return _previewer
+
+
+def template_syntax_error(template: str) -> str | None:
+    """Why yt-dlp would refuse `template`, or `None` if it would not (`P-23`).
+
+    **yt-dlp's own validator**, so the editor refuses exactly what the download would and nothing
+    else. It reports what it can as a returned error and raises `ValueError` for a template it
+    cannot even parse — `%(title)` is the ordinary case, a field left mid-conversion while the user
+    is still typing — so both are turned into the same answer here.
+
+    Field *names* are not its business and it does not check them: yt-dlp renders an unknown field
+    as `NA`. `core.output_template.unsupported_refusal` is the other half.
+    """
+    try:
+        error = _preview_renderer().validate_outtmpl(template)
+    except ValueError as refusal:
+        return str(refusal)
+    return None if error is None else str(error)
+
+
+def render_output_template(template: str, values: Mapping[str, Any]) -> str:
+    """Render `template` against `values`, through yt-dlp's own mechanism.
+
+    The same call `worker._validated_target` makes — `prepare_filename` with an explicit template —
+    so the sanitizing yt-dlp applies on the way out (a colon becoming a fullwidth one, say) happens
+    to the preview and the write alike. A separate substituter here would agree with it right up
+    until it did not.
+
+    `dict(values)` because yt-dlp adds derived fields to the mapping it is given (`duration_string`,
+    `epoch`), and a caller's projection is not this function's to grow.
+    """
+    return str(_preview_renderer().prepare_filename(dict(values), outtmpl=template))

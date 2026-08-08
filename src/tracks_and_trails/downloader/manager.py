@@ -74,9 +74,12 @@ from uuid import uuid4
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from tracks_and_trails.core import logging as app_logging
+from tracks_and_trails.core import output_template
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition, is_terminal
-from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo
+from tracks_and_trails.core.output_template import OutputPreview
+from tracks_and_trails.core.paths import UnsafePathError, contained_output_path
 from tracks_and_trails.downloader import process_tree, worker
 from tracks_and_trails.downloader.environment import APP_SLUG
 from tracks_and_trails.downloader.protocol import (
@@ -1027,6 +1030,68 @@ class DownloadManager(QObject):
     def is_staged(self, job_id: str) -> bool:
         """Whether `job_id` is a staging probe rather than a queue job."""
         return job_id in self._staged
+
+    def preview_output_path(self, request: DownloadRequest, media: MediaInfo) -> OutputPreview:
+        """Where `request` would write `media`, for `REQ-011`'s live preview (`T-112`).
+
+        **Here because `ARC-002` puts every yt-dlp access behind this class**, and rendering an
+        output template is one: `ui/` may not reach `ytdlp_adapter` and must not learn yt-dlp's
+        template syntax. The dialog asks the manager, which is the same route a probe takes.
+
+        **Synchronous, and it is the one yt-dlp call that may be** (`NFR-001`, `ARC-005`). Every
+        other one is a network extraction of unbounded length and goes to a worker process. This is
+        a string substitution against a projection already in memory — measured at 0.07 ms once the
+        renderer exists — so a process boundary would cost four orders of magnitude more than the
+        work, and a preview that arrived a second after the keystroke would not be a live one.
+
+        Three answers, and the caller has to distinguish them (`REQ-011` as amended):
+
+        - **refused** — the template is unusable and no path is shown, because showing the last
+          good one beside an error is how a user comes to believe a broken template works;
+        - **provisional** — the path is right and the extension is yt-dlp's to choose later;
+        - **exact** — the request itself decides the container.
+
+        Never raises. A preview that threw would take the dialog down over a half-typed template,
+        which is the ordinary state of a field somebody is typing into.
+        """
+        from tracks_and_trails.downloader import ytdlp_adapter as adapter
+
+        template = request.output_template
+        if not template.strip():
+            return OutputPreview(refusal=output_template.EMPTY_REFUSAL)
+        syntax = adapter.template_syntax_error(template)
+        refusal = (
+            output_template.syntax_refusal(syntax)
+            if syntax is not None
+            else output_template.unsupported_refusal(template)
+        )
+        if refusal is not None:
+            return OutputPreview(refusal=refusal)
+
+        # **`T-046`'s own two functions do the rest**, rather than a second answer to *"which
+        # container will this land in"* written here. `postprocessed_name` reads yt-dlp's `ACODECS`
+        # table and `preview_is_provisional` classifies the request; restating either would get
+        # `aac` and `alac` both landing in `m4a` wrong, which is `T046-R4` exactly. So `%(ext)s`
+        # renders as a placeholder and is replaced wherever the request decides the container —
+        # and where it does not, the answer is labelled rather than guessed.
+        try:
+            rendered = adapter.render_output_template(
+                template,
+                output_template.template_values(media, output_template.UNDECIDED_EXTENSION),
+            )
+            target = contained_output_path(Path(request.output_directory), rendered)
+            path = worker.previewed_path(target, request)
+        except UnsafePathError as unsafe:
+            return OutputPreview(refusal=str(unsafe))
+        except (ValueError, TypeError, KeyError, OSError) as failure:
+            # yt-dlp raises whatever its conversion syntax raises, and this runs on a string the
+            # user is in the middle of typing. Reported in the editor rather than escaping into
+            # the event loop — the whole point of `P-23` is that the refusal lands beside the field.
+            return OutputPreview(refusal=f"This template could not be rendered: {failure}")
+        provisional = (
+            output_template.PROVISIONAL_NOTE if worker.preview_is_provisional(request) else None
+        )
+        return OutputPreview(path=str(path), provisional=provisional)
 
     def start(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Spawn a worker for `job_id` and move it to the status that says a worker holds it.
