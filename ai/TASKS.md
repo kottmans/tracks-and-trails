@@ -97,88 +97,6 @@ criterion 6, the exit review itself.*
 
 ---
 
-### T-189 — Make the required ffmpeg CI cases fail instead of skip
-
-**Status:** **In Review — implemented 2026-08-08.** *(Built by the Implementer; no criterion is
-claimed approved.)* *(Was: Proposed — filed 2026-08-07 by the `T-108` correction re-review,
-`T108-R3`.)* The Windows evidence was real and green throughout; this keeps a later missing tool
-from turning that required gate into a silent skip.
-
-**How it works.** `tests/capabilities.resolve_ffmpeg` keeps the developer's skip and adds one
-branch: when `TRACKSANDTRAILS_REQUIRE_FFMPEG` is set, an absent tool **fails** instead. The two CI
-jobs that carry `T-108`'s cross-platform merge proof set it — `check`'s *Tests* step and
-`windows-desktop`'s *Full suite*. **Nothing installs anything**, which `T-189`'s scope requires:
-`OPS-005` makes `STARBASE` the maintainer's own machine, so the gate fails and restoring ffmpeg is a
-deliberate act.
-
-**An opt-in variable rather than a `CI` check or a hostname.** `CI` is set on runners that
-legitimately have no ffmpeg, and detecting the self-hosted machine by name would put the runner's
-identity in the suite. The workflow declares which jobs carry the proof; the fixture reads that.
-
-#### The mistake this task made, and why it is recorded rather than quietly fixed
-
-**The first version of the new test had the exact defect the task exists to close.** Written as
-`pytest.raises(pytest.fail.Exception)`, a regression to skipping raises `Skipped` — which `raises`
-does not catch, so it propagated and **turned the test into a skip**. Mutating the fail branch away
-produced `18 passed, 1 skipped` and nothing red.
-
-That is `T-189`'s own subject reproduced one level up: a required assertion silently becoming a
-non-assertion, inside a green run. It was caught by the mutation check rather than by review, which
-is the argument for running one at all — **the test now uses an explicit `try` with a `skip` arm
-that fails loudly**, and re-mutating turns it red.
-
-**Owner:** Implementer
-**Priority:** Medium — no current product defect, but a required cross-platform acceptance test can
-disappear while CI remains green
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `T-108`, `T108-R1`, `T-062`, `OPS-005`, `OPS-010`,
-`tests/capabilities.py::ffmpeg`, `.github/workflows/ci.yml`
-**Affected surfaces:** `.github/workflows/ci.yml`, the ffmpeg capability fixture or a CI-specific
-preflight, and focused tests for the gate. No product source
-**Risk:** Low. This changes failure accounting, not application behaviour; the self-hosted machine
-must still not be provisioned without maintainer authority
-
-#### What is wrong
-
-`test_a_chosen_video_and_audio_pair_produce_one_merged_file` is now T-108's required proof on
-Linux and Windows. It takes the ordinary `ffmpeg` fixture, which deliberately skips on a developer
-machine missing either `ffmpeg` or `ffprobe`. The self-hosted Windows workflow deliberately
-**records but does not install** ffmpeg, and its Full suite step has no preflight that makes absence
-an error. STARBASE had ffmpeg 8.1.2 for run `31233348009`, and the exact test passed there, so this
-does not reopen T-108. But if the tool disappears later, the required case becomes `SKIPPED` and
-the job can stay green.
-
-The workflow comment that says the default suite does not need ffmpeg became false when T108-R1
-added the merged-file proof. The capability fixture also says CI installs ffmpeg; that is true on
-hosted runners and not on the self-hosted Windows runner now carrying the Windows gate.
-
-#### Scope
-
-Keep the helpful local skip, but make the CI configurations responsible for T-108's platform proof
-require both tools. A clear preflight in the job is sufficient; changing the fixture to fail under
-an explicit CI-only flag is also acceptable. Do not install or mutate software on STARBASE as part
-of the test run — fail with the missing capability and let the maintainer restore it deliberately.
-
-#### Acceptance criteria
-
-- Linux and Windows CI jobs that own the T-108 platform proof fail clearly when `ffmpeg` or
-  `ffprobe` is absent; the required end-to-end test cannot turn into a green skip
-- An ordinary developer run without the tools still skips conversion cases with the actionable
-  reason `tests/capabilities.py` already gives
-- The workflow and capability comments state which runners install the tools and which merely
-  require a pre-provisioned installation
-- A deterministic probe or mutation hides one tool from the CI gate and makes the gate fail
-- The real merged-file case still passes on Linux and Windows when both tools are present
-
-#### Out of scope
-
-- Provisioning the self-hosted desktop from CI
-- Making ffmpeg a Python dependency or bundling it with the application
-- Changing the product's runtime missing-ffmpeg behaviour (`REQ-024`)
-
----
-
 ### T-186 — Finish the withdrawn-History prose sweep
 
 **Status:** **In Review — implemented 2026-08-08.** *(Built by the Implementer; no criterion is
@@ -2128,6 +2046,94 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-189 — Make the required ffmpeg CI cases fail instead of skip
+
+**Status:** **Complete — Approved 2026-08-08 at `365182c`.** `T189-R1` (High) — the environment
+recording step's comment still denied the gate added two steps below it — is **Resolved**, and no
+open finding remains. *(Was: Proposed — filed 2026-08-07 by the `T-108` correction re-review,
+`T108-R3`.)* The Windows evidence was real and green throughout; this keeps a later missing tool
+from turning that required gate into a silent skip.
+
+*(The reviewer verified the capability behaviour directly: the exact merged-file case **skips** in
+an ordinary tool-less run and **exits non-zero** when the required-run variable is set. `ci.yml`
+itself remains structurally inspected and unexecuted — the first Actions run at this head is the
+requirement's first genuine exercise.)*
+
+**How it works.** `tests/capabilities.resolve_ffmpeg` keeps the developer's skip and adds one
+branch: when `TRACKSANDTRAILS_REQUIRE_FFMPEG` is set, an absent tool **fails** instead. The two CI
+jobs that carry `T-108`'s cross-platform merge proof set it — `check`'s *Tests* step and
+`windows-desktop`'s *Full suite*. **Nothing installs anything**, which `T-189`'s scope requires:
+`OPS-005` makes `STARBASE` the maintainer's own machine, so the gate fails and restoring ffmpeg is a
+deliberate act.
+
+**An opt-in variable rather than a `CI` check or a hostname.** `CI` is set on runners that
+legitimately have no ffmpeg, and detecting the self-hosted machine by name would put the runner's
+identity in the suite. The workflow declares which jobs carry the proof; the fixture reads that.
+
+#### The mistake this task made, and why it is recorded rather than quietly fixed
+
+**The first version of the new test had the exact defect the task exists to close.** Written as
+`pytest.raises(pytest.fail.Exception)`, a regression to skipping raises `Skipped` — which `raises`
+does not catch, so it propagated and **turned the test into a skip**. Mutating the fail branch away
+produced `18 passed, 1 skipped` and nothing red.
+
+That is `T-189`'s own subject reproduced one level up: a required assertion silently becoming a
+non-assertion, inside a green run. It was caught by the mutation check rather than by review, which
+is the argument for running one at all — **the test now uses an explicit `try` with a `skip` arm
+that fails loudly**, and re-mutating turns it red.
+
+**Owner:** Implementer
+**Priority:** Medium — no current product defect, but a required cross-platform acceptance test can
+disappear while CI remains green
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T-108`, `T108-R1`, `T-062`, `OPS-005`, `OPS-010`,
+`tests/capabilities.py::ffmpeg`, `.github/workflows/ci.yml`
+**Affected surfaces:** `.github/workflows/ci.yml`, the ffmpeg capability fixture or a CI-specific
+preflight, and focused tests for the gate. No product source
+**Risk:** Low. This changes failure accounting, not application behaviour; the self-hosted machine
+must still not be provisioned without maintainer authority
+
+#### What is wrong
+
+`test_a_chosen_video_and_audio_pair_produce_one_merged_file` is now T-108's required proof on
+Linux and Windows. It takes the ordinary `ffmpeg` fixture, which deliberately skips on a developer
+machine missing either `ffmpeg` or `ffprobe`. The self-hosted Windows workflow deliberately
+**records but does not install** ffmpeg, and its Full suite step has no preflight that makes absence
+an error. STARBASE had ffmpeg 8.1.2 for run `31233348009`, and the exact test passed there, so this
+does not reopen T-108. But if the tool disappears later, the required case becomes `SKIPPED` and
+the job can stay green.
+
+The workflow comment that says the default suite does not need ffmpeg became false when T108-R1
+added the merged-file proof. The capability fixture also says CI installs ffmpeg; that is true on
+hosted runners and not on the self-hosted Windows runner now carrying the Windows gate.
+
+#### Scope
+
+Keep the helpful local skip, but make the CI configurations responsible for T-108's platform proof
+require both tools. A clear preflight in the job is sufficient; changing the fixture to fail under
+an explicit CI-only flag is also acceptable. Do not install or mutate software on STARBASE as part
+of the test run — fail with the missing capability and let the maintainer restore it deliberately.
+
+#### Acceptance criteria
+
+- Linux and Windows CI jobs that own the T-108 platform proof fail clearly when `ffmpeg` or
+  `ffprobe` is absent; the required end-to-end test cannot turn into a green skip
+- An ordinary developer run without the tools still skips conversion cases with the actionable
+  reason `tests/capabilities.py` already gives
+- The workflow and capability comments state which runners install the tools and which merely
+  require a pre-provisioned installation
+- A deterministic probe or mutation hides one tool from the CI gate and makes the gate fail
+- The real merged-file case still passes on Linux and Windows when both tools are present
+
+#### Out of scope
+
+- Provisioning the self-hosted desktop from CI
+- Making ffmpeg a Python dependency or bundling it with the application
+- Changing the product's runtime missing-ffmpeg behaviour (`REQ-024`)
+
+---
 
 ### T-171 — Decide whether files carry provenance
 
