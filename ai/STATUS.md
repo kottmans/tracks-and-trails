@@ -5,7 +5,7 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-08
 **Last verified against repository:** 2026-08-06 **for the Phase 3 block below** — its task states,
 verdicts and commit SHAs were checked against `ai/TASKS.md` and `git log`. The Phase 1 and Phase 2
 narrative from `## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a
@@ -18,6 +18,43 @@ statement of what is true now.
 **Current phase:** **Phase 3 — Format and content depth.** **Phase 2 exited 2026-08-05** (commit
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
+
+## 2026-08-08: `T-110` is built, and the structural task turned out to be structural already
+
+**In Review.** `REQ-004`'s picker exists: a playlist row opens into its entries, each with a
+checkbox and a tri-state group header, and *Add to queue* commits only the checked ones.
+
+**The entry called this "the structural task of Phase 3" and it is no longer one.** *"Today one URL
+is one job"* was true when it was written and stopped being true at `T-137`, which already expands a
+playlist into one job per entry and already appends them through `append`'s single transaction. So
+the two hard parts — what a job is, and the atomic append — were done, and `core/models.py`,
+`downloader/` and `persistence/` are **untouched**. What was left was the *choice*, which is `ui/`
+alone. A High-risk entry that turns out to be a Medium one is worth recording as such rather than
+quietly delivering a small change against a large estimate.
+
+**`P-19`'s "one mechanism" is now one class.** The ruling says the picker and the format table are
+*"one mechanism rather than two"*, so `RowPanel` holds everything about being a row that opens and
+the two subclasses supply only the body. Writing the second panel beside the first would have made
+the ruling a coincidence that the next change breaks — and it produced a real correction on the way:
+`Esc`'s undo had to become the opener's to supply, because a close that restored both the preset and
+the entry selection would send a playlist row back to inheriting a format it had chosen for itself.
+
+**Two mutations were run and both were killed.** Ignoring the selection in `_durable_jobs` fails
+three dialog tests; making `Space` invert a mixed range rather than set it, and `Ctrl`+`A` merely
+highlight, fails three picker tests.
+
+**One thing found while testing, and it is a Qt trap this project has hit before.** `Shift`+`↓`
+anchors on the position the selection was last *set* from, and a test that seeded the run with
+`selectRow` extended from row 0 in a table that had never been laid out — so two tests passed alone
+and failed in the file. They now press `↓` to move, which is what a user does. Related: `setData`
+is handed an `int` and not a `Qt.CheckState`, which is `T-109`'s `currentData()` defect one model
+over; the guard is written for the `int` and a test pins it.
+
+**`T-109`'s review came back Changes requested** (`T109-R1`..`T109-R7`, at `4cb549d`). Only
+**`T109-R6`** is corrected, at `5425e02`: its two type errors failed bare `mypy` and
+`mypy --platform win32`, which `ai/TESTING.md` §3 requires of *any* task that edits a test file, so
+they were blocking work unrelated to `T-109`. The other six findings are untouched and are that
+task's correction batch.
 
 ## 2026-08-07: `T-109` is built — the largest item in the phase, and two defects it found
 

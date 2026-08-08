@@ -1494,7 +1494,7 @@ def choose_pair_and_queue(composition: application.Composition, url: str) -> str
     listing.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
     composition.app.processEvents()
 
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None, "the row did not open into its format table"
     mode = panel.table.mode_control
     assert mode is not None, (

@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QApplication,
     QComboBox,
+    QDialog,
     QLabel,
     QListView,
     QPlainTextEdit,
@@ -90,11 +91,13 @@ from tracks_and_trails.ui.add_dialog import (
     selector_candidates,
     split_urls,
 )
+from tracks_and_trails.ui.playlist_selection import PlaylistSelection
 from tracks_and_trails.ui.row_delegate import (
     CHOOSE_FORMATS_DATA,
     CHOOSE_FORMATS_TEXT,
     EDIT_HINT,
     EDITOR_WIDTH,
+    EXPANDED_ROLE,
     GAP,
     HEADLINE_ROLE,
     INHERITED_TEXT,
@@ -2720,7 +2723,7 @@ def test_choosing_that_entry_opens_the_row_into_the_format_table(
         control = open_row_editor(dialog, 0)
         choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
 
-        panel = dialog.open_panel
+        panel = dialog.open_format_panel
         assert panel is not None, "the row did not open"
         assert panel.row is row
         assert listing.indexWidget(listing.model().index(0, 0)) is panel, (
@@ -2791,7 +2794,7 @@ def test_choosing_one_format_writes_it_as_the_rows_own_request(
     dialog, row = _staged(dialogs, managers, spin)
     control = open_row_editor(dialog, 0)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None
 
     assert isinstance(row.media, MediaInfo)
@@ -2831,7 +2834,7 @@ def test_a_chosen_pair_becomes_one_merging_request(
     dialog, row = _staged(dialogs, managers, spin)
     control = open_row_editor(dialog, 0)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None
     mode = panel.table.mode_control
     assert mode is not None, "the merge mode was not offered for a source that has a pair"
@@ -2882,7 +2885,7 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
 
     control = open_row_editor(dialog, 0)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None
     mode = panel.table.mode_control
     assert mode is not None
@@ -2900,14 +2903,14 @@ def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
     # the same attribute narrow it to whatever the first one proved, and everything after the
     # second then types as unreachable — the idiom this project already hit once, in the very test
     # that documents it.
-    still_open = dialog.open_panel
+    still_open = dialog.open_format_panel
     assert still_open is panel, "the panel closed before Esc could be pressed"
     chosen_instead = row.preset
     assert chosen_instead is not was, "nothing was chosen, so the rest of this proves nothing"
 
     QTest.keyClick(panel, Qt.Key.Key_Escape)
     QApplication.processEvents()
-    closed = dialog.open_panel
+    closed = dialog.open_format_panel
     assert closed is None, "Esc left the table open"
     restored = row.preset
     assert restored is was, f"Esc kept the choice: the row now runs {restored}"
@@ -2928,7 +2931,7 @@ def test_without_ffmpeg_the_merge_mode_is_not_drawn_and_the_reason_is(
     dialog, _row = _staged(dialogs, managers, spin, ffmpeg_available=False)
     control = open_row_editor(dialog, 0)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None
 
     assert panel.table.mode_control is None, "the merge mode was drawn without ffmpeg"
@@ -2952,7 +2955,7 @@ def test_a_source_with_no_pair_says_so_rather_than_blaming_ffmpeg(
     dialog, _row = _staged(dialogs, managers, spin, fixture="wikimedia_caminandes")
     control = open_row_editor(dialog, 0)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None
 
     assert panel.table.mode_control is None
@@ -2980,7 +2983,7 @@ def test_a_stated_merge_is_refused_before_the_download_when_ffmpeg_goes_missing(
     dialog, row = _staged(dialogs, managers, spin)
     control = open_row_editor(dialog, 0)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None
     mode = panel.table.mode_control
     assert mode is not None
@@ -3023,7 +3026,7 @@ def test_a_single_choice_still_queues_without_ffmpeg(
     dialog, _row = _staged(dialogs, managers, spin, ffmpeg_available=False)
     control = open_row_editor(dialog, 0)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None
     index = next(
         position
@@ -3075,7 +3078,7 @@ def _open_the_table(dialog: AddUrlDialog, index: int) -> FormatPanel:
     control = open_row_editor(dialog, index)
     choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
     QApplication.processEvents()
-    panel = dialog.open_panel
+    panel = dialog.open_format_panel
     assert panel is not None, f"row {index} did not open into its format table"
     return panel
 
@@ -3214,7 +3217,7 @@ def test_the_same_row_can_open_its_table_again_after_a_reset(
     dialog.resolve()
     QApplication.processEvents()
 
-    dialog.close_format_table(keep=True)
+    dialog.close_panel(keep=True)
     assert dialog.open_panel is None
     assert not _mounted_on(dialog, first, opened), "the closed panel is still the row's widget"
 
@@ -3273,4 +3276,418 @@ def test_choosing_the_options_entry_opens_the_editor_and_keeps_the_row_s_format(
     assert opened == [row]
     assert row.preset is preset_registry.AUDIO_MP3, (
         "the sentinel reached the preset lookup and cleared the row's chosen format"
+    )
+
+
+# --- T-110: the playlist picker, opened as the staging row (REQ-004, UX-007's P-19) -----------
+#
+# The picker widget itself is `tests/ui/test_playlist_picker.py`; the selection rules are
+# `tests/unit/test_playlist_selection.py`. What is asserted here is what the **dialog** does with
+# them — which row opens, what the row says, and above all *what reaches the queue*, because
+# `REQ-004` is a claim about what gets enqueued and not about what a checkbox looks like.
+
+
+def _staged_playlist(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    **overrides: Any,
+) -> tuple[AddUrlDialog, Row]:
+    """A dialog holding one resolved row whose probe was a real seven-entry playlist.
+
+    Through the recorded extraction and the real adapter, so the entries under test are the ones a
+    probe actually produces — `T-137` recorded this fixture for exactly that.
+    """
+    dialog, _manager = resolved(dialogs, managers, spin, PLAYLIST, **overrides)
+    row = dialog.rows[0]
+    media = row.media
+    assert isinstance(media, MediaInfo) and len(media.entries) == 7, (
+        f"{PLAYLIST} did not resolve into entries to choose between: {media}"
+    )
+    return dialog, row
+
+
+def _open_the_picker(dialog: AddUrlDialog, row: Row) -> Any:
+    """Open one row's playlist picker and wait for the deferred mount (`T108-R2`'s ordering)."""
+    dialog.open_playlist_picker(row)
+    QApplication.processEvents()
+    panel = dialog.open_playlist_panel
+    assert panel is not None, "the row did not open into its playlist picker"
+    return panel
+
+
+def test_a_playlist_row_offers_a_disclosure_and_a_single_item_does_not(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`EXPANDED_ROLE` is three-valued, and *absent* is what a single item answers (`T-140`).
+
+    Absent draws no triangle at all; `False` draws a closed one. A single-video row answering
+    `False` would offer to open something that has nothing in it — `UX-005` §5 — and is also
+    `T-110`'s last criterion, that a single-video URL behaves exactly as it does today.
+    """
+    dialog, _manager = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
+
+    assert role_values(dialog, EXPANDED_ROLE) == [None, False], (
+        "the single item drew a disclosure, or the playlist did not"
+    )
+
+
+def test_the_disclosure_opens_the_playlist_as_the_row_itself(
+    qapp: QApplication,
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`P-19`: the picker is the staging list's own row, opened — not a separate dialog.
+
+    Asserted as *the panel is the row's index widget*, which is the same property `T107-R2`'s
+    criterion was re-scoped to, and the only one that distinguishes a row that opens from a window
+    that appears next to it.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        listing = staging_list(dialog)
+        before = listing.sizeHintForRow(0)
+
+        dialog.toggle_playlist(str(row.job_id))
+        qapp.processEvents()
+
+        panel = dialog.open_playlist_panel
+        assert panel is not None, "the disclosure did not open the row"
+        assert panel.row is row
+        assert listing.indexWidget(listing.model().index(0, 0)) is panel, (
+            "the picker was placed somewhere other than on the row (P-19)"
+        )
+        assert listing.sizeHintForRow(0) > before, "the row did not expand"
+        assert panel.picker.model.rowCount() == 7
+        assert dialog.findChild(QDialog, "playlistPicker") is None, (
+            "the picker is a dialog, which is the modal-over-a-modal UX-007 ruled against"
+        )
+    finally:
+        dialog.close()
+
+
+def test_the_arrow_keys_open_and_close_the_playlist(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`docs/UX_SPEC.md` §7's own keyboard row, pressed on the list rather than called.
+
+    A route that needs a pointer first is not a route (`T-152`), so this presses the keys on the
+    staging list with the row merely current — which is where `Tab` leaves a keyboard user.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    listing = staging_list(dialog)
+    listing.setCurrentIndex(dialog.model.index(0, 0))
+
+    QTest.keyClick(listing, Qt.Key.Key_Right)
+    QApplication.processEvents()
+    assert dialog.open_playlist_panel is not None, "`→` did not open the playlist"
+
+    QTest.keyClick(listing, Qt.Key.Key_Left)
+    QApplication.processEvents()
+    assert dialog.open_panel is None, "`←` did not close the playlist"
+    assert row.entry_selection is not None, "closing threw the row's choice away"
+
+
+def test_the_arrow_key_opens_nothing_on_a_row_that_is_not_a_playlist(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-005` §5: the key exists on every row, and it must not open an empty picker."""
+    dialog, _manager = resolved(dialogs, managers, spin, SINGLE_ITEM)
+    listing = staging_list(dialog)
+    listing.setCurrentIndex(dialog.model.index(0, 0))
+
+    QTest.keyClick(listing, Qt.Key.Key_Right)
+    QApplication.processEvents()
+
+    assert dialog.open_panel is None, "a single item opened into a playlist picker"
+
+
+def test_only_the_chosen_entries_become_jobs(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+    store: FakeStore,
+) -> None:
+    """**`T-110`'s subject**, asserted on the stored queue rather than on the picker.
+
+    `REQ-004` is a claim about what gets enqueued. A test that read the checkboxes back would pass
+    with `_durable_jobs` ignoring them entirely, which is the whole defect this exists to prevent.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    panel = _open_the_picker(dialog, row)
+    media = row.media
+    assert isinstance(media, MediaInfo)
+
+    panel.picker.model.clear_selection()
+    panel.picker.model.set_checked((1, 4), True)
+    QApplication.processEvents()
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    stored = [job for job in store.jobs.values() if job.playlist_id is not None]
+    assert [job.url for job in stored] == [media.entries[1].url, media.entries[4].url], (
+        "the queue holds entries the user did not choose, or is missing ones they did"
+    )
+    assert [job.playlist_index for job in stored] == [1, 4], (
+        "the chosen entries were renumbered, so the queue's record of the playlist disagrees "
+        "with the playlist"
+    )
+
+
+def test_the_whole_selection_is_submitted_as_one_batch(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """`T-110`: *the whole selection is appended in one transaction*.
+
+    The atomicity itself is `JobRepository.append`'s and is proven at
+    `tests/unit/test_persistence.py::test_append_writes_every_job_or_none_of_them` — a kill
+    mid-append leaves none, not some. What this task had to do was **use** it rather than loop, so
+    what is asserted here is the property that reaches it: one `submit`, carrying every chosen
+    entry. A loop of one-job submissions would be five transactions and five chances to stop
+    halfway.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    panel = _open_the_picker(dialog, row)
+    panel.picker.model.set_checked((0, 6), False)
+    QApplication.processEvents()
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    assert len(sink.submissions) == 1, (
+        f"{len(sink.submissions)} submissions: the entries were appended one at a time, so a "
+        "crash could leave half a playlist queued"
+    )
+    assert len(sink.submissions[0]) == 5
+
+
+def test_nothing_downloads_until_the_user_confirms(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    store: FakeStore,
+) -> None:
+    """`REQ-004` is explicit: *before any download starts*.
+
+    Probing, opening the picker and changing the choice must all leave the queue empty. Asserted
+    on the store, because that is where a job that had started would have had to be written first
+    (`REQ-012`).
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    panel = _open_the_picker(dialog, row)
+    panel.picker.model.set_checked((2,), False)
+    QApplication.processEvents()
+
+    assert store.jobs == {}, "something reached the queue before Add was pressed"
+    assert dialog.queued_job_ids == ()
+
+
+def test_the_row_says_how_much_of_its_playlist_is_chosen(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-003`: the staging list is where the batch is read, so the choice has to appear on it.
+
+    Otherwise the only place it exists is inside the picker, and a user who closed the row cannot
+    see what Add is about to queue.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+
+    assert "all chosen" in item_texts(dialog)[0], item_texts(dialog)[0]
+
+    panel = _open_the_picker(dialog, row)
+    panel.picker.model.set_checked((0, 1, 2), False)
+    QApplication.processEvents()
+
+    assert "4 chosen" in item_texts(dialog)[0], item_texts(dialog)[0]
+
+
+def test_a_playlist_nobody_opened_still_queues_every_entry(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """The default, and the reason it is the default: doing nothing must not drop the playlist.
+
+    This is `T-137`'s behaviour unchanged, which is what makes the picker an addition rather than
+    a new way to lose a download.
+    """
+    dialog, _row = _staged_playlist(dialogs, managers, spin)
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    assert len(sink.submissions[0]) == 7
+
+
+def test_a_playlist_with_nothing_chosen_says_so_instead_of_adding_nothing(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """An empty batch would submit successfully, close the dialog and add **nothing**.
+
+    The user's choice honoured and their whole paste silently discarded, which is the failure mode
+    a filter introduces. Said instead, with the batch left on screen.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    panel = _open_the_picker(dialog, row)
+    panel.picker.model.clear_selection()
+    QApplication.processEvents()
+
+    dialog.add_to_queue()
+    QApplication.processEvents()
+
+    assert sink.submissions == [], "an empty selection reached the writer"
+    assert dialog.result() != QDialog.DialogCode.Accepted, (
+        "the dialog accepted and closed having added nothing"
+    )
+    message = text_of(dialog, "statusMessage")
+    assert "Nothing is chosen" in message, message
+
+
+def test_a_single_video_url_still_becomes_exactly_one_job(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """`T-110`'s last criterion, asserted rather than assumed.
+
+    The filter runs on every commit, so the case it must not touch is the common one: a pasted
+    video is one job carrying the URL the user pasted, with no playlist membership at all.
+    """
+    dialog, _manager = resolved(dialogs, managers, spin, SINGLE_ITEM)
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+
+    submitted = sink.submissions[0]
+    assert len(submitted) == 1
+    assert submitted[0].url == fixture_url(SINGLE_ITEM)
+    assert submitted[0].playlist_id is None and submitted[0].playlist_index is None
+
+
+def test_reopening_a_playlist_shows_the_choice_that_was_made(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`P-19` makes the picker a row that opens and closes, so closing must not be a reset."""
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    panel = _open_the_picker(dialog, row)
+    panel.picker.model.set_checked((3, 5), False)
+    QApplication.processEvents()
+    dialog.close_panel(keep=True)
+
+    reopened = _open_the_picker(dialog, row)
+
+    assert sorted(reopened.picker.selection.checked) == [0, 1, 2, 4, 6]
+
+
+def test_escape_puts_the_earlier_choice_back(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`Esc` *closes, choosing nothing* — and the row's entry selection is what "nothing" is here.
+
+    The undo is supplied by whichever `open_…` built the panel, because a close that restored the
+    row's *preset* as well would send a playlist row back to inheriting a format it had chosen.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    row.preset = preset_registry.AUDIO_MP3
+    panel = _open_the_picker(dialog, row)
+    before = row.entry_selection
+    panel.picker.model.clear_selection()
+    QApplication.processEvents()
+    assert row.entry_selection != before, "the picker's change never reached the row"
+
+    dialog.close_panel(keep=False)
+
+    assert row.entry_selection == before, "Esc kept the choice it was supposed to discard"
+    assert row.preset is preset_registry.AUDIO_MP3, (
+        "closing the playlist picker also reverted the row's format"
+    )
+
+
+def test_a_reprobe_of_a_different_length_starts_the_choice_again(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """Positions belong to one extraction (`PlaylistSelection.with_count`).
+
+    A retry can return a shorter playlist, and keeping whichever indices still fit would present a
+    choice the user never made over items they have not seen.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    media = row.media
+    assert isinstance(media, MediaInfo)
+    dialog._on_entries_chosen(row, PlaylistSelection.none_of(7).set(6, True))
+
+    assert row.job_id is not None
+    dialog._on_media_probed(
+        row.job_id,
+        MediaInfo(
+            url=media.url,
+            title=media.title,
+            is_playlist=True,
+            entries=media.entries[:3],
+        ),
+    )
+    QApplication.processEvents()
+
+    assert row.entry_selection == PlaylistSelection.all_of(3)
+
+
+def test_a_large_playlist_probe_leaves_the_dialog_responsive_and_cancellable(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`NFR-001`, `REQ-027`: a hundred-entry extraction is long, and the dialog must not wait.
+
+    **The child never answers**, which is the only shape that can prove the dialog is not blocked
+    on it: the assertions below all run while a real worker process is still extracting. Removing
+    the row then stops that process, which is what *cancellable* means here — there is nothing
+    durable to withdraw, because a staging probe never wrote a row (`T118-R1`).
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    type_urls(dialog, "https://example.invalid/a-very-long-playlist")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
+    row = dialog.rows[0]
+    probing = row.job_id
+    assert probing is not None
+
+    # The GUI thread is free: the dialog answers, repaints and edits while the probe runs.
+    assert spin(lambda: row.state in (RowState.WAITING, RowState.PROBING))
+    assert dialog.status_text(), "the dialog stopped saying anything while a probe ran"
+    type_urls(dialog, "https://example.invalid/a-very-long-playlist\nhttps://example.invalid/two")
+    dialog.resolve()
+    assert len(dialog.rows) == 2, "the dialog could not accept another line mid-probe"
+
+    dialog.remove_row(row)
+
+    assert spin(lambda: probing not in manager.active_job_ids()), (
+        "the probe outlived the row it belonged to, so a long playlist cannot be cancelled"
     )

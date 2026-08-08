@@ -110,6 +110,13 @@ class Row:
     #: gate that read a selector instead of a decision refused a download it could have performed.
     #: `REQ-024` needs the decision, so the decision is kept.
     format_selection: object | None = None
+    #: Which of a playlist's entries are chosen, as a `PlaylistSelection` (`REQ-004`, `T-110`).
+    #:
+    #: **`None` means "not a playlist, or not probed yet"**, and it is not the same as an empty
+    #: selection: an empty one is the user having unchecked everything, which contributes no jobs
+    #: and is a state the dialog reports rather than silently treating as *all*. The dialog fills
+    #: this in when a probe returns entries, so the two cases stay distinguishable.
+    entry_selection: object | None = None
     #: The extractor's own words, character for character (`NFR-006`). `None` unless `FAILED`.
     message: str | None = None
 

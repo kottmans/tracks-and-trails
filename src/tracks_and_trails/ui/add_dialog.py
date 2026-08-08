@@ -122,15 +122,19 @@ from tracks_and_trails.ui.format_selection import (
 from tracks_and_trails.ui.format_table import FormatTable
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX, format_name
 from tracks_and_trails.ui.options_dialog import OptionsDialog
+from tracks_and_trails.ui.playlist_picker import PlaylistPicker
+from tracks_and_trails.ui.playlist_selection import PlaylistSelection, describe_chosen
 from tracks_and_trails.ui.row_delegate import (
     CHOOSE_FORMATS_DATA,
     DETAIL_ROLE,
     EDIT_HINT,
+    EXPANDED_ROLE,
     FORMAT_PANEL_HEIGHT_ROLE,
     FORMATS_AVAILABLE_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
     INHERITED_TEXT,
+    JOB_ID_ROLE,
     OPTIONS_AVAILABLE_ROLE,
     OPTIONS_DATA,
     PRESET_CHOICES_ROLE,
@@ -277,24 +281,48 @@ def headline_text(row: Row) -> str:
     return media.title if isinstance(media, MediaInfo) else row.url
 
 
+def entry_selection_of(row: Row) -> PlaylistSelection | None:
+    """`row`'s playlist selection, or `None` when it has no entries to choose between.
+
+    **Reconciled against the entries the row currently holds**, because a retry re-probes and a
+    playlist can come back a different length. A stale selection applied to a shorter tuple would
+    enqueue a different set of items than the one on screen, which `PlaylistSelection.chosen`
+    refuses outright — this is where the refusal is avoided honestly rather than caught.
+    """
+    media = row.media
+    if not isinstance(media, MediaInfo) or not media.entries:
+        return None
+    chosen = row.entry_selection
+    if isinstance(chosen, PlaylistSelection):
+        return chosen.with_count(len(media.entries))
+    return PlaylistSelection.all_of(len(media.entries))
+
+
 def detail_text(row: Row) -> str:
     """The row's second line, without its state — the fields `REQ-002` names.
 
     **A failed row shows the extractor's words unchanged** (`NFR-006`). They are not folded into a
     sentence, because a sentence that contains them is not the same as them.
+
+    **A playlist says how much of itself is chosen** (`REQ-004`, `T-110`). Without it the only
+    place the choice appears is inside the picker, so a user who closes the row cannot see what
+    Add is about to queue — and `UX-003`'s promise is that the staging list is where the batch is
+    read. The phrase comes from `describe_chosen`, which the picker's own summary also calls.
     """
     if row.state is RowState.FAILED:
         return row.message or "no reason was given"
     media = row.media
     if not isinstance(media, MediaInfo):
         return ""
-    return " · ".join(
-        (
-            media.uploader or UNKNOWN_TEXT,
-            format_duration(media.duration_seconds),
-            describe_kind(media),
-        )
-    )
+    selection = entry_selection_of(row)
+    parts = [
+        media.uploader or UNKNOWN_TEXT,
+        format_duration(media.duration_seconds),
+        describe_kind(media),
+    ]
+    if selection is not None:
+        parts.append(describe_chosen(selection))
+    return " · ".join(parts)
 
 
 def selector_text(row: Row, effective: Preset | None) -> str:
@@ -355,6 +383,13 @@ class StagingList(QListView):
     frame, the group box and the margins, instead of this counting them and getting it wrong.
     """
 
+    #: `bool` — the user pressed `→` (open) or `←` (close) on the current row.
+    #:
+    #: `docs/UX_SPEC.md` §7's own keyboard row, and the route `T140-R5` established on the queue.
+    #: A signal rather than a call into the dialog so this widget stays a view: it knows a key was
+    #: pressed on a row, and what a row *opens onto* is the dialog's business.
+    disclosure_requested = Signal(bool)
+
     def __init__(self, parent: QWidget | None, *, selectors: Sequence[str]) -> None:
         super().__init__(parent)
         #: What the third line may have to hold, from the catalogue the dialog was given.
@@ -375,6 +410,19 @@ class StagingList(QListView):
             self.updateGeometry()
         super().changeEvent(event)
 
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """`→` opens the current row, `←` closes it (`docs/UX_SPEC.md` §7).
+
+        Taken here rather than left to Qt: a single-column `QListView` does nothing with either
+        key, so nothing is being overridden — and a route the spec declares has to exist without a
+        pointer having been used first (`T-152`).
+        """
+        key = event.key()
+        if key in (int(Qt.Key.Key_Right), int(Qt.Key.Key_Left)):
+            self.disclosure_requested.emit(key == int(Qt.Key.Key_Right))
+            return
+        super().keyPressEvent(event)
+
     def _row_width(self) -> int:
         """What a row needs, plus the chrome between this widget's edge and its viewport."""
         if self._wanted is None:
@@ -390,13 +438,18 @@ class StagingList(QListView):
         return self._wanted
 
 
-class FormatPanel(QWidget):
-    """A staging row, opened: what the row says, and the format table under it (`UX-007`'s `P-1`).
+class RowPanel(QWidget):
+    """A staging row, opened. The shape both `P-1` and `P-19` are (`UX-007`).
 
-    **The row expanded, not a modal over a modal.** `UX-007` ruled against this file's own proposal
-    of a dialog: the add dialog is already modal, and the staging list is already a list of rows
-    that open — `P-19` gives the playlist picker the same shape, so the two surfaces are one
-    mechanism rather than two.
+    **The row expanded, not a modal over a modal.** `UX-007` ruled against `docs/UX_SPEC.md`'s own
+    proposal of a dialog: the add dialog is already modal, and the staging list is already a list
+    of rows that open. `P-1` gives the format table that shape and `P-19` gives the playlist picker
+    the same one, and the ruling says why in as many words — *"the two surfaces are **one
+    mechanism** rather than two"*.
+
+    So the mechanism is here, once, and a subclass supplies only the body it opens onto. Writing
+    the second panel beside the first would have made the ruling a coincidence that the next change
+    breaks.
 
     **The summary line is `row_text`, the very function the delegate's roles compose.** Qt's
     `setIndexWidget` covers the item it is set on, so an opened row's painted anatomy is hidden and
@@ -416,49 +469,60 @@ class FormatPanel(QWidget):
         row: Row,
         summary: str,
         *,
-        ffmpeg_available: bool,
+        object_name: str,
+        summary_name: str,
+        done_name: str,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setObjectName("formatPanel")
+        self.setObjectName(object_name)
         self._row = row
 
         layout = QVBoxLayout(self)
         self._summary = QLabel(summary, self)
         self._summary.setObjectName("formatPanelSummary")
-        self._summary.setAccessibleName("The URL these formats belong to")
+        self._summary.setAccessibleName(summary_name)
         self._summary.setWordWrap(True)
         # Site metadata, so it is never interpreted as markup (`T016-R6`'s rule; this label is
         # created here rather than in `_build`, so it sets its own format).
         self._summary.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self._summary)
 
-        media = row.media
-        formats = media.formats if isinstance(media, MediaInfo) else ()
-        self._table = FormatTable(formats, self, ffmpeg_available=ffmpeg_available)
-        layout.addWidget(self._table)
+        self._body = self._build_body(row)
+        layout.addWidget(self._body)
 
         self._close = QPushButton("&Done", self)
         self._close.setObjectName("formatPanelDone")
-        self._close.setAccessibleName("Use the chosen formats and close")
+        self._close.setAccessibleName(done_name)
         self._close.clicked.connect(lambda: self.closed.emit(True))
         layout.addWidget(self._close)
 
-    @property
-    def table(self) -> FormatTable:
-        return self._table
+    def _build_body(self, row: Row) -> QWidget:
+        """What this panel opens onto. The one thing a subclass supplies."""
+        raise NotImplementedError
 
     @property
     def row(self) -> Row:
         return self._row
 
+    @property
+    def done_button(self) -> QPushButton:
+        return self._close
+
     def focus_chain(self) -> list[QWidget]:
         """The keyboard order through the panel, stated rather than left to construction order."""
-        controls: list[QWidget] = []
-        mode = self._table.mode_control
-        if mode is not None:
-            controls.append(mode)
-        return [*controls, self._table.table, self._table.header, self._close]
+        raise NotImplementedError
+
+    def initial_focus(self) -> QWidget:
+        """Where focus lands when the panel opens.
+
+        **Not simply the first tab stop.** Both panels put a *mode* or a *group* control ahead of
+        the list in the tab order — `docs/UX_SPEC.md` §5's rule that a mode which changes what
+        `Enter` does is reachable before the thing it changes — and both open onto the list itself,
+        because that is what the user came to look at. The two orders are different questions and
+        answering them with one list is how a panel opens focused on a checkbox.
+        """
+        return self.focus_chain()[0]
 
     # Qt's override name, hence the camelCase.
     def keyPressEvent(self, event: QKeyEvent) -> None:
@@ -472,6 +536,93 @@ class FormatPanel(QWidget):
             self.closed.emit(False)
             return
         super().keyPressEvent(event)
+
+
+class FormatPanel(RowPanel):
+    """A staging row opened onto its formats (`UX-007`'s `P-1`, `REQ-003`, `REQ-008`)."""
+
+    def __init__(
+        self,
+        row: Row,
+        summary: str,
+        *,
+        ffmpeg_available: bool,
+        parent: QWidget | None = None,
+    ) -> None:
+        self._ffmpeg_available = ffmpeg_available
+        super().__init__(
+            row,
+            summary,
+            object_name="formatPanel",
+            summary_name="The URL these formats belong to",
+            done_name="Use the chosen formats and close",
+            parent=parent,
+        )
+
+    def _build_body(self, row: Row) -> QWidget:
+        media = row.media
+        formats = media.formats if isinstance(media, MediaInfo) else ()
+        self._table = FormatTable(formats, self, ffmpeg_available=self._ffmpeg_available)
+        return self._table
+
+    @property
+    def table(self) -> FormatTable:
+        return self._table
+
+    def focus_chain(self) -> list[QWidget]:
+        controls: list[QWidget] = []
+        mode = self._table.mode_control
+        if mode is not None:
+            controls.append(mode)
+        return [*controls, self._table.table, self._table.header, self._close]
+
+    def initial_focus(self) -> QWidget:
+        """The table body, which is what `docs/UX_SPEC.md` §4's *current row* is about."""
+        return self._table.table
+
+
+class PlaylistPanel(RowPanel):
+    """A staging row opened onto its playlist's entries (`UX-007`'s `P-19`, `REQ-004`, `T-110`).
+
+    The body is `ui/playlist_picker.PlaylistPicker`, which owns the checkboxes, the tri-state group
+    header and the keyboard `docs/UX_SPEC.md` §7 declares. Everything about *being a row that
+    opens* is `RowPanel`'s, which is what makes this and `FormatPanel` one mechanism.
+    """
+
+    def __init__(
+        self,
+        row: Row,
+        summary: str,
+        *,
+        selection: PlaylistSelection | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        self._initial = selection
+        super().__init__(
+            row,
+            summary,
+            object_name="playlistPanel",
+            summary_name="The playlist these entries belong to",
+            done_name="Use the chosen entries and close",
+            parent=parent,
+        )
+
+    def _build_body(self, row: Row) -> QWidget:
+        media = row.media
+        entries = media.entries if isinstance(media, MediaInfo) else ()
+        self._picker = PlaylistPicker(entries, self._initial, self)
+        return self._picker
+
+    @property
+    def picker(self) -> PlaylistPicker:
+        return self._picker
+
+    def focus_chain(self) -> list[QWidget]:
+        return [*self._picker.focus_chain(), self._close]
+
+    def initial_focus(self) -> QWidget:
+        """The entry table: `Space` toggles the current entry, so there has to be one to toggle."""
+        return self._picker.table
 
 
 class StagingModel(QAbstractListModel):
@@ -560,6 +711,22 @@ class StagingModel(QAbstractListModel):
             )
         if role == FORMAT_PANEL_HEIGHT_ROLE:
             return self._dialog.panel_height_for(row)
+        if role == EXPANDED_ROLE:
+            # **Three-valued, and the third value is what makes it correct** (`T-140`'s rule).
+            # Absent means *not a playlist*, which draws no disclosure at all; `False` means a
+            # playlist that is closed. A row with no entries to choose between answers absent
+            # rather than `False`, because a triangle that opens an empty picker is `UX-005` §5's
+            # never-draw-what-would-be-refused.
+            if entry_selection_of(row) is None or not row.committable:
+                return None
+            return row is self._dialog.expanded_row
+        if role == JOB_ID_ROLE:
+            # **What the delegate's disclosure signal carries** (`RowDelegate.editorEvent`). The
+            # staging probe's id is the only string identifying a row that both the delegate and
+            # the dialog can resolve, and the dialog resolves it through `Staging.for_job` — the
+            # lookup `T016-R1` established, which finds the row that *owns* the id rather than one
+            # at a remembered position (`T118-R14`).
+            return row.job_id
         if role == PRESET_INHERITABLE_ROLE:
             # **This surface has an "all" to be the same as** (`UX-004`, `T126-R4`): the paste
             # carries one format and a row may defer to it, which is what `PRESET_ROLE`'s `None`
@@ -668,7 +835,7 @@ class StagingModel(QAbstractListModel):
         # because the row *was* the expanded one, so it could never be reopened. Remounting by row
         # identity is what makes a reset survivable; the editor above is committed rather than
         # remounted because a combo box holds no state the row does not already have.
-        self._dialog.remount_format_table()
+        self._dialog.remount_panel()
 
 
 class AddUrlDialog(QDialog):
@@ -699,13 +866,17 @@ class AddUrlDialog(QDialog):
         #: would be a second answer to one question, and the two could differ — `ARC-007`'s reason
         #: for the manager receiving a value rather than reading settings.
         self._ffmpeg_available = ffmpeg_available
-        #: The one row whose format table is open, by identity (`T-108`). At most one: two open
-        #: tables would be two answers to *"which formats are we looking at"*, and the list would
-        #: spend most of its height on them.
+        #: The one row that is open, by identity (`T-108`, `T-110`). At most one, and at most one
+        #: panel on it: two open tables would be two answers to *"which formats are we looking
+        #: at"*, and the list would spend most of its height on them. The playlist picker shares
+        #: the slot rather than having one of its own — `P-19` makes them one mechanism, and a
+        #: second slot would be the place they could both be open at once.
         self._expanded: Row | None = None
-        self._panel: FormatPanel | None = None
-        #: What that row's format was before the table opened, so `Esc` can put it back.
-        self._preset_before_panel: Preset | None = None
+        self._panel: RowPanel | None = None
+        #: How to put the row back to what it was before the panel opened, so `Esc` can mean
+        #: *choosing nothing*. Supplied by whichever `open_…` built the panel, because only it
+        #: knows which of the row's fields its panel edits.
+        self._undo_panel: Callable[[], None] | None = None
         #: Fetches, decodes and caches thumbnails, and is asked for one **only while painting**
         #: (`T-119`). The dialog no longer holds pixmaps: a row that scrolls out of view has its
         #: picture released by the cache's own bound, which a dict keyed by job id could not do.
@@ -820,7 +991,12 @@ class AddUrlDialog(QDialog):
             "Each line you pasted, with what it turned out to be. " + EDIT_HINT
         )
         self._list.setModel(self._model)
-        self._list.setItemDelegate(RowDelegate(thumbnails=self._thumbnails, parent=self._list))
+        delegate = RowDelegate(thumbnails=self._thumbnails, parent=self._list)
+        # **The disclosure triangle opens the playlist picker** (`P-19`, `docs/UX_SPEC.md` §7).
+        # The same signal the queue's groups use, so the gesture means the same thing on both
+        # lists — and `StagingList` gives it the `→` / `←` half the spec's keyboard table names.
+        delegate.disclosure_toggled.connect(self.toggle_playlist)
+        self._list.setItemDelegate(delegate)
         self._list.setUniformItemSizes(True)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         # **The declared keyboard route to a row's control** (`T118-R9`). `EditKeyPressed` is
@@ -837,6 +1013,7 @@ class AddUrlDialog(QDialog):
         # The delegate paints every row and builds one editor, for the row being edited.
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._show_row_menu)
+        self._list.disclosure_requested.connect(self._on_disclosure_key)
         # The copyable selector below the list follows whichever row is current (`T118-R8`).
         selection = self._list.selectionModel()
         if selection is not None:
@@ -916,10 +1093,10 @@ class AddUrlDialog(QDialog):
             self._close_button,
         ]
 
-    # --- the format table, opened as the row itself (`T-108`, `UX-007`'s `P-1`) -----------
+    # --- a row, opened (`T-108`'s `P-1` and `T-110`'s `P-19` — one mechanism) --------------
 
     def panel_height_for(self, row: Row) -> int:
-        """How tall `row` must be drawn, because its format table is open. `0` when it is not.
+        """How tall `row` must be drawn, because it is open. `0` when it is not.
 
         The panel's own `sizeHint`, asked of the widget rather than assumed: a constant here would
         be a second opinion about how tall a table is, and the first font change would make it the
@@ -929,32 +1106,92 @@ class AddUrlDialog(QDialog):
             return 0
         return self._panel.sizeHint().height()
 
-    def open_format_table(self, row: Row) -> None:
-        """Open `row` into its formats (`REQ-008`, `docs/UX_SPEC.md` §4).
+    @property
+    def expanded_row(self) -> Row | None:
+        """The row that is open, if any. Read by `StagingModel` for `EXPANDED_ROLE`."""
+        return self._expanded
 
-        **Any other open panel closes first, keeping its choice.** Two open tables would be two
-        answers to which formats are being looked at, and closing without keeping would silently
-        discard a selection the user had already made.
+    def open_format_table(self, row: Row) -> None:
+        """Open `row` into its formats (`REQ-008`, `docs/UX_SPEC.md` §4)."""
+
+        def build() -> RowPanel:
+            panel = FormatPanel(
+                row,
+                row_text(row, self.preset_for(row)),
+                ffmpeg_available=self._ffmpeg_available,
+                parent=self._list,
+            )
+            panel.table.format_chosen.connect(self._on_format_chosen)
+            panel.table.selection_changed.connect(self._on_selection_changed)
+            panel.table.selection_refused.connect(self._show_message)
+            return panel
+
+        # `Esc` puts the row's earlier format back, which is what *"choosing nothing"* means.
+        before = row.preset if isinstance(row.preset, Preset) else None
+        self._open_panel(row, build, undo=lambda: setattr(row, "preset", before))
+
+    def open_playlist_picker(self, row: Row) -> None:
+        """Open `row` into its playlist's entries (`REQ-004`, `docs/UX_SPEC.md` §7, `T-110`).
+
+        **The same machinery the format table uses**, which is `P-19` honoured rather than
+        described: one panel slot, one mount, one close, one remount after a reset.
+        """
+        selection = entry_selection_of(row)
+        if selection is None:
+            # Not a playlist, or one that enumerated nothing. `UX-005` §5 — nothing is offered
+            # that would be refused, and this is the refusal for a route that reached here anyway.
+            return
+
+        def build() -> RowPanel:
+            panel = PlaylistPanel(
+                row,
+                row_text(row, self.preset_for(row)),
+                selection=selection,
+                parent=self._list,
+            )
+            panel.picker.selection_changed.connect(
+                lambda chosen: self._on_entries_chosen(row, chosen)
+            )
+            return panel
+
+        before = row.entry_selection
+        self._open_panel(row, build, undo=lambda: setattr(row, "entry_selection", before))
+
+    def toggle_playlist(self, job_id: str) -> None:
+        """Open or close the playlist a staging row holds — the disclosure's own route.
+
+        `docs/UX_SPEC.md` §7: *"`→` / `←` on a header opens / closes the playlist"*, and the
+        delegate's disclosure triangle is the pointer half of the same gesture. Resolved through
+        `Staging.for_job` rather than by row number, for `T118-R14`'s reason.
+        """
+        row = self._staging.for_job(job_id)
+        if row is None:
+            return
+        if row is self._expanded:
+            self.close_panel(keep=True)
+            return
+        self.open_playlist_picker(row)
+
+    def _open_panel(
+        self, row: Row, build: Callable[[], RowPanel], *, undo: Callable[[], None]
+    ) -> None:
+        """Mount one panel on `row`, closing whatever was open (`T-108`, `T-110`).
+
+        **Any other open panel closes first, keeping its choice.** Two open panels would be two
+        answers to which row is being looked at, and closing without keeping would silently discard
+        a selection the user had already made.
         """
         if self._expanded is row:
             return
-        self.close_format_table(keep=True)
+        self.close_panel(keep=True)
         index = self._index_of(row)
         if not index.isValid():
             return
 
         self._expanded = row
-        self._preset_before_panel = row.preset if isinstance(row.preset, Preset) else None
-        panel = FormatPanel(
-            row,
-            row_text(row, self.preset_for(row)),
-            ffmpeg_available=self._ffmpeg_available,
-            parent=self._list,
-        )
+        self._undo_panel = undo
+        panel = build()
         panel.closed.connect(self._on_panel_closed)
-        panel.table.format_chosen.connect(self._on_format_chosen)
-        panel.table.selection_changed.connect(self._on_selection_changed)
-        panel.table.selection_refused.connect(self._show_message)
         self._panel = panel
 
         # **Uniform sizes is a promise this row breaks** (`T118-R10`). The list sets it because a
@@ -968,9 +1205,9 @@ class AddUrlDialog(QDialog):
         # pointer, and the next structural reset called `commitData` on it: **libshiboken: Internal
         # C++ object already deleted.** Deferring by one turn lets the view finish closing the
         # editor first, which is the only ordering in which both can exist.
-        QTimer.singleShot(0, self._mount_format_table)
+        QTimer.singleShot(0, self._mount_panel)
 
-    def _mount_format_table(self) -> None:
+    def _mount_panel(self) -> None:
         """Put the panel on its row, once the editor that opened it is gone (`T108-R2`)."""
         row, panel = self._expanded, self._panel
         if row is None or panel is None:
@@ -978,7 +1215,7 @@ class AddUrlDialog(QDialog):
         index = self._index_of(row)
         if not index.isValid():
             # The row went away between the choice and this turn — a retype in the same breath.
-            self.close_format_table(keep=True)
+            self.close_panel(keep=True)
             return
         self._list.setUniformItemSizes(False)
         # **Re-lay the items before handing Qt the widget** (`T-108`). `QListView` caches each
@@ -1001,14 +1238,21 @@ class AddUrlDialog(QDialog):
         self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
         for earlier, later in pairwise(panel.focus_chain()):
             self.setTabOrder(earlier, later)
-        panel.table.table.setFocus(Qt.FocusReason.OtherFocusReason)
+        # **Focus lands where the panel says**, rather than on whatever this method knows how to
+        # reach into. That is what lets a second kind of panel exist without this one learning
+        # what it contains — `P-19`'s "one mechanism", made true rather than described.
+        panel.initial_focus().setFocus(Qt.FocusReason.OtherFocusReason)
 
-    def close_format_table(self, *, keep: bool) -> None:
-        """Close the open panel, keeping the chosen formats or restoring what was there before.
+    def close_panel(self, *, keep: bool) -> None:
+        """Close the open panel, keeping what was chosen or restoring what was there before.
 
         `keep=False` is `Esc`'s route — *"closes, choosing nothing"* — and putting the row's earlier
-        preset back is what makes "nothing" true. Leaving the selection applied and merely hiding
-        the table would make `Esc` a confirm with extra steps.
+        choice back is what makes "nothing" true. Leaving the selection applied and merely hiding
+        the panel would make `Esc` a confirm with extra steps.
+
+        **What "before" means is the opener's to say**, and it must be: a format panel restores the
+        row's preset and a playlist panel restores its entry selection, and a close that restored
+        both would send a playlist row back to inheriting a format it had chosen for itself.
         """
         row, panel = self._expanded, self._panel
         if row is None or panel is None:
@@ -1016,9 +1260,9 @@ class AddUrlDialog(QDialog):
         index = self._index_of(row)
         self._expanded = None
         self._panel = None
-        if not keep:
-            row.preset = self._preset_before_panel
-        self._preset_before_panel = None
+        if not keep and self._undo_panel is not None:
+            self._undo_panel()
+        self._undo_panel = None
         if index.isValid():
             # `None` is how Qt is told to drop the widget, and it is what `QAbstractItemView`
             # documents; PySide's stub declares the parameter as `QWidget`, so the cast is a
@@ -1034,7 +1278,7 @@ class AddUrlDialog(QDialog):
         self.refresh()
         self._list.setFocus(Qt.FocusReason.OtherFocusReason)
 
-    def remount_format_table(self) -> None:
+    def remount_panel(self) -> None:
         """Put the open panel back on its row after a model reset, or close it if the row is gone.
 
         **`T108-R2`.** A structural reset — adding a URL, removing one, retyping, reordering —
@@ -1056,16 +1300,30 @@ class AddUrlDialog(QDialog):
             return
         index = self._index_of(row)
         if not index.isValid():
-            self.close_format_table(keep=True)
+            self.close_panel(keep=True)
             return
         self._list.setUniformItemSizes(False)
         self._list.setIndexWidget(index, panel)
         panel.setGeometry(self._list.visualRect(index))
 
     @property
-    def open_panel(self) -> FormatPanel | None:
-        """The open format panel, for a test or a surface that needs to drive it."""
+    def open_panel(self) -> RowPanel | None:
+        """The open panel, whichever kind, for a test or a surface that needs to drive it."""
         return self._panel
+
+    @property
+    def open_format_panel(self) -> FormatPanel | None:
+        """The open panel **when it is the format table**, and `None` when it is anything else.
+
+        Narrowed rather than cast at each call site: a playlist picker is not a format table, and
+        a caller reaching for `.table` on one would be asking a question the panel cannot answer.
+        """
+        return self._panel if isinstance(self._panel, FormatPanel) else None
+
+    @property
+    def open_playlist_panel(self) -> PlaylistPanel | None:
+        """The open panel **when it is the playlist picker** (`T-110`)."""
+        return self._panel if isinstance(self._panel, PlaylistPanel) else None
 
     def _index_of(self, row: Row) -> QModelIndex:
         """The model index `row` currently occupies, or an invalid one (`T118-R14`'s rule).
@@ -1087,9 +1345,9 @@ class AddUrlDialog(QDialog):
         one press has filled one slot — so the rule is *closes when the selection is complete*,
         which is the same sentence for the mode the spec was describing.
         """
-        panel = self._panel
+        panel = self.open_format_panel
         if panel is not None and panel.table.selection.is_complete:
-            self.close_format_table(keep=True)
+            self.close_panel(keep=True)
 
     def _on_selection_changed(self, selection: object) -> None:
         """Write the chosen formats onto the row, as its own preset (`REQ-008`, `REQ-009`).
@@ -1117,7 +1375,35 @@ class AddUrlDialog(QDialog):
         self.refresh()
 
     def _on_panel_closed(self, keep: bool) -> None:
-        self.close_format_table(keep=keep)
+        self.close_panel(keep=keep)
+
+    def _on_entries_chosen(self, row: Row, chosen: object) -> None:
+        """Write the checked entries onto the row (`REQ-004`, `T-110`).
+
+        **Written as they are chosen, not when the panel closes.** The row's own detail line says
+        how many are chosen, so a user who has unchecked four can see it on the row underneath the
+        panel — and `Add to queue` pressed with the picker still open commits what is on screen
+        rather than what it was opened with, which is the ordering `T118-R14` established one
+        widget over.
+        """
+        if not isinstance(chosen, PlaylistSelection):
+            return
+        row.entry_selection = chosen
+        self.refresh()
+
+    def _on_disclosure_key(self, opening: bool) -> None:
+        """`→` / `←` on the current row (`docs/UX_SPEC.md` §7).
+
+        `→` on a row with no playlist to open does nothing, which is `open_playlist_picker`'s own
+        refusal rather than a second copy of the test for it.
+        """
+        row = self._current_row()
+        if row is None:
+            return
+        if opening:
+            self.open_playlist_picker(row)
+        elif row is self._expanded:
+            self.close_panel(keep=True)
 
     # --- the post-processing editor (`REQ-010`, `T-109`, `docs/UX_SPEC.md` §6) --------------
 
@@ -1167,7 +1453,7 @@ class AddUrlDialog(QDialog):
         The first is enough: fixing it means reopening that row's table, and listing every one would
         be a paragraph the user has to read before they can act on its first sentence.
 
-        `close_format_table` runs before this, so the open panel's selection is already on its row.
+        `close_panel` runs before this, so the open panel's selection is already on its row.
         """
         for row in rows:
             selection = row.format_selection
@@ -1444,6 +1730,13 @@ class AddUrlDialog(QDialog):
             return
         row.media = media
         row.state = RowState.READY
+        # **A fresh probe replaces the entries, so it replaces the choice made against them**
+        # (`T-110`). A retry can return a playlist of a different length, and a selection of
+        # positions held over from the previous extraction would name different items. Everything
+        # chosen is the state `REQ-004` starts from — see `PlaylistSelection.all_of`.
+        row.entry_selection = (
+            PlaylistSelection.all_of(len(media.entries)) if media.entries else None
+        )
         # **No fetch is started here** (`T-119`). The row now knows a thumbnail URL; whether the
         # bytes are ever wanted is decided by whether the view paints the row. A probe result for
         # row four hundred of a paste costs nothing until row four hundred is on screen.
@@ -1551,7 +1844,7 @@ class AddUrlDialog(QDialog):
         # **Commit the open panel's choice first** (`T118-R14`'s ordering, one widget over). A user
         # who picked formats and pressed Add without closing the table has chosen; discarding it
         # because a widget was still open would queue the format they replaced.
-        self.close_format_table(keep=True)
+        self.close_panel(keep=True)
         committable = self._staging.committable()
         if not committable:
             self._status.setText(
@@ -1577,6 +1870,16 @@ class AddUrlDialog(QDialog):
         # therefore produce many queue rows, which is why this flattens rather than maps: the
         # pairing is kept so `_on_committed` can still report per staged row.
         fresh = [(row, job) for row in committable for job in self._durable_jobs(row)]
+        if not fresh:
+            # **Every committable row is a playlist with nothing checked** (`REQ-004`, `T-110`).
+            # Submitting an empty batch would succeed, close the dialog and add nothing — the
+            # user's choice honoured and their whole paste silently discarded. Said instead, with
+            # the batch left on screen so unchecking everything is one keystroke from being undone.
+            self._status.setText(
+                "Nothing is chosen. Open a playlist and choose the entries you want, "
+                "or choose all of them."
+            )
+            return
         self._saving = True
         self._status.setText(f"Adding {len(fresh)} to the queue …")
         self._refresh()
@@ -1650,6 +1953,20 @@ class AddUrlDialog(QDialog):
         if probed is None or not probed.entries:
             return [self._durable_job(row)]
 
+        # **Only the entries the user checked** (`REQ-004`, `T-110`). An unopened picker means all
+        # of them — see `PlaylistSelection.all_of` — and an emptied one means none, which produces
+        # no jobs at all rather than falling back to the whole playlist. `add_to_queue` is where
+        # that is reported; silently queueing the lot would be the wrong download this task exists
+        # to prevent.
+        selection = entry_selection_of(row)
+        chosen = (
+            selection.chosen_with_index(probed.entries)
+            if selection is not None
+            else tuple(enumerate(probed.entries))
+        )
+        if not chosen:
+            return []
+
         playlist_id = str(uuid.uuid4())
         # **Into a folder named for the playlist** (`UX-005` row 10). Sanitised through the same
         # function the output path uses, so a title with a slash in it cannot escape the download
@@ -1670,11 +1987,13 @@ class AddUrlDialog(QDialog):
                 thumbnail_url=entry.thumbnail_url,
                 duration_seconds=entry.duration_seconds,
                 playlist_id=playlist_id,
+                # **The entry's own position, not its position among the chosen ones** — see
+                # `PlaylistSelection.chosen_with_index`.
                 playlist_index=index,
                 playlist_title=probed.title,
                 created_at=datetime.now().astimezone(),
             )
-            for index, entry in enumerate(probed.entries)
+            for index, entry in chosen
         ]
 
     def _durable_job(self, row: Row) -> Job:
