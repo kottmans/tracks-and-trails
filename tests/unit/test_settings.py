@@ -648,3 +648,91 @@ def test_a_file_with_no_presets_reports_nothing(tmp_path: Path) -> None:
 
     assert read.problem is None
     assert read.settings.presets == ()
+
+
+# --- T109-R9: a save that failed must not be reported as one -----------------------------------
+
+
+def test_a_name_carrying_a_control_character_does_not_destroy_the_file(tmp_path: Path) -> None:
+    """**`T109-R9`.** A `QLineEdit` keeps whatever is pasted into it.
+
+    TOML forbids a raw control character in a basic string, so a name containing `\\x08` produced a
+    file `tomllib` refused — and the *next* `load()` therefore returned **no presets** and reset the
+    concurrency limit to its default. One bad character in one name destroyed unrelated settings.
+
+    Escaping by codepoint is total: there is no name the UI accepts that this cannot represent, and
+    the assertion is on the round trip rather than on the escaping, because the round trip is the
+    property.
+    """
+    target = tmp_path / "settings.toml"
+    settled = add_preset(Settings(concurrency=7), a_preset(name="Weekend"))
+    save(settled, target)
+
+    assert (
+        save(add_preset(load(target).settings, a_preset(name="bad\x08name\x00here")), target)
+        is None
+    )
+
+    read = load(target)
+    assert read.problem is None, read.problem
+    assert [preset.name for preset in read.settings.presets] == ["Weekend", "bad\x08name\x00here"]
+    assert read.settings.concurrency == 7, (
+        "an unreadable file reset the concurrency limit — the setting beside the bad name"
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["tab\there", "line\nbreak", "carriage\rreturn", "del\x7f", "\x1b"]
+)
+def test_every_control_character_survives_the_round_trip(tmp_path: Path, name: str) -> None:
+    """Totality, over the shapes a paste can actually produce."""
+    target = tmp_path / "settings.toml"
+
+    save(add_preset(Settings(), a_preset(name=name)), target)
+
+    read = load(target)
+    assert read.problem is None, read.problem
+    assert [preset.name for preset in read.settings.presets] == [name]
+
+
+def test_a_write_that_cannot_happen_says_so(tmp_path: Path) -> None:
+    """**`T109-R9`'s other half**: `save()` swallowed every `OSError` and told nobody.
+
+    The non-fatal policy is right — a read-only config directory is a real deployment state and not
+    a reason the application cannot start — and it was never a reason for a *caller* to be told the
+    write succeeded. `P-4`'s *Save as preset…* said `Saved as Weekend viewing.` over a preset that
+    reached no disk.
+    """
+    unwritable = tmp_path / "settings.toml"
+    unwritable.mkdir()
+
+    failure = save(Settings(), unwritable)
+
+    assert failure is not None, "an impossible write reported success"
+    assert "Error" in failure, failure
+
+
+def test_a_successful_write_says_nothing(tmp_path: Path) -> None:
+    """`None` means written, so a caller cannot read a failure into an ordinary save."""
+    assert save(Settings(), tmp_path / "settings.toml") is None
+
+
+def test_a_failed_write_leaves_the_previous_file_intact(tmp_path: Path) -> None:
+    """Written beside the file and moved onto it, so the file is the old one or the new one.
+
+    `write_text` truncates first, so a write that fails partway leaves a truncated file where
+    working settings used to be — and the next `load()` reports the user's own presets as
+    unreadable, which is the same data loss the escaping defect caused by another route.
+    """
+    target = tmp_path / "settings.toml"
+    save(add_preset(Settings(concurrency=6), a_preset(name="Weekend")), target)
+    before = target.read_text(encoding="utf-8")
+
+    # A scratch path that cannot be created: the directory it would sit in is occupied by a file
+    # of the same name, which is the closest deterministic stand-in for a full disk.
+    (tmp_path / "settings.toml.writing").mkdir()
+    failure = save(add_preset(load(target).settings, a_preset(name="Second")), target)
+
+    assert failure is not None
+    assert target.read_text(encoding="utf-8") == before, "a failed write damaged the good file"
+    assert [preset.name for preset in load(target).settings.presets] == ["Weekend"]

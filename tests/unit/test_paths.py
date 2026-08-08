@@ -18,10 +18,12 @@ from pathlib import Path
 import pytest
 
 from tracks_and_trails.core.paths import (
+    DERIVED_COMPONENT_LENGTH,
     MAX_COMPONENT_BYTES,
     MAX_PATH_CHARACTERS,
     UnsafePathError,
     contained_output_path,
+    derived_component,
     is_contained,
     numbered_variant,
     safe_output_path,
@@ -873,3 +875,62 @@ def test_the_title_inside_a_contained_template_is_still_sanitized(tmp_path: Path
 
     assert is_contained(result, tmp_path)
     assert not set(result.name) & set('<>:"/\\|?*'), result.name
+
+
+# --- T113-R1: a derived component, because a job id is not a filename --------------------------
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "../../../../outside",
+        "../outside",
+        "..\\..\\outside",
+        "/etc/passwd",
+        "C:\\Windows\\System32",
+        "//server/share",
+        "....//....//outside",
+        ".",
+        "..",
+        "CON",
+        "a" * 500,
+        "🎬 emoji",
+        "",
+    ],
+)
+def test_a_derived_component_is_always_one_safe_component(key: str) -> None:
+    """**`T113-R1`, Critical.** A job id is validated as non-empty text and joined into a path.
+
+    Traversal is not defended against here — it is unrepresentable. The output is `[0-9a-f]{32}`
+    whatever the input, so there is no separator, no `..`, no drive letter and no reserved name to
+    reason about, on either platform.
+    """
+    component = derived_component(key)
+
+    assert len(component) == DERIVED_COMPONENT_LENGTH
+    assert set(component) <= set("0123456789abcdef"), component
+    assert Path(component).name == component, "the derived name is not a single component"
+
+
+def test_a_derived_component_is_stable_and_distinct() -> None:
+    """Stable, so a worker and the parent agree and a later run finds what an earlier one left
+    (`REQ-017`); distinct, so two jobs never share a private directory (`T-046`'s whole subject)."""
+    assert derived_component("job-1") == derived_component("job-1")
+    assert derived_component("job-1") != derived_component("job-2")
+
+
+@pytest.mark.parametrize("key", ["../../../../outside", "/etc", "C:\\Windows", "..\\..\\outside"])
+def test_a_crafted_key_cannot_name_anything_outside_the_directory(tmp_path: Path, key: str) -> None:
+    """The property the Critical is about, asserted on the joined path rather than on the name.
+
+    `Path("/downloads") / ".staging-../../../../outside"` is a real directory outside the download
+    folder — and the code that joins it then creates it with `parents=True` and removes it with
+    `shutil.rmtree`.
+    """
+    inside = tmp_path / "downloads" / "nested"
+    inside.mkdir(parents=True)
+
+    joined = inside / f"prefix-{derived_component(key)}"
+
+    assert is_contained(joined, inside)
+    assert is_contained(joined, tmp_path)

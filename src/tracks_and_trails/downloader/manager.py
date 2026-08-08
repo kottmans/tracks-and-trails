@@ -510,6 +510,24 @@ class DownloadManager(QObject):
     ) -> None:
         super().__init__(parent)
         self._repository = repository
+        #: Jobs whose partial is to be thrown away once their process is gone, and the directory
+        #: it lives in (`T113-R3`). **The directory is captured when the stop is asked for**, while
+        #: the row certainly still exists — `remove()` deletes it, and reading it back afterwards
+        #: is how a cleanup comes to have nothing to clean.
+        #:
+        #: **Acted on in `_release`, not here and not in the worker.** The worker cannot tell a
+        #: user's Cancel from an orderly shutdown, and is not reached at all when the parent
+        #: escalates to `terminate()`; and `remove()` deleting the directory before stopping the
+        #: process let that process recreate it. After the tree is reaped is the only moment a
+        #: cleanup cannot be undone by what it is cleaning up after.
+        self._discard_partial_when_done: dict[str, Path] = {}
+        #: Jobs being stopped by shutdown rather than by the user (`T113-R2`).
+        #:
+        #: **An interruption is not a cancellation**, and the difference is what `REQ-017` turns
+        #: on. A cancelled job is terminal and its partial is unwanted; an interrupted one is work
+        #: the user still wants, so its row is left in flight for `recover_interrupted()` to find
+        #: at the next launch and its bytes are kept for the retry to continue from.
+        self._interrupting: set[str] = set()
         self._entry_point = entry_point
         self._cooperative_seconds = cooperative_seconds
         self._terminate_seconds = terminate_seconds
@@ -720,11 +738,17 @@ class DownloadManager(QObject):
         job, and holds only bytes this job downloaded. Leaving it would put an invisible partial in
         their download folder with no row left to explain it.
 
+        **Discarded once the process is gone, never before it** (`T113-R3`). This used to delete
+        the directory as the removal was *asked for*, with the worker still running — and a worker
+        that had not noticed the cancel yet simply recreated it, leaving an invisible partial and
+        no row to explain it. The intent is recorded now and acted on in `_release`, which is the
+        same reason the row itself is deleted there.
+
         *(This said "a partially written file from a cancelled download is the user's to delete",
         then said the opposite when `T046-R1` made every session discard its staging directory. It
-        is now the sentence above: kept on failure, discarded on cancel and on remove.)*
+        is now the sentence above: kept on failure and on an orderly shutdown, discarded on cancel
+        and on remove.)*
         """
-        self._discard_partial(job_id)
         self._discard_waiting(job_id)
         self._retry_at.pop(job_id, None)
 
@@ -743,6 +767,11 @@ class DownloadManager(QObject):
             # `_release` and no reason to defer. The delete is enqueued on the same chain as the
             # cancel's write and therefore lands behind it.
             self.cancel(job_id)
+        # **No session, so nothing can recreate it** — the deferral `_release` exists for does not
+        # apply, and a job removed before it ever ran still has a directory if an earlier attempt
+        # failed and kept one.
+        self._discard_partial(job_id)
+        self._discard_partial_when_done.pop(job_id, None)
         self._delete_row(job_id)
 
     # --- reordering and clearing (`REQ-016`, `T-081`) -----------------------------------
@@ -840,6 +869,17 @@ class DownloadManager(QObject):
             return
         self.queue_cleared.emit()
 
+    def _output_directory_of(self, job_id: str) -> Path | None:
+        """Where this job writes, or `None` for an id this manager cannot answer for.
+
+        Staged first: a staging probe lives in memory and never reaches the repository
+        (`T118-R1`), and `cancel` is called for those too. `None` is ordinary — `cancel` and
+        `remove` are reached from routes that cannot know whether the id is still known.
+        """
+        staged = self._staged.get(job_id)
+        job = staged if staged is not None else self._repository.get(job_id)
+        return None if job is None else Path(job.request.output_directory)
+
     def _discard_partial(self, job_id: str) -> None:
         """Throw away the staging directory a job's interrupted attempts left (`T-113`).
 
@@ -854,10 +894,10 @@ class DownloadManager(QObject):
         fsync; putting it behind the writer would mean inventing a second kind of work for a thread
         whose whole contract is the queue.
         """
-        job = self._repository.get(job_id)
-        if job is None:
+        directory = self._output_directory_of(job_id)
+        if directory is None:
             return
-        worker.discard_staging_for(Path(job.request.output_directory), job_id)
+        worker.discard_staging_for(directory, job_id)
 
     def _delete_row(self, job_id: str) -> None:
         """Delete the job's row and announce it, through the same chain every write uses.
@@ -1506,7 +1546,26 @@ class DownloadManager(QObject):
     # --- cancelling ---------------------------------------------------------------------
 
     def cancel(self, job_id: str) -> None:
-        """Ask `job_id` to stop, and make sure it does (`REQ-015`).
+        """The user asks `job_id` to stop, and it does (`REQ-015`).
+
+        **A cancellation, which is terminal and discards the partial** (`UX-008`). Shutdown stops
+        work too and means something different by it — see `_stop`.
+        """
+        self._stop(job_id, interrupting=False)
+
+    def _stop(self, job_id: str, *, interrupting: bool) -> None:
+        """Stop `job_id`, and record **why**, because the two answers differ (`T113-R2`).
+
+        | Asked by | The row becomes | The partial |
+        |---|---|---|
+        | The user (`cancel`, `remove`) | `CANCELLED`, terminal | discarded once the process ends |
+        | Shutdown | left in flight for `recover_interrupted()` | **kept**, for the resume |
+
+        The mechanics of stopping are identical and are below; only the intent is recorded here.
+        An orderly restart that discarded the partial and wrote a terminal `CANCELLED` left the
+        user with neither bytes to continue from nor a row offering to try again — `REQ-017`
+        promises resumption *across restarts*, and closing the window is how a restart usually
+        begins.
 
         Three phases, escalating on the timer rather than on a wait:
 
@@ -1526,6 +1585,24 @@ class DownloadManager(QObject):
         cancellation. Doing only the second left a durable `CANCELLED` row with a worker running
         for it.
         """
+        # **The user's intent outranks shutdown's, in both directions.** Cancelling a download and
+        # then closing the window is an ordinary sequence, and shutdown cancels every occupant on
+        # the way out — so without this the interruption would overwrite the cancellation the user
+        # had already made, and a job they threw away would come back offering to resume. The
+        # reverse cannot happen today (the window is gone by then) and is written the same way, so
+        # the rule is *the user decides* rather than *whichever ran last*.
+        if interrupting:
+            if job_id not in self._discard_partial_when_done:
+                self._interrupting.add(job_id)
+        else:
+            self._interrupting.discard(job_id)
+            # Read now, while the row is certainly still there. `remove()` deletes it as soon as
+            # the session ends, and a cleanup that looked the directory up afterwards would find
+            # nothing and silently leave the bytes behind.
+            directory = self._output_directory_of(job_id)
+            if directory is not None:
+                self._discard_partial_when_done[job_id] = directory
+
         reservation = self._reserved.get(job_id)
         if reservation is not None and not reservation.withdrawn:
             reservation.withdrawn = True
@@ -1934,7 +2011,11 @@ class DownloadManager(QObject):
         # directly rather than relying on the `clear()` above having already emptied it — the
         # cancel loop should not depend on the order of two statements to stay correct.
         for job_id in self._occupant_ids():
-            self.cancel(job_id)
+            # **Interrupted, not cancelled** (`T113-R2`). Closing the window is how a restart
+            # usually begins, and `REQ-017` promises resumption across one — so the partial is
+            # kept and the row is left for `recover_interrupted()` rather than being written
+            # terminal here.
+            self._stop(job_id, interrupting=True)
         # Keep the timer running: it is the only thing left that can finish this, and that now
         # includes the log listener's own ending. Even with no sessions to cancel, `idle` is the
         # tick's to emit rather than this method's — see `_tick` (`T038-R2`).
@@ -2207,6 +2288,15 @@ class DownloadManager(QObject):
         # while its probe was still being released waits on `_waiting`; nothing else would start it
         # until the next tick, and a lane freed here should not cost a job 50 ms of nothing.
         self._fill_free_slots()
+        # **After the tree is reaped, which is the whole of `T113-R3`** (`UX-008`). A user's Cancel
+        # or Remove ends the partial's life; an orderly shutdown does not. Doing it here rather
+        # than in the worker covers the escalated paths the worker never reaches — `terminate()`
+        # and `kill()` run no handler — and doing it *before* `_delete_row` is what stops a removal
+        # taking away the only row that explained the bytes it left.
+        self._interrupting.discard(session.job_id)
+        directory = self._discard_partial_when_done.pop(session.job_id, None)
+        if directory is not None:
+            worker.discard_staging_for(directory, session.job_id)
         if session.job_id in self._remove_when_done:
             # **Here rather than in `remove()`, because here is where the process is actually
             # gone** (`T-080`). Deleting the row when the cancel was *asked for* would leave a live
@@ -2425,6 +2515,21 @@ class DownloadManager(QObject):
             # there is no partial to be in any state — and the message is now the **only** evidence
             # that the unwind was cooperative rather than forced, which is why the cancel test
             # asserts it instead of a `.part` file.)*
+            # **Unless nobody asked for it** (`T113-R2`). Shutdown stops every occupant through
+            # this same path, and a worker that never reaches its cooperative handler — killed on
+            # the escalation, which is the ordinary case for one stuck in a socket read — is
+            # finalised *here* rather than by an outcome message. Writing `CANCELLED` for it threw
+            # the job away on the user's behalf: a terminal row is not recovered at the next
+            # launch, so an application closed mid-download reopened with nothing offering to
+            # continue. Left in flight instead, which is exactly what a `SIGKILL` already leaves
+            # and what `recover_interrupted()` reads.
+            #
+            # Routed through `_persist` returning `UNCHANGED` rather than simply returning: this
+            # runs from the tick and the stream's end, not from inside a chain step, so releasing
+            # the chain by hand would mark somebody else's running step as finished.
+            if job_id in self._interrupting:
+                self._persist(job_id, lambda _current: UNCHANGED)
+                return
             spoken = session.outcome
             reason = (
                 spoken.message
@@ -2490,8 +2595,22 @@ class DownloadManager(QObject):
         elif outcome.kind is ErrorKind.CANCELLED:
             # Not a failure: the user asked for it, and `CANCELLED` is terminal, so presenting
             # it as `FAILED` would offer a retry for something nobody wants retried.
+            #
+            # **Unless nobody asked for it** (`T113-R2`). Shutdown stops the same sessions through
+            # the same worker path, and writing `CANCELLED` for one of those threw the job away on
+            # the user's behalf: a terminal row is not recovered at the next launch, so an
+            # application closed mid-download reopened with no partial and nothing offering to
+            # continue. Left in flight instead, which is what `recover_interrupted()` reads —
+            # the same route a `SIGKILL` already takes, and honest, because the download *was*
+            # interrupted.
+            interrupted = job_id in self._interrupting
             self._persist(
-                job_id, lambda current: self._settled(current, self._cancelled, outcome.message)
+                job_id,
+                lambda current: (
+                    UNCHANGED
+                    if interrupted
+                    else self._settled(current, self._cancelled, outcome.message)
+                ),
             )
         else:
             self._persist(

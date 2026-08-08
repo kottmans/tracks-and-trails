@@ -1883,13 +1883,17 @@ def test_a_failed_download_keeps_its_partial_for_the_retry(
     )
 
 
-def test_a_cancelled_download_discards_its_partial(
+def test_a_cancelled_download_leaves_its_partial_for_the_parent_to_decide(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`UX-008`: discarded on cancel, because a cancel is somebody saying they do not want it.
+    """**`T113-R3`**: the worker does not end the partial's life, because it cannot.
 
-    The other half of keeping one on failure, and the reason the two are separated rather than
-    both handled by a `finally`: the difference is *whose* decision ended the download.
+    This branch used to delete it, which was wrong twice over. The worker cannot tell *why* it is
+    stopping — a user's Cancel and an orderly shutdown reach it identically, and `T113-R2` says
+    only one of them means the download is unwanted — and it is not reached at all when the parent
+    escalates to `terminate()` or `kill()`, so an uncooperative worker kept its partial whatever
+    the intent was. `DownloadManager` decides, after the process is gone; the manager suite is
+    where that is asserted.
     """
     monkeypatch.setattr(
         worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
@@ -1923,10 +1927,11 @@ def test_a_cancelled_download_discards_its_partial(
 
     outcome = next(m for m in drain(queue) if isinstance(m, Failed))
     assert outcome.kind is ErrorKind.CANCELLED
-    assert worker_module.resumable_partial(tmp_path, "job-1") is None, (
-        "a cancelled download left bytes in the user's folder that nothing will ever finish"
+    partial = worker_module.resumable_partial(tmp_path, "job-1")
+    assert partial is not None and partial.read_bytes() == b"half a download", (
+        "the worker decided the partial's fate from a branch that cannot know the intent, and "
+        "that the escalated stop paths never reach"
     )
-    assert not worker_module.staging_directory(tmp_path, "job-1").exists()
 
 
 def test_asking_about_a_partial_that_does_not_exist_is_not_an_error(tmp_path: Path) -> None:
@@ -2196,3 +2201,190 @@ def test_a_partially_claimed_multi_language_set_leaves_nothing_half_moved(
         "Clip.en.vtt",
         "Clip.mp4",
     ], "the download's own work did not all end up back in staging for the retry"
+
+
+# --- T109-R8: a reported source is contained before anything moves -----------------------------
+
+
+def test_a_sidecar_reported_through_a_dotdot_spelling_is_refused(tmp_path: Path) -> None:
+    """**`T109-R8`, Critical.** `staging in path.parents` compares *components*, not files.
+
+    `staging/../Clip.de.vtt` has `staging` among its parents and names a file beside the directory
+    rather than in it — so a user-owned file at that path was moved into the download's output
+    family under a name they had not asked for. This is the reviewer's own probe: bytes the session
+    did not create, at the adjacent path, reported through the `..` spelling.
+    """
+    staging, _ = _staged_with_subtitle(tmp_path, "de")
+    victim = tmp_path / "Clip.de.vtt"
+    victim.write_bytes(b"the user's own subtitle")
+    reported = {"requested_subtitles": {"de": {"filepath": str(staging / ".." / "Clip.de.vtt")}}}
+
+    with pytest.raises(UnsafePathError, match="outside its own working directory"):
+        worker_module.claim_outputs(
+            reported,
+            staging=staging,
+            stem="Clip",
+            target=tmp_path / "Clip.mp4",
+            produced=staging / "Clip.mp4",
+            writing_subtitles=True,
+        )
+
+    assert victim.read_bytes() == b"the user's own subtitle", (
+        "a file the session never created was moved into its output family"
+    )
+    assert sorted(path.name for path in tmp_path.iterdir() if path.is_file()) == ["Clip.de.vtt"], (
+        "the refusal left reservations behind, so it happened after the family was taken"
+    )
+
+
+def test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused(tmp_path: Path) -> None:
+    """The spelling a purely textual check cannot see at all.
+
+    `is_contained` resolves, so the question asked is *where does this file live*, not *what does
+    its path look like* — `T034-R1` is the same lesson at the destination end of this module.
+    """
+    staging, _ = _staged_with_subtitle(tmp_path, "de")
+    (staging / "Clip.de.vtt").unlink()
+    outside = tmp_path / "important.txt"
+    outside.write_bytes(b"not ours")
+    (staging / "Clip.de.vtt").symlink_to(outside)
+    reported = {"requested_subtitles": {"de": {"filepath": str(staging / "Clip.de.vtt")}}}
+
+    with pytest.raises(UnsafePathError, match="outside its own working directory"):
+        worker_module.claim_outputs(
+            reported,
+            staging=staging,
+            stem="Clip",
+            target=tmp_path / "Clip.mp4",
+            produced=staging / "Clip.mp4",
+            writing_subtitles=True,
+        )
+
+    assert outside.read_bytes() == b"not ours"
+
+
+def test_a_media_source_outside_staging_is_refused(tmp_path: Path) -> None:
+    """The `produced` path had **no** containment check at all — the same class, unguarded.
+
+    It comes out of `requested_downloads[].filepath`, which is yt-dlp's report rather than this
+    application's instruction, so it is an input like any other.
+    """
+    staging, _ = _staged_with_subtitle(tmp_path)
+    elsewhere = tmp_path / "somebody-elses.mp4"
+    elsewhere.write_bytes(b"not ours either")
+
+    with pytest.raises(UnsafePathError, match="outside its own working directory"):
+        worker_module.claim_outputs(
+            {},
+            staging=staging,
+            stem="Clip",
+            target=tmp_path / "Clip.mp4",
+            produced=elsewhere,
+            writing_subtitles=False,
+        )
+
+    assert elsewhere.read_bytes() == b"not ours either"
+
+
+def test_the_staging_directory_itself_is_not_a_source(tmp_path: Path) -> None:
+    """`is_contained` answers `True` for the directory itself, and a directory is not an output."""
+    staging, _ = _staged_with_subtitle(tmp_path)
+
+    with pytest.raises(UnsafePathError, match="outside its own working directory"):
+        worker_module.claim_outputs(
+            {},
+            staging=staging,
+            stem="Clip",
+            target=tmp_path / "Clip.mp4",
+            produced=staging,
+            writing_subtitles=False,
+        )
+
+
+# --- T113-R1: a crafted job id cannot reach outside the output directory -----------------------
+#
+# `Job.id` is validated as non-empty text and nothing more. It comes off a database row, which a
+# user can edit and a corrupt write can mangle, and `staging_directory` joins it into a path that
+# `_run` creates with `parents=True` and `discard_staging_for` removes with `shutil.rmtree`.
+
+
+CRAFTED_IDS = [
+    "../../../../outside",
+    "../outside",
+    "..\\..\\outside",
+    "/etc",
+    "C:\\Windows",
+    "....//....//outside",
+    "..",
+]
+
+
+@pytest.mark.parametrize("job_id", CRAFTED_IDS)
+def test_a_crafted_job_id_names_a_directory_inside_the_output_folder(
+    tmp_path: Path, job_id: str
+) -> None:
+    """The join itself, before anything is created or removed.
+
+    Asserted through `staging_directory` rather than through `derived_component`, because the
+    defect was in the *composition*: the helper can be perfect and the call site still concatenate.
+    """
+    downloads = tmp_path / "downloads" / "nested"
+    downloads.mkdir(parents=True)
+
+    staging = worker_module.staging_directory(downloads, job_id)
+
+    assert is_contained(staging, downloads), f"{job_id!r} named {staging}"
+    assert staging.parent == downloads
+    assert staging.name.startswith(worker_module.STAGING_PREFIX)
+
+
+@pytest.mark.parametrize("job_id", CRAFTED_IDS)
+def test_a_crafted_job_id_cannot_create_or_delete_outside_the_output_folder(
+    tmp_path: Path, job_id: str
+) -> None:
+    """**`T113-R1`, Critical — the reviewer's own probe.**
+
+    A sentinel outside the chosen directory, then the exact sequence the worker and the manager
+    perform: `mkdir(parents=True)` on the computed staging path, then `discard_staging_for`. With
+    the id spelled into the name, `../../../../outside` resolved to a real directory and the
+    sentinel was deleted.
+    """
+    downloads = tmp_path / "downloads" / "nested"
+    downloads.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "user-file.txt"
+    sentinel.write_bytes(b"the user's own file")
+
+    staging = worker_module.staging_directory(downloads, job_id)
+    staging.mkdir(parents=True, exist_ok=True)
+    (staging / "Clip.mp4.part").write_bytes(b"half a download")
+    worker_module.discard_staging_for(downloads, job_id)
+
+    assert sentinel.read_bytes() == b"the user's own file", (
+        f"the id {job_id!r} reached outside the output directory and deleted a user's file"
+    )
+    assert outside.is_dir(), f"the id {job_id!r} removed a directory outside the output folder"
+    assert not staging.exists(), "the job's own directory was not cleaned up"
+
+
+def test_a_discard_refuses_a_staging_path_outside_its_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The belt-and-braces check at the `rmtree`, driven by making the derivation lie.
+
+    `derived_component` makes an escaping name unrepresentable, so this branch is unreachable
+    through the id — which is exactly what was said about `safe_output_path`'s final containment
+    check until `T034-R1` reached it through a symlink. A recursive delete is the one operation
+    here where being wrong is unrecoverable, so it asks rather than assumes.
+    """
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "user-file.txt").write_bytes(b"the user's own file")
+    monkeypatch.setattr(worker_module, "staging_directory", lambda *_: outside)
+
+    worker_module.discard_staging_for(downloads, "job-1")
+
+    assert (outside / "user-file.txt").exists(), "the rmtree ran on a path outside the directory"

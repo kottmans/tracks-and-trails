@@ -389,6 +389,41 @@ def contained_output_path(directory: Path, rendered: str) -> Path:
     return safe_output_path(directory, rendered)
 
 
+#: How many hex characters a derived component carries.
+#:
+#: 32, from a 16-byte digest. Long enough that two job ids colliding is not a thing to reason about
+#: — and a collision here would mean two downloads sharing a private directory, which is the
+#: condition `T-046` exists to prevent — and short enough to leave `MAX_PATH_CHARACTERS` room for
+#: the output directory it sits inside.
+DERIVED_COMPONENT_LENGTH: Final = 32
+
+
+def derived_component(key: str) -> str:
+    """A fixed-width, path-safe single component derived from `key` (`T113-R1`).
+
+    **For a name the application composes out of an identifier it did not choose.** A job id is
+    validated as non-empty text and nothing more — it comes off a database row, which a user can
+    edit and a corrupt write can mangle — so joining it into a path is joining *arbitrary text*
+    into a path. `Path("/downloads") / ".staging-../../../../outside"` is a real directory outside
+    the download folder, and the code that then creates it with `parents=True` and removes it with
+    `shutil.rmtree` is doing so under the belief that it owns it. A reviewer reproduced exactly
+    that: a sentinel file outside the chosen directory was deleted.
+
+    **Hashed rather than sanitized**, for `thumbnail_cache_path`'s reason and one more of its own.
+    Sanitizing answers *"what is this text, made safe?"* — a question with a long tail of
+    separators, `..`, drive letters, UNC prefixes, reserved names and both platforms' rules, where
+    being wrong once is being wrong at a destructive operation. A digest answers a different
+    question: *"a name of my own, derived from that text"*. The output is `[0-9a-f]{32}` whatever
+    the input, so traversal is not defended against — it is unrepresentable.
+
+    Deterministic across processes and platforms, which is what lets a worker and the parent agree
+    on the same directory, and what lets one run find what the previous run left (`REQ-017`).
+    """
+    return hashlib.blake2b(
+        key.encode("utf-8"), digest_size=DERIVED_COMPONENT_LENGTH // 2
+    ).hexdigest()
+
+
 def numbered_variant(path: Path, index: int) -> Path:
     """`clip.mp4` at index 2 becomes `clip (2).mp4` — the next candidate when a path is taken.
 

@@ -59,6 +59,8 @@ from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.paths import (
     UnsafePathError,
     contained_output_path,
+    derived_component,
+    is_contained,
     numbered_variant,
 )
 from tracks_and_trails.core.presets import selector_merges
@@ -560,13 +562,15 @@ def _run(
         )
     except BaseException as error:
         if _is_cancellation(error, resolved):
-            # **A cancel discards the partial** (`T-113`, `REQ-017`). This is the half of the
-            # partial's lifetime that a user decides: a cancel is somebody saying they no longer
-            # want the download, so keeping bytes of it in their folder against a retry they did
-            # not ask for is the wrong default. A *failure* keeps them, because a retry after a
-            # network error is exactly what resume is for. Best-effort, like every other
-            # cleanup here — the outcome below is what matters.
-            discard_staging_for(directory, job_id)
+            # **The partial is not discarded here, and that is `T113-R2` and `T113-R3`.** This
+            # branch used to delete it, which was wrong twice over. It cannot tell *why* it is
+            # stopping — a user's Cancel and an orderly shutdown reach it identically, and only
+            # one of them means the download is unwanted — and it is not reached at all when the
+            # parent escalates to `terminate()` or `kill()`, so an uncooperative worker left the
+            # partial behind whatever the intent was. The parent knows the intent and can act
+            # *after* the process is gone, which is the only moment at which a cleanup cannot be
+            # undone by the process it is cleaning up after. `DownloadManager._release` owns it.
+            #
             # Classified here rather than by the adapter for the same reason as `UnsafePathError`
             # above: the user asked for this. `EXTRACTOR_ERROR` would report the site as broken,
             # and `ErrorKind.CANCELLED` is the one kind `core.errors` treats as not a failure to
@@ -974,11 +978,20 @@ def staging_directory(directory: Path, job_id: str) -> Path:
     `.part` at the path it is told to write and continues from it; the *only* reason this
     application restarted from the beginning was that it never told it the same path twice.
 
+    **The id is hashed, not spelled** (`T113-R1`, **Critical**). The first version wrote the job id
+    straight into the name, and `Job.id` is validated as non-empty text and nothing else — it comes
+    off a database row that a user can edit and a corrupt write can mangle. An id of
+    `../../../../outside` therefore named a real directory outside the chosen download folder,
+    which `_run` then created with `parents=True`, wrote into with `overwrites=True`, and
+    `discard_staging_for` removed with `shutil.rmtree`. A reviewer deleted a sentinel file that
+    way. `derived_component` makes the leaf `[0-9a-f]{32}` whatever the id is, so there is no
+    traversal to defend against.
+
     Not created here. `_run` creates it when it is about to download, so asking where a job's
     partial *would* be — which `resumable_partial` and the manager's cleanup both do — costs no
     directory on disk.
     """
-    return directory / f"{STAGING_PREFIX}-{job_id}"
+    return directory / f"{STAGING_PREFIX}-{derived_component(job_id)}"
 
 
 def resumable_partial(directory: Path, job_id: str) -> Path | None:
@@ -1000,17 +1013,6 @@ def resumable_partial(directory: Path, job_id: str) -> Path | None:
         return None
     partials = sorted(staging.glob("*.part"))
     return partials[0] if partials else None
-
-
-def discard_staging_for(directory: Path, job_id: str) -> None:
-    """Throw away whatever a job's interrupted attempts left behind (`T-113`).
-
-    The other half of keeping a partial: something has to end its life, or a download the user
-    abandoned leaves bytes in their download folder for ever. Called when a job is **cancelled**
-    and when it is **removed** — the two moments a user says they do not want it — and never on a
-    failure, because a failure is the case a retry most wants a head start for.
-    """
-    _discard_staging(staging_directory(directory, job_id))
 
 
 def requested_sidecars(result: Mapping[str, Any]) -> tuple[tuple[Path, bool], ...]:
@@ -1060,6 +1062,27 @@ def _reserve_exactly(path: Path) -> bool:
         raise UnsafePathError(f"cannot write to {str(path)!r}: {error}") from error
     os.close(handle)
     return True
+
+
+def _inside(path: Path, directory: Path) -> bool:
+    """Whether `path` is a **resolved** entry strictly inside `directory` (`T109-R8`).
+
+    **Resolved, because the question is about the file and not about the spelling.**
+    `staging in path.parents` is a comparison of path *components*: `staging/../Clip.de.vtt` has
+    `staging` among its parents and names a file next to the directory rather than in it. A
+    reviewer put user-owned bytes there, had them reported as a requested subtitle, and watched
+    them moved into the download's output family — a file this session never created, relocated
+    under a name the user had not asked for. `is_contained` resolves both sides, so `..` collapses
+    and a symlink is judged by where it points.
+
+    **Strictly inside**: the directory itself is not a file this session produced, and
+    `is_contained` answers `True` for `path == directory`.
+    """
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    return resolved != directory.resolve() and is_contained(path, directory)
 
 
 def _sidecar_suffix(name: str, stem: str) -> str:
@@ -1116,13 +1139,30 @@ def claim_outputs(
     with a `filepath` that no longer exists, and that absence *is* the embed having worked. With the
     subtitles written instead, the same absence means a file the user asked for is not there.
     """
-    sidecars = [
-        (path, exists)
-        for path, exists in requested_sidecars(result)
-        # Not ours to move. yt-dlp was given a literal template inside `staging`, so anything
-        # outside it was not written by this session and is not this function's to touch.
-        if staging in path.parents
+    # **Every reported source is resolved and contained before anything is reserved or moved**
+    # (`T109-R8`, **Critical**). `produced` and each sidecar path come out of yt-dlp's own result
+    # dictionary — this function's *inputs*, not its outputs — and the containment machinery in
+    # this file all points the other way, at where a file is going. A source outside the staging
+    # directory was never written by this session, so moving it is relocating somebody else's
+    # file; and the lexical test this replaces let `staging/../Clip.de.vtt` through, which is a
+    # file beside the directory rather than in it.
+    #
+    # **Refused rather than skipped, and refused first.** Skipping the offender would leave a
+    # session reporting success without an output the request asked for, which is `T109-R3`. Doing
+    # it before the reservation loop is what makes *"without leaving reservations"* true by
+    # construction rather than by unwinding.
+    outside = [
+        path
+        for path, exists in ((produced, True), *requested_sidecars(result))
+        if exists and not _inside(path, staging)
     ]
+    if outside:
+        raise UnsafePathError(
+            "the download reported a file outside its own working directory: "
+            + ", ".join(str(path) for path in sorted(outside))
+        )
+
+    sidecars = [(path, exists) for path, exists in requested_sidecars(result)]
     if writing_subtitles:
         absent = [path.name for path, exists in sidecars if not exists]
         if absent:
@@ -1191,6 +1231,30 @@ def _discard_staging(staging: Path) -> None:
     """
     with suppress(OSError):
         shutil.rmtree(staging)
+
+
+def discard_staging_for(directory: Path, job_id: str) -> None:
+    """Throw away whatever a job's interrupted attempts left behind (`T-113`).
+
+    The other half of keeping a partial: something has to end its life, or a download the user
+    abandoned leaves bytes in their download folder for ever. Called when a job is **cancelled by
+    the user** and when it is **removed** — the two moments somebody says they do not want it — and
+    never on a failure, because a failure is the case a retry most wants a head start for, nor on
+    an orderly shutdown, which is an interruption rather than a decision (`T113-R2`, `UX-008`).
+
+    **Checked again before the `rmtree`, and the belt-and-braces is deliberate** (`T113-R1`).
+    `derived_component` already makes an escaping name unrepresentable, so this branch is not
+    reachable through the id — which is exactly what was said about `safe_output_path`'s final
+    containment check until `T034-R1` reached it through a symlink. A recursive delete is the one
+    operation in this file where being wrong is unrecoverable, so it asks rather than assumes.
+    """
+    staging = staging_directory(directory, job_id)
+    if not is_contained(staging, directory):
+        logging.getLogger(f"{APP_SLUG}.worker").error(
+            "refusing to remove %s: it is not inside %s", staging, directory
+        )
+        return
+    _discard_staging(staging)
 
 
 def release_output_path(reserved: Path) -> None:

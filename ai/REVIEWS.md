@@ -12056,3 +12056,120 @@ criterion — an option that produces no file is the defect the task exists to p
 behaviour change beyond the reported claim-failure path. The risk is a site that lists a language
 and serves nothing turning a mostly-successful download into a failure. It is recorded here rather
 than left for the re-review to find; the embedded case is explicitly exempt and tested.
+
+
+## 2026-08-08 — T-109 focused correction re-review
+
+**Reviewer:** Codex
+
+**Original reviewed head:** `4cb549d`
+
+**Correction parent/head:** `2c0ea45..1381f7f` (`da7f97b` already supplied `T109-R6`)
+
+**Scope:** `T109-R1`..`T109-R7` and regressions in their correction diff. The review used an
+immutable archive of `1381f7f`; Claude Code's concurrent, uncommitted `T-113` source changes in the
+shared checkout were excluded and left untouched.
+
+**Verdict:** **Changes requested.** The seven original findings' requested behaviours are present,
+but the correction path has one new Critical containment defect and two blocking Medium findings.
+Because a Critical finding remains, another focused correction and independent verification pass
+is authorized by `AGENTS.md` §10.
+
+### Original findings
+
+| ID | Re-review result | Evidence |
+|---|---|---|
+| `T109-R1` | **Resolved.** `("all",)` expands to every offered language; specific languages remain specific; a disabled empty-source list preserves the preset. | Focused UI tests and direct inspection of `ALL_SUBTITLE_LANGUAGES` / `_show_preset`. |
+| `T109-R2` | **Resolved.** A live non-MP3 choice clears MP3 quality, while wholly disabled audio/subtitle groups preserve values the user could not change. | Focused UI tests, including all non-MP3 codecs and the disabled sibling groups. |
+| `T109-R3` | **Resolved as reported.** Missing written subtitles fail the session, embedded intermediates may be absent, and a partial family move is rolled back in the exercised failure. `T109-R8` below is a distinct source-containment regression in the replacement API. | Focused worker tests plus the session-level missing/embedded probes. |
+| `T109-R4` | **Resolved.** Media and present sidecars reserve and move at one collision index. | The uncollided, sidecar-only collision, and multi-member collision cases passed. |
+| `T109-R5` | **Resolved as reported.** The explicit `ActionRole` exists, does not accept the one-off dialog, and calls the settings creation seam. `T109-R9` covers new persistence failure cases in that seam. | Focused settings/UI tests and composition wiring inspection. |
+| `T109-R6` | **Resolved** (unchanged from the initial review). | Bare and Win32 mypy both pass at `1381f7f`. |
+| `T109-R7` | **Resolved.** The comment now describes the `FFmpegMetadata` default-on behaviour the test proves. | Source/test inspection. |
+
+### New findings in the correction diff
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---|---|---|---|
+| `T109-R8` | **Critical** | **Yes** | `claim_outputs` decides that a reported source belongs to the private staging directory with the lexical test `staging in path.parents`. `staging/../Clip.de.vtt` therefore passes. A deterministic probe put user-owned bytes at that adjacent path, reported the `..` spelling as a requested subtitle, and called `claim_outputs`; the original user path disappeared and its bytes were moved into the claimed download family. The `produced` media source has no containment check at all, so it is the same unchecked-source class. This crosses the ownership boundary and can relocate a file the session did not create. | Resolve and enforce containment for **every source before reserving or moving anything**: produced media and all reported sidecars, including `..`, absolute-outside, and symlink spellings. An outside/malformed reported source must fail the session without touching that source or leaving reservations. Add deterministic tests for both media and sidecars and mutation-check weakening the resolved containment check. Audit every yt-dlp-reported path consumed as a source by this claim route. | **Open** |
+| `T109-R9` | **Medium** | **Yes** | The new Save-as-preset path can report success without a durable preset, and can write TOML it cannot read. `settings.save()` swallows every `OSError`; composition then returns `None`, so the dialog says `Saved as …` even when the target is a directory/read-only/unwritable. Separately, `_toml_string` escapes only quote, slash, newline, CR and tab. `QLineEdit` preserves other pasted control characters; saving a name containing `\x08` produced invalid TOML, and the next `load()` returned no presets and reset concurrency from 7 to 3 with `Illegal character '\x08'`. Both are observable correctness/data-integrity failures in the action added for `T109-R5`. | Make the sink's result reflect the actual write outcome without weakening settings' non-fatal error policy, and make serialization total for every name the UI accepts (or validate/refuse unsupported characters before replacing the file). Prove a refused write is not labelled saved and a control-character name cannot make existing settings/presets unreadable. Mutation-check both failure paths. | **Open** |
+| `T109-R10` | **Medium** | **Yes** | The correction updated current-truth coordination files but left them materially contradicting the corrected product: `ai/TASKS.md` still says `claim_sidecars` performs the work and that the editor has no Save-as-preset button; its `T-190` criterion says the control arrives with `T-111`. `ai/STATUS.md` likewise says the button is deliberately absent and describes `claim_sidecars`. These are not historical snapshots; they tell the next implementer that the removed API/current control are the opposite of reality. | Update the stale current-truth passages to the approved implementation and keep the historical review narrative intact. | **Open** |
+
+### Reviewer verification at `1381f7f`
+
+| Check | Result |
+|---|---|
+| `git diff --check 1381f7f^ 1381f7f` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass**, 209 files |
+| `mypy src` | **pass**, 50 source files |
+| bare `mypy` | **pass**, 122 files |
+| `mypy --platform win32` | **pass**, 122 files |
+| Focused settings/model/preset/options/add-dialog/worker tests | **552 passed, 1 skipped** |
+| Main-window/composition tests | **83 passed** |
+| Resolved-path containment probe | **failed the safety property**: `staging/../Clip.de.vtt` moved the adjacent user file |
+| Plain outside-sidecar probe | **failed the output-completeness property**: media succeeded with `kept == ()` while the reported subtitle was ignored |
+| Settings persistence probes | **failed**: an `OSError` target returned normally; a `\x08` name made all presets unreadable and reset concurrency on load |
+
+The implementer's full-suite result was not re-run in this focused pass. Windows runtime and real
+sites remain unverified. Only this review record was changed by the reviewer; reviewed source,
+tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or push was made.
+
+
+## 2026-08-08 — T-113 correction batch, and T-109's second
+
+**Implementer:** Claude Code
+**Corrects:** `T113-R1`..`T113-R3` and `T109-R8`..`T109-R10`
+**Status of each finding:** corrected and **awaiting re-review**. Only the Reviewer marks a finding
+`Resolved` (`AGENTS.md` §10). Two Criticals were open, so the further focused passes they need are
+the ones §10 authorizes without asking.
+
+### The two Criticals were one defect class, at opposite ends of the same module
+
+`T113-R1` was a **destination** this application composes out of an identifier it did not choose;
+`T109-R8` was a **source** it accepts from yt-dlp's own result dictionary. Everything in
+`core/paths.py` points at destinations derived from *titles*, and both of these were paths derived
+from somewhere else entirely — which is why neither was covered by machinery that has been through
+four review rounds. They are corrected differently on purpose:
+
+- **A destination is made unrepresentable.** `derived_component` maps any job id to `[0-9a-f]{32}`,
+  so there is no separator, `..`, drive letter or reserved name left to reason about, on either
+  platform. Sanitizing would have been a list of special cases at a `shutil.rmtree`.
+- **A source is resolved and refused.** A source cannot be rewritten — it either is a file this
+  session produced or it is somebody else's — so every reported path is resolved and contained
+  before anything is reserved or moved, and one outside the staging directory fails the session.
+
+| ID | What changed | Evidence |
+|---|---|---|
+| `T113-R1` | `staging_directory` hashes the id through `core/paths.derived_component`. `discard_staging_for` re-checks containment before the `rmtree` — unreachable through the id now, which is what was said about `safe_output_path`'s final check until `T034-R1` reached it through a symlink. | `test_a_crafted_job_id_names_a_directory_inside_the_output_folder` and `…cannot_create_or_delete_outside_the_output_folder` over seven spellings, each with a pre-created sentinel outside, running the worker's own `mkdir` and the manager's cleanup; plus `…cannot_make_removal_delete_outside_the_output_folder` for the manager entry point, and `test_a_discard_refuses_a_staging_path_outside_its_directory` for the guard |
+| `T113-R2` | Shutdown *interrupts* rather than cancels: `_stop(interrupting=True)` keeps the partial and leaves the row in flight for `recover_interrupted()`, which is the route a `SIGKILL` already takes. The user's intent outranks shutdown's in both directions. | `test_shutdown_keeps_the_partial_and_leaves_the_job_recoverable`, `test_a_users_cancel_is_still_terminal`, and the orderly close/reopen end-to-end proof requiring a **ranged** continuation and byte-exact output |
+| `T113-R3` | The worker no longer decides; `_release` discards once the tree is reaped, for a user Cancel or Remove only. `remove()` records the intent instead of deleting up front. | `test_cancelling_an_uncooperative_download_still_discards_its_partial` and `test_removing_an_uncooperative_download_discards_what_it_recreates`, both against a child that ignores `SIGTERM` and rewrites its partial every 20 ms |
+| `T109-R8` | `_inside` resolves both sides and requires strict containment; `produced` is checked too. A reported path outside staging raises **before** the reservation loop. | The `..` spelling, a symlink out of staging, an outside media source, and the staging directory itself — each asserting the victim's bytes and that no reservation was left |
+| `T109-R9` | `save()` returns the failure instead of swallowing it, writes through a scratch file and `os.replace`, and `_toml_string` escapes **every** control character by codepoint. Composition reports the write's own answer and does not advance its in-memory copy when the write failed. | `test_a_write_that_cannot_happen_says_so`, `test_a_failed_write_leaves_the_previous_file_intact`, `test_a_name_carrying_a_control_character_does_not_destroy_the_file`, `test_every_control_character_survives_the_round_trip` |
+| `T109-R10` | `ai/TASKS.md` and `ai/STATUS.md` describe `claim_outputs` and the built *Save as preset…*; `T-190`'s criterion now asks for the control to be described rather than deferred. The historical narrative is kept in the past tense. | Prose |
+
+### What the corrections cost beyond the findings
+
+- **`UX-008` is amended**, as `T113-R2` required: the lifetime table gains a row for an orderly
+  close, and states who ends a partial's life and when.
+- **One thing the review did not reach, found by writing its test.** `shutdown()` cancels every
+  occupant, so a job the user had *already* cancelled was being re-marked as interrupted — its
+  cancellation would have been undone by closing the window. The existing
+  `test_shutdown_leaves_no_worker_no_thread_and_no_job_in_flight` caught it.
+- **`claim_output_path` was already deleted** in the previous batch; `_reserve_exactly` remains the
+  single `O_CREAT | O_EXCL` site.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `ruff check .` / `ruff format --check .` | **pass** |
+| `mypy src`, bare `mypy`, `mypy --platform win32` | **pass**, 50 / 122 / 122 files |
+| Full default suite | **2671 passed, 14 skipped, 2 deselected** |
+| Mutation checks | Six, **all killed**: spelling the job id into the staging path; discarding in the worker rather than the parent; making shutdown cancel like the user; the lexical `staging in path.parents` test; swallowing the write failure; escaping only five control characters. |
+| Windows runtime, real sites | **Still unverified.** |
+
+**A mutation survived on the first attempt and is recorded because of it.** The first `T113-R1`
+tests exercised `derived_component` directly, so reverting `staging_directory` to concatenation
+left them green — the helper was proved and the composition was not, which is the same shape as the
+defect. The tests now drive `staging_directory`, the worker's `mkdir` and the manager's `remove`.

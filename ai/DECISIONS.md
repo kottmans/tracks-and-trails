@@ -4493,7 +4493,9 @@ that makes a criterion change checkable after the conversation that produced it 
 ## UX-008 — Per-job pause stays out; resume is what `.part` files do, not a state
 
 **Status:** **Accepted** (2026-08-08) — taken by `T-113`, which `P-10` named as the decision's
-owner. Recorded because `UX-007` required an answer *"either way"*.
+owner. Recorded because `UX-007` required an answer *"either way"*. **Amended the same day** by
+`T113-R1`, `T113-R2` and `T113-R3`: the lifetime table gains a row for an orderly close, and names
+who ends a partial's life and when.
 **Date:** 2026-08-08
 **Supersedes:** nothing. **Answers** `UX-001`'s named reopening condition and closes `P-10`.
 **Does not amend** `UX-006`: the queue-level gate and its stopped-at-launch default are untouched.
@@ -4552,17 +4554,40 @@ application mid-download, and the partial is **kept** — the next attempt conti
 
 ### The partial file's lifetime, stated once
 
-| What happens | The partial |
-|---|---|
-| The download succeeds | discarded with the staging directory |
-| The download fails | **kept**, so the retry has a head start |
-| The application is killed | **kept** — nothing runs to delete it, which is the mechanism |
-| The user cancels | discarded — a cancel is a statement that it is not wanted |
-| The user removes the job | discarded, for the same reason, and because no row would be left to explain it |
-| The server refuses the resume | replaced: yt-dlp restarts from zero and writes the correct file |
+| What happens | The partial | The row |
+|---|---|---|
+| The download succeeds | discarded with the staging directory | `COMPLETED` |
+| The download fails | **kept**, so the retry has a head start | `FAILED`, retryable |
+| The application is killed | **kept** — nothing runs to delete it | left in flight; recovered at the next launch |
+| **The application is closed** | **kept** | left in flight; recovered at the next launch |
+| The user cancels | discarded | `CANCELLED`, terminal |
+| The user removes the job | discarded, and no row would be left to explain it | deleted |
+| The server refuses the resume | replaced: yt-dlp restarts from zero and writes the correct file | unchanged |
 
-**Nothing of the user's is ever in that directory.** It is created by one job, holds only bytes that
-job downloaded, and is named for the job id.
+**An orderly close is an interruption, not a cancellation** (amended 2026-08-08, `T113-R2`). The
+first version of this table had no row for closing the window, and the implementation treated it as
+a cancel — `shutdown()` cancels every occupant, so the partial was deleted and the row was written
+terminal. A terminal row is not recovered at the next launch, so an application closed mid-download
+reopened with neither bytes to continue from nor anything offering to try again. `REQ-017` promises
+resumption **across restarts**, and closing the window is how a restart usually begins.
+
+So the intent is recorded when work is stopped, and the two intents differ: the user's Cancel is a
+statement that the download is unwanted, and shutdown's is a statement that the application is
+going away. **The user's outranks shutdown's** — cancelling a download and then closing the window
+is an ordinary sequence, and the cancellation must survive it.
+
+**Who ends the partial's life, and when** (amended 2026-08-08, `T113-R3`). The parent, once the
+process is gone. The worker's cooperative cancellation branch used to do it, which was wrong twice:
+that branch cannot tell a user's Cancel from a shutdown, and an escalation to `terminate()` or
+`kill()` never reaches it at all. `remove()` deleting the directory as the removal was *asked for*
+had the same shape from the other side — a worker that had not noticed yet simply recreated it.
+
+**Nothing of the user's is ever in that directory**, and two things make that true rather than
+assumed. Its name is a digest of the job id (`T113-R1`, **Critical**): `Job.id` is validated as
+non-empty text and nothing more, it comes off a row a user can edit, and joining it into a path made
+`../../../../outside` a real directory that this application created, wrote into and recursively
+deleted. And every path the download *reports* is resolved and contained before it is moved
+(`T109-R8`), because a source outside the staging directory is a file the session never created.
 
 ### Consequences
 

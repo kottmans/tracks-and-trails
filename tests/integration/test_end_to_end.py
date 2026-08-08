@@ -1953,3 +1953,100 @@ def test_a_killed_download_resumes_from_its_partial_rather_than_starting_again(
     finally:
         composition.shutdown.begin()
         assert spin(lambda: composition.shutdown.finished, timeout=120)
+
+
+def test_an_orderly_close_and_reopen_continues_the_download(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    resumable_media_url: Callable[..., tuple[str, list[tuple[str, int]]]],
+) -> None:
+    """**`T113-R2`**: closing the window is how a restart usually begins.
+
+    The hard-kill proof above establishes that nothing running is what keeps the partial. This is
+    the case where something *is* running: `shutdown()` cancels every occupant, and the cooperative
+    worker path used to delete the partial while the manager wrote a terminal `CANCELLED` — so an
+    application closed mid-download reopened with neither bytes to continue from nor a row offering
+    to try again. `REQ-017` promises resumption **across restarts**, and this is the ordinary one.
+
+    Everything the kill test asserts is asserted here too — the partial survived, the second
+    attempt asked for a **range**, and the bytes are exact — because the failure mode is that an
+    orderly close silently costs the head start a kill would have kept.
+
+    Composed twice in one process rather than across two interpreters. The kill test needs a real
+    `SIGKILL` and therefore a real second process; this one is about `shutdown()`, which is code
+    that runs, so running it is the point.
+    """
+    database = tmp_path / "queue.db"
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    url, requests = resumable_media_url(chunk_delay=0.2)
+
+    first = application.compose(
+        qapp,
+        database=database,
+        output_directory=downloads,
+        geometry_file=tmp_path / "window.toml",
+    )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    first.manager.start_queue()
+    job_id = queue_one(first, url)
+
+    def partial_size() -> int:
+        found = worker.resumable_partial(downloads, job_id)
+        return 0 if found is None else found.stat().st_size
+
+    assert spin(lambda: partial_size() > 0, timeout=120), (
+        "no bytes were ever written, so closing would prove nothing"
+    )
+    written_before = partial_size()
+
+    # The application's own orderly close, the one the window's `closeEvent` reaches.
+    first.shutdown.begin()
+    assert spin(lambda: first.shutdown.finished, timeout=120), "the application never shut down"
+
+    survived = worker.resumable_partial(downloads, job_id)
+    assert survived is not None and survived.stat().st_size >= written_before, (
+        "an orderly close threw away the bytes REQ-017 promises to continue from"
+    )
+    before_resume = len(requests)
+
+    second = application.compose(
+        qapp,
+        database=database,
+        output_directory=downloads,
+        geometry_file=tmp_path / "window2.toml",
+    )
+    second.manager.start_queue()
+    try:
+        recovered = second.store.get(job_id)
+        assert recovered is not None, "the job did not survive the close"
+        assert recovered.status is not JobStatus.CANCELLED, (
+            "the close wrote a terminal cancellation, so the next launch offers nothing back"
+        )
+        assert (
+            recovered.status is JobStatus.FAILED and recovered.error_kind is ErrorKind.INTERRUPTED
+        )
+
+        second.manager.retry(job_id)
+        assert spin(
+            lambda: (
+                (stored := second.store.get(job_id)) is not None
+                and stored.status is JobStatus.COMPLETED
+            ),
+            timeout=180,
+        ), f"the reopened download never completed — {why(second, job_id)}"
+
+        stored = second.store.get(job_id)
+        assert stored is not None and stored.output_path is not None
+        assert Path(stored.output_path).read_bytes() == RESUMABLE_BYTES
+
+        resumed = requests[before_resume:]
+        ranged = [offset for verb, offset in resumed if verb == "GET" and offset > 0]
+        assert ranged, (
+            f"the reopened application fetched the whole file again: {resumed}. The partial was "
+            "there and nothing continued from it."
+        )
+    finally:
+        second.shutdown.begin()
+        assert spin(lambda: second.shutdown.finished, timeout=120)

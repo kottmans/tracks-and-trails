@@ -411,8 +411,15 @@ def compose(
             updated = app_settings.add_preset(held.settings, preset)
         except ValueError as refusal:
             return str(refusal)
+        # **The write's own answer is the caller's** (`T109-R9`). `save()` never raises — a
+        # read-only config directory is a real deployment state and not a reason to fall over — and
+        # it used to swallow the failure entirely, so a preset that reached no disk was reported to
+        # the user as `Saved as …`. The in-memory copy is not advanced either: a preset the file
+        # does not have must not occupy its name for the rest of the session.
+        failure = app_settings.save(updated, settings_file)
+        if failure is not None:
+            return f"This preset could not be saved: {failure}"
         held.settings = updated
-        app_settings.save(updated, settings_file)
         return None
 
     def choose_run(running: bool) -> None:

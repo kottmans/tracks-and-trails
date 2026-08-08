@@ -48,6 +48,7 @@ deleted rather than amended, because it described behaviour that no longer exist
 """
 
 import tomllib
+from contextlib import suppress
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any, Final
@@ -390,16 +391,37 @@ def _presets_from(document: dict[str, Any]) -> tuple[tuple[Preset, ...], str | N
 
 
 def _toml_string(value: str) -> str:
-    """`value` as a TOML basic string.
+    """`value` as a TOML basic string. **Total for every string** (`T109-R9`).
 
     Hand-written because this project has no TOML *writer* — `tomllib` is read-only in the standard
     library, and `save()` and `window.toml` are both hand-formatted for that reason. A preset name
     is user text, so the escaping is not optional: a name containing a quote or a backslash would
     otherwise produce a file this module cannot read back, which is the round trip breaking itself.
+
+    **Every control character, not the five that were thought of.** A `QLineEdit` keeps whatever is
+    pasted into it, and TOML forbids a raw control character in a basic string — so a name carrying
+    `\x08` produced a file `tomllib` refused, and the *next* `load()` therefore returned no presets
+    and reset the concurrency limit to its default. One bad character in one name destroyed
+    unrelated settings. Escaping by codepoint is total: there is no input this cannot represent,
+    which is a stronger property than a longer list of special cases.
     """
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    escaped = escaped.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-    return f'"{escaped}"'
+    return '"' + "".join(_toml_character(character) for character in escaped) + '"'
+
+
+def _toml_character(character: str) -> str:
+    """One character, escaped where TOML requires it.
+
+    `\\uXXXX` for anything below `0x20` and for `DEL`, which is what TOML's own grammar allows and
+    what `tomllib` reads back. The three named escapes are spelled for legibility — a newline in a
+    preset name is odd, and `\\n` in the file says so more clearly than `\\u000A`.
+    """
+    named = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+    if character in named:
+        return named[character]
+    if ord(character) < 0x20 or ord(character) == 0x7F:
+        return f"\\u{ord(character):04X}"
+    return character
 
 
 def _toml_value(value: Any) -> str:
@@ -449,8 +471,18 @@ def add_preset(settings: Settings, preset: Preset) -> Settings:
     return replace(settings, presets=(*settings.presets, preset))
 
 
-def save(settings: Settings, path: Path | None = None) -> None:
-    """Write `settings` to `path`. **Never raises** — `save_geometry`'s rule, for its reason.
+def save(settings: Settings, path: Path | None = None) -> str | None:
+    """Write `settings` to `path`. **Never raises**, and **says whether it wrote** (`T109-R9`).
+
+    Returning the failure rather than swallowing it is the correction: the policy that an
+    unwritable config directory must not take the application down is unchanged, and it was never
+    a reason for a *caller* to be told the write succeeded. `P-4`'s *Save as preset…* did exactly
+    that — a read-only directory produced `Saved as Weekend viewing.` and no preset — because the
+    only channel this function had was an exception it had promised not to raise.
+
+    `None` means written. Existing callers that ignore the answer keep the old behaviour, which is
+    right for them: the concurrency control has already applied the limit in memory and a failure
+    to persist it is not worth interrupting an interaction for.
 
     Hand-formatted rather than serialised, because this project has no TOML *writer*: `tomllib` is
     read-only in the standard library, and `window.toml` is written the same way. Adding a
@@ -460,9 +492,15 @@ def save(settings: Settings, path: Path | None = None) -> None:
     (`DAT-001`) and — until Phase 4's dialog — one of only two ways to change this value.
     """
     target = path if path is not None else settings_path()
+    # **Written beside the file and moved onto it** (`T109-R9`). `write_text` truncates first, so a
+    # write that fails partway — a full disk, a disconnected profile directory — leaves a truncated
+    # file where working settings used to be, and the next `load()` reports the user's own presets
+    # as unreadable. `os.replace` within one directory is atomic, so the file is either the old one
+    # or the new one. The same reasoning as `claim_output_path`'s, one layer over.
+    scratch = target.with_name(f"{target.name}.writing")
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
+        scratch.write_text(
             "# Tracks & Trails settings.\n"
             "# Safe to delete: every value falls back to its default.\n"
             f"[{_TABLE}]\n"
@@ -473,8 +511,12 @@ def save(settings: Settings, path: Path | None = None) -> None:
             + "".join(_preset_lines(preset) for preset in settings.presets),
             encoding="utf-8",
         )
-    except OSError:
-        return
+        scratch.replace(target)
+    except OSError as error:
+        with suppress(OSError):
+            scratch.unlink(missing_ok=True)
+        return f"{type(error).__name__}: {error}"
+    return None
 
 
 def with_concurrency(settings: Settings, limit: int) -> Settings:

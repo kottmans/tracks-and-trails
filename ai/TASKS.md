@@ -5,9 +5,9 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — `T-110`, `T-112`, `T-113` and `T-114` implemented and In Review;
-`UX-008` accepted; `T-109`'s review returned **Changes requested** and all seven findings are now
-corrected and awaiting re-review.
+**Last updated:** 2026-08-08 — **`T-110`, `T-112` and `T-114` are Approved.** `T-109` and `T-113`
+are In Review with every reported finding corrected and awaiting re-review: `T109-R1`..`R7`
+resolved, `T109-R8`..`R10` and `T113-R1`..`R3` corrected. `UX-008` accepted and amended.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -88,10 +88,10 @@ Phase 0 is formally exited (2026-07-26).
 ### T-109 — Post-processing: audio, container, thumbnail, metadata, chapters, subtitles
 
 **Status:** **In Review** — implemented 2026-08-07; reviewed 2026-08-08 at `4cb549d`, verdict
-**Changes requested**, seven findings `T109-R1`..`T109-R7`. **All seven are corrected and awaiting
-re-review**: `T109-R6` separately at `da7f97b`, because its two type errors failed the gate every
-later task has to pass, and the other six as one batch. The correction record is in
-`ai/REVIEWS.md`. Only the Reviewer marks a finding `Resolved` (`AGENTS.md` §10).
+**Changes requested**, seven findings `T109-R1`..`T109-R7`, **all seven resolved** at `1381f7f` and
+`da7f97b`. The correction diff drew three more — `T109-R8` (Critical), `T109-R9` and `T109-R10` —
+and **those are corrected and awaiting re-review**. The records are in `ai/REVIEWS.md`. Only the
+Reviewer marks a finding `Resolved` (`AGENTS.md` §10).
 **Owner:** Implementer
 **Priority:** High — the largest single item in the phase
 **Phase:** Phase 3
@@ -146,17 +146,22 @@ splitting the work would have split a single dialog across two reviews.
   `EmbedThumbnail` embeds a file that has to be downloaded first.
 - **`ui/options_dialog.py`** — the editor `docs/UX_SPEC.md` §6 specifies, reached as `Options…` on
   the row's format control through a sentinel beside `CHOOSE_FORMATS_DATA`.
-- **Written subtitles survive the staging directory** — `claim_sidecars` in `worker.py`, which is
-  `T046-R3` met.
+- **Written subtitles survive the staging directory** — `claim_outputs` in `worker.py`, which is
+  `T046-R3` met. *(It was `claim_sidecars`, claiming the media and its sidecars independently.
+  `T109-R3` and `T109-R4` collapsed the two into one family reservation, and `T109-R8` added the
+  containment check every reported **source** now passes before anything is reserved or moved.)*
 - **The preview accounts for a container change**, and two classes of request stopped being
   provisional because of it.
 
 #### Acceptance criteria
 
 - ~~**Every user-requested output is claimed before staging is discarded**~~ — **met**.
-  `claim_sidecars` moves every file `requested_subtitles` records, renamed to follow the name the
-  media actually landed under, and claimed through the same `O_CREAT | O_EXCL` reservation the
-  media file uses so a sidecar can never overwrite anything of the user's.
+  `claim_outputs` moves every file `requested_subtitles` records **and the media itself as one
+  family**, under a single free basename, through the same `O_CREAT | O_EXCL` reservation — so a
+  sidecar can never overwrite anything of the user's and can never be separated from the file it
+  belongs to. An output that cannot be placed fails the session rather than being logged and
+  deleted, and a reported source outside the staging directory is refused before anything moves
+  (`T109-R3`, `T109-R4`, `T109-R8`).
   `test_written_subtitles_survive_the_staging_directory` and
   `test_a_staging_directory_is_still_removed_after_its_subtitles_are_kept`.
 - ~~**Each of the seven produces an observable change in the output file**~~ — **met for six by
@@ -193,7 +198,7 @@ survived and changed the code.**
 |---|---|
 | Drop the remux spec | Killed |
 | `writethumbnail = False` | Killed |
-| Skip `claim_sidecars` | Killed |
+| Skip the sidecar claim | Killed |
 | Recode spelled as remux | Killed |
 | `subtitleslangs` replaced by `["all"]` | **Survived at first.** The test asked for both published languages, so "these two" and "all" were the same answer. Rewritten to ask for a strict subset — `de` and `fr` against `en` and `de` — and it now kills the mutant twice |
 | `FFmpegMetadata` split into two specs, one per option | **Survived, and the docstring explaining why it could not was wrong.** The claim was that deduplication would *lose* a flag. `FFmpegMetadata` defaults **both** flags to `True`, so an omitted flag turns the other option **on**: asking for chapters would have embedded the user's title and source URL as well. The docstring is corrected and `test_requested_chapters_are_written_into_the_file` now asserts chapters arrive *without* metadata |
@@ -219,9 +224,12 @@ survived and changed the code.**
   reachable without a network publishes `chapters` — yt-dlp's generic extractor reads a page and an
   HLS playlist, and neither carries chapter marks. What is covered is that this application's
   request becomes a file with chapters in it; what is not is an extractor supplying them.
-- **The editor has no `Save as preset…` button.** `P-4` requires that a one-off never silently
-  becomes a preset, and `T-111` owns where a saved preset lives. Offering a control with nowhere to
-  save would be drawing what would be refused (`UX-005` §5).
+- **The editor offers `Save as preset…`** (`P-4`), writing through `core/settings.add_preset` — the
+  creation seam, in the `settings.toml` `T-111`'s own entry records as already decided. It is an
+  `ActionRole` button, so saving is not accepting the one-off. **Create only**: `T-111` still owns
+  edit, duplicate, delete and set-default. *(This entry said the button was deliberately absent
+  because `T-111` owns where a preset lives. That was a description of a gap rather than a reading
+  of the ruling, and `T109-R5` was the finding.)*
 - **The queue row does not offer `Options…`.** A job's request is frozen at creation
   (`ARCHITECTURE.md` §8); the role that admits the entry is absent from `QueueModel`, so the entry
   is not drawn rather than drawn and refused.
@@ -239,161 +247,13 @@ survived and changed the code.**
 
 ---
 
-### T-110 — Playlists: probe the entries, choose which to enqueue
 
-**Status:** **In Review** — implemented 2026-08-08, awaiting a verdict.
-**Owner:** Implementer
-**Priority:** High — it changes what a *job* is, which reaches `core/`
-**Phase:** Phase 3
-**Depends on:** `T-105`
-**Relevant context:** `docs/UX_SPEC.md` §7 (**ruled 2026-08-07 by `UX-007`**: the picker is the
-**staging row, opened** (`P-19`, the same mechanism `P-1` gives the format table), entries carry
-**checkboxes** with a tri-state group header (`P-5`), and filtering stays refused (`P-25`)), `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
-`persistence/repositories.py` (`append` allocates positions in one transaction), `T-078`
-**Affected surfaces:** `core/models.py`, `downloader/ytdlp_adapter.py`, `ui/add_dialog.py`,
-`persistence/`
-**Risk:** **High** — today one URL is one job; a playlist is one probe producing N
-
-#### Scope
-
-`REQ-004`: for a playlist, let the user pick which entries to enqueue — **including select-all and
-range selection** — *before any download starts*.
-
-**This is the structural task of Phase 3.** `Job` is currently one URL, and the add-URL dialog
-probes one thing and creates one job. A playlist probe returns entries, each of which becomes a
-job, and they must be appended in **one transaction** so a crash cannot leave half a playlist
-queued (`append` already does this — the task is to use it rather than loop).
-
-**A playlist probe is slow and must not block.** `NFR-001` and `REQ-027` apply: a hundred-entry
-playlist is a long extraction, and the dialog has to stay responsive and cancellable.
-
-#### Acceptance criteria
-
-- A playlist probe lists its entries with enough to choose by (title, duration, index)
-- Select-all and range selection, both keyboard reachable (`NFR-005`)
-- Only selected entries become jobs, asserted on the stored queue
-- **The whole selection is appended in one transaction** — a kill mid-append leaves none, not some
-- Nothing downloads until the user confirms (`REQ-004` is explicit)
-- A probe of a very large playlist keeps the UI responsive and can be cancelled
-- A single-video URL still behaves exactly as it does today, asserted
-
-#### What landed
-
-- **`ui/playlist_selection.py`** — a frozen `PlaylistSelection` holding which positions of one
-  probe's entries are chosen, Qt-free so `REQ-004`'s two named operations are asserted as rules
-  rather than through a table view. `ui/staging.py` gained `Row.entry_selection` to carry it.
-- **`ui/playlist_picker.py`** — the checkboxes, the tri-state group header (`P-5`), and the
-  keyboard `docs/UX_SPEC.md` §7 declares. `Ctrl`+`A` **checks** every entry rather than only
-  highlighting them, because `REQ-004`'s select-all is about what gets enqueued.
-- **`RowPanel`, extracted in `ui/add_dialog.py`.** `P-19` says the picker and the format table are
-  *"one mechanism rather than two"*, so the mechanism is now one class and `FormatPanel` and
-  `PlaylistPanel` supply only the body they open onto. `close_format_table` and
-  `remount_format_table` are `close_panel` and `remount_panel`; what `Esc` restores is supplied by
-  whichever `open_…` built the panel, because a close that reverted both fields would send a
-  playlist row back to inheriting a format it had chosen for itself.
-- **`_durable_jobs` filters by the selection**, keeping each entry's own `playlist_index` — *"where
-  it sat in it"* — rather than renumbering the survivors.
-- **An Add with nothing chosen is refused and said**, rather than submitting an empty batch, which
-  would have succeeded, closed the dialog and added nothing.
-
-**The structural change this entry predicted had already happened.** *"Today one URL is one job"*
-was true when the task was written and stopped being true at `T-137`, which expands a playlist into
-one job per entry inside `_durable_jobs` and appends them through `append`'s single transaction. So
-`core/models.py`, `downloader/ytdlp_adapter.py` and `persistence/` are **untouched**: what was left
-was the *choice*, which is `ui/` alone. The one-transaction criterion is met by the path `T-137`
-already took, and what this task adds is the assertion that the whole selection goes through it in
-one `submit` — the atomicity itself being
-`tests/unit/test_persistence.py::test_append_writes_every_job_or_none_of_them`.
-
-#### Out of scope
-
-- Per-entry format choice; the selection applies one preset to the chosen entries
-
----
-
-### T-112 — The output template editor, with a live path preview
-
-**Status:** **In Review** — implemented 2026-08-08, awaiting a verdict.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 3
-**Depends on:** `T-105`
-**Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function; **`P-22`, the
-preview's focus and announcement policy, is **ruled 2026-08-07** by `UX-007`: a **focusable
-read-only field**, a second stop in the tab order, ruled against this file's own proposal of an
-unfocusable live region — a user who cannot `Tab` to the preview cannot review it at their own pace.
-**`P-23` is ruled with it: a containment failure is shown at edit time, with the reason.** `P-9` too
-— the editor **lists its supported fields inline** beside the input. *(This read "`P-23` is this
-task's own report-as-you-type
-criterion", which is the unratified timing stated as task truth three lines above the criterion that
-says it is unruled — `T105-R4`, second correction.)*), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
-atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
-**Affected surfaces:** `core/paths.py`, `ui/`
-**Risk:** Medium — the preview must be the same function the download uses, or it lies
-
-#### Scope
-
-`REQ-011`: output path and filename control via a configurable template, **with a live preview of
-the resulting path for the current item**.
-
-**The preview and the real path must come from one function.** Two implementations of "where will
-this go" is the `T-059` shape — one widget answering a question two ways — and here the two answers
-are visible side by side, so a divergence is a promise broken in front of the user.
-
-`T-034`, `T-045` and `T-046` already own sanitizing and containment. This adds the *template*, and
-must not reimplement any of it.
-
-#### Acceptance criteria
-
-- The preview is produced by the same code path that names the actual output, asserted by
-  downloading and comparing
-- **Phase 3's exit criterion:** the preview matches the written path in every tested case,
-  including titles with characters illegal on Windows
-- **Path containment holds**: no rendered template escapes the output directory — asserted with
-  `..`, absolute paths, and a template that resolves to one
-- **An invalid template never reaches a download**, and the refusal is shown **at edit time, with
-  the reason** (`P-23`, ruled 2026-08-07 by `UX-007`). *(This required report-as-you-type before the
-  ruling, which was `P-23`'s proposal stated as a requirement; `T105-R4` took it out, and the ruling
-  puts the same behaviour back as a decision rather than an assumption. The distinction is not
-  pedantry — for three weeks the criterion and the context field said opposite things.)*
-- Long paths behave per `T-067`'s finding, which is that the default configuration is the case
-  to test
-
-#### What landed
-
-- **`contained_output_path` in `core/paths.py`** — the escape refusal and the containment call,
-  lifted out of `worker._validated_target` where they were correct and unreachable from the parent
-  process. The preview and the write now call one function, which is what `docs/UX_SPEC.md` §9.1
-  asks for in as many words.
-- **`worker.previewed_path`** — `postprocessed_name` then `free_output_path`, split off `T-046`'s
-  own `preview_path` so the GUI runs that code rather than a copy of it.
-- **`core/output_template.py`** — the supported field set `P-9` requires listing, the refusal for a
-  field this application cannot fill, and the projection a preview renders against. **It does not
-  classify containers.** `T-046`'s `preview_is_provisional` and `postprocessed_name` already do,
-  reading yt-dlp's `ACODECS`, and restating that table is exactly the mistake `T046-R4` was.
-- **`ytdlp_adapter.render_output_template` / `template_syntax_error`** — yt-dlp's own
-  `prepare_filename` and `validate_outtmpl`, over a reused `YoutubeDL` because constructing one
-  costs 15.7 ms and rendering on an existing one costs 0.07 ms.
-- **`DownloadManager.preview_output_path`** — the seam `ARC-002` requires, and the one yt-dlp call
-  that may be synchronous: it is a substitution over a projection already in memory.
-- **`ui/template_editor.py` and `TemplatePanel`** — the third `RowPanel`, which needed no new
-  mechanism because `T-110` made the row-that-opens one class.
-
-**One design correction, found by its own test.** The editor first wrote the template to the row on
-every keystroke and refused to write an invalid one. Typing `%(title)s` passes through `%`, `%(`
-and `%(title` — each of which yt-dlp accepts — so an abandoned edit left the row holding whichever
-half-typed prefix was valid last. It now writes on close, through a `commit` callback symmetric with
-the `undo` one `Esc` uses.
-
-#### Out of scope
-
-- Collision policy (`T-046`, already delivered)
-
----
 
 ### T-113 — Resume a partial download across a restart
 
-**Status:** **In Review** — implemented 2026-08-08, awaiting a verdict.
+**Status:** **In Review** — implemented 2026-08-08; reviewed the same day at `04abf85`, verdict
+**Changes requested**, three findings `T113-R1`..`T113-R3` (one Critical, one High, one Medium).
+**All three are corrected and awaiting re-review.**
 **Owner:** Implementer
 **Priority:** Medium — and the highest *uncertainty* in the phase
 **Phase:** Phase 3
@@ -462,99 +322,22 @@ is sometimes lost, and yt-dlp loses it silently and correctly.
 - **`UX-008`** records the `P-10` answer: **per-job pause stays out, `JobStatus.PAUSED` stays
   deleted**, and the partial file's lifetime is tabulated there.
 
+**Three findings, corrected 2026-08-08.** `T113-R1` was **Critical**: `staging_directory` joined
+the job id — validated as non-empty text and nothing more — straight into a path this application
+creates with `parents=True` and removes with `shutil.rmtree`, so `../../../../outside` named a real
+directory and deleted a file in it. The leaf is a digest now, which makes traversal unrepresentable
+rather than defended against. `T113-R2`: an orderly close was a *cancel*, so the partial went and
+the row was written terminal — closing the window is how a restart usually begins, and `REQ-017`
+promises resumption across one. `T113-R3`: the worker owned the cleanup from a branch that cannot
+know the intent and that `terminate()` never reaches, and `remove()` deleted the directory before
+stopping the process that then recreated it. The parent decides now, once the tree is reaped.
+
 #### Out of scope
 
 - Resuming across a *format* change, which is a different download
 
 ---
 
-### T-114 — Confirm before queueing a URL the queue already holds
-
-**Status:** **In Review** — implemented 2026-08-08, awaiting a verdict.
-
-*(It was **Proposed — rescoped 2026-08-06 by maintainer decision**, and the rescoping is what made
-it implementable: the note below is kept because the withdrawn design is what a reader would
-otherwise reconstruct.)* **Rescoped 2026-08-06 by maintainer decision.** It was *"warn when a URL has
-been downloaded before"*, which needs durable history. `REQ-020` is withdrawn and there is none:
-this is now a check against the **live queue and the current paste**, in memory, with nothing
-stored.
-
-**A duplicate is allowed and confirmed, not refused.** Wanting the same URL twice — at two formats,
-or after a failure — is an ordinary thing to want, so proceeding is one action and is not
-discouraged.
-**Owner:** Implementer
-**Priority:** Low — the smallest item in the phase
-**Phase:** Phase 3
-**Depends on:** nothing. *(This read `T-085` and `T-169` — the completion records and the narrowed
-record contract. Both are withdrawn, and a dependency on a withdrawn contract is how a task
-rebuilds it. `T169-R4` caught this entry still directing an implementer to a ledger that no longer
-exists.)*
-**Relevant context:** `docs/UX_SPEC.md` §9.3 (**`P-26`, whether the warning is a staging-row state
-rather than a modal, is **ruled 2026-08-07** by `UX-007`: **a staging-row state**. `P-27` is ruled
-with it — **ordinary *Add to queue* is the override**, and the count includes the duplicates, because
-`REQ-022` says a duplicate is confirmed rather than discouraged. `P-28`'s refusals stand), `REQ-022`,
-`ui/add_dialog.py`'s staging list, `DAT-002`'s collision policy for what happens beyond the queue
-**Affected surfaces:** `ui/add_dialog.py`. **Not `persistence/`** — this task stores nothing and
-adds no table, column or index
-**Risk:** Low
-
-#### Scope
-
-`REQ-022`, as rescoped: **a URL already in the live queue, or repeated within the paste being
-staged, is confirmed rather than refused.** The comparison is in memory against rows that exist
-right now. There is no record of past downloads to consult — `REQ-020` is withdrawn and migration
-`0009` dropped the table — so "downloaded before" is not a question this task can ask or should
-try to.
-
-**Allowed, not prevented.** Proceeding is one action and is not discouraged: the same URL twice, at
-two formats or after a failure, is an ordinary thing to want, and `UX-005` §5's rule that nothing is
-offered which would be refused cuts both ways.
-
-#### Acceptance criteria
-
-- A URL that matches a **job already in the queue** is said **in the staging row's own state**,
-  before enqueueing, never in a modal (`P-26`, ruled 2026-08-07 by `UX-007`). *(`T105-R4` took this
-  requirement out while `P-26` was open, because it was the proposal stated as fact; the ruling puts
-  it back as a decision.)*
-- A URL repeated **within one paste** is marked the same way — the second occurrence, not the first
-- **Confirming enqueues it**, asserted on the stored queue: the duplicate is added, not skipped
-- A URL matching nothing enqueues with no prompt at all — the silent case, which an over-eager
-  implementation breaks
-- The comparison runs on the staged set and the live queue with no query added to the GUI thread's
-  path (`T079-R2`'s rule). If a scan is ever too slow it is a scan of the queue, which has a
-  user-visible size
-- **Nothing is written.** A test asserts the schema is unchanged and no new row survives the
-  dialog, because the previous design of this task is exactly what that would drift back toward
-
-#### What landed
-
-- **`Duplicate` and `Staging.mark_duplicates`** in `ui/staging.py`, Qt-free: two kinds, because
-  *there is a row in the queue already* and *you pasted this twice* point at different things.
-  Recomputed on every refresh rather than accumulated — the queue moves underneath an open dialog,
-  and a marking that was only ever set goes on describing a job that has left it.
-- **`add_dialog.state_text`**, which joins the duplicate to the row's own state (`P-26`). One
-  author for the sentence, so the drawn row, `row_text` and the accessible text agree by
-  construction (`T118-R8`).
-- **`QueuedUrls`, a callable the dialog is handed**, answered by `QueueModel.queued_urls()` over
-  rows already in memory. `T079-R2`: no query on the GUI thread's path. A callable rather than a
-  snapshot, because the dialog outlives any one answer.
-- **Nothing else.** No table, no column, no migration, no signal — and a test asserts the store saw
-  no write at all while a paste full of duplicates was staged and marked.
-
-**The comparison is an exact string match** (`P-28`). Two URLs for the same video are not detected,
-and a test pins that: a near-miss matcher that was occasionally wrong would be worse than one that
-is narrow always, and adding one has to change the ruling first.
-
-#### Out of scope
-
-- Detecting the same *video* at a different URL, and any URL normalisation. `core/urls.py` was
-  deleted with the ledger; a comparison clever enough to match two spellings is the design that
-  `DAT-006` §2 warned would one day treat two different downloads as one
-- **Any record of past downloads**, in any form, to make the check outlive the queue
-- Warning that a *file* of the same name exists on disk. Declined 2026-08-06: a repeat lands as
-  `name (1)` under `DAT-002`, which is what most downloaders do and what a user can see
-
----
 
 ## Ready
 
@@ -2073,8 +1856,8 @@ filed this rather than editing it.
 #### Acceptance criteria
 
 - §6's open questions read as ruled and built, in the past tense, with the built surface named.
-- The `Save as preset…` clause states that the control arrives with `T-111`, rather than describing
-  a button that does not exist.
+- The `Save as preset…` clause describes the control **as built by `T-109`** (`T109-R5`), rather
+  than saying it arrives with `T-111`. `T-111` still owns the other four operations.
 - Nothing else in §6 changes: the ruled clauses are the contract the implementation was built
   against.
 
@@ -2702,6 +2485,257 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-110 — Playlists: probe the entries, choose which to enqueue
+
+**Status:** **Complete — Approved at `3a53d66`** (2026-08-08). No findings. The reviewer
+confirmed the picker is the shared `RowPanel` mechanism, that only checked entries are
+submitted in one batch with their original playlist positions, and that a single item is
+still one job.
+**Owner:** Implementer
+**Priority:** High — it changes what a *job* is, which reaches `core/`
+**Phase:** Phase 3
+**Depends on:** `T-105`
+**Relevant context:** `docs/UX_SPEC.md` §7 (**ruled 2026-08-07 by `UX-007`**: the picker is the
+**staging row, opened** (`P-19`, the same mechanism `P-1` gives the format table), entries carry
+**checkboxes** with a tri-state group header (`P-5`), and filtering stays refused (`P-25`)), `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
+`persistence/repositories.py` (`append` allocates positions in one transaction), `T-078`
+**Affected surfaces:** `core/models.py`, `downloader/ytdlp_adapter.py`, `ui/add_dialog.py`,
+`persistence/`
+**Risk:** **High** — today one URL is one job; a playlist is one probe producing N
+
+#### Scope
+
+`REQ-004`: for a playlist, let the user pick which entries to enqueue — **including select-all and
+range selection** — *before any download starts*.
+
+**This is the structural task of Phase 3.** `Job` is currently one URL, and the add-URL dialog
+probes one thing and creates one job. A playlist probe returns entries, each of which becomes a
+job, and they must be appended in **one transaction** so a crash cannot leave half a playlist
+queued (`append` already does this — the task is to use it rather than loop).
+
+**A playlist probe is slow and must not block.** `NFR-001` and `REQ-027` apply: a hundred-entry
+playlist is a long extraction, and the dialog has to stay responsive and cancellable.
+
+#### Acceptance criteria
+
+- A playlist probe lists its entries with enough to choose by (title, duration, index)
+- Select-all and range selection, both keyboard reachable (`NFR-005`)
+- Only selected entries become jobs, asserted on the stored queue
+- **The whole selection is appended in one transaction** — a kill mid-append leaves none, not some
+- Nothing downloads until the user confirms (`REQ-004` is explicit)
+- A probe of a very large playlist keeps the UI responsive and can be cancelled
+- A single-video URL still behaves exactly as it does today, asserted
+
+#### What landed
+
+- **`ui/playlist_selection.py`** — a frozen `PlaylistSelection` holding which positions of one
+  probe's entries are chosen, Qt-free so `REQ-004`'s two named operations are asserted as rules
+  rather than through a table view. `ui/staging.py` gained `Row.entry_selection` to carry it.
+- **`ui/playlist_picker.py`** — the checkboxes, the tri-state group header (`P-5`), and the
+  keyboard `docs/UX_SPEC.md` §7 declares. `Ctrl`+`A` **checks** every entry rather than only
+  highlighting them, because `REQ-004`'s select-all is about what gets enqueued.
+- **`RowPanel`, extracted in `ui/add_dialog.py`.** `P-19` says the picker and the format table are
+  *"one mechanism rather than two"*, so the mechanism is now one class and `FormatPanel` and
+  `PlaylistPanel` supply only the body they open onto. `close_format_table` and
+  `remount_format_table` are `close_panel` and `remount_panel`; what `Esc` restores is supplied by
+  whichever `open_…` built the panel, because a close that reverted both fields would send a
+  playlist row back to inheriting a format it had chosen for itself.
+- **`_durable_jobs` filters by the selection**, keeping each entry's own `playlist_index` — *"where
+  it sat in it"* — rather than renumbering the survivors.
+- **An Add with nothing chosen is refused and said**, rather than submitting an empty batch, which
+  would have succeeded, closed the dialog and added nothing.
+
+**The structural change this entry predicted had already happened.** *"Today one URL is one job"*
+was true when the task was written and stopped being true at `T-137`, which expands a playlist into
+one job per entry inside `_durable_jobs` and appends them through `append`'s single transaction. So
+`core/models.py`, `downloader/ytdlp_adapter.py` and `persistence/` are **untouched**: what was left
+was the *choice*, which is `ui/` alone. The one-transaction criterion is met by the path `T-137`
+already took, and what this task adds is the assertion that the whole selection goes through it in
+one `submit` — the atomicity itself being
+`tests/unit/test_persistence.py::test_append_writes_every_job_or_none_of_them`.
+
+#### Out of scope
+
+- Per-entry format choice; the selection applies one preset to the chosen entries
+
+---
+
+### T-112 — The output template editor, with a live path preview
+
+**Status:** **Complete — Approved at `3d6f9bc`** (2026-08-08). No findings. The reviewer
+confirmed the parent and the worker end template rendering at the same `contained_output_path`
+and share the worker's postprocessed-name and collision path, and matched a real local download
+against the preview through a subdirectory, Windows-illegal title characters and MP3
+conversion — which is **Phase 3's exit criterion for this deliverable**.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-105`
+**Relevant context:** `docs/UX_SPEC.md` §9.1 (preview and write are one function; **`P-22`, the
+preview's focus and announcement policy, is **ruled 2026-08-07** by `UX-007`: a **focusable
+read-only field**, a second stop in the tab order, ruled against this file's own proposal of an
+unfocusable live region — a user who cannot `Tab` to the preview cannot review it at their own pace.
+**`P-23` is ruled with it: a containment failure is shown at edit time, with the reason.** `P-9` too
+— the editor **lists its supported fields inline** beside the input. *(This read "`P-23` is this
+task's own report-as-you-type
+criterion", which is the unratified timing stated as task truth three lines above the criterion that
+says it is unruled — `T105-R4`, second correction.)*), `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
+atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
+**Affected surfaces:** `core/paths.py`, `ui/`
+**Risk:** Medium — the preview must be the same function the download uses, or it lies
+
+#### Scope
+
+`REQ-011`: output path and filename control via a configurable template, **with a live preview of
+the resulting path for the current item**.
+
+**The preview and the real path must come from one function.** Two implementations of "where will
+this go" is the `T-059` shape — one widget answering a question two ways — and here the two answers
+are visible side by side, so a divergence is a promise broken in front of the user.
+
+`T-034`, `T-045` and `T-046` already own sanitizing and containment. This adds the *template*, and
+must not reimplement any of it.
+
+#### Acceptance criteria
+
+- The preview is produced by the same code path that names the actual output, asserted by
+  downloading and comparing
+- **Phase 3's exit criterion:** the preview matches the written path in every tested case,
+  including titles with characters illegal on Windows
+- **Path containment holds**: no rendered template escapes the output directory — asserted with
+  `..`, absolute paths, and a template that resolves to one
+- **An invalid template never reaches a download**, and the refusal is shown **at edit time, with
+  the reason** (`P-23`, ruled 2026-08-07 by `UX-007`). *(This required report-as-you-type before the
+  ruling, which was `P-23`'s proposal stated as a requirement; `T105-R4` took it out, and the ruling
+  puts the same behaviour back as a decision rather than an assumption. The distinction is not
+  pedantry — for three weeks the criterion and the context field said opposite things.)*
+- Long paths behave per `T-067`'s finding, which is that the default configuration is the case
+  to test
+
+#### What landed
+
+- **`contained_output_path` in `core/paths.py`** — the escape refusal and the containment call,
+  lifted out of `worker._validated_target` where they were correct and unreachable from the parent
+  process. The preview and the write now call one function, which is what `docs/UX_SPEC.md` §9.1
+  asks for in as many words.
+- **`worker.previewed_path`** — `postprocessed_name` then `free_output_path`, split off `T-046`'s
+  own `preview_path` so the GUI runs that code rather than a copy of it.
+- **`core/output_template.py`** — the supported field set `P-9` requires listing, the refusal for a
+  field this application cannot fill, and the projection a preview renders against. **It does not
+  classify containers.** `T-046`'s `preview_is_provisional` and `postprocessed_name` already do,
+  reading yt-dlp's `ACODECS`, and restating that table is exactly the mistake `T046-R4` was.
+- **`ytdlp_adapter.render_output_template` / `template_syntax_error`** — yt-dlp's own
+  `prepare_filename` and `validate_outtmpl`, over a reused `YoutubeDL` because constructing one
+  costs 15.7 ms and rendering on an existing one costs 0.07 ms.
+- **`DownloadManager.preview_output_path`** — the seam `ARC-002` requires, and the one yt-dlp call
+  that may be synchronous: it is a substitution over a projection already in memory.
+- **`ui/template_editor.py` and `TemplatePanel`** — the third `RowPanel`, which needed no new
+  mechanism because `T-110` made the row-that-opens one class.
+
+**One design correction, found by its own test.** The editor first wrote the template to the row on
+every keystroke and refused to write an invalid one. Typing `%(title)s` passes through `%`, `%(`
+and `%(title` — each of which yt-dlp accepts — so an abandoned edit left the row holding whichever
+half-typed prefix was valid last. It now writes on close, through a `commit` callback symmetric with
+the `undo` one `Esc` uses.
+
+#### Out of scope
+
+- Collision policy (`T-046`, already delivered)
+
+---
+
+### T-114 — Confirm before queueing a URL the queue already holds
+
+**Status:** **Complete — Approved at `4786417`** (2026-08-08). No findings. The reviewer
+confirmed the comparison is exact and Qt-free, that the queue supplies URLs from its in-memory
+model, and that staging duplicates performs no write and the commit adds no persistence
+surface.
+
+*(It was **Proposed — rescoped 2026-08-06 by maintainer decision**, and the rescoping is what made
+it implementable: the note below is kept because the withdrawn design is what a reader would
+otherwise reconstruct.)* **Rescoped 2026-08-06 by maintainer decision.** It was *"warn when a URL has
+been downloaded before"*, which needs durable history. `REQ-020` is withdrawn and there is none:
+this is now a check against the **live queue and the current paste**, in memory, with nothing
+stored.
+
+**A duplicate is allowed and confirmed, not refused.** Wanting the same URL twice — at two formats,
+or after a failure — is an ordinary thing to want, so proceeding is one action and is not
+discouraged.
+**Owner:** Implementer
+**Priority:** Low — the smallest item in the phase
+**Phase:** Phase 3
+**Depends on:** nothing. *(This read `T-085` and `T-169` — the completion records and the narrowed
+record contract. Both are withdrawn, and a dependency on a withdrawn contract is how a task
+rebuilds it. `T169-R4` caught this entry still directing an implementer to a ledger that no longer
+exists.)*
+**Relevant context:** `docs/UX_SPEC.md` §9.3 (**`P-26`, whether the warning is a staging-row state
+rather than a modal, is **ruled 2026-08-07** by `UX-007`: **a staging-row state**. `P-27` is ruled
+with it — **ordinary *Add to queue* is the override**, and the count includes the duplicates, because
+`REQ-022` says a duplicate is confirmed rather than discouraged. `P-28`'s refusals stand), `REQ-022`,
+`ui/add_dialog.py`'s staging list, `DAT-002`'s collision policy for what happens beyond the queue
+**Affected surfaces:** `ui/add_dialog.py`. **Not `persistence/`** — this task stores nothing and
+adds no table, column or index
+**Risk:** Low
+
+#### Scope
+
+`REQ-022`, as rescoped: **a URL already in the live queue, or repeated within the paste being
+staged, is confirmed rather than refused.** The comparison is in memory against rows that exist
+right now. There is no record of past downloads to consult — `REQ-020` is withdrawn and migration
+`0009` dropped the table — so "downloaded before" is not a question this task can ask or should
+try to.
+
+**Allowed, not prevented.** Proceeding is one action and is not discouraged: the same URL twice, at
+two formats or after a failure, is an ordinary thing to want, and `UX-005` §5's rule that nothing is
+offered which would be refused cuts both ways.
+
+#### Acceptance criteria
+
+- A URL that matches a **job already in the queue** is said **in the staging row's own state**,
+  before enqueueing, never in a modal (`P-26`, ruled 2026-08-07 by `UX-007`). *(`T105-R4` took this
+  requirement out while `P-26` was open, because it was the proposal stated as fact; the ruling puts
+  it back as a decision.)*
+- A URL repeated **within one paste** is marked the same way — the second occurrence, not the first
+- **Confirming enqueues it**, asserted on the stored queue: the duplicate is added, not skipped
+- A URL matching nothing enqueues with no prompt at all — the silent case, which an over-eager
+  implementation breaks
+- The comparison runs on the staged set and the live queue with no query added to the GUI thread's
+  path (`T079-R2`'s rule). If a scan is ever too slow it is a scan of the queue, which has a
+  user-visible size
+- **Nothing is written.** A test asserts the schema is unchanged and no new row survives the
+  dialog, because the previous design of this task is exactly what that would drift back toward
+
+#### What landed
+
+- **`Duplicate` and `Staging.mark_duplicates`** in `ui/staging.py`, Qt-free: two kinds, because
+  *there is a row in the queue already* and *you pasted this twice* point at different things.
+  Recomputed on every refresh rather than accumulated — the queue moves underneath an open dialog,
+  and a marking that was only ever set goes on describing a job that has left it.
+- **`add_dialog.state_text`**, which joins the duplicate to the row's own state (`P-26`). One
+  author for the sentence, so the drawn row, `row_text` and the accessible text agree by
+  construction (`T118-R8`).
+- **`QueuedUrls`, a callable the dialog is handed**, answered by `QueueModel.queued_urls()` over
+  rows already in memory. `T079-R2`: no query on the GUI thread's path. A callable rather than a
+  snapshot, because the dialog outlives any one answer.
+- **Nothing else.** No table, no column, no migration, no signal — and a test asserts the store saw
+  no write at all while a paste full of duplicates was staged and marked.
+
+**The comparison is an exact string match** (`P-28`). Two URLs for the same video are not detected,
+and a test pins that: a near-miss matcher that was occasionally wrong would be worse than one that
+is narrow always, and adding one has to change the ruling first.
+
+#### Out of scope
+
+- Detecting the same *video* at a different URL, and any URL normalisation. `core/urls.py` was
+  deleted with the ledger; a comparison clever enough to match two spellings is the design that
+  `DAT-006` §2 warned would one day treat two different downloads as one
+- **Any record of past downloads**, in any form, to make the check outlive the queue
+- Warning that a *file* of the same name exists on disk. Declined 2026-08-06: a repeat lands as
+  `name (1)` under `DAT-002`, which is what most downloaders do and what a user can see
+
+---
+
 ### T-185 — Re-capture the fixtures so the format columns rest on a real report
 
 **Status:** **Complete — Approved at `870d56f`** (2026-08-07). Both halves landed: `T107-R8`'s

@@ -19,6 +19,52 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: three deliverables approved, and two Criticals in the paths nobody was watching
+
+**`T-110`, `T-112` and `T-114` are Approved** at `3a53d66`, `3d6f9bc` and `4786417`, with no
+findings between them. That is **six of nine Phase 3 deliverables** approved, and `T-112`'s approval
+carries the phase's exit criterion for the output preview: a real download matched the previewed
+path through a subdirectory, Windows-illegal title characters and an MP3 conversion.
+
+**`T-109` and `T-113` are still In Review**, both with every reported finding corrected. `T-109`'s
+original seven are resolved; its correction diff drew three more, and `T-113`'s review drew three.
+
+**The two Criticals are the same defect class at opposite ends of one module, and neither was
+covered by machinery that has been through four review rounds.** `core/paths.py` exists to make a
+path derived from a *title* safe. These were not that:
+
+- **`T113-R1`** was a **destination** composed from an identifier this application did not choose.
+  `Job.id` is validated as non-empty text and nothing more, it comes off a row a user can edit, and
+  `staging_directory` joined it straight into a path that `_run` creates with `parents=True` and
+  `discard_staging_for` removes with `shutil.rmtree`. `../../../../outside` named a real directory
+  and a reviewer deleted a sentinel file in it.
+- **`T109-R8`** was a **source** accepted from yt-dlp's own result dictionary. `claim_outputs`
+  decided ownership with `staging in path.parents`, which compares path *components* — so
+  `staging/../Clip.de.vtt` passed, and user-owned bytes beside the staging directory were moved
+  into the download's output family. The `produced` media path had no check at all.
+
+They are corrected differently, and the difference is the point. **A destination is made
+unrepresentable**: `derived_component` maps any id to `[0-9a-f]{32}`, so there is no `..`, no
+separator and no drive letter left to reason about. **A source cannot be rewritten** — it either is
+a file this session produced or it is somebody else's — so it is resolved, contained, and refused.
+
+**`T113-R2` is the one where a passing test was measuring the wrong thing.** The kill proof
+established that *nothing running* is what keeps a partial. Closing the window runs a great deal:
+`shutdown()` cancels every occupant, the cooperative worker path deleted the partial, and the
+manager wrote a terminal `CANCELLED` — which recovery does not read. So an orderly close, the
+ordinary way a restart begins, cost both the bytes and the offer to try again, while the hard-kill
+case that is meant to be *worse* worked perfectly. Shutdown now interrupts rather than cancels.
+
+**`T113-R3` moved the cleanup to the only correct moment.** The worker owned it from a branch that
+cannot tell a Cancel from a shutdown and that `terminate()` never reaches; `remove()` deleted the
+directory before stopping the process that then recreated it. The parent decides now, after the
+tree is reaped.
+
+**A mutation survived on the first attempt, and it is worth recording why.** The first `T113-R1`
+tests exercised `derived_component` directly, so reverting `staging_directory` to concatenation left
+them green — the helper was proved and the composition was not, which is precisely the shape of the
+defect. The tests now drive `staging_directory`, the worker's `mkdir` and the manager's `remove`.
+
 ## 2026-08-08: `T-109`'s seven findings are corrected, and two of them were defect classes
 
 **Awaiting re-review.** Codex returned **Changes requested** at `4cb549d` — four High, two Medium,
@@ -252,8 +298,11 @@ design over a hand-maintained list.
 the one path the media file was claimed from — correct for every intermediate, and wrong for a
 subtitle the user asked to *write*, which was fetched and then deleted with the directory. Nothing
 exposed that combination in the UI before now, which is why it was latent rather than live.
-`claim_sidecars` moves them out first, renamed to follow the name the media actually landed under
-and claimed through the same reservation, so a sidecar can never overwrite anything of the user's.
+`claim_outputs` moves them out first, under the same basename the media landed under and through
+the same reservation, so a sidecar can never overwrite anything of the user's. *(It was
+`claim_sidecars`, claiming each file independently; the 2026-08-08 review found that it separated a
+subtitle from its media on a collision, swallowed a claim failure, and trusted a reported source
+path lexically — `T109-R3`, `T109-R4`, `T109-R8`.)*
 
 **One limit, stated rather than hidden: chapters are asserted through the postprocessor, not through
 a download.** Nothing reachable without a network publishes `chapters` — yt-dlp's generic extractor

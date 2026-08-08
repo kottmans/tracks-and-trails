@@ -55,6 +55,7 @@ from tracks_and_trails.downloader.protocol import (
     WorkerFinished,
 )
 from tracks_and_trails.downloader.result_pump import POLL_SECONDS, ResultPump
+from tracks_and_trails.persistence.repositories import INTERRUPTED_ON_STARTUP
 
 REPO_ROOT = Path(__file__).parents[2]
 
@@ -580,6 +581,33 @@ def child_ignoring_cancellation(
     queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
     while True:
         time.sleep(0.05)
+
+
+def child_writing_a_partial_and_ignoring_cancellation(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Writes into its own staging directory, then ignores `SIGTERM` and the cancel event both.
+
+    **The deterministic uncooperative worker `T113-R3` asks for.** The cooperative cancellation
+    path is the *only* one that used to clean up, and it is the one an escalated stop never
+    reaches — so a child that never raises `DownloadCancelled` is what proves the parent cleans up
+    after `terminate()` and `kill()`. It **keeps rewriting** the partial, which is what caught
+    `remove()` deleting the directory before the process was stopped: the worker simply made it
+    again.
+    """
+    import signal
+    from pathlib import Path
+
+    from tracks_and_trails.downloader.worker import staging_directory
+
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    staging = staging_directory(Path(request.output_directory), job_id)
+    queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
+    while True:
+        staging.mkdir(parents=True, exist_ok=True)
+        (staging / "Clip.mp4.part").write_bytes(b"half a download")
+        time.sleep(0.02)
 
 
 #: A string that appears in the command line of every process these tests spawn as a stand-in
@@ -6415,6 +6443,228 @@ def test_removing_a_job_that_never_ran_is_not_an_error(
     try:
         download.remove("job-1")
         assert spin(lambda: removed == ["job-1"], timeout=10)
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- T113-R2 / T113-R3: who ends a partial's life, and when ------------------------------------
+
+
+def _wait_for_partial(directory: Path, job_id: str, spin: Callable[..., bool]) -> Path:
+    """Wait until the worker has actually written something, so a cleanup has work to do."""
+    assert spin(lambda: worker.resumable_partial(directory, job_id) is not None, timeout=30), (
+        "the worker never wrote a partial, so this test would pass with no cleanup at all"
+    )
+    partial = worker.resumable_partial(directory, job_id)
+    assert partial is not None
+    return partial
+
+
+def test_cancelling_an_uncooperative_download_still_discards_its_partial(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T113-R3`.** Cleanup used to live in the worker's cooperative cancellation branch.
+
+    `terminate()` and `kill()` run no handler, so a download that ignores the cancel event kept
+    its partial however firmly it was stopped — an invisible one, on a row the user had cancelled.
+    The parent cleans up after the tree is reaped, which is the only moment the process being
+    cleaned up after cannot undo it.
+    """
+    outputs = tmp_path / "downloads"
+    outputs.mkdir()
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=outputs)
+    download = DownloadManager(
+        repository,
+        concurrency=1,
+        entry_point=child_writing_a_partial_and_ignoring_cancellation,
+        cooperative_seconds=0.1,
+        terminate_seconds=0.1,
+    )
+    download.start_queue()
+    try:
+        # Rows put straight into the repository are not admitted; `start` is what the pool
+        # schedules, exactly as `test_the_limit_is_respected_exactly_at_saturation` does it.
+        download.start("job-1")
+        _wait_for_partial(outputs, "job-1", spin)
+
+        download.cancel("job-1")
+
+        assert spin(lambda: download.is_idle, timeout=60), "the session was never released"
+        assert worker.resumable_partial(outputs, "job-1") is None, (
+            "a cancelled download that ignored the cancel kept its partial, and no row explains it"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_removing_an_uncooperative_download_discards_what_it_recreates(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T113-R3`'s second half**: `remove()` deleted the directory *before* stopping the worker.
+
+    A worker that had not noticed the cancel simply made it again — and the row, which was the
+    only thing that explained the bytes, was then deleted. This child rewrites its partial every
+    20 ms, so a cleanup that runs before the process is gone loses the race every time.
+    """
+    outputs = tmp_path / "downloads"
+    outputs.mkdir()
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=outputs)
+    download = DownloadManager(
+        repository,
+        concurrency=1,
+        entry_point=child_writing_a_partial_and_ignoring_cancellation,
+        cooperative_seconds=0.1,
+        terminate_seconds=0.1,
+    )
+    download.start_queue()
+    removed: list[str] = []
+    download.job_removed.connect(removed.append)
+    try:
+        download.start("job-1")
+        _wait_for_partial(outputs, "job-1", spin)
+
+        download.remove("job-1")
+
+        assert spin(lambda: removed == ["job-1"], timeout=60)
+        assert repository.get("job-1") is None
+        assert worker.resumable_partial(outputs, "job-1") is None, (
+            "the worker recreated the directory after the cleanup ran, and the row that explained "
+            "it has been deleted"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_shutdown_keeps_the_partial_and_leaves_the_job_recoverable(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T113-R2`.** An orderly close is an interruption, not a cancellation.
+
+    Shutdown stops the same sessions through the same worker path, so the partial was deleted and
+    the row was written terminal `CANCELLED` — and a terminal row is not recovered at the next
+    launch. Closing the window mid-download therefore reopened with neither bytes to continue from
+    nor anything offering to try again, which is `REQ-017`'s promise read backwards.
+
+    Asserted as **both** halves, because either alone leaves the user stuck: the bytes without a
+    row is an invisible partial, and a row without the bytes is a restart.
+    """
+    outputs = tmp_path / "downloads"
+    outputs.mkdir()
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=outputs)
+    download = DownloadManager(
+        repository,
+        concurrency=1,
+        entry_point=child_downloading_forever,
+        cooperative_seconds=0.1,
+        terminate_seconds=0.1,
+    )
+    download.start_queue()
+    try:
+        download.start("job-1")
+        assert spin(lambda: "job-1" in download.active_job_ids(), timeout=30)
+        staging = worker.staging_directory(outputs, "job-1")
+        staging.mkdir(parents=True)
+        (staging / "Clip.mp4.part").write_bytes(b"half a download")
+
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+    finally:
+        download.shutdown()
+
+    partial = worker.resumable_partial(outputs, "job-1")
+    assert partial is not None and partial.read_bytes() == b"half a download", (
+        "an orderly shutdown threw away the bytes REQ-017 promises to continue from"
+    )
+    stored = repository.get("job-1")
+    assert stored is not None
+    assert stored.status is not JobStatus.CANCELLED, (
+        "shutdown wrote a terminal cancellation, so the next launch will not recover this job"
+    )
+    assert stored.status in INTERRUPTED_ON_STARTUP, (
+        f"the row was left {stored.status.value}, which recover_interrupted() does not read — the "
+        "job is neither running nor offered back"
+    )
+
+
+def test_a_users_cancel_is_still_terminal(tmp_path: Path, spin: Callable[..., bool]) -> None:
+    """The contrast that makes the test above mean something.
+
+    Shutdown and Cancel reach the worker identically; only the intent differs. A correction that
+    made *everything* an interruption would pass the shutdown test and silently stop cancelling.
+    """
+    outputs = tmp_path / "downloads"
+    outputs.mkdir()
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=outputs)
+    download = DownloadManager(
+        repository,
+        concurrency=1,
+        entry_point=child_downloading_forever,
+        cooperative_seconds=0.1,
+        terminate_seconds=0.1,
+    )
+    download.start_queue()
+    try:
+        download.start("job-1")
+        assert spin(lambda: "job-1" in download.active_job_ids(), timeout=30)
+
+        download.cancel("job-1")
+
+        assert spin(
+            lambda: (
+                (stored := repository.get("job-1")) is not None
+                and stored.status is JobStatus.CANCELLED
+            ),
+            timeout=60,
+        ), f"a cancelled job ended as {getattr(repository.get('job-1'), 'status', None)}"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_crafted_job_id_cannot_make_removal_delete_outside_the_output_folder(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T113-R1`, Critical, through the manager** — the second entry point into the same defect.
+
+    `remove()` reaches `discard_staging_for` with an id read off a persisted row. Auditing the
+    class means proving the *callers* are safe and not only the function they share, because the
+    original defect was in a composition rather than in a helper.
+    """
+    outputs = tmp_path / "downloads" / "nested"
+    outputs.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "user-file.txt"
+    sentinel.write_bytes(b"the user's own file")
+
+    crafted = "../../../../outside"
+    repository = FakeRepository()
+    repository.add(
+        replace(make_job(crafted, "https://example.invalid/clip", outputs), queue_position=0)
+    )
+    staging = worker.staging_directory(outputs, crafted)
+    staging.mkdir(parents=True)
+    (staging / "Clip.mp4.part").write_bytes(b"half a download")
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    removed: list[str] = []
+    download.job_removed.connect(removed.append)
+    try:
+        download.remove(crafted)
+        assert spin(lambda: removed == [crafted], timeout=30)
+
+        assert sentinel.read_bytes() == b"the user's own file", (
+            "removing a job whose id spells a traversal deleted a file outside the output folder"
+        )
+        assert outside.is_dir()
+        assert not staging.exists(), "the job's own directory was not cleaned up"
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
