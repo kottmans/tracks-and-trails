@@ -12743,3 +12743,49 @@ already-written, append-only 52-line review record together with the T-186 corre
 the repository’s commit-partition rule, but it neither edits the historical record nor changes the
 correction’s substance, so it does not reopen `T186-R1`. Only `ai/REVIEWS.md` was modified in this
 review; no commit or push was made.
+
+
+## 2026-08-08 — T188-R1 focused correction re-review
+
+**Reviewer:** Codex
+
+**Review base:** `7dd5d8d`
+**Correction head:** `226366d`
+**Scope:** `T188-R1` and regressions in its correction diff. The T-186 status move and the
+implementer’s mutation-method correction were awareness-only except as evidence quality.
+
+**Verdict:** **Changes requested.** `T188-R1` remains **Open — High, blocks approval**. Criterion 3
+is corrected; criterion 4 is not. This is the direct continuation of the existing High finding,
+not a new finding, so another focused correction pass remains authorized by `AGENTS.md` §10.
+
+### Finding result
+
+| ID | Re-review result | Evidence |
+|---|---|---|
+| `T188-R1` | **Open — High, blocks approval.** **Criterion 3 is resolved:** the shared `pair` fixture now loads `dash_akamai_big_buck_bunny`, so the established routing, slot, selector, mode-switch and ffmpeg assertions use the recorded manifest. Expected selectors and descriptions are derived from the selected formats rather than pinning the source’s incidental ids; `pairable` uses the recorded fixture; and the routing/projection sweep includes it. The removed additive test is genuinely redundant. **Criterion 4 remains open:** `derived_format_columns._fixture.what_is_synthetic` still lists `formats[3]` and `formats[4]`, and those entries are exactly the synthetic audio-only/video-only pair (`140`/`137`). The new provenance explicitly says those entries remain and merely declares that they are “no longer the evidence.” The criterion requires that field to **stop claiming the pair**, and the prior finding’s correction direction was to retain the derived fixture only for shapes for which it supplies unique evidence. | Direct JSON inspection at `226366d` returns `formats[3]` and `formats[4]` from `what_is_synthetic`; the corresponding formats carry `vcodec: "none"`/named audio and named video/`acodec: "none"`. `ai/TASKS.md` criterion 4 is unchanged. Remove the redundant synthetic pair from `derived_format_columns` and its provenance, preserving the four genuinely unique shapes (and correcting indices/references as needed), or obtain an explicit maintainer amendment to criterion 4. Rewording the pair as non-evidence does not satisfy the present criterion. |
+
+### Reviewer verification at `226366d`
+
+The focused Python run used both `PYTHONDONTWRITEBYTECODE=1` and a fresh
+`PYTHONPYCACHEPREFIX`, so it could neither read the repository’s prior cache nor write a replacement.
+The first sandboxed attempt reached **314 passed, 11 skipped** before the sandbox refused the
+suite’s loopback socket; rerunning the same command with permission for its hermetic `127.0.0.1`
+server passed.
+
+| Check | Result |
+|---|---|
+| `git diff --check 7dd5d8d..226366d` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass**, 220 files |
+| `.venv/bin/python -m mypy src tests` | **pass**, 125 files |
+| `.venv/bin/python -m mypy --platform win32 src tests` | **pass**, 125 files |
+| Task placement, format selection, fixture contract and adapter tests, cache-isolated | **315 passed, 11 skipped** |
+| Criterion 3 adoption audit | **pass** |
+| Criterion 4 `what_is_synthetic` audit | **fail**, the synthetic pair remains listed |
+
+The implementer’s cache-cleared mutation result (**13 caught, 22 restored passing**) and full-suite
+result (**2801 passed, 17 skipped, 2 deselected**) were not independently repeated. The reported
+stale-bytecode cause is consistent with the impossible source/runtime disagreement described in the
+handoff; this review avoided that state rather than treating the earlier run as evidence. The source
+was not re-captured from the network, and Windows runtime and real CI remain unverified. Only
+`ai/REVIEWS.md` was modified in this review; no commit or push was made.
