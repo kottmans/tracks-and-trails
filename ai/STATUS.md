@@ -19,6 +19,28 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: `T-109` approved, and `T113-R1` needed a second correction
+
+**`T-109` is Approved at `ddd1f59`** — ten findings over three rounds, all resolved. That is
+**seven of nine Phase 3 deliverables** approved, and `T-113` is the only task left in review.
+
+**`T113-R1` survived its first correction, and the reason is worth keeping.** Hashing the job id
+removed every traversal spelling from the staging directory's **name**, and the finding was not
+only about the name: `mkdir(parents=True, exist_ok=True)` accepts a **symlink** already sitting at
+that name — a symlink to a directory is a directory to every question `mkdir` asks — and the
+download writes through it. The delete guard added in the same pass refuses the `rmtree` and cannot
+un-write the file. **A guard at one end of a lifetime is not a guard**; the create, the resume read
+and the delete now ask one function, and it is asked *after* the `mkdir` as well as before, because
+checking a path that does not exist yet proves nothing about what the `mkdir` then accepts.
+
+**Two of the four mutations survived on the first attempt, and both were informative.** Dropping the
+`is_symlink` half changed nothing, because `is_contained` resolves and therefore already catches
+every link pointing *out* of the download folder — the half is load-bearing for one pointing
+somewhere else *inside* it, where the download would write into a directory of the user's that the
+session did not create. And dropping the second check changed nothing, because every test planted
+its symlink before the call rather than during the `mkdir`. Both were tests being incomplete; the
+first was also the code being weaker than its docstring claimed.
+
 ## 2026-08-08: three deliverables approved, and two Criticals in the paths nobody was watching
 
 **`T-110`, `T-112` and `T-114` are Approved** at `3a53d66`, `3d6f9bc` and `4786417`, with no

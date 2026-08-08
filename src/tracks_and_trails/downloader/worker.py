@@ -496,8 +496,7 @@ def _run(
         # id rather than by `mkdtemp`, so a `.part` left by a killed attempt is exactly where the
         # next one writes and yt-dlp continues from it. Created here rather than by
         # `staging_directory`, so asking where a job's partial *would* be costs nothing.
-        staging = staging_directory(directory, job_id)
-        staging.mkdir(parents=True, exist_ok=True)
+        staging = open_staging(directory, job_id)
         result = _extract(
             adapter,
             request,
@@ -994,6 +993,62 @@ def staging_directory(directory: Path, job_id: str) -> Path:
     return directory / f"{STAGING_PREFIX}-{derived_component(job_id)}"
 
 
+def usable_staging(staging: Path, directory: Path) -> bool:
+    """Whether `staging` is a directory of this application's own, inside `directory` (`T113-R1`).
+
+    **A digest makes the *name* safe and says nothing about what is at it.** That was the gap the
+    first correction left: `derived_component` removed every traversal spelling from the job id, so
+    the path is always one component under the download folder — and a **symlink** already sitting
+    at that component points wherever it likes. `mkdir(parents=True, exist_ok=True)` accepts one
+    without complaint, because a symlink to a directory *is* a directory to every question `mkdir`
+    asks, and the download then writes through it. A reviewer created `outside/Clip.mp4` that way.
+
+    Two questions, and both are needed. `is_symlink` is asked because it is the one shape that
+    lies about where it is; `is_contained` resolves, so it also catches a link somewhere in the
+    output directory's own path and answers the question that actually matters — *do writes here
+    land inside the folder the user chose?*
+
+    A name that does not exist yet is usable: `_run` creates it, and there is no third party
+    between the two — see `open_staging`, which is where the ordering is arranged.
+    """
+    if staging.is_symlink():
+        return False
+    return not staging.exists() or (staging.is_dir() and is_contained(staging, directory))
+
+
+def open_staging(directory: Path, job_id: str) -> Path:
+    """This job's staging directory, created if need be, **verified before anything writes to it**.
+
+    **Create, then verify, then write** (`T113-R1`, **Critical**). Checking first and creating
+    afterwards leaves a window: the check passes on a path that does not exist, and a symlink
+    planted before the `mkdir` is then accepted by it. Verifying the directory this call actually
+    ended up with closes that — whatever was there, or arrived, is judged after the fact and before
+    a single byte is written.
+
+    Raises `UnsafePathError` rather than repairing anything. Deleting or replacing what is there
+    would be this application removing something it did not create, at a path it cannot explain;
+    refusing is the honest answer and `_run` turns it into a failed job with the reason.
+
+    **A legitimate existing directory is left exactly as it is**, which is the whole point of the
+    directory being stable: it holds the `.part` file `REQ-017` resumes from, and a check that
+    cleared it to be safe would delete the thing it is protecting.
+    """
+    staging = staging_directory(directory, job_id)
+    if not usable_staging(staging, directory):
+        raise UnsafePathError(
+            f"{str(staging)!r} is not this download's own working directory — something else is "
+            "at that name, and writing through it would put the download outside the folder you "
+            "chose"
+        )
+    staging.mkdir(parents=True, exist_ok=True)
+    if not usable_staging(staging, directory):
+        raise UnsafePathError(
+            f"{str(staging)!r} stopped being this download's own working directory while it was "
+            "being created"
+        )
+    return staging
+
+
 def resumable_partial(directory: Path, job_id: str) -> Path | None:
     """The partial file a killed attempt left for this job, or `None` if there is none.
 
@@ -1009,7 +1064,9 @@ def resumable_partial(directory: Path, job_id: str) -> Path | None:
     requests and the download completed. Both produced the right bytes; only one saved any.
     """
     staging = staging_directory(directory, job_id)
-    if not staging.is_dir():
+    if not staging.is_dir() or not usable_staging(staging, directory):
+        # Something else is at that name (`T113-R1`). Reporting what is inside it as *this job's
+        # partial* would be answering for a file the session never wrote.
         return None
     partials = sorted(staging.glob("*.part"))
     return partials[0] if partials else None
@@ -1249,9 +1306,14 @@ def discard_staging_for(directory: Path, job_id: str) -> None:
     operation in this file where being wrong is unrecoverable, so it asks rather than assumes.
     """
     staging = staging_directory(directory, job_id)
-    if not is_contained(staging, directory):
+    if not usable_staging(staging, directory):
+        # Asked through the same function the create path uses, so the two cannot come to disagree
+        # about what counts as this job's own directory — which is how a guard at one end of a
+        # lifetime stops covering the other.
         logging.getLogger(f"{APP_SLUG}.worker").error(
-            "refusing to remove %s: it is not inside %s", staging, directory
+            "refusing to remove %s: it is not this job's own directory inside %s",
+            staging,
+            directory,
         )
         return
     _discard_staging(staging)

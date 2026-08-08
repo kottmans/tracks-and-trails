@@ -12173,3 +12173,113 @@ four review rounds. They are corrected differently on purpose:
 tests exercised `derived_component` directly, so reverting `staging_directory` to concatenation
 left them green — the helper was proved and the composition was not, which is the same shape as the
 defect. The tests now drive `staging_directory`, the worker's `mkdir` and the manager's `remove`.
+
+
+## 2026-08-08 — T-109 / T-113 focused correction re-review
+
+**Reviewer:** Codex
+
+**Correction head:** `ddd1f59` (parent `1381f7f`)
+
+**Scope:** `T109-R8`..`T109-R10`, `T113-R1`..`T113-R3`, and regressions in their combined
+correction diff. The review used an immutable archive of `ddd1f59`.
+
+**T-109 verdict:** **Approved at `ddd1f59`.** `T109-R8`, `T109-R9`, and `T109-R10` are resolved;
+no open T-109 finding remains.
+
+**T-113 verdict:** **Changes requested.** `T113-R2` and `T113-R3` are resolved. `T113-R1` remains
+Critical and blocking because the worker still accepts an escaping staging-directory symlink
+before it writes. Critical correction passes remain authorized by `AGENTS.md` §10.
+
+### Finding results
+
+| ID | Re-review result | Evidence |
+|---|---|---|
+| `T109-R8` | **Resolved.** Every existing reported source, including produced media, must resolve strictly inside staging before reservation. `..`, symlink-out, outside-media, and directory-as-source cases refuse without moving the victim or leaving reservations. | Correction tests and the original probes passed at `ddd1f59`. |
+| `T109-R9` | **Resolved.** `save()` reports write failures, preserves the prior file through a same-directory replacement, and serializes every TOML-forbidden control character. Composition advances its held settings only after a successful write. | Focused settings tests and source inspection. |
+| `T109-R10` | **Resolved.** Current-truth task/status prose now describes `claim_outputs` and the built Save-as-preset action; old statements remain only as explicit past-tense history. `T-190` now asks to document the control as built by T-109. | Current-truth document inspection. |
+| `T113-R1` | **Open — Critical, blocks approval.** Hashing makes traversal spellings in `Job.id` unrepresentable, and the delete path now checks resolved containment. The actual worker entry point still does `staging.mkdir(parents=True, exist_ok=True)` and immediately hands a path below it to yt-dlp without checking the resolved staging directory. A deterministic probe pre-created the digest-named leaf as a symlink to an adjacent directory. The exact `mkdir` accepted it and a worker-shaped write through `staging / "Clip.mp4"` created `outside/Clip.mp4`; `staging.resolve().is_relative_to(downloads.resolve())` was false. The later delete guard protects the external directory from `rmtree`, but cannot undo the outside write. This violates the original requirement to contain before create/write/remove and the amended `UX-008` claim that nothing of the user's can be in staging. | Validate the resolved staging destination at the worker boundary before any download write, including a pre-existing symlink leaf, and fail without touching the external target. Add a deterministic test through `_run` or its actual staging setup—not only `derived_component`—with a pre-created outside sentinel and symlink, and mutation-check removal of that worker-side guard. Audit resume of a legitimate existing staging directory so the new check does not discard the partial it exists to preserve. |
+| `T113-R2` | **Resolved.** Shutdown records interruption rather than user cancellation, keeps the partial, and leaves the row in a state `recover_interrupted()` consumes. A prior user cancellation remains terminal. | Manager contrast tests passed; the orderly close/reopen test passed with a ranged continuation and byte-exact result. |
+| `T113-R3` | **Resolved.** User Cancel/Remove records cleanup intent and the parent discards only after the worker tree is reaped, covering cooperative and forced termination without allowing the child to recreate the partial afterward. | Both uncooperative-child manager tests passed. |
+
+### Reviewer verification at `ddd1f59`
+
+| Check | Result |
+|---|---|
+| `git diff --check ddd1f59^ ddd1f59` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass**, 209 files |
+| `mypy src` | **pass**, 50 source files |
+| bare `mypy` | **pass**, 122 files |
+| `mypy --platform win32` | **pass**, 122 files |
+| Focused path/settings/worker/manager tests | **340 passed**; the only failure in the combined command was the sandbox refusing the end-to-end test's loopback bind |
+| Orderly close/reopen ranged-resume end-to-end test, rerun with loopback permission | **1 passed** |
+| Digest-leaf symlink probe | **failed the safety property**: the worker's accepted staging path resolved outside the download directory and wrote bytes there |
+
+The implementer's full-suite result was not independently re-run in this focused pass. Windows
+runtime and real sites remain unverified. Only this review record was changed by the reviewer;
+reviewed source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or push was
+made.
+
+
+## 2026-08-08 — T113-R1, second correction
+
+**Implementer:** Claude Code
+**Corrects:** `T113-R1`, still Critical after the `ddd1f59` pass
+**Status:** corrected and **awaiting re-review**. `T109-R8`..`R10` and `T113-R2`/`R3` were resolved
+by the reviewer at `ddd1f59` and are not touched here.
+
+### What the first correction actually fixed, and what it did not
+
+Hashing the job id removed every traversal spelling from the **name**, and the finding was not only
+about the name. `mkdir(parents=True, exist_ok=True)` accepts a symlink already sitting at that
+name — a symlink to a directory *is* a directory to every question `mkdir` asks — and the download
+then writes through it. The delete guard I added refuses the `rmtree`, which protects the external
+directory from being removed and does nothing about the file that was written into it.
+
+**The correction was a guard at one end of a lifetime**, and the write is at the other. The two now
+ask the same function, `usable_staging`, so they cannot come to disagree about what counts as this
+job's own directory.
+
+| Change | Why |
+|---|---|
+| `usable_staging(staging, directory)` | One question, two conditions: not a symlink, and resolving inside the output directory. Asked by the create path, the resume read and the delete. |
+| `open_staging(directory, job_id)` | **Create, then verify, then write.** Checking first and creating afterwards leaves a window — the check passes on a path that does not exist and the `mkdir` then accepts a symlink planted before it. |
+| Refuses rather than repairs | Deleting what is at that name would be this application removing something it did not create, at a path it cannot explain. `_run` turns the refusal into a failed job with the reason. |
+| `resumable_partial` asks too | Reporting what is inside a foreign directory as *this job's partial* answers for a file the session never wrote — and the manager reads it to decide what to clean up. |
+
+### The audit the finding asked for
+
+**A legitimate existing staging directory is reused untouched**, which is the whole point of the
+name being stable: it holds the `.part` file `REQ-017` resumes from. A guard that cleared it to be
+safe would delete the head start the feature exists to keep, and would pass every negative test
+while doing it. `test_an_existing_staging_directory_is_reused_with_its_partial_intact` is that case,
+and a mutation clearing the directory kills it.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `ruff check .` / `ruff format --check .` | **pass** |
+| `mypy src`, bare `mypy`, `mypy --platform win32` | **pass**, 50 / 122 / 122 files |
+| Full default suite | **2677 passed, 14 skipped, 2 deselected** |
+| The reviewer's probe | A symlink pre-created at the digest-named leaf, driven through `run_session`: the session fails `DISK`, `outside/` still holds only its sentinel, and nothing was written through the link. |
+| Mutation checks | Four, **all killed**: removing the worker-side guard; dropping the symlink half; verifying only before the `mkdir`; clearing an existing directory instead of reusing it. |
+| Windows runtime, real sites | **Still unverified.** |
+
+**Two of those four mutations survived on the first attempt, and what they exposed is recorded
+rather than quietly fixed.**
+
+- **Dropping the `is_symlink` half changed nothing** in my tests, because `is_contained` resolves —
+  so every symlink pointing *out* of the download folder is caught by containment alone. The half
+  is load-bearing for a link pointing somewhere else **inside** it: the download would write into a
+  directory of the user's that this session did not create, and two jobs could be pointed at one
+  directory, which is `T-046`'s collision reached sideways. That case now has a test.
+- **Dropping the second check changed nothing**, because every test planted its symlink before the
+  call. The check exists for the window *inside* it, so the new test plants the link during the
+  `mkdir` — the only way to observe the ordering deterministically.
+
+Both were my tests being incomplete rather than the code being wrong, except that the first one was
+also the code being weaker than its docstring claimed. That is the same shape as the survival
+recorded in the previous batch: a property proved of a helper and not of the composition that uses
+it.

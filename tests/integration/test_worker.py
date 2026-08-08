@@ -2388,3 +2388,163 @@ def test_a_discard_refuses_a_staging_path_outside_its_directory(
     worker_module.discard_staging_for(downloads, "job-1")
 
     assert (outside / "user-file.txt").exists(), "the rmtree ran on a path outside the directory"
+
+
+def test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T113-R1`, Critical.** A digest makes the *name* safe and says nothing about what is at it.
+
+    `mkdir(parents=True, exist_ok=True)` accepts a symlink to a directory without complaint —
+    a symlink to a directory *is* a directory to every question `mkdir` asks — and the download
+    then writes through it. A reviewer created `outside/Clip.mp4` that way, at a path the delete
+    guard correctly refuses to `rmtree` and cannot un-write.
+
+    Driven through `run_session`, which is the entry point that does the `mkdir`. The previous
+    tests proved `derived_component` and `staging_directory`, and the write happens one layer down
+    from both — the same gap that let a mutation survive on the first correction.
+    """
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_bytes(b"the user's own file")
+    worker_module.staging_directory(downloads, "job-1").symlink_to(
+        outside, target_is_directory=True
+    )
+
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "_extract",
+        fake_extract({"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}),
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: downloads / "Clip.mp4")
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(downloads, format_selector="best"), queue
+    )
+
+    messages = drain(queue)
+    assert not any(isinstance(message, Succeeded) for message in messages), (
+        "the session reported success having written through a symlink out of the download folder"
+    )
+    failure = next(message for message in messages if isinstance(message, Failed))
+    assert failure.kind is ErrorKind.DISK, failure
+    assert sorted(path.name for path in outside.iterdir()) == ["sentinel.txt"], (
+        "the download wrote outside the folder the user chose"
+    )
+    assert sentinel.read_bytes() == b"the user's own file"
+
+
+def test_a_plain_file_at_the_staging_name_fails_rather_than_being_replaced(tmp_path: Path) -> None:
+    """The other squatter. Refused rather than repaired: deleting what is there would be this
+    application removing something it did not create, at a path it cannot explain."""
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    squatter = worker_module.staging_directory(downloads, "job-1")
+    squatter.write_bytes(b"not a directory")
+
+    with pytest.raises(UnsafePathError, match="not this download's own working directory"):
+        worker_module.open_staging(downloads, "job-1")
+
+    assert squatter.read_bytes() == b"not a directory"
+
+
+def test_an_existing_staging_directory_is_reused_with_its_partial_intact(tmp_path: Path) -> None:
+    """**The audit `T113-R1` asked for**: the new check must not discard what it protects.
+
+    The directory is stable precisely so a killed attempt's `.part` is where the next one writes
+    (`REQ-017`). A guard that cleared it to be safe would delete the head start the whole feature
+    exists to keep, and would pass every negative test above while doing it.
+    """
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    staging = worker_module.staging_directory(downloads, "job-1")
+    staging.mkdir()
+    (staging / "Clip.mp4.part").write_bytes(b"half a download")
+
+    reused = worker_module.open_staging(downloads, "job-1")
+
+    assert reused == staging
+    assert (reused / "Clip.mp4.part").read_bytes() == b"half a download"
+    assert worker_module.resumable_partial(downloads, "job-1") is not None
+
+
+def test_a_symlinked_staging_name_reports_no_partial_to_resume_from(tmp_path: Path) -> None:
+    """Reporting what is inside a foreign directory as *this job's partial* answers for a file the
+    session never wrote — and it is the manager that reads this, to decide what to clean up."""
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "Clip.mp4.part").write_bytes(b"somebody else's partial")
+    worker_module.staging_directory(downloads, "job-1").symlink_to(
+        outside, target_is_directory=True
+    )
+
+    assert worker_module.resumable_partial(downloads, "job-1") is None
+    worker_module.discard_staging_for(downloads, "job-1")
+    assert (outside / "Clip.mp4.part").exists(), "the cleanup followed the link out of the folder"
+
+
+def test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Containment alone is not enough, and a mutation is what said so.
+
+    Removing the `is_symlink` half left every outside case still refused — `is_contained` resolves,
+    so a link *out* of the folder is caught by containment on its own. A link to another directory
+    **inside** the folder is not: the download would write into a directory of the user's that this
+    session did not create, and `claim_outputs` would leave whatever it did not move behind. It is
+    also `T-046`'s collision, reached sideways — two jobs pointed at one directory.
+    """
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    theirs = downloads / "Music I Already Had"
+    theirs.mkdir()
+    (theirs / "track.mp3").write_bytes(b"the user's own music")
+    worker_module.staging_directory(downloads, "job-1").symlink_to(theirs, target_is_directory=True)
+
+    with pytest.raises(UnsafePathError, match="not this download's own working directory"):
+        worker_module.open_staging(downloads, "job-1")
+
+    assert sorted(path.name for path in theirs.iterdir()) == ["track.mp3"]
+
+
+def test_a_symlink_planted_during_the_mkdir_is_still_caught(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Why the check runs **after** the create as well as before it.
+
+    Checking first and creating afterwards leaves a window: the check passes on a path that does
+    not exist, and a symlink planted before the `mkdir` is then accepted by it. A mutation dropping
+    the second check survived every other test here, because every other test plants the link
+    before the call — this one plants it *inside* the `mkdir`, which is the only way to observe the
+    ordering deterministically.
+    """
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "sentinel.txt").write_bytes(b"the user's own file")
+    staging = worker_module.staging_directory(downloads, "job-1")
+    original = Path.mkdir
+
+    def plant_then_create(self: Path, *args: Any, **kwargs: Any) -> None:
+        if self == staging:
+            staging.symlink_to(outside, target_is_directory=True)
+            return
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", plant_then_create)
+
+    with pytest.raises(UnsafePathError, match="stopped being"):
+        worker_module.open_staging(downloads, "job-1")
+
+    monkeypatch.undo()
+    assert sorted(path.name for path in outside.iterdir()) == ["sentinel.txt"]
