@@ -1411,7 +1411,51 @@ filed this rather than editing it.
 ### T-188 — A recorded source with a separate video and audio stream
 
 **Status:** **Proposed — filed 2026-08-07 by `T-108`.** The gap `OPS-013` is holding open, one
-deliverable later than the one it was written for.
+deliverable later than the one it was written for. **Surveyed 2026-08-08; one candidate found and
+it needs a maintainer ruling, not more searching.**
+
+#### The 2026-08-08 survey
+
+**`media.ccc.de` is now closed rather than unresolved.** This entry says *"if a conference is found
+whose API states a licence, this task is nearly done"*, and the original probe sampled **one**
+conference — 0 of 222 for 38c3. The whole archive has now been swept: **452 conferences, 16,828
+events, zero with a stated licence.** The right shape and no licence, permanently. That is a
+disposition rather than a pending search, and nobody needs to look there again.
+
+**The recorded sources are confirmed dead ends, not merely unpromising.** `video.blender.org`
+serves five progressive MP4s reporting `vcodec: None` — *unknown*, not the explicit `'none'` the
+routing needs — and its API returns **zero `streamingPlaylists`**, so no HLS split-track variant is
+hiding behind the extractor.
+
+**One viable candidate: a DASH manifest.** DASH is separate-track by construction, and the
+DASH-IF / Akamai reference stream produces exactly the pair `T-108` merges:
+
+| | `vcodec` | `acodec` | count |
+|---|---|---|---|
+| video-only | `avc1.64000d` | **`none`** | 10 |
+| audio-only | **`none`** | `mp4a.40.5` | 1 |
+
+`https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd` — **Big Buck Bunny, CC BY 3.0, Blender
+Foundation**, which this project already records from two other sources. Unsigned, and a stable
+reference stream for years. It meets `ai/TESTING.md` §5's three stated tests.
+
+**Why it is not simply committed — two weaknesses, and they are the maintainer's to weigh:**
+
+1. **The extractor is `generic`, not a site extractor.** Every existing fixture pins a real site's
+   output; this would pin yt-dlp's **DASH manifest parsing**. That is arguably where `vcodec: 'none'`
+   comes from and so exactly what the routing should be proven against — but it is a different kind
+   of evidence from what the recorded set holds.
+2. **The licence is known from the content's identity, not stated by the source.** Stronger than
+   `media.ccc.de`, which states nothing; weaker than PeerTube, which states it in the API.
+
+This entry asks for *"a committed fixture from a public source"* and warns that a presentation this
+project generates *"does not show that any real site publishes that shape"*. **A CDN-hosted
+reference stream sits between those two**, which is why it is put to the maintainer rather than
+quietly counted.
+
+**Recommendation: take it**, recording the `generic` extractor and the licence provenance in the
+fixture's own `content_licence` block. If a real site extractor is wanted instead, `T-188` stays
+open and `OPS-013` keeps holding it — which is already a disposition and not a gap.
 
 **No acceptable source this project records publishes a merge pair.** `REQ-008`'s subject is *"a
 separate video and audio stream to be merged"*, and routing a format into the video or the audio
