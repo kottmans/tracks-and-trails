@@ -85,13 +85,178 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-*Empty. Everything submitted on 2026-08-08 is approved and in `## Complete` — `T-109`, `T-110`,
-`T-112`, `T-113`, `T-114`, then `T-111` (the ninth and last Phase 3 deliverable), then `T-143` and
-`T-180` out of the loose Phase 3 items the maintainer ruled into the phase the same day.*
+*`T-189` and `T-186` are submitted and unreviewed. Every Phase 3 **deliverable** is approved and in
+`## Complete` — `T-109`, `T-110`, `T-112`, `T-113`, `T-114`, then `T-111` (the ninth and last),
+then `T-143` and `T-180` out of the loose items the maintainer ruled into the phase.*
 
-***All nine Phase 3 deliverables are approved.*** What stands between here and the phase exit is the
-four loose items still open — `T-189`, `T-171`, `T-186`, `T-188` — each needing a disposition rather
-than necessarily an implementation, and then exit criterion 6, the exit review itself.*
+***All nine Phase 3 deliverables are approved, and five of the six loose items are answered.***
+`T-143` and `T-180` built and approved; `T-171` **refused** by `DAT-008`; `T-189` and `T-186` in
+review here. **`T-188` is the only one left**, and no amount of work closes it — `OPS-013` holds it
+open until a public source with a *stated licence* publishes a separate video/audio pair. Then exit
+criterion 6, the exit review itself.*
+
+---
+
+### T-189 — Make the required ffmpeg CI cases fail instead of skip
+
+**Status:** **In Review — implemented 2026-08-08.** *(Built by the Implementer; no criterion is
+claimed approved.)* *(Was: Proposed — filed 2026-08-07 by the `T-108` correction re-review,
+`T108-R3`.)* The Windows evidence was real and green throughout; this keeps a later missing tool
+from turning that required gate into a silent skip.
+
+**How it works.** `tests/capabilities.resolve_ffmpeg` keeps the developer's skip and adds one
+branch: when `TRACKSANDTRAILS_REQUIRE_FFMPEG` is set, an absent tool **fails** instead. The two CI
+jobs that carry `T-108`'s cross-platform merge proof set it — `check`'s *Tests* step and
+`windows-desktop`'s *Full suite*. **Nothing installs anything**, which `T-189`'s scope requires:
+`OPS-005` makes `STARBASE` the maintainer's own machine, so the gate fails and restoring ffmpeg is a
+deliberate act.
+
+**An opt-in variable rather than a `CI` check or a hostname.** `CI` is set on runners that
+legitimately have no ffmpeg, and detecting the self-hosted machine by name would put the runner's
+identity in the suite. The workflow declares which jobs carry the proof; the fixture reads that.
+
+#### The mistake this task made, and why it is recorded rather than quietly fixed
+
+**The first version of the new test had the exact defect the task exists to close.** Written as
+`pytest.raises(pytest.fail.Exception)`, a regression to skipping raises `Skipped` — which `raises`
+does not catch, so it propagated and **turned the test into a skip**. Mutating the fail branch away
+produced `18 passed, 1 skipped` and nothing red.
+
+That is `T-189`'s own subject reproduced one level up: a required assertion silently becoming a
+non-assertion, inside a green run. It was caught by the mutation check rather than by review, which
+is the argument for running one at all — **the test now uses an explicit `try` with a `skip` arm
+that fails loudly**, and re-mutating turns it red.
+
+**Owner:** Implementer
+**Priority:** Medium — no current product defect, but a required cross-platform acceptance test can
+disappear while CI remains green
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T-108`, `T108-R1`, `T-062`, `OPS-005`, `OPS-010`,
+`tests/capabilities.py::ffmpeg`, `.github/workflows/ci.yml`
+**Affected surfaces:** `.github/workflows/ci.yml`, the ffmpeg capability fixture or a CI-specific
+preflight, and focused tests for the gate. No product source
+**Risk:** Low. This changes failure accounting, not application behaviour; the self-hosted machine
+must still not be provisioned without maintainer authority
+
+#### What is wrong
+
+`test_a_chosen_video_and_audio_pair_produce_one_merged_file` is now T-108's required proof on
+Linux and Windows. It takes the ordinary `ffmpeg` fixture, which deliberately skips on a developer
+machine missing either `ffmpeg` or `ffprobe`. The self-hosted Windows workflow deliberately
+**records but does not install** ffmpeg, and its Full suite step has no preflight that makes absence
+an error. STARBASE had ffmpeg 8.1.2 for run `31233348009`, and the exact test passed there, so this
+does not reopen T-108. But if the tool disappears later, the required case becomes `SKIPPED` and
+the job can stay green.
+
+The workflow comment that says the default suite does not need ffmpeg became false when T108-R1
+added the merged-file proof. The capability fixture also says CI installs ffmpeg; that is true on
+hosted runners and not on the self-hosted Windows runner now carrying the Windows gate.
+
+#### Scope
+
+Keep the helpful local skip, but make the CI configurations responsible for T-108's platform proof
+require both tools. A clear preflight in the job is sufficient; changing the fixture to fail under
+an explicit CI-only flag is also acceptable. Do not install or mutate software on STARBASE as part
+of the test run — fail with the missing capability and let the maintainer restore it deliberately.
+
+#### Acceptance criteria
+
+- Linux and Windows CI jobs that own the T-108 platform proof fail clearly when `ffmpeg` or
+  `ffprobe` is absent; the required end-to-end test cannot turn into a green skip
+- An ordinary developer run without the tools still skips conversion cases with the actionable
+  reason `tests/capabilities.py` already gives
+- The workflow and capability comments state which runners install the tools and which merely
+  require a pre-provisioned installation
+- A deterministic probe or mutation hides one tool from the CI gate and makes the gate fail
+- The real merged-file case still passes on Linux and Windows when both tools are present
+
+#### Out of scope
+
+- Provisioning the self-hosted desktop from CI
+- Making ffmpeg a Python dependency or bundling it with the application
+- Changing the product's runtime missing-ffmpeg behaviour (`REQ-024`)
+
+---
+
+### T-186 — Finish the withdrawn-History prose sweep
+
+**Status:** **In Review — implemented 2026-08-08.** *(Built by the Implementer; no criterion is
+claimed approved.)* *(Was: Proposed — filed from non-blocking `T176-R1`, 2026-08-07.)* `T-176`
+corrected a useful first set; this finished the semantic audit.
+
+**Eight false present-tense claims, in seven files.** Both survivors this entry names by hand were
+among them:
+
+| Where | What it claimed |
+|---|---|
+| `downloader/manager.py` | *"**History is untouched**, so this announces a smaller queue and never a smaller record"* — clearing now removes the only trace a finished row leaves |
+| `downloader/manager.py` | *"`T-085`'s history keeps a completed job's record"* — it does not; removal leaves the file and nothing else |
+| `ui/main_window.py` | *"`REQ-020` **is now** a private ledger with nothing to browse"* — true for part of one day, until `T-170` withdrew that too |
+| `ui/main_window.py` | a comment deferring its reason to `_confirm_history_removal`, **which no longer exists** |
+| `ui/row_delegate.py` | *"how `HistoryModel` gets the right answer"* — present tense about a removed class |
+| `ui/reveal.py` | *"a `history` row **is** durable"* ×2 |
+| `ui/queue_view.py` | *"History **needs** the same answer from a record"* |
+| `tests/unit/test_presets.py` | four: a section heading, a docstring, and two assertion messages |
+
+**The sweep is semantic, and two findings are the evidence for that.**
+
+- **`manager.py` keeps a `history` that is not History.** *"a second `READY` revision to every
+  probed job's **history** … asserts that history as a sequence (`ARC-004`)"* is the job's **status
+  sequence**. A word replacement would have corrupted a correct comment about a different thing.
+- **Two of the eight were reasoning worth keeping, not text worth deleting.** `row_delegate.py`'s
+  *"absent means no"* default and `queue_view.py`'s one-shared-rule argument were both **justified**
+  by History and remain correct without it. Each now states the surviving reason rather than losing
+  it with the sentence that carried it.
+
+**`_confirm_history_removal` is the one that could not be repaired by rewording**: a comment whose
+whole content was a pointer to a departed function, so its justification was unreadable from the
+code. The reason is stated in place instead.
+
+**Owner:** Implementer
+**Priority:** Low — runtime behavior is correct; the remaining defect is the contract taught to
+the next maintainer
+**Phase:** Phase 3 cleanup
+**Depends on:** nothing
+**Relevant context:** `T170-R4`, `T175-R1`, `T176-R1`, `T-176`, withdrawn `REQ-020`, migration
+`0009`
+**Affected surfaces:** comments, docstrings, test headings and assertion messages under `src/` and
+`tests/`. **No production logic, historical migration, frozen fixture or historical record**
+**Risk:** Low — the sweep must distinguish a false present-tense contract from accurate history
+
+#### Scope
+
+Finish the semantic audit `T-176` began. Representative survivors include
+`downloader/manager.py` saying clearing leaves History untouched and removal leaves a History
+record, `ui/main_window.py` saying `REQ-020` is still a private ledger and that both tabs draw the
+same rows, and `tests/unit/test_presets.py` saying `FormatChoice` still narrows data for History.
+
+Preserve historical rationale when it still explains a live invariant, but put it in the past or
+inside an explicit supersession note. A current contract must describe the Queue-only product that
+exists after `T-175` and migration `0009`.
+
+#### Acceptance criteria
+
+- No current-tense comment, docstring, test heading or assertion message under `src/` or `tests/`
+  says a History view, completion record or private ledger still exists
+- Historical rationale remains truthful and explicitly historical; migrations, frozen fixtures,
+  `ai/DECISIONS.md`, `ai/REVIEWS.md` and `ai/archive/` are byte-identical
+- The sweep is semantic rather than a blind word replacement; unrelated sequence history and
+  accurate descriptions of removed behavior remain
+- Production behavior is unchanged; `ruff check .`, `ruff format --check .`, bare `mypy`,
+  `mypy --platform win32`, task placement and the tests whose prose changes are clean
+
+#### Out of scope
+
+- Reintroducing a History surface, completion record or Settings clearing route
+- Renaming identifiers solely because their historical rationale mentions History
+- Rewriting historical records, migrations or frozen evidence
+
+---
+
+
+---
+
 
 ## Ready
 
@@ -1213,203 +1378,6 @@ broken down. Phase 1 listed nine deliverables and produced fifty tasks; these ei
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
 
-### T-171 — Decide whether files carry provenance
-
-**Status:** **Proposed — the measurement is done, the decision is not, and the decision is the
-maintainer's.** *(Evidence added 2026-08-06 by the Implementer; no criterion is claimed met.)*
-
-**The first criterion does *not* have its matrix** (`T171-R1`). What exists is
-`ai/evidence/2026-08-06-provenance-survival.md`: **surrogate evidence**, direct ffmpeg commands
-resembling the presets rather than yt-dlp's own postprocessors — no `FFmpegExtractAudio`, no
-`FFmpegEmbedSubtitle`, and a "merge" that is one muxed file copied to another container. Useful, and
-not per-family coverage. It is
-regenerated by a script beside it from synthetic media in a temporary directory — no network, no
-real download, nothing written near anybody's library. Three observations worth reading before the
-decision, none of them a satisfied criterion:
-
-1. **Nothing writes provenance today.** `build_postprocessors` never configures `FFmpegMetadata`
-   and the presets pass no `--embed-metadata`, so the honest baseline is *add something*, not
-   *replace something*.
-2. **Standard tags survived every ffmpeg shape that was run**, including the transcode. This is
-   the claim `T171-R1` narrowed: it read *"survive every path this application takes"*, and the
-   application's paths are not what was measured. Nothing here ran `FFmpegExtractAudio` or
-   `FFmpegEmbedSubtitle`, so it is encouraging and it is not per-family coverage.
-3. **A custom key is dropped silently by MP4 and M4A** — two of the five built-in presets produce
-   exactly those containers — while surviving MKV and MP3. No error, no warning at the default log
-   level. That turns this task's "metadata failure semantics" criterion around: the risk is not
-   only a download failing because a tag could not be written, but a tag quietly not being written
-   at all.
-
-**What is still open, and why the Implementer did not close it:** every remaining criterion is a
-product judgement about writing private download context into a user's files — opt-in versus
-opt-out, global versus per-download, the privacy allowlist, what a container that cannot carry a
-field should do, and whether the feature is adopted at all. `AGENTS.md` §5 keeps that with the
-maintainer. **Survival through tools this application does not run is also unmeasured** and this
-task's sixth criterion forbids claiming it.
-
-*(Was: Proposed — **maintainer direction, 2026-08-06.** File details are a better candidate for
-answering *what settings produced this file* than a permanent in-app library, but this is not yet
-permission to write private download context into every output.)*
-**Owner:** Planner
-**Priority:** Low — useful if it survives the user's later processing, and unnecessary for the
-History removal
-**Phase:** **Phase 3 — maintainer ruling, 2026-08-08.** *(Was "Phase 4 or later".)* The decision is
-Phase 3's to take, so that Phase 4 opens without a Phase 3 question still attached to it. The
-measurement is already done; what is outstanding is the ruling, not the work.
-**Depends on:** nothing. *(This read "`T-169` for the boundary between the ledger and file-owned
-provenance". There is no ledger, so there is no boundary to draw — if provenance is adopted, a file
-is the only place it could go, which strengthens the case rather than removing it.)*
-**Relevant context:** `REQ-026`, `OPS-002`, the built-in presets,
-`downloader/ytdlp_adapter.py`, yt-dlp metadata/postprocessor options
-**Affected surfaces:** `ai/REQUIREMENTS.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`, and a
-new implementation task only if the decision adopts the feature
-**Risk:** Medium — embedded metadata travels when a file is shared and support differs by
-container and post-processing path
-
-#### Scope
-
-Measure before choosing a storage mechanism. Inventory what yt-dlp and the current postprocessors
-already write for every built-in audio and video preset, and which fields survive the remux,
-conversion and ordinary file-moving workflow this feature is meant to serve.
-
-Compare three honest outcomes: keep the existing file metadata unchanged; add a small opt-in set
-of embedded tags where the container supports them; or write an explicit sidecar. Filesystem
-extended attributes are not equivalent to embedded metadata — they often disappear on copy — and
-must not be treated as the same option.
-
-#### Acceptance criteria
-
-- A recorded matrix says, per built-in output family, what provenance exists now, what can be
-  added without another runtime dependency, and what survives the application's own processing
-- The decision names the user question each field answers. Candidate fields include the chosen
-  preset/format and completion time; no field is retained merely because the old History row had it
-- A strict privacy allowlist is part of any adopted design. Cookies, authorization headers, proxy
-  details, local configuration paths and unredacted signed/private URLs are never embedded or put
-  in a sidecar
-- The default and control are explicit: opt-in versus opt-out, whether the choice is global or
-  per-download, and what happens when a container cannot carry the requested field
-- Metadata failure semantics are decided. A successful media download must not become an
-  unexplained failure because an optional provenance tag could not be written
-- The decision accounts for users processing the file afterwards and does not claim metadata will
-  survive tools or containers for which it was not tested
-- If adopted, requirements and a separate Implementer task define the supported formats, exact
-  schema and tests. If rejected, the decision records why and no dormant UI is added
-
-#### Out of scope
-
-- **Becoming a substitute record of what has been downloaded.** This read "replacing the completion
-  ledger required by `REQ-022`"; there is no ledger and `REQ-022` requires no storage. The exclusion
-  is now the stronger one: provenance in a file is a property of that file, and must not be read
-  back to reconstruct a list of downloads
-- Reconstructing a History tab by scanning users' download directories
-- Media-library features such as ratings, play counts, tagging, organisation or file watching
-
----
-
-### T-186 — Finish the withdrawn-History prose sweep
-
-**Status:** Proposed — **filed from non-blocking `T176-R1`, 2026-08-07.** `T-176` corrected a
-useful first set, but the semantic sweep still leaves live comments, docstrings and assertion
-messages claiming that a History surface or private completion ledger exists.
-**Owner:** Implementer
-**Priority:** Low — runtime behavior is correct; the remaining defect is the contract taught to
-the next maintainer
-**Phase:** Phase 3 cleanup
-**Depends on:** nothing
-**Relevant context:** `T170-R4`, `T175-R1`, `T176-R1`, `T-176`, withdrawn `REQ-020`, migration
-`0009`
-**Affected surfaces:** comments, docstrings, test headings and assertion messages under `src/` and
-`tests/`. **No production logic, historical migration, frozen fixture or historical record**
-**Risk:** Low — the sweep must distinguish a false present-tense contract from accurate history
-
-#### Scope
-
-Finish the semantic audit `T-176` began. Representative survivors include
-`downloader/manager.py` saying clearing leaves History untouched and removal leaves a History
-record, `ui/main_window.py` saying `REQ-020` is still a private ledger and that both tabs draw the
-same rows, and `tests/unit/test_presets.py` saying `FormatChoice` still narrows data for History.
-
-Preserve historical rationale when it still explains a live invariant, but put it in the past or
-inside an explicit supersession note. A current contract must describe the Queue-only product that
-exists after `T-175` and migration `0009`.
-
-#### Acceptance criteria
-
-- No current-tense comment, docstring, test heading or assertion message under `src/` or `tests/`
-  says a History view, completion record or private ledger still exists
-- Historical rationale remains truthful and explicitly historical; migrations, frozen fixtures,
-  `ai/DECISIONS.md`, `ai/REVIEWS.md` and `ai/archive/` are byte-identical
-- The sweep is semantic rather than a blind word replacement; unrelated sequence history and
-  accurate descriptions of removed behavior remain
-- Production behavior is unchanged; `ruff check .`, `ruff format --check .`, bare `mypy`,
-  `mypy --platform win32`, task placement and the tests whose prose changes are clean
-
-#### Out of scope
-
-- Reintroducing a History surface, completion record or Settings clearing route
-- Renaming identifiers solely because their historical rationale mentions History
-- Rewriting historical records, migrations or frozen evidence
-
----
-
-### T-189 — Make the required ffmpeg CI cases fail instead of skip
-
-**Status:** **Proposed — filed 2026-08-07 by the `T-108` correction re-review (`T108-R3`).**
-The current Windows evidence is real and green; this task keeps a later missing tool from turning
-that required gate into a silent skip.
-
-**Owner:** Implementer
-**Priority:** Medium — no current product defect, but a required cross-platform acceptance test can
-disappear while CI remains green
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `T-108`, `T108-R1`, `T-062`, `OPS-005`, `OPS-010`,
-`tests/capabilities.py::ffmpeg`, `.github/workflows/ci.yml`
-**Affected surfaces:** `.github/workflows/ci.yml`, the ffmpeg capability fixture or a CI-specific
-preflight, and focused tests for the gate. No product source
-**Risk:** Low. This changes failure accounting, not application behaviour; the self-hosted machine
-must still not be provisioned without maintainer authority
-
-#### What is wrong
-
-`test_a_chosen_video_and_audio_pair_produce_one_merged_file` is now T-108's required proof on
-Linux and Windows. It takes the ordinary `ffmpeg` fixture, which deliberately skips on a developer
-machine missing either `ffmpeg` or `ffprobe`. The self-hosted Windows workflow deliberately
-**records but does not install** ffmpeg, and its Full suite step has no preflight that makes absence
-an error. STARBASE had ffmpeg 8.1.2 for run `31233348009`, and the exact test passed there, so this
-does not reopen T-108. But if the tool disappears later, the required case becomes `SKIPPED` and
-the job can stay green.
-
-The workflow comment that says the default suite does not need ffmpeg became false when T108-R1
-added the merged-file proof. The capability fixture also says CI installs ffmpeg; that is true on
-hosted runners and not on the self-hosted Windows runner now carrying the Windows gate.
-
-#### Scope
-
-Keep the helpful local skip, but make the CI configurations responsible for T-108's platform proof
-require both tools. A clear preflight in the job is sufficient; changing the fixture to fail under
-an explicit CI-only flag is also acceptable. Do not install or mutate software on STARBASE as part
-of the test run — fail with the missing capability and let the maintainer restore it deliberately.
-
-#### Acceptance criteria
-
-- Linux and Windows CI jobs that own the T-108 platform proof fail clearly when `ffmpeg` or
-  `ffprobe` is absent; the required end-to-end test cannot turn into a green skip
-- An ordinary developer run without the tools still skips conversion cases with the actionable
-  reason `tests/capabilities.py` already gives
-- The workflow and capability comments state which runners install the tools and which merely
-  require a pre-provisioned installation
-- A deterministic probe or mutation hides one tool from the CI gate and makes the gate fail
-- The real merged-file case still passes on Linux and Windows when both tools are present
-
-#### Out of scope
-
-- Provisioning the self-hosted desktop from CI
-- Making ffmpeg a Python dependency or bundling it with the application
-- Changing the product's runtime missing-ffmpeg behaviour (`REQ-024`)
-
----
-
 ### T-190 — `docs/UX_SPEC.md` §6 still says its screen is unspecified
 
 **Status:** Proposed — filed by `T-109`, 2026-08-07.
@@ -2116,6 +2084,130 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-171 — Decide whether files carry provenance
+
+**Status:** **Complete — decided 2026-08-08, and the decision is *no*.** `DAT-008` is accepted: the
+application writes no provenance of its own into any output file or sidecar. **No implementation
+task follows and no dormant UI is added**, which is what this task's seventh criterion asks of a
+rejection.
+
+**Why it was refused**, in the order the reasons actually weigh:
+
+- **The legitimate version already exists and is already the user's.** `T-109` added
+  `embed_metadata`, configuring yt-dlp's `FFmpegMetadata` — *the source's* title, artist and date,
+  opt-in, per download or saved in a preset. `DAT-008` does not touch it.
+- **The non-intrusive mechanism fails silently where it matters.** §3 of the measurement: a custom
+  key is dropped by MP4 and M4A with no error at the default log level, and **two of the five
+  built-in presets produce exactly those containers**.
+- **The mechanism that survives belongs to the user.** Standard `comment`/`description` tags
+  survived every measured path, at the cost of writing application text into fields a user may
+  already be using.
+- **The file already answers the question.** Container, codec, resolution and bitrate *are* what the
+  settings produced. A preset name adds a label, not information.
+- **It could never honestly promise what it is for** — criterion 6 forbids claiming untested
+  survival, and nothing outside ffmpeg was tested.
+- **It re-opens what `T-169`, `T-170` and migration `0009` closed.** This application keeps no record
+  of what has been downloaded; provenance in a file is that record relocated into an artifact the
+  user shares.
+
+**`T171-R1` is moot rather than resolved, and the distinction matters.** The finding was that the
+first criterion's matrix does not exist and the evidence is surrogate — direct ffmpeg commands
+rather than yt-dlp's own postprocessors. **That is still true.** The matrix was never completed
+because the decision it was to inform came out *no*, and a rejection does not need per-family
+coverage of a mechanism nobody is adopting. `DAT-008` records the reopening condition, so anyone
+returning to this knows the matrix is the first thing owed.
+
+*(Was: Proposed — the measurement is done, the decision is not, and the decision is the
+maintainer's. Evidence added 2026-08-06 by the Implementer; no criterion was claimed met.)*
+
+**The first criterion does *not* have its matrix** (`T171-R1`). What exists is
+`ai/evidence/2026-08-06-provenance-survival.md`: **surrogate evidence**, direct ffmpeg commands
+resembling the presets rather than yt-dlp's own postprocessors — no `FFmpegExtractAudio`, no
+`FFmpegEmbedSubtitle`, and a "merge" that is one muxed file copied to another container. Useful, and
+not per-family coverage. It is
+regenerated by a script beside it from synthetic media in a temporary directory — no network, no
+real download, nothing written near anybody's library. Three observations worth reading before the
+decision, none of them a satisfied criterion:
+
+1. **Nothing writes provenance today.** `build_postprocessors` never configures `FFmpegMetadata`
+   and the presets pass no `--embed-metadata`, so the honest baseline is *add something*, not
+   *replace something*.
+2. **Standard tags survived every ffmpeg shape that was run**, including the transcode. This is
+   the claim `T171-R1` narrowed: it read *"survive every path this application takes"*, and the
+   application's paths are not what was measured. Nothing here ran `FFmpegExtractAudio` or
+   `FFmpegEmbedSubtitle`, so it is encouraging and it is not per-family coverage.
+3. **A custom key is dropped silently by MP4 and M4A** — two of the five built-in presets produce
+   exactly those containers — while surviving MKV and MP3. No error, no warning at the default log
+   level. That turns this task's "metadata failure semantics" criterion around: the risk is not
+   only a download failing because a tag could not be written, but a tag quietly not being written
+   at all.
+
+**What is still open, and why the Implementer did not close it:** every remaining criterion is a
+product judgement about writing private download context into a user's files — opt-in versus
+opt-out, global versus per-download, the privacy allowlist, what a container that cannot carry a
+field should do, and whether the feature is adopted at all. `AGENTS.md` §5 keeps that with the
+maintainer. **Survival through tools this application does not run is also unmeasured** and this
+task's sixth criterion forbids claiming it.
+
+*(Was: Proposed — **maintainer direction, 2026-08-06.** File details are a better candidate for
+answering *what settings produced this file* than a permanent in-app library, but this is not yet
+permission to write private download context into every output.)*
+**Owner:** Planner
+**Priority:** Low — useful if it survives the user's later processing, and unnecessary for the
+History removal
+**Phase:** **Phase 3 — maintainer ruling, 2026-08-08.** *(Was "Phase 4 or later".)* The decision is
+Phase 3's to take, so that Phase 4 opens without a Phase 3 question still attached to it. The
+measurement is already done; what is outstanding is the ruling, not the work.
+**Depends on:** nothing. *(This read "`T-169` for the boundary between the ledger and file-owned
+provenance". There is no ledger, so there is no boundary to draw — if provenance is adopted, a file
+is the only place it could go, which strengthens the case rather than removing it.)*
+**Relevant context:** `REQ-026`, `OPS-002`, the built-in presets,
+`downloader/ytdlp_adapter.py`, yt-dlp metadata/postprocessor options
+**Affected surfaces:** `ai/REQUIREMENTS.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`, and a
+new implementation task only if the decision adopts the feature
+**Risk:** Medium — embedded metadata travels when a file is shared and support differs by
+container and post-processing path
+
+#### Scope
+
+Measure before choosing a storage mechanism. Inventory what yt-dlp and the current postprocessors
+already write for every built-in audio and video preset, and which fields survive the remux,
+conversion and ordinary file-moving workflow this feature is meant to serve.
+
+Compare three honest outcomes: keep the existing file metadata unchanged; add a small opt-in set
+of embedded tags where the container supports them; or write an explicit sidecar. Filesystem
+extended attributes are not equivalent to embedded metadata — they often disappear on copy — and
+must not be treated as the same option.
+
+#### Acceptance criteria
+
+- A recorded matrix says, per built-in output family, what provenance exists now, what can be
+  added without another runtime dependency, and what survives the application's own processing
+- The decision names the user question each field answers. Candidate fields include the chosen
+  preset/format and completion time; no field is retained merely because the old History row had it
+- A strict privacy allowlist is part of any adopted design. Cookies, authorization headers, proxy
+  details, local configuration paths and unredacted signed/private URLs are never embedded or put
+  in a sidecar
+- The default and control are explicit: opt-in versus opt-out, whether the choice is global or
+  per-download, and what happens when a container cannot carry the requested field
+- Metadata failure semantics are decided. A successful media download must not become an
+  unexplained failure because an optional provenance tag could not be written
+- The decision accounts for users processing the file afterwards and does not claim metadata will
+  survive tools or containers for which it was not tested
+- If adopted, requirements and a separate Implementer task define the supported formats, exact
+  schema and tests. If rejected, the decision records why and no dormant UI is added
+
+#### Out of scope
+
+- **Becoming a substitute record of what has been downloaded.** This read "replacing the completion
+  ledger required by `REQ-022`"; there is no ledger and `REQ-022` requires no storage. The exclusion
+  is now the stronger one: provenance in a file is a property of that file, and must not be read
+  back to reconstruct a list of downloads
+- Reconstructing a History tab by scanning users' download directories
+- Media-library features such as ratings, play counts, tagging, organisation or file watching
+
+---
 
 ### T-143 — A playlist's entries are never probed, so their rows stay bare
 
