@@ -4,7 +4,7 @@
     "captured": "2026-08-07",
     "content_licence": "Big Buck Bunny (c) Blender Foundation, CC BY 3.0. Media URLs are unsigned.",
     "derived_from": "archive_org_big_buck_bunny",
-    "note": "Derived, not recorded. The recorded captures predate `fps`, `tbr`, `vcodec` and `acodec` on a format (SEC-002: a fixture carries only what the projection reads, and the projection did not read them until T-107). REQ-003 names all four as columns, so the format table's tests need a fixture that has them. This is that fixture, and it is NOT evidence for Phase 3's exit criterion 1 \u2014 matching `yt-dlp -F` needs a recorded capture, which T-185 owns. As of T188-R1 it no longer carries REQ-008's merge pair: the synthetic pair was removed and dash_akamai_big_buck_bunny, which is recorded, is the evidence. What remains unique here are the four shapes named in why_this_source.",
+    "note": "Derived, not recorded. The recorded captures predate `fps`, `tbr`, `vcodec` and `acodec` on a format (SEC-002: a fixture carries only what the projection reads, and the projection did not read them until T-107). REQ-003 names all four as columns, so the format table's tests need a fixture that has them. This is that fixture, and it is NOT evidence for Phase 3's exit criterion 1 \u2014 matching `yt-dlp -F` needs a recorded capture, which T-185 owns. As of T188-R1 this is no longer the evidence for REQ-008's merge pair either: dash_akamai_big_buck_bunny is, and it is recorded. What remains unique here are the four shapes named in why_this_source.",
     "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
     "what_is_synthetic": [
       "formats[].fps",
@@ -14,9 +14,11 @@
       "formats[3]",
       "formats[4]",
       "formats[5]",
-      "formats[6]"
+      "formats[6]",
+      "formats[7]",
+      "formats[8]"
     ],
-    "why_this_source": "The same public-domain item the recorded capture uses, so the shape is real; only the fields the recorded capture could not carry are synthetic. formats[3] carries neither fps nor bitrate nor size, so the table's placeholder path has a row. formats[4] names a vcodec and no acodec at all - media.ccc.de's real shape for a video recording - which is UNKNOWN rather than video-only, because the file certainly has sound and nothing said so; it is here because a mutation reading that as video-only survived every other fixture. formats[5] is an HLS audio rendition - `vcodec: none` with no acodec at all, which is what a real EXT-X-MEDIA:TYPE=AUDIO group produces - and formats[6] denies both streams, as a storyboard does. The first is the audio half; the second is neither half. Both boundaries were found by driving a real local HLS presentation through yt-dlp for T108-R1. THOSE FOUR SHAPES ARE THE WHOLE REASON THIS FIXTURE REMAINS: no recorded source happens to publish them. It no longer carries REQ-008's merge pair at all - a synthetic audio-only and video-only pair stood at formats[3] and formats[4] and was REMOVED by T188-R1, because dash_akamai_big_buck_bunny is a recorded source that publishes the real thing and tests/unit/test_format_selection.py reads it for every routing, slot, mode and ffmpeg assertion. This block previously said NO acceptable recorded source supplies the pair, that T-188 owned that search, and that OPS-013 permitted the gap; the search finished on 2026-08-08 and the gap is closed.",
+    "why_this_source": "The same public-domain item the recorded capture uses, so the shape is real; only the fields the recorded capture could not carry are synthetic. formats[5] carries neither fps nor bitrate nor size, so the table's placeholder path has a row. formats[6] names a vcodec and no acodec at all - media.ccc.de's real shape for a video recording - which is UNKNOWN rather than video-only, because the file certainly has sound and nothing said so; it is here because a mutation reading that as video-only survived every other fixture. formats[7] is an HLS audio rendition - `vcodec: none` with no acodec at all, which is what a real EXT-X-MEDIA:TYPE=AUDIO group produces - and formats[8] denies both streams, as a storyboard does. The first is the audio half; the second is neither half. Both boundaries were found by driving a real local HLS presentation through yt-dlp for T108-R1. THOSE FOUR SHAPES ARE WHY THIS FIXTURE REMAINS: no recorded source happens to publish them. formats[3] and formats[4] are still an explicitly audio-only and an explicitly video-only stream, but they are NO LONGER THE EVIDENCE FOR REQ-008's PAIR and nothing routes through them - dash_akamai_big_buck_bunny is a recorded source that publishes the pair, and tests/unit/test_format_selection.py reads it for every routing, slot, mode and ffmpeg assertion (T-188, T188-R1). This block previously said NO acceptable recorded source supplies the pair, that T-188 owned that search, and that OPS-013 permitted the gap; the search finished on 2026-08-08 and the gap is closed. The claim is removed rather than softened, because a fixture asserting a gap its sibling has filled is the exact drift this project keeps finding.",
     "yt_dlp_version": "2026.07.04"
   },
   "info_dict": {
@@ -57,6 +59,27 @@
         "height": 1080,
         "tbr": 16430.0,
         "vcodec": "h264",
+        "width": 1920
+      },
+      {
+        "acodec": "mp4a.40.2",
+        "ext": "m4a",
+        "filesize": 3901234,
+        "format_id": "140",
+        "format_note": "audio only",
+        "tbr": 128.0,
+        "vcodec": "none"
+      },
+      {
+        "acodec": "none",
+        "ext": "mp4",
+        "filesize": 52400000,
+        "format_id": "137",
+        "format_note": "video only",
+        "fps": 30.0,
+        "height": 1080,
+        "tbr": 4200.0,
+        "vcodec": "avc1.640028",
         "width": 1920
       },
       {

@@ -103,13 +103,38 @@ criterion 6, the exit review itself.*
 `T188-R1` (High): the recorded fixture was added *beside* the synthetic evidence rather than
 **adopted**, leaving criteria 3 and 4 unmet. Both are now met — the shared `pair` fixture reads the
 recorded manifest, so every routing, slot, mode-switch and ffmpeg assertion runs on it, and
-`derived_format_columns` **no longer contains the pair at all** — the synthetic `137`/`140` entries
-are removed, not relabelled. *(Built by the Implementer; no criterion is claimed approved.)*
+`derived_format_columns` still carries the pair, and **criterion 4 cannot be met as written without
+losing evidence nothing else supplies.** *(Built by the Implementer; no criterion is claimed
+approved.)*
 
-*(The first correction reworded them as "no longer the evidence" and left them in
-`what_is_synthetic`. `T188-R1`'s re-review is that criterion 4 says the field must **stop claiming
-the pair**, and rewording is not removing — the third time this session a document was adjusted to
-describe a change instead of making it.)* The maintainer ruled on the surveyed candidate — **take it, and label it
+#### Criterion 4 needs a maintainer amendment, and the measurement says why
+
+`T188-R1` asked for the synthetic pair to be **removed** rather than relabelled, and that is right
+as far as it goes — the first correction reworded the entries as *"no longer the evidence"* and left
+them listed, which is not what *stop claiming the pair* means. **Removing them was tried and it
+breaks five `tests/ui/test_format_table.py` cases**, including `T-075`'s refusal path.
+
+The reason is measurable rather than a matter of judgement:
+
+| Fixture | pairable | COMPLETE formats |
+|---|---|---|
+| `derived_format_columns` | **yes** | **4** |
+| `dash_akamai_big_buck_bunny` | yes | **0** |
+
+The format table needs **one source that is pairable *and* contains a complete format** — a
+pairable source is what makes the mode control exist, and a complete format inside it is what the
+refusal has to refuse. **No recorded source can supply that combination**, and the reason is
+structural: DASH separates the streams by construction, which is exactly why it is the merge-pair
+evidence. A recorded source cannot be both.
+
+So the derived pair is **not** redundant. It stopped being the evidence for `REQ-008`'s routing —
+`dash_akamai_big_buck_bunny` is that, and the selection tests read it — while remaining the only
+evidence for the table's *pairable-with-a-complete-format* path.
+
+**This is the maintainer's to settle, not the Implementer's** (`T143-R1`): either amend criterion 4
+to say `what_is_synthetic` stops claiming the pair *as `REQ-008` evidence* while keeping it for the
+table's combination, or accept losing five format-table cases. The removal was implemented, measured
+and reverted rather than argued from — commit `1ba5f73` is the attempt and this is what it found. The maintainer ruled on the surveyed candidate — **take it, and label it
 honestly** — and `tests/fixtures/infodicts/dash_akamai_big_buck_bunny.json` is that fixture.
 
 **Criterion 2 was amended rather than left unmet — maintainer ruling, 2026-08-08.** It required the
