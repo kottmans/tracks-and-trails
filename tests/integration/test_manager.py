@@ -6236,6 +6236,172 @@ def child_probing_without_a_thumbnail(
     queue.join_thread()
 
 
+def child_probing_everything_a_row_draws(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A probe resolving the whole of `UX-005` §3's row anatomy, then lingering as a download would.
+
+    The download half never reports progress: `T-143`'s criterion is that an entry acquires these
+    fields **without being downloaded**, so a test that let bytes move could not tell the two apart.
+    """
+    from tracks_and_trails.core.models import MediaInfo
+
+    if kind is SessionKind.PROBE:
+        queue.put(
+            Probed(
+                job_id=job_id,
+                media=MediaInfo(
+                    url=request.url,
+                    title="Descent into Coire an t-Sneachda",
+                    uploader="Trail Sounds",
+                    duration_seconds=754.0,
+                    thumbnail_url="https://example.invalid/entry.jpg",
+                ),
+            )
+        )
+        queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+        queue.close()
+        queue.join_thread()
+        return
+    while True:
+        time.sleep(0.05)
+
+
+def test_a_probed_entry_carries_everything_the_row_draws(
+    app: QCoreApplication, tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T-143`'s first criterion**, and the omission it was actually reporting.
+
+    The maintainer's report was *"no thumbnails were downloaded for any of the playlist"* and rows
+    that stay bare. `T137-R2` supplied the missing probe, so title and picture arrived — and this
+    path still dropped `uploader` and `duration_seconds` on the floor while `add_dialog`'s
+    `_durable_job` carried both across for a pasted URL. A playlist entry and a pasted URL are the
+    same kind of row, and `UX-005` §3's anatomy cannot depend on which door the job came through.
+
+    Asserted on what is **stored**, not on what was emitted: the row a user looks at is read back
+    from the repository, and a field that reaches a signal and not a revision is gone at restart.
+    The job never leaves `READY`, so nothing here was downloaded to learn it.
+    """
+    repository = FakeRepository()
+    queued(repository, "entry-1", directory=tmp_path)
+
+    download = DownloadManager(repository, entry_point=child_probing_everything_a_row_draws)
+    try:
+        download.start("entry-1", SessionKind.PROBE)
+        assert spin(lambda: repository.jobs["entry-1"].status is JobStatus.READY, timeout=60)
+
+        stored = repository.jobs["entry-1"]
+        assert stored.title == "Descent into Coire an t-Sneachda"
+        assert stored.thumbnail_url == "https://example.invalid/entry.jpg"
+        assert stored.uploader == "Trail Sounds", (
+            "a probed entry stored no uploader; UX-005 §3 draws it and the staging row already had "
+            "it, so the queue row is where it went missing"
+        )
+        assert stored.duration_seconds == 754.0, (
+            "a probed entry stored no duration — the 'rows stay bare' half of T-143's report"
+        )
+        assert stored.bytes_done == 0, "the fields were learned by downloading, not by probing"
+        assert repository.statuses("entry-1") == [JobStatus.PROBING, JobStatus.READY], (
+            "one write carries every field the probe resolved (T-117); this took more than one"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def child_probing_all_but_one_entry(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Fail `entry-2`'s probe with an unretryable kind; resolve every other entry normally."""
+    from tracks_and_trails.core.errors import ErrorKind
+    from tracks_and_trails.core.models import MediaInfo
+    from tracks_and_trails.downloader.protocol import Failed
+
+    if job_id == "entry-2":
+        queue.put(Failed(job_id=job_id, kind=ErrorKind.UNSUPPORTED_URL, message="no extractor"))
+        queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+    else:
+        queue.put(
+            Probed(job_id=job_id, media=MediaInfo(url=request.url, title=f"Resolved {job_id}"))
+        )
+        queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def test_one_entrys_failed_probe_does_not_stop_its_neighbours(
+    app: QCoreApplication, tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T-143`'s fourth criterion.** A playlist is a batch, and a batch that stops at the first
+    unreadable item is worse than one that reports it.
+
+    One entry in the middle fails with a kind nothing retries. The two either side of it must reach
+    `READY` with their own titles, and the failure must be recorded against the entry that had it
+    rather than against the playlist — a sixteen-item list where one video is region-locked is the
+    ordinary case, not the exotic one.
+    """
+    repository = FakeRepository()
+    queued(repository, "entry-1", "entry-2", "entry-3", directory=tmp_path)
+
+    download = DownloadManager(
+        repository, concurrency=3, probe_concurrency=3, entry_point=child_probing_all_but_one_entry
+    )
+    try:
+        for entry in ("entry-1", "entry-2", "entry-3"):
+            download.admit(entry, SessionKind.PROBE)
+
+        assert spin(
+            lambda: repository.jobs["entry-2"].status is JobStatus.FAILED,
+            timeout=60,
+        ), "the entry whose probe failed did not settle as failed"
+        for survivor in ("entry-1", "entry-3"):
+            assert spin(
+                lambda survivor=survivor: repository.jobs[survivor].status is JobStatus.READY,
+                timeout=60,
+            ), f"{survivor} never resolved; one entry's failure stopped its neighbours"
+            assert repository.jobs[survivor].title == f"Resolved {survivor}"
+
+        failed = repository.jobs["entry-2"]
+        assert failed.error_kind is ErrorKind.UNSUPPORTED_URL
+        assert failed.title is None, (
+            "a failed probe invented a title for the entry it could not read"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_removing_an_entry_stops_the_probe_it_asked_for(
+    app: QCoreApplication, tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """**`T-143`'s fifth criterion**, and `T118-R1`'s lesson at the durable seam.
+
+    A probe outliving the row that asked for it is the shape `T118-R1` found in staging: the work
+    carries on, and its result arrives for a job nobody can see. A playlist makes it ordinary —
+    sixteen probes are admitted at once and a user who removes an entry expects its work to stop,
+    not to finish quietly against a deleted row.
+    """
+    repository = FakeRepository()
+    queued(repository, "entry-1", directory=tmp_path)
+
+    download = DownloadManager(repository, entry_point=child_probe_reporting_then_lingering)
+    try:
+        download.start("entry-1", SessionKind.PROBE)
+        assert spin(lambda: "entry-1" in download.active_job_ids(), timeout=60), (
+            "the probe never started, so removing it would prove nothing"
+        )
+
+        download.remove("entry-1")
+
+        assert spin(lambda: "entry-1" not in download.active_job_ids(), timeout=60), (
+            "the probe survived the removal of the row that asked for it (T118-R1)"
+        )
+        assert spin(lambda: "entry-1" not in repository.jobs, timeout=60)
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
 def test_a_probe_stores_the_thumbnail_url_in_the_same_revision_as_the_title(
     tmp_path: Path, spin: Callable[..., bool]
 ) -> None:

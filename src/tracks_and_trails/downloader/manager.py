@@ -2613,10 +2613,22 @@ class DownloadManager(QObject):
                     # the thumbnail URL arrive in the same `Probed` message and land in the same
                     # revision, so there is no instant where a row has been told what it is called
                     # but not what it looks like — and no second write that could fail on its own.
+                    #
+                    # **`uploader` and `duration_seconds` are here because this is the *other* place
+                    # a probe result lands** (`T-143`, `T124-R4`, `UX-005` §3). `add_dialog`'s
+                    # `_durable_job` carries the whole set across for a pasted URL and says in as
+                    # many words that *"adding the next one is a schema change and not a second
+                    # omission"* — and this path, which is the one every **playlist entry** takes,
+                    # was the second omission. The observable cost was the maintainer's report that
+                    # a playlist's rows stay bare: an entry probed, acquired a title and a picture,
+                    # and still showed no uploader and no duration, while a pasted URL beside it
+                    # showed both. A row's anatomy must not depend on how it got into the queue.
                     lambda job: replace(
                         self._advance(job, JobStatus.READY),
                         title=outcome.media.title,
                         thumbnail_url=outcome.media.thumbnail_url,
+                        uploader=outcome.media.uploader,
+                        duration_seconds=outcome.media.duration_seconds,
                         # **`T-113`.** A job admitted as a probe — a playlist entry, or a row
                         # recovered from a previous run — learns here whether it is live, which is
                         # the one thing `REQ-017` lets a row say about resumability in advance.
