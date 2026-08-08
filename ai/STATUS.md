@@ -19,6 +19,31 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: `T-113` approved — eight of nine deliverables, five of six exit criteria
+
+**`T-113` is Approved at `476cf60`** and `## In Review` is empty. Every task submitted in this
+session is through: `T-109`, `T-110`, `T-112`, `T-113`, `T-114`.
+
+**Where Phase 3 actually stands.** Eight of nine deliverables approved; **`T-111` is the only one
+left**, and it is smaller than its entry says — `P-4` forced `T-109` to build the preset store and
+the *create* operation, so what remains is edit, duplicate, delete, set-default and `P-20`'s manager
+screen. Five of six exit criteria are met: 1 and 2 were already, and this session added **3 and 4**
+(`T-112`) and **5** (`T-113`). Criterion 6 is the phase exit review, which is not the same as the
+eight task reviews already done.
+
+**`ai/roadmap-phase-3.html` is redrawn** against all of it — the board, the deliverable table, the
+exit criteria and the ordering, which is now short enough that it says what each remaining item is
+rather than arguing for a sequence.
+
+**Two things the re-measure corrected, both of them the board's own claims.** The suite-timing
+alarm the previous revision raised — *"more than doubled in wall clock"*, 2351 tests in 635 s — did
+not survive being taken again deliberately: **2677 passed in 362 s** at this head, 14% more tests in
+57% of the time. That earlier figure carried its own caveat about the machine it was measured on,
+and the caveat was right. And the closed-entry count came out at 57 on the first attempt by matching
+*Phase 3* anywhere in a `Phase:` line rather than at its start, which pulls in `T-076` — *Phase 1
+(pulled forward)*. The real figure is **56**, and it is the same off-by-one that table has already
+corrected once.
+
 ## 2026-08-08: `T-109` approved, and `T113-R1` needed a second correction
 
 **`T-109` is Approved at `ddd1f59`** — ten findings over three rounds, all resolved. That is

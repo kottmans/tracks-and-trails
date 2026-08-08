@@ -5,9 +5,9 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — **`T-110`, `T-112`, `T-114` and `T-109` are Approved.** `T-113` is
-the only task in review: `T113-R2` and `T113-R3` are resolved, and `T113-R1` is corrected a second
-time and awaiting re-review. `UX-008` accepted and amended.
+**Last updated:** 2026-08-08 — **`T-109`, `T-110`, `T-112`, `T-113` and `T-114` are all Approved**,
+and `## In Review` is empty. **`T-111` is the last Phase 3 deliverable outstanding.** `UX-008`
+accepted and amended.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -85,99 +85,9 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
+*Empty. Every task submitted in this session — `T-109`, `T-110`, `T-112`, `T-113`, `T-114` — is
+approved and in `## Complete`.*
 
-
-
-### T-113 — Resume a partial download across a restart
-
-**Status:** **In Review** — implemented 2026-08-08; reviewed the same day at `04abf85`, verdict
-**Changes requested**, three findings `T113-R1`..`T113-R3` (one Critical, one High, one Medium).
-`T113-R2` and `T113-R3` are **resolved** at `ddd1f59`. `T113-R1` survived that pass — hashing fixed
-the staging *name* and a symlink already at that name was still accepted by the worker's `mkdir` —
-and is **corrected again, awaiting re-review**.
-**Owner:** Implementer
-**Priority:** Medium — and the highest *uncertainty* in the phase
-**Phase:** Phase 3
-**Depends on:** Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §9.2 (**`P-10` is ruled 2026-08-07 by `UX-007`, and the
-ruling is that *this task decides it*** — whether per-job pause returns, whether `JobStatus.PAUSED`
-comes back, and whether a playlist header gets `Pause all` (`T140-R5`). It depends on what resume
-actually costs per site and format, which is what this task exists to find out, and **the answer
-must be recorded as a decision either way**. `P-24` is ruled outright: a non-resumable job **says so
-on its row** and offers *start again* as its own verb. The older note follows — **`P-10` reopens
-`UX-001`'s per-job pause** — the
-last criterion below is that same question, and answering one answers both), `REQ-017`, `UX-001` (this is its named reopening condition) **as amended by
-`UX-006`** — the queue-level gate is now *stopped until started*, which changes the default this
-task reopens against and changes nothing about per-job pause, `T-080`
-(removed `JobStatus.PAUSED`), `ARCHITECTURE.md` §5, `NFR-003`
-**Affected surfaces:** `core/job_state.py`, `downloader/`, `persistence/`
-**Risk:** **High** — it is the one Phase 3 item whose feasibility depends on the site and format
-
-#### Scope
-
-`REQ-017`: resume partially completed downloads across restarts **where the site and format allow
-it**, and *state clearly when resumption is not possible*. The second half is as much of the
-requirement as the first.
-
-**This reopens two accepted decisions, and should do so explicitly rather than by accident:**
-
-- **`UX-001`** names `REQ-017` as its reopening condition. Once a partial file can be resumed,
-  per-job pause becomes coherent — pause would stop having to mean "drain".
-- **`T-080` removed `JobStatus.PAUSED`** on the reasoning that nothing could enter it. If this task
-  needs a paused state it should add the one its own semantics require, which is exactly what that
-  removal was for.
-
-Neither is this task's to decide alone; both need an entry.
-
-#### Acceptance criteria
-
-- A partial download resumes after a real restart, verified by killing the process mid-download
-  (`ai/TESTING.md` §7's rule — a real kill, not a clean shutdown)
-- A format that cannot resume says so, in the UI, **before** the user waits for it to fail
-- The partial file's lifetime is defined: what happens to it on cancel, on remove, and on a
-  resume that the server refuses
-- Whether `UX-001` and `JobStatus.PAUSED` change is recorded as a decision, either way
-
-#### What landed, and what the uncertainty turned out to be
-
-**This was filed as the phase's highest-uncertainty item and the uncertainty resolved to almost
-nothing.** yt-dlp's `continuedl` is on by default: it continues from a `.part` file at the path it
-is told to write. The only reason this application restarted from the beginning was that
-`_staging_directory` was `tempfile.mkdtemp` — unique per *call* — so the next attempt looked in a
-directory nothing had ever written to. **Keying it by job id is the whole of the mechanism.**
-
-Measured against a local server, 2026-08-08 on the development machine: with `Accept-Ranges`, the
-second attempt made **one range request** and completed; without it, **four full requests** and
-completed. Both produced byte-exact files. So resumability cannot *fail* — it is a head start that
-is sometimes lost, and yt-dlp loses it silently and correctly.
-
-- **`worker.staging_directory(directory, job_id)`**, deterministic, plus `resumable_partial` and
-  `discard_staging_for`.
-- **`_discard_staging` left the blanket `finally`.** Success discards, cancel discards, failure
-  **keeps** — a network failure is the case `UX-002` retries automatically and the one resume is
-  most worth. A kill keeps it by running no code at all, which is the mechanism.
-- **`Job.is_live`**, migration `0010`, and `Job.resume_refusal` — the one refusal a probe can
-  state in advance. Every other case says nothing, because a promise that resumption *will* happen
-  is one this application cannot keep.
-- **`Verb.START_AGAIN`** (`P-24`): the same action under the name that says what it costs.
-- **`UX-008`** records the `P-10` answer: **per-job pause stays out, `JobStatus.PAUSED` stays
-  deleted**, and the partial file's lifetime is tabulated there.
-
-**Three findings, corrected 2026-08-08.** `T113-R1` was **Critical**: `staging_directory` joined
-the job id — validated as non-empty text and nothing more — straight into a path this application
-creates with `parents=True` and removes with `shutil.rmtree`, so `../../../../outside` named a real
-directory and deleted a file in it. The leaf is a digest now, which makes traversal unrepresentable
-rather than defended against. `T113-R2`: an orderly close was a *cancel*, so the partial went and
-the row was written terminal — closing the window is how a restart usually begins, and `REQ-017`
-promises resumption across one. `T113-R3`: the worker owned the cleanup from a branch that cannot
-know the intent and that `terminate()` never reaches, and `remove()` deleted the directory before
-stopping the process that then recreated it. The parent decides now, once the tree is reaped.
-
-#### Out of scope
-
-- Resuming across a *format* change, which is a different download
-
----
 
 
 ## Ready
@@ -2326,6 +2236,98 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-113 — Resume a partial download across a restart
+
+**Status:** **Complete — Approved at `476cf60`** (2026-08-08). Three findings over two rounds, all
+resolved. `T113-R1` was **Critical** and took two corrections: the first made every traversal
+spelling in a job id unrepresentable, and a **symlink already at the resulting name** was still
+accepted by the worker's `mkdir(exist_ok=True)` — a guard at one end of the directory's lifetime is
+not a guard. The reviewer verified the hard-kill and orderly-close resumes end to end, each with a
+ranged continuation and byte-exact output.
+**Owner:** Implementer
+**Priority:** Medium — and the highest *uncertainty* in the phase
+**Phase:** Phase 3
+**Depends on:** Phase 2 exit
+**Relevant context:** `docs/UX_SPEC.md` §9.2 (**`P-10` is ruled 2026-08-07 by `UX-007`, and the
+ruling is that *this task decides it*** — whether per-job pause returns, whether `JobStatus.PAUSED`
+comes back, and whether a playlist header gets `Pause all` (`T140-R5`). It depends on what resume
+actually costs per site and format, which is what this task exists to find out, and **the answer
+must be recorded as a decision either way**. `P-24` is ruled outright: a non-resumable job **says so
+on its row** and offers *start again* as its own verb. The older note follows — **`P-10` reopens
+`UX-001`'s per-job pause** — the
+last criterion below is that same question, and answering one answers both), `REQ-017`, `UX-001` (this is its named reopening condition) **as amended by
+`UX-006`** — the queue-level gate is now *stopped until started*, which changes the default this
+task reopens against and changes nothing about per-job pause, `T-080`
+(removed `JobStatus.PAUSED`), `ARCHITECTURE.md` §5, `NFR-003`
+**Affected surfaces:** `core/job_state.py`, `downloader/`, `persistence/`
+**Risk:** **High** — it is the one Phase 3 item whose feasibility depends on the site and format
+
+#### Scope
+
+`REQ-017`: resume partially completed downloads across restarts **where the site and format allow
+it**, and *state clearly when resumption is not possible*. The second half is as much of the
+requirement as the first.
+
+**This reopens two accepted decisions, and should do so explicitly rather than by accident:**
+
+- **`UX-001`** names `REQ-017` as its reopening condition. Once a partial file can be resumed,
+  per-job pause becomes coherent — pause would stop having to mean "drain".
+- **`T-080` removed `JobStatus.PAUSED`** on the reasoning that nothing could enter it. If this task
+  needs a paused state it should add the one its own semantics require, which is exactly what that
+  removal was for.
+
+Neither is this task's to decide alone; both need an entry.
+
+#### Acceptance criteria
+
+- A partial download resumes after a real restart, verified by killing the process mid-download
+  (`ai/TESTING.md` §7's rule — a real kill, not a clean shutdown)
+- A format that cannot resume says so, in the UI, **before** the user waits for it to fail
+- The partial file's lifetime is defined: what happens to it on cancel, on remove, and on a
+  resume that the server refuses
+- Whether `UX-001` and `JobStatus.PAUSED` change is recorded as a decision, either way
+
+#### What landed, and what the uncertainty turned out to be
+
+**This was filed as the phase's highest-uncertainty item and the uncertainty resolved to almost
+nothing.** yt-dlp's `continuedl` is on by default: it continues from a `.part` file at the path it
+is told to write. The only reason this application restarted from the beginning was that
+`_staging_directory` was `tempfile.mkdtemp` — unique per *call* — so the next attempt looked in a
+directory nothing had ever written to. **Keying it by job id is the whole of the mechanism.**
+
+Measured against a local server, 2026-08-08 on the development machine: with `Accept-Ranges`, the
+second attempt made **one range request** and completed; without it, **four full requests** and
+completed. Both produced byte-exact files. So resumability cannot *fail* — it is a head start that
+is sometimes lost, and yt-dlp loses it silently and correctly.
+
+- **`worker.staging_directory(directory, job_id)`**, deterministic, plus `resumable_partial` and
+  `discard_staging_for`.
+- **`_discard_staging` left the blanket `finally`.** Success discards, cancel discards, failure
+  **keeps** — a network failure is the case `UX-002` retries automatically and the one resume is
+  most worth. A kill keeps it by running no code at all, which is the mechanism.
+- **`Job.is_live`**, migration `0010`, and `Job.resume_refusal` — the one refusal a probe can
+  state in advance. Every other case says nothing, because a promise that resumption *will* happen
+  is one this application cannot keep.
+- **`Verb.START_AGAIN`** (`P-24`): the same action under the name that says what it costs.
+- **`UX-008`** records the `P-10` answer: **per-job pause stays out, `JobStatus.PAUSED` stays
+  deleted**, and the partial file's lifetime is tabulated there.
+
+**Three findings, corrected 2026-08-08.** `T113-R1` was **Critical**: `staging_directory` joined
+the job id — validated as non-empty text and nothing more — straight into a path this application
+creates with `parents=True` and removes with `shutil.rmtree`, so `../../../../outside` named a real
+directory and deleted a file in it. The leaf is a digest now, which makes traversal unrepresentable
+rather than defended against. `T113-R2`: an orderly close was a *cancel*, so the partial went and
+the row was written terminal — closing the window is how a restart usually begins, and `REQ-017`
+promises resumption across one. `T113-R3`: the worker owned the cleanup from a branch that cannot
+know the intent and that `terminate()` never reaches, and `remove()` deleted the directory before
+stopping the process that then recreated it. The parent decides now, once the tree is reaped.
+
+#### Out of scope
+
+- Resuming across a *format* change, which is a different download
+
+---
 
 ### T-109 — Post-processing: audio, container, thumbnail, metadata, chapters, subtitles
 

@@ -12283,3 +12283,49 @@ Both were my tests being incomplete rather than the code being wrong, except tha
 also the code being weaker than its docstring claimed. That is the same shape as the survival
 recorded in the previous batch: a property proved of a helper and not of the composition that uses
 it.
+
+
+## 2026-08-08 — T113-R1 second-correction re-review
+
+**Reviewer:** Codex
+
+**Correction head:** `476cf60` (parent `ddd1f59`)
+
+**Scope:** the remaining Critical `T113-R1` and regressions in its second correction diff. The
+review used an immutable archive of `476cf60`.
+
+**Verdict:** **Approved at `476cf60`.** `T113-R1` is **Resolved**. No open T-113 finding remains.
+
+### Resolution evidence
+
+The digest still makes hostile job-id spellings unrepresentable, and the missing ownership check
+now covers the whole staging lifetime:
+
+- `_run` obtains its destination through `open_staging`, which refuses a file or symlink already at
+  the derived name, creates an absent directory, and verifies the created object again before
+  handing any path below it to yt-dlp.
+- The second check closes the ordering defect demonstrated by planting a symlink during `mkdir`;
+  the session refuses it before a write.
+- `resumable_partial` and `discard_staging_for` ask the same `usable_staging` predicate, so the
+  read/create/delete paths no longer disagree about ownership.
+- A symlink to another directory **inside** the selected output folder is also refused; resolved
+  containment alone would accept it and allow two jobs or user files to share a staging directory.
+- A legitimate existing plain directory is reused without clearing its `.part`, and both the
+  hard-kill and orderly-close restart tests still resume to byte-exact output.
+
+### Reviewer verification at `476cf60`
+
+| Check | Result |
+|---|---|
+| `git diff --check 476cf60^ 476cf60` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass**, 209 files |
+| `mypy src` | **pass**, 50 source files |
+| bare `mypy` | **pass**, 122 files |
+| `mypy --platform win32` | **pass**, 122 files |
+| Complete path unit + worker integration modules | **355 passed** |
+| Hard-kill resume and orderly-close resume end-to-end tests | **2 passed**, ranged continuation and byte-exact output |
+
+The implementer's full-suite and mutation results were not independently re-run. Windows runtime
+and real sites remain unverified. Only this review record was changed by the reviewer; reviewed
+source, tests, `ai/TASKS.md`, and `ai/STATUS.md` were not edited, and no commit or push was made.
