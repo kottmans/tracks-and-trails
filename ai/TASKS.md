@@ -107,6 +107,15 @@ recorded manifest, so every routing, slot, mode-switch and ffmpeg assertion runs
 claimed approved.)* The maintainer ruled on the surveyed candidate — **take it, and label it
 honestly** — and `tests/fixtures/infodicts/dash_akamai_big_buck_bunny.json` is that fixture.
 
+**Criterion 2 was amended rather than left unmet — maintainer ruling, 2026-08-08.** It required the
+licence to be *stated by the source*, which this one is not: Big Buck Bunny's CC BY 3.0 comes from
+the work's identity, not from Akamai. The ruling to accept the source was already on the record and
+the reviewer treated it as authority — **but a ruling to accept a source is not an amendment to a
+criterion**, and leaving the line standing would have put this task exactly where `T143-R1` blocked
+`T-143`: everything delivered, one criterion unmet, and the gap closed by narrative instead of by an
+amendment. The criterion now binds the purpose it was written for — excluding *belief about a
+publisher's practice* — rather than the mechanism that happened to enforce it.
+
 **`T188-R1` is the session's own defect class, one more time.** A fixture was captured that closed
 a gap, and the sibling asserting that gap was left saying *"NO acceptable recorded source
 supplies"* the pair — falsified by the very commit that added it. `T-143`'s stale premise and the
@@ -241,7 +250,19 @@ careless capture is how data reaches the repository permanently
 - **A source publishing a video-only and an audio-only format in one item is found and captured, or
   this task closes with the finding that no acceptable one does.** `OPS-013`'s conditions are the
   bar: freely licensed, unsigned, unlikely to change
-- The licence is **stated by the source**, not inferred from what the publisher usually does
+- The licence is **verifiable for the specific work**, and the fixture records how it was
+  established — stated by the source, or fixed by the identity of the work itself.
+  **What stays excluded is belief about a publisher's usual practice**: media.ccc.de's talks are
+  widely thought to be CC BY and its API states no licence for any of 16,828 events across 452
+  conferences (surveyed 2026-08-08), which is the case this criterion was written to refuse.
+  *(**Amended 2026-08-08 by maintainer ruling.** It read "the licence is **stated by the source**,
+  not inferred from what the publisher usually does" — which excluded the belief it was aimed at
+  and also excluded a work whose licence is a matter of record. `dash_akamai_big_buck_bunny` is the
+  second case: Big Buck Bunny is CC BY 3.0 from the Blender Foundation, and this project already
+  records that same film from archive.org and PeerTube under the same claim. The mechanism was
+  amended and the purpose kept — the precedent is `OPS-013`, which bound exit criterion 1 to where
+  a source reports a column rather than listing exceptions. `ai/TESTING.md` §5 is untouched: it
+  requires freely licensed, unsigned and unlikely to change, and never required the statement.)*
 - `tests/unit/test_format_selection.py`'s routing assertions read the recorded fixture rather than
   the derived one, and say which
 - `derived_format_columns` keeps its place for the shapes no source happens to have, and its
