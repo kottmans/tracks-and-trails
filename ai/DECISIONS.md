@@ -4694,3 +4694,82 @@ a directory in use, a permission — leaves the legacy directory alone and costs
   partition nothing can reach is a partition nothing can check (`T180-R2`).
 - **`ARC-006` is unchanged.** This decides where a permitted second instance's cache lives; it does
   not revisit which instances are permitted.
+
+---
+
+## DAT-008 — The application writes no provenance of its own into output files
+
+**Status:** **Accepted** (2026-08-08) — maintainer ruling on `T-171`, which reserved this question
+for the maintainer and took the measurement first
+**Date:** 2026-08-08
+**Supersedes:** nothing. **Closes** `T-171` as a rejection, and **narrows** the 2026-08-06 maintainer
+direction that opened it.
+
+### Context
+
+`T-171` was opened on maintainer direction: *"file details are a better candidate for answering what
+settings produced this file than a permanent in-app library, but this is not yet permission to write
+private download context into every output."* It required a measurement before a choice, and
+`ai/evidence/2026-08-06-provenance-survival.md` is that measurement.
+
+The question is narrow and worth stating exactly, because a wider reading of this decision would be
+wrong: **should this application write its own record of how a file was produced into the file?**
+
+### Decision
+
+**No.** The application embeds no provenance of its own — no preset name, no completion time, no
+download context — in any output file or sidecar. No control is added, and no dormant UI.
+
+### Why
+
+- **The legitimate version already exists and is already the user's.** `T-109` added
+  `embed_metadata`, which configures yt-dlp's `FFmpegMetadata`. It embeds *the source's* title,
+  artist and date — what a user means by "this file should say what it is" — opt-in, per download or
+  saved in a preset, using the tags those fields are for. No built-in preset enables it, and that is
+  the right default. **This decision does not touch it.**
+- **The non-intrusive mechanism does not work where it matters, and fails silently.** §3 of the
+  measurement: a custom key is **dropped by MP4 and M4A** with no error and no warning at the
+  default log level. Two of the five built-in presets produce exactly those containers. A feature
+  whose whole purpose is to be findable later, that is invisibly absent for a large share of
+  downloads, is worse than no feature.
+- **The mechanism that does survive is one that belongs to the user.** Standard tags —
+  `comment`, `description` — survived every measured path, at the cost of writing application text
+  into fields a user may already be using. A downloader is not a tagger.
+- **The file already answers the question.** Container, codec, resolution and bitrate *are* what the
+  settings produced, and any tool can read them. A preset name adds a label, not information.
+- **It cannot honestly promise what it is for.** `T-171`'s sixth criterion forbids claiming survival
+  through untested tools, and nothing outside ffmpeg was tested — no player re-tag, no library
+  import, no phone sync. The feature's value is conditional on exactly the thing the task forbids
+  asserting.
+- **It re-opens what this project twice closed.** `T-169` withdrew the completion record, `T-170`
+  removed the History tab and the ledger behind it, and migration `0009` removed it from upgraded
+  databases. **The application deliberately keeps no record of what has been downloaded.**
+  Provenance in a file is that record relocated into an artifact the user *shares* — `T-171`'s own
+  risk line is that embedded metadata travels. That is more exposure, not less.
+
+### Rejected
+
+- **A small opt-in set of embedded tags.** The measured options are a custom key (silently dead on
+  MP4/M4A) or standard tags (writing into fields the user owns). Rejected on both counts above.
+- **An explicit sidecar.** Rejected for two reasons. It survives nothing the feature exists to
+  survive — a sidecar is lost the moment the media is moved, shared or imported, which is the
+  workflow being served. And it is the easiest possible thing to read back as a list of downloads,
+  which `T-171`'s own out-of-scope forbids: *"provenance in a file is a property of that file, and
+  must not be read back to reconstruct a list of downloads."*
+- **Filesystem extended attributes.** Named in `T-171`'s scope as not equivalent and not to be
+  treated as such; they often disappear on copy. Not measured, and not adopted.
+
+### Consequences
+
+- **No implementation task follows.** `T-171` closes as a rejection with its reasons, which is what
+  its seventh criterion asks for.
+- **`embed_metadata` is untouched**, and so is any future work exposing more of yt-dlp's own
+  metadata options under `ARC-010` in Phase 4.5. This decision is about *whose* metadata the
+  application writes, not about how much of yt-dlp it exposes.
+- **The measurement stays**, and is now the record of why. One sentence in it is stale and says so
+  in `T-171`: it reports `--embed-metadata` as never configured, which was true on 2026-08-06 and
+  became capability-false when `T-109` landed on 2026-08-08. The §3 container finding — the one this
+  decision rests on — is unaffected.
+- **The reopening condition**, stated so a later reader does not have to guess: a container-portable
+  key that MP4 and M4A model natively, plus a measured survival path through tools this application
+  does not run. Both are missing today.
