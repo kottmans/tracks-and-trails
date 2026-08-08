@@ -347,9 +347,14 @@ def _order(job: Job) -> tuple[int, str]:
 def _preset_name_for(job: Job) -> str | None:
     """This job's built-in preset, if any. **The rule lives in `ui/format_text.py`** (`T-159`).
 
-    A thin call rather than a second copy: History needs the same answer from a record rather than
-    a job, and the project had already written this rule three times — `T126-R2`, `T140-R3` and
-    the one History was still shipping. Kept as a name here because the model asks it of a *job*.
+    A thin call rather than a second copy: the project had already written this rule three times —
+    `T126-R2`, `T140-R3` and the one History was still shipping when `T-159` collapsed them. Kept as
+    a name here because the model asks it of a *job*.
+
+    *(This said "History **needs** the same answer from a record rather than a job", in the present
+    tense. It no longer needs anything — `T-169`/`T-170` withdrew it. The argument for one shared
+    rule is unchanged and is why the call stays thin: a second caller is what made three copies
+    possible in the first place. `T-186`.)*
     """
     return preset_name_for(format_choice_of(job.request))
 

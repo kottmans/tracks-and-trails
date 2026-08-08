@@ -489,8 +489,14 @@ class DownloadManager(QObject):
     #: The finished jobs were cleared (`REQ-016`, `T-081`).
     #:
     #: No payload: the ids are of rows that no longer exist, and a view's only useful response is to
-    #: rebuild from what is left. **History is untouched**, so this announces a smaller queue and
-    #: never a smaller record of what was obtained.
+    #: rebuild from what is left.
+    #:
+    #: *(This said "**History is untouched**, so this announces a smaller queue and never a smaller
+    #: record of what was obtained". There is no History and no record: `T-169` withdrew `REQ-020`,
+    #: `T-170` removed the tab and the private ledger behind it, and migration `0009` removed the
+    #: table from upgraded databases. **Clearing finished rows now removes the only trace they
+    #: leave**, which is a stronger statement than the one it replaces and the reason `REQ-016`'s
+    #: confirmation matters — `T-186`.)*
     queue_cleared = Signal()
 
     def __init__(
@@ -727,9 +733,13 @@ class DownloadManager(QObject):
         A job that is merely waiting for a slot is dropped from the waiting list too, so a removed
         job cannot be started by the tick that fires between the delete being queued and landing.
 
-        **What survives is the file**, deliberately. `UX-001`: remove takes the job out of the
-        queue, and nothing this application deletes from disk goes by this route. `T-085`'s history
-        keeps a completed job's record even after its queue row is gone.
+        **What survives is the file, and only the file** (`T-186`). `UX-001`: remove takes the job
+        out of the queue, and nothing this application deletes from disk goes by this route.
+
+        *(This ended "`T-085`'s history keeps a completed job's record even after its queue row is
+        gone". It does not — `T-169` withdrew `REQ-020`, `T-170` removed the ledger and migration
+        `0009` removed the table. Removing a job now leaves the downloaded file and nothing else,
+        which is the same promise made without the second half.)*
 
         **The one thing it does delete is this job's own partial** (`T-113`, `REQ-017`). Since
         resume landed, a failed or killed attempt deliberately *keeps* its `.part` file so the next

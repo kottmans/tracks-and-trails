@@ -35,16 +35,20 @@ instead of declaring one of them dead.
 ## Contained, checked at the moment of use
 
 `REQ-021` opens files *this application downloaded*, and `is_contained` is asked again here rather
-than trusted from when the record was written. A `history` row is durable and the world is not: the
-output directory can be reconfigured, and a stored path is data like any other. `SEC-001`'s posture
-is that the boundary is checked where it is crossed.
+than trusted from when the path was stored. **A stored path is durable and the world is not**: the
+output directory can be reconfigured, and a path is data like any other. `SEC-001`'s posture is that
+the boundary is checked where it is crossed.
+
+*(This said "a `history` row is durable". The row is gone — `T-169`/`T-170` withdrew `REQ-020` and
+migration `0009` dropped the table — and the argument never depended on it: what is re-checked is a
+path this application stored at some earlier moment, whichever row holds it. `T-186`.)*
 
 ## Failure is reported, never silent
 
-A file that has been moved or deleted is the *ordinary* case for a history record — `UX-001` says
-remove never deletes a file, so the user is free to move their downloads and often will. Answering
-with a reason the caller can show is the whole contract; `NFR-006` applies to this surface as much
-as to an extractor's message.
+A file that has been moved or deleted is the *ordinary* case here — `UX-001` says remove never
+deletes a file, so the user is free to move their downloads and often will. Answering with a reason
+the caller can show is the whole contract; `NFR-006` applies to this surface as much as to an
+extractor's message.
 """
 
 from __future__ import annotations

@@ -132,10 +132,15 @@ PRESET_CHOICES_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 8
 #: (`T-130`, `T130-R3`).
 #:
 #: The queue draws one: `UX-005`'s 2026-08-04 amendment adopts the mockup's chip, because a queue is
-#: a list of rows in *different* states and the state is what the eye is looking for. **History does
-#: not**, and that is the ruling rather than an omission: every history row is finished, so a chip
-#: reading *Done* on all of them is furniture. Absent means no, which is how `HistoryModel` gets the
-#: right answer without knowing the role exists.
+#: a list of rows in *different* states and the state is what the eye is looking for.
+#:
+#: **Absent means no**, and that default is why the role survived the surface it was written
+#: against. *(This continued "**History does not**, and that is the ruling rather than an omission:
+#: every history row is finished, so a chip reading *Done* on all of them is furniture. Absent means
+#: no, which is how `HistoryModel` gets the right answer without knowing the role exists." History
+#: and `HistoryModel` were removed by `T-169`/`T-170`, so the contrast described a model that no
+#: longer exists. The **reasoning** was worth keeping and is why the default is what it is: a model
+#: that never sets this role gets the right answer without knowing the role exists — `T-186`.)*
 #:
 #: **The text, not a flag** (`T130-R3`). It was a `bool`, and the delegate derived the word itself:
 #: `PROGRESS_ROLE` when there was a fraction, `STATE_ROLE` otherwise. Both halves were wrong, and

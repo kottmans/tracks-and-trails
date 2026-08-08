@@ -420,9 +420,14 @@ class MainWindow(QMainWindow):
 
         **One surface, and no tab widget.** This was `Queue` and `History` as tabs, each with a
         count — the design `UX-005` chose over a splitter, and the counts were what answered the
-        objection that a tab hides a list. `T-169` removed History as a product: `REQ-020` is now a
-        private ledger with nothing to browse, so the second tab has no contents rather than fewer
-        of them.
+        objection that a tab hides a list. `T-169` removed History as a product, so the second tab
+        had no contents rather than fewer of them.
+
+        *(This said `REQ-020` "is now a private ledger with nothing to browse", which was true for
+        part of one day. `T-169` narrowed the requirement to a private ledger and `T-170` withdrew
+        that too, hours later, after review found it had cost five findings without a user ever
+        seeing it; migration `0009` removed the table from upgraded databases. **The application
+        keeps no record of what has been downloaded at all** — `T-186`.)*
 
         **A tab strip holding one tab was rejected rather than overlooked.** It offers a choice the
         user does not have, which is the same objection `UX-005` §5 makes to drawing a verb that
@@ -1063,7 +1068,10 @@ class MainWindow(QMainWindow):
         confirm.setWindowTitle("Remove from queue")
         confirm.setText(group_removal_question(len(ids)))
         confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        # The safe button is the default, for `_confirm_history_removal`'s reason.
+        # **The safe button is the default**, so a dialog dismissed with Enter or Space removes
+        # nothing. *(This deferred the reason to `_confirm_history_removal`, which went with the
+        # History surface — leaving a comment whose justification could not be read from the code
+        # at all. The reason is stated here instead of pointed at: `T-186`.)*
         confirm.setDefaultButton(QMessageBox.StandardButton.No)
 
         def act(button: object) -> None:

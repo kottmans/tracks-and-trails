@@ -559,7 +559,12 @@ def test_a_bitrate_outside_the_offered_set_is_refused() -> None:
         presets.with_audio_quality(presets.AUDIO_MP3, "999")
 
 
-# --- FormatChoice: the narrowing History depends on (T159-R1, REQ-026) -------------------------
+# --- FormatChoice: the narrowing preset naming depends on (T159-R1, REQ-026) -------------------
+#
+# *(This read "the narrowing History depends on". History was withdrawn by `T-169`/`T-170`, and
+# `T159-R1`'s boundary ended with the table rather than moving to the survivor — see the note in
+# `persistence/repositories.py`. The narrowing is still a live invariant for the reason below:
+# `preset_name_for` cannot tell two presets apart without it. `T-186`.)*
 
 
 def test_a_format_choice_carries_exactly_the_preset_owned_fields() -> None:
@@ -568,15 +573,15 @@ def test_a_format_choice_carries_exactly_the_preset_owned_fields() -> None:
     A field this *lacks* stops `preset_name_for` distinguishing two presets that differ only in it,
     so a download would be named as something it is not. A field this *gains* is worse: everything
     a `DownloadRequest` holds outside `PRESET_OWNED_FIELDS` is a credential, a network setting or a
-    location, and `REQ-026` says the first of those never reaches History. This is the assertion
+    location, and `REQ-026` governs where the first of those may be written. This is the assertion
     that makes "narrowed" a property rather than a claim in a docstring.
     """
     carried = {field.name for field in fields(presets.FormatChoice)}
 
     assert carried == presets.PRESET_OWNED_FIELDS, (
         f"FormatChoice carries {sorted(carried)} but presets own "
-        f"{sorted(presets.PRESET_OWNED_FIELDS)}. Extra fields may be credentials History must "
-        "never hold; missing ones make two presets indistinguishable"
+        f"{sorted(presets.PRESET_OWNED_FIELDS)}. Extra fields may be credentials this structure "
+        "must never hold; missing ones make two presets indistinguishable"
     )
 
 
@@ -585,7 +590,8 @@ def test_narrowing_a_request_drops_every_field_that_is_not_about_the_format() ->
 
     `cookies_from_browser` is the one `REQ-026` names. `proxy` and `output_directory` are not
     credentials — the model refuses proxy userinfo outright — but they describe the user's network
-    and disk rather than the download, and a history record outlives the job row that held them.
+    and disk rather than the download, and a narrowed choice is compared and stored where the whole
+    request is not.
     """
     request = DownloadRequest(
         url="https://example.invalid/watch?v=abc123",
@@ -601,7 +607,8 @@ def test_narrowing_a_request_drops_every_field_that_is_not_about_the_format() ->
 
     for private in ("alice", "cookies.sqlite", "proxy.internal.invalid", "1024"):
         assert private not in narrowed, (
-            f"{private!r} survived the narrowing into {narrowed!r}; History stores this object"
+            f"{private!r} survived the narrowing into {narrowed!r}, which is compared and stored "
+            "where the whole request is not"
         )
     assert presets.format_choice_of(request).format_selector == "bestaudio/best", (
         "the narrowing dropped the format itself, which is the one thing it exists to keep"
