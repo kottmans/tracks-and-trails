@@ -2896,3 +2896,116 @@ def test_a_picture_published_while_the_sweep_runs_is_not_counted_as_swept(
         "a picture published while the sweep was running was recorded as already swept, so the "
         "next reset was skipped and the file is stranded"
     )
+
+
+# --- T-113: the row says when a download cannot be resumed (REQ-017, P-24) ---------------------
+
+
+def test_a_live_jobs_row_says_it_cannot_be_resumed(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """`REQ-017`'s second half — *state clearly when resumption is not possible* — on the row.
+
+    **Said while the download could still be started, not only after it fails.** *Before the user
+    waits* is the whole point of saying it, and a warning that appears at the moment of failure has
+    already let them wait.
+    """
+    queue.add(
+        make_job("live", tmp_path, status=JobStatus.RUNNING, title="A live set", is_live=True)
+    )
+    queue.add(make_job("ordinary", tmp_path, status=JobStatus.RUNNING, title="A video"))
+    view = views(jobs=queue, manager=managers())
+
+    live = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+    ordinary = view.model.data(view.model.index(1, JOB_COLUMN), DETAIL_ROLE)
+
+    assert "live stream" in live and "starts again" in live, live
+    assert "starts again" not in ordinary, (
+        f"every row claims it cannot resume: {ordinary!r}. A warning shown everywhere is one "
+        "nobody reads"
+    )
+
+
+def test_a_finished_live_download_stops_warning_about_resuming(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """A warning about a situation that can no longer arise is noise on a row that succeeded."""
+    queue.add(
+        make_job("live", tmp_path, status=JobStatus.COMPLETED, title="A live set", is_live=True)
+    )
+    view = views(jobs=queue, manager=managers())
+
+    assert "starts again" not in view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+
+def test_a_failed_live_job_offers_start_again_rather_than_retry(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """`P-24`, through the model rather than through `verbs_for` (`tests/ui/test_row_verbs.py`).
+
+    What is new here is the **wiring**: the row has to ask `Job.resume_refusal` and pass the answer
+    on. A `verbs_for` that supports the rename and a model that never asks for it is the shape of
+    a feature that exists and is unreachable.
+    """
+    queue.add(
+        make_job(
+            "live",
+            tmp_path,
+            status=JobStatus.FAILED,
+            title="A live set",
+            is_live=True,
+            error_kind=ErrorKind.NETWORK,
+            error_message="the connection dropped",
+        )
+    )
+    queue.add(
+        make_job(
+            "ordinary",
+            tmp_path,
+            status=JobStatus.FAILED,
+            title="A video",
+            error_kind=ErrorKind.NETWORK,
+            error_message="the connection dropped",
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    live = view.model.data(view.model.index(0, JOB_COLUMN), VERBS_ROLE)
+    ordinary = view.model.data(view.model.index(1, JOB_COLUMN), VERBS_ROLE)
+
+    assert Verb.START_AGAIN in live and Verb.RETRY not in live, live
+    assert Verb.RETRY in ordinary and Verb.START_AGAIN not in ordinary, ordinary
+
+
+def test_start_again_is_routed_the_same_way_retry_is(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """`UX-008`: two labels, one action — so an unrouted second verb would be a dead button.
+
+    `_on_verb` raises for a verb nothing routes, which is the failure this would otherwise be; the
+    assertion is on the signal, because a raise proves the verb was seen and not that it acted.
+    """
+    queue.add(make_job("live", tmp_path, status=JobStatus.FAILED, title="A live set", is_live=True))
+    view = views(jobs=queue, manager=managers())
+    asked: list[str] = []
+    view.retry_requested.connect(asked.append)
+
+    view._on_verb("live", Verb.START_AGAIN)
+
+    assert asked == ["live"]

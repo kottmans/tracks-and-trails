@@ -116,3 +116,44 @@ def test_every_verb_has_a_label() -> None:
     for verb in Verb:
         assert LABELS.get(verb), f"{verb.value} has no label, so it would draw as a blank button"
     assert MORE_LABEL, "the overflow has no label, so the keyboard route has nothing to point at"
+
+
+# --- T-113: a job that cannot resume says so, and its verb says what it will do ----------------
+
+
+def test_a_job_that_cannot_resume_is_offered_start_again_rather_than_retry() -> None:
+    """`P-24`, ruled 2026-08-07: *offers start again as its own verb*.
+
+    **Renamed, not removed**, and the distinction is the point. A live stream can be run again;
+    what it cannot do is continue, so a button reading *Retry* promises to pick up where it left
+    off when it will start from zero. `UX-008` records why there is no separate action behind it —
+    the difference is what the download does, not what the application asks for.
+    """
+    offered = verbs_for(JobStatus.FAILED, resumable=False)
+
+    assert Verb.START_AGAIN in offered
+    assert Verb.RETRY not in offered, "both verbs were offered, which is two buttons for one press"
+    assert Verb.REMOVE in offered, "renaming the retry cost the row its other verb"
+    assert len(offered) == len(verbs_for(JobStatus.FAILED)), "the row gained or lost a verb"
+
+
+def test_a_resumable_job_keeps_the_verb_it_had() -> None:
+    """The default, asserted so the rename cannot leak into every row."""
+    assert verbs_for(JobStatus.FAILED) == verbs_for(JobStatus.FAILED, resumable=True)
+    assert Verb.START_AGAIN not in verbs_for(JobStatus.FAILED)
+
+
+def test_an_unretryable_failure_is_not_offered_start_again_either() -> None:
+    """The two conditions compose, and the safety one wins.
+
+    `SEC-001` says DRM is never retried. A live stream whose failure is unretryable must not be
+    offered a differently-worded way to retry it — which is exactly what a rename applied after the
+    retryability filter would have produced.
+    """
+    offered = verbs_for(JobStatus.FAILED, retryable=False, resumable=False)
+
+    assert Verb.RETRY not in offered
+    assert Verb.START_AGAIN not in offered, (
+        "an unretryable failure was offered a retry under another name"
+    )
+    assert Verb.REMOVE in offered

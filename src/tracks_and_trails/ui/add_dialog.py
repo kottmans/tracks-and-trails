@@ -2190,6 +2190,11 @@ class AddUrlDialog(QDialog):
             thumbnail_url=probed.thumbnail_url if probed is not None else None,
             uploader=probed.uploader if probed is not None else None,
             duration_seconds=probed.duration_seconds if probed is not None else None,
+            # **`REQ-017`'s only knowable-in-advance refusal** (`T-113`). The probe says whether
+            # this is live and the queue row is where it has to be said, so it crosses with the
+            # rest of what the probe learned rather than dying with the dialog — which is what
+            # `thumbnail_url` and `uploader` each had to be corrected for.
+            is_live=probed.is_live if probed is not None else False,
             created_at=datetime.now().astimezone(),
         )
 

@@ -55,6 +55,7 @@ from tracks_and_trails.core.errors import ErrorKind, is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+from tracks_and_trails.downloader import worker
 from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
@@ -351,6 +352,94 @@ def media_handler(total_bytes: int, chunk_delay: float) -> type[BaseHTTPRequestH
                 pass
 
     return Handler
+
+
+#: Deterministic bytes for the resume fixture, so the finished file can be compared exactly.
+#:
+#: A repeating 256-byte ramp rather than `media_handler`'s zeros: a resumed download that wrote the
+#: right *number* of bytes in the wrong *order* is the failure this test exists to catch, and a
+#: file of zeros cannot tell the two apart.
+RESUMABLE_BYTES: Final = bytes(range(256)) * (CLIP_BYTES // 256)
+
+
+def resumable_media_handler(
+    log: list[tuple[str, int]], chunk_delay: float
+) -> type[BaseHTTPRequestHandler]:
+    """Serves `RESUMABLE_BYTES` and **honours `Range`**, recording every request (`T-113`).
+
+    `media_handler` advertises `Accept-Ranges` and then ignores the header, always answering `200`
+    from byte zero — which is a perfectly realistic server and the *wrong* one for this test: yt-dlp
+    sees a `200` where it asked for a `206`, discards its partial and starts again, so a resume
+    could never be observed. This one answers `206` with a `Content-Range`, which is what makes the
+    resume visible rather than assumed.
+
+    `log` is appended to from the server's own threads and read by the test process afterwards.
+    Appending to a list is atomic under the GIL and nothing reads it while a request is in flight,
+    so no lock is needed for what it is used for — counting.
+    """
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            """Silence `http.server`'s stderr logging; a test is not a web server."""
+
+        def _offset(self) -> int:
+            header = self.headers.get("Range") or ""
+            if not header.startswith("bytes="):
+                return 0
+            start, _, _ = header.removeprefix("bytes=").partition("-")
+            return int(start) if start.isdigit() else 0
+
+        def do_HEAD(self) -> None:
+            log.append(("HEAD", 0))
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(RESUMABLE_BYTES)))
+            self.send_header("Accept-Ranges", "bytes")
+            self.end_headers()
+
+        def do_GET(self) -> None:
+            offset = self._offset()
+            log.append(("GET", offset))
+            body = RESUMABLE_BYTES[offset:]
+            self.send_response(206 if offset else 200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Accept-Ranges", "bytes")
+            if offset:
+                self.send_header(
+                    "Content-Range",
+                    f"bytes {offset}-{len(RESUMABLE_BYTES) - 1}/{len(RESUMABLE_BYTES)}",
+                )
+            self.end_headers()
+            try:
+                for start in range(0, len(body), 32 * 1024):
+                    self.wfile.write(body[start : start + 32 * 1024])
+                    time.sleep(chunk_delay)
+            except BrokenPipeError, ConnectionResetError, ConnectionAbortedError:
+                # The expected end of a killed download — see `media_handler` for why
+                # `ConnectionAbortedError` is named (`T-121`).
+                pass
+
+    return Handler
+
+
+@pytest.fixture
+def resumable_media_url() -> Iterator[Callable[..., tuple[str, list[tuple[str, int]]]]]:
+    """A localhost URL that honours `Range`, and the request log it writes."""
+    servers: list[ThreadingHTTPServer] = []
+
+    def serve(chunk_delay: float = 0.0) -> tuple[str, list[tuple[str, int]]]:
+        log: list[tuple[str, int]] = []
+        server = ThreadingHTTPServer(("127.0.0.1", 0), resumable_media_handler(log, chunk_delay))
+        servers.append(server)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{server.server_address[1]}/clip.mp4", log
+
+    yield serve
+
+    for server in servers:
+        server.shutdown()
+        server.server_close()
 
 
 @pytest.fixture
@@ -1710,6 +1799,156 @@ def test_the_previewed_path_is_the_path_the_download_actually_writes(
         )
         assert not set(written.name) & set('<>:"/\\|?*'), (
             f"a character illegal on Windows survived into {written.name!r}"
+        )
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=120)
+
+
+# --- T-113: a partial download survives a kill and is continued (REQ-017, UX-008) --------------
+
+
+def test_a_killed_download_resumes_from_its_partial_rather_than_starting_again(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    resumable_media_url: Callable[..., tuple[str, list[tuple[str, int]]]],
+) -> None:
+    """**`T-113`'s first criterion**: *a real restart, verified by killing the process*.
+
+    `ai/TESTING.md` §7's rule, and `NFR-003`'s: a `SIGKILL` to a separate interpreter mid-download,
+    with no handlers and nothing flushed. A clean shutdown would prove that orderly teardown keeps
+    a file, which is a different and much easier claim — and the whole mechanism here is that
+    *nothing runs*: the staging directory survives because no code deleted it.
+
+    **Three assertions, and each one fails on its own.** That the partial survived (the mechanism);
+    that the second attempt asked for a **range** rather than the whole file (the resume actually
+    happened, rather than a restart that also produced a correct file); and that the finished bytes
+    are exactly right (the resume did not corrupt what it continued). The middle one is why the
+    server here honours `Range` at all — `media_handler` advertises it and ignores it, under which
+    yt-dlp discards the partial and starts over, correctly and invisibly.
+    """
+    database = tmp_path / "queue.db"
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    # Paced for `test_a_job_killed_mid_download_is_recovered_by_the_next_start`'s reason: the kill
+    # has to land with the download genuinely in flight, or there is nothing partial to keep.
+    url, requests = resumable_media_url(chunk_delay=0.5)
+
+    environment = dict(os.environ, PYTHONPATH=str(REPO_ROOT / "src"), QT_QPA_PLATFORM="offscreen")
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            DOWNLOAD_AND_WAIT,
+            str(database),
+            str(downloads),
+            str(tmp_path / "window.toml"),
+            url,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+        **isolate_the_application(),
+    )
+    try:
+        assert process.stdout is not None
+        handshake = process.stdout.readline().strip()
+        assert handshake, "the application never queued anything"
+        reported_pid, _, job_id = handshake.partition(" ")
+        assert job_id, f"the startup handshake was not '<pid> <job id>': {handshake!r}"
+        application_pid = int(reported_pid)
+
+        def partial_size() -> int:
+            """How much of this job's `.part` file exists, read from outside the application."""
+            partial = worker.resumable_partial(downloads, job_id)
+            return 0 if partial is None else partial.stat().st_size
+
+        # Waited on the **file** rather than on the row's status: `RUNNING` is set when the session
+        # starts and this test is about bytes on disk, so killing at `RUNNING` could land before
+        # yt-dlp had written any and leave nothing to resume from.
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline and partial_size() <= 0:
+            time.sleep(0.05)
+        killed_at = partial_size()
+        assert killed_at > 0, (
+            "no partial file existed to kill mid-way through, so this test would prove nothing"
+        )
+
+        must_die = the_workers_that_must_die(application_pid)
+        doomed = capture_the_doomed_tree(process, application_pid)
+        kill_the_application(process, doomed)
+        _, survivors = psutil.wait_procs(must_die, timeout=5)
+        assert not survivors, (
+            f"{len(survivors)} worker process(es) outlived the kill: "
+            f"{sorted(p.pid for p in survivors)}"
+        )
+        process.wait(timeout=30)
+    finally:
+        if process.poll() is None:  # pragma: no cover - only on an unexpected path
+            with contextlib.suppress(psutil.Error):
+                for victim in [*psutil.Process(process.pid).children(recursive=True)][::-1]:
+                    victim.kill()
+            process.kill()
+            process.wait(timeout=30)
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
+
+    survived = worker.resumable_partial(downloads, job_id)
+    assert survived is not None and survived.stat().st_size > 0, (
+        "the kill took the partial with it, so there is nothing for the next attempt to continue "
+        "from — which is what `tempfile.mkdtemp` staging did before T-113"
+    )
+    before_resume = len(requests)
+
+    composition = application.compose(
+        qapp,
+        database=database,
+        output_directory=downloads,
+        geometry_file=tmp_path / "window2.toml",
+    )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
+    try:
+        recovered = composition.store.get(job_id)
+        assert recovered is not None and recovered.status is JobStatus.FAILED
+        assert recovered.error_kind is ErrorKind.INTERRUPTED
+
+        # The user's own Retry, which `UX-008` says *is* the resume: there is no separate verb,
+        # because the difference is what the download does and not what the application asks for.
+        composition.manager.retry(job_id)
+        assert spin(
+            lambda: (
+                (stored := composition.store.get(job_id)) is not None
+                and stored.status is JobStatus.COMPLETED
+            ),
+            timeout=180,
+        ), f"the resumed download never completed — {why(composition, job_id)}"
+
+        stored = composition.store.get(job_id)
+        assert stored is not None and stored.output_path is not None
+        written = Path(stored.output_path)
+        assert written.read_bytes() == RESUMABLE_BYTES, (
+            "the resumed download produced the wrong bytes — a resume that corrupts what it "
+            "continued is worse than one that never happened"
+        )
+
+        resumed = requests[before_resume:]
+        ranged = [offset for verb, offset in resumed if verb == "GET" and offset > 0]
+        assert ranged, (
+            f"the second attempt asked for the whole file again: {resumed}. The partial was there "
+            "and yt-dlp was pointed somewhere else, which is a restart wearing a resume's clothes."
+        )
+        assert max(ranged) >= killed_at * 0.5, (
+            f"resumed from byte {max(ranged)} having already written {killed_at}; the range asked "
+            "for throws most of the partial away"
+        )
+
+        assert worker.resumable_partial(downloads, job_id) is None, (
+            "the staging directory outlived a download that succeeded"
         )
     finally:
         composition.shutdown.begin()

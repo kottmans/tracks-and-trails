@@ -1807,3 +1807,130 @@ def test_original_stays_unpredictable_even_if_yt_dlp_names_a_container_for_it(
         "ffprobe of a file that does not exist when the preview is drawn"
     )
     assert worker_module.preview_is_provisional(request)
+
+
+# --- T-113: the partial file's lifetime (REQ-017, UX-008) --------------------------------------
+#
+# `UX-008`'s table, one test per row that this layer owns. The kill row is
+# `tests/integration/test_end_to_end.py`, because only a real `SIGKILL` can establish it.
+
+
+def test_a_jobs_staging_directory_is_the_same_one_every_time_it_runs(tmp_path: Path) -> None:
+    """**The whole of the resume mechanism** (`T-113`).
+
+    yt-dlp continues from a `.part` it finds at the path it is told to write. The only thing that
+    ever stopped this application resuming was `tempfile.mkdtemp` — unique per *call* — so the
+    next attempt looked in a directory nothing had written to. Asserted as a property of the
+    function rather than through a download, because it is a property of the function.
+    """
+    first = worker_module.staging_directory(tmp_path, "job-1")
+    again = worker_module.staging_directory(tmp_path, "job-1")
+    other = worker_module.staging_directory(tmp_path, "job-2")
+
+    assert first == again, "two attempts at one job would look in two directories"
+    assert first != other, "two jobs would share a directory and race for one name"
+    assert first.parent == tmp_path, (
+        "the staging directory left the output folder, so claiming the finished file stops being "
+        "a rename within one filesystem (T046-R1)"
+    )
+    assert not first.exists(), "asking where a partial would be created a directory"
+
+
+def test_a_failed_download_keeps_its_partial_for_the_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`UX-008`: kept on failure, because a retry after a network error is what resume is for.
+
+    The old `finally` discarded whatever the outcome, which is right for a download that landed
+    and throws away the head start in the one case `UX-002` retries automatically.
+    """
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.mp4")
+
+    def extract_then_fail(
+        _adapter: Any,
+        _request: Any,
+        _resolved: Any,
+        _reporter: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+        if probe_only:
+            return info
+        # A download that wrote some bytes and then failed — the shape a dropped connection has.
+        asked = Path(output_template or "")
+        asked.parent.mkdir(parents=True, exist_ok=True)
+        asked.with_suffix(".mp4.part").write_bytes(b"half a download")
+        raise OSError("the connection dropped")
+
+    monkeypatch.setattr(worker_module, "_extract", extract_then_fail)
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(tmp_path, format_selector="best"), queue
+    )
+
+    assert any(isinstance(message, Failed) for message in drain(queue))
+    partial = worker_module.resumable_partial(tmp_path, "job-1")
+    assert partial is not None and partial.read_bytes() == b"half a download", (
+        "the failure threw its partial away, so the retry starts from zero"
+    )
+
+
+def test_a_cancelled_download_discards_its_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`UX-008`: discarded on cancel, because a cancel is somebody saying they do not want it.
+
+    The other half of keeping one on failure, and the reason the two are separated rather than
+    both handled by a `finally`: the difference is *whose* decision ended the download.
+    """
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.mp4")
+
+    def extract_then_cancel(
+        _adapter: Any,
+        _request: Any,
+        _resolved: Any,
+        _reporter: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+        if probe_only:
+            return info
+        asked = Path(output_template or "")
+        asked.parent.mkdir(parents=True, exist_ok=True)
+        asked.with_suffix(".mp4.part").write_bytes(b"half a download")
+        raise worker_module.SessionCancelledError("the user cancelled this session")
+
+    monkeypatch.setattr(worker_module, "_extract", extract_then_cancel)
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(tmp_path, format_selector="best"), queue
+    )
+
+    outcome = next(m for m in drain(queue) if isinstance(m, Failed))
+    assert outcome.kind is ErrorKind.CANCELLED
+    assert worker_module.resumable_partial(tmp_path, "job-1") is None, (
+        "a cancelled download left bytes in the user's folder that nothing will ever finish"
+    )
+    assert not worker_module.staging_directory(tmp_path, "job-1").exists()
+
+
+def test_asking_about_a_partial_that_does_not_exist_is_not_an_error(tmp_path: Path) -> None:
+    """Every caller asks about jobs that never ran — `remove` cannot know which have partials."""
+    assert worker_module.resumable_partial(tmp_path, "never-ran") is None
+    # Idempotent, and safe for a directory that was never created.
+    worker_module.discard_staging_for(tmp_path, "never-ran")
+    worker_module.discard_staging_for(tmp_path, "never-ran")

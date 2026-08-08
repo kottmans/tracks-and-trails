@@ -4487,3 +4487,102 @@ that makes a criterion change checkable after the conversation that produced it 
   is already an outcome the phase can exit on.
 - **Synthesize an `fps`-bearing "recorded" fixture by hand.** Rejected outright: that is a synthetic
   fixture claiming provenance it does not have, which is the failure `SEC-002` exists to prevent.
+
+---
+
+## UX-008 — Per-job pause stays out; resume is what `.part` files do, not a state
+
+**Status:** **Accepted** (2026-08-08) — taken by `T-113`, which `P-10` named as the decision's
+owner. Recorded because `UX-007` required an answer *"either way"*.
+**Date:** 2026-08-08
+**Supersedes:** nothing. **Answers** `UX-001`'s named reopening condition and closes `P-10`.
+**Does not amend** `UX-006`: the queue-level gate and its stopped-at-launch default are untouched.
+
+### Context
+
+`UX-001` removed per-job pause on the reasoning that pause could only mean *drain* — there was
+nothing to pause *to*, because an interrupted download started again from the beginning. It named
+`REQ-017` as the condition under which that would be worth revisiting: *"once a partial file can be
+resumed, per-job pause becomes coherent — pause would stop having to mean drain."* `T-080` deleted
+`JobStatus.PAUSED` on the matching reasoning that nothing could enter it.
+
+`UX-007` (2026-08-07) ruled `P-10` by declining to rule it: the answer *"depends on what resume
+actually costs per site and format, which is what `T-113` exists to find out"*, and it must be
+recorded either way.
+
+### What `T-113` found
+
+**Resume costs nothing, and it was never a feature this application had to build.** yt-dlp's
+`continuedl` is on by default: it finds the `.part` file at the path it is told to write to and
+continues from it. The only reason downloads restarted was that the staging directory was
+`tempfile.mkdtemp` — unique per *call* — so the next attempt looked in a directory that had never
+been written to. Keying it by job id was the whole change.
+
+**Measured, against a local server with and without `Accept-Ranges`** (`tools/`-free probe, run
+2026-08-08 on the development machine):
+
+| Server | Requests on the second attempt | Outcome |
+|---|---|---|
+| Sends `Accept-Ranges: bytes` | **one range request** | resumed, correct bytes |
+| Ignores `Range` | **four full requests** | restarted from zero, correct bytes |
+
+Both produced a byte-exact file. So resumability is not a capability that can fail — it is a *head
+start that is sometimes lost*, decided by the server at the moment the request is made, and yt-dlp
+handles the loss by starting over silently.
+
+### Decision
+
+**1. Per-job pause is not reintroduced. `JobStatus.PAUSED` stays deleted.**
+
+`UX-001`'s condition is met in the letter and not in the spirit. Pause-to-a-state would mean
+holding a worker process, its socket and its file handle open indefinitely, or stopping the worker
+and calling the result *paused* — and the second is what **cancel plus retry already is**, now that
+the partial survives a failure. Resume made the *mechanism* coherent and simultaneously made the
+*state* redundant: there is nothing a paused job could offer that a stopped one with its bytes on
+disk does not.
+
+**2. There is no `Pause all` on a playlist header** (`T140-R5`, closed the same way). It would be a
+group-level spelling of a per-job control that does not exist.
+
+**3. The queue-level gate stays the only pause.** `UX-006` is unchanged.
+
+**4. What the user gets instead is that stopping is cheap.** Cancel a download, and its partial is
+discarded because a cancel is somebody saying they do not want it. Let one fail, or kill the
+application mid-download, and the partial is **kept** — the next attempt continues from it.
+
+### The partial file's lifetime, stated once
+
+| What happens | The partial |
+|---|---|
+| The download succeeds | discarded with the staging directory |
+| The download fails | **kept**, so the retry has a head start |
+| The application is killed | **kept** — nothing runs to delete it, which is the mechanism |
+| The user cancels | discarded — a cancel is a statement that it is not wanted |
+| The user removes the job | discarded, for the same reason, and because no row would be left to explain it |
+| The server refuses the resume | replaced: yt-dlp restarts from zero and writes the correct file |
+
+**Nothing of the user's is ever in that directory.** It is created by one job, holds only bytes that
+job downloaded, and is named for the job id.
+
+### Consequences
+
+- `REQ-017` is met without a new job state, a new verb for stopping, or a change to `UX-001`'s
+  semantics.
+- A **live stream** is the one case where a probe can say in advance that resumption is impossible,
+  and `Job.is_live` carries it so the row can say so (`P-24`). Everything else says nothing, because
+  a promise that resumption *will* happen is one this application cannot keep.
+- A job that fails and is never retried holds its partial until the row is removed. That is a
+  deliberate trade — the bytes are recoverable value, and the row is the thing that explains them.
+
+### Alternatives considered
+
+- **Reintroduce `PAUSED` as "cancelled, but the row says paused".** Rejected: it is a second
+  vocabulary for a state the queue already has, and `T-080` deleted the member for exactly the
+  reason that nothing could honestly enter it. A status whose only content is a nicer word is what
+  `ARCHITECTURE.md` §7's taxonomy exists to keep out.
+- **Hold the worker open on pause.** Rejected: an idle worker holds a process, a socket and an open
+  file for an unbounded time, and `ARC-002`'s pool is sized in processes. A user pausing eight
+  downloads would hold eight processes hostage to a decision they may never come back to.
+- **Discard the partial on failure too, as the old `finally` did.** Rejected: a network failure is
+  precisely the case resume exists for, and `UX-002` already retries those automatically. Keeping it
+  is what makes the automatic retry cheap instead of a second full download.

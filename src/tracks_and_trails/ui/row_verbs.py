@@ -40,6 +40,11 @@ class Verb(StrEnum):
     MOVE_UP = "move_up"
     MOVE_DOWN = "move_down"
     RETRY = "retry"
+    #: **`Retry` under another name, for a job that cannot continue** (`P-24`, `REQ-017`,
+    #: `T-113`). Its own value rather than a relabelled `RETRY`, because the label is the whole
+    #: point: pressing it on a live stream throws away everything already downloaded, and a button
+    #: reading *Retry* says the opposite. One signal per meaning is also what `CANCEL_ALL` is for.
+    START_AGAIN = "start_again"
     REMOVE = "remove"
     OPEN = "open"
     REVEAL = "reveal"
@@ -58,6 +63,9 @@ LABELS: Final[dict[Verb, str]] = {
     Verb.MOVE_UP: "↑",
     Verb.MOVE_DOWN: "↓",
     Verb.RETRY: "Retry",
+    # **Named for what it costs**, which is `CANCEL_ALL`'s reasoning applied to the other end of
+    # the row: *Retry* on a job that resumes continues, and on one that cannot it starts over.
+    Verb.START_AGAIN: "Start again",
     Verb.REMOVE: "Remove",
     Verb.OPEN: "Open",
     Verb.REVEAL: "Show in folder",
@@ -108,7 +116,9 @@ _LIVE: Final[frozenset[JobStatus]] = frozenset(
 )
 
 
-def verbs_for(status: JobStatus, *, retryable: bool = True) -> tuple[Verb, ...]:
+def verbs_for(
+    status: JobStatus, *, retryable: bool = True, resumable: bool = True
+) -> tuple[Verb, ...]:
     """The verbs a row in `status` offers, in the order they are drawn.
 
     **`retryable` is not a style choice.** `core/errors.py` decides whether a failure can be tried
@@ -117,12 +127,20 @@ def verbs_for(status: JobStatus, *, retryable: bool = True) -> tuple[Verb, ...]:
     produce the same error. A failed row that cannot be retried still offers *Remove*, so it is
     never left with nothing.
 
+    **`resumable` renames the verb rather than removing it** (`P-24`, `REQ-017`, `T-113`). A job
+    that cannot continue can still be run again — what changes is what pressing it means, and
+    *Retry* on a live stream promises to pick up where it left off when it will start from zero.
+    `UX-007` ruled that such a job *"says so on its row and offers start again as its own verb"*,
+    and this is the second half of that; `Job.resume_refusal` is the first.
+
     Every status is in the table, so an unmapped one is a programming error rather than a row with
     no verbs — a silent empty tuple is how a whole state loses its actions without a test noticing.
     """
     offered = _BY_STATUS[status]
     if not retryable:
         return tuple(verb for verb in offered if verb is not Verb.RETRY)
+    if not resumable:
+        return tuple(Verb.START_AGAIN if verb is Verb.RETRY else verb for verb in offered)
     return offered
 
 

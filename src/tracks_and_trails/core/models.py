@@ -832,6 +832,21 @@ class Job:
     playlist_index: int | None = None
     playlist_title: str | None = None
 
+    #: Whether this download is a live stream (`REQ-017`, `T-113`).
+    #:
+    #: **The one thing a probe can say about resumability before anything is downloaded.** An
+    #: interrupted live capture has nothing to continue from — the bytes that were being served
+    #: have gone — so a retry starts again by definition rather than by the server's choice. Every
+    #: other case is decided at the moment of the resume by whether the server honours a `Range`
+    #: request, which nothing can know in advance and which yt-dlp handles by silently starting
+    #: over. `REQ-017` asks the application to *state clearly when resumption is not possible*, and
+    #: this is the case where that statement is true rather than a guess.
+    #:
+    #: Defaults to `False` for a job written before this existed and for a playlist entry, which is
+    #: named by a flat extraction and never probed (`T-137`). Both mean *nothing said it was live*,
+    #: which is the honest reading: the row makes no claim rather than a wrong one.
+    is_live: bool = False
+
     #: Who published it, and how long it is (`UX-005` §3, `T124-R4`, `REQ-002`).
     #:
     #: **The same shape and the same reasoning as `thumbnail_url`**, and they were left out of the
@@ -875,6 +890,7 @@ class Job:
         _require_optional_duration("Job", "duration_seconds", self.duration_seconds)
         _require_optional_text("Job", "playlist_id", self.playlist_id)
         _require_optional_text("Job", "playlist_title", self.playlist_title)
+        _require_flag("Job", "is_live", self.is_live)
         _require_optional_count("Job", "playlist_index", self.playlist_index)
         membership = (self.playlist_id, self.playlist_index, self.playlist_title)
         if any(part is not None for part in membership) and None in membership:
@@ -892,6 +908,25 @@ class Job:
         _require_optional_count("Job", "queue_position", self.queue_position)
         for name in ("created_at", "started_at", "finished_at"):
             _require_optional_datetime("Job", name, getattr(self, name))
+
+    @property
+    def resume_refusal(self) -> str | None:
+        """Why an interrupted attempt at this job cannot be continued, or `None` (`REQ-017`).
+
+        **Asymmetric on purpose.** `None` does not promise a resume — a server that ignores
+        `Range` makes yt-dlp start from zero, and that is decided when the request is made, not
+        when the row is drawn. `REQ-017` asks only for the opposite statement, and this is the one
+        case a probe establishes: a live capture has nothing left to continue from.
+
+        In words rather than as a flag, because `NFR-005` requires the row to *say* it and one
+        author for the sentence is what keeps the row, its accessible text and its verb agreeing.
+        """
+        if not self.is_live:
+            return None
+        return (
+            "This is a live stream, so an interrupted download starts again from the beginning "
+            "rather than continuing."
+        )
 
     def with_status(self, target: JobStatus) -> Self:
         """Return a copy in `target`, raising `IllegalTransitionError` if the move is not legal.

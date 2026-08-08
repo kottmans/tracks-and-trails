@@ -656,7 +656,14 @@ class QueueModel(QAbstractTableModel):
             # treated as retryable, which is what `job_detail` does and what a failure nobody
             # classified deserves.
             retryable = row.job.error_kind is None or is_retryable(row.job.error_kind)
-            return verbs_for(row.job.status, retryable=retryable)
+            # **`resumable` renames Retry rather than hiding it** (`P-24`, `REQ-017`, `T-113`).
+            # A live stream's interrupted download starts over, so the verb says *Start again*
+            # and means it; `Job.resume_refusal` is the same fact in words, on the row's own line.
+            return verbs_for(
+                row.job.status,
+                retryable=retryable,
+                resumable=row.job.resume_refusal is None,
+            )
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
             return self._text(row, index.column())
@@ -759,6 +766,13 @@ class QueueModel(QAbstractTableModel):
         dialog closes. Either is omitted when the probe did not learn it; neither is invented,
         and `UNKNOWN_TEXT` is not shown for them for the reason `format_duration` gives — a field
         the extractor never named is quieter as nothing than as an em dash.
+
+        **A job that cannot resume says so here** (`P-24`, `REQ-017`, `T-113`). `REQ-017`'s second
+        half is *state clearly when resumption is not possible*, and `UX-007` ruled that the row is
+        where it is stated. It is shown while the job could still be started or restarted rather
+        than only once it has failed, because *before the user waits* is the point of saying it —
+        and it is dropped once the download is finished, where it would be a warning about a
+        situation that can no longer arise.
         """
         parts = [
             row.job.uploader or "",
@@ -768,6 +782,9 @@ class QueueModel(QAbstractTableModel):
             self._text(row, SPEED_COLUMN),
             self._text(row, ETA_COLUMN),
         ]
+        refusal = row.job.resume_refusal
+        if refusal is not None and row.job.status is not JobStatus.COMPLETED:
+            parts.append(refusal)
         return " · ".join(part for part in parts if part and part != UNKNOWN_TEXT)
 
     def _whole_row(self, row: _Row) -> str:
@@ -1490,7 +1507,10 @@ class QueueView(QWidget):
             return
         if verb is Verb.CANCEL:
             self._manager.cancel(job_id)
-        elif verb is Verb.RETRY:
+        elif verb in (Verb.RETRY, Verb.START_AGAIN):
+            # **One route for both** (`T-113`). They are two labels for one action — the
+            # difference is what the download will do, not what the application does with the
+            # press — so a second signal would be two paths that have to be kept identical.
             self.retry_requested.emit(job_id)
         elif verb is Verb.REMOVE:
             self.remove_requested.emit(job_id)

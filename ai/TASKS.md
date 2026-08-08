@@ -5,7 +5,7 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — `T-110` and `T-112` implemented and In Review. `T-109`'s review returned
+**Last updated:** 2026-08-08 — `T-110`, `T-112` and `T-113` implemented and In Review; `UX-008` accepted. `T-109`'s review returned
 **Changes requested** (`T109-R1`..`T109-R7`); only `T109-R6`'s two type errors are corrected so far,
 because they failed the gate every later task has to pass.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
@@ -388,6 +388,83 @@ the `undo` one `Esc` uses.
 #### Out of scope
 
 - Collision policy (`T-046`, already delivered)
+
+---
+
+### T-113 — Resume a partial download across a restart
+
+**Status:** **In Review** — implemented 2026-08-08, awaiting a verdict.
+**Owner:** Implementer
+**Priority:** Medium — and the highest *uncertainty* in the phase
+**Phase:** Phase 3
+**Depends on:** Phase 2 exit
+**Relevant context:** `docs/UX_SPEC.md` §9.2 (**`P-10` is ruled 2026-08-07 by `UX-007`, and the
+ruling is that *this task decides it*** — whether per-job pause returns, whether `JobStatus.PAUSED`
+comes back, and whether a playlist header gets `Pause all` (`T140-R5`). It depends on what resume
+actually costs per site and format, which is what this task exists to find out, and **the answer
+must be recorded as a decision either way**. `P-24` is ruled outright: a non-resumable job **says so
+on its row** and offers *start again* as its own verb. The older note follows — **`P-10` reopens
+`UX-001`'s per-job pause** — the
+last criterion below is that same question, and answering one answers both), `REQ-017`, `UX-001` (this is its named reopening condition) **as amended by
+`UX-006`** — the queue-level gate is now *stopped until started*, which changes the default this
+task reopens against and changes nothing about per-job pause, `T-080`
+(removed `JobStatus.PAUSED`), `ARCHITECTURE.md` §5, `NFR-003`
+**Affected surfaces:** `core/job_state.py`, `downloader/`, `persistence/`
+**Risk:** **High** — it is the one Phase 3 item whose feasibility depends on the site and format
+
+#### Scope
+
+`REQ-017`: resume partially completed downloads across restarts **where the site and format allow
+it**, and *state clearly when resumption is not possible*. The second half is as much of the
+requirement as the first.
+
+**This reopens two accepted decisions, and should do so explicitly rather than by accident:**
+
+- **`UX-001`** names `REQ-017` as its reopening condition. Once a partial file can be resumed,
+  per-job pause becomes coherent — pause would stop having to mean "drain".
+- **`T-080` removed `JobStatus.PAUSED`** on the reasoning that nothing could enter it. If this task
+  needs a paused state it should add the one its own semantics require, which is exactly what that
+  removal was for.
+
+Neither is this task's to decide alone; both need an entry.
+
+#### Acceptance criteria
+
+- A partial download resumes after a real restart, verified by killing the process mid-download
+  (`ai/TESTING.md` §7's rule — a real kill, not a clean shutdown)
+- A format that cannot resume says so, in the UI, **before** the user waits for it to fail
+- The partial file's lifetime is defined: what happens to it on cancel, on remove, and on a
+  resume that the server refuses
+- Whether `UX-001` and `JobStatus.PAUSED` change is recorded as a decision, either way
+
+#### What landed, and what the uncertainty turned out to be
+
+**This was filed as the phase's highest-uncertainty item and the uncertainty resolved to almost
+nothing.** yt-dlp's `continuedl` is on by default: it continues from a `.part` file at the path it
+is told to write. The only reason this application restarted from the beginning was that
+`_staging_directory` was `tempfile.mkdtemp` — unique per *call* — so the next attempt looked in a
+directory nothing had ever written to. **Keying it by job id is the whole of the mechanism.**
+
+Measured against a local server, 2026-08-08 on the development machine: with `Accept-Ranges`, the
+second attempt made **one range request** and completed; without it, **four full requests** and
+completed. Both produced byte-exact files. So resumability cannot *fail* — it is a head start that
+is sometimes lost, and yt-dlp loses it silently and correctly.
+
+- **`worker.staging_directory(directory, job_id)`**, deterministic, plus `resumable_partial` and
+  `discard_staging_for`.
+- **`_discard_staging` left the blanket `finally`.** Success discards, cancel discards, failure
+  **keeps** — a network failure is the case `UX-002` retries automatically and the one resume is
+  most worth. A kill keeps it by running no code at all, which is the mechanism.
+- **`Job.is_live`**, migration `0010`, and `Job.resume_refusal` — the one refusal a probe can
+  state in advance. Every other case says nothing, because a promise that resumption *will* happen
+  is one this application cannot keep.
+- **`Verb.START_AGAIN`** (`P-24`): the same action under the name that says what it costs.
+- **`UX-008`** records the `P-10` answer: **per-job pause stays out, `JobStatus.PAUSED` stays
+  deleted**, and the partial file's lifetime is tabulated there.
+
+#### Out of scope
+
+- Resuming across a *format* change, which is a different download
 
 ---
 
@@ -1614,57 +1691,6 @@ not what an implementer opens.)*
 ---
 
 
-### T-113 — Resume a partial download across a restart
-
-**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
-**Owner:** Implementer
-**Priority:** Medium — and the highest *uncertainty* in the phase
-**Phase:** Phase 3
-**Depends on:** Phase 2 exit
-**Relevant context:** `docs/UX_SPEC.md` §9.2 (**`P-10` is ruled 2026-08-07 by `UX-007`, and the
-ruling is that *this task decides it*** — whether per-job pause returns, whether `JobStatus.PAUSED`
-comes back, and whether a playlist header gets `Pause all` (`T140-R5`). It depends on what resume
-actually costs per site and format, which is what this task exists to find out, and **the answer
-must be recorded as a decision either way**. `P-24` is ruled outright: a non-resumable job **says so
-on its row** and offers *start again* as its own verb. The older note follows — **`P-10` reopens
-`UX-001`'s per-job pause** — the
-last criterion below is that same question, and answering one answers both), `REQ-017`, `UX-001` (this is its named reopening condition) **as amended by
-`UX-006`** — the queue-level gate is now *stopped until started*, which changes the default this
-task reopens against and changes nothing about per-job pause, `T-080`
-(removed `JobStatus.PAUSED`), `ARCHITECTURE.md` §5, `NFR-003`
-**Affected surfaces:** `core/job_state.py`, `downloader/`, `persistence/`
-**Risk:** **High** — it is the one Phase 3 item whose feasibility depends on the site and format
-
-#### Scope
-
-`REQ-017`: resume partially completed downloads across restarts **where the site and format allow
-it**, and *state clearly when resumption is not possible*. The second half is as much of the
-requirement as the first.
-
-**This reopens two accepted decisions, and should do so explicitly rather than by accident:**
-
-- **`UX-001`** names `REQ-017` as its reopening condition. Once a partial file can be resumed,
-  per-job pause becomes coherent — pause would stop having to mean "drain".
-- **`T-080` removed `JobStatus.PAUSED`** on the reasoning that nothing could enter it. If this task
-  needs a paused state it should add the one its own semantics require, which is exactly what that
-  removal was for.
-
-Neither is this task's to decide alone; both need an entry.
-
-#### Acceptance criteria
-
-- A partial download resumes after a real restart, verified by killing the process mid-download
-  (`ai/TESTING.md` §7's rule — a real kill, not a clean shutdown)
-- A format that cannot resume says so, in the UI, **before** the user waits for it to fail
-- The partial file's lifetime is defined: what happens to it on cancel, on remove, and on a
-  resume that the server refuses
-- Whether `UX-001` and `JobStatus.PAUSED` change is recorded as a decision, either way
-
-#### Out of scope
-
-- Resuming across a *format* change, which is a different download
-
----
 
 ### T-114 — Confirm before queueing a URL the queue already holds
 
@@ -1942,7 +1968,6 @@ the maintainer and wants a `DECISIONS.md` entry, not a choice made inside a comm
 
 ---
 
-
 ### T-189 — Make the required ffmpeg CI cases fail instead of skip
 
 **Status:** **Proposed — filed 2026-08-07 by the `T-108` correction re-review (`T108-R3`).**
@@ -2000,7 +2025,6 @@ of the test run — fail with the missing capability and let the maintainer rest
 - Changing the product's runtime missing-ffmpeg behaviour (`REQ-024`)
 
 ---
-
 
 ### T-190 — `docs/UX_SPEC.md` §6 still says its screen is unspecified
 
@@ -2372,7 +2396,6 @@ launched.
 **Three acceptance criteria remain unmet and still need the machine.** Nothing here changes that.
 
 ---
-
 
 ### T-068 — Qt writes a font warning to stderr on a real Windows machine
 
@@ -3129,7 +3152,6 @@ instead of one and failed an add-dialog test that had encoded the under-reportin
 test now asserts the shape rather than the number.
 
 ---
-
 
 ### T-181 — The queue is stopped until the user starts it
 
@@ -3961,7 +3983,6 @@ all — and covers both halves: the counter's blindness and the sweep's cross-in
 
 ---
 
-
 ### T-177 — Startup reads the whole queue to find the few rows it wants
 
 **Status:** **Complete — `T177-R1` Resolved by the Reviewer 2026-08-06, at checkpoint `961cada`.**
@@ -4376,7 +4397,6 @@ keeping it a separate, explicitly named method is untouched.
 
 ---
 
-
 ### T-170 — Replace the History tab with a small ledger
 
 **Status:** **Complete — 2026-08-06.** The History view, its tab and the tab widget are gone and
@@ -4480,7 +4500,6 @@ with ordinary settings later. The action is not a list-management verb and clear
 
 ---
 
-
 ### T-169 — Make completion history an internal ledger
 
 **Status:** **Complete — 2026-08-06, and half of what it decided was superseded the same day.**
@@ -4562,7 +4581,6 @@ current-truth documents.
 - Search, filters, favourites, watched folders or any replacement library surface
 
 ---
-
 
 ### T-156 — The MP3 preset does not say which bitrate it means
 
@@ -4661,7 +4679,6 @@ answer better than a second dropdown would.
 
 ---
 
-
 ### T-150 — The add dialog opens narrower than the rows it holds
 
 **Status:** **Complete — 2026-08-06.** The staging list asks for the width the row anatomy needs,
@@ -4737,7 +4754,6 @@ metrics imply will survive a change to those metrics, and a number typed here wi
   designed for
 
 ---
-
 
 ### T-159 — History reports the format as a yt-dlp id
 
@@ -5511,7 +5527,6 @@ is a different question.
 
 ---
 
-
 ### T-165 — A cancelled playlist reports itself as failed, and draws a full bar
 
 **Status:** **Complete — 2026-08-05.** Cancelled is its own `SegmentState`, the mapping is a
@@ -5586,7 +5601,6 @@ The colour question is Phase 3 either way.
 - The bar's behaviour at narrow widths, which is `T-164`
 
 ---
-
 
 ### T-152 — The declared keyboard route needs a mouse click before it works
 
@@ -8884,7 +8898,6 @@ for one job to reach `RUNNING`, and asserts recovery against the same set the re
 - Performance targets beyond `NFR-001`'s responsiveness
 
 ---
-
 
 ### T-086 — Open a completed file, or reveal it in the file manager
 

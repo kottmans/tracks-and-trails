@@ -42,7 +42,7 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader import manager as manager_module
-from tracks_and_trails.downloader import process_tree
+from tracks_and_trails.downloader import process_tree, worker
 from tracks_and_trails.downloader.manager import DownloadManager, _PendingStart
 from tracks_and_trails.downloader.protocol import (
     MESSAGE_TYPES,
@@ -6350,3 +6350,71 @@ def test_a_staged_probe_does_not_start_a_download(
     finally:
         download.shutdown()
         drain(app, [download])
+
+
+# --- T-113: removing a job ends its partial's life (REQ-017, UX-008) --------------------------
+
+
+def test_removing_a_job_discards_the_partial_it_was_keeping(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`UX-008`'s table: discarded on remove, and **only** this job's own bytes.
+
+    Since `T-113` a failed attempt deliberately keeps its `.part` so the retry has a head start.
+    Removing the row is the user saying there will be no retry — and the row is the only thing
+    that could ever have explained the directory, so leaving it makes an invisible partial in the
+    user's download folder.
+
+    The neighbouring job's partial is asserted alongside, because a cleanup keyed on anything
+    looser than the job id would take it too, and `remove` is a per-job verb.
+    """
+    outputs = tmp_path / "downloads"
+    outputs.mkdir()
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=outputs)
+
+    for job_id in ("job-1", "job-2"):
+        staging = worker.staging_directory(outputs, job_id)
+        staging.mkdir()
+        (staging / "Clip.mp4.part").write_bytes(b"half a download")
+    keepsake = outputs / "something the user already had.mp4"
+    keepsake.write_bytes(b"not ours to delete")
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    removed: list[str] = []
+    download.job_removed.connect(removed.append)
+    try:
+        download.remove("job-2")
+        assert spin(lambda: removed == ["job-2"], timeout=10)
+
+        assert worker.resumable_partial(outputs, "job-2") is None, (
+            "the removed job left its partial behind, with no row left to explain it"
+        )
+        assert worker.resumable_partial(outputs, "job-1") is not None, (
+            "removing one job discarded another's partial"
+        )
+        assert keepsake.read_bytes() == b"not ours to delete", (
+            "the cleanup reached outside this job's own directory (UX-001)"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_removing_a_job_that_never_ran_is_not_an_error(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`remove` is called from routes that cannot know whether a job ever downloaded anything."""
+    outputs = tmp_path / "downloads"
+    outputs.mkdir()
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=outputs)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    removed: list[str] = []
+    download.job_removed.connect(removed.append)
+    try:
+        download.remove("job-1")
+        assert spin(lambda: removed == ["job-1"], timeout=10)
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)

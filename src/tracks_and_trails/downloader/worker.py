@@ -46,7 +46,6 @@ import os
 import platform
 import shutil
 import sys
-import tempfile
 import threading
 import traceback
 from collections.abc import Iterator, Mapping
@@ -491,33 +490,42 @@ def _run(
         # download happens somewhere nothing of the user's can be, and the destination is claimed
         # atomically once yt-dlp has said what it actually produced.
         target = _validated_target(directory, request, adapter, resolved, info)
-        staging = _staging_directory(target)
-        try:
-            result = _extract(
-                adapter,
-                request,
-                resolved,
-                reporter,
-                probe_only=False,
-                # Literal, not a second template — see `as_literal_template`.
-                output_template=as_literal_template(staging / target.name),
-                # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
-                ffmpeg_location=ffmpeg.path,
-                # Safe **because the directory is this job's alone**. Nothing of the user's is in
-                # it, so an overwrite can only ever replace this job's own intermediate files —
-                # which is what the flag is for, and is no longer a claim about the output folder.
-                overwrites=True,
-            )
-            produced = _written_path(result, staging / target.name)
-            # The destination keeps the *final* extension, not the template's. This is the name
-            # the user will see and the one that has to be free.
-            written = claim_output_path(target.with_name(produced.name), produced)
-            # **Everything else the user asked to keep, before the directory goes** (`T046-R3`,
-            # `T-109`). Claimed after the media file so the sidecars follow the name it actually
-            # landed under.
-            claim_sidecars(result, staging=staging, stem=Path(target.name).stem, written=written)
-        finally:
-            _discard_staging(staging)
+        # **The same directory every time this job runs** (`T-113`, `REQ-017`). Keyed by the job
+        # id rather than by `mkdtemp`, so a `.part` left by a killed attempt is exactly where the
+        # next one writes and yt-dlp continues from it. Created here rather than by
+        # `staging_directory`, so asking where a job's partial *would* be costs nothing.
+        staging = staging_directory(directory, job_id)
+        staging.mkdir(parents=True, exist_ok=True)
+        result = _extract(
+            adapter,
+            request,
+            resolved,
+            reporter,
+            probe_only=False,
+            # Literal, not a second template — see `as_literal_template`.
+            output_template=as_literal_template(staging / target.name),
+            # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
+            ffmpeg_location=ffmpeg.path,
+            # Safe **because the directory is this job's alone**. Nothing of the user's is in
+            # it, so an overwrite can only ever replace this job's own intermediate files —
+            # which is what the flag is for, and is no longer a claim about the output folder.
+            overwrites=True,
+        )
+        produced = _written_path(result, staging / target.name)
+        # The destination keeps the *final* extension, not the template's. This is the name
+        # the user will see and the one that has to be free.
+        written = claim_output_path(target.with_name(produced.name), produced)
+        # **Everything else the user asked to keep, before the directory goes** (`T046-R3`,
+        # `T-109`). Claimed after the media file so the sidecars follow the name it actually
+        # landed under.
+        claim_sidecars(result, staging=staging, stem=Path(target.name).stem, written=written)
+        # **Discarded here, on the success path, and no longer in a `finally`** (`T-113`).
+        # A `finally` threw the partial away whichever way the session ended, which is right for
+        # a download that landed and wrong for one that failed: a network error is precisely when
+        # the retry most wants a head start, and `REQ-017` exists to give it one. The other two
+        # ways out are handled where they are caught — cancellation discards, and an unclean death
+        # runs no code at all, which is how the partial survives a kill.
+        _discard_staging(staging)
         return with_hook_failures(
             Succeeded(
                 job_id=job_id,
@@ -543,6 +551,13 @@ def _run(
         )
     except BaseException as error:
         if _is_cancellation(error, resolved):
+            # **A cancel discards the partial** (`T-113`, `REQ-017`). This is the half of the
+            # partial's lifetime that a user decides: a cancel is somebody saying they no longer
+            # want the download, so keeping bytes of it in their folder against a retry they did
+            # not ask for is the wrong default. A *failure* keeps them, because a retry after a
+            # network error is exactly what resume is for. Best-effort, like every other
+            # cleanup here — the outcome below is what matters.
+            discard_staging_for(directory, job_id)
             # Classified here rather than by the adapter for the same reason as `UnsafePathError`
             # above: the user asked for this. `EXTRACTOR_ERROR` would report the site as broken,
             # and `ErrorKind.CANCELLED` is the one kind `core.errors` treats as not a failure to
@@ -942,15 +957,57 @@ def reserve_output_path(target: Path) -> Path:
 STAGING_PREFIX: Final = ".tracks-and-trails-staging"
 
 
-def _staging_directory(target: Path) -> Path:
-    """A private directory for one download, beside where its output will land.
+def staging_directory(directory: Path, job_id: str) -> Path:
+    """This job's private directory, beside where its output will land.
 
-    Unique per call, because `ARC-002` runs every job in its own process and two of them may be
-    downloading titles that sanitize to the same name — the whole reason `T-046` exists. Sharing a
-    staging directory would move that collision one level up rather than removing it.
+    **Keyed by the job id, and that is what makes `REQ-017` possible** (`T-113`). It used to be
+    `tempfile.mkdtemp`, which is unique per *call* — so a download killed halfway left its
+    `.part` file in a directory nothing would ever look in again, and the next attempt started
+    from zero in a fresh one. The uniqueness argument still holds and is better served: `ARC-002`
+    runs every job in its own process and two titles can sanitize to one name, and a job id
+    collides with nothing by construction rather than by asking the operating system.
+
+    Nothing else was needed for resume. yt-dlp's `continuedl` is on by default, so it finds the
+    `.part` at the path it is told to write and continues from it; the *only* reason this
+    application restarted from the beginning was that it never told it the same path twice.
+
+    Not created here. `_run` creates it when it is about to download, so asking where a job's
+    partial *would* be — which `resumable_partial` and the manager's cleanup both do — costs no
+    directory on disk.
     """
-    target.parent.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix=f"{STAGING_PREFIX}-", dir=target.parent))
+    return directory / f"{STAGING_PREFIX}-{job_id}"
+
+
+def resumable_partial(directory: Path, job_id: str) -> Path | None:
+    """The partial file a killed attempt left for this job, or `None` if there is none.
+
+    **A fact about the filesystem, not a prediction about the site.** `REQ-017` asks the
+    application to say when resumption is *not possible*, and after the fact this is exactly
+    knowable: either bytes survived or they did not. Before the fact it is not — see
+    `Job.resume_refusal` for the one case a probe can answer, and this function's own limit below.
+
+    **A partial existing does not promise the resume will happen.** A server that ignores `Range`
+    makes yt-dlp start from zero and overwrite the file, which is the correct outcome and not one
+    this application can detect in advance. Measured against a local server with and without
+    `Accept-Ranges`: with it, one range request and the download completed; without it, four full
+    requests and the download completed. Both produced the right bytes; only one saved any.
+    """
+    staging = staging_directory(directory, job_id)
+    if not staging.is_dir():
+        return None
+    partials = sorted(staging.glob("*.part"))
+    return partials[0] if partials else None
+
+
+def discard_staging_for(directory: Path, job_id: str) -> None:
+    """Throw away whatever a job's interrupted attempts left behind (`T-113`).
+
+    The other half of keeping a partial: something has to end its life, or a download the user
+    abandoned leaves bytes in their download folder for ever. Called when a job is **cancelled**
+    and when it is **removed** — the two moments a user says they do not want it — and never on a
+    failure, because a failure is the case a retry most wants a head start for.
+    """
+    _discard_staging(staging_directory(directory, job_id))
 
 
 def requested_sidecars(result: Mapping[str, Any]) -> tuple[Path, ...]:

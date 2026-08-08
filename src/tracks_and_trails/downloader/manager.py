@@ -713,12 +713,18 @@ class DownloadManager(QObject):
         queue, and nothing this application deletes from disk goes by this route. `T-085`'s history
         keeps a completed job's record even after its queue row is gone.
 
-        *(This added "a partially written file from a cancelled download is the user's to delete".
-        That stopped being true with `T046-R1`: the download happens in a staging directory which
-        is discarded whatever the outcome, so **a cancelled job leaves no partial at all**. What
-        this method promises is unchanged — it deletes nothing — but the sentence described a file
-        that no longer exists. `REQ-017` and `T-113` own partial-file lifetime when resume lands.)*
+        **The one thing it does delete is this job's own partial** (`T-113`, `REQ-017`). Since
+        resume landed, a failed or killed attempt deliberately *keeps* its `.part` file so the next
+        attempt can continue from it — and removing the job is the user saying there will be no
+        next attempt. Nothing of theirs is in that directory: it was created by this job, for this
+        job, and holds only bytes this job downloaded. Leaving it would put an invisible partial in
+        their download folder with no row left to explain it.
+
+        *(This said "a partially written file from a cancelled download is the user's to delete",
+        then said the opposite when `T046-R1` made every session discard its staging directory. It
+        is now the sentence above: kept on failure, discarded on cancel and on remove.)*
         """
+        self._discard_partial(job_id)
         self._discard_waiting(job_id)
         self._retry_at.pop(job_id, None)
 
@@ -833,6 +839,25 @@ class DownloadManager(QObject):
             self.persistence_failed.emit("", error)
             return
         self.queue_cleared.emit()
+
+    def _discard_partial(self, job_id: str) -> None:
+        """Throw away the staging directory a job's interrupted attempts left (`T-113`).
+
+        **Read before the row goes**, because the output directory lives on the request and the
+        request lives on the row. Unknown ids and jobs that never ran are ordinary: `remove` is
+        called from routes that cannot know which, and a staging directory that was never created
+        is nothing to delete.
+
+        **Synchronous, and small enough to be.** `ARC-005` puts durable *queue* writes on their own
+        thread because a contended SQLite commit measured seconds (`T016-R3`). This is an `rmtree`
+        of one directory holding at most a handful of this job's own files, with no lock and no
+        fsync; putting it behind the writer would mean inventing a second kind of work for a thread
+        whose whole contract is the queue.
+        """
+        job = self._repository.get(job_id)
+        if job is None:
+            return
+        worker.discard_staging_for(Path(job.request.output_directory), job_id)
 
     def _delete_row(self, job_id: str) -> None:
         """Delete the job's row and announce it, through the same chain every write uses.
@@ -2454,6 +2479,10 @@ class DownloadManager(QObject):
                         self._advance(job, JobStatus.READY),
                         title=outcome.media.title,
                         thumbnail_url=outcome.media.thumbnail_url,
+                        # **`T-113`.** A job admitted as a probe — a playlist entry, or a row
+                        # recovered from a previous run — learns here whether it is live, which is
+                        # the one thing `REQ-017` lets a row say about resumability in advance.
+                        is_live=outcome.media.is_live,
                     ),
                 ),
                 then=lambda: self._probe_settled(job_id, outcome.media),

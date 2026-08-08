@@ -19,6 +19,47 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-08: `T-113` is built, and the phase's biggest unknown was a `mkdtemp` call
+
+**In Review, and the decision `P-10` demanded is `UX-008`.** The entry called this *"the highest
+uncertainty in the phase"* and *"the one Phase 3 item whose feasibility depends on the site and
+format"*. It does not.
+
+**What resume actually costs: nothing.** yt-dlp's `continuedl` is on by default and continues from
+a `.part` file at the path it is told to write. This application restarted from zero because
+`_staging_directory` was `tempfile.mkdtemp` — unique per *call* — so every attempt wrote into a
+directory nothing had ever written to before. Keying it by job id is the entire mechanism, and the
+rest of the task is about what happens to the bytes afterwards.
+
+**Measured rather than assumed** (development machine, 2026-08-08, local server):
+
+| Server | Second attempt | Result |
+|---|---|---|
+| `Accept-Ranges: bytes` | **one range request** | resumed |
+| ignores `Range` | **four full requests** | restarted from zero |
+
+Both wrote byte-exact files. So resumability is not a capability that can fail — it is a head start
+that is sometimes lost, decided by the server at request time and handled silently. That is why
+`REQ-017`'s *"state clearly when resumption is not possible"* is answered **asymmetrically**: a live
+stream says it cannot resume, and nothing else claims that it can.
+
+**The partial's lifetime is the real design**, and it is tabulated in `UX-008`. Success and cancel
+discard; **failure keeps**, because a network failure is the case `UX-002` already retries and the
+one a head start is worth; a kill keeps by running no code at all; remove discards, because no row
+would be left to explain the bytes. The old blanket `finally` did the opposite of three of those.
+
+**`UX-008` closes `P-10` by declining to reintroduce per-job pause.** `UX-001`'s reopening condition
+is met in the letter and not the spirit: resume made the mechanism coherent and made the *state*
+redundant at the same time, because cancel-plus-retry with a surviving partial is what a paused job
+would have been. `JobStatus.PAUSED` stays deleted and there is no `Pause all` (`T140-R5` closes with
+it).
+
+**The kill test is a real `SIGKILL` and asserts three separate things**: that the partial survived,
+that the second attempt issued a **range** request rather than fetching the file again, and that the
+finished bytes are exactly right. The middle one needed a new fixture — `media_handler` advertises
+`Accept-Ranges` and then ignores it, under which yt-dlp discards the partial and restarts, correctly
+and invisibly. Reverting the staging directory to `mkdtemp` fails the test at its first assertion.
+
 ## 2026-08-08: `T-112` is built, and the preview is now the same code as the write
 
 **In Review, and Phase 3's fourth exit criterion has its evidence.** A real download of a title
