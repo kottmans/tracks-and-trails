@@ -107,13 +107,29 @@ def _deserialize_request(raw: str) -> DownloadRequest:
     JSON has no tuples and no enums, so a naive round-trip would hand `DownloadRequest` lists and
     bare strings. Its `__post_init__` would coerce the lists and reject nothing, which is exactly
     the kind of near-miss that passes a shallow test and fails a comparison.
+
+    **A field the blob does not carry takes the dataclass default** (`T-109`). The request is
+    stored as JSON rather than as columns, so adding an optional field to `DownloadRequest` gives
+    every row already on disk a blob without it — and reading those by name raised `KeyError`
+    against nine of this project's own historical fixtures the moment `REQ-010`'s five options
+    were typed. There is no migration to write, because there is no column: a blob from an older
+    build is a request that genuinely did not ask for the option, and the field's own default is
+    what "did not ask" means.
+
+    **The required fields are deliberately not defaulted here.** `url`, `output_directory`,
+    `format_selector` and `output_template` have no default on the dataclass, so a blob missing
+    one still fails — loudly, from the constructor, naming the field. Substituting a value for
+    those would invent a download nobody requested, which is the opposite trade from the one
+    above.
     """
     payload: dict[str, Any] = json.loads(raw)
     payload["post_processors"] = tuple(payload.get("post_processors", ()))
     payload["subtitle_languages"] = tuple(payload.get("subtitle_languages", ()))
-    payload["media_kind"] = MediaKind(payload["media_kind"])
-    payload["audio_codec"] = AudioCodec(payload["audio_codec"])
-    return DownloadRequest(**{name: payload[name] for name in _REQUEST_FIELDS})
+    if "media_kind" in payload:
+        payload["media_kind"] = MediaKind(payload["media_kind"])
+    if "audio_codec" in payload:
+        payload["audio_codec"] = AudioCodec(payload["audio_codec"])
+    return DownloadRequest(**{name: payload[name] for name in _REQUEST_FIELDS if name in payload})
 
 
 # *(`_FORMAT_CHOICE_FIELDS`, `_serialize_format_choice` and `_deserialize_format_choice` stood

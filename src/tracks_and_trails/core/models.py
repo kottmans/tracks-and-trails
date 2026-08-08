@@ -275,6 +275,79 @@ class AudioCodec(StrEnum):
 #: request that does not by itself demand ffmpeg.
 CONVERTING_AUDIO_CODECS: Final = frozenset(AudioCodec) - {AudioCodec.ORIGINAL}
 
+#: The containers `REQ-010`'s remux and recode options may target (`T-109`).
+#:
+#: **A copy of yt-dlp's `SUPPORTED_EXTS`, and the copy is deliberate.** `core/` may not import
+#: `yt_dlp` (`ARCHITECTURE.md` §6), so the list cannot be read from the library here — and it has
+#: to be checkable *here*, because `__post_init__` is where a container that yt-dlp will refuse
+#: gets caught before the download is paid for. That is `audio_quality`'s argument one field over.
+#:
+#: The drift this buys is answered rather than accepted: `tests/unit/test_ytdlp_adapter.py`
+#: asserts this tuple **equals** `FFmpegVideoRemuxer.SUPPORTED_EXTS` and
+#: `FFmpegVideoConvertor.SUPPORTED_EXTS`, so a version that adds a container fails the suite
+#: instead of quietly refusing one a user could have had. `MERGE_TOKENS` in `core/presets.py` is
+#: the same shape for the same reason.
+#:
+#: Video containers first, then audio-only ones, in yt-dlp's own order — a remux target of `mp3`
+#: is legal and occasionally what somebody wants, so the list is not filtered by `media_kind`.
+CONTAINER_FORMATS: Final[tuple[str, ...]] = (
+    "avi",
+    "flv",
+    "gif",
+    "mkv",
+    "mov",
+    "mp4",
+    "webm",
+    "aac",
+    "aiff",
+    "alac",
+    "flac",
+    "m4a",
+    "mka",
+    "mp3",
+    "ogg",
+    "opus",
+    "vorbis",
+    "wav",
+)
+
+
+def _require_container(owner: str, name: str, value: object) -> None:
+    """`value` is `None` or a container yt-dlp's remuxer and recoder both accept (`REQ-010`).
+
+    Rejected here rather than left to yt-dlp for `audio_quality`'s reason: the postprocessor
+    raises after the download has finished, so a typo costs the whole transfer. The message names
+    the list because a user typing a container wants to know which ones exist.
+    """
+    _require_optional_text(owner, name, value)
+    if value is not None and value not in CONTAINER_FORMATS:
+        raise ValueError(
+            f"{owner}.{name} must be one of {list(CONTAINER_FORMATS)}, not {value!r}; yt-dlp "
+            "refuses anything else at post-processing time, which is after the download has "
+            "already been paid for"
+        )
+
+
+def _require_one_container_change(owner: str, remux: str | None, recode: str | None) -> None:
+    """A request may remux **or** recode, not both (`REQ-010`, `T-109`).
+
+    yt-dlp would run both postprocessors in turn, so the pair is expressible upstream — and it
+    expresses two contradictory intentions. A remux rewrites the container and keeps the streams;
+    a recode re-encodes them. Asking for both means the remux's output is immediately re-encoded,
+    which is the recode alone with a wasted pass, and no UI could present it as anything a user
+    meant.
+
+    Refused at construction rather than resolved by precedence, because a silent winner is how a
+    control comes to appear to do nothing — `T-075`'s defect, and the reason `with_audio_quality`
+    raises rather than ignoring a bitrate it cannot honour.
+    """
+    if remux is not None and recode is not None:
+        raise ValueError(
+            f"{owner} asks to remux to {remux!r} and recode to {recode!r}; those are two "
+            "different intentions for one container and yt-dlp would do both in turn. Choose "
+            "remux to rewrap the streams, or recode to re-encode them."
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class FormatInfo:
@@ -478,6 +551,20 @@ class MediaInfo:
     #: distinction and this preserves it rather than collapsing the two into one number.
     entries: tuple[PlaylistEntry, ...] = ()
 
+    #: The subtitle languages this source publishes, in the order the extractor listed them
+    #: (`REQ-010`, `T-109`, `docs/UX_SPEC.md` §6's `P-17`).
+    #:
+    #: **Manual subtitles only, and the omission is the point.** yt-dlp keeps automatic captions
+    #: in a separate map and fetches them under a separate option; offering them in the same list
+    #: would let a user pick a language that `writesubtitles` alone cannot deliver, and they would
+    #: get a file with no subtitles and no error. `REQ-010` names subtitles, not captions.
+    #:
+    #: **Empty means the probe found none, or that nothing was probed yet.** The two are told
+    #: apart the same way every other optional projection is — by whether there is a `MediaInfo`
+    #: at all — and the control that reads this says *"this source publishes no subtitles"*
+    #: rather than drawing an empty list the user can pick nothing from.
+    subtitle_languages: tuple[str, ...] = ()
+
     def __post_init__(self) -> None:
         _require_text("MediaInfo", "url", self.url, "it is the url this describes")
         _require_text(
@@ -495,6 +582,11 @@ class MediaInfo:
         )
         object.__setattr__(
             self, "entries", _as_tuple_of("MediaInfo", "entries", self.entries, PlaylistEntry)
+        )
+        object.__setattr__(
+            self,
+            "subtitle_languages",
+            _as_tuple_of("MediaInfo", "subtitle_languages", self.subtitle_languages, str),
         )
         _require_optional_duration("MediaInfo", "duration_seconds", self.duration_seconds)
         _require_optional_text("MediaInfo", "uploader", self.uploader)
@@ -551,6 +643,32 @@ class DownloadRequest:
     audio_codec: AudioCodec = AudioCodec.ORIGINAL
     audio_quality: str | None = None
 
+    #: `REQ-010`'s remaining five, typed rather than spelled into `post_processors` (`ARC-010`).
+    #:
+    #: **The model widens, and that was the decision rather than the shortcut.** All five could
+    #: ride in `post_processors` as yt-dlp postprocessor names, which is what that field is for and
+    #: what `T-109` inherited. `ARC-010` ruled the other way for the whole application: a
+    #: user-facing option is a typed, validated field, and a list of opaque strings is neither
+    #: checkable by `mypy` nor visible to `PRESET_OWNED_FIELDS`'s drift test. `REQ-031`'s escape
+    #: hatch — Phase 4.5, `T-184` — is where anything without a field of its own goes, on the
+    #: request and past a validator, not as a raw postprocessor name.
+    #:
+    #: `remux_container` rewraps the streams into another container; `recode_container`
+    #: re-encodes them. At most one may be set — see `_require_one_container_change`.
+    remux_container: str | None = None
+    recode_container: str | None = None
+
+    #: Embed the site's thumbnail, its metadata, and its chapters into the finished file.
+    #:
+    #: Three flags rather than one because yt-dlp treats them as three: the thumbnail is
+    #: `EmbedThumbnail` and needs the picture downloaded alongside, while metadata and chapters
+    #: are two arguments to a single `FFmpegMetadata` — which is exactly the kind of shape a
+    #: hand-written list of postprocessor names gets wrong, since naming it twice would be
+    #: deduplicated to one and lose whichever flag came second.
+    embed_thumbnail: bool = False
+    embed_metadata: bool = False
+    embed_chapters: bool = False
+
     #: Network options are carried, never logged as-is. `T-038` redacts at the handler level
     #: (`NFR-007`), which is why a proxy URL may safely live in the model.
     proxy: str | None = None
@@ -581,6 +699,13 @@ class DownloadRequest:
                 f"not {self.audio_quality!r}; yt-dlp rejects anything else at post-processing "
                 "time, which is after the download has already been paid for"
             )
+        _require_container("DownloadRequest", "remux_container", self.remux_container)
+        _require_container("DownloadRequest", "recode_container", self.recode_container)
+        _require_one_container_change(
+            "DownloadRequest", self.remux_container, self.recode_container
+        )
+        for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
+            _require_flag("DownloadRequest", flag, getattr(self, flag))
         _require_optional_text("DownloadRequest", "proxy", self.proxy)
         _require_credential_free_proxy(self.proxy)
         _require_optional_text("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
@@ -621,6 +746,16 @@ class Preset:
     subtitle_languages: tuple[str, ...] = ()
     embed_subtitles: bool = False
 
+    #: `REQ-010`'s other five, added by `T-109`. Every one of them is a field of
+    #: `DownloadRequest` under the same name, which is what makes them preset-owned: a preset is
+    #: the subset of a request a named choice fixes, and `PRESET_OWNED_FIELDS` derives that subset
+    #: from these two dataclasses rather than from a list somebody maintains.
+    remux_container: str | None = None
+    recode_container: str | None = None
+    embed_thumbnail: bool = False
+    embed_metadata: bool = False
+    embed_chapters: bool = False
+
     #: Built-ins ship with the application and may not be edited or deleted; user presets may.
     #: The flag lives on the preset rather than in a separate list so the UI cannot lose track
     #: of which is which.
@@ -644,6 +779,11 @@ class Preset:
                 f"not {self.audio_quality!r}"
             )
         _require_flag("Preset", "embed_subtitles", self.embed_subtitles)
+        _require_container("Preset", "remux_container", self.remux_container)
+        _require_container("Preset", "recode_container", self.recode_container)
+        _require_one_container_change("Preset", self.remux_container, self.recode_container)
+        for flag in ("embed_thumbnail", "embed_metadata", "embed_chapters"):
+            _require_flag("Preset", flag, getattr(self, flag))
         _require_flag("Preset", "built_in", self.built_in)
 
 

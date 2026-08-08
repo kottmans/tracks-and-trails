@@ -305,6 +305,10 @@ ALLOWED_INFO_KEYS = frozenset(
         "is_live",
         "original_url",
         "playlist_count",
+        # `T-109`: the projection reads the *keys* of this map for `REQ-010`'s language list, and
+        # `capture._keep_subtitles` commits nothing under them. The nesting check below still
+        # applies to the map itself, which is why it is listed here rather than special-cased.
+        "subtitles",
         "thumbnail",
         "title",
         "uploader",

@@ -513,6 +513,10 @@ def _run(
             # The destination keeps the *final* extension, not the template's. This is the name
             # the user will see and the one that has to be free.
             written = claim_output_path(target.with_name(produced.name), produced)
+            # **Everything else the user asked to keep, before the directory goes** (`T046-R3`,
+            # `T-109`). Claimed after the media file so the sidecars follow the name it actually
+            # landed under.
+            claim_sidecars(result, staging=staging, stem=Path(target.name).stem, written=written)
         finally:
             _discard_staging(staging)
         return with_hook_failures(
@@ -953,13 +957,91 @@ def _staging_directory(target: Path) -> Path:
     return Path(tempfile.mkdtemp(prefix=f"{STAGING_PREFIX}-", dir=target.parent))
 
 
+def requested_sidecars(result: Mapping[str, Any]) -> tuple[Path, ...]:
+    """The files yt-dlp wrote **beside** the media because the user asked for them (`T-109`).
+
+    Today that means subtitle files: `REQ-010` offers *embed or write*, and a written subtitle is
+    an output in its own right rather than an intermediate. Read from `requested_subtitles`, which
+    is yt-dlp's own record of what it fetched and where it put it — the decision rather than a
+    rendering of it, which is `_will_merge`'s lesson and `T-061`'s. Globbing the staging directory
+    for `*.srt` would also find a subtitle that was embedded and then deleted, and would find one
+    nobody asked for.
+
+    **Embedding leaves nothing here, correctly.** `FFmpegEmbedSubtitle` runs with
+    `already_have_subtitle` false, so yt-dlp deletes the file once it is inside the container; the
+    entry survives in `requested_subtitles` with a `filepath` that no longer exists. Missing files
+    are skipped rather than reported, because the absence *is* the embed having worked.
+    """
+    requested = result.get("requested_subtitles")
+    if not isinstance(requested, Mapping):
+        return ()
+    found: list[Path] = []
+    for entry in requested.values():
+        if not isinstance(entry, Mapping):
+            continue
+        filepath = entry.get("filepath")
+        if not isinstance(filepath, str) or not filepath:
+            continue
+        candidate = Path(filepath)
+        if candidate.is_file():
+            found.append(candidate)
+    return tuple(found)
+
+
+def claim_sidecars(
+    result: Mapping[str, Any], *, staging: Path, stem: str, written: Path
+) -> tuple[Path, ...]:
+    """Move every requested sidecar out of `staging` to sit beside `written` (`T046-R3`).
+
+    **The finding this exists to answer.** `_discard_staging` removes the directory wholesale
+    except the single path the media file was claimed from — correct while every other file in
+    there was an intermediate, and wrong the moment a request asks for an output it wants kept.
+    `embed_subtitles=False` with `subtitle_languages` set produces `.vtt` files beside the media,
+    and until `T-109` they were deleted with the directory: the user asked for subtitles, the
+    download fetched them, and the cleanup threw them away. Nothing exposed that combination in
+    the UI before now, which is why it was a latent defect rather than a live one.
+
+    **Renamed to follow the media, because collision policy may have moved it.** The download is
+    written under the staging template's stem and the claim can land on `Clip (2).mp4`; a
+    subtitle left as `Clip.en.vtt` beside it belongs to a file that is not there. The stem is
+    replaced rather than the name rebuilt, so `.en.vtt` — two suffixes, which `Path.suffix` alone
+    cannot see — survives intact.
+
+    **Each one is claimed with the same reservation the media file uses**, so a sidecar can never
+    overwrite something of the user's. A name that is already taken lands on a numbered variant,
+    which for a two-suffix name reads a little oddly (`Clip (2).en (2).vtt`); that is the safe
+    direction, and it needs a collision *inside* an already-collided name to happen at all.
+
+    Failures are swallowed per file for `_discard_staging`'s reason: the download has succeeded,
+    and a subtitle that could not be moved must not turn a completed job into a failed one. It is
+    reported to the log rather than silently dropped.
+    """
+    claimed: list[Path] = []
+    for sidecar in requested_sidecars(result):
+        if staging not in sidecar.parents:
+            # Not ours to move. yt-dlp was given a literal template inside `staging`, so anything
+            # outside it was not written by this session and is not this function's to touch.
+            continue
+        suffixes = sidecar.name[len(stem) :] if sidecar.name.startswith(stem) else sidecar.name
+        beside = written.with_name(f"{written.stem}{suffixes}")
+        try:
+            claimed.append(claim_output_path(beside, sidecar))
+        except (UnsafePathError, OSError) as error:
+            logging.getLogger(f"{APP_SLUG}.worker").warning(
+                "could not keep the subtitle file %s: %s", sidecar.name, error
+            )
+    return tuple(claimed)
+
+
 def _discard_staging(staging: Path) -> None:
     """Remove the staging directory and anything left in it.
 
     Anything still here after the claim is yt-dlp's intermediate work — the pre-conversion audio,
     a `.part` file from a failed attempt, a thumbnail that was embedded rather than kept. None of
     it is the user's, because nothing of the user's could ever be in a directory this process
-    created for itself.
+    created for itself. **Except what `claim_sidecars` has already taken out of it** (`T-109`):
+    a subtitle the request asked to *write* is an output, and it is moved beside the media before
+    this runs.
 
     Failure to clean up is not worth propagating, for `release_output_path`'s reason: the download
     has already succeeded or failed on its own terms, and a leftover directory is a much smaller
@@ -1075,10 +1157,27 @@ def postprocessed_name(target: Path, request: DownloadRequest) -> Path:
     Returns `target` unchanged whenever the container is not knowable — which
     `preview_is_provisional` reports, so the two always agree about which cases are exact.
 
-    **What this does not model, stated:** an arbitrary entry in `request.post_processors` that
-    changes the container — a remux or recode — is not derivable from the request alone. Phase 2
-    exposes no such option; `REQ-010` and `T-109` own the general case.
+    **A named container wins, and it is the last word** (`T-109`). `build_postprocessors` runs
+    `FFmpegExtractAudio`, then the remuxer, then the convertor, so whichever container the request
+    *names* is the one the file ends in — a recode to `mkv` after an MP3 extraction produces
+    `.mkv`, not `.mp3`. `DownloadRequest` refuses to carry both a remux and a recode, so there is
+    no third case to order.
+
+    This is why the preview stopped being provisional for two whole classes of request: an
+    `ORIGINAL` audio extraction and a merge are both unknowable *until* something names the
+    container, and now something can.
+
+    *(This paragraph used to read: "an arbitrary entry in `request.post_processors` that changes
+    the container — a remux or recode — is not derivable from the request alone. Phase 2 exposes
+    no such option; `REQ-010` and `T-109` own the general case." That was true of a list of
+    postprocessor names, which carries no argument and so cannot say what container it wants.
+    `ARC-010` typed the fields, and a typed field names it — which is the concrete thing typing
+    them bought, beyond being checkable.)*
     """
+    if request.recode_container is not None:
+        return target.with_suffix(f".{request.recode_container}")
+    if request.remux_container is not None:
+        return target.with_suffix(f".{request.remux_container}")
     if request.media_kind is not MediaKind.AUDIO:
         return target
     extension = audio_extension_for(request.audio_codec)
@@ -1106,7 +1205,15 @@ def preview_is_provisional(request: DownloadRequest) -> bool:
 
     Audio extraction to a **named** codec is exact: yt-dlp's `ACODECS` table names the container
     outright, and `audio_extension_for` reads it from the library.
+
+    **A remux or a recode settles both classes** (`T-109`). Neither exception is about the request
+    being unclear — it is about the *container* being yt-dlp's to choose. A request that names the
+    container it wants takes that choice back, so a merge recoded to `mkv` and an `ORIGINAL`
+    audio extraction remuxed to `m4a` are both exact. The check is first for that reason: it is
+    not a special case of the two below, it is what removes them.
     """
+    if request.recode_container is not None or request.remux_container is not None:
+        return False
     if request.media_kind is MediaKind.AUDIO:
         return audio_extension_for(request.audio_codec) is None
     return selector_merges(request.format_selector)

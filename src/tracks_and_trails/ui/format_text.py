@@ -45,10 +45,16 @@ not apply, and naming the catalogue entry `Audio only (MP3, 192 kbps)` would put
 bitrate control set to 320 — trading this gap for a contradiction.
 """
 
+from dataclasses import fields, replace
 from typing import Final
 
-from tracks_and_trails.core.models import AudioCodec
-from tracks_and_trails.core.presets import BUILT_IN_PRESETS, PRESET_OWNED_FIELDS, FormatChoice
+from tracks_and_trails.core.models import AudioCodec, Preset
+from tracks_and_trails.core.presets import (
+    BUILT_IN_PRESETS,
+    POST_PROCESSING_FIELDS,
+    PRESET_OWNED_FIELDS,
+    FormatChoice,
+)
 
 __all__ = ["FORMAT_PREFIX", "effective_format_text", "format_name", "preset_name_for"]
 
@@ -58,6 +64,16 @@ __all__ = ["FORMAT_PREFIX", "effective_format_text", "format_name", "preset_name
 #: the dialog that queued it and in the queue that runs it. History did not use it — a record is
 #: not going to be downloaded as anything, it already was — and History is gone (`T-176`).
 FORMAT_PREFIX: Final = "Download as: "
+
+#: What each of `REQ-010`'s five adjustable options means *unset* (`T-109`).
+#:
+#: **Read off `Preset`'s own field defaults rather than written out here.** A second list of
+#: defaults is a second opinion about what "not adjusted" is, and the two would disagree the first
+#: time one of them changed — which is the drift `PRESET_OWNED_FIELDS` is derived to avoid one
+#: field over.
+UNADJUSTED: Final[dict[str, object]] = {
+    field.name: field.default for field in fields(Preset) if field.name in POST_PROCESSING_FIELDS
+}
 
 
 def preset_name_for(choice: FormatChoice) -> str | None:
@@ -97,10 +113,86 @@ def format_name(choice: FormatChoice) -> str:
     control, and on no row. `REQ-009`'s principle is that the row says what the download actually
     is, and a name omitting the one number a user chose between is that gap one step smaller.
     """
-    name = preset_name_for(choice) or _converting_preset_for(choice)
+    name = preset_name_for(choice) or _converting_preset_for(choice) or _base_preset_for(choice)
     if name is None:
-        return choice.format_selector
-    return f"{name}{_bitrate(choice)}"
+        return f"{choice.format_selector}{_post_processing(choice)}"
+    return f"{name}{_bitrate(choice)}{_post_processing(choice)}"
+
+
+def _base_preset_for(choice: FormatChoice) -> str | None:
+    """The built-in this download is **before** `REQ-010`'s adjustable options (`T-109`).
+
+    A third describing fallback, for the same reason `_converting_preset_for` is the second: the
+    two matchers above decide *identity* and must stay strict, and a user who ticks *embed
+    metadata* on `Best video available` has not stopped downloading the best video available.
+    Without this the row falls through to the selector and reads `bestvideo+bestaudio/best`,
+    which is `T140-R3`'s defect returning through a field that did not exist when it was fixed.
+
+    **It re-asks the existing matchers rather than adding a third rule.** The five options are
+    reset and the same two functions are consulted, so there is one definition of what counts as
+    a match and this cannot drift from it. Returning `None` when nothing was adjusted keeps the
+    misses above meaningful: a genuinely custom selector still names itself.
+    """
+    plain = unadjusted(choice)
+    if plain == choice:
+        return None
+    return preset_name_for(plain) or _converting_preset_for(plain)
+
+
+def unadjusted(choice: FormatChoice) -> FormatChoice:
+    """`choice` with `REQ-010`'s five adjustable options set back to their defaults.
+
+    **Written out field by field so `mypy` checks each one**, with `UNADJUSTED` above deriving the
+    same statement from `Preset`'s defaults and `tests/unit/test_format_text.py` asserting the two
+    agree. A `replace(choice, **UNADJUSTED)` would be one statement instead of two and would be
+    unchecked: the mapping erases to `object`, so a field whose default changed type would reach
+    the constructor unexamined.
+    """
+    return replace(
+        choice,
+        remux_container=None,
+        recode_container=None,
+        embed_thumbnail=False,
+        embed_metadata=False,
+        embed_chapters=False,
+    )
+
+
+def _post_processing(choice: FormatChoice) -> str:
+    """What `REQ-010`'s five options add to the name, and nothing when none is set (`T-109`).
+
+    **Silence by default is what keeps every other surface unchanged.** A download that asks for
+    none of these reads exactly as it did before this existed, which is why this is appended to
+    the three naming routes rather than folded into them.
+
+    Written as what happens to the file — *remuxed to mkv*, *embedding metadata* — rather than as
+    the option names, because the row is telling a user what they will get. The container clause
+    comes first because it is the one that changes the file's name.
+    """
+    parts: list[str] = []
+    if choice.remux_container:
+        parts.append(f"remuxed to {choice.remux_container}")
+    if choice.recode_container:
+        parts.append(f"recoded to {choice.recode_container}")
+    embedded = [
+        label
+        for label, wanted in (
+            ("thumbnail", choice.embed_thumbnail),
+            ("metadata", choice.embed_metadata),
+            ("chapters", choice.embed_chapters),
+        )
+        if wanted
+    ]
+    if embedded:
+        parts.append(f"embedding {_joined(embedded)}")
+    return "".join(f" · {part}" for part in parts)
+
+
+def _joined(labels: list[str]) -> str:
+    """`a`, `a and b`, `a, b and c` — a list a person would read aloud."""
+    if len(labels) == 1:
+        return labels[0]
+    return f"{', '.join(labels[:-1])} and {labels[-1]}"
 
 
 def _converting_preset_for(choice: FormatChoice) -> str | None:

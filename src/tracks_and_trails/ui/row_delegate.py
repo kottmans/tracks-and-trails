@@ -207,6 +207,26 @@ CHOOSE_FORMATS_TEXT: Final = "Choose specific formats…"
 #: nothing and silently clear the row's format, which is a wrong download rather than a no-op.
 CHOOSE_FORMATS_DATA: Final = "\x00open-format-table"
 
+#: Whether this row can have `REQ-010`'s post-processing options set (`T-109`, `UX-SPEC` §6).
+#:
+#: **A third question, distinct from both roles above.** A row may be retargetable and have no
+#: format table (a playlist), and it may have a format table and no business carrying options.
+#: Absent means no, which is the honest answer from the queue: a job's request is frozen at
+#: creation (`ARCHITECTURE.md` §8), and a control that changed post-processing after the download
+#: had started would be one that silently does nothing — `UX-005` §5.
+OPTIONS_AVAILABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 20
+
+#: The control's entry that opens the post-processing editor (`docs/UX_SPEC.md` §6's `P-3`).
+#:
+#: Below `CHOOSE_FORMATS_TEXT` for the same reason that one is below the presets: the entries a
+#: user has learned the positions of do not move when a new one appears.
+OPTIONS_TEXT: Final = "Options…"
+
+#: Its data, a sentinel for `CHOOSE_FORMATS_DATA`'s reason and with `CHOOSE_FORMATS_DATA`'s
+#: consequence if it were ever looked up as a preset name: a silently cleared format, which is a
+#: wrong download rather than a no-op.
+OPTIONS_DATA: Final = "\x00open-options-editor"
+
 #: Padding inside the state chip, and its corner radius. Small: it shares the title's line and must
 #: not compete with the title for height.
 CHIP_PADDING: Final = 5
@@ -1660,6 +1680,8 @@ class RowDelegate(QStyledItemDelegate):
         # user has learned the positions of do not move when this appears.
         if index.data(FORMATS_AVAILABLE_ROLE):
             choice.addItem(CHOOSE_FORMATS_TEXT, CHOOSE_FORMATS_DATA)
+        if index.data(OPTIONS_AVAILABLE_ROLE):
+            choice.addItem(OPTIONS_TEXT, OPTIONS_DATA)
         return choice
 
     def destroyEditor(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:

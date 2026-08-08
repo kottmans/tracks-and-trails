@@ -256,6 +256,77 @@ def with_audio_quality(preset: Preset, quality: str) -> Preset:
     return replace(preset, audio_quality=quality)
 
 
+#: The preset fields `REQ-010` lets a user adjust **on top of** a preset, rather than fields that
+#: say which streams are fetched (`T-109`).
+#:
+#: Subtitles are deliberately absent: `VIDEO_WITH_SUBTITLES` is a built-in defined by them, so
+#: treating them as an adjustment would make two catalogue entries indistinguishable. These five
+#: are set by no built-in, which is what makes "the preset, plus these" a sentence.
+POST_PROCESSING_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "remux_container",
+        "recode_container",
+        "embed_thumbnail",
+        "embed_metadata",
+        "embed_chapters",
+    }
+)
+
+
+def with_post_processing(
+    preset: Preset,
+    *,
+    name: str,
+    remux_container: str | None = None,
+    recode_container: str | None = None,
+    embed_thumbnail: bool = False,
+    embed_metadata: bool = False,
+    embed_chapters: bool = False,
+) -> Preset:
+    """`preset` with `REQ-010`'s five adjustable options applied, under `name`.
+
+    **A derived preset rather than a request override**, for `with_audio_quality`'s reason: every
+    one of these fields is preset-owned, so `to_request` refuses to set them and a request that
+    disagreed with the preset the user was shown would defeat `REQ-009`. Deriving keeps the
+    display and the download in step by construction.
+
+    **The name is the caller's, and it is not optional.** Keeping `preset.name` would produce two
+    different downloads answering to one name, and the staging list compares a row's own preset to
+    the catalogue **by name** to decide whether choosing an entry is a no-op — so "Best video
+    available, recoded to webm" carrying the name *Best video available* would make re-selecting
+    that entry silently keep the recode. A wrong download rather than a no-op is the same defect
+    `CHOOSE_FORMATS_DATA` is an unspellable sentinel to avoid.
+
+    The naming *rule* is `ui/format_text.format_name`, which every surface already shares; it lives
+    a layer up because `core/` may not import `ui/`, so the caller applies it and passes the
+    result. Every contradiction these values can express — an unknown container, a remux and a
+    recode at once — is refused by `Preset.__post_init__`, so this function validates nothing of
+    its own rather than holding a second opinion about the same rules.
+    """
+    return replace(
+        preset,
+        name=name,
+        remux_container=remux_container,
+        recode_container=recode_container,
+        embed_thumbnail=embed_thumbnail,
+        embed_metadata=embed_metadata,
+        embed_chapters=embed_chapters,
+        # A preset the user has adjusted is not one that ships with the application, and the flag
+        # is what the UI reads to know it may be edited (`REQ-007`, `T-111`).
+        built_in=False,
+    )
+
+
+def post_processing_of(preset: Preset) -> dict[str, Any]:
+    """The five adjustable options as `with_post_processing` takes them.
+
+    The round trip the editor needs: open showing what the preset already asks for, and hand back
+    what the user made it. Built from `POST_PROCESSING_FIELDS` rather than listed a second time,
+    so a sixth option is carried by both directions the day it is added.
+    """
+    return {field: getattr(preset, field) for field in sorted(POST_PROCESSING_FIELDS)}
+
+
 def by_name(name: str) -> Preset:
     """The built-in preset called `name`, or `KeyError`.
 
@@ -332,6 +403,15 @@ class FormatChoice:
     embed_subtitles: bool
     post_processors: tuple[str, ...]
 
+    #: `REQ-010`'s remaining five, joined here by `T-109` because they joined `Preset`. Listed
+    #: rather than inherited: the equality test against `PRESET_OWNED_FIELDS` is what makes this
+    #: list maintained, and it fails the day a preset-owned field is not here.
+    remux_container: str | None
+    recode_container: str | None
+    embed_thumbnail: bool
+    embed_metadata: bool
+    embed_chapters: bool
+
 
 def format_choice_of(source: DownloadRequest | Preset) -> FormatChoice:
     """Narrow a request **or a preset** to what describes the download (`T159-R1`).
@@ -400,5 +480,10 @@ def to_request(
         embed_subtitles=preset.embed_subtitles,
         audio_codec=preset.audio_codec,
         audio_quality=preset.audio_quality,
+        remux_container=preset.remux_container,
+        recode_container=preset.recode_container,
+        embed_thumbnail=preset.embed_thumbnail,
+        embed_metadata=preset.embed_metadata,
+        embed_chapters=preset.embed_chapters,
     )
     return replace(request, **overrides) if overrides else request

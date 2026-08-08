@@ -121,6 +121,7 @@ from tracks_and_trails.ui.format_selection import (
 )
 from tracks_and_trails.ui.format_table import FormatTable
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX, format_name
+from tracks_and_trails.ui.options_dialog import OptionsDialog
 from tracks_and_trails.ui.row_delegate import (
     CHOOSE_FORMATS_DATA,
     DETAIL_ROLE,
@@ -130,6 +131,8 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     INHERITED_TEXT,
+    OPTIONS_AVAILABLE_ROLE,
+    OPTIONS_DATA,
     PRESET_CHOICES_ROLE,
     PRESET_INHERITABLE_ROLE,
     PRESET_ROLE,
@@ -546,6 +549,15 @@ class StagingModel(QAbstractListModel):
                 and isinstance(media, MediaInfo)
                 and bool(media.formats)
             )
+        if role == OPTIONS_AVAILABLE_ROLE:
+            # **The same admission as the format table, and one condition fewer** (`T-109`).
+            # `REQ-010`'s options do not need a format list — an audio-only source with one format
+            # can still be converted, embedded into and subtitled — so this asks only that the row
+            # is committable and nothing is being written. What it does need is a probe result,
+            # because the subtitle languages the editor offers come from it (`P-17`).
+            return (
+                row.committable and not self._dialog.is_saving and isinstance(row.media, MediaInfo)
+            )
         if role == FORMAT_PANEL_HEIGHT_ROLE:
             return self._dialog.panel_height_for(row)
         if role == PRESET_INHERITABLE_ROLE:
@@ -589,6 +601,11 @@ class StagingModel(QAbstractListModel):
             # reason; the interception is what makes that guarantee load-bearing rather than
             # decorative.
             self._dialog.open_format_table(row)
+            return True
+        if value == OPTIONS_DATA:
+            # Intercepted before the preset lookup for `CHOOSE_FORMATS_DATA`'s reason: no preset is
+            # called this, so the lookup would clear the row's format instead of opening anything.
+            self._dialog.open_options(row)
             return True
         name = value if isinstance(value, str) else None
         own = row.preset
@@ -1101,6 +1118,47 @@ class AddUrlDialog(QDialog):
 
     def _on_panel_closed(self, keep: bool) -> None:
         self.close_format_table(keep=keep)
+
+    # --- the post-processing editor (`REQ-010`, `T-109`, `docs/UX_SPEC.md` §6) --------------
+
+    def open_options(self, row: Row) -> None:
+        """Open `REQ-010`'s options for `row`, once the control that asked has closed.
+
+        **Deferred by one turn, for `T108-R2`'s reason and one of its own.** This is reached from
+        `StagingModel.setData`, which Qt calls from inside `commitData` while the row's combo box
+        is still open — and this opens a *modal* dialog, so a synchronous call would run a nested
+        event loop underneath a widget Qt is in the middle of closing. Deferring lets the view
+        finish first, which is the only ordering in which both can exist.
+        """
+        QTimer.singleShot(0, lambda: self._show_options(row))
+
+    def _show_options(self, row: Row) -> None:
+        """Edit `row`'s options and, if accepted, make the answer the row's own preset.
+
+        **The editor opens on the row's *effective* preset**, which is its own if it has one and
+        the batch's otherwise (`UX-004`). Opening on the batch's while the row has its own would
+        silently discard the row's choice the moment the user pressed OK.
+
+        **Accepting always gives the row a preset of its own**, even where the values are the ones
+        it was already following: the user has now stated them for this row, and leaving it
+        inheriting would let a later change to the batch's format overwrite what they said.
+        """
+        if row not in self.rows or not row.committable:
+            # The row went away, or stopped being committable, between the choice and this turn.
+            return
+        media = row.media
+        dialog = OptionsDialog(
+            self.preset_for(row),
+            subtitle_languages=(media.subtitle_languages if isinstance(media, MediaInfo) else ()),
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        row.preset = dialog.result_preset()
+        # **The chosen formats survive the options, and the statement with them.** A row that
+        # picked `137+140` from the table and then set options is still a chosen merge, and
+        # `REQ-024`'s refusal reads `format_selection` rather than the selector (`T-061`).
+        self.refresh()
 
     def _merge_refusals(self, rows: Sequence[Row]) -> str | None:
         """The first reason a chosen merge cannot be committed, or `None` (`REQ-024`).

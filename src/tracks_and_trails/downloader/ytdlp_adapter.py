@@ -403,7 +403,34 @@ def project_media(
         is_playlist=is_playlist,
         entry_count=_entry_count(info) if is_playlist else None,
         entries=_entries(info) if is_playlist else (),
+        subtitle_languages=_subtitle_languages(info),
     )
+
+
+def _subtitle_languages(info: Mapping[str, Any]) -> tuple[str, ...]:
+    """The languages this source publishes subtitles in (`REQ-010`, `P-17`, `T-109`).
+
+    **The keys of yt-dlp's `subtitles` map, and nothing under them.** Each value is a list of
+    downloadable variants — url, ext, name — and none of it reaches `MediaInfo`, which needs a
+    language list to offer and not a download plan. `writesubtitles` and `subtitleslangs` are how
+    a language is asked for; yt-dlp picks the variant.
+
+    **`automatic_captions` is deliberately not merged in.** It is a separate map fetched under a
+    separate option (`writeautomaticsub`), which `REQ-010` does not name — so a language offered
+    from it would be one this application asks for and never receives, producing a file with no
+    subtitles and no error. That is the `T-075` shape: a control that appears to do nothing.
+
+    Order is the extractor's own. Sorting would look tidier and would put `ar` above `en` for an
+    English source that also publishes Arabic, which is not the order the site thought its
+    languages went in.
+
+    A language with an empty variant list is still kept: the extractor said the language exists,
+    and yt-dlp is the thing that decides at download time whether it can be fetched.
+    """
+    subtitles = info.get("subtitles")
+    if not isinstance(subtitles, Mapping):
+        return ()
+    return tuple(str(language) for language in subtitles if str(language))
 
 
 def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
@@ -623,6 +650,19 @@ def build_options(
         options["writesubtitles"] = True
         options["subtitleslangs"] = list(request.subtitle_languages)
 
+    if request.embed_thumbnail:
+        # **`EmbedThumbnail` embeds a file that has to exist first** (`T-109`). yt-dlp's own
+        # `get_postprocessors` sets `writethumbnail` when `--embed-thumbnail` is given, and
+        # without it the postprocessor runs against a download that has no picture beside it and
+        # embeds nothing. That is `T012-R5`'s defect exactly — a key accepted, and silently
+        # ineffective — one option along.
+        #
+        # The picture is **not** kept: `already_have_thumbnail` is left False in the spec below,
+        # so yt-dlp deletes it after embedding. `REQ-010` asks to embed a thumbnail, not to write
+        # one beside the media, and a stray `.jpg` in the output directory is not what was asked
+        # for.
+        options["writethumbnail"] = True
+
     options["postprocessors"] = build_postprocessors(request)
     return options
 
@@ -665,6 +705,36 @@ def build_postprocessors(request: DownloadRequest) -> list[dict[str, Any]]:
     rather than trusted or filtered against a hardcoded list. An unknown name **raises** instead
     of being dropped: silently discarding a requested post-processor is the same class of defect
     as the two above, and the whole point of this correction.
+
+    ## The order is yt-dlp's own, and it is load-bearing (`T-109`)
+
+    Transcribed from `yt_dlp/__init__.py`'s `get_postprocessors`, which is where the library
+    decides what its own command line means. Each step feeds the next, so the sequence is a
+    contract rather than a style:
+
+    1. **`FFmpegExtractAudio`** first, because everything after it should act on the audio file
+       rather than on the container it came out of.
+    2. **`FFmpegVideoRemuxer`**, then **`FFmpegVideoConvertor`** — the container is settled before
+       anything is written into it. `DownloadRequest` refuses to carry both.
+    3. **`FFmpegEmbedSubtitle`**, before metadata: yt-dlp's own comment notes the subtitles must
+       already be in the container by the time chapters are modified.
+    4. **`FFmpegMetadata`** after the container is final, because "containers before conversion
+       may not support metadata (3gp, webm, etc.)" — yt-dlp's words, and the reason this is not
+       simply appended wherever it reads best.
+    5. **`EmbedThumbnail`** last, for the same reason.
+
+    **Metadata and chapters are one postprocessor with two flags, and both flags are always
+    stated.** `FFmpegMetadata(add_metadata=True, add_chapters=True)` is the constructor's
+    *default*, so a spec naming one and omitting the other does not lose the second — it turns it
+    on. A translation emitting one spec per option would therefore embed a user's title, uploader
+    and source URL into a file where they had asked only to keep the chapter marks, and the
+    deduplication below would hide it by keeping whichever spec came first.
+
+    *(An earlier version of this paragraph said the opposite — that two specs would be
+    deduplicated to one and *lose* a flag. A mutation replacing this block with two specs survived
+    the whole suite, which is what said so: nothing was lost, something was added. The claim was
+    wrong in a way that made the code look more defensive than it was, and
+    `test_requested_chapters_are_written_into_the_file` now asserts the real property.)*
     """
     from yt_dlp.postprocessor import get_postprocessor
 
@@ -680,8 +750,24 @@ def build_postprocessors(request: DownloadRequest) -> list[dict[str, Any]]:
         if request.audio_quality is not None:
             audio["preferredquality"] = request.audio_quality
         specs.append(audio)
+    if request.remux_container is not None:
+        specs.append({"key": "FFmpegVideoRemuxer", "preferedformat": request.remux_container})
+    if request.recode_container is not None:
+        # yt-dlp's spelling, missing `r` and all: `preferedformat` is the constructor's parameter
+        # name for both of these, and correcting it here would simply not reach the postprocessor.
+        specs.append({"key": "FFmpegVideoConvertor", "preferedformat": request.recode_container})
     if request.subtitle_languages and request.embed_subtitles:
         specs.append({"key": "FFmpegEmbedSubtitle"})
+    if request.embed_metadata or request.embed_chapters:
+        specs.append(
+            {
+                "key": "FFmpegMetadata",
+                "add_metadata": request.embed_metadata,
+                "add_chapters": request.embed_chapters,
+            }
+        )
+    if request.embed_thumbnail:
+        specs.append({"key": "EmbedThumbnail"})
     specs.extend({"key": name} for name in request.post_processors)
 
     resolved: list[dict[str, Any]] = []

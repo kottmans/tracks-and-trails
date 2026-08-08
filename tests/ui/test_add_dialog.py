@@ -98,6 +98,8 @@ from tracks_and_trails.ui.row_delegate import (
     GAP,
     HEADLINE_ROLE,
     INHERITED_TEXT,
+    OPTIONS_DATA,
+    OPTIONS_TEXT,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
@@ -2657,13 +2659,23 @@ def test_the_format_control_offers_to_open_the_table(
 
     Below matters and is asserted: the presets keep the positions a user has learned, so adding
     this entry does not move the one they were reaching for.
+
+    **Stated as "below every preset" rather than "last"** (`T-109`). It was written as
+    `entries[-1]`, which held while it was the only such entry and stopped being the property the
+    docstring describes the moment `Options…` joined it below. The rule the spec gives is about
+    the presets not moving; asserting the position of the final row asserts that nothing may ever
+    be added under it, which is a different and much stronger claim than anybody made.
     """
     dialog, _row = _staged(dialogs, managers, spin)
     control = open_row_editor(dialog, 0)
     entries = [control.itemText(index) for index in range(control.count())]
     assert CHOOSE_FORMATS_TEXT in entries, entries
-    assert entries[-1] == CHOOSE_FORMATS_TEXT, f"the entry is not below the preset list: {entries}"
-    assert control.itemData(control.count() - 1) == CHOOSE_FORMATS_DATA, (
+    preset_names = {preset.name for preset in dialog.presets}
+    last_preset = max(index for index, text in enumerate(entries) if text in preset_names)
+    assert entries.index(CHOOSE_FORMATS_TEXT) > last_preset, (
+        f"the entry is not below the preset list: {entries}"
+    )
+    assert control.itemData(entries.index(CHOOSE_FORMATS_TEXT)) == CHOOSE_FORMATS_DATA, (
         "the entry carries a preset name, so choosing it would be looked up as a preset"
     )
 
@@ -3212,3 +3224,53 @@ def test_the_same_row_can_open_its_table_again_after_a_reset(
     reopened = _open_the_table(dialog, position)
     assert reopened.row is first, "reopening after a reset landed on a different row"
     assert _mounted_on(dialog, first, reopened)
+
+
+def test_the_format_control_offers_the_options_editor_below_the_table_entry(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`docs/UX_SPEC.md` §6's `P-3`: the editor is reached as *Options…* on the format control.
+
+    Below `Choose specific formats…` for the reason that one is below the presets: the entries a
+    user has learned the positions of do not move when a new one appears.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    entries = [control.itemText(index) for index in range(control.count())]
+
+    assert OPTIONS_TEXT in entries, entries
+    assert entries.index(OPTIONS_TEXT) > entries.index(CHOOSE_FORMATS_TEXT), entries
+    assert control.itemData(entries.index(OPTIONS_TEXT)) == OPTIONS_DATA, (
+        "the entry carries a preset name, so choosing it would be looked up as a preset"
+    )
+
+
+def test_choosing_the_options_entry_opens_the_editor_and_keeps_the_row_s_format(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sentinel must reach `open_options` and **not** the preset lookup (`T-109`).
+
+    `setData` looks any string up as a preset name and writes the answer onto the row, so a
+    sentinel that fell through would find nothing and silently clear the format the user chose —
+    a wrong download rather than a no-op. Asserted on the row rather than only on the call,
+    because the call being made does not by itself mean the lookup was skipped.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    row.preset = preset_registry.AUDIO_MP3
+    opened: list[Row] = []
+    monkeypatch.setattr(type(dialog), "open_options", lambda _self, r: opened.append(r))
+
+    index = dialog.model.index(0, 0)
+    assert dialog.model.setData(index, OPTIONS_DATA, PRESET_ROLE)
+
+    assert opened == [row]
+    assert row.preset is preset_registry.AUDIO_MP3, (
+        "the sentinel reached the preset lookup and cleared the row's chosen format"
+    )

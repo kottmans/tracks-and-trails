@@ -5,7 +5,8 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-07 — `T-189` filed as the non-blocking `T108-R3` CI-gate follow-up
+**Last updated:** 2026-08-07 — `T-109` implemented and In Review; `T-190` filed for the `UX_SPEC`
+§6 clause it made stale
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -79,11 +80,155 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-*(**Nothing awaits a verdict as of 2026-08-07.** `T-108` was approved with follow-up `T-189` and
-`T-185` approved outright, both at `870d56f` — the third and fourth Phase 3 approvals of the day.
-Their open follow-ups are `T-189` and `T-188`, under `## Proposed — Phase 3`. Read the sections, not
-this line: `T-096`'s gate compares each entry's status to the section it sits in, and this
-parenthetical is prose it does not check.)*
+### T-109 — Post-processing: audio, container, thumbnail, metadata, chapters, subtitles
+
+**Status:** **In Review** — implemented 2026-08-07, awaiting a verdict.
+**Owner:** Implementer
+**Priority:** High — the largest single item in the phase
+**Phase:** Phase 3
+**Depends on:** `T-105`; `T-108` for the ffmpeg-presence rule it shares. Both approved.
+**Relevant context:** `docs/UX_SPEC.md` §6 (**ruled 2026-08-07 by `UX-007`**: this **shares one
+screen** with `T-111`, reached as a per-download *Options…* and from the preset manager (`P-16`,
+`P-3`), a one-off never becomes a preset silently (`P-4`), and subtitle languages are a multi-select
+**populated from the probe's own languages** — which makes the list's source this task's to build
+(`P-17`). The out-of-scope line below is engineering scope, not a UI ruling.
+**`P-12` is ruled** as of 2026-08-07 — `ARC-010` says the five undedicated options get **typed
+fields** and the model widens, so this task no longer waits on it and no longer chooses), `REQ-010`,
+`REQ-024`, `T-077` (four of five download options had never produced a file), `T-076`, `T-089`,
+`downloader/ytdlp_adapter.py`
+**Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`,
+`downloader/worker.py`, `persistence/repositories.py`, `ui/options_dialog.py` (new),
+`ui/format_text.py`, `ui/row_delegate.py`, `ui/add_dialog.py`, `tests/fixtures/capture.py`
+**Risk:** **High** — seven independent options, each of which can be wired to produce no effect
+
+#### Scope
+
+`REQ-010` names seven: extract/convert audio to a chosen codec and quality, remux container, recode
+container, embed thumbnail, embed metadata, embed chapters, and subtitles (download or embed, with
+language selection).
+
+**`T-077` is the reason this is High risk rather than merely long.** Phase 1 shipped five download
+options and four of them had never produced a file — the options were wired into the request and
+nothing asserted the output. Each option here needs a test that looks at what came out.
+
+**Not split, and the reason it was left whole.** The entry said *"consider splitting"* along
+audio-and-container versus embedding-and-subtitles, and left the line to `docs/UX_SPEC.md` in case
+it drew a different one. §6 draws none: `P-3` puts all seven on **one screen**, reached one way, so
+splitting the work would have split a single dialog across two reviews.
+
+#### What landed
+
+- **Five typed fields on `Preset` and `DownloadRequest`** — `remux_container`, `recode_container`,
+  `embed_thumbnail`, `embed_metadata`, `embed_chapters` — per `ARC-010`. They join
+  `PRESET_OWNED_FIELDS` by derivation, so `FormatChoice`, `to_request` and the override refusal
+  covered them the moment they appeared; three existing tests failed until they did, which is the
+  drift machinery working.
+- **`CONTAINER_FORMATS` in `core/models.py`**, a copy of yt-dlp's `SUPPORTED_EXTS` because `core/`
+  may not import `yt_dlp`, with a unit test asserting equality against the remuxer's *and* the
+  convertor's own tuples.
+- **A remux and a recode together are unrepresentable.** yt-dlp would run both in turn; the pair is
+  refused at construction, and the editor expresses it as one exclusive choice.
+- **`MediaInfo.subtitle_languages`**, projected from the keys of `info["subtitles"]` — `P-17`'s
+  source, which did not exist. `automatic_captions` is deliberately not merged in: it is fetched
+  under an option `REQ-010` does not name, so offering it would let a user pick a language that
+  arrives as nothing.
+- **`build_postprocessors` emits all seven in yt-dlp's own order**, transcribed from
+  `yt_dlp/__init__.py`'s `get_postprocessors`, and `build_options` sets `writethumbnail` because
+  `EmbedThumbnail` embeds a file that has to be downloaded first.
+- **`ui/options_dialog.py`** — the editor `docs/UX_SPEC.md` §6 specifies, reached as `Options…` on
+  the row's format control through a sentinel beside `CHOOSE_FORMATS_DATA`.
+- **Written subtitles survive the staging directory** — `claim_sidecars` in `worker.py`, which is
+  `T046-R3` met.
+- **The preview accounts for a container change**, and two classes of request stopped being
+  provisional because of it.
+
+#### Acceptance criteria
+
+- ~~**Every user-requested output is claimed before staging is discarded**~~ — **met**.
+  `claim_sidecars` moves every file `requested_subtitles` records, renamed to follow the name the
+  media actually landed under, and claimed through the same `O_CREAT | O_EXCL` reservation the
+  media file uses so a sidecar can never overwrite anything of the user's.
+  `test_written_subtitles_survive_the_staging_directory` and
+  `test_a_staging_directory_is_still_removed_after_its_subtitles_are_kept`.
+- ~~**Each of the seven produces an observable change in the output file**~~ — **met for six by
+  download, and for chapters through the postprocessor**, with the limit stated below.
+- ~~Every option that needs ffmpeg is refused before starting when it is absent (`REQ-024`)~~ —
+  **met**, parametrized over all six ffmpeg-backed options.
+- ~~Subtitle language selection is asserted with more than one language, including one absent from
+  the source~~ — **met**: the presentation publishes `en` and `de`, the request asks for `de` and
+  `fr`, and exactly one German track is the answer.
+- ~~Options that combine are tested together~~ — **met**: MP3 extraction plus an embedded thumbnail
+  plus metadata, asserted as one file carrying all three.
+- ~~Recorded fixtures where a real download is not needed; a real file where it is~~ — **met**.
+
+#### Evidence
+
+| Claim | How it is evidenced |
+|---|---|
+| Audio conversion | `test_each_preset_produces_the_file_it_promises` (existing, `T-077`), MP3 at 320 kbps measured |
+| Remux | `test_a_remux_rewraps_the_streams_without_re_encoding_them` — `.mkv`, and the streams still h264/aac |
+| Recode | `test_a_recode_re_encodes_into_a_container_the_source_codec_cannot_enter` — `.webm`, and **not** h264, which WebM cannot hold |
+| Embed thumbnail | `test_an_embedded_thumbnail_arrives_as_a_picture_inside_the_file` — a second video stream, and no `.jpg` left beside it |
+| Embed metadata | `test_embedded_metadata_reaches_the_file_and_is_absent_without_the_option` — the same page downloaded twice |
+| Embed chapters | `test_requested_chapters_are_written_into_the_file` — yt-dlp's own `FFmpegMetadata` on a real file, plus the negative |
+| Subtitles, embedded | `test_chosen_subtitle_languages_are_embedded_and_an_absent_one_is_not_invented` |
+| Subtitles, written | `test_written_subtitles_survive_the_staging_directory` — content read back, not just a filename |
+| `REQ-024` refusal | `test_every_option_that_needs_ffmpeg_is_refused_before_the_download_starts`, six cases |
+| The editor | `tests/ui/test_options_dialog.py`, 14 tests |
+| The route to it | two tests in `tests/ui/test_add_dialog.py` |
+
+**Six mutations were run against the new tests. Five were killed on the first attempt; the sixth
+survived and changed the code.**
+
+| Mutation | Result |
+|---|---|
+| Drop the remux spec | Killed |
+| `writethumbnail = False` | Killed |
+| Skip `claim_sidecars` | Killed |
+| Recode spelled as remux | Killed |
+| `subtitleslangs` replaced by `["all"]` | **Survived at first.** The test asked for both published languages, so "these two" and "all" were the same answer. Rewritten to ask for a strict subset — `de` and `fr` against `en` and `de` — and it now kills the mutant twice |
+| `FFmpegMetadata` split into two specs, one per option | **Survived, and the docstring explaining why it could not was wrong.** The claim was that deduplication would *lose* a flag. `FFmpegMetadata` defaults **both** flags to `True`, so an omitted flag turns the other option **on**: asking for chapters would have embedded the user's title and source URL as well. The docstring is corrected and `test_requested_chapters_are_written_into_the_file` now asserts chapters arrive *without* metadata |
+
+#### Two defects found by writing the tests, not by review
+
+1. **A request written before these fields existed could not be read back.** The request is stored
+   as JSON, so nine of this project's own historical persistence fixtures raised `KeyError` the
+   moment the five fields were added. `_deserialize_request` now takes the dataclass default for a
+   field the blob does not carry — there is no column and so no migration, and a blob from an older
+   build is a request that genuinely did not ask for the option. The four fields with no default
+   still fail loudly.
+2. **`currentData()` does not return the object that was put in.** `addItem(label, AudioCodec.MP3)`
+   stores the enum and hands back the plain string, because `AudioCodec` is a `StrEnum` and PySide
+   unwraps it — so the `isinstance(data, AudioCodec)` guard failed for **every** entry and the
+   codec control answered `ORIGINAL` whatever the user chose. A control that looks like a choice
+   and converts nothing is `T-075` exactly. Caught by the bitrate staying dead for the MP3 preset,
+   which is the symptom one control away from the cause.
+
+#### Limits, stated
+
+- **Chapters are asserted through the postprocessor rather than through a download.** No extractor
+  reachable without a network publishes `chapters` — yt-dlp's generic extractor reads a page and an
+  HLS playlist, and neither carries chapter marks. What is covered is that this application's
+  request becomes a file with chapters in it; what is not is an extractor supplying them.
+- **The editor has no `Save as preset…` button.** `P-4` requires that a one-off never silently
+  becomes a preset, and `T-111` owns where a saved preset lives. Offering a control with nowhere to
+  save would be drawing what would be refused (`UX-005` §5).
+- **The queue row does not offer `Options…`.** A job's request is frozen at creation
+  (`ARCHITECTURE.md` §8); the role that admits the entry is absent from `QueueModel`, so the entry
+  is not drawn rather than drawn and refused.
+- **`post_processors` still exists on the model.** Nothing in the UI writes it and `REQ-031`'s
+  escape hatch is Phase 4.5's, but removing a field is not this task's, and `build_postprocessors`
+  deduplicates so a name spelled there cannot conflict with a typed field.
+- **`docs/UX_SPEC.md` §6 still says `T-109`'s screen "has not been specified against the ruling
+  yet".** It has. That file is not the Implementer's to edit — `T-190` owns the correction.
+
+#### Out of scope
+
+- **Building `T-111`'s CRUD** — creating, renaming and deleting saved presets is that task.
+  `docs/UX_SPEC.md` §6 answers whether the two share a *screen* (`P-16`: they do); this line
+  divides the work, not the window.
+
+---
 
 ## Ready
 
@@ -1260,65 +1405,6 @@ proposes.
 
 ---
 
-### T-109 — Post-processing: audio, container, thumbnail, metadata, chapters, subtitles
-
-**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.** **Consider splitting** — see below.
-**Owner:** Implementer
-**Priority:** High — the largest single item in the phase
-**Phase:** Phase 3
-**Depends on:** `T-105`; `T-108` for the ffmpeg-presence rule it shares
-**Relevant context:** `docs/UX_SPEC.md` §6 (**ruled 2026-08-07 by `UX-007`**: this **shares one
-screen** with `T-111`, reached as a per-download *Options…* and from the preset manager (`P-16`,
-`P-3`), a one-off never becomes a preset silently (`P-4`), and subtitle languages are a multi-select
-**populated from the probe's own languages** — which makes the list's source this task's to build
-(`P-17`). The out-of-scope line below is engineering scope, not a UI ruling.
-**`P-12` is ruled** as of 2026-08-07 — `ARC-010` says the five undedicated options get **typed
-fields** and the model widens, so this task no longer waits on it and no longer chooses), `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
-produced a file), `T-076`, `T-089`, `downloader/ytdlp_adapter.py`
-**Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`, `ui/`
-**Risk:** **High** — seven independent options, each of which can be wired to produce no effect
-
-#### Scope
-
-`REQ-010` names seven: extract/convert audio to a chosen codec and quality, remux container, recode
-container, embed thumbnail, embed metadata, embed chapters, and subtitles (download or embed, with
-language selection).
-
-**`T-077` is the reason this is High risk rather than merely long.** Phase 1 shipped five download
-options and four of them had never produced a file — the options were wired into the request and
-nothing asserted the output. Each option here needs a test that looks at what came out.
-
-**Splitting is likely right.** Suggested boundary if it is split: audio extraction and container
-work (which need ffmpeg and change the file) versus embedding and subtitles (which need network or
-metadata and change the file's contents). Left as one task with the split named, rather than split
-on a guess, because `docs/UX_SPEC.md` may draw the line differently.
-
-#### Acceptance criteria
-
-- **Every user-requested output is claimed before staging is discarded** (`T046-R3`, reviewer note
-  of 2026-08-01). `T-046`'s staging directory is removed wholesale except the single path
-  `_written_path` returns — correct for conversion inputs and for a thumbnail or subtitle that was
-  *embedded*, and **wrong the moment a request asks for a sidecar it wants kept**:
-  `embed_subtitles=False` with `subtitle_languages` produces `.srt` files beside the media, and
-  today they would be deleted with the directory. No current UI exposes write-only subtitles, which
-  is why this is Phase 3's rather than a Phase 2 blocker — this task is where it stops being safe
-- **Each of the seven produces an observable change in the output file**, asserted on the file —
-  not on the options dictionary handed to yt-dlp (`T-077`)
-- Every option that needs ffmpeg is refused before starting when it is absent (`REQ-024`)
-- Subtitle language selection is asserted with more than one language, including one absent from
-  the source
-- Options that combine are tested together, not only singly — an audio extraction plus an embedded
-  thumbnail is one file that must have both
-- Recorded fixtures where a real download is not needed; a real file where it is (`ai/TESTING.md` §6)
-
-#### Out of scope
-
-- **Building `T-111`'s CRUD** — creating, renaming and deleting saved presets is that task. Whether
-  the two share one *screen* is `docs/UX_SPEC.md`'s `P-16` and is **not** answered here: this line
-  divides the work, not the window.
-
----
-
 ### T-110 — Playlists: probe the entries, choose which to enqueue
 
 **Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
@@ -1851,6 +1937,36 @@ of the test run — fail with the missing capability and let the maintainer rest
 
 ---
 
+
+### T-190 — `docs/UX_SPEC.md` §6 still says its screen is unspecified
+
+**Status:** Proposed — filed by `T-109`, 2026-08-07.
+**Owner:** Planner / Documentation Maintainer
+**Priority:** Low — no runtime behaviour depends on it; the defect is a current-truth document
+stating a solved problem in the present tense, which is `T185-R1` exactly.
+**Phase:** Phase 3 cleanup
+**Depends on:** `T-109`'s verdict, so the correction describes what was approved rather than what
+was submitted.
+
+#### Scope
+
+`docs/UX_SPEC.md` §6 carries a `[T]` clause reading *"This clause stays because `T-109`'s screen has
+not been specified against the ruling yet"*, and a `P-16` paragraph asking whether `T-109` and
+`T-111` share a screen as though it were open. `UX-007` ruled `P-16`, and the screen now exists:
+`ui/options_dialog.py`, reached as `Options…` on the row's format control.
+
+`AGENTS.md` §4 does not put `docs/UX_SPEC.md` in the Implementer's write set, which is why `T-109`
+filed this rather than editing it.
+
+#### Acceptance criteria
+
+- §6's open questions read as ruled and built, in the past tense, with the built surface named.
+- The `Save as preset…` clause states that the control arrives with `T-111`, rather than describing
+  a button that does not exist.
+- Nothing else in §6 changes: the ruled clauses are the contract the implementation was built
+  against.
+
+---
 
 ### T-188 — A recorded source with a separate video and audio stream
 

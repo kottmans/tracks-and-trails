@@ -62,6 +62,7 @@ CONSUMED_TOP_LEVEL: Final = (
     "is_live",
     "original_url",
     "playlist_count",
+    "subtitles",
     "thumbnail",
     "title",
     "uploader",
@@ -216,9 +217,31 @@ def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
             # playlist that expands into jobs reads four fields per entry. Everything else about
             # an entry is still dropped, by the same allowlist mechanism as everywhere else.
             kept[key] = [_keep_entry(item) for item in value]
+        elif key == "subtitles" and isinstance(value, Mapping):
+            kept[key] = _keep_subtitles(value)
         else:
             kept[key] = clean_scalar(value)
     return kept
+
+
+def _keep_subtitles(value: Mapping[str, Any]) -> dict[str, list[Any]]:
+    """The language codes, with every variant dropped (`T-109`).
+
+    **A reducer rather than `clean_scalar`, because `clean_scalar` would not walk this.** It
+    returns a non-string unchanged, so a nested map would be committed verbatim — every variant's
+    `url` with its query string, and every key an extractor chose to put there. That is the
+    open-ended namespace `SEC-002` was escalated over, arriving through a field nobody thought of
+    as a namespace.
+
+    `_subtitle_languages` reads the keys and never looks inside, so the values are not merely
+    sanitized here — there is nothing under them a reader wants. The **shape** is kept, an empty
+    list per language, so a fixture is still a faithful sample of what yt-dlp hands the
+    projection and the projection is exercised through its real path rather than an easier one.
+
+    Keys go through `clean_scalar` for the same reason every kept value does: a language code is
+    extractor-supplied text, and this file has been wrong four times about which of those is safe.
+    """
+    return {str(clean_scalar(language)): [] for language in value}
 
 
 def _keep_format(entry: Any) -> dict[str, Any]:

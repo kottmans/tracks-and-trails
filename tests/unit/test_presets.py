@@ -394,6 +394,15 @@ def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
         "embed_subtitles": True,
         "audio_codec": AudioCodec.FLAC,
         "audio_quality": "0",
+        # `REQ-010`'s other five (`T-109`). Each one changes what the finished file *is*, so an
+        # override that reached them would make the request stop being the preset that was
+        # displayed exactly as `format_selector` did — a preset called "Best video available"
+        # silently recoding to `webm` is the same defect wearing a different field name.
+        "remux_container": "mkv",
+        "recode_container": "webm",
+        "embed_thumbnail": True,
+        "embed_metadata": True,
+        "embed_chapters": True,
     }
     assert field_name in sample, f"no hostile value written for {field_name}"
 

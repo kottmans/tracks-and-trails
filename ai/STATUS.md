@@ -19,11 +19,75 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-07: `T-109` is built — the largest item in the phase, and two defects it found
+
+**In Review, and it is the phase's biggest single deliverable.** `REQ-010`'s seven post-processing
+options — audio conversion, remux, recode, embed thumbnail, embed metadata, embed chapters, and
+subtitles embedded *or written* — all reach a real file, and `docs/UX_SPEC.md` §6's editor exists as
+`ui/options_dialog.py`, reached as `Options…` on the row's format control.
+
+**It was not split, and §6 is why.** The entry proposed a boundary — audio-and-container versus
+embedding-and-subtitles — and deferred to `docs/UX_SPEC.md` in case that file drew a different one.
+It draws none: `P-3` puts all seven on one screen, so splitting the work would have split a single
+dialog across two reviews.
+
+**`ARC-010`'s ruling is now a model change.** Five options that would have ridden in
+`post_processors` as opaque strings are typed fields on `Preset` and `DownloadRequest` — the first
+widening of a model frozen since Phase 1. It cost nothing to carry them: `PRESET_OWNED_FIELDS` is
+derived from the two dataclasses, so `FormatChoice`, `to_request` and the override refusal covered
+them the moment they appeared, and three existing tests failed until they did. **That is the drift
+machinery earning its keep rather than a nuisance**, and it is the concrete argument for `T015-R1`'s
+design over a hand-maintained list.
+
+**Two defects were found by writing the tests, and neither is where a reviewer would look.**
+
+1. **A queued job written by the previous build could not be read back.** The request is stored as
+   JSON, not as columns, so adding five optional fields gave every row already on disk a blob
+   without them — and nine of this project's own historical persistence fixtures raised `KeyError`
+   on the first run. There is no migration to write because there is no column: a field the blob
+   does not carry now takes the dataclass default, which is exactly what *"this download did not
+   ask for the option"* means. The four fields with no default still fail loudly, because
+   substituting one would invent a download nobody requested.
+2. **Qt does not hand back the object that was put in.** `addItem(label, AudioCodec.MP3)` stores the
+   enum and `currentData()` returns the plain string — `AudioCodec` is a `StrEnum` and PySide
+   unwraps it — so an `isinstance(data, AudioCodec)` guard failed for **every** entry and the codec
+   control answered `ORIGINAL` whatever the user chose. A control that looks like a choice and
+   converts nothing is `T-075` exactly, in new code, and it surfaced as the *bitrate* staying dead
+   for the MP3 preset: the symptom one control away from the cause.
+
+**Six mutations were run. The two that survived are the ones worth keeping.**
+
+- **`subtitleslangs` replaced by a hardcoded `["all"]` passed.** The test asked for both languages
+  the source publishes, so *"these two"* and *"everything"* were the same answer — the test met the
+  acceptance criterion's words and not its point. Rewritten to ask for a strict subset (`de` and
+  `fr` against a source publishing `en` and `de`), it now kills the mutant twice over.
+- **Splitting `FFmpegMetadata` into one spec per option passed, and the docstring saying why it
+  could not was wrong.** It claimed the deduplication would *lose* a flag. `FFmpegMetadata` defaults
+  **both** `add_metadata` and `add_chapters` to `True`, so an omitted flag turns the other option
+  **on**: a user asking only to keep chapter marks would have had their title and source URL written
+  into the file as well. The claim is corrected where it was made, and the test now asserts chapters
+  arrive *without* metadata.
+
+**`T046-R3` is met.** `_discard_staging` removes the download's private directory wholesale except
+the one path the media file was claimed from — correct for every intermediate, and wrong for a
+subtitle the user asked to *write*, which was fetched and then deleted with the directory. Nothing
+exposed that combination in the UI before now, which is why it was latent rather than live.
+`claim_sidecars` moves them out first, renamed to follow the name the media actually landed under
+and claimed through the same reservation, so a sidecar can never overwrite anything of the user's.
+
+**One limit, stated rather than hidden: chapters are asserted through the postprocessor, not through
+a download.** Nothing reachable without a network publishes `chapters` — yt-dlp's generic extractor
+reads a page and an HLS playlist, and neither carries chapter marks. What is covered is that this
+application's request becomes a file with chapters in it; what is not is an extractor supplying
+them. **One follow-up, `T-190`**: `docs/UX_SPEC.md` §6 still says this screen "has not been specified
+against the ruling yet", and that file is not the Implementer's to edit.
+
 ## 2026-08-07: `T-108` and `T-185` approved, and Phase 3's second exit criterion is met
 
 **`T-108` Approved with follow-up `T-189`; `T-185` Approved**, both at `870d56f`. That is **three of
-nine Phase 3 deliverables** approved — `T-181`, `T-107`, `T-108` — and `## In Review` is empty
-again.
+nine Phase 3 deliverables** approved — `T-181`, `T-107`, `T-108` — and `## In Review` was empty
+again. *(It is not now: `T-109` is in it — see the block above. This paragraph is kept as what was
+true when the approvals landed.)*
 
 **Exit criterion 2 is met, on both platforms, with real evidence.** *"A separate video + audio
 selection merges correctly via ffmpeg on both platforms."* Windows CI run `31233348009` recorded
