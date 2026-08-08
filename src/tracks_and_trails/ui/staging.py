@@ -101,6 +101,15 @@ class Row:
     #: **`None` means inherited, not "none"**, and the row says so in words rather than leaving a
     #: blank — a blank reads as no choice at all rather than as the one above it.
     preset: object | None = None
+    #: The `FormatSelection` this row's preset was built from, when it came from the format table
+    #: (`REQ-008`, `T-108`). `None` for a row following a preset.
+    #:
+    #: **Not derivable from `preset`, which is why it is stored.** The selector `137+140` and the
+    #: statement *"the user chose a video stream and an audio stream"* are different facts, and
+    #: recovering the second from the first means scanning for `+` — which is `T-061` exactly: a
+    #: gate that read a selector instead of a decision refused a download it could have performed.
+    #: `REQ-024` needs the decision, so the decision is kept.
+    format_selection: object | None = None
     #: The extractor's own words, character for character (`NFR-006`). `None` unless `FAILED`.
     message: str | None = None
 

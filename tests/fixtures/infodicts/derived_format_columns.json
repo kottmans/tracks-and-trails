@@ -12,9 +12,11 @@
       "formats[].vcodec",
       "formats[].acodec",
       "formats[3]",
-      "formats[4]"
+      "formats[4]",
+      "formats[5]",
+      "formats[6]"
     ],
-    "why_this_source": "The same public-domain item the recorded capture uses, so the shape is real; only the fields the recorded capture could not carry are synthetic. formats[3] is audio-only and formats[4] carries neither fps nor bitrate nor size, so the table's placeholder and audio-only paths have a row each.",
+    "why_this_source": "The same public-domain item the recorded capture uses, so the shape is real; only the fields the recorded capture could not carry are synthetic. formats[3] and formats[4] are an explicitly audio-only and an explicitly video-only stream - `vcodec: none` and `acodec: none`, yt-dlp's own spelling - which is the pair REQ-008 merges and which NO acceptable recorded source supplies: media.ccc.de reports `vcodec: none` beside a named acodec, but its API states no licence for any event, so ai/TESTING.md 5's freely-licensed rule rules it out. T-188 owns that search; OPS-013 is what permits the gap while it is owned and declared. formats[5] carries neither fps nor bitrate nor size, so the table's placeholder path has a row too. formats[6] names a vcodec and no acodec at all - media.ccc.de's real shape for a video recording - which is UNKNOWN rather than video-only, because the file certainly has sound and nothing said so. It is here because a mutation reading that as video-only survived every other fixture.",
     "yt_dlp_version": "2026.07.04"
   },
   "info_dict": {
@@ -64,7 +66,19 @@
         "format_id": "140",
         "format_note": "audio only",
         "tbr": 128.0,
-        "vcodec": null
+        "vcodec": "none"
+      },
+      {
+        "acodec": "none",
+        "ext": "mp4",
+        "filesize": 52400000,
+        "format_id": "137",
+        "format_note": "video only",
+        "fps": 30.0,
+        "height": 1080,
+        "tbr": 4200.0,
+        "vcodec": "avc1.640028",
+        "width": 1920
       },
       {
         "acodec": "aac",
@@ -73,6 +87,15 @@
         "format_note": null,
         "height": 480,
         "vcodec": "h264"
+      },
+      {
+        "ext": "mp4",
+        "filesize": 128700000,
+        "format_id": "h264-hd",
+        "format_note": "video recording, audio not stated",
+        "height": 1080,
+        "vcodec": "h264",
+        "width": 1920
       }
     ],
     "original_url": "https://archive.org/details/BigBuckBunny_124",

@@ -125,6 +125,18 @@ def _require_flag(owner: str, name: str, value: object) -> None:
         _fail(owner, name, value, "a bool")
 
 
+def _require_optional_flag(owner: str, name: str, value: object) -> None:
+    """`True`, `False` or **`None` meaning nobody said** (`T-108`).
+
+    Separate from `_require_flag` rather than a parameter on it, because the two encode different
+    promises: a flag is a fact the projection always has, and this is one it may not. `0` and `1`
+    are refused for the same reason `_require_flag` refuses them — `has_video=0` reading as *"no
+    video"* by truthiness is the bug this type exists to make unrepresentable.
+    """
+    if value is not None and not isinstance(value, bool):
+        _fail(owner, name, value, "a bool or None")
+
+
 def _require_enum[E: Enum](owner: str, name: str, value: object, enum: type[E]) -> None:
     """An actual enum member.
 
@@ -314,6 +326,26 @@ class FormatInfo:
     #: size fields would make every reader ask which to prefer.
     filesize_is_estimate: bool = False
 
+    #: Whether the format carries a video / an audio stream at all — **three states, not two**
+    #: (`REQ-008`, `T-108`).
+    #:
+    #: `True` it has one, `False` it explicitly has none, **`None` nobody said**. yt-dlp writes
+    #: `vcodec: 'none'` to mean *there is no video here*, and omits the key when it does not know;
+    #: `_as_optional_codec` maps both to `None`, so `video_codec is None` cannot tell them apart.
+    #:
+    #: **`T107-R1` is what that costs.** The table rendered *audio only* for a format whose video
+    #: codec was merely unknown, because `is_audio_only` reads the collapsed field. That was fixed
+    #: by declining to assert anything; `REQ-008` cannot decline, because *"a separate video and
+    #: audio stream to be merged"* requires knowing which is which before either can be routed to a
+    #: slot. `format_table.describe_resolution` names this widening as the thing it was waiting for.
+    #:
+    #: Two flags rather than one `kind` enum: the two streams are independently known or unknown —
+    #: media.ccc.de reports `vcodec: 'none'` beside a named `acodec`, and `vcodec: 'h264'` beside no
+    #: `acodec` at all, in the same item — and an enum would have to invent a name for each of the
+    #: nine combinations to say what two tri-states say directly.
+    has_video: bool | None = None
+    has_audio: bool | None = None
+
     def __post_init__(self) -> None:
         _require_text("FormatInfo", "format_id", self.format_id, "it is how a format is selected")
         _require_text("FormatInfo", "extension", self.extension)
@@ -332,10 +364,40 @@ class FormatInfo:
             # An estimate of nothing is not a state: the flag qualifies a number, and a reader
             # that trusted it without one would render "~Unknown".
             raise ValueError("FormatInfo.filesize_is_estimate is set with no filesize to qualify")
+        for name in ("has_video", "has_audio"):
+            _require_optional_flag("FormatInfo", name, getattr(self, name))
+        for stream, present, codec in (
+            ("video", self.has_video, self.video_codec),
+            ("audio", self.has_audio, self.audio_codec),
+        ):
+            if present is False and codec is not None:
+                # A named codec for a stream declared absent is not a value this projection can
+                # hold: one of the two came from somewhere else. Refusing here rather than letting
+                # a selection routine decide which to believe (`T-010`'s rule, one field over).
+                raise ValueError(
+                    f"FormatInfo says it has no {stream} and names a {stream} codec "
+                    f"{codec!r}; one of the two is wrong"
+                )
 
     @property
     def is_audio_only(self) -> bool:
-        return self.video_codec is None and self.audio_codec is not None
+        """Audio and **explicitly** no video (`T-108`).
+
+        *Was* `video_codec is None and audio_codec is not None`, which read a missing `vcodec` as an
+        absent video stream — `T107-R1`, where a format with an unknown video codec was reported as
+        having no video at all. `has_video` keeps yt-dlp's `'none'` apart from its silence, so the
+        property can mean what its name says.
+
+        **This is narrower than before and deliberately so.** A format nobody has said anything
+        about is no longer audio-only here; it is unknown, and `format_selection.kind_of` gives it
+        its own answer rather than folding it in with the certain cases.
+        """
+        return self.has_video is False and self.has_audio is True
+
+    @property
+    def is_video_only(self) -> bool:
+        """Video and **explicitly** no audio — the other half of a merge pair (`REQ-008`)."""
+        return self.has_video is True and self.has_audio is False
 
 
 @dataclass(frozen=True, slots=True)

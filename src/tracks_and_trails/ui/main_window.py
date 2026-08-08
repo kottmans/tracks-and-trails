@@ -373,6 +373,10 @@ class MainWindow(QMainWindow):
         self._gate.setAccessibleName("Queue state")
         self._gate.setTextFormat(Qt.TextFormat.PlainText)
         self.statusBar().addPermanentWidget(self._gate)
+        #: Whether this installation can merge (`REQ-024`). **Pessimistic until told**: the add
+        #: dialog offers the merge mode from this, and claiming a capability nobody has confirmed
+        #: is what `REQ-024` exists to prevent. `app.py` reports it during composition.
+        self._ffmpeg_available = False
         self._environment = QLabel(self)
         self._environment.setObjectName("environmentSummary")
         self._environment.setAccessibleName("Environment")
@@ -655,14 +659,21 @@ class MainWindow(QMainWindow):
         if self._queue is not None:
             self._queue.refresh()
 
-    def report_environment(self, summary: str) -> None:
+    def report_environment(self, summary: str, *, ffmpeg_available: bool) -> None:
         """State what this installation can and cannot do, on screen (`REQ-024`).
 
         In the status bar rather than a dialog: a missing ffmpeg disables features, it does not
         stop the application, and a modal on every start for a condition the user may have chosen
         is how people learn to dismiss dialogs without reading them. It is a permanent widget
         rather than a timed message, because the fact does not stop being true after five seconds.
+
+        **The flag is required rather than defaulted** (`T-108`). The add dialog needs it to decide
+        whether to offer the merge mode at all (`P-13`), and a default of `True` would mean a caller
+        that forgot silently promised a capability the installation may not have — offering a merge
+        that fails is exactly what `REQ-024` exists to prevent. Passed beside the summary because
+        they are one fact: the sentence *says* whether ffmpeg was found.
         """
+        self._ffmpeg_available = ffmpeg_available
         self._environment.setText(summary)
         self._environment.setAccessibleName("Environment")
         self._environment.setToolTip(summary)
@@ -696,6 +707,8 @@ class MainWindow(QMainWindow):
             manager=self._manager,
             jobs=self._jobs,
             output_directory=self._output_directory,
+            # `P-13`: the merge mode is drawn only where a merge could actually run (`REQ-024`).
+            ffmpeg_available=self._ffmpeg_available,
             parent=self,
         )
         # **Adding a job is the one queue change nothing announces.** The manager emits

@@ -79,11 +79,11 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, Final, Protocol, cast
 
-from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QSize, Qt, QTimer
+from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QSize, Qt, QTimer, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QAction, QFontMetrics, QPixmap
+from PySide6.QtGui import QAction, QFontMetrics, QKeyEvent, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -115,10 +115,18 @@ from tracks_and_trails.core.paths import sanitize_component
 from tracks_and_trails.core.presets import format_choice_of
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import SessionKind
+from tracks_and_trails.ui.format_selection import (
+    FormatSelection,
+    merge_refusal,
+)
+from tracks_and_trails.ui.format_table import FormatTable
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX, format_name
 from tracks_and_trails.ui.row_delegate import (
+    CHOOSE_FORMATS_DATA,
     DETAIL_ROLE,
     EDIT_HINT,
+    FORMAT_PANEL_HEIGHT_ROLE,
+    FORMATS_AVAILABLE_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
     INHERITED_TEXT,
@@ -379,6 +387,90 @@ class StagingList(QListView):
         return self._wanted
 
 
+class FormatPanel(QWidget):
+    """A staging row, opened: what the row says, and the format table under it (`UX-007`'s `P-1`).
+
+    **The row expanded, not a modal over a modal.** `UX-007` ruled against this file's own proposal
+    of a dialog: the add dialog is already modal, and the staging list is already a list of rows
+    that open — `P-19` gives the playlist picker the same shape, so the two surfaces are one
+    mechanism rather than two.
+
+    **The summary line is `row_text`, the very function the delegate's roles compose.** Qt's
+    `setIndexWidget` covers the item it is set on, so an opened row's painted anatomy is hidden and
+    something has to say what row this is. Writing that sentence here would be a second author for
+    it — `T118-R8`'s defect exactly — so the one that already exists is called instead. The
+    thumbnail and the format control are *not* reproduced: they are what the user came through, and
+    a copy of a control that edits the same row from two places is worse than its absence.
+
+    `Esc` closes it choosing nothing, which is `docs/UX_SPEC.md` §4's own keyboard row.
+    """
+
+    #: The user is finished with this panel. `bool` — whether to keep what was chosen.
+    closed = Signal(bool)
+
+    def __init__(
+        self,
+        row: Row,
+        summary: str,
+        *,
+        ffmpeg_available: bool,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("formatPanel")
+        self._row = row
+
+        layout = QVBoxLayout(self)
+        self._summary = QLabel(summary, self)
+        self._summary.setObjectName("formatPanelSummary")
+        self._summary.setAccessibleName("The URL these formats belong to")
+        self._summary.setWordWrap(True)
+        # Site metadata, so it is never interpreted as markup (`T016-R6`'s rule; this label is
+        # created here rather than in `_build`, so it sets its own format).
+        self._summary.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._summary)
+
+        media = row.media
+        formats = media.formats if isinstance(media, MediaInfo) else ()
+        self._table = FormatTable(formats, self, ffmpeg_available=ffmpeg_available)
+        layout.addWidget(self._table)
+
+        self._close = QPushButton("&Done", self)
+        self._close.setObjectName("formatPanelDone")
+        self._close.setAccessibleName("Use the chosen formats and close")
+        self._close.clicked.connect(lambda: self.closed.emit(True))
+        layout.addWidget(self._close)
+
+    @property
+    def table(self) -> FormatTable:
+        return self._table
+
+    @property
+    def row(self) -> Row:
+        return self._row
+
+    def focus_chain(self) -> list[QWidget]:
+        """The keyboard order through the panel, stated rather than left to construction order."""
+        controls: list[QWidget] = []
+        mode = self._table.mode_control
+        if mode is not None:
+            controls.append(mode)
+        return [*controls, self._table.table, self._table.header, self._close]
+
+    # Qt's override name, hence the camelCase.
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """`Esc` closes, choosing nothing (`docs/UX_SPEC.md` §4).
+
+        Handled here rather than on the dialog: `QDialog` treats `Esc` as *reject*, so leaving it
+        to fall through would close the whole add dialog and discard the batch. Taking it at the
+        panel is what makes the spec's row mean what it says.
+        """
+        if event.key() == int(Qt.Key.Key_Escape):
+            self.closed.emit(False)
+            return
+        super().keyPressEvent(event)
+
+
 class StagingModel(QAbstractListModel):
     """The staging rows, answered through `row_delegate`'s roles (`T118-R7`, `T-119`).
 
@@ -442,6 +534,20 @@ class StagingModel(QAbstractListModel):
             if not row.committable or self._dialog.is_saving:
                 return None
             return tuple(preset.name for preset in self._dialog.presets)
+        if role == FORMATS_AVAILABLE_ROLE:
+            # **A probe result with formats in it, and no commit in flight** (`T-108`). A row that
+            # cannot be retargeted cannot usefully open a table either, and a URL whose probe found
+            # no formats — a playlist, whose formats belong to its entries (`T-110`) — would open
+            # an empty one. `UX-005` §5: nothing is offered that would be refused.
+            media = row.media
+            return (
+                row.committable
+                and not self._dialog.is_saving
+                and isinstance(media, MediaInfo)
+                and bool(media.formats)
+            )
+        if role == FORMAT_PANEL_HEIGHT_ROLE:
+            return self._dialog.panel_height_for(row)
         if role == PRESET_INHERITABLE_ROLE:
             # **This surface has an "all" to be the same as** (`UX-004`, `T126-R4`): the paste
             # carries one format and a row may defer to it, which is what `PRESET_ROLE`'s `None`
@@ -476,7 +582,25 @@ class StagingModel(QAbstractListModel):
         row = self.row_at(index.row()) if index.isValid() else None
         if row is None:
             return False
+        if value == CHOOSE_FORMATS_DATA:
+            # **Not a preset name — a request to open the table** (`T-108`). Intercepted before the
+            # lookup below, which would find no preset by that name and clear the row's format: a
+            # wrong download rather than a no-op. The sentinel is unspellable for exactly this
+            # reason; the interception is what makes that guarantee load-bearing rather than
+            # decorative.
+            self._dialog.open_format_table(row)
+            return True
         name = value if isinstance(value, str) else None
+        own = row.preset
+        if name is not None and isinstance(own, Preset) and own.name == name:
+            # **The row's own chosen formats, re-selected** (`T-108`). `createEditor` offers a row's
+            # non-catalogue preset as an entry so the control can show what the row actually picked;
+            # choosing that entry must be a no-op, and the lookup below would instead find no preset
+            # by that name and clear the format the user chose from the table. Compared by name
+            # because that is what the control carries, and the name of a chosen selection *is* its
+            # selector, so two rows can share one without either being the other's.
+            self.dataChanged.emit(index, index)
+            return True
         row.preset = next((preset for preset in self._dialog.presets if preset.name == name), None)
         self.dataChanged.emit(index, index)
         self._dialog.refresh()
@@ -536,6 +660,7 @@ class AddUrlDialog(QDialog):
         thumbnail_loader: ThumbnailLoader | None = None,
         cache_root: Path | None = None,
         resolve_delay_ms: int = DEFAULT_RESOLVE_DELAY_MS,
+        ffmpeg_available: bool = True,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -543,6 +668,20 @@ class AddUrlDialog(QDialog):
         self._jobs = jobs
         self._output_directory = output_directory
         self._presets = tuple(presets)
+        #: Whether a merge is possible at all on this installation (`REQ-024`, `P-13`).
+        #:
+        #: **Passed in rather than looked up here.** `find_ffmpeg` lives in `downloader/` and
+        #: `app.py` already calls it once for the manager and the status bar; asking again here
+        #: would be a second answer to one question, and the two could differ — `ARC-007`'s reason
+        #: for the manager receiving a value rather than reading settings.
+        self._ffmpeg_available = ffmpeg_available
+        #: The one row whose format table is open, by identity (`T-108`). At most one: two open
+        #: tables would be two answers to *"which formats are we looking at"*, and the list would
+        #: spend most of its height on them.
+        self._expanded: Row | None = None
+        self._panel: FormatPanel | None = None
+        #: What that row's format was before the table opened, so `Esc` can put it back.
+        self._preset_before_panel: Preset | None = None
         #: Fetches, decodes and caches thumbnails, and is asked for one **only while painting**
         #: (`T-119`). The dialog no longer holds pixmaps: a row that scrolls out of view has its
         #: picture released by the cache's own bound, which a dict keyed by job id could not do.
@@ -752,6 +891,189 @@ class AddUrlDialog(QDialog):
             self._add_button,
             self._close_button,
         ]
+
+    # --- the format table, opened as the row itself (`T-108`, `UX-007`'s `P-1`) -----------
+
+    def panel_height_for(self, row: Row) -> int:
+        """How tall `row` must be drawn, because its format table is open. `0` when it is not.
+
+        The panel's own `sizeHint`, asked of the widget rather than assumed: a constant here would
+        be a second opinion about how tall a table is, and the first font change would make it the
+        wrong one — `T118-R15` is this project's record of exactly that promise.
+        """
+        if row is not self._expanded or self._panel is None:
+            return 0
+        return self._panel.sizeHint().height()
+
+    def open_format_table(self, row: Row) -> None:
+        """Open `row` into its formats (`REQ-008`, `docs/UX_SPEC.md` §4).
+
+        **Any other open panel closes first, keeping its choice.** Two open tables would be two
+        answers to which formats are being looked at, and closing without keeping would silently
+        discard a selection the user had already made.
+        """
+        if self._expanded is row:
+            return
+        self.close_format_table(keep=True)
+        index = self._index_of(row)
+        if not index.isValid():
+            return
+
+        self._expanded = row
+        self._preset_before_panel = row.preset if isinstance(row.preset, Preset) else None
+        panel = FormatPanel(
+            row,
+            row_text(row, self.preset_for(row)),
+            ffmpeg_available=self._ffmpeg_available,
+            parent=self._list,
+        )
+        panel.closed.connect(self._on_panel_closed)
+        panel.table.format_chosen.connect(self._on_format_chosen)
+        panel.table.selection_changed.connect(self._on_selection_changed)
+        panel.table.selection_refused.connect(self._show_message)
+        self._panel = panel
+
+        # **Uniform sizes is a promise this row breaks** (`T118-R10`). The list sets it because a
+        # paste is unbounded and measuring every row costs; one open row makes the sizes genuinely
+        # non-uniform, so the promise has to be withdrawn while it is open and restored after. Left
+        # on, Qt draws every row at the open one's height.
+        self._list.setUniformItemSizes(False)
+        # **Re-lay the items before handing Qt the widget** (`T-108`). `QListView` caches each
+        # item's rectangle, and it sizes an index widget to the rectangle it believes in *at the
+        # moment the widget is set*. Setting first and announcing afterwards gave the panel the
+        # closed row's height — the table came out zero pixels tall inside a full-width panel, which
+        # is `T107-R2`'s collapse arriving from the mounting side rather than the widget's.
+        self._model.dataChanged.emit(index, index, [Qt.ItemDataRole.SizeHintRole])
+        self._list.setIndexWidget(index, panel)
+        # **Placed here, not left to the view's next paint** (`T-108`). `setIndexWidget` registers
+        # the widget and defers its geometry to `updateEditorGeometries`, which runs on paint — so
+        # until something repaints, the panel keeps its own minimum. Measured: **190x26 inside a row
+        # whose `visualRect` was already 485x366**, which left the table zero pixels tall. That is
+        # `T107-R2`'s collapse arriving from the mounting side, and the widget's own layout contract
+        # cannot prevent it, because the widget was never given the size.
+        #
+        # Qt keeps ownership afterwards: scrolling and resizing re-place it through the same pass.
+        # This only makes the *first* geometry true immediately rather than one paint later.
+        panel.setGeometry(self._list.visualRect(index))
+        self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
+        for earlier, later in pairwise(panel.focus_chain()):
+            self.setTabOrder(earlier, later)
+        panel.table.table.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def close_format_table(self, *, keep: bool) -> None:
+        """Close the open panel, keeping the chosen formats or restoring what was there before.
+
+        `keep=False` is `Esc`'s route — *"closes, choosing nothing"* — and putting the row's earlier
+        preset back is what makes "nothing" true. Leaving the selection applied and merely hiding
+        the table would make `Esc` a confirm with extra steps.
+        """
+        row, panel = self._expanded, self._panel
+        if row is None or panel is None:
+            return
+        index = self._index_of(row)
+        self._expanded = None
+        self._panel = None
+        if not keep:
+            row.preset = self._preset_before_panel
+        self._preset_before_panel = None
+        if index.isValid():
+            # `None` is how Qt is told to drop the widget, and it is what `QAbstractItemView`
+            # documents; PySide's stub declares the parameter as `QWidget`, so the cast is a
+            # narrowing of the *annotation* rather than of the behaviour.
+            self._list.setIndexWidget(index, cast("QWidget", None))
+            self._model.dataChanged.emit(index, index, [Qt.ItemDataRole.SizeHintRole])
+        else:
+            # The row went away underneath the panel — a retype, so its index is gone and Qt has
+            # already discarded the widget with the row. Nothing to unset; the panel is dropped
+            # with the reference above.
+            panel.deleteLater()
+        self._list.setUniformItemSizes(True)
+        self.refresh()
+        self._list.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    @property
+    def open_panel(self) -> FormatPanel | None:
+        """The open format panel, for a test or a surface that needs to drive it."""
+        return self._panel
+
+    def _index_of(self, row: Row) -> QModelIndex:
+        """The model index `row` currently occupies, or an invalid one (`T118-R14`'s rule).
+
+        Resolved through `StagingModel.shown`, which is *the* index mapping — the dialog's own row
+        order and the view's belief are different things whenever a reset has not happened yet.
+        """
+        shown = self._model.shown
+        for position, candidate in enumerate(shown):
+            if candidate is row:
+                return self._model.index(position, 0)
+        return QModelIndex()
+
+    def _on_format_chosen(self, _chosen: object) -> None:
+        """A row was taken into the selection. Close once the selection names a download.
+
+        `docs/UX_SPEC.md` §4: *"`Enter` chooses the current format and closes"*. In **one format**
+        mode that is the first press, exactly as written. In **video + audio** it cannot be, because
+        one press has filled one slot — so the rule is *closes when the selection is complete*,
+        which is the same sentence for the mode the spec was describing.
+        """
+        panel = self._panel
+        if panel is not None and panel.table.selection.is_complete:
+            self.close_format_table(keep=True)
+
+    def _on_selection_changed(self, selection: object) -> None:
+        """Write the chosen formats onto the row, as its own preset (`REQ-008`, `REQ-009`).
+
+        **A custom preset, through `custom_preset`, so the selector reaches the request unchanged.**
+        The row's third line then reads whatever `format_text.format_name` says about it — which for
+        a selector no built-in describes is the literal, and that is `UX_SPEC` §5's rule honoured by
+        *asking* the shared naming rule rather than by writing the selector out here (`T140-R3`,
+        `T126-R2`, `T-159` were all this same defect).
+
+        An incomplete selection writes nothing: half a pair is not a download, and `custom_preset`
+        would be handed `137` for a merge the user has not finished stating.
+        """
+        row = self._expanded
+        if row is None or not isinstance(selection, FormatSelection):
+            return
+        if not selection.is_complete:
+            return
+        selector = selection.selector()
+        row.preset = preset_registry.custom_preset(selector, name=selector)
+        # **The statement, kept beside the selector it produced** — see `Row.format_selection`.
+        # `REQ-024`'s refusal needs to know a merge was *chosen*, and reading that back out of
+        # `137+140` means scanning for a `+`, which is `T-061`'s defect returning by the front door.
+        row.format_selection = selection
+        self.refresh()
+
+    def _on_panel_closed(self, keep: bool) -> None:
+        self.close_format_table(keep=keep)
+
+    def _merge_refusals(self, rows: Sequence[Row]) -> str | None:
+        """The first reason a chosen merge cannot be committed, or `None` (`REQ-024`).
+
+        **Named per row**, because a batch of twenty with one offending row needs to say *which*.
+        The first is enough: fixing it means reopening that row's table, and listing every one would
+        be a paragraph the user has to read before they can act on its first sentence.
+
+        `close_format_table` runs before this, so the open panel's selection is already on its row.
+        """
+        for row in rows:
+            selection = row.format_selection
+            if not isinstance(selection, FormatSelection):
+                continue
+            refusal = merge_refusal(selection, ffmpeg_available=self._ffmpeg_available)
+            if refusal is not None:
+                return f"{headline_text(row)}: {refusal}"
+        return None
+
+    def _show_message(self, message: str) -> None:
+        """Put a refusal where the user is already looking — the dialog's own status line.
+
+        The panel has no status line of its own, and adding one would give this dialog two places a
+        message can appear. `_refresh` overwrites this with the batch summary on the next change,
+        which is right: a refusal is about the press that caused it.
+        """
+        self._status.setText(message)
 
     def _connect_manager(self) -> None:
         self._manager.media_probed.connect(self._on_media_probed)
@@ -1114,12 +1436,26 @@ class AddUrlDialog(QDialog):
         """
         if self._saving:
             return
+        # **Commit the open panel's choice first** (`T118-R14`'s ordering, one widget over). A user
+        # who picked formats and pressed Add without closing the table has chosen; discarding it
+        # because a widget was still open would queue the format they replaced.
+        self.close_format_table(keep=True)
         committable = self._staging.committable()
         if not committable:
             self._status.setText(
                 "Nothing has been read yet, so there is nothing to add. "
                 "Paste a URL, or retry the ones that failed."
             )
+            return
+
+        # **An explicitly chosen video + audio pair is refused before the download starts**
+        # (`REQ-024`, `docs/UX_SPEC.md` §5). `P-13` means the mode is not even drawn without ffmpeg,
+        # so this normally cannot trigger — it is the check that survives ffmpeg going away between
+        # opening the table and pressing Add, and it is where `REQ-024`'s *"before, not at merge
+        # time"* is actually satisfied for a stated merge.
+        refused = self._merge_refusals(committable)
+        if refused is not None:
+            self._status.setText(refused)
             return
 
         # Entry order, which becomes `queue_position` order: the repository allocates `MAX + 1`

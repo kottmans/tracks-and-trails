@@ -95,6 +95,120 @@ def test_a_fixture_says_whether_it_was_recorded_or_constructed(path: Path) -> No
         assert meta.get("derived_from"), "a derived fixture must say what it was derived from"
 
 
+def test_a_recorded_fixture_names_the_extractor_its_own_source_declares() -> None:
+    """`T107-R8`: the committed extractor is the source's, not whichever one was hardcoded.
+
+    `capture_info` wrote the literal `"archive.org"` into every fixture it produced. Three sources
+    are archive.org and the fourth is Wikimedia Commons, so `wikimedia_caminandes.json` recorded an
+    extractor that had never touched it — provenance that reads exactly like the checked kind.
+
+    **The declaration is the transcribed side and the committed file is the derived one**
+    (`ai/TESTING.md` §13). `capture.py` is where a human states where a source comes from; this
+    reads what was actually written. A capture additionally refuses to write when yt-dlp's own
+    `extractor` disagrees with the declaration, which is the half of the check that needs the
+    network and therefore cannot live here.
+    """
+    from tests.fixtures.capture import SOURCES
+
+    declared = {source.name: source.extractor for source in SOURCES}
+    checked = 0
+    for path in info_fixtures():
+        meta = load(path)["_fixture"]
+        if meta.get("capture_method") != "recorded":
+            continue
+        expected = declared.get(path.stem)
+        assert expected is not None, f"{path.name} is recorded but no Source declares it"
+        assert meta.get("extractor") == expected, (
+            f"{path.name} records extractor {meta.get('extractor')!r}, but its source declares "
+            f"{expected!r}"
+        )
+        checked += 1
+    assert checked >= 4, f"only {checked} recorded fixtures were checked"
+
+
+def test_the_writer_records_each_source_s_own_extractor() -> None:
+    """The **writer**, not the files it wrote (`T107-R8`, `ai/TESTING.md` §13).
+
+    **The committed-fixture test above cannot catch this defect coming back.** It compares files on
+    disk against the declarations, and a writer that went back to a hardcoded `"archive.org"` does
+    not change a file until somebody re-captures — so the assertion that caught the original bug
+    would sit green while the bug was live again. That mutation was run and it survived, which is
+    why `provenance` was separated out of `capture_info`: the decision is now reachable without the
+    network.
+
+    Every source is checked, not one, because a hardcode is invisible against whichever source
+    happens to share its value.
+    """
+    from tests.fixtures.capture import SOURCES, provenance
+
+    for source in SOURCES:
+        block = provenance(source, "2026.07.04", {"extractor": source.extractor})
+        assert block["extractor"] == source.extractor, (
+            f"the writer recorded {block['extractor']!r} for {source.name}, which declares "
+            f"{source.extractor!r}"
+        )
+
+
+def test_the_writer_refuses_to_record_an_extractor_yt_dlp_contradicts() -> None:
+    """A declaration is only worth something if the capture checks it (`T107-R8`).
+
+    Declaring the extractor by hand makes a wrong value less likely; it does not make it
+    impossible. The capture compares against yt-dlp's own answer and **stops**, so the committed
+    value is hand-written — `SEC-002`'s line intact — and cannot disagree with the site it came
+    from. Refusing rather than picking a winner: an extractor rename is `NFR-008` churn, and
+    absorbing it silently is what a fixture exists to prevent.
+    """
+    from tests.fixtures.capture import SOURCES, provenance
+
+    source = SOURCES[0]
+    with pytest.raises(SystemExit, match="declared extractor"):
+        provenance(source, "2026.07.04", {"extractor": "somewhere.else"})
+
+    # Silence is not a contradiction: an extractor that reports nothing leaves the declaration
+    # standing rather than failing a capture for a field yt-dlp did not fill.
+    assert provenance(source, "2026.07.04", {})["extractor"] == source.extractor
+
+
+def test_the_recorded_sources_do_not_all_come_from_one_extractor() -> None:
+    """The property that makes the test above able to fail (`T107-R8`).
+
+    A hardcoded extractor is invisible while every source shares it: the assertion passes, and it
+    passes for the wrong reason. This is why the hardcode survived three fixtures and was caught by
+    the fourth — so the fourth is what is asserted, rather than left as a happy accident of the
+    current set.
+
+    Stated as *more than one*, not as *Wikimedia specifically*: the point is that some fixture
+    contradicts any single literal, and naming one source here would make replacing it a test
+    failure rather than a capture decision.
+    """
+    from tests.fixtures.capture import SOURCES
+
+    assert len({source.extractor for source in SOURCES}) > 1, (
+        "every recorded source shares one extractor, so a hardcoded value cannot be detected"
+    )
+
+
+def test_a_source_cannot_inherit_another_source_s_extractor_by_omission() -> None:
+    """`T107-R8`'s gate: declaring the extractor is not optional (`ai/TESTING.md` §13).
+
+    The correction would be worth little if the next source could simply leave the field out and
+    pick up a default. `Source` takes it keyword-only and required, so omission is a `TypeError` at
+    the point the source is written rather than a wrong value in a committed file months later.
+
+    Asserted rather than described, because "it is required" is exactly the kind of claim a later
+    refactor makes false while every other test stays green.
+    """
+    from tests.fixtures.capture import Source
+
+    with pytest.raises(TypeError):
+        Source(  # type: ignore[call-arg]
+            name="no_extractor",
+            url="https://example.com/",
+            why="a source that forgot to say where it comes from",
+            licence="none",
+        )
+
+
 # --- 2. what a fixture may contain (REQ-026, NFR-007) ---------------------------------------
 #
 # `T018-R1` was Critical four times, and every correction was a better *recogniser*: cookies,

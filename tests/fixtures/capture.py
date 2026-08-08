@@ -248,7 +248,28 @@ def _policy_record() -> str:
 
 
 class Source:
-    """One fixture: where it came from, how it was extracted, and why it was chosen."""
+    """One fixture: where it came from, how it was extracted, and why it was chosen.
+
+    **`extractor` is declared here and checked against the capture** (`T107-R8`). It used to be
+    the literal `"archive.org"` inside `capture_info`, written into every fixture regardless of
+    where it came from — so `wikimedia_caminandes.json` recorded an extractor that had never
+    touched it. The value looked right for three fixtures and was simply false for the fourth,
+    which is the failure mode of a constant standing in for a fact.
+
+    Declaring it rather than reading yt-dlp's answer keeps `SEC-002`'s line intact: this block is
+    *written*, not captured, and the one exception it already makes — `source_url` — is sanitized
+    like captured data because it is supplied from outside. A second captured value would widen
+    that exception for a field the projection never reads.
+
+    Declaring alone would only make the lie less likely, so `capture_info` **compares the
+    declaration with `info["extractor"]` and refuses to write on a mismatch**. The committed value
+    is therefore hand-written *and* cannot disagree with the site it came from. The check runs
+    during a capture, which touches the network and is run by hand; the committed fixtures are
+    checked against these declarations by `tests/unit/test_fixtures.py`, which touches nothing.
+
+    Keyword-only and required, which is the gate `T107-R8` asked for: a new source cannot inherit
+    another's provenance by omission, because there is nothing to inherit it from.
+    """
 
     def __init__(
         self,
@@ -256,12 +277,15 @@ class Source:
         url: str,
         why: str,
         licence: str,
+        *,
+        extractor: str,
         options: dict[str, Any] | None = None,
     ) -> None:
         self.name = name
         self.url = url
         self.why = why
         self.licence = licence
+        self.extractor = extractor
         self.options = options or {}
 
 
@@ -276,6 +300,7 @@ SOURCES: Final[tuple[Source, ...]] = (
             "this one was forced by the policy, which is recorded rather than quietly done."
         ),
         licence="Big Buck Bunny (c) Blender Foundation, CC BY 3.0. Media URLs are unsigned.",
+        extractor="archive.org",
     ),
     Source(
         name="archive_org_test_mp3",
@@ -285,6 +310,7 @@ SOURCES: Final[tuple[Source, ...]] = (
             "REQ-006's two audio presets are for and the one the video fixture cannot exercise."
         ),
         licence="Public domain test file hosted by the Internet Archive.",
+        extractor="archive.org",
     ),
     Source(
         name="wikimedia_caminandes",
@@ -302,6 +328,35 @@ SOURCES: Final[tuple[Source, ...]] = (
             "Caminandes: Llama Drama (c) Blender Foundation, CC BY 3.0. Hosted by Wikimedia "
             "Commons; media URLs are unsigned."
         ),
+        # yt-dlp's `Wikimedia` extractor, whose `IE_NAME` this is. **Not `archive.org`**, which is
+        # what this fixture recorded until `T107-R8`.
+        extractor="wikimedia.org",
+    ),
+    Source(
+        name="peertube_big_buck_bunny_60fps",
+        url="https://video.blender.org/w/dmhvQNzwBnrWy1iYzVv5g7",
+        why=(
+            "The only recorded source found that reports `fps` (T-185). REQ-003 has named the "
+            "column since it was written and no capture could populate it: archive.org reports no "
+            "fps for any derivative, and neither does Wikimedia Commons - seven acceptable sources "
+            "were probed for T107-R1 and none carried it, which is why OPS-013 amended T-107's "
+            "criterion to `where the source reports it`. yt-dlp's PeerTube extractor reads `fps` "
+            "from each file the instance publishes, so this closes the column that amendment was "
+            "written around. "
+            "This item in particular because **it carries two different framerates**: its 240p, "
+            "360p and 480p renditions are 30 fps and its 720p and 1080p are 60. A source reporting "
+            "one framerate for every format would exercise the column without exercising the "
+            "*sort*, which is the half of REQ-003 T-075 is about. "
+            "It reports exact `filesize` and no `tbr` or codecs, and gives a height with no "
+            "width - so it records the height-only `1080p` rendering, and the exact-size contrast "
+            "to "
+            "wikimedia_caminandes's estimates, from a real capture rather than a derived one."
+        ),
+        licence=(
+            "Big Buck Bunny (c) Blender Foundation, CC BY 3.0. Hosted on the Blender Foundation's "
+            "own PeerTube instance; media URLs are plain object-storage paths and are unsigned."
+        ),
+        extractor="PeerTube",
     ),
     Source(
         name="archive_org_art_of_war_playlist",
@@ -312,6 +367,7 @@ SOURCES: Final[tuple[Source, ...]] = (
             "test that against a single-item fixture (T012-R6)."
         ),
         licence="LibriVox recording of a public-domain text; the recordings are public domain.",
+        extractor="archive.org",
         options={"noplaylist": False},
     ),
 )
@@ -340,6 +396,52 @@ ERROR_SOURCES: Final[tuple[tuple[str, str, str, str], ...]] = (
 )
 
 
+def provenance(source: Source, version: str, info: Mapping[str, Any]) -> dict[str, Any]:
+    """The `_fixture` block for `source`, and the check that it is true (`T107-R8`).
+
+    **Separated from `capture_info` so it can be tested without the network.** It was inside, and a
+    mutation re-hardcoding the extractor to `"archive.org"` **survived the whole suite**: the
+    committed-fixture test compares the files on disk against these declarations, and a broken
+    *writer* does not change a file until somebody re-captures. So the assertion that caught the
+    original bug could not catch it coming back — which is `ai/TESTING.md` §13's whole subject, and
+    it was found by mutating rather than by reading.
+
+    `info` is the extraction result. Only `extractor` is read from it, and only to **check** the
+    declaration: `SEC-002` keeps this block hand-written, and the one field taken from outside —
+    `source_url` — is sanitized like captured data for exactly that reason.
+    """
+    reported = info.get("extractor")
+    if reported is not None and str(reported) != source.extractor:
+        # **Refuse rather than record either one.** Writing yt-dlp's answer would put a captured
+        # value in the block `SEC-002` keeps hand-written; writing the declaration would commit a
+        # claim this run has just disproved. Stopping leaves the committed fixture as it was and
+        # makes the disagreement the operator's to resolve — an extractor rename is exactly the
+        # `NFR-008` churn a fixture exists to catch, and it should not be absorbed silently.
+        raise SystemExit(
+            f"{source.name}: declared extractor {source.extractor!r}, but yt-dlp reported "
+            f"{str(reported)!r}. Update the Source declaration if the rename is real; nothing "
+            "was written."
+        )
+    return {
+        "captured": datetime.now(UTC).date().isoformat(),
+        "yt_dlp_version": version,
+        "source_url": source.url,
+        "extractor": source.extractor,
+        "capture_method": "recorded",
+        # Recorded as text: `YoutubeDL` fills the dict it is handed with its own defaults,
+        # including sets, and the point of the record is that a human can reproduce the
+        # capture — not that a machine can replay it.
+        "capture_options": sorted(f"{key}={value!r}" for key, value in source.options.items()),
+        "content_licence": source.licence,
+        "why_this_source": source.why,
+        "policy": _policy_record(),
+        "note": (
+            "A contract, not a sample (ai/TESTING.md §5). Changing a projected key must fail "
+            "the projection test. Refreshing this file is a deliberate act with its own task."
+        ),
+    }
+
+
 def capture_info(source: Source, version: str) -> dict[str, Any]:
     from yt_dlp import YoutubeDL
 
@@ -353,26 +455,10 @@ def capture_info(source: Source, version: str) -> dict[str, Any]:
     with YoutubeDL(options) as ydl:
         info = ydl.extract_info(source.url, download=False)
 
+    captured = dict(info or {})
     return {
-        "_fixture": {
-            "captured": datetime.now(UTC).date().isoformat(),
-            "yt_dlp_version": version,
-            "source_url": source.url,
-            "extractor": "archive.org",
-            "capture_method": "recorded",
-            # Recorded as text: `YoutubeDL` fills the dict it is handed with its own defaults,
-            # including sets, and the point of the record is that a human can reproduce the
-            # capture — not that a machine can replay it.
-            "capture_options": sorted(f"{key}={value!r}" for key, value in source.options.items()),
-            "content_licence": source.licence,
-            "why_this_source": source.why,
-            "policy": _policy_record(),
-            "note": (
-                "A contract, not a sample (ai/TESTING.md §5). Changing a projected key must fail "
-                "the projection test. Refreshing this file is a deliberate act with its own task."
-            ),
-        },
-        "info_dict": keep_consumed(dict(info or {})),
+        "_fixture": provenance(source, version, captured),
+        "info_dict": keep_consumed(captured),
     }
 
 

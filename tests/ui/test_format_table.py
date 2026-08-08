@@ -5,11 +5,16 @@ question `REQ-003` poses is whether what a probe actually reports reaches the ta
 that constructs its own model answers a different one. `T-018`'s recorded captures are the contract
 for the fields they carry.
 
-**Codecs, bitrate and estimated sizes come from a recorded capture**, `wikimedia_caminandes`,
-which reports all three per format. **fps does not, from any source**: archive.org reports none and
-neither does Wikimedia, so it is exercised by `derived_format_columns` and the criterion was
-amended by the maintainer on 2026-08-07 to *populated from a recorded fixture where the source
-reports it*. `T-185` records the search so a future source can close it.
+**Every column `REQ-003` names is now populated from a recorded capture**, across three sources
+that report different things — which is why there are three. archive.org gives ids, extensions,
+`WxH` resolutions, exact sizes and one audio codec; `wikimedia_caminandes` gives codecs, bitrate and
+`filesize_approx` estimates; `peertube_big_buck_bunny_60fps` gives **fps**, at two different values,
+with height-only resolutions and exact sizes.
+
+**fps was the column that could not be recorded**, and `OPS-013` was ratified to permit it resting
+on `derived_format_columns` until a source turned up. `T-185` found one. The derived fixture keeps
+its place for the shapes no site happens to have — a fractional framerate, and a row missing four
+fields at once.
 
 **Phase 3's exit criterion 1 — the table matching `yt-dlp -F` — is evidenced** by
 `test_the_table_matches_what_yt_dlp_f_reports` against
@@ -24,10 +29,12 @@ from typing import Any, Final
 import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails.core.models import FormatInfo
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
+from tracks_and_trails.ui.format_selection import SelectionMode
 from tracks_and_trails.ui.format_table import (
     AUDIO_CODEC_COLUMN,
     BITRATE_COLUMN,
@@ -133,15 +140,109 @@ def test_a_recorded_capture_populates_the_codec_column_by_value() -> None:
 #: **Transcribed, not fetched.** The suite must not touch the network (`ai/TESTING.md` §5), so the
 #: comparison is made against what the recorded run actually printed. Re-running it is
 #: `capture.py`'s job and a deliberate act; this keeps the answer under test in the meantime.
-YT_DLP_F_OUTPUT: Final = {
+#: **A dict per row rather than a tuple**, since `T-185` added a source printing an `FPS` column
+#: and none of `MORE INFO`. Positional rows made every source pay for every other source's columns,
+#: and a `""` in the seventh slot reads as *"yt-dlp printed an empty note"* rather than *"yt-dlp
+#: printed no such column"*. An absent key here means the column was not in the output at all.
+YT_DLP_F_OUTPUT: Final[dict[str, list[dict[str, str]]]] = {
     "archive_org_big_buck_bunny": [
-        ("0", "ogv", "533x300", "44.76MiB", "unknown", "unknown", "derivative"),
-        ("1", "mp4", "640x360", "59.01MiB", "unknown", "unknown", "derivative"),
-        ("2", "avi", "1280x720", "316.85MiB", "unknown", "unknown", "derivative"),
+        {
+            "id": "0",
+            "ext": "ogv",
+            "resolution": "533x300",
+            "size": "44.76MiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+            "note": "derivative",
+        },
+        {
+            "id": "1",
+            "ext": "mp4",
+            "resolution": "640x360",
+            "size": "59.01MiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+            "note": "derivative",
+        },
+        {
+            "id": "2",
+            "ext": "avi",
+            "resolution": "1280x720",
+            "size": "316.85MiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+            "note": "derivative",
+        },
     ],
     "archive_org_test_mp3": [
-        ("0", "ogg", "unknown", "110.55KiB", "unknown", "unknown", "derivative"),
-        ("1", "mp3", "unknown", "194.00KiB", "unknown", "mp3", "original"),
+        {
+            "id": "0",
+            "ext": "ogg",
+            "resolution": "unknown",
+            "size": "110.55KiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+            "note": "derivative",
+        },
+        {
+            "id": "1",
+            "ext": "mp3",
+            "resolution": "unknown",
+            "size": "194.00KiB",
+            "vcodec": "unknown",
+            "acodec": "mp3",
+            "note": "original",
+        },
+    ],
+    # `T-185`, 2026-08-07. The first recorded source in this project that prints an **FPS** column,
+    # and it prints two different values — which is why the criterion `OPS-013` amended can now be
+    # met for fps by a recording rather than by a derived fixture.
+    "peertube_big_buck_bunny_60fps": [
+        {
+            "id": "240p",
+            "ext": "mp4",
+            "resolution": "240p",
+            "fps": "30",
+            "size": "50.54MiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+        },
+        {
+            "id": "360p",
+            "ext": "mp4",
+            "resolution": "360p",
+            "fps": "30",
+            "size": "67.01MiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+        },
+        {
+            "id": "480p",
+            "ext": "mp4",
+            "resolution": "480p",
+            "fps": "30",
+            "size": "89.70MiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+        },
+        {
+            "id": "720p",
+            "ext": "mp4",
+            "resolution": "720p",
+            "fps": "60",
+            "size": "145.93MiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+        },
+        {
+            "id": "1080p",
+            "ext": "mp4",
+            "resolution": "1080p",
+            "fps": "60",
+            "size": "263.47MiB",
+            "vcodec": "unknown",
+            "acodec": "unknown",
+        },
     ],
 }
 
@@ -164,23 +265,41 @@ def test_the_table_matches_what_yt_dlp_f_reports(fixture_name: str) -> None:
     reported = YT_DLP_F_OUTPUT[fixture_name]
     assert model.rowCount() == len(reported), "the table shows a different number of formats"
 
-    for row, (id_, ext, resolution, size, vcodec, acodec, note) in enumerate(reported):
-        assert display(model, row, FORMAT_COLUMN) == id_
-        assert display(model, row, EXT_COLUMN) == ext
-        if resolution == "unknown":
-            assert display(model, row, RESOLUTION_COLUMN) == UNKNOWN_TEXT, (
-                f"yt-dlp reports no resolution for {id_} and the table claims one"
-            )
-        else:
-            assert display(model, row, RESOLUTION_COLUMN) == resolution
-        for column, value in ((VIDEO_CODEC_COLUMN, vcodec), (AUDIO_CODEC_COLUMN, acodec)):
-            if value == "unknown":
-                assert display(model, row, column) == UNKNOWN_TEXT
+    #: yt-dlp's column name -> this table's column. `note` and `fps` are absent from some outputs,
+    #: which is a different fact from being empty in them — see `YT_DLP_F_OUTPUT`.
+    columns = {
+        "id": FORMAT_COLUMN,
+        "ext": EXT_COLUMN,
+        "resolution": RESOLUTION_COLUMN,
+        "fps": FPS_COLUMN,
+        "vcodec": VIDEO_CODEC_COLUMN,
+        "acodec": AUDIO_CODEC_COLUMN,
+        "note": NOTES_COLUMN,
+    }
+    for row, printed in enumerate(reported):
+        id_ = printed["id"]
+        for name, column in columns.items():
+            if name not in printed:
+                # yt-dlp printed no such column for this source. The table has one for every
+                # `REQ-003` field always, and it must read the placeholder rather than invent a
+                # value — which is the same agreement as any other, one step weaker.
+                assert display(model, row, column) == UNKNOWN_TEXT, (
+                    f"yt-dlp printed no {name} column and the table claims "
+                    f"{display(model, row, column)!r} for {id_}"
+                )
+                continue
+            expected = printed[name]
+            if expected == "unknown":
+                assert display(model, row, column) == UNKNOWN_TEXT, (
+                    f"yt-dlp reports no {name} for {id_} and the table claims one"
+                )
             else:
-                assert display(model, row, column) == value
-        assert display(model, row, NOTES_COLUMN) == note
+                assert display(model, row, column) == expected, (
+                    f"{id_}: {name} is {display(model, row, column)!r}, yt-dlp printed {expected!r}"
+                )
         # yt-dlp prints MiB, this window prints powers-of-1024 MB; what must agree is the number
         # of bytes underneath, which is what the sort key carries.
+        size = printed["size"]
         mebibytes = float(size.removesuffix("MiB").removesuffix("KiB"))
         scale = 1024 * 1024 if size.endswith("MiB") else 1024
         key = model.data(model.index(row, SIZE_COLUMN), SORT_ROLE)
@@ -197,9 +316,9 @@ def test_codecs_bitrate_and_estimated_sizes_come_from_a_recorded_capture() -> No
     `acodec` and `tbr` per format, and its sizes are `filesize_approx` — so it also exercises
     `T107-R7`'s estimate rendering against a real report rather than a constructed one.
 
-    **fps is still not exercised by any recorded source**, and that is a property of the sources
-    rather than of the fixtures: no boring, freely licensed source found reports it. `T-185`
-    records the search rather than leaving the gap implied.
+    **This source reports no fps**, and that is asserted rather than ignored: the assertion is
+    what would notice Wikimedia starting to report it, which would make `T-185`'s conclusion stale.
+    fps is covered by `peertube_big_buck_bunny_60fps` — see the test below.
     """
     model = FormatTableModel(formats_from("wikimedia_caminandes"))
     assert model.rowCount() == 5
@@ -225,18 +344,52 @@ def test_codecs_bitrate_and_estimated_sizes_come_from_a_recorded_capture() -> No
     )
 
 
+def test_fps_comes_from_a_recorded_capture_by_value() -> None:
+    """`T-185`: the last column that rested on a derived fixture, from a real report.
+
+    **`OPS-013` was ratified to permit exactly this gap and this is it closing.** `T-107` shipped
+    with fps exercised by `derived_format_columns` because none of the seven sources probed for
+    `T107-R1` reported it — four Wikimedia Commons files and three archive.org items. yt-dlp's
+    PeerTube extractor reads `fps` from each published file, so `peertube_big_buck_bunny_60fps`
+    supplies it by value.
+
+    **Two framerates in one capture, which is the part that matters.** A source reporting one
+    framerate everywhere would populate the column without ever ordering it, and `REQ-003` asks for
+    a *sortable* table. Here 30 and 60 both occur, so the sort below is a real comparison of values
+    a site actually reported rather than of numbers this project chose.
+    """
+    model = FormatTableModel(formats_from("peertube_big_buck_bunny_60fps"))
+    assert model.rowCount() == 5
+    assert column_of(model, FPS_COLUMN) == ["30", "30", "30", "60", "60"]
+
+    # Height-only, because PeerTube reports no width — `yt-dlp -F` prints `240p` for these too, and
+    # `describe_resolution`'s height-only branch is now exercised by a recording rather than only
+    # by the derived fixture.
+    assert column_of(model, RESOLUTION_COLUMN) == ["240p", "360p", "480p", "720p", "1080p"]
+    # Exact sizes, against `wikimedia_caminandes`'s estimates: both provenances now come from real
+    # captures, so `T107-R7`'s distinction is asserted in both directions from recordings.
+    for row in range(model.rowCount()):
+        assert not display(model, row, SIZE_COLUMN).startswith(ESTIMATE_PREFIX)
+
+    model.sort(FPS_COLUMN, Qt.SortOrder.DescendingOrder)
+    assert column_of(model, FPS_COLUMN) == ["60", "60", "30", "30", "30"]
+    model.sort(FPS_COLUMN, Qt.SortOrder.AscendingOrder)
+    assert column_of(model, FPS_COLUMN) == ["30", "30", "30", "60", "60"]
+
+
 def test_fps_and_the_column_shapes_come_through_the_projection(
     derived: tuple[FormatInfo, ...],
 ) -> None:
-    """**fps only**, plus the shapes no recorded source happens to have (`T107-R1`).
+    """The shapes no recorded source happens to have (`T107-R1`, `T-185`).
 
-    Codecs, bitrate and estimated sizes moved to
-    `test_codecs_bitrate_and_estimated_sizes_come_from_a_recorded_capture`, which uses a real
-    capture. What is left here is what no recorded source supplies: **fps**, and a row carrying
-    neither fps nor bitrate nor size for the placeholder path.
+    Codecs, bitrate and estimated sizes are asserted from `wikimedia_caminandes`, and fps from
+    `peertube_big_buck_bunny_60fps`. **What is left here is genuinely unrecorded: a *fractional*
+    framerate.** PeerTube reports whole numbers — 30 and 60 — and 29.97 is the value that would
+    catch a projection rounding fps to an int, which no probed source supplies.
 
-    These values are synthetic and this test does not pretend otherwise. It proves the projection
-    reads `fps` and the table renders it; whether any site reports it is `T-185`'s question.
+    These values are synthetic and this test does not pretend otherwise. It keeps the placeholder
+    path too: one row carrying neither fps nor bitrate nor size, which is what an HLS manifest entry
+    looks like.
     """
     model = FormatTableModel(derived)
     assert display(model, 0, FPS_COLUMN) == "24"
@@ -350,12 +503,39 @@ def test_the_sort_role_answers_the_projection_not_the_text(
 
 
 def test_sorting_reverses_on_the_same_column(derived: tuple[FormatInfo, ...]) -> None:
-    """`docs/UX_SPEC.md` §4: `Space` on a header sorts, again reverses."""
+    """`docs/UX_SPEC.md` §4: `Space` on a header sorts, again reverses.
+
+    **Asserted on the sort keys, not on the format ids.** This compared the id column against its
+    own reverse, which silently assumed every row has a distinct height — true until `T-108` added
+    a 1080p video-only stream beside the 1080p progressive one. Two rows with equal keys keep their
+    relative order in *both* directions, because the sort is stable, so the id sequence is not a
+    reversal and never promised to be. The keys are what the column orders and what the user reads
+    as sorted.
+    """
     model = FormatTableModel(derived)
+
+    def keys() -> list[tuple[float, str]]:
+        read = [
+            model.data(model.index(row, RESOLUTION_COLUMN), SORT_ROLE)
+            for row in range(model.rowCount())
+        ]
+        # `data` is typed `object`, and the keys are what this test compares. Checked rather than
+        # cast: a column that stopped answering the sort role would otherwise compare as equal-ish
+        # and the test would pass over nothing.
+        keyed: list[tuple[float, str]] = []
+        for value in read:
+            assert isinstance(value, tuple), f"the sort role answered {value!r}"
+            keyed.append((float(value[0]), str(value[1])))
+        return keyed
+
     model.sort(RESOLUTION_COLUMN, Qt.SortOrder.AscendingOrder)
-    ascending = column_of(model, FORMAT_COLUMN)
+    ascending = keys()
+    assert ascending == sorted(ascending), "ascending did not ascend"
     model.sort(RESOLUTION_COLUMN, Qt.SortOrder.DescendingOrder)
-    assert column_of(model, FORMAT_COLUMN) == list(reversed(ascending))
+    assert keys() == sorted(ascending, reverse=True)
+    # The tie is real and is what the id comparison used to hide: both 1080-high rows are present
+    # in both orders, and neither direction drops or duplicates one.
+    assert sorted(column_of(model, FORMAT_COLUMN)) == sorted(entry.format_id for entry in derived)
 
 
 # --- the widget, its keyboard and its labels -----------------------------------------------
@@ -512,6 +692,13 @@ def test_the_wrapper_gives_the_table_its_whole_size(
     The reviewer resized the wrapper to 320x180 and the `QTableView` stayed 256x192, and the
     wrapper reported a `-1 x -1` size hint — so any surface embedding this would clip or collapse
     it. Asserted on a **shown** widget, because layout activation is what the defect escaped.
+
+    **The view is no longer the wrapper's only child**, so *"the table is exactly the wrapper's
+    height"* stopped being the right statement: `T-108` put the merge control above it and the
+    chosen-formats line below. What the criterion actually asks is that the table **fills the space
+    it is given**, so that is what is asserted — full width, and every pixel of the height its
+    siblings do not take. Growing the wrapper is checked too: the table is the stretching child, and
+    a fixed-height view inside a taller wrapper is the same defect with a smaller gap.
     """
     table = FormatTable(derived)
     table.resize(320, 180)
@@ -522,7 +709,20 @@ def test_the_wrapper_gives_the_table_its_whole_size(
         assert table.table.width() == table.width(), (
             f"the view is {table.table.width()}px inside a {table.width()}px wrapper"
         )
-        assert table.table.height() == table.height()
+        siblings = table.height() - table.table.height()
+        assert 0 < siblings < table.height(), (
+            f"the view takes {table.table.height()}px of {table.height()}px, leaving {siblings}px "
+            "for the mode control and the chosen line"
+        )
+
+        was = table.table.height()
+        table.resize(320, 360)
+        qapp.processEvents()
+        assert table.table.height() == was + 180, (
+            "the wrapper grew by 180px and the table did not follow, so it is not the stretching "
+            "child"
+        )
+        assert table.table.width() == table.width()
     finally:
         table.close()
 
@@ -537,6 +737,19 @@ def _press(qapp: QApplication, key: Qt.Key) -> None:
     target = qapp.focusWidget()
     assert target is not None, "nothing has focus, so there is no route to test"
     qapp.sendEvent(target, QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier))
+    qapp.processEvents()
+
+
+def _click(qapp: QApplication, key: Qt.Key) -> None:
+    """`_press`, plus the release — for a control that acts on the way up.
+
+    `QAbstractButton` marks itself down on `Space` press and **toggles on release**, so a press
+    alone leaves a checkbox looking pressed and unchanged. Sent to the focus widget for the same
+    reason `_press` is: a route that does not exist must not be simulated into existing.
+    """
+    target = qapp.focusWidget()
+    assert target is not None, "nothing has focus, so there is no route to test"
+    QTest.keyClick(target, key)
     qapp.processEvents()
 
 
@@ -780,3 +993,176 @@ def test_the_repaint_gate_would_reject_an_unbounded_implementation() -> None:
         "the recorded unbounded measurements no longer violate the bound, so the gate above "
         "cannot distinguish a bounded implementation from an unbounded one"
     )
+
+
+# --- T-108: the mode, its keyboard, and what it announces (REQ-008, UX_SPEC §5) ---------------
+
+
+def test_the_mode_is_reachable_before_the_thing_it_changes(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`docs/UX_SPEC.md` §5: the mode joins the `Tab` order **ahead of the header row**.
+
+    The spec gives the reason and it is the assertion: *"a mode that changes what `Enter` does must
+    be reachable before the thing it changes"*. §4's body-then-header order is unchanged, so the
+    whole route is mode → body → header → out.
+    """
+    table = FormatTable(derived)
+    table.show()
+    qapp.processEvents()
+    try:
+        mode = table.mode_control
+        assert mode is not None, "the derived fixture has a pair, so the mode should be offered"
+        mode.setFocus()
+        qapp.processEvents()
+        assert qapp.focusWidget() is mode
+
+        _press(qapp, Qt.Key.Key_Tab)
+        assert qapp.focusWidget() is table.table, (
+            f"Tab from the mode reached {qapp.focusWidget()!r}, not the table body"
+        )
+        _press(qapp, Qt.Key.Key_Tab)
+        assert qapp.focusWidget() is table.header
+    finally:
+        table.close()
+
+
+def test_space_switches_mode(qapp: QApplication, derived: tuple[FormatInfo, ...]) -> None:
+    """`docs/UX_SPEC.md` §5: *"`Space` switches mode"*.
+
+    **Which is why the control is a checkbox and not a two-entry combo box.** `Space` on a combo
+    opens a popup; on a checkbox it toggles, which is what the spec describes. Driven through the
+    focused widget rather than by calling `setChecked`, because the claim is about the key.
+    """
+    table = FormatTable(derived)
+    table.show()
+    qapp.processEvents()
+    try:
+        mode = table.mode_control
+        assert mode is not None
+        mode.setFocus()
+        qapp.processEvents()
+        # **Each mode read goes into its own local.** Asserting `table.selection.mode is X` twice
+        # narrows the property to the first `X`, and the second comparison then types as
+        # impossible — the same narrowing that made an earlier `Esc` test read as unreachable.
+        opened = table.selection.mode
+        assert opened is SelectionMode.SINGLE
+
+        _click(qapp, Qt.Key.Key_Space)
+        switched = table.selection.mode
+        assert switched is SelectionMode.PAIR, "Space did not switch the mode"
+        _click(qapp, Qt.Key.Key_Space)
+        back = table.selection.mode
+        assert back is SelectionMode.SINGLE, "Space did not switch back"
+    finally:
+        table.close()
+
+
+def test_the_chosen_pair_is_announced_in_words_on_the_widget(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`NFR-005`: the two chosen rows are announced, not shown by highlight alone.
+
+    Both the visible label and the accessible description carry it, so a sighted user and a screen
+    reader read the same sentence rather than two that can drift.
+    """
+    table = FormatTable(derived)
+    try:
+        mode = table.mode_control
+        assert mode is not None
+        mode.setChecked(True)
+        for format_id in ("137", "140"):
+            row = next(
+                index
+                for index in range(table.model.rowCount())
+                if table.model.formats()[index].format_id == format_id
+            )
+            table.table.setCurrentIndex(table.model.index(row, FORMAT_COLUMN))
+            table.choose_current()
+
+        assert "video: 137, audio: 140" in table.chosen_text()
+        assert "video: 137, audio: 140" in table.accessibleDescription()
+    finally:
+        table.close()
+
+
+def test_a_format_that_cannot_be_paired_is_refused_out_loud(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """A press that does nothing must say why (`UX-005` §5; `T-075` is what silence costs).
+
+    The refusal is reported rather than shown here, because this widget has no status line — the
+    surface embedding it does, and giving the table one would put two message areas in one dialog.
+    """
+    table = FormatTable(derived)
+    refusals: list[str] = []
+    table.selection_refused.connect(refusals.append)
+    try:
+        mode = table.mode_control
+        assert mode is not None
+        mode.setChecked(True)
+        complete = next(
+            index
+            for index in range(table.model.rowCount())
+            if table.model.formats()[index].format_id == "0"
+        )
+        table.table.setCurrentIndex(table.model.index(complete, FORMAT_COLUMN))
+        table.choose_current()
+
+        assert refusals, "a format that cannot be paired was silently ignored"
+        assert "0" in refusals[0]
+        assert not table.selection.is_complete, "the refused format was placed anyway"
+    finally:
+        table.close()
+
+
+def test_enter_on_the_body_chooses_the_current_row(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """`docs/UX_SPEC.md` §4: *"`Enter` chooses the current format"*.
+
+    Driven through the focused body, not by calling `choose_current` — the same rule `T107-R3`
+    established twice for the header: a route proved by calling the method it ends at is not proved.
+    """
+    table = FormatTable(derived)
+    table.show()
+    qapp.processEvents()
+    chosen: list[object] = []
+    table.format_chosen.connect(chosen.append)
+    try:
+        table.table.setFocus()
+        qapp.processEvents()
+        assert qapp.focusWidget() is table.table
+
+        current = table.current_format()
+        assert current is not None
+        _press(qapp, Qt.Key.Key_Return)
+        assert chosen == [current], "Enter on the body chose nothing"
+        assert table.selection.single is current
+    finally:
+        table.close()
+
+
+def test_the_selection_is_written_before_a_listener_can_close_the_table(
+    qapp: QApplication, derived: tuple[FormatInfo, ...]
+) -> None:
+    """The signal order, pinned, because getting it wrong loses the user's choice silently.
+
+    The dialog closes its panel from `format_chosen` and writes the choice from
+    `selection_changed`. Emitted the other way round, closing tears the panel off its row first and
+    the write finds nothing to write to — the format is chosen, the row keeps its old one, and the
+    download runs as whatever it was before. That was live until the dialog tests caught it, so the
+    ordering is asserted here rather than left to those tests to notice again.
+    """
+    table = FormatTable(derived)
+    order: list[str] = []
+    table.selection_changed.connect(lambda _selection: order.append("written"))
+    table.format_chosen.connect(lambda _entry: order.append("acted on"))
+    try:
+        table.table.setCurrentIndex(table.model.index(0, FORMAT_COLUMN))
+        table.choose_current()
+        assert order == ["written", "acted on"], (
+            f"the choice was acted on before it was written down: {order}"
+        )
+    finally:
+        table.close()

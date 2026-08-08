@@ -58,12 +58,14 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import (
     DownloadRequest,
+    FormatInfo,
     Job,
     MediaInfo,
     MediaKind,
     PlaylistEntry,
     Preset,
 )
+from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.downloader.manager import (
     DEFAULT_PROBE_CONCURRENCY,
     DownloadManager,
@@ -82,11 +84,14 @@ from tracks_and_trails.ui.add_dialog import (
     AddUrlDialog,
     describe_kind,
     format_duration,
+    headline_text,
     row_text,
     selector_candidates,
     split_urls,
 )
 from tracks_and_trails.ui.row_delegate import (
+    CHOOSE_FORMATS_DATA,
+    CHOOSE_FORMATS_TEXT,
     EDIT_HINT,
     EDITOR_WIDTH,
     GAP,
@@ -2602,3 +2607,422 @@ def test_a_staged_row_offers_no_verbs_to_drop(
         "a staged row now offers verbs, so T-150's overflow criterion has become live and needs "
         "asserting at the opened width rather than explaining away"
     )
+
+
+# --- T-108: the format table, opened as the staging row (REQ-008, UX-007's P-1) ---------------
+
+
+def _probed_with_formats(dialog: AddUrlDialog, formats: tuple[FormatInfo, ...]) -> Row:
+    """Resolve row 0 with a probe result carrying `formats`, and hand the row back."""
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    dialog._on_media_probed(
+        row.job_id,
+        MediaInfo(url=row.url, title="A video with formats", formats=formats),
+    )
+    QApplication.processEvents()
+    return row
+
+
+def _staged(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    *,
+    fixture: str = "derived_format_columns",
+    **overrides: Any,
+) -> tuple[AddUrlDialog, Row]:
+    """A dialog with one resolved row whose formats come from a committed fixture.
+
+    Through the adapter, so the formats under test are the ones a probe would actually produce —
+    `has_video`/`has_audio` included, which is the whole basis of the routing.
+    """
+    dialog = dialogs(managers(), **overrides)
+    type_urls(dialog, "https://example.invalid/one")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
+    payload = json.loads((INFODICTS / f"{fixture}.json").read_text(encoding="utf-8"))
+    formats = adapter.project_media(payload["info_dict"]).formats
+    return dialog, _probed_with_formats(dialog, formats)
+
+
+def test_the_format_control_offers_to_open_the_table(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`docs/UX_SPEC.md` §4: an entry reading *"Choose specific formats…"* **below** the presets.
+
+    Below matters and is asserted: the presets keep the positions a user has learned, so adding
+    this entry does not move the one they were reaching for.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    entries = [control.itemText(index) for index in range(control.count())]
+    assert CHOOSE_FORMATS_TEXT in entries, entries
+    assert entries[-1] == CHOOSE_FORMATS_TEXT, f"the entry is not below the preset list: {entries}"
+    assert control.itemData(control.count() - 1) == CHOOSE_FORMATS_DATA, (
+        "the entry carries a preset name, so choosing it would be looked up as a preset"
+    )
+
+
+def test_a_row_with_no_formats_is_not_offered_the_table(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-005` §5: nothing is offered that would be refused — an empty table is a refusal."""
+    dialog = dialogs(managers())
+    type_urls(dialog, "https://example.invalid/one")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
+    _probed_with_formats(dialog, ())
+
+    control = open_row_editor(dialog, 0)
+    entries = [control.itemText(index) for index in range(control.count())]
+    assert CHOOSE_FORMATS_TEXT not in entries, entries
+
+
+def test_choosing_that_entry_opens_the_row_into_the_format_table(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """**The whole of `T107-R2`'s re-scoped criterion** (`UX-007`'s `P-1`, `T-108`).
+
+    *The table is reachable from the product*: the control offers the entry, the staging row
+    expands to show `T-107`'s widget, and the widget fills the space it is given — asserted on a
+    **shown** row, which is how `T107-R2`'s layout defect escaped in the first place.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    dialog.show()
+    qapp.processEvents()
+    try:
+        listing = staging_list(dialog)
+        before = listing.sizeHintForRow(0)
+
+        control = open_row_editor(dialog, 0)
+        choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+
+        panel = dialog.open_panel
+        assert panel is not None, "the row did not open"
+        assert panel.row is row
+        assert listing.indexWidget(listing.model().index(0, 0)) is panel, (
+            "the panel is not the row; it was placed somewhere else in the dialog"
+        )
+        assert listing.sizeHintForRow(0) > before, (
+            f"the row is still {listing.sizeHintForRow(0)}px, so it did not expand"
+        )
+
+        qapp.processEvents()
+        table = panel.table
+        assert table.width() > 0 and table.height() > 0, "the table was collapsed"
+        assert table.table.width() == table.width(), (
+            "the view does not fill the widget it was given (T107-R2)"
+        )
+        assert isinstance(row.media, MediaInfo)
+        assert table.model.rowCount() == len(row.media.formats)
+    finally:
+        dialog.close()
+
+
+def test_the_open_row_is_the_only_one_that_grows(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """Uniform item sizes is a promise an open row breaks, and it must be withdrawn (`T118-R10`).
+
+    Left on, Qt draws **every** row at the open one's height — so a paste of twenty would become a
+    column of empty full-height rows the moment one was opened. Asserted with a second row present,
+    because with one row the two behaviours are indistinguishable.
+    """
+    dialog = dialogs(managers())
+    type_urls(dialog, "https://example.invalid/one\nhttps://example.invalid/two")
+    dialog.resolve()
+    assert spin(lambda: len(dialog.rows) == 2 and all(row.job_id for row in dialog.rows))
+    payload = json.loads((INFODICTS / "derived_format_columns.json").read_text(encoding="utf-8"))
+    formats = adapter.project_media(payload["info_dict"]).formats
+    for row in dialog.rows:
+        assert row.job_id is not None
+        dialog._on_media_probed(row.job_id, MediaInfo(url=row.url, title=row.url, formats=formats))
+    QApplication.processEvents()
+
+    listing = staging_list(dialog)
+    shut = listing.sizeHintForRow(1)
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+
+    assert listing.sizeHintForRow(0) > shut, "the opened row did not grow"
+    assert listing.sizeHintForRow(1) == shut, (
+        f"the closed row grew to {listing.sizeHintForRow(1)}px with its neighbour"
+    )
+
+
+def test_choosing_one_format_writes_it_as_the_rows_own_request(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`REQ-008`: the chosen id becomes the row's selector, and the row says so (`REQ-009`).
+
+    **What the row says comes from `format_text.format_name`**, which for a selector no built-in
+    describes is the literal — so this asserts the sentence the shared naming rule produces rather
+    than one this dialog composed (`T140-R3`, `T126-R2` and `T-159` were all that defect).
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_panel
+    assert panel is not None
+
+    assert isinstance(row.media, MediaInfo)
+    chosen = next(entry for entry in row.media.formats if entry.format_id == "137")
+    panel.table.table.setCurrentIndex(
+        panel.table.model.index(
+            next(
+                index
+                for index in range(panel.table.model.rowCount())
+                if panel.table.model.formats()[index] is chosen
+            ),
+            0,
+        )
+    )
+    panel.table.choose_current()
+    QApplication.processEvents()
+
+    assert isinstance(row.preset, Preset)
+    assert row.preset.format_selector == "137"
+    assert dialog.open_panel is None, "one format was chosen and the row stayed open"
+    assert "137" in item_texts(dialog)[0], item_texts(dialog)[0]
+
+
+def test_a_chosen_pair_becomes_one_merging_request(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """`REQ-008`'s subject: *a separate video and audio stream to be merged*, as one job.
+
+    Asserted all the way to the submitted `DownloadRequest`, not to the row: the row is where the
+    choice is shown and the request is what runs, and `T118-R8` is what happens when only one of
+    the two is checked.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_panel
+    assert panel is not None
+    mode = panel.table.mode_control
+    assert mode is not None, "the merge mode was not offered for a source that has a pair"
+    mode.setChecked(True)
+
+    for format_id in ("137", "140"):
+        index = next(
+            position
+            for position in range(panel.table.model.rowCount())
+            if panel.table.model.formats()[position].format_id == format_id
+        )
+        panel.table.table.setCurrentIndex(panel.table.model.index(index, 0))
+        panel.table.choose_current()
+    QApplication.processEvents()
+
+    assert dialog.open_panel is None, "the pair completed and the row stayed open"
+    assert isinstance(row.preset, Preset)
+    assert row.preset.format_selector == "137+140"
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    submitted = sink.submissions[0]
+    assert len(submitted) == 1, "a merge became more than one job"
+    assert submitted[0].request.format_selector == "137+140"
+
+
+def test_escape_closes_the_table_and_keeps_the_format_that_was_there_before(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`docs/UX_SPEC.md` §4: *"`Esc` closes, choosing nothing"*.
+
+    **"Nothing" has to mean the row is as it was**, not merely that the widget is gone: leaving the
+    selection applied would make `Esc` a confirm with extra steps.
+
+    **Reached through the one route that leaves a written choice on an open panel.** In *one format*
+    mode a choice completes the selection and the panel closes itself, so there is no open panel
+    left to press `Esc` on — the first version of this test pressed it after the row had already
+    closed and passed for that reason. Choosing the video half in *video + audio* and then leaving
+    the mode writes `137` to the row while the panel is still open, which is exactly the state
+    `Esc` has to undo.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    was = dialog.presets[2]
+    row.preset = was
+
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_panel
+    assert panel is not None
+    mode = panel.table.mode_control
+    assert mode is not None
+    mode.setChecked(True)
+    index = next(
+        position
+        for position in range(panel.table.model.rowCount())
+        if panel.table.model.formats()[position].format_id == "137"
+    )
+    panel.table.table.setCurrentIndex(panel.table.model.index(index, 0))
+    panel.table.choose_current()
+    mode.setChecked(False)
+    QApplication.processEvents()
+    # **Each read goes into its own local before being compared.** Two identity assertions about
+    # the same attribute narrow it to whatever the first one proved, and everything after the
+    # second then types as unreachable — the idiom this project already hit once, in the very test
+    # that documents it.
+    still_open = dialog.open_panel
+    assert still_open is panel, "the panel closed before Esc could be pressed"
+    chosen_instead = row.preset
+    assert chosen_instead is not was, "nothing was chosen, so the rest of this proves nothing"
+
+    QTest.keyClick(panel, Qt.Key.Key_Escape)
+    QApplication.processEvents()
+    closed = dialog.open_panel
+    assert closed is None, "Esc left the table open"
+    restored = row.preset
+    assert restored is was, f"Esc kept the choice: the row now runs {restored}"
+
+
+def test_without_ffmpeg_the_merge_mode_is_not_drawn_and_the_reason_is(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-007`'s `P-13`: not drawn, **and the reason stated where the mode would have been**.
+
+    Both halves are asserted. Hiding the control alone would leave a user looking for a feature the
+    documentation describes with nothing on screen to explain its absence, which is the half of the
+    ruling that is easy to drop.
+    """
+    dialog, _row = _staged(dialogs, managers, spin, ffmpeg_available=False)
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_panel
+    assert panel is not None
+
+    assert panel.table.mode_control is None, "the merge mode was drawn without ffmpeg"
+    stated = panel.findChild(QLabel, "mergeModeUnavailable")
+    assert stated is not None, "the mode is gone and nothing says why"
+    assert "ffmpeg" in stated.text()
+
+
+def test_a_source_with_no_pair_says_so_rather_than_blaming_ffmpeg(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """Two different impossibilities need two different sentences (`UX-005` §5, derived).
+
+    Every recorded source publishes complete files only, so *video + audio* on one can never be
+    completed. Telling that user to install ffmpeg would send them to fix something that is not the
+    problem.
+    """
+    dialog, _row = _staged(dialogs, managers, spin, fixture="wikimedia_caminandes")
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_panel
+    assert panel is not None
+
+    assert panel.table.mode_control is None
+    stated = panel.findChild(QLabel, "mergeModeUnavailable")
+    assert stated is not None
+    assert "ffmpeg" not in stated.text(), (
+        f"a source with no pair was blamed on ffmpeg: {stated.text()!r}"
+    )
+    assert "no separate video and audio" in stated.text()
+
+
+def test_a_stated_merge_is_refused_before_the_download_when_ffmpeg_goes_missing(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """`REQ-024`: named, and **before** anything is queued — not at merge time.
+
+    `P-13` means this normally cannot be reached, so the state is constructed the way it would
+    actually arise: the pair is chosen with ffmpeg present and ffmpeg is then gone by the time Add
+    is pressed. The refusal names the row, because a batch needs to say which one.
+    """
+    dialog, row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_panel
+    assert panel is not None
+    mode = panel.table.mode_control
+    assert mode is not None
+    mode.setChecked(True)
+    for format_id in ("137", "140"):
+        index = next(
+            position
+            for position in range(panel.table.model.rowCount())
+            if panel.table.model.formats()[position].format_id == format_id
+        )
+        panel.table.table.setCurrentIndex(panel.table.model.index(index, 0))
+        panel.table.choose_current()
+    QApplication.processEvents()
+
+    dialog._ffmpeg_available = False
+    dialog.add_to_queue()
+    QApplication.processEvents()
+
+    assert sink.submissions == [], "a merge without ffmpeg reached the queue"
+    message = text_of(dialog, "statusMessage")
+    assert "ffmpeg" in message, message
+    assert headline_text(row) in message, f"the refusal does not say which row: {message!r}"
+
+
+def test_a_single_choice_still_queues_without_ffmpeg(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+    sink: FakeSink,
+) -> None:
+    """**`T-061`, in the direction it actually failed** (`docs/UX_SPEC.md` §5).
+
+    The gate that broke refused a download it could have performed: `bestvideo+bestaudio/best`
+    against a source offering one progressive format resolves through `/best` to no merge, and a
+    selector-reading check refused it anyway. The format chosen here is `137` — one half of the
+    `137+140` pair — so a refusal that had drifted into scanning ids or selectors has something to
+    catch on, and the criterion above passes while this one fails.
+    """
+    dialog, _row = _staged(dialogs, managers, spin, ffmpeg_available=False)
+    control = open_row_editor(dialog, 0)
+    choose_in_editor(dialog, control, CHOOSE_FORMATS_DATA)
+    panel = dialog.open_panel
+    assert panel is not None
+    index = next(
+        position
+        for position in range(panel.table.model.rowCount())
+        if panel.table.model.formats()[position].format_id == "137"
+    )
+    panel.table.table.setCurrentIndex(panel.table.model.index(index, 0))
+    panel.table.choose_current()
+    QApplication.processEvents()
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions)), (
+        f"a single chosen format was refused without ffmpeg: {text_of(dialog, 'statusMessage')!r}"
+    )
+    assert sink.submissions[0][0].request.format_selector == "137"

@@ -442,7 +442,7 @@ def compose(
     # `_describe_run_action(running=False)` and `_running = False` agree by construction (`UX-006`).
     # A test asserts they still do, because two defaults that must match are two places to drift.
     manager.queue_running.connect(window.show_queue_running)
-    window.report_environment(ffmpeg.summary())
+    window.report_environment(ffmpeg.summary(), ffmpeg_available=ffmpeg.available)
     # `ARC-008`: after the window exists, because that is the earliest a modal can be shown, and
     # before it is interactive, because the reverted setting is what the user would otherwise
     # notice first and have no explanation for.

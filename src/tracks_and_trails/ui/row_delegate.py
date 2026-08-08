@@ -176,6 +176,37 @@ PRESET_PLACEHOLDER_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 17
 #: a track looks exactly like one that got everything, which is this feature's characteristic lie.
 SEGMENTS_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 16
 
+#: Whether this row has formats to choose from, so the control may offer to open them (`T-108`).
+#:
+#: **A separate question from `PRESET_CHOICES_ROLE`.** A row can be retargetable and still have no
+#: format table — a failed probe, or a playlist, whose formats belong to its entries — and offering
+#: an entry that opens an empty table is `UX-005` §5's never-draw-what-would-be-refused again.
+#: Absent means no, which is the honest answer from a model that never heard of this role: the
+#: queue reuses this delegate and has no probe result to open.
+FORMATS_AVAILABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 18
+
+#: How tall this row must be **because its format table is open** (`T-108`, `REQ-008`).
+#:
+#: Zero or absent means closed, which is every row on every surface until somebody opens one. The
+#: height is the panel's own `sizeHint`, asked of the widget rather than guessed at with a constant
+#: here — a constant would be a second opinion about how tall a table is, and the first font change
+#: would make it the wrong one (`T118-R15`).
+FORMAT_PANEL_HEIGHT_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 19
+
+#: The control's entry that opens the format table (`docs/UX_SPEC.md` §4, `UX-007`'s `P-1`).
+#:
+#: *"The table opens from the format control … through an entry reading `Choose specific formats…`
+#: below the preset list."* Below, so the presets keep the positions a user has learned.
+CHOOSE_FORMATS_TEXT: Final = "Choose specific formats…"
+
+#: The data this entry carries, which is deliberately **not** a preset name.
+#:
+#: `setModelData` writes `currentData()` into `PRESET_ROLE`, and any string there is looked up as a
+#: preset. A sentinel no preset can be called keeps *"open the table"* from being mistaken for
+#: *"set the format to a preset with this name"* — and if the lookup ever did see it, it would find
+#: nothing and silently clear the row's format, which is a wrong download rather than a no-op.
+CHOOSE_FORMATS_DATA: Final = "\x00open-format-table"
+
 #: Padding inside the state chip, and its corner radius. Small: it shares the title's line and must
 #: not compete with the title for height.
 CHIP_PADDING: Final = 5
@@ -561,7 +592,15 @@ class RowDelegate(QStyledItemDelegate):
         waste a third of the list on blank space in exactly the case — a sixteen-item playlist —
         where there is least room to waste. **The measurement that justifies the trade is
         `T-140`'s own acceptance criterion**, not an assumption made here.
+
+        **A row with its format table open is taller still** (`T-108`). At most one row is open at a
+        time, so this is one measured row among however many, not a per-row cost.
         """
+        open_panel = index.data(FORMAT_PANEL_HEIGHT_ROLE)
+        if isinstance(open_panel, int) and open_panel > 0:
+            # The height comes from the panel's own `sizeHint` — see `FORMAT_PANEL_HEIGHT_ROLE` for
+            # why it is asked for rather than assumed.
+            return QSize(option.rect.width(), open_panel)
         if _depth(index) > 0:
             # **Three lines when the entry has a format of its own to state** (`T-157`), two
             # otherwise. `UX-005`'s amendment spends the line exactly where there is something to
@@ -1605,8 +1644,22 @@ class RowDelegate(QStyledItemDelegate):
         )
         if inheritable:
             choice.addItem(INHERITED_TEXT, None)
-        for name in index.data(PRESET_CHOICES_ROLE) or ():
-            choice.addItem(str(name), str(name))
+        offered = [str(name) for name in index.data(PRESET_CHOICES_ROLE) or ()]
+        for name in offered:
+            choice.addItem(name, name)
+        # **The row's own format, when no built-in describes it** (`REQ-009`, `T-108`). A row that
+        # chose `137+140` from the table holds a preset that is not in the catalogue, so
+        # `setEditorData`'s `findData` would miss and the control would open showing *nothing
+        # selected* for a row that has very much chosen something. Added rather than left to the
+        # `-1` fallback, which is the honest rendering on the queue — where the durable request may
+        # be anything — and simply wrong here, where the dialog knows exactly what this row picked.
+        current = index.data(PRESET_ROLE)
+        if isinstance(current, str) and current and current not in offered:
+            choice.insertItem(0, current, current)
+        # **Below the preset list**, which is where `docs/UX_SPEC.md` §4 puts it, so the entries a
+        # user has learned the positions of do not move when this appears.
+        if index.data(FORMATS_AVAILABLE_ROLE):
+            choice.addItem(CHOOSE_FORMATS_TEXT, CHOOSE_FORMATS_DATA)
         return choice
 
     def destroyEditor(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:

@@ -206,6 +206,54 @@ def test_yt_dlp_none_codecs_become_none_not_the_string() -> None:
     assert projected.is_audio_only is False or projected.audio_codec is None
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ({"vcodec": "avc1.640028"}, True),
+        ({"vcodec": "none"}, False),
+        ({}, None),
+        ({"vcodec": None}, None),
+        ({"vcodec": ""}, None),
+        # `yt-dlp -F` prints `unknown` for archive.org's derivatives, and the raw field carries the
+        # same word. Reading it as a codec name would say *"this format has video"* about every one
+        # of them, which is the `T107-R1` divergence arriving in a different field.
+        ({"vcodec": "unknown"}, None),
+        ({"vcodec": "UNKNOWN"}, None),
+    ],
+)
+def test_the_projection_keeps_an_absent_stream_apart_from_an_unknown_one(
+    raw: dict[str, object], expected: bool | None
+) -> None:
+    """`T-108`: three states out of one yt-dlp field (`REQ-008`, `NFR-008`).
+
+    `_as_optional_codec` collapses `'none'` and *missing* into `None`, which is correct for a codec
+    *name* and unusable for *"is there a video stream here"* — the question `REQ-008` must answer
+    before it can route a format into a video or an audio slot. The adapter is the only place the
+    difference is still visible, so it is the only place it can be recorded.
+    """
+    projected = adapter.project_format({"format_id": "1", "ext": "mp4", **raw})
+    assert projected.has_video is expected
+
+
+def test_the_two_streams_are_classified_independently() -> None:
+    """media.ccc.de reports `vcodec: none` beside a named `acodec` — a real recorded shape.
+
+    Asserted as a pair rather than one field at a time, because the failure this guards against is
+    one answer leaking into the other: an audio-only format must come out *audio-only*, not
+    *unknown*, and the same item's video recordings — which name a `vcodec` and no `acodec` at all
+    — must come out **unknown** rather than video-only.
+    """
+    audio = adapter.project_format(
+        {"format_id": "eng-mp3", "ext": "mp3", "vcodec": "none", "acodec": "mp3"}
+    )
+    assert (audio.has_video, audio.has_audio) == (False, True)
+    assert audio.is_audio_only and not audio.is_video_only
+
+    video = adapter.project_format({"format_id": "eng-h264-hd", "ext": "mp4", "vcodec": "h264"})
+    assert (video.has_video, video.has_audio) == (True, None)
+    assert not video.is_video_only, "silence about audio was read as an absent audio stream"
+
+
 def test_a_size_known_only_approximately_is_still_reported() -> None:
     """yt-dlp supplies `filesize` **or** `filesize_approx`, never reliably both.
 

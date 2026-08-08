@@ -274,6 +274,13 @@ def project_format(entry: Mapping[str, Any]) -> FormatInfo:
         filesize_is_estimate=size is not None and exact is None,
         video_codec=_as_optional_codec(entry.get("vcodec")),
         audio_codec=_as_optional_codec(entry.get("acodec")),
+        # **The distinction `_as_optional_codec` throws away, kept beside it** (`REQ-008`,
+        # `T-108`). `'none'` is yt-dlp saying the stream is absent and a missing key is yt-dlp
+        # saying nothing; both project to `video_codec=None`, which is right for a *codec name* and
+        # useless for *"is there a video stream here"*. This is the only place the difference is
+        # still visible, so it is the only place it can be recorded — `NFR-008` exactly.
+        has_video=_as_stream_presence(entry.get("vcodec")),
+        has_audio=_as_stream_presence(entry.get("acodec")),
         note=_as_optional_str(entry.get("format_note")),
         fps=_as_optional_float(entry.get("fps")),
         bitrate_kbps=_as_optional_float(entry.get("tbr")),
@@ -735,3 +742,23 @@ def _as_optional_codec(value: object) -> str | None:
     """`'none'` is yt-dlp's way of saying a stream is absent — not a codec called "none"."""
     codec = _as_optional_str(value)
     return None if codec in (None, "none") else codec
+
+
+def _as_stream_presence(value: object) -> bool | None:
+    """Whether a `vcodec`/`acodec` field says the stream is there, absent, or unknown (`T-108`).
+
+    Three answers from one yt-dlp field, which carries three states:
+
+    - a codec name — the stream is there
+    - the literal `'none'` — yt-dlp is stating there is no such stream
+    - missing, empty, or the placeholder `'unknown'` — yt-dlp does not know
+
+    **`'unknown'` is grouped with missing rather than with present**, and that is the whole
+    distinction `T107-R1` turned on: `yt-dlp -F` prints `unknown` for archive.org's derivatives, and
+    reading that as *"a codec named unknown, therefore a stream exists"* would put every one of them
+    in the video slot. A placeholder is the absence of an answer, not an answer.
+    """
+    codec = _as_optional_str(value)
+    if codec is None or codec.casefold() == "unknown":
+        return None
+    return codec != "none"

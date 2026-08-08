@@ -19,6 +19,53 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
+## 2026-08-07: `T-108` and `T-185` are built, and `OPS-013`'s gap closed itself
+
+**Both are In Review.** `T-108` mounts the format table in the staging row and makes a chosen
+video + audio pair one merging request; `T-185` closes `T107-R8` and — unexpectedly — **finds the
+`fps` source `OPS-013` was ratified to excuse.**
+
+**`fps` now rests on a recording.** `peertube_big_buck_bunny_60fps`: the Blender Foundation's own
+PeerTube instance, CC BY, unsigned object-storage URLs, and **two different framerates in one item**
+— 30 for its 240p–480p renditions, 60 for 720p and 1080p — so the column is *sorted* by real values
+rather than merely filled. The eighth attempt succeeded because it asked a different question:
+*which extractors populate the field at all*, by grepping yt-dlp's own extractor modules, rather
+than *which sources might*. `peertube.py` reads `fps` per published file.
+
+**`OPS-013` worked exactly as written, and that is worth noticing.** It permitted the gap **only
+while an open task owned it**, and the open task is what produced the eighth attempt. A decision
+that had simply excused the column would have left it excused.
+
+**`T-108` needed one projection widening, and it is the same lesson as `T107-R1` again.**
+`_as_optional_codec` maps yt-dlp's explicit `vcodec: 'none'` and a missing key to the same `None`,
+so nothing could tell *"there is no audio"* from *"nobody said"* — and `REQ-008` has to, because it
+routes a format into a video or an audio slot. `FormatInfo` gains `has_video`/`has_audio` as
+**tri-state**. `is_audio_only` is correspondingly narrower: a format nobody classified is no longer
+audio-only.
+
+**Most formats from most sources come out unknown, and the surfaces say so.** archive.org, PeerTube
+and Wikimedia all publish complete files, so the merge mode is **not drawn** for them — with its own
+sentence, separate from ffmpeg's, because telling someone to install ffmpeg for a source that would
+not merge anyway is advice that cannot help.
+
+**Two defects were found by writing the tests, not by review.**
+
+1. **The chosen format was silently discarded.** `choose_current` emitted `format_chosen` before
+   `selection_changed`; the dialog closes the panel on the first and writes the choice on the
+   second, so closing tore the panel off its row and the write found nothing to write to. The row
+   kept its old format and the download would have run as whatever it was before — this project's
+   recurring *computed correctly and then not acted on*, live in new code.
+2. **A mutation survived and exposed a test that could not fail.** Re-hardcoding the extractor in
+   `capture.py` passed everything: the regression compares *committed files* against the
+   declarations, and a broken writer changes no file until somebody re-captures. `provenance` was
+   split out of `capture_info` so the decision is reachable without the network.
+
+**One new gap, filed as `T-188`.** No acceptable source publishes a video-only **and** an audio-only
+format in one item, so `REQ-008`'s pair is exercised by a declared-synthetic fixture. `media.ccc.de`
+has the shape — `vcodec: 'none'` beside a named `acodec` — and was **rejected**: its API states no
+licence for any event of any conference sampled, and `ai/TESTING.md` §5 asks for freely licensed,
+not widely believed to be.
+
 ## 2026-08-07: `T-107` is approved, and the thing that blocked it was authority
 
 **`T-107` is Approved at `09c57c3`, and `T-187` with it.** That makes **two of nine Phase 3

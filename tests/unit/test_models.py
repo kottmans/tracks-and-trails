@@ -189,7 +189,57 @@ def test_optional_probe_fields_stay_optional() -> None:
     fmt = FormatInfo(format_id="251", extension="webm", audio_codec="opus")
     assert fmt.height is None
     assert fmt.filesize is None
-    assert fmt.is_audio_only
+    assert fmt.has_video is None
+    assert fmt.has_audio is None
+
+
+def test_a_stream_is_only_absent_when_something_said_so() -> None:
+    """`T-108`: a codec nobody mentioned is unknown, not missing.
+
+    **This is `T107-R1` made unrepresentable rather than merely fixed.** `is_audio_only` read
+    `video_codec is None`, and `_as_optional_codec` maps yt-dlp's explicit `'none'` and a missing
+    key to the same `None` — so a format whose video codec was merely unknown claimed to have no
+    video. The table stopped asserting it; `REQ-008` cannot, because it has to route a format into
+    a video or an audio slot.
+
+    Asserted in all three states, because the middle one is the whole point: an audio codec beside
+    *silence* about video answers `False` to both questions rather than `True` to one.
+    """
+    unknown = FormatInfo(format_id="251", extension="webm", audio_codec="opus")
+    assert not unknown.is_audio_only, "a format nobody classified claimed to be audio-only"
+    assert not unknown.is_video_only
+
+    audio = FormatInfo(
+        format_id="251", extension="webm", audio_codec="opus", has_audio=True, has_video=False
+    )
+    assert audio.is_audio_only
+    assert not audio.is_video_only
+
+    video = FormatInfo(
+        format_id="137", extension="mp4", video_codec="avc1", has_video=True, has_audio=False
+    )
+    assert video.is_video_only
+    assert not video.is_audio_only
+
+
+def test_a_format_cannot_name_a_codec_for_a_stream_it_says_it_lacks() -> None:
+    """Two fields that would contradict each other are refused at construction (`T-010`'s rule).
+
+    A selection routine handed `has_audio=False, audio_codec="opus"` would have to decide which to
+    believe, and whichever it picked would be right half the time. The model refuses the value
+    instead, so no caller ever has the choice.
+    """
+    with pytest.raises(ValueError, match="one of the two is wrong"):
+        FormatInfo(format_id="1", extension="mp4", audio_codec="opus", has_audio=False)
+    with pytest.raises(ValueError, match="one of the two is wrong"):
+        FormatInfo(format_id="1", extension="mp4", video_codec="avc1", has_video=False)
+
+
+@pytest.mark.parametrize("bad", [0, 1, "true", ""])
+def test_a_stream_presence_flag_refuses_anything_that_is_merely_truthy(bad: object) -> None:
+    """`has_video=0` must not read as *"no video"* by truthiness (`_require_flag`'s reason)."""
+    with pytest.raises(TypeError):
+        FormatInfo(format_id="1", extension="mp4", has_video=bad)  # type: ignore[arg-type]
 
 
 # --- nested payload validation (T-041, from T011-R8) ----------------------------------------

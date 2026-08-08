@@ -43,7 +43,9 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QFocusEvent, QKeyEvent, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QHeaderView,
+    QLabel,
     QStyle,
     QStyleOptionFocusRect,
     QTableView,
@@ -52,6 +54,12 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails.core.models import FormatInfo
+from tracks_and_trails.ui.format_selection import (
+    FormatSelection,
+    SelectionMode,
+    UnplaceableFormatError,
+    pairable,
+)
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, format_bytes
 
 #: The columns `REQ-003` names, in the order it names them.
@@ -97,6 +105,26 @@ FORMAT_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 2
 #: The same `~` `docs/UX_SPEC.md` §4 uses in its own example. One character, in front, so the
 #: column still reads as a column of sizes.
 ESTIMATE_PREFIX: Final = "~"
+
+#: What the merge mode's control reads (`REQ-008`, `UX-007`'s `P-2`).
+#:
+#: A checkbox rather than a two-entry combo, because `docs/UX_SPEC.md` §5 declares **`Space`
+#: switches mode** — which is what `Space` does to a checkbox and is not what it does to a combo,
+#: where it opens a popup.
+MERGE_MODE_TEXT: Final = "Merge a separate video and audio stream"
+
+#: Why the merge mode is not drawn, when it is not (`P-13`, `UX-005` §5).
+#:
+#: **Stated where the mode would have been**, which is `P-13`'s wording. The ruling covers the
+#: ffmpeg case; the second sentence is derived from `UX-005` §5's never-draw-what-would-be-refused
+#: rule, because a mode no format in this table could complete is refused just as certainly.
+NO_MERGE_WITHOUT_FFMPEG: Final = (
+    "Merging a separate video and audio stream needs ffmpeg, which was not found."
+)
+NO_MERGE_WITHOUT_A_PAIR: Final = (
+    "This source offers no separate video and audio streams to merge — every format it lists "
+    "carries both, or does not say."
+)
 
 #: The invalid parent every flat model is asked about, as a module-level singleton.
 #:
@@ -445,14 +473,31 @@ class FormatTable(QWidget):
     buttons `UX_SPEC` §4's keyboard path names can join it without this class becoming a dialog.
     """
 
-    #: `FormatInfo` — the current row named a format. **Reported, never acted on** (`T-108` owns
-    #: what a choice means, and `P-14` keeps *download from the table* out entirely).
+    #: `FormatInfo` — the current row named a format. **Reported, never acted on** (`P-14` keeps
+    #: *download from the table* out entirely; the dialog's button still commits).
     format_chosen = Signal(object)
 
-    def __init__(self, formats: Sequence[FormatInfo] = (), parent: QWidget | None = None) -> None:
+    #: `FormatSelection` — what is chosen now, after any change (`T-108`). Emitted for a mode
+    #: switch as well as a choice, because a mode switch can drop a half that no longer fits.
+    selection_changed = Signal(object)
+
+    #: `str` — a choice the current mode cannot place, in the words the user should see.
+    #: Reported rather than shown here: this widget has no status line, and the surface embedding
+    #: it does (`UX-005` §5 — a control that silently does nothing is the defect).
+    selection_refused = Signal(str)
+
+    def __init__(
+        self,
+        formats: Sequence[FormatInfo] = (),
+        parent: QWidget | None = None,
+        *,
+        ffmpeg_available: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("formatTable")
         self._model = FormatTableModel(formats, self)
+        self._ffmpeg_available = ffmpeg_available
+        self._selection = FormatSelection()
 
         self._table = QTableView(self)
         self._table.setObjectName("formatTableView")
@@ -493,17 +538,89 @@ class FormatTable(QWidget):
         # hint — so any surface embedding this would clip or collapse it.
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        self._build_mode_control(layout)
         layout.addWidget(self._table)
-        # **The header follows the body in the tab chain**, which is the order `docs/UX_SPEC.md` §4
-        # declares: body, then header, then out. Set explicitly rather than left to creation order,
-        # because the header is a child of the view and would otherwise come first.
+
+        # **What is chosen, in words** (`docs/UX_SPEC.md` §5, `NFR-005`). The spec asks for the pair
+        # to be *announced* as "video: 137, audio: 140" rather than shown by highlight alone, so
+        # this is a visible label as well as the widget's accessible description — a screen-reader
+        # user and a sighted user read the same sentence.
+        self._chosen = QLabel(self)
+        self._chosen.setObjectName("formatChosenLabel")
+        self._chosen.setAccessibleName("Chosen formats")
+        self._chosen.setWordWrap(True)
+        layout.addWidget(self._chosen)
+
+        # **Mode first, then body, then header** (`docs/UX_SPEC.md` §5): *"a mode that changes what
+        # `Enter` does must be reachable before the thing it changes"*. §4's body-then-header order
+        # is unchanged and this sits in front of it. Set explicitly rather than left to creation
+        # order, because the header is a child of the view and would otherwise come first.
+        if self._mode_control is not None:
+            QWidget.setTabOrder(self._mode_control, self._table)
         QWidget.setTabOrder(self._table, self._header)
         # **Opens sorted by resolution, best first**, which is the order somebody opening a format
         # table is looking for. `sortByColumn` drives the model's own `sort` — see it for why the
         # model implements one rather than relying on Qt's default, which silently does nothing.
         self._table.sortByColumn(RESOLUTION_COLUMN, Qt.SortOrder.DescendingOrder)
 
+        # `Enter` on the body chooses the current row (`docs/UX_SPEC.md` §4). `activated` is Qt's
+        # own name for that gesture, so the key does not have to be intercepted — and a subclass
+        # that swallowed `Return` would be a second place the keyboard contract lives.
+        self._table.activated.connect(lambda _index: self.choose_current())
+
         self._select_first_row()
+        self._announce()
+
+    def _build_mode_control(self, layout: QVBoxLayout) -> None:
+        """The merge mode, **or the reason it is not offered, in the same slot** (`P-13`).
+
+        `UX-007` ruled `P-13`: *"`Merge` is offered only while ffmpeg is present. Absent, the mode
+        is **not drawn**, and the reason is stated where the mode would have been."* Putting it
+        in the mode's own place is what keeps the layout still — a control that vanishes and leaves
+        a gap moves everything under it, and a user who looked away has no way to know why.
+
+        **A second reason is checked here and it is derived rather than ruled**: a source whose
+        formats contain no video-only and no audio-only stream can never complete a pair, so
+        offering the mode would be offering something certain to be refused (`UX-005` §5). The two
+        reasons are worded separately on purpose — telling a user to install ffmpeg for a source
+        that would not merge anyway is advice that cannot help.
+        """
+        self._mode_control: QCheckBox | None = None
+        reason = self._why_no_merge()
+        if reason is None:
+            control = QCheckBox(MERGE_MODE_TEXT, self)
+            control.setObjectName("mergeModeCheck")
+            control.setAccessibleName(MERGE_MODE_TEXT)
+            control.setAccessibleDescription(
+                "Choose one video-only and one audio-only format, and yt-dlp will merge them into "
+                "a single file."
+            )
+            control.toggled.connect(self._on_mode_toggled)
+            self._mode_control = control
+            layout.addWidget(control)
+            return
+
+        stated = QLabel(reason, self)
+        stated.setObjectName("mergeModeUnavailable")
+        stated.setAccessibleName("Why merging is not offered")
+        stated.setWordWrap(True)
+        # Plain text because the sentence can name what a source reported. `T016-R6` is the rule
+        # this follows; the label is registered there rather than formatted here.
+        stated.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(stated)
+
+    def _why_no_merge(self) -> str | None:
+        """The reason the merge mode is not offered, or `None` when it is.
+
+        Order matters: **ffmpeg first**, because it is the one the user can act on and it is true
+        regardless of the source. Reporting "this source offers no pair" to somebody without ffmpeg
+        would send them looking for a different video.
+        """
+        if not self._ffmpeg_available:
+            return NO_MERGE_WITHOUT_FFMPEG
+        if not pairable(self._model.formats()):
+            return NO_MERGE_WITHOUT_A_PAIR
+        return None
 
     # --- the seam a surface embedding this uses ------------------------------------------
 
@@ -525,6 +642,20 @@ class FormatTable(QWidget):
         self._model.set_formats(formats)
         self._select_first_row()
 
+    @property
+    def selection(self) -> FormatSelection:
+        """What is chosen now (`T-108`). The dialog reads this when it builds the request."""
+        return self._selection
+
+    @property
+    def mode_control(self) -> QCheckBox | None:
+        """The merge control, or `None` when `P-13` says it is not drawn."""
+        return self._mode_control
+
+    def chosen_text(self) -> str:
+        """The sentence the label and the accessible description both carry."""
+        return self._chosen.text()
+
     def current_format(self) -> FormatInfo | None:
         """The `FormatInfo` the current row names, or `None` when there is no current row."""
         index = self._table.currentIndex()
@@ -534,10 +665,46 @@ class FormatTable(QWidget):
         return carried if isinstance(carried, FormatInfo) else None
 
     def choose_current(self) -> None:
-        """Emit `format_chosen` for the current row, if there is one."""
+        """Take the current row into the selection, and say what happened (`REQ-008`).
+
+        **A refusal is reported, never swallowed.** In `PAIR` mode a format that is neither
+        video-only nor audio-only cannot be placed, and `Enter` on it must produce a sentence
+        rather than nothing — `UX-005` §5, and `T-075` is what silence costs.
+
+        `format_chosen` still fires with the `FormatInfo`, as `T-107` built it: it says *this row
+        was chosen*, which is true whether it went into one slot or the other.
+        """
         chosen = self.current_format()
-        if chosen is not None:
-            self.format_chosen.emit(chosen)
+        if chosen is None:
+            return
+        try:
+            self._selection = self._selection.choose(chosen)
+        except UnplaceableFormatError as refusal:
+            self.selection_refused.emit(str(refusal))
+            return
+        # **`selection_changed` before `format_chosen`, and the order is load-bearing.** A listener
+        # on `format_chosen` may close the surface this table lives in — the dialog does exactly
+        # that once the selection is complete — and a listener on `selection_changed` is what
+        # *writes the choice down*. Emitted the other way round, closing tears the panel off its row
+        # first and the write then finds nothing to write to: the format is chosen, the row keeps
+        # its old one, and the download runs as whatever it was before. That is this project's
+        # recurring defect — a value computed correctly and then not acted on — and it was live here
+        # until the dialog tests caught it.
+        self._announce()
+        self.format_chosen.emit(chosen)
+
+    def _on_mode_toggled(self, merging: bool) -> None:
+        """Switch mode, keeping whichever half survives the switch (`FormatSelection.with_mode`)."""
+        wanted = SelectionMode.PAIR if merging else SelectionMode.SINGLE
+        self._selection = self._selection.with_mode(wanted)
+        self._announce()
+
+    def _announce(self) -> None:
+        """Put the current selection where both a reader and a screen reader will find it."""
+        described = self._selection.describe()
+        self._chosen.setText(f"Chosen — {described}")
+        self.setAccessibleDescription(f"{self._selection.mode}. Chosen: {described}")
+        self.selection_changed.emit(self._selection)
 
     def sort_by(self, column: int) -> None:
         """Sort by `column`, reversing if it is already the sorted one (`docs/UX_SPEC.md` §4).
