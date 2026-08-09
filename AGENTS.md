@@ -96,6 +96,26 @@ non-negotiable invariant. If an instruction appears to require that, say so and 
 - **Historical record** (append; never silently rewrite): `DECISIONS.md`, `REVIEWS.md`,
   `CHANGELOG.md`, anything under `ai/archive/`
 - **Convenience** (non-authoritative): `PROMPTS.md`, generated reports, AI summaries
+- **Transient** (delete when spent): `ai/handoffs/`
+
+### Handoffs are messages, not records
+
+**A handoff is one agent talking to another.** It asks for a review, or carries a correction back.
+**Once its verdict is recorded in `ai/REVIEWS.md`, it has done its job and is deleted.** Git history
+keeps every one, retrievable by path, so nothing is lost by removing it from the working tree.
+
+**Durable records cite commits, never handoffs.** A commit SHA identifies a tree that still exists;
+a handoff filename identifies a message that is supposed to stop existing. If a record needs a fact
+that appeared in a handoff — what was claimed, what a Planner recommended, what a submission got
+wrong — **it states the fact.** Writing *"see `ai/handoffs/…`"* means the record has not recorded
+the thing.
+
+**This was a real defect, found 2026-08-09.** Sixty-four handoffs had accumulated in nine days, and
+nine were cited from durable records. **Not one citation carried content** — every one was
+provenance a SHA already supplied, a bare pointer, or a description of a past event. One cited a
+handoff in order to say it was *not* part of the reviewed boundary. A durable record that delegates
+its content to a file scheduled for deletion is a document whose truth lives somewhere it does not
+control, which is the same failure as a stale current-truth claim.
 
 ## 7. Hard rules
 
@@ -409,8 +429,10 @@ A worker in a parallel wave (§9) adds, and reports rather than applies:
 | Where the project stands now | `ai/STATUS.md` |
 | Review findings and evidence | `ai/REVIEWS.md`; in a parallel wave, `ai/reviews/T-0NN.md` with `ai/REVIEWS.md` as the index |
 | Test policy and commands | `ai/TESTING.md` |
+| A review request or correction being sent | `ai/handoffs/` — **transient, deleted once its verdict is in `ai/REVIEWS.md`** (§6) |
 
 Do not copy a fact into a second authoritative-looking place. Link to the canonical home.
+**Never link to `ai/handoffs/`** — it is not a home, it is an outbox.
 
 Create a `ai/DECISIONS.md` entry only for durable choices and real trade-offs — not as a
 completion note for routine work. Routine fixes belong in `ai/TASKS.md` and `CHANGELOG.md`.
