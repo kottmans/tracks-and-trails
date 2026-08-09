@@ -128,6 +128,7 @@ from tracks_and_trails.ui.playlist_picker import PlaylistPicker
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection, describe_chosen
 from tracks_and_trails.ui.row_delegate import (
     CHOOSE_FORMATS_DATA,
+    CHOOSE_FORMATS_TEXT,
     DETAIL_ROLE,
     EDIT_HINT,
     EXPANDED_ROLE,
@@ -140,6 +141,7 @@ from tracks_and_trails.ui.row_delegate import (
     MANAGE_PRESETS_DATA,
     OPTIONS_AVAILABLE_ROLE,
     OPTIONS_DATA,
+    OPTIONS_TEXT,
     PRESET_CHOICES_ROLE,
     PRESET_INHERITABLE_ROLE,
     PRESET_ROLE,
@@ -149,6 +151,7 @@ from tracks_and_trails.ui.row_delegate import (
     STATE_ROLE,
     TEMPLATE_AVAILABLE_ROLE,
     TEMPLATE_DATA,
+    TEMPLATE_TEXT,
     THUMBNAIL_URL_ROLE,
     RowDelegate,
     minimum_row_width,
@@ -1344,6 +1347,46 @@ class AddUrlDialog(QDialog):
         header.addStretch(1)
         layout.addLayout(header)
 
+        # **The verb bar** (`T-203`, option *A*): the three per-row commands as real buttons,
+        # labelled for the current row. Real widgets because a painted control has no accessibility
+        # node — the constraint that ruled out icons on the row — and **one set rather than one per
+        # row**, which keeps `UX-004`'s per-row-widget cost out of the question entirely.
+        verbs = QHBoxLayout()
+        self._verb_label = QLabel(box)
+        self._verb_label.setObjectName("verbBarLabel")
+        self._verb_label.setAccessibleName("Which item the adjust buttons act on")
+        # Site metadata ends up in this label (`T016-R6`): titles are the site's text.
+        self._verb_label.setTextFormat(Qt.TextFormat.PlainText)
+        verbs.addWidget(self._verb_label)
+        self._formats_button = QPushButton(CHOOSE_FORMATS_TEXT, box)
+        self._formats_button.setObjectName("chooseFormatsButton")
+        self._formats_button.setAccessibleName("Choose specific formats for the current item")
+        self._formats_button.clicked.connect(lambda: self._bar_open(self.open_format_table))
+        verbs.addWidget(self._formats_button)
+        self._options_button = QPushButton(OPTIONS_TEXT, box)
+        self._options_button.setObjectName("rowOptionsButton")
+        self._options_button.setAccessibleName("Options for the current item")
+        self._options_button.clicked.connect(lambda: self._bar_open(self.open_options))
+        verbs.addWidget(self._options_button)
+        self._template_button = QPushButton(TEMPLATE_TEXT, box)
+        self._template_button.setObjectName("namingFoldersButton")
+        self._template_button.setAccessibleName("Naming and folders for the current item")
+        self._template_button.clicked.connect(lambda: self._bar_open(self.open_template_editor))
+        verbs.addWidget(self._template_button)
+        # **Narrow keeps working** (`T-160`'s contract, asserted by the narrowing test): the
+        # buttons' natural minimums summed to a 571px floor the user could not drag under. An
+        # explicit small minimum lets the layout compress them — clipped text at extreme widths is
+        # the price, and it is the same trade the row anatomy already makes when narrowed.
+        for control in (
+            self._verb_label,
+            self._formats_button,
+            self._options_button,
+            self._template_button,
+        ):
+            control.setMinimumWidth(24)
+        verbs.addStretch(1)
+        layout.addLayout(verbs)
+
         self._list = StagingList(box, selectors=selector_candidates(self._presets))
         # A taller or shorter list changes how tall an opened row may be, so the rows are
         # re-measured and the open panel put back over the one it belongs to (`T-210`).
@@ -1354,6 +1397,8 @@ class AddUrlDialog(QDialog):
             "Each line you pasted, with what it turned out to be. " + EDIT_HINT
         )
         self._list.setModel(self._model)
+        # The bar follows the keyboard: whichever row is current is the one the verbs act on.
+        self._list.selectionModel().currentChanged.connect(lambda *_: self._update_verb_bar())
         delegate = RowDelegate(thumbnails=self._thumbnails, parent=self._list)
         # **The disclosure triangle opens the playlist picker** (`P-19`, `docs/UX_SPEC.md` §7).
         # The same signal the queue's groups use, so the gesture means the same thing on both
@@ -1458,6 +1503,12 @@ class AddUrlDialog(QDialog):
         return [
             self._urls,
             self._retry_button,
+            # `T-203`'s verb bar, in visual order between the retry button and the list it acts
+            # on. Disabled-when-nothing-current keeps all three in the chain in every state — the
+            # rule stated above, the same one the retry button follows.
+            self._formats_button,
+            self._options_button,
+            self._template_button,
             self._list,
             # Focusable because it is selectable: a message kept verbatim (`NFR-006`) that cannot
             # be copied into a bug report is half the point. `T016-R4` is what happens when a
@@ -2228,6 +2279,46 @@ class AddUrlDialog(QDialog):
         self._urls.blockSignals(False)
         self._refresh()
 
+    def _bar_open(self, opener: Callable[[Row], None]) -> None:
+        """One verb-bar press: scroll the named row into view, then open (`T-203`).
+
+        **The scroll is a guardrail, not decoration.** The bar acts on the *current* row, and a
+        current row can be scrolled out of sight — acting on something invisible is the failure
+        that makes an action bar worse than per-row controls. Bringing it on screen first means
+        the label, the row and the window that opens are visibly about one thing.
+        """
+        row = self._current_row()
+        if row is None or row not in self._model.shown:
+            return
+        index = self._model.index(self._model.shown.index(row), 0)
+        if index.isValid():
+            self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
+        opener(row)
+
+    def _update_verb_bar(self) -> None:
+        """Aim the bar at the current row, or say plainly that there is none (`T-203`).
+
+        Enablement reads **the model's own roles** — the same answers the combo entries were gated
+        on — so the bar and the model cannot disagree about what a row offers. Disabled rather
+        than hidden, for `focus_chain`'s stated rule: the chain is the same in every state.
+        """
+        row = self._current_row()
+        buttons = (self._formats_button, self._options_button, self._template_button)
+        if row is None or row not in self._model.shown:
+            self._verb_label.setText("Select an item to adjust")
+            for button in buttons:
+                button.setEnabled(False)
+            return
+        index = self._model.index(self._model.shown.index(row), 0)
+        self._verb_label.setText(
+            self._verb_label.fontMetrics().elidedText(
+                f"For {headline_text(row)}:", Qt.TextElideMode.ElideRight, 300
+            )
+        )
+        self._formats_button.setEnabled(bool(index.data(FORMATS_AVAILABLE_ROLE)))
+        self._options_button.setEnabled(bool(index.data(OPTIONS_AVAILABLE_ROLE)))
+        self._template_button.setEnabled(bool(index.data(TEMPLATE_AVAILABLE_ROLE)))
+
     def edit_row(self, index: int) -> bool:
         """Open the format control for one row. **The keyboard route, as a method** (`T118-R9`).
 
@@ -2703,6 +2794,7 @@ class AddUrlDialog(QDialog):
             self._refresh_once()
         finally:
             self._refreshing = False
+        self._update_verb_bar()
 
     def _refresh_once(self) -> None:
         # **Recomputed here, on every refresh, and never accumulated** (`REQ-022`, `T-114`). The

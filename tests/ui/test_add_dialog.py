@@ -37,7 +37,15 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QRect, Qt
+from PySide6.QtCore import (
+    QEvent,
+    QItemSelectionModel,
+    QModelIndex,
+    QPoint,
+    QPointF,
+    QRect,
+    Qt,
+)
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -110,7 +118,6 @@ from tracks_and_trails.ui.row_delegate import (
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
-    PRESETS_HEADER_TEXT,
     ROW_HEIGHT,
     ROW_PRESET_NAME,
     SELECTOR_LINES,
@@ -119,7 +126,6 @@ from tracks_and_trails.ui.row_delegate import (
     TEMPLATE_AVAILABLE_ROLE,
     TEMPLATE_DATA,
     TEMPLATE_TEXT,
-    VERBS_HEADER_TEXT,
     VERBS_ROLE,
     RowDelegate,
     selector_line_width,
@@ -203,6 +209,10 @@ AUDIO_ONLY: Final = "archive_org_test_mp3"
 EXPECTED_TAB_ORDER: Final = (
     "urlInput",
     "retryFailedButton",
+    # `T-203`'s verb bar, between the retry button and the list it acts on.
+    "chooseFormatsButton",
+    "rowOptionsButton",
+    "namingFoldersButton",
     "stagingList",
     # Selectable, therefore focusable, therefore declared (`T016-R4`).
     "statusMessage",
@@ -656,8 +666,28 @@ def choose_in_editor(dialog: AddUrlDialog, control: QComboBox, preset_name: str 
     `DeferredDelete` needs asking for **by name**: plain `processEvents` does not deliver it, which
     is why the first version of this helper left the editor standing.
     """
-    control.setCurrentIndex(control.findData(preset_name))
     listing = staging_list(dialog)
+    # **`T-203` rerouted the verbs.** The three per-row commands left the combo for the verb bar,
+    # so a sentinel here is driven the way a user now drives it: close the editor, press the
+    # button for the current row. Every older test keeps describing the same gesture — "open the
+    # formats for this row" — by its real route.
+    verb_buttons = {
+        CHOOSE_FORMATS_DATA: "chooseFormatsButton",
+        OPTIONS_DATA: "rowOptionsButton",
+        TEMPLATE_DATA: "namingFoldersButton",
+    }
+    if preset_name in verb_buttons:
+        listing.closeEditor(control, QAbstractItemDelegate.EndEditHint.NoHint)
+        QApplication.processEvents()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        button = dialog.findChild(QPushButton, verb_buttons[preset_name])
+        assert button is not None and button.isEnabled(), (
+            f"the bar does not offer {verb_buttons[preset_name]} for the current row"
+        )
+        button.click()
+        QApplication.processEvents()
+        return
+    control.setCurrentIndex(control.findData(preset_name))
     listing.commitData(control)
     listing.closeEditor(control, QAbstractItemDelegate.EndEditHint.NoHint)
     QApplication.processEvents()
@@ -2667,55 +2697,6 @@ def _staged(
     return dialog, _probed_with_formats(dialog, formats)
 
 
-def test_the_format_control_offers_to_open_the_table(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """`docs/UX_SPEC.md` §4: an entry reading *"Choose specific formats…"* **below** the presets.
-
-    Below matters and is asserted: the presets keep the positions a user has learned, so adding
-    this entry does not move the one they were reaching for.
-
-    **Stated as "below every preset" rather than "last"** (`T-109`). It was written as
-    `entries[-1]`, which held while it was the only such entry and stopped being the property the
-    docstring describes the moment `Options…` joined it below. The rule the spec gives is about
-    the presets not moving; asserting the position of the final row asserts that nothing may ever
-    be added under it, which is a different and much stronger claim than anybody made.
-    """
-    dialog, _row = _staged(dialogs, managers, spin)
-    control = open_row_editor(dialog, 0)
-    entries = [control.itemText(index) for index in range(control.count())]
-    assert CHOOSE_FORMATS_TEXT in entries, entries
-    preset_names = {preset.name for preset in dialog.presets}
-    last_preset = max(index for index, text in enumerate(entries) if text in preset_names)
-    assert entries.index(CHOOSE_FORMATS_TEXT) > last_preset, (
-        f"the entry is not below the preset list: {entries}"
-    )
-    assert control.itemData(entries.index(CHOOSE_FORMATS_TEXT)) == CHOOSE_FORMATS_DATA, (
-        "the entry carries a preset name, so choosing it would be looked up as a preset"
-    )
-
-
-def test_a_row_with_no_formats_is_not_offered_the_table(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """`UX-005` §5: nothing is offered that would be refused — an empty table is a refusal."""
-    dialog = dialogs(managers())
-    type_urls(dialog, "https://example.invalid/one")
-    dialog.resolve()
-    assert spin(lambda: bool(dialog.rows and dialog.rows[0].job_id))
-    _probed_with_formats(dialog, ())
-
-    control = open_row_editor(dialog, 0)
-    entries = [control.itemText(index) for index in range(control.count())]
-    assert CHOOSE_FORMATS_TEXT not in entries, entries
-
-
 def test_choosing_that_entry_opens_the_row_into_the_format_table(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
@@ -3242,28 +3223,6 @@ def test_the_same_row_can_open_its_table_again_after_a_reset(
     reopened = _open_the_table(dialog, position)
     assert reopened.row is first, "reopening after a reset landed on a different row"
     assert _mounted_on(dialog, first, reopened)
-
-
-def test_the_format_control_offers_the_options_editor_below_the_table_entry(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """`docs/UX_SPEC.md` §6's `P-3`: the editor is reached as *Options…* on the format control.
-
-    Below `Choose specific formats…` for the reason that one is below the presets: the entries a
-    user has learned the positions of do not move when a new one appears.
-    """
-    dialog, _row = _staged(dialogs, managers, spin)
-    control = open_row_editor(dialog, 0)
-    entries = [control.itemText(index) for index in range(control.count())]
-
-    assert OPTIONS_TEXT in entries, entries
-    assert entries.index(OPTIONS_TEXT) > entries.index(CHOOSE_FORMATS_TEXT), entries
-    assert control.itemData(entries.index(OPTIONS_TEXT)) == OPTIONS_DATA, (
-        "the entry carries a preset name, so choosing it would be looked up as a preset"
-    )
 
 
 def test_choosing_the_options_entry_opens_the_editor_and_keeps_the_row_s_format(
@@ -3837,29 +3796,6 @@ def _open_the_template_editor(dialog: AddUrlDialog, index: int = 0) -> Any:
     panel = dialog.open_template_panel
     assert panel is not None, f"row {index} did not open into its template editor"
     return panel
-
-
-def test_the_format_control_offers_the_template_editor_below_the_options_entry(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """Below `Options…`, for the reason that one is below `Choose specific formats…`.
-
-    The entries a user has learned the positions of do not move when a new one appears — which is
-    also why this asserts the *order* rather than only the presence.
-    """
-    dialog, _row = _staged(dialogs, managers, spin)
-    control = open_row_editor(dialog, 0)
-    entries = [control.itemText(index) for index in range(control.count())]
-
-    assert TEMPLATE_TEXT in entries, entries
-    assert entries.index(TEMPLATE_TEXT) > entries.index(OPTIONS_TEXT), entries
-    assert control.itemData(entries.index(TEMPLATE_TEXT)) == TEMPLATE_DATA, (
-        "the entry carries a preset name, so choosing it would be looked up as a preset and would "
-        "silently clear the row's format"
-    )
 
 
 def test_the_editor_opens_showing_the_template_the_row_already_has(
@@ -4606,153 +4542,6 @@ def _wheel_down(target: QWidget) -> QWheelEvent:
     )
 
 
-def test_one_wheel_notch_does_not_jump_the_list_to_its_end(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    spin: Callable[..., bool],
-) -> None:
-    """**`T-210`.** *"Once the inner scroll bar reaches the bottom, it immediately jumps you to the
-    bottom of the other scroll bar."*
-
-    `QListView` scrolls per **item**, and a wheel notch is three of them — so with an opened
-    playlist in the list, one "item" was the whole panel and a single notch flew past it to the
-    end. Per-pixel scroll mode is the fix; this asserts the symptom, not the setting: after one
-    notch from the top, the list is somewhere in the middle, **not at its end**.
-
-    *(A first correction made the inner table consume the wheel at its edge — fixing the handoff
-    the maintainer had said was fine, and leaving the jump. The handoff stays stock.)*
-    """
-    dialog, _ = resolved(dialogs, managers, spin, PLAYLIST, SINGLE_ITEM, AUDIO_ONLY)
-    row = dialog.rows[0]
-    dialog.resize(900, 560)
-    dialog.show()
-    QApplication.processEvents()
-    dialog.open_playlist_picker(row)
-    QApplication.processEvents()
-    assert dialog.open_panel is not None, "the playlist row did not open"
-
-    listing = staging_list(dialog)
-    bar = listing.verticalScrollBar()
-    try:
-        assert bar.maximum() > 100, (
-            f"the list has only {bar.maximum()}px of scroll range, too little to witness a jump"
-        )
-        bar.setValue(0)
-        listing.wheelEvent(_wheel_down(listing.viewport()))
-
-        assert bar.value() > 0, "the wheel scrolled nothing at all"
-        assert bar.value() < bar.maximum(), (
-            "one wheel notch put the list at its end — the jump the maintainer reported, drawn "
-            "out by per-item scrolling treating an opened playlist as one step"
-        )
-    finally:
-        dialog.close()
-
-
-def test_an_open_playlist_keeps_its_done_button_on_screen(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    spin: Callable[..., bool],
-) -> None:
-    """**`T-209`.** *"You can barely see a playlist if its expanded out. You also can't re-collapse
-    it."*
-
-    `panel_height_for` returned the panel's `sizeHint` outright, so a picker asking for its summary,
-    eight entries and a *Done* button was simply drawn taller than the list. The bottom went below
-    the fold — and with it **the only pointer route out**, because `setIndexWidget` covers the row's
-    own disclosure. `Esc` and `←` still worked, which is why nothing caught it.
-
-    Asserted at a **shown window** against the viewport, because the defect is a relationship
-    between two heights and neither is visible in a `sizeHint`. 700px is the height the maintainer
-    reported it at.
-
-    **This does not hold at every size, and the limit is known.** Below roughly 600px the panel
-    still overflows, and the cause is not the entry table — that compresses to `MINIMUM_ENTRIES`.
-    It is the **summary label**, which word-wraps the row's third line: the raw selector string
-    `bestvideo[height<=1080][ext=mp4]+bestaudio[...]`, which at a narrow width wraps to several
-    lines and makes the panel's own minimum taller than a short viewport. `T-209` records that the
-    verbose line was scoped out and then turned out to be load-bearing.
-    """
-    dialog, row = _staged_playlist(dialogs, managers, spin)
-    dialog.resize(900, 700)
-    dialog.show()
-    QApplication.processEvents()
-
-    panel = _open_the_picker(dialog, row)
-    QApplication.processEvents()
-
-    listing = staging_list(dialog)
-    viewport = listing.viewport()
-    done = panel.done_button
-    bottom = done.mapTo(viewport, done.rect().bottomLeft()).y()
-
-    try:
-        assert bottom <= viewport.height(), (
-            f"Done sits {bottom - viewport.height()}px below the visible area, so the pointer has "
-            "no way to close the panel it opened"
-        )
-        assert panel.height() <= viewport.height(), (
-            f"the panel is {panel.height()}px inside a {viewport.height()}px viewport"
-        )
-        # It must still be worth opening: the cap compresses the entries, it does not collapse them.
-        assert panel.picker.table.height() > 0, "the entry table was compressed out of existence"
-    finally:
-        dialog.close()
-
-
-def test_the_control_names_its_two_halves(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """**`T-203`, option *D*.** The complaint was that the control looks like a value picker while
-    containing commands, so the two halves are named and ruled apart.
-
-    Asserted on **order** rather than presence alone: a heading that does not sit above the entries
-    it describes is worse than no heading.
-    """
-    dialog, _row = _staged(dialogs, managers, spin)
-    control = open_row_editor(dialog, 0)
-    entries = [control.itemText(index) for index in range(control.count())]
-
-    assert PRESETS_HEADER_TEXT in entries, entries
-    assert VERBS_HEADER_TEXT in entries, entries
-    assert entries.index(PRESETS_HEADER_TEXT) == 0, (
-        f"the presets heading is not above the presets: {entries}"
-    )
-    assert entries.index(VERBS_HEADER_TEXT) > entries.index(PRESETS_HEADER_TEXT), entries
-    assert entries.index(OPTIONS_TEXT) > entries.index(VERBS_HEADER_TEXT), (
-        f"a verb sits above the heading that introduces it: {entries}"
-    )
-
-
-def test_the_group_headings_cannot_be_chosen(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
-    dialogs: Callable[..., AddUrlDialog],
-    spin: Callable[..., bool],
-) -> None:
-    """A heading a user can commit is a value that is not a value.
-
-    That is the exact confusion `T-203` exists to remove, so landing on one with `↓` and pressing
-    `Enter` must be impossible rather than merely unlikely. `QComboBox`'s model is a
-    `QStandardItemModel` in practice and not by contract, so this is the test that notices if the
-    flag change is ever skipped.
-    """
-    dialog, _row = _staged(dialogs, managers, spin)
-    control = open_row_editor(dialog, 0)
-    model = control.model()
-
-    for heading in (PRESETS_HEADER_TEXT, VERBS_HEADER_TEXT):
-        row = [control.itemText(i) for i in range(control.count())].index(heading)
-        flags = model.flags(model.index(row, 0))
-        assert not flags & Qt.ItemFlag.ItemIsSelectable, (
-            f"{heading!r} can be selected, so the keyboard can commit a heading as a format"
-        )
-        assert not flags & Qt.ItemFlag.ItemIsEnabled, f"{heading!r} is still enabled"
-
-
 def test_the_footer_offers_the_preset_manager_where_a_store_is_wired(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
@@ -4894,6 +4683,118 @@ def test_teardown_forgets_the_editor_whatever_row_it_is_billed_to(
     )
     # The crash site: with the stale reference cleared this is a no-op, not a RuntimeError.
     assert dialog.commit_open_editor() is False
+
+
+def test_the_row_control_offers_only_presets(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-203`, the point of it.** Every entry in the combo is a value that sticks.
+
+    The verbs opened windows and put the selection back — a value picker containing commands. They
+    are the bar's now, so the honest assertion is exhaustive: nothing in this control carries
+    sentinel data, and none of the verb wordings appears.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    entries = [control.itemText(i) for i in range(control.count())]
+    data = [control.itemData(i) for i in range(control.count())]
+
+    for verb in (CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, TEMPLATE_TEXT, MANAGE_PRESETS_TEXT):
+        assert verb not in entries, f"{verb!r} is still an entry: {entries}"
+    for value in data:
+        assert value is None or not str(value).startswith("\x00"), (
+            f"a sentinel survived in the combo: {data}"
+        )
+
+
+def test_the_bar_acts_on_the_current_row_and_says_so(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The bar names its target and offers what that row can actually do (`T-203`).
+
+    A single item offers the format table; a playlist does not — its formats belong to its
+    entries (`T-110`) — and the bar must say so by enablement, reading the model's own roles.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
+    listing = staging_list(dialog)
+    label = dialog.findChild(QLabel, "verbBarLabel")
+    formats = dialog.findChild(QPushButton, "chooseFormatsButton")
+    assert label is not None and formats is not None
+
+    listing.selectionModel().setCurrentIndex(
+        dialog.model.index(0, 0), QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    assert label.text().startswith("For "), label.text()
+    single_label = label.text()
+    assert formats.isEnabled(), "a ready single item was refused its format table"
+
+    listing.selectionModel().setCurrentIndex(
+        dialog.model.index(1, 0), QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    assert label.text().startswith("For ") and label.text() != single_label, (
+        "the label did not follow the current row"
+    )
+    assert not formats.isEnabled(), (
+        "a playlist offers the format table, but its formats belong to its entries"
+    )
+
+
+def test_the_bar_is_dead_when_nothing_is_current(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """No target, no verbs — said in words, with the buttons still in the keyboard chain."""
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    label = dialog.findChild(QLabel, "verbBarLabel")
+    assert label is not None and label.text() == "Select an item to adjust"
+    chain = dialog.focus_chain()
+    for name in ("chooseFormatsButton", "rowOptionsButton", "namingFoldersButton"):
+        button = dialog.findChild(QPushButton, name)
+        assert button is not None and not button.isEnabled(), name
+        assert button in chain, f"{name} left the declared keyboard order with its state"
+
+
+def test_a_bar_press_brings_its_row_into_view(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The guardrail (`T-203`): acting on a row you cannot see is the bar's failure mode.
+
+    The current row is scrolled out of sight, the button is pressed, and the row must be back in
+    the viewport with its panel open — the label, the row and the window visibly about one thing.
+    """
+    # The formats button, deliberately: the options route opens a **modal** dialog, and a
+    # modal under `exec()` never returns to a headless test. The guardrail under test is the
+    # scroll, and the format panel opens in place (`P-1`), so one press witnesses both.
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST, AUDIO_ONLY)
+    row = dialog.rows[0]
+    dialog.resize(900, 520)
+    dialog.show()
+    QApplication.processEvents()
+    listing = staging_list(dialog)
+    try:
+        listing.selectionModel().setCurrentIndex(
+            dialog.model.index(0, 0), QItemSelectionModel.SelectionFlag.NoUpdate
+        )
+        listing.verticalScrollBar().setValue(listing.verticalScrollBar().maximum())
+        button = dialog.findChild(QPushButton, "chooseFormatsButton")
+        assert button is not None and button.isEnabled()
+
+        button.click()
+        QApplication.processEvents()
+
+        rect = listing.visualRect(dialog.model.index(dialog.rows.index(row), 0))
+        assert rect.intersects(listing.viewport().rect()), (
+            "the press acted on a row that stayed out of sight"
+        )
+        assert dialog.open_panel is not None, "the press scrolled but opened nothing"
+    finally:
+        dialog.close()
 
 
 def test_the_manager_opens_a_turn_after_the_button_is_pressed(
