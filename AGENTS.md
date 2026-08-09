@@ -96,13 +96,19 @@ non-negotiable invariant. If an instruction appears to require that, say so and 
 - **Historical record** (append; never silently rewrite): `DECISIONS.md`, `REVIEWS.md`,
   `CHANGELOG.md`, anything under `ai/archive/`
 - **Convenience** (non-authoritative): `PROMPTS.md`, generated reports, AI summaries
-- **Transient** (delete when spent): `ai/handoffs/`
+- **Never committed**: `ai/handoffs/` — messages to a reviewer, `.gitignore`d
 
-### Handoffs are messages, not records
+### Handoffs are messages, not records — and are never committed
 
 **A handoff is one agent talking to another.** It asks for a review, or carries a correction back.
-**Once its verdict is recorded in `ai/REVIEWS.md`, it has done its job and is deleted.** Git history
-keeps every one, retrievable by path, so nothing is lost by removing it from the working tree.
+
+**It is never committed.** `ai/handoffs/` is in `.gitignore`. A handoff may exist as a local
+untracked file so a reviewer working in this checkout can read it, and it may equally be delivered
+to the maintainer as text to paste — **both are fine; a commit is not.** Once its verdict is in
+`ai/REVIEWS.md` the message has done its job, and what is durable is the verdict and the task entry.
+
+*(This first read "transient, deleted once its verdict is recorded", which still put 64 of them in
+the history. The maintainer's rule is narrower and simpler: **not in the repository at all.**)*
 
 **Durable records cite commits, never handoffs.** A commit SHA identifies a tree that still exists;
 a handoff filename identifies a message that is supposed to stop existing. If a record needs a fact
@@ -474,7 +480,7 @@ A worker in a parallel wave (§9) adds, and reports rather than applies:
 | Where the project stands now | `ai/STATUS.md` |
 | Review findings and evidence | `ai/REVIEWS.md`; in a parallel wave, `ai/reviews/T-0NN.md` with `ai/REVIEWS.md` as the index |
 | Test policy and commands | `ai/TESTING.md` |
-| A review request or correction being sent | `ai/handoffs/` — **transient, deleted once its verdict is in `ai/REVIEWS.md`** (§6) |
+| A review request or correction being sent | **Nowhere in the repository.** A local untracked file under `ai/handoffs/`, or text handed to the maintainer (§6) |
 | A visual roadmap of the current phase | **A published artifact, never a repository file** (§6). Derived from the plan and `TASKS.md`, which stay canonical |
 
 Do not copy a fact into a second authoritative-looking place. Link to the canonical home.
