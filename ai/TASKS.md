@@ -1812,6 +1812,65 @@ like it worked.
 - Updating **ffmpeg** — `T-199` owns ffmpeg, and `REQ-024` asks for detection and an override, not
   an installer
 
+### T-199 — ffmpeg: say which features are gone, and let the user point at one
+
+**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** Medium — partly built already, and the unbuilt half is the one a user without ffmpeg
+on `PATH` needs
+**Phase:** Phase 4
+**Depends on:** `T-146` for the screen. `T-035` already resolves the environment.
+**Relevant context:** `REQ-024`, `REQ-023` (*ffmpeg location*), `OPS-003`, `T-035`, `T-189`,
+`T-192`, `core/errors.py` (`FFMPEG_MISSING`, `FFMPEG_ERROR`), `ui/main_window.py` (the gate label),
+`ui/format_selection.py`, `tests/capabilities.py`
+**Affected surfaces:** `core/settings.py`, the settings dialog, the environment resolution path,
+`ui/main_window.py`'s gate
+**Risk:** Low–Medium. The detection exists; the override adds a user-chosen path, and
+`T-109`/`T-113` are the record of what user-chosen paths cost here
+
+#### Scope
+
+**`REQ-024` is half built and the entry should say which half.** Detection at startup exists,
+`core/errors.py` carries `FFMPEG_MISSING` and `FFMPEG_ERROR` as taxonomy classes, `T-192` moved the
+gate summary to where it can be seen, and `T-189` made the CI cases that depend on ffmpeg fail
+rather than skip. **What is missing is the two things `REQ-024` and `REQ-023` name explicitly:**
+
+- **Capability reporting** — *"clearly report **which features are unavailable** without it, rather
+  than failing at merge time."* Today the application reports ffmpeg's *presence*. It does not
+  enumerate what stops working: merging separate video and audio, audio extraction to a named
+  codec, remux and recode, thumbnail embedding, chapters. **A user who is told "no ffmpeg" still
+  does not know what they have lost.**
+- **The override path** — `REQ-023` lists *ffmpeg location*. There is no setting, so a user with
+  ffmpeg somewhere other than `PATH` cannot say so.
+
+**The interesting constraint is `UX-005` §5** — *nothing is drawn that would be refused*.
+`ui/format_selection.py` already reasons about what a preset needs. Capability reporting is the
+same question asked from the other end, and the two must not disagree: a feature the settings screen
+says is unavailable must be one the add dialog does not offer.
+
+#### Acceptance criteria
+
+- The application **enumerates the features ffmpeg gates**, by name, and says which are unavailable
+  — asserted against a real absent-ffmpeg environment, not a mocked flag
+- **The enumeration and the offer agree.** A capability reported unavailable is not offered as a
+  choice anywhere in the add dialog (`UX-005` §5). One test asserts the agreement rather than each
+  side separately, because two lists that must match are two lists that will drift
+- The screen sets an **ffmpeg location**, it persists, and the resolution path **prefers it over
+  `PATH`** — asserted through a real resolution, not the stored value
+- A location that is missing, not executable, or **not ffmpeg** reports under `ARC-008` and the
+  application still starts on whatever it can find. `T-109`'s and `T-113`'s Criticals were both
+  about trusting a path this application did not choose; this is another one
+- Clearing the override returns to `PATH` resolution
+- The gate summary `T-192` fixed reflects an overridden ffmpeg, not just a `PATH` one
+
+#### Out of scope
+
+- **Installing or bundling ffmpeg.** `REQ-024` asks to detect and report; `OPS-003` and the
+  packaging phase own what ships
+- Updating ffmpeg — `T-198` updates yt-dlp only, and nothing asks for an ffmpeg updater
+- Changing which features need ffmpeg. That is `T-109`'s and `T-181`'s settled ground; this task
+  reports it and does not re-derive it
+
 ---
 
 ## Proposed — Phase 4.5
