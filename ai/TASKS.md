@@ -307,6 +307,47 @@ geometry path, and assuming which one is how T-204 reached review without reprod
 
 ---
 
+### T-209 — Keep an open row panel laid out after a value refresh
+
+**Status:** **Ready — blocking `T204-R4`, found in T-204's focused re-review.** The corrected,
+reachable `job_changed` path changes the row to `FAILED` and calls the model's value-only
+`dataChanged` refresh. In a shown dialog Qt then shrinks the mounted `PlaylistPanel` from the row's
+485×407 visual rectangle to its 190×26 minimum, clipping the picker and Done button while the
+delegate-painted row shows through underneath. This is the overlap in T-204 criterion 6, now
+reproduced rather than hypothetical.
+**Owner:** Implementer
+**Priority:** High — the row's body becomes inaccessible on the exact path T-204 is meant to make
+escapable, and the submitted role-only test never shows the dialog or checks geometry
+**Phase:** Phase 4 — blocking correction to T-204
+**Depends on:** T-207's reachable signal path, which supplies the reproduction
+**Relevant context:** `T-204`, `T204-R1`, `T204-R4`, `T107-R2`, `T108-R2`,
+`ui/add_dialog.py` (`StagingModel.refresh`, `_mount_panel`, `remount_panel`),
+`tests/ui/test_add_dialog.py`
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Medium-High — the panel geometry seam has already needed two corrections, and value-only
+refresh differs from both the initial mount and structural-reset paths those corrections cover
+
+#### Acceptance criteria
+
+- In a shown dialog, open the playlist picker, change its selection with a real key/click, and
+  drive the reachable `manager.job_changed → _on_job_changed → FAILED` path
+- After that refresh, the panel remains the row's index widget and its geometry matches the row's
+  visual rectangle; the picker body and Done button remain visible and usable, with no delegate row
+  anatomy painted through the panel
+- Close through an actual user route—Done, Esc, or a disclosure event that the view really emits—
+  rather than calling `toggle_playlist` directly, and prove the changed selection survives
+- The regression fails at `6aded1a`, where the panel is 190×26 inside a 485×407 row; weakening the
+  correction must make it fail again
+- Audit value-only refreshes for both playlist and format panels, plus structural remounting, so the
+  correction does not fix one panel kind or reset class only
+- Run `ruff`, `ruff format`, both mypy gates and the affected UI suites
+
+#### Out of scope
+
+- T-208's separately unexplained multi-row report, unless this geometry path reproduces it
+
+---
+
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** **Ready — the decision landed as `REL-002` (2026-08-04), so the blocker is gone.**
@@ -2051,169 +2092,6 @@ it is not in the `ok`/`warn`/`stop` set.
   beside them
 - High-contrast or user-supplied themes — not requested, and each needs its own decision
 
-### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
-
-**Status:** Proposed — **maintainer-raised, 2026-08-08**, from a review of the add dialog: *"the
-drop down should be where you select a preset (and this should be made clear)"*, and after seeing
-four alternatives, *"still feeling really cluttered"*. **The layout was ruled on 2026-08-09** across
-five rounds of mockups; **two requirement-level rulings remain open** and gate the template half
-only. The entry records one reversal along the way — see *The proposal*.
-**Owner:** Planner → Implementer. **The ruling comes first; this is not agreed work.**
-**Priority:** Medium — no function is missing; the complaint is that the surface is unusable enough
-that a user does the wrong thing
-**Phase:** Phase 4 — polish. **Not a Phase 3 blocker.**
-**Depends on:** **`T-204`, which should land first** — this task adds two hit regions to the delegate
-geometry `T-204`'s defect is in, and fixing that geometry after adding to it is the harder order.
-Also a maintainer ruling on the one question below, and `T-146`/`T-195` for the settings that absorb
-what the row gives up. *(**Phase confirmed 2026-08-09:** the maintainer briefly ruled this into
-Phase 3 and reversed it the same day — *"since this is going to effect other tasks, lets just do it
-all in phase 4 as originally planned"*. Phase 3 exits on its existing six criteria.)*
-**Relevant context:** `REQ-007`, `REQ-011`, `REQ-023`, `docs/UX_SPEC.md` §8 and §9.1, `UX-004`,
-`UX-005` §5, `UX-007` (`P-22`, `P-23`), `ARC-002`, `core/models.py`
-(`Preset.output_template`, `DownloadRequest.output_template`), `ui/row_delegate.py` §203–294 and
-§1728–1734, `ui/add_dialog.py` §879–900, `ui/options_dialog.py` §139–143, `ui/template_editor.py`,
-`ui/preset_manager.py`
-**Affected surfaces:** `ui/row_delegate.py`, `ui/add_dialog.py`, `ui/preset_manager.py`,
-`docs/UX_SPEC.md`, possibly `ai/REQUIREMENTS.md`
-**Risk:** **Medium–High, and the reason changed on 2026-08-09.** It was filed as *"the code is
-contained; the risk is ruling away a capability"*. The capability half shrank — options survive and
-only the template is still in question — but reading the delegate showed the icons must be
-**painted and hit-tested**, which puts the work in the seam that produced `T107-R2`, `T108-R2` and
-`T-204`. The risk is geometry, not scope
-
-#### The defect, stated once
-
-The row's format control is a `QComboBox` whose list holds the presets and then four entries that
-are **not presets but verbs**: `Choose specific formats…`, `Options…`, `Where it goes…`,
-`Manage presets…`. Selecting one opens a window and puts the selection back. **The control looks
-like a value picker while containing commands, and appears to accept a choice it discards.**
-
-#### What the code says, and it changes the question
-
-Three findings from reading it, all of which point the same way:
-
-1. **`Where it goes…` is not a folder picker.** It opens `ui/template_editor.py` — `REQ-011`'s
-   **output template** editor, with live preview and edit-time validation. The label promises
-   somewhere to put a file and delivers a `%(field)s` language. **The maintainer's reading of it as
-   a destination picker is itself evidence the label is wrong.**
-2. **`Preset` already carries `output_template`.** `core/models.py` puts it on `Preset` *and* on
-   `DownloadRequest`. **Where a download goes is already a preset property.**
-3. **`OptionsDialog` already operates on presets.** Its own docstring: *"Set `REQ-010`'s seven
-   options for one download, **or for a preset**… Takes the `Preset` being edited… and answers with
-   a **derived preset**."*
-
-**So two of the three per-row verbs are already preset-shaped.** The row is not configuring an item;
-it is building an anonymous, unnamed preset per row. **That is the clutter** — and it explains why
-the dropdown accumulated commands: they had nowhere else to live.
-
-#### The proposal — **the shape was chosen by the maintainer on 2026-08-09**
-
-Five rounds of mockups were reviewed. The chosen shape is *"V2 + G2"* in that sequence:
-
-- **The row picks a preset.** The combo lists presets only, the column reads *Preset*, and every
-  entry in it is a value that sticks.
-- **`Choose specific formats…` stays per-item**, because the available formats differ per video and
-  the choice cannot be carried by a preset.
-- **`Options…` stays per-item too.** ***This reverses an earlier proposal in this entry*** which
-  folded post-processing options into presets on the grounds that `OptionsDialog` already returns a
-  derived preset. **The maintainer rejected it, and the reason is worth keeping:** the control went
-  missing from a mockup and was noticed immediately, which is what removing a capability feels like.
-  Folding it in would make a one-off variation cost a named preset the user never wanted.
-- **Both per-item verbs become icon buttons** — a list glyph for the format table, a gear for
-  options. **Matched pair, not one word and one glyph**: two controls of the same kind should not
-  look like two different kinds. The width this reclaims goes to the preset combo, because long
-  preset names elide first and the preset name is the one thing that must stay readable.
-- **The output template leaves the row**, subject to ruling 1 below.
-- **The download root becomes `REQ-023`'s *default download directory*** — a setting, owned by
-  `T-146`, which does not exist yet. Root + template compose into the path; the template does the
-  organising, the root does the locating.
-- **`Manage presets…` moves to the dialog footer.** It edits the shared library and has nothing to
-  do with any row.
-
-**Result: the row is a checkbox, a name, a preset combo, and two icon buttons.**
-
-**The cost of the gear pair, stated rather than discovered.** A gear is conventional for settings
-and needs no teaching. **A list glyph is not conventional for "choose specific formats"** — it is
-learnable in one click and permanent after that, but it is *learned rather than guessed*, and that
-is the trade this shape accepts. `UX-005` §5 is not violated — the control is offered and does what
-it says — but a first-run user will hover it.
-
-#### The one ruling this still needs
-
-**Does a per-item output template survive?** `REQ-011` reads *"output path and filename control via
-a configurable output template, with a live preview of the resulting path **for the current
-item**"*. **"For the current item" describes the preview, not the template's scope** — a defensible
-reading under which a single application-level template satisfies `REQ-011` and per-item override is
-not required. **It is a reading, not a fact**, and removing a shipped control on it is a maintainer
-call.
-
-**This ruling now gates the layout, not just the template.** If the per-item template survives, the
-row carries **three** icon buttons rather than two, and the matched-pair argument above has to
-accommodate a third glyph — for which there is even less convention than the list icon.
-
-*(**Two rulings that were open are now taken, both 2026-08-09.**
-**Per-item post-processing options survive** — nothing here folds `REQ-010`'s seven options into
-presets, and `ui/options_dialog.py` keeps its per-row entry point.
-**`Manage presets…` moves to the footer** — `UX-009` accepts it, amends `docs/UX_SPEC.md` §8's `[T]`
-clause, and generalises the rule so the next library-wide action does not re-argue it.)*
-
-#### What the delegate already does, and what it costs this task
-
-**`NFR-001` is not a problem here, and it looked like one.** `UX-004` measured a real control on
-every row at **85.7 ms for 150 rows and 116.2 ms for 200**, against `NFR-001`'s ~100 ms budget, and
-recorded a sequencing note that `T-119` should reduce it to one reused widget. `T-119` was
-**cancelled into `T-118`**, so that note reads as unfinished.
-
-**It is finished.** `ui/row_delegate.py` has `paint`, `sizeHint`, `editorEvent` and `createEditor`,
-and **no `openPersistentEditor` exists anywhere in `ui/`** — so the row is *painted*, and a real
-combo materialises only on the row being edited. Two more icons are two more painted glyphs, not two
-more widgets per row. **The measurement in `UX-004` describes an arrangement that was never shipped.**
-
-**The cost lands somewhere else instead.** Painted icons must be hit-tested in `editorEvent`, beside
-the twisty that is already handled there — which puts this task in **the delegate's paint-and-hit-test
-seam**. That seam produced `T107-R2` and `T108-R2`, and it currently holds `T-204`'s open defect.
-**Two icons mean two new hit regions in the geometry that is already wrong.** This is the risk this
-task actually carries, and it is why `T-204` should land first.
-
-#### Acceptance criteria
-
-*(The **shape** is ruled; the two open rulings above still gate the template half.)*
-
-- The row's combo contains **only selectable values**; no entry in it opens a window
-- The column header names what the control sets
-- **Each icon button carries an accessible name and role**, set explicitly in code.
-  **A tooltip does not satisfy this** — it is a hover affordance, not an accessible name, and
-  `NFR-005` requires screen-reader labels on all controls while `T-200`'s criterion is a name *and*
-  a role for every control in the tree
-- **`tests/ui/test_windows_accessibility.py` covers both new buttons.** This is the criterion most
-  likely to be missed, and it **fails on the Windows job alone** — `T-146` records exactly that
-  happening after the Linux suite passed and three commits had been pushed
-- **The two icon buttons are one matched pair**: same size, same border treatment, same weight.
-  A test asserting they are styled by the same role rather than individually, per the convention
-  `T-192` established and `test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces
-- **The icons read in both palettes.** `T-021` owns the glyph work and `T-202` owns colour, but an
-  icon that vanishes into the dark ground is this task's defect to not create
-- **The width reclaimed from the two labels goes to the preset combo**, not to whitespace — the
-  preset name is what must stay readable, and it is what elides first today
-- **Nothing is removed until its replacement exists.** If the per-item template goes, `T-195`'s
-  default template and `T-146`'s directory are in place first, and a test asserts a job with no
-  per-item template still writes where the user expects
-- **Existing presets keep working.** `Preset.output_template` is already populated; a migration or
-  a defaulting rule covers presets written before the change, and is tested
-- `docs/UX_SPEC.md` §8 and §9.1 are amended to describe what was built, with the ruling named — and
-  the amendment is made by whoever `AGENTS.md` §4 permits, since the Implementer may not write
-  `docs/UX_SPEC.md`
-- Keyboard reachability of every surviving control is re-verified — **or `T-200` runs after this
-  task**, which is the cheaper order and why `T-200` names this dependency
-
-#### Out of scope
-
-- **`T-204`'s disclosure bug.** It is in the same surface and is a separate defect; this task must
-  not be credited with fixing it
-- The playlist entry picker's sizing — fixed by `T-193`
-- Multi-select in the add dialog. It would change the answer here, and nothing asks for it
-- yt-dlp's wider option surface — `T-183` and the escape hatch own that
-
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
@@ -2765,6 +2643,204 @@ Assert, on `windows-latest`:
 - Any non-Windows packaging
 
 ---
+
+### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
+
+**Status:** **Blocked — on the accessibility ruling below.** The first slice (option *D*) is built
+at `2026-08-09` and **is not submitted for review**: the maintainer's direction is that the whole
+task is reviewed once the shape is decided and implemented, not slice by slice.
+Maintainer-raised 2026-08-08 from
+a review of the add dialog: *"the drop down should be where you select a preset (and this should be
+made clear)"*, and after seeing four alternatives, *"still feeling really cluttered"*.
+
+**What is built (option *D*, chosen 2026-08-09: *"Lets do D first just to see how it would look in
+practice"*).** The smallest change that answers *"make it clear"*, and it forecloses nothing:
+
+- **A separator splits the combo.** Above the rule every entry is a value that sticks; below it
+  every entry opens a window and puts the selection back. The rule does not make that untrue — it
+  makes it visible.
+- **`Where it goes…` is renamed `Naming and folders…`**, on maintainer direction. That label
+  promised a folder picker and opened a `%(field)s` template editor, which is why the maintainer
+  read it as a destination picker in review. **Where the root is** becomes `REQ-023`'s download
+  directory under `T-146`; the two are named differently so they cannot be confused once both exist.
+- **`Manage presets…` moved to the dialog footer**, per `UX-009`, disabled rather than hidden when
+  composition wires no manager.
+
+**Two things the build corrected in the proposal below.**
+
+- **There is no column header to rename.** The staging list is a `QListView`, not a table. Every
+  mockup drew a *Preset* column header that does not exist, and the criterion below that named it
+  is struck.
+- **`focus_chain()` is declared in code, and a new button must be added to it.** The first attempt
+  hid the button when nothing was wired, which broke this dialog's own stated rule — *"nothing here
+  hides: the retry button is disabled rather than removed … so the chain is the same in every
+  state."* Hiding would make the declared keyboard order depend on composition's wiring, which is
+  what `T-060` and `T016-R4` exist to prevent.
+
+**What is not built, and why.** The icon-button shapes (*G2*, and the maintainer's stated preference
+*B*) are **blocked on an accessibility ruling**: `setAccessibleName` appears exactly once in
+`ui/row_delegate.py`, on the `QComboBox` editor. Painted controls have no accessibility node, so
+moving the three verbs into painted icons would delete them from the tree that `NFR-005` requires
+and `T-200` audits. The options and their costs are recorded in the maintainer's design artifact;
+**this slice deliberately does not decide it.**
+
+**Still outstanding:** the `REQ-011` template ruling, and `docs/UX_SPEC.md` §8/§9.1 — which the
+Implementer may not write (`AGENTS.md` §4), so the amendment `UX-009` requires is somebody else's.
+**Owner:** Planner → Implementer. **The ruling comes first; this is not agreed work.**
+**Priority:** Medium — no function is missing; the complaint is that the surface is unusable enough
+that a user does the wrong thing
+**Phase:** Phase 4 — polish. **Not a Phase 3 blocker.**
+**Depends on:** **`T-204`, which should land first** — this task adds two hit regions to the delegate
+geometry `T-204`'s defect is in, and fixing that geometry after adding to it is the harder order.
+Also a maintainer ruling on the one question below, and `T-146`/`T-195` for the settings that absorb
+what the row gives up. *(**Phase confirmed 2026-08-09:** the maintainer briefly ruled this into
+Phase 3 and reversed it the same day — *"since this is going to effect other tasks, lets just do it
+all in phase 4 as originally planned"*. Phase 3 exits on its existing six criteria.)*
+**Relevant context:** `REQ-007`, `REQ-011`, `REQ-023`, `docs/UX_SPEC.md` §8 and §9.1, `UX-004`,
+`UX-005` §5, `UX-007` (`P-22`, `P-23`), `ARC-002`, `core/models.py`
+(`Preset.output_template`, `DownloadRequest.output_template`), `ui/row_delegate.py` §203–294 and
+§1728–1734, `ui/add_dialog.py` §879–900, `ui/options_dialog.py` §139–143, `ui/template_editor.py`,
+`ui/preset_manager.py`
+**Affected surfaces:** `ui/row_delegate.py`, `ui/add_dialog.py`, `ui/preset_manager.py`,
+`docs/UX_SPEC.md`, possibly `ai/REQUIREMENTS.md`
+**Risk:** **Medium–High, and the reason changed on 2026-08-09.** It was filed as *"the code is
+contained; the risk is ruling away a capability"*. The capability half shrank — options survive and
+only the template is still in question — but reading the delegate showed the icons must be
+**painted and hit-tested**, which puts the work in the seam that produced `T107-R2`, `T108-R2` and
+`T-204`. The risk is geometry, not scope
+
+#### The defect, stated once
+
+The row's format control is a `QComboBox` whose list holds the presets and then four entries that
+are **not presets but verbs**: `Choose specific formats…`, `Options…`, `Where it goes…`,
+`Manage presets…`. Selecting one opens a window and puts the selection back. **The control looks
+like a value picker while containing commands, and appears to accept a choice it discards.**
+
+#### What the code says, and it changes the question
+
+Three findings from reading it, all of which point the same way:
+
+1. **`Where it goes…` is not a folder picker.** It opens `ui/template_editor.py` — `REQ-011`'s
+   **output template** editor, with live preview and edit-time validation. The label promises
+   somewhere to put a file and delivers a `%(field)s` language. **The maintainer's reading of it as
+   a destination picker is itself evidence the label is wrong.**
+2. **`Preset` already carries `output_template`.** `core/models.py` puts it on `Preset` *and* on
+   `DownloadRequest`. **Where a download goes is already a preset property.**
+3. **`OptionsDialog` already operates on presets.** Its own docstring: *"Set `REQ-010`'s seven
+   options for one download, **or for a preset**… Takes the `Preset` being edited… and answers with
+   a **derived preset**."*
+
+**So two of the three per-row verbs are already preset-shaped.** The row is not configuring an item;
+it is building an anonymous, unnamed preset per row. **That is the clutter** — and it explains why
+the dropdown accumulated commands: they had nowhere else to live.
+
+#### The proposal — **the shape was chosen by the maintainer on 2026-08-09**
+
+Five rounds of mockups were reviewed. The chosen shape is *"V2 + G2"* in that sequence:
+
+- **The row picks a preset.** The combo lists presets only, the column reads *Preset*, and every
+  entry in it is a value that sticks.
+- **`Choose specific formats…` stays per-item**, because the available formats differ per video and
+  the choice cannot be carried by a preset.
+- **`Options…` stays per-item too.** ***This reverses an earlier proposal in this entry*** which
+  folded post-processing options into presets on the grounds that `OptionsDialog` already returns a
+  derived preset. **The maintainer rejected it, and the reason is worth keeping:** the control went
+  missing from a mockup and was noticed immediately, which is what removing a capability feels like.
+  Folding it in would make a one-off variation cost a named preset the user never wanted.
+- **Both per-item verbs become icon buttons** — a list glyph for the format table, a gear for
+  options. **Matched pair, not one word and one glyph**: two controls of the same kind should not
+  look like two different kinds. The width this reclaims goes to the preset combo, because long
+  preset names elide first and the preset name is the one thing that must stay readable.
+- **The output template leaves the row**, subject to ruling 1 below.
+- **The download root becomes `REQ-023`'s *default download directory*** — a setting, owned by
+  `T-146`, which does not exist yet. Root + template compose into the path; the template does the
+  organising, the root does the locating.
+- **`Manage presets…` moves to the dialog footer.** It edits the shared library and has nothing to
+  do with any row.
+
+**Result: the row is a checkbox, a name, a preset combo, and two icon buttons.**
+
+**The cost of the gear pair, stated rather than discovered.** A gear is conventional for settings
+and needs no teaching. **A list glyph is not conventional for "choose specific formats"** — it is
+learnable in one click and permanent after that, but it is *learned rather than guessed*, and that
+is the trade this shape accepts. `UX-005` §5 is not violated — the control is offered and does what
+it says — but a first-run user will hover it.
+
+#### The one ruling this still needs
+
+**Does a per-item output template survive?** `REQ-011` reads *"output path and filename control via
+a configurable output template, with a live preview of the resulting path **for the current
+item**"*. **"For the current item" describes the preview, not the template's scope** — a defensible
+reading under which a single application-level template satisfies `REQ-011` and per-item override is
+not required. **It is a reading, not a fact**, and removing a shipped control on it is a maintainer
+call.
+
+**This ruling now gates the layout, not just the template.** If the per-item template survives, the
+row carries **three** icon buttons rather than two, and the matched-pair argument above has to
+accommodate a third glyph — for which there is even less convention than the list icon.
+
+*(**Two rulings that were open are now taken, both 2026-08-09.**
+**Per-item post-processing options survive** — nothing here folds `REQ-010`'s seven options into
+presets, and `ui/options_dialog.py` keeps its per-row entry point.
+**`Manage presets…` moves to the footer** — `UX-009` accepts it, amends `docs/UX_SPEC.md` §8's `[T]`
+clause, and generalises the rule so the next library-wide action does not re-argue it.)*
+
+#### What the delegate already does, and what it costs this task
+
+**`NFR-001` is not a problem here, and it looked like one.** `UX-004` measured a real control on
+every row at **85.7 ms for 150 rows and 116.2 ms for 200**, against `NFR-001`'s ~100 ms budget, and
+recorded a sequencing note that `T-119` should reduce it to one reused widget. `T-119` was
+**cancelled into `T-118`**, so that note reads as unfinished.
+
+**It is finished.** `ui/row_delegate.py` has `paint`, `sizeHint`, `editorEvent` and `createEditor`,
+and **no `openPersistentEditor` exists anywhere in `ui/`** — so the row is *painted*, and a real
+combo materialises only on the row being edited. Two more icons are two more painted glyphs, not two
+more widgets per row. **The measurement in `UX-004` describes an arrangement that was never shipped.**
+
+**The cost lands somewhere else instead.** Painted icons must be hit-tested in `editorEvent`, beside
+the twisty that is already handled there — which puts this task in **the delegate's paint-and-hit-test
+seam**. That seam produced `T107-R2` and `T108-R2`, and it currently holds `T-204`'s open defect.
+**Two icons mean two new hit regions in the geometry that is already wrong.** This is the risk this
+task actually carries, and it is why `T-204` should land first.
+
+#### Acceptance criteria
+
+*(The **shape** is ruled; the two open rulings above still gate the template half.)*
+
+- The row's combo contains **only selectable values**; no entry in it opens a window
+- The column header names what the control sets
+- **Each icon button carries an accessible name and role**, set explicitly in code.
+  **A tooltip does not satisfy this** — it is a hover affordance, not an accessible name, and
+  `NFR-005` requires screen-reader labels on all controls while `T-200`'s criterion is a name *and*
+  a role for every control in the tree
+- **`tests/ui/test_windows_accessibility.py` covers both new buttons.** This is the criterion most
+  likely to be missed, and it **fails on the Windows job alone** — `T-146` records exactly that
+  happening after the Linux suite passed and three commits had been pushed
+- **The two icon buttons are one matched pair**: same size, same border treatment, same weight.
+  A test asserting they are styled by the same role rather than individually, per the convention
+  `T-192` established and `test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces
+- **The icons read in both palettes.** `T-021` owns the glyph work and `T-202` owns colour, but an
+  icon that vanishes into the dark ground is this task's defect to not create
+- **The width reclaimed from the two labels goes to the preset combo**, not to whitespace — the
+  preset name is what must stay readable, and it is what elides first today
+- **Nothing is removed until its replacement exists.** If the per-item template goes, `T-195`'s
+  default template and `T-146`'s directory are in place first, and a test asserts a job with no
+  per-item template still writes where the user expects
+- **Existing presets keep working.** `Preset.output_template` is already populated; a migration or
+  a defaulting rule covers presets written before the change, and is tested
+- `docs/UX_SPEC.md` §8 and §9.1 are amended to describe what was built, with the ruling named — and
+  the amendment is made by whoever `AGENTS.md` §4 permits, since the Implementer may not write
+  `docs/UX_SPEC.md`
+- Keyboard reachability of every surviving control is re-verified — **or `T-200` runs after this
+  task**, which is the cheaper order and why `T-200` names this dependency
+
+#### Out of scope
+
+- **`T-204`'s disclosure bug.** It is in the same surface and is a separate defect; this task must
+  not be credited with fixing it
+- The playlist entry picker's sizing — fixed by `T-193`
+- Multi-select in the add dialog. It would change the answer here, and nothing asks for it
+- yt-dlp's wider option surface — `T-183` and the escape hatch own that
 
 ## Complete
 ### T-192 — The stopped-queue message hides at the right, against the ffmpeg summary

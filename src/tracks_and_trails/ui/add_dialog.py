@@ -1144,6 +1144,24 @@ class AddUrlDialog(QDialog):
         self._close_button.setAccessibleName("Close without adding")
         self._close_button.clicked.connect(self.reject)
         self._buttons.addButton(self._close_button, QDialogButtonBox.ButtonRole.RejectRole)
+
+        # **`UX-009`: a library-wide action does not belong on a row.** *Manage presets…* edits the
+        # catalogue every row chooses from and does the same thing from every one of them, so it was
+        # offered N times to mean one thing. `ResetRole` is what puts it at the *left* of the box,
+        # away from the two buttons that decide the dialog's outcome.
+        self._manage_presets_button = QPushButton("&Manage presets…", self)
+        self._manage_presets_button.setObjectName("managePresetsButton")
+        self._manage_presets_button.setAccessibleName("Manage presets")
+        self._manage_presets_button.setAutoDefault(False)
+        self._manage_presets_button.clicked.connect(self.open_preset_manager)
+        # **Disabled, not hidden, when nothing wired a manager.** The combo entry it replaces was
+        # omitted entirely in that case, but this row of buttons has its own rule and `focus_chain`
+        # states it: *"nothing here hides: the retry button is disabled rather than removed … so the
+        # chain is the same in every state and the layout does not move under the user."* Hiding
+        # would make the declared keyboard order depend on composition's wiring, which is exactly
+        # what `T016-R4` and `T-060` are about.
+        self._manage_presets_button.setEnabled(self.can_manage_presets)
+        self._buttons.addButton(self._manage_presets_button, QDialogButtonBox.ButtonRole.ResetRole)
         layout.addWidget(self._buttons)
 
         # `T016-R6`: applied from one list rather than at each construction site, so a label added
@@ -1289,6 +1307,12 @@ class AddUrlDialog(QDialog):
             self._preset_choice,
             self._bitrate_choice,
             self._selector_value,
+            # **Before the two that decide the dialog**, because `ResetRole` draws it at the
+            # left of the button box and `T-200`'s rule is that the keyboard follows the eye.
+            # `UX-009` put it here; until 2026-08-09 it was an entry in every row's control.
+            # It is disabled rather than hidden when no manager is wired, so it is in the chain
+            # in every state — the rule stated at the top of this method.
+            self._manage_presets_button,
             self._add_button,
             self._close_button,
         ]

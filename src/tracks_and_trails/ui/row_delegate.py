@@ -245,7 +245,14 @@ TEMPLATE_AVAILABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 21
 #:
 #: Below `OPTIONS_TEXT` for the reason that one is below `CHOOSE_FORMATS_TEXT`: entries a user has
 #: learned the positions of do not move when a new one appears.
-TEMPLATE_TEXT: Final = "Where it goes…"
+#:
+#: **Renamed from "Where it goes…" on 2026-08-09, maintainer direction.** That label promised a
+#: folder picker and opened a `%(field)s` template editor — and the maintainer read it as a
+#: destination picker in review, which is the evidence rather than the theory. What it edits is how
+#: a download is *named and filed*; **where the root is** becomes `REQ-023`'s download directory,
+#: a setting, under `T-146`. Naming the two differently is what keeps them from being confused for
+#: each other once both exist.
+TEMPLATE_TEXT: Final = "Naming and folders…"
 
 #: Its data, a sentinel for `CHOOSE_FORMATS_DATA`'s reason and with the same consequence if it were
 #: ever looked up as a preset name.
@@ -1724,14 +1731,24 @@ class RowDelegate(QStyledItemDelegate):
             choice.insertItem(0, current, current)
         # **Below the preset list**, which is where `docs/UX_SPEC.md` §4 puts it, so the entries a
         # user has learned the positions of do not move when this appears.
-        if index.data(FORMATS_AVAILABLE_ROLE):
-            choice.addItem(CHOOSE_FORMATS_TEXT, CHOOSE_FORMATS_DATA)
-        if index.data(OPTIONS_AVAILABLE_ROLE):
-            choice.addItem(OPTIONS_TEXT, OPTIONS_DATA)
-        if index.data(TEMPLATE_AVAILABLE_ROLE):
-            choice.addItem(TEMPLATE_TEXT, TEMPLATE_DATA)
-        if index.data(PRESETS_MANAGEABLE_ROLE):
-            choice.addItem(MANAGE_PRESETS_TEXT, MANAGE_PRESETS_DATA)
+        #
+        # **Separated from the presets above them** (`T-203`, maintainer direction 2026-08-09). The
+        # complaint was that the control *"looks like a value picker while containing commands"* —
+        # every entry above the rule is a value that sticks, every entry below it opens a window and
+        # puts the selection back. The rule does not make that untrue; it makes it visible, which is
+        # the smallest change that answers *"this should be made clear"*.
+        verbs = (
+            (FORMATS_AVAILABLE_ROLE, CHOOSE_FORMATS_TEXT, CHOOSE_FORMATS_DATA),
+            (OPTIONS_AVAILABLE_ROLE, OPTIONS_TEXT, OPTIONS_DATA),
+            (TEMPLATE_AVAILABLE_ROLE, TEMPLATE_TEXT, TEMPLATE_DATA),
+        )
+        offered_verbs = [(text, data) for role, text, data in verbs if index.data(role)]
+        if offered_verbs:
+            choice.insertSeparator(choice.count())
+        for text, data in offered_verbs:
+            choice.addItem(text, data)
+        # `MANAGE_PRESETS_*` is deliberately absent: `UX-009` moved it to the dialog's footer,
+        # because it edits the shared library and does the same thing from every row.
         return choice
 
     def destroyEditor(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:

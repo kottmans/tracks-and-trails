@@ -209,6 +209,10 @@ EXPECTED_TAB_ORDER: Final = (
     # chosen "Audio only (MP3)" is one Tab away from the bitrate that preset will convert at.
     "audioBitrateChoice",
     "selectorValue",
+    # `UX-009` moved *Manage presets…* off the row and into the footer. `ResetRole` places it at the
+    # **left** of the button box, and the keyboard follows the eye — `T-200`'s rule that tab order
+    # matches visual order — so it is reached before the two buttons that decide the dialog.
+    "managePresetsButton",
     "addButton",
     "closeButton",
 )
@@ -4438,26 +4442,59 @@ def test_a_default_naming_nothing_in_the_catalogue_falls_back(
 # --- T-111: the Manage presets… entry on the format control (UX_SPEC §8's P-6) --------------
 
 
-def test_the_format_control_offers_the_preset_manager_where_a_store_is_wired(
+def test_the_footer_offers_the_preset_manager_where_a_store_is_wired(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],
     dialogs: Callable[..., AddUrlDialog],
     spin: Callable[..., bool],
 ) -> None:
-    """*"A preset manager, reached from the format control's `Manage presets…`"* — `UX_SPEC` §8.
+    """`UX-009`: a library-wide action does not belong on a row.
 
-    Below the three editors, for the reason each of those is below the one before it, so the order
-    is asserted rather than only the presence.
+    *Manage presets…* edits the catalogue **every** row chooses from and does the same thing from
+    every one of them, so being an entry in each row's format control offered it N times to mean
+    once. It is now a button in the dialog's footer.
+
+    *(`UX_SPEC` §8's `[T]` clause read "reached from the format control's `Manage presets…`" until
+    `UX-009` amended it on 2026-08-09.)*
     """
     dialog, _row = _staged(dialogs, managers, spin, manage_presets=lambda: None)
+
+    button = dialog.findChild(QPushButton, "managePresetsButton")
+    assert button is not None, "the footer does not offer the preset manager at all"
+    assert button.isEnabled(), "a wired manager left the button dead"
+    assert button.accessibleName() == "Manage presets", (
+        "the button has no accessible name, which `NFR-005` requires of every control"
+    )
+
     control = open_row_editor(dialog, 0)
     entries = [control.itemText(index) for index in range(control.count())]
+    assert MANAGE_PRESETS_TEXT not in entries, (
+        f"the row's control still offers the library-wide action: {entries}"
+    )
 
-    assert MANAGE_PRESETS_TEXT in entries, entries
-    assert entries.index(MANAGE_PRESETS_TEXT) > entries.index(TEMPLATE_TEXT), entries
-    assert control.itemData(entries.index(MANAGE_PRESETS_TEXT)) == MANAGE_PRESETS_DATA, (
-        "the entry carries a preset name, so choosing it would be looked up as a preset and would "
-        "silently clear the row's format"
+
+def test_the_footer_button_is_dead_rather_than_missing_where_nothing_is_wired(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """Disabled, not hidden — `focus_chain`'s own rule for this row of buttons.
+
+    The combo entry this replaces was **omitted** when nothing was wired, which is `UX-005` §5. The
+    button row answers the same question differently and says so: *"nothing here hides: the retry
+    button is disabled rather than removed … so the chain is the same in every state."* Hiding it
+    would make the declared keyboard order depend on what composition wired, which is what `T-060`
+    and `T016-R4` exist to prevent.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+
+    button = dialog.findChild(QPushButton, "managePresetsButton")
+    assert button is not None, "the button was removed rather than disabled"
+    assert not button.isEnabled(), "nothing is wired behind it and it still invites a click"
+    assert button in dialog.focus_chain(), (
+        "a disabled-but-present button left the declared keyboard order, so the order now depends "
+        "on composition's wiring"
     )
 
 
@@ -4510,47 +4547,31 @@ def test_choosing_the_entry_opens_the_manager_and_keeps_the_row_s_format(
     )
 
 
-def test_the_manager_opens_a_turn_after_the_row_editor_closes(
-    qapp: QApplication,
-    managers: Callable[..., DownloadManager],
+def test_the_manager_opens_a_turn_after_the_button_is_pressed(
     dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
 ) -> None:
-    """**`T111-R3`**, driven through the real combo rather than through `setData`.
+    """`T111-R3`'s deferral survives the move to the footer, and is kept deliberately.
 
-    The route that shipped called composition's modal manager synchronously from
-    `StagingModel.setData`, which Qt reaches from inside `commitData` while the row's combo box is
-    still open. `open_options` defers by one turn for exactly this reason and `T108-R2` records the
-    dead-editor class it prevents. The test that shipped called `setData` directly, so it exercised
-    every part of the route except the stack it actually runs on — which is why a Medium survived a
-    passing suite.
+    **The hazard it was written for is gone.** `open_preset_manager` used to be reached from
+    `StagingModel.setData`, which Qt calls inside `commitData` while the row's combo is still
+    open — so a modal manager ran a nested event loop underneath a widget Qt was in the middle of
+    closing, which is `T108-R2`'s dead-editor class. `UX-009` moved the route to a footer button,
+    and a button press is not inside anyone's `commitData`.
 
-    Asserted in three parts, because only the last two are new: the manager does not open while the
-    editor is being committed, it opens on the next turn, and the row editor is reaped afterwards so
-    the row can be edited again without Qt being handed a widget it has already let go of.
+    **The deferral stays anyway.** It costs one turn from a click and is the whole of the
+    protection if any route ever reaches this method from an editor again. This asserts it is
+    still a turn late rather than synchronous.
     """
     opened: list[bool] = []
-    dialog, row = _staged(dialogs, managers, spin, manage_presets=lambda: opened.append(True))
-    row.preset = preset_registry.AUDIO_MP3
+    dialog, _row = _staged(dialogs, managers, spin, manage_presets=lambda: opened.append(True))
 
-    control = open_row_editor(dialog, 0)
-    control.setCurrentIndex(control.findData(MANAGE_PRESETS_DATA))
-    listing = staging_list(dialog)
-    listing.commitData(control)
+    button = dialog.findChild(QPushButton, "managePresetsButton")
+    assert button is not None and button.isEnabled()
+    button.click()
 
-    assert opened == [], (
-        "the manager opened underneath commitData, with the row's editor still standing — the "
-        "nested-event-loop ordering T108-R2 records as a dead editor"
-    )
+    assert opened == [], "the manager opened synchronously; T111-R3's deferral is gone"
 
-    listing.closeEditor(control, QAbstractItemDelegate.EndEditHint.NoHint)
     QApplication.processEvents()
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-
     assert opened == [True], "the deferred manager never opened at all"
-    assert row.preset is preset_registry.AUDIO_MP3, (
-        "the sentinel reached the preset lookup and cleared the row's chosen format"
-    )
-
-    reopened = open_row_editor(dialog, 0)
-    assert reopened is not control, "the row was handed back the editor that had already closed"
