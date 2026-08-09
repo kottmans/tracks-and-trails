@@ -775,7 +775,9 @@ def test_the_queue_state_sits_at_the_left_and_the_summary_at_the_right(
     bar = window.statusBar()
     gate = window.findChild(QLabel, "queueGateState")
     summary = window.findChild(QLabel, "environmentSummary")
-    assert bar is not None and gate is not None and summary is not None
+    # `statusBar()` is non-optional in the stubs, so guarding it is a `redundant-expr` error under
+    # the test-inclusive gates — only the two `findChild` results can actually be `None`.
+    assert gate is not None and summary is not None
 
     gate_x = gate.mapTo(bar, gate.rect().topLeft()).x()
     summary_x = summary.mapTo(bar, summary.rect().topLeft()).x()
