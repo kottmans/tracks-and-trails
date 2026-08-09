@@ -595,7 +595,7 @@ of them was unresolved, and "resolved" included an explicit refusal. **All six a
 |---|---|---|
 | `T-143` | A playlist's entries are never probed, so their rows stay bare | **Approved 2026-08-08.** Its premise was already half-closed by `T137-R2`; the criterion was **amended** and pre-download size deferred to `T-191` |
 | `T-180` | Two permitted instances share one thumbnail cache and sweep each other's pictures | **Approved 2026-08-08**, on `DAT-007` and a production-seam regression |
-| `T-189` | The required ffmpeg CI cases skip instead of failing | **Approved 2026-08-08.** A missing tool now fails the two jobs carrying `T-108`'s proof rather than skipping inside them. **Residual:** the workflow edit has never executed on a runner |
+| `T-189` | The required ffmpeg CI cases skip instead of failing | **Approved 2026-08-08.** A missing tool now fails the two jobs carrying `T-108`'s proof rather than skipping inside them. **Residual closed 2026-08-09 by execution:** run `31295392039` at `9fe22fb`, all five jobs success, the required merge cases passing rather than failing under `TRACKSANDTRAILS_REQUIRE_FFMPEG=1` |
 | `T-171` | Whether files carry provenance | **Refused 2026-08-08 — `DAT-008`.** The application writes no provenance of its own. A disposition, which is what the ruling asked for |
 | `T-186` | Finish the withdrawn-History prose sweep | **Approved 2026-08-08**, after three passes — the third searched claims about *cardinality* rather than the word *History* |
 | `T-188` | A recorded source with a separate video and audio stream | **Approved 2026-08-08.** `dash_akamai_big_buck_bunny` is a recorded DASH manifest publishing the pair; criteria 2 and 4 were amended after being implemented and measured |
@@ -631,10 +631,20 @@ calling them the `REQ`-bearing ones — **which is false**: the `T-169` row cite
 `REQ-021`, `T-170` cites `REQ-020` and `DAT-006`, and withdrawing a requirement is requirement
 work. **Eleven is the number.** Additive versus subtractive is the distinction that holds.)*
 
-*(**One residual survives `T-189`'s approval**: the workflow edit that makes a missing ffmpeg fail
-exit criterion 2's proof has never executed on a runner. The criterion's Windows evidence — run
-`31233348009`, ffmpeg 8.1.2, the merge test passing rather than skipping — predates it and is
-unaffected.)*
+*(**`T-189`'s residual is closed, by execution.** The workflow edit that makes a missing ffmpeg fail
+exit criterion 2's proof **has now run on a runner and passed**: CI run `31295392039` at `9fe22fb`,
+2026-08-09, **all five jobs success** — `linux`, `frozen linux`, `frozen windows`,
+`STARBASE coverage`, `windows desktop`. `TRACKSANDTRAILS_REQUIRE_FFMPEG=1` did **not** turn the
+required merge cases into failures, which is the whole point of the gate: ffmpeg was present on
+`STARBASE`, so **criterion 2's Windows evidence is a real pass rather than a skip inside a green
+job.** The criterion's original Windows evidence — run `31233348009`, ffmpeg 8.1.2, the merge test
+passing rather than skipping — predates the gate and is unaffected by it.*
+
+*Until 2026-08-09 this paragraph said the workflow **had never executed**, which was true when
+written and stopped being true without the paragraph changing. **`P3EXIT-R3` is that paragraph** —
+found in the third pass, at the exit record being signed, while `STATUS.md` and the submission had
+already been corrected. The unexecuted state is history and is kept in `ai/REVIEWS.md`; it is no
+longer this file's current answer.)*
 
 ---
 
