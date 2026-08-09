@@ -614,10 +614,36 @@ correction. Named here so their absence reads as a decision rather than an overs
 - A partial download resumes after restart, or clearly states it cannot
 - Reviewed and signed off
 
-**All eleven deliverables in the table above are approved as of 2026-08-08**, and criteria 1–5 are
-met.
-**Criterion 6 — the exit review — is the only one outstanding**, and nothing else gates it: all six
-loose items are dispositioned, five built and approved and `T-171` refused by `DAT-008`.
+**All eleven deliverables in the table above are approved as of 2026-08-08** — nine additive, two
+subtractive. All six loose items are dispositioned: five built and approved, `T-171` refused by
+`DAT-008`.
+
+## **Phase 3 exited 2026-08-09.** All six criteria met; approved at `ccdbd0f`
+
+**Criterion 6 was met by an independent exit review** (`AGENTS.md` §3), and it took **four passes**:
+
+| Pass | Verdict | What it found |
+|---|---|---|
+| 1 — comprehensive | **Changes requested** | `P3EXIT-R1` (records disagreeing about the phase), `P3EXIT-R2` (both test-inclusive mypy gates red at the submitted head while the handoff reported them passing) |
+| 2 — focused correction | **Blocked** | `P3EXIT-R2` **Resolved**. `P3EXIT-R1` still open: the correction invented a false *"REQ-bearing"* discriminator, refuted because `T-169` and `T-170` both cite `REQ`s |
+| 3 — **maintainer-authorized** | **Blocked** | `P3EXIT-R1` **Resolved**. New `P3EXIT-R3`: **this file** still said `T-189`'s workflow had never executed, while `STATUS.md`, the submission and a verified CI run said it had |
+| 4 — under a standing grant | **Approved** | `P3EXIT-R3` **Resolved**. Criterion 6 met |
+
+**Every finding was a document outliving the thing that changed it.** Not one was about the product.
+Phase 1's exit review found two wrong rows in its criteria table and Phase 2's found more; **Phase 3's
+found the same class three times in a row**, twice inside the corrections meant to close it. The
+argument for an independent exit review is this table, not a preference.
+
+**One correction went beyond its finding and should be read as the pattern to repeat.**
+`P3EXIT-R3` cited the exit-summary paragraph; a sweep found the **deliverables table row above**
+asserting the same false thing. The reviewer's approval says it plainly: *"fixing only the named
+line would not have"* closed the defect class.
+
+**What the sign-off does not cover**, carried forward rather than closed:
+
+- **Windows runtime is verified only by CI** (`OPS-003`) — no person has run the application there.
+- **Real sites are unverified**; every fixture is recorded or derived (`ai/TESTING.md` §5).
+- **`T-192`, `T-193` and `T-194` are unreviewed Phase 4 work** and received no verdict.
 
 *(**Phase 3 has eleven deliverables: nine additive and two subtractive.** `T-107`, `T-108`,
 `T-109`, `T-110`, `T-111`, `T-112`, `T-113`, `T-114` and `T-181` add capability; `T-169` and
