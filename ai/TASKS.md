@@ -223,8 +223,16 @@ reordering more than one place actively unpleasant
 
 ### T-193 — The playlist picker shows two entries at a time, and can stick open showing none
 
-**Status:** **In Review — the sizing half is fixed, 2026-08-08. The stuck-open half is not, and
-needs a reproduction.** *(Built by the Implementer; no criterion is claimed approved.)*
+**Status:** **In Review — the sizing half is fixed, 2026-08-08. The stuck-open half is not.**
+*(Built by the Implementer; no criterion is claimed approved.)*
+
+**The stuck-open half now has a mechanism and an owner: `T-204`.** It was traced on 2026-08-09 from
+the maintainer's reproduction — *"I think it removed the video from being downloaded, but it made
+everything inaccessible"*. `EXPANDED_ROLE` returns `None` — *not a playlist, draw no disclosure* —
+whenever a row is not `committable`, and nothing closes an open panel when that happens, so **the
+panel outlives the control that dismisses it**. **Acceptance criteria 3 and 4 below are `T-204`'s to
+meet, not this task's**, and this entry does not claim them. What is offered for review here is the
+sizing half alone.
 
 **Symptom 1 is fixed and measured.** `EntryTable.sizeHint` now derives its height from the model's
 row count, capped at `VISIBLE_ENTRIES = 8`. Measured before and after, same fixture sizes:
