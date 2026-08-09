@@ -832,9 +832,27 @@ class StagingModel(QAbstractListModel):
             # playlist that is closed. A row with no entries to choose between answers absent
             # rather than `False`, because a triangle that opens an empty picker is `UX-005` §5's
             # never-draw-what-would-be-refused.
-            if entry_selection_of(row) is None or not row.committable:
+            if entry_selection_of(row) is None:
                 return None
-            return row is self._dialog.expanded_row
+            # **An open row always offers the way to close itself** (`T-204`). The two conditions
+            # below are about whether a *closed* row should offer to open; once a panel is mounted
+            # the question is different, and the honest answer is always yes.
+            #
+            # `RowDelegate` both paints the triangle and hit-tests the click on
+            # `isinstance(..., bool)`, so answering `None` here removed the affordance **and** the
+            # target under it — while `close_panel` and `remount_panel`, driven by `_expanded` and
+            # by index validity, kept the panel mounted. A row that left `READY` with its picker
+            # open could only be escaped by cancelling the dialog.
+            #
+            # **Chosen over closing the panel on the state change**, which was the other way to
+            # satisfy `T-204`: `PROBING` is transient and a re-probe returns to `READY`, so closing
+            # would yank an open picker away mid-choice and discard a selection the user was still
+            # making. Keeping the control costs nothing — it does exactly what it says.
+            if row is self._dialog.expanded_row:
+                return True
+            if not row.committable:
+                return None
+            return False
         if role == JOB_ID_ROLE:
             # **What the delegate's disclosure signal carries** (`RowDelegate.editorEvent`). The
             # staging probe's id is the only string identifying a row that both the delegate and

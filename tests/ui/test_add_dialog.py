@@ -3325,6 +3325,91 @@ def _open_the_picker(dialog: AddUrlDialog, row: Row) -> Any:
     return panel
 
 
+def _expanded_role_of(dialog: AddUrlDialog, row: Row) -> object:
+    """What the model answers for `row`'s disclosure — the value the delegate paints from."""
+    index = dialog._model.index(dialog.rows.index(row), 0)
+    return dialog._model.data(index, EXPANDED_ROLE)
+
+
+def test_a_row_that_stops_being_committable_can_still_close_its_panel(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-204`.** The panel must not outlive the control that dismisses it.
+
+    The maintainer's report: *"I think it removed the video from being downloaded, but it made
+    everything inaccessible."* `EXPANDED_ROLE` answered `None` — *not a playlist, draw no
+    disclosure* — for any row that was not `committable`, and `RowDelegate` both **paints** the
+    triangle and **hit-tests the click** on `isinstance(..., bool)`. So a row that left `READY`
+    with its picker open lost the triangle *and* the target under it, while `close_panel` and
+    `remount_panel` — driven by the dialog's own `_expanded` and by index validity — left the
+    panel mounted. There was no way out but cancelling the dialog.
+
+    **Driven, not faked.** The panel is opened through `open_playlist_picker`, and the state moves
+    the way every internal route moves it — `row.state = …` followed by the dialog's own redraw.
+    What is *not* poked is `_expanded`: that is the state under test, and setting it would assert
+    the setup.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    panel = _open_the_picker(dialog, row)
+    assert isinstance(_expanded_role_of(dialog, row), bool), (
+        "an open playlist row did not offer a disclosure before the state changed"
+    )
+
+    # A re-probe: the row is still on screen and still a playlist, and it is no longer `READY`.
+    row.state = RowState.PROBING
+    dialog.refresh()
+    QApplication.processEvents()
+
+    assert dialog.open_panel is panel, (
+        "the panel closed on its own; this test is asserting the wrong thing"
+    )
+    assert isinstance(_expanded_role_of(dialog, row), bool), (
+        "the row kept its panel and stopped offering a disclosure, so the only way out of the "
+        "picker is cancelling the dialog — the panel outlived the control that dismisses it"
+    )
+
+
+def test_an_open_playlist_keeps_its_disclosure_when_another_url_joins_the_batch(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-204`, the second report**: *"with multiple items in the queue, the playlist loses the
+    arrow to collapse it again."*
+
+    Adding a line reconciles the staging list, which is a **structural reset** — `T108-R2`'s case.
+    The panel is dropped and remounted by row identity, and every row is re-asked for its
+    disclosure while the new row is still resolving.
+
+    **This is a guard, not a reproduction, and the difference is worth stating.** It passes with
+    the fix and *without* it: a playlist row stays `READY` while a sibling resolves, so the
+    committable gate never fired on the path this test drives. **The reported condition — more
+    than one item — does not by itself remove the arrow.** The likely explanation is that with
+    several rows a re-probe is simply common, and a re-probing row is the case
+    `test_a_row_that_stops_being_committable_can_still_close_its_panel` reproduces and the fix
+    closes. **The exact gesture behind the second report remains unconfirmed**, and this test
+    exists so that the multi-row path cannot regress into it.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    panel = _open_the_picker(dialog, row)
+
+    type_urls(dialog, f"{row.url}\n{fixture_url(SINGLE_ITEM)}")
+    dialog.resolve()
+    assert spin(lambda: len(dialog.rows) > 1 and all(s in SETTLED for s in states(dialog))), (
+        f"the second URL never settled into a row: {states(dialog)}"
+    )
+    QApplication.processEvents()
+
+    assert dialog.open_panel is panel, "the reconcile dropped the panel it should have remounted"
+    assert dialog.rows[0] is row, "the playlist row was replaced rather than kept across the paste"
+    assert isinstance(_expanded_role_of(dialog, row), bool), (
+        "the open playlist lost its disclosure once a second row joined the batch; there is no "
+        "way to collapse it"
+    )
+
+
 def test_a_playlist_row_offers_a_disclosure_and_a_single_item_does_not(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
