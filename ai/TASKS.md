@@ -1934,6 +1934,71 @@ it**, and this task owns making it complete rather than incidental.
 - Colour contrast and colour-only information — `T-202`
 - High-contrast themes, font scaling, and reduced motion. None is requested; each is its own decision
 
+### T-201 — The error-surface pass: twelve classes, and the two with nothing to suggest
+
+**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** Medium–High — `NFR-006` is a promise the application makes on its worst day
+**Phase:** Phase 4
+**Depends on:** `T-199` for the ffmpeg classes' capability text. Not blocked by the rest.
+**Relevant context:** `NFR-006`, `REQ-018`, `REQ-EXCL-002`, `DAT-003`, `core/errors.py` §37–60,
+`T-084` (per-job log capture), `T-118`, `T-124`, `T-130`, `T-192`'s
+`ACTIONABLE_STATUS_PROPERTY`, `ui/job_detail.py`, `ui/log_view.py`
+**Affected surfaces:** `core/errors.py`, the job detail and queue presentation, `ui/theme.py`
+**Risk:** Medium — the risk is writing reassuring text that is not true, which is harder to detect
+than a missing message
+
+#### Scope
+
+**`NFR-006` asks for three things per error** — *what failed, why, and what the user can do* — and
+adds that **extractor messages are surfaced, never swallowed or replaced with a generic message.**
+The plan's deliverable is that **every taxonomy class has a tested, actionable presentation.**
+
+`core/errors.py` carries twelve classes: `UNSUPPORTED_URL`, `EXTRACTOR_ERROR`, `AUTH_REQUIRED`,
+`GEO_RESTRICTED`, `DRM_PROTECTED`, `NETWORK`, `FFMPEG_MISSING`, `FFMPEG_ERROR`, `DISK`,
+`WORKER_CRASH`, `INTERRUPTED`, `CANCELLED`. **The pass is per class, and the point of it is the
+classes nobody has written text for yet.**
+
+**Three of the twelve have no honest action, and that is the substance of this task.**
+
+- **`DRM_PROTECTED`** — there is nothing the user can do, and `REQ-EXCL-001`/`REQ-EXCL-002` mean
+  there must not be. The honest presentation says so plainly and offers no retry.
+- **`GEO_RESTRICTED`** — the obvious suggestion is a proxy, and `SEC-003` ruled
+  `--geo-verification-proxy` *in*. **But `REQ-EXCL-002` forbids geo-restriction bypass.** The line
+  between "use your own proxy because you are travelling" and "circumvent a restriction" is a
+  *ruling*, not a wording choice. **This task must not invent it** — if the text would suggest a
+  workaround, it needs a `SEC-` decision first.
+- **`CANCELLED`** is not a failure at all and must not be presented as one.
+
+**"Actionable" cannot become "reassuring".** A message that suggests an action which cannot work is
+worse than one that admits there is none — it sends the user to try things. `T-192` already added
+`ACTIONABLE_STATUS_PROPERTY` for a status the user can act on; the same distinction belongs here.
+
+#### Acceptance criteria
+
+- **Each of the twelve classes has a tested presentation** stating what failed, why, and either what
+  to do or **that there is nothing to do** — one test per class, so a new class added later fails
+  until it is given one
+- **The extractor's own message is present and verbatim** wherever one exists (`NFR-006`,
+  `DAT-003`), and a test asserts it is not truncated, reworded, or replaced by the class's text.
+  The class's text accompanies the message; it does not stand in for it
+- **Retry is offered only where retry can work.** `REQ-018` requires the job stay in a failed state
+  and retry be offered; `DRM_PROTECTED` and `UNSUPPORTED_URL` are where offering it is a lie, and
+  `UX-005` §5 says nothing is drawn that would be refused
+- **`GEO_RESTRICTED`'s text suggests no circumvention**, and if the phrasing needs to reference a
+  proxy at all, a `SEC-` decision is taken first and named in the entry
+- **No class is presented by colour alone** — `T-202` owns the sweep, this task owns not creating
+  new instances
+- Nothing in any presentation leaks material `T-197`'s gate forbids — error paths are the route
+  most likely to quote a path or a URL
+
+#### Out of scope
+
+- **Adding taxonomy classes.** The twelve are what `core/errors.py` declares; a thirteenth is a
+  different task with a different argument
+- Retry *policy* — `T-196` owns the setting, `REQ-015`/`REQ-018` own the behaviour
+- The per-job log view itself, built by `T-084`. This task presents errors; the log stays verbatim
+
 ---
 
 ## Proposed — Phase 4.5
