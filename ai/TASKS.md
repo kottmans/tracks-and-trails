@@ -2062,6 +2062,111 @@ it is not in the `ok`/`warn`/`stop` set.
   beside them
 - High-contrast or user-supplied themes — not requested, and each needs its own decision
 
+### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
+
+**Status:** Proposed — **maintainer-raised, 2026-08-08**, from a review of the add dialog: *"the
+drop down should be where you select a preset (and this should be made clear)"*, and after seeing
+four alternatives, *"still feeling really cluttered"*.
+**Owner:** Planner → Implementer. **The ruling comes first; this is not agreed work.**
+**Priority:** Medium — no function is missing; the complaint is that the surface is unusable enough
+that a user does the wrong thing
+**Phase:** Phase 4 — polish. **Not a Phase 3 blocker.**
+**Depends on:** a maintainer ruling on the three questions below, and on `T-146`/`T-195` for the
+settings that would absorb what the row gives up.
+**Relevant context:** `REQ-007`, `REQ-011`, `REQ-023`, `docs/UX_SPEC.md` §8 and §9.1, `UX-004`,
+`UX-005` §5, `UX-007` (`P-22`, `P-23`), `ARC-002`, `core/models.py`
+(`Preset.output_template`, `DownloadRequest.output_template`), `ui/row_delegate.py` §203–294 and
+§1728–1734, `ui/add_dialog.py` §879–900, `ui/options_dialog.py` §139–143, `ui/template_editor.py`,
+`ui/preset_manager.py`
+**Affected surfaces:** `ui/row_delegate.py`, `ui/add_dialog.py`, `ui/preset_manager.py`,
+`docs/UX_SPEC.md`, possibly `ai/REQUIREMENTS.md`
+**Risk:** Medium — the *code* is contained; the risk is ruling away a capability and finding a use
+for it later
+
+#### The defect, stated once
+
+The row's format control is a `QComboBox` whose list holds the presets and then four entries that
+are **not presets but verbs**: `Choose specific formats…`, `Options…`, `Where it goes…`,
+`Manage presets…`. Selecting one opens a window and puts the selection back. **The control looks
+like a value picker while containing commands, and appears to accept a choice it discards.**
+
+#### What the code says, and it changes the question
+
+Three findings from reading it, all of which point the same way:
+
+1. **`Where it goes…` is not a folder picker.** It opens `ui/template_editor.py` — `REQ-011`'s
+   **output template** editor, with live preview and edit-time validation. The label promises
+   somewhere to put a file and delivers a `%(field)s` language. **The maintainer's reading of it as
+   a destination picker is itself evidence the label is wrong.**
+2. **`Preset` already carries `output_template`.** `core/models.py` puts it on `Preset` *and* on
+   `DownloadRequest`. **Where a download goes is already a preset property.**
+3. **`OptionsDialog` already operates on presets.** Its own docstring: *"Set `REQ-010`'s seven
+   options for one download, **or for a preset**… Takes the `Preset` being edited… and answers with
+   a **derived preset**."*
+
+**So two of the three per-row verbs are already preset-shaped.** The row is not configuring an item;
+it is building an anonymous, unnamed preset per row. **That is the clutter** — and it explains why
+the dropdown accumulated commands: they had nowhere else to live.
+
+#### The proposal
+
+- **The row picks a preset.** The combo lists presets only, the column reads *Preset*, and every
+  entry in it is a value that sticks.
+- **`Options…` and the output template become preset properties**, edited in the preset manager —
+  which `T-111` already built and which `T111-R1` already gave an options editor.
+- **`Choose specific formats…` stays per-item**, because it is the only one that genuinely is: the
+  available formats differ per video, so the choice cannot be carried by a preset.
+- **The download root becomes `REQ-023`'s *default download directory*** — a setting, owned by
+  `T-146`, which does not exist yet. Root + template compose into the path; the template does the
+  organising, the root does the locating.
+- **`Manage presets…` moves to the dialog footer.** It edits the shared library and has nothing to
+  do with any row.
+
+**Result: the row is a checkbox, a name, a preset, and one verb.**
+
+#### The three rulings this needs, and none is the implementer's
+
+1. **Does a per-item output template survive?** `REQ-011` reads *"output path and filename control
+   via a configurable output template, with a live preview of the resulting path **for the current
+   item**"*. **"For the current item" describes the preview, not the template's scope** — a
+   defensible reading under which a single application-level template satisfies `REQ-011` and
+   per-item override is not required. **It is a reading, not a fact**, and removing a shipped
+   control on it is a maintainer call.
+2. **Do per-item post-processing options survive?** Same shape. Folding them into presets is
+   cleaner and costs a user who wants a one-off variation a named preset they did not want.
+   *(`UX_SPEC` §8's `[D]` already makes editing a built-in **duplicate it first**, so the
+   "one-off" path creates a preset today anyway — which argues the cost is already being paid.)*
+3. **`docs/UX_SPEC.md` §8's preset-manager clause is `[T]` — ruled** — and binds the manager to
+   *"the format control's `Manage presets…`"*. Moving it to the footer amends a ruled clause.
+
+**A `UX-` decision should also record where library-wide actions live**, because "footer, not per
+row" will apply again.
+
+#### Acceptance criteria
+
+*(Conditional on the rulings. Written so the shape is reviewable now.)*
+
+- The row's combo contains **only selectable values**; no entry in it opens a window
+- The column header names what the control sets
+- **Nothing is removed until its replacement exists.** If the per-item template goes, `T-195`'s
+  default template and `T-146`'s directory are in place first, and a test asserts a job with no
+  per-item template still writes where the user expects
+- **Existing presets keep working.** `Preset.output_template` is already populated; a migration or
+  a defaulting rule covers presets written before the change, and is tested
+- `docs/UX_SPEC.md` §8 and §9.1 are amended to describe what was built, with the ruling named — and
+  the amendment is made by whoever `AGENTS.md` §4 permits, since the Implementer may not write
+  `docs/UX_SPEC.md`
+- Keyboard reachability of every surviving control is re-verified — **or `T-200` runs after this
+  task**, which is the cheaper order and why `T-200` names this dependency
+
+#### Out of scope
+
+- **`T-204`'s disclosure bug.** It is in the same surface and is a separate defect; this task must
+  not be credited with fixing it
+- The playlist entry picker's sizing — fixed by `T-193`
+- Multi-select in the add dialog. It would change the answer here, and nothing asks for it
+- yt-dlp's wider option surface — `T-183` and the escape hatch own that
+
 ---
 
 ## Proposed — Phase 4.5
