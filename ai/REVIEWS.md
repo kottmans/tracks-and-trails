@@ -12843,3 +12843,67 @@ gate ran is a recorded process error, but the failing commit was reverted and th
 verified, so it does not affect approval. The source was not re-captured from the network; Windows
 runtime and real CI remain unverified. Only `ai/REVIEWS.md` was modified in this review; no commit
 or push was made.
+
+
+## 2026-08-08 — Phase 3 exit review, initial submission
+
+**Reviewer:** Codex
+
+**Candidate implementation head:** `7958518`
+**Review-request commit:** `b3fb6df` (handoff only)
+**Scope:** Phase 3’s six exit criteria, the current-truth records that claim criteria 1–5 met, and
+the exact candidate-head validation. `T-192` is Phase 4 and received no product verdict, but its
+test edit is part of the submitted exact head and therefore remains subject to the repository’s
+required gates.
+
+**Verdict:** **Changes requested.** Criteria 1–5 are substantiated, including the five functional
+properties in one independent **293-pass** focused run and an independently repeated full suite of
+**2803 passed, 17 skipped, 2 deselected**. Criterion 6 is not met: the exact head fails both bare
+mypy gates, and the authoritative exit records materially contradict the state they are asking the
+reviewer to sign.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
+|---|---|---|---|---|---|---|
+| `P3EXIT-R1` | **Medium** | **Yes — Phase 3 exit truth** | Current-truth records and handoff | The phase record cannot currently support criterion 6 because its live claims disagree. `IMPLEMENTATION_PLAN.md` says all loose items are dispositioned and criterion 6 alone remains immediately after marking T-189, T-171, T-186, and T-188 **Open**; it calls the phase’s deliverables nine while its Deliverables table contains eleven rows, including T-169/T-170. `STATUS.md`’s top/current snapshot likewise says those four items still need disposition and T-189 remains to be done. `TASKS.md`’s header still says T-111 is in review and that the current phase is Phase 2, while its live section correctly says Phase 3 has an empty review queue. The handoff then narrows the stale-record warning to one TASKS line, lists nine deliverables but says two of “them” removed Phase 2 deliverables without listing T-169/T-170, and presents FPS as still resting on a derived fixture even though T-185 had already captured and approved real 30/60 FPS values. These are current exit/scope claims, not harmless historical entries. | Sweep the live Phase 3 claims in `IMPLEMENTATION_PLAN.md`, `STATUS.md`, and the TASKS header so task dispositions, deliverable scope/count, and the one outstanding criterion agree. Correct the handoff when carrying the re-review: criterion 1’s current FPS evidence is T-185’s recorded PeerTube fixture; the later T-188 DASH FPS observation does not reopen the already-satisfied column. Preserve historical review/decision text as history. | **Open** |
+| `P3EXIT-R2` | **Medium** | **Yes — required exact-head gate** | `tests/ui/test_main_window.py:778` | Both test-inclusive type gates fail at `7958518`: mypy 2.3.0 reports `Left operand of "and" is always true [redundant-expr]` for `assert bar is not None and gate is not None and summary is not None`. `QMainWindow.statusBar()` is statically non-optional, so the new T-192 assertion makes a required gate red. `ai/TESTING.md` §2 requires bare `mypy` and `mypy --platform win32` whenever a test file changes. The handoff claims both passed at this exact head, but neither does; its format count is also 221 while the same tree reports 222. | Remove the redundant `bar is not None` test (or otherwise make the assertion type-correct without weakening the two nullable child checks), then rerun and report Ruff format plus both bare mypy gates from the corrected exact head. | **Open** |
+
+Both findings are Medium because no reviewed product behavior is shown broken. Both block: one is a
+required validation failure, and the other materially misstates the phase gate and scope being
+signed. The correction re-review is the ordinary focused second pass allowed by `AGENTS.md` §10.
+
+### Exit-criterion results
+
+| # | Result | Evidence and residual |
+|---|---|---|
+| 1 | **Met.** | `test_the_table_matches_what_yt_dlp_f_reports` passed against the recorded fixture set. T-185’s approved `peertube_big_buck_bunny_60fps` capture supplies real 30/60 FPS values; the handoff’s description of FPS as derived-only is stale. `OPS-013`’s temporary allowance therefore does not need to carry the current FPS evidence. |
+| 2 | **Met, with recorded CI residual.** | The real selected-pair route produced one file with audio and video locally. The recorded Windows run `31233348009` passed the exact test with ffmpeg 8.1.2. T-189’s capability suite independently passed, including the negative probe that makes a required tool-less run fail rather than skip. The workflow edit itself has still never executed on a runner; that is a real external residual, but it does not erase the earlier Windows merge proof or change the present-tools path. |
+| 3 | **Met.** | The real download preview/written-path case passed through an MP3 conversion, a subdirectory, and a title containing Windows-illegal characters. |
+| 4 | **Met.** | The path/containment suite passed, including traversal, absolute-path, symlink, Windows-illegal, device-name, and long-component cases; preview and worker converge on `contained_output_path`. |
+| 5 | **Met.** | The real-kill restart test passed: a partial survived, the resumed request carried a non-zero range, and the completed bytes matched. The focused path/partial coverage also passed. |
+| 6 | **Not met.** | `P3EXIT-R1` and `P3EXIT-R2` are open and block sign-off. |
+
+### Reviewer verification at `7958518`
+
+The repository’s `.venv/bin/python` points at a moved, nonexistent interpreter. The review created
+a temporary venv under `/tmp` and copied the project’s already-installed site-packages into it; no
+dependency was downloaded or installed into the maintainer’s environment. The test subprocesses
+therefore used the same Python 3.14 / PySide6 6.11.1 / pytest 9.1.1 / mypy 2.3.0 packages while
+retaining a valid interpreter path.
+
+| Check | Result |
+|---|---|
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass**, **222 files** (not the handoff’s 221) |
+| `python -m mypy src` | **pass**, 51 files |
+| `python -m mypy` | **fail**, one `redundant-expr` at `tests/ui/test_main_window.py:778`, 125 files |
+| `python -m mypy --platform win32` | **fail**, the same one error, 125 files |
+| Focused criteria: format table, capabilities, paths, task placement, merge, preview/write, and real-kill resume | **293 passed** |
+| Full suite, offscreen, bytecode disabled | **2803 passed, 17 skipped, 2 deselected**, four existing PySide disconnect warnings, 381.15 s |
+
+The first sandboxed integration attempt produced three socket-permission failures before test
+behavior ran; the permitted consolidated rerun is the 293-pass result above. Windows was not rerun,
+real sites were not contacted, and the T-189 workflow remains unexecuted. Only `ai/REVIEWS.md` was
+modified by the reviewer; reviewed source, tests, current-truth coordination files, and the handoff
+were not edited. No commit or push was made.
