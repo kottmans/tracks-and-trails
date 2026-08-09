@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QEvent, QRect, Qt
+from PySide6.QtCore import QEvent, QItemSelectionModel, QRect, Qt
 from PySide6.QtGui import QFontMetrics, QImage, QKeyEvent, QPainter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
@@ -3111,3 +3111,78 @@ def test_two_jobs_for_one_url_are_both_reported(
     view = views(jobs=queue, manager=managers())
 
     assert view.model.queued_urls() == ("https://x.invalid/same", "https://x.invalid/same")
+
+
+# --- T-194: a reorder must not send the view back to the top ---------------------------------
+
+
+def test_a_reorder_keeps_the_keyboard_on_the_row_it_moved(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """**`T-194`.** Moving a row several places must not scroll back to the top between presses.
+
+    A reorder resets the model, which drops the current index; `_ensure_a_current_row` then filled
+    the hole with row 0 and the view followed it. A user moving a track from the bottom of a long
+    queue had to scroll down again after every press, which is the report.
+
+    Asserted on **which job** the keyboard is on rather than on a scroll offset: after a reorder
+    the row numbers have changed by definition, and following the job is both the correct restore
+    and what the user is actually doing.
+    """
+    for position in range(12):
+        queue.add(make_job(f"job-{position}", tmp_path, queue_position=position))
+    view = views(jobs=queue, manager=managers())
+
+    moved = "job-9"
+    row = view.model.row_of(moved)
+    assert row is not None
+    view._list.setCurrentIndex(view.model.index(row, 0))
+
+    # Reorder exactly as the verb does: swap it one place earlier, then reset.
+    jobs = dict(queue.jobs)
+    jobs[moved] = replace(jobs[moved], queue_position=8)
+    jobs["job-8"] = replace(jobs["job-8"], queue_position=9)
+    queue.jobs = jobs
+    view.model.refresh()
+
+    current = view._list.currentIndex()
+    assert current.isValid(), "the reorder left nothing current, so the view fell back to the top"
+    assert view.model.job_id_at(current.row()) == moved, (
+        f"the keyboard landed on {view.model.job_id_at(current.row())!r} after moving {moved!r}; "
+        "a reorder must follow the job, not reset to row 0"
+    )
+
+
+def test_a_reorder_does_not_invent_a_selection(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Current is where the keyboard is; selected is what the user chose (`T-086`, `T081-R3`).
+
+    The restore must not promote one to the other — a selection nobody made would offer the
+    per-row file actions for a row nobody picked.
+    """
+    for position in range(4):
+        queue.add(make_job(f"job-{position}", tmp_path, queue_position=position))
+    view = views(jobs=queue, manager=managers())
+
+    row = view.model.row_of("job-2")
+    assert row is not None
+    # `NoUpdate`, because `QListView.setCurrentIndex` selects as well — the production code says so
+    # where it fills a hole, and a test that selected here would be asserting its own setup.
+    view._list.selectionModel().setCurrentIndex(
+        view.model.index(row, 0), QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    assert not view._list.selectionModel().hasSelection()
+
+    view.model.refresh()
+
+    assert view.model.job_id_at(view._list.currentIndex().row()) == "job-2"
+    assert not view._list.selectionModel().hasSelection(), (
+        "the restore selected the row it made current; the two are different statements"
+    )

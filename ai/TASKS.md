@@ -155,6 +155,60 @@ message says the right words; where it sits and how it is weighted is presentati
 
 - Anything the message *says*. `UX-006` settled the wording and `T-181` is approved
 
+### T-194 — Reordering a row scrolls the queue back to the top
+
+**Status:** **In Review — found by the maintainer 2026-08-08 and fixed the same day.** *(Built by
+the Implementer; no criterion is claimed approved.)*
+
+**What it was.** A reorder resets the model, which drops the current index. `_ensure_a_current_row`
+then filled the hole with **row 0**, and the view followed it. Moving a track several places meant
+scrolling back down between every press — the maintainer's report exactly.
+
+**The fix follows `T126-R1`'s precedent rather than inventing one.** That correction already
+remembers the open editor across a reset and restores it **by id**, for the reason a reorder makes
+unavoidable: the row number is the thing that changed. `_remember_current_row` and
+`_restore_current_row` are the same pair for the keyboard's position.
+
+**Two details worth the reviewer's attention:**
+
+- **Restoring follows the *job*, not the offset.** A pixel offset would be wrong the moment rows
+  shift, and following the job is also what the user is doing — the row being moved stays under
+  them as it travels.
+- **Current is restored; selection is only restored if there was one.** `_ensure_a_current_row`'s
+  own docstring is the rule: a current index is where the keyboard is, a selection is what the user
+  chose, and `T-086` offers the per-row file actions on a *selection*. Promoting one to the other
+  would offer actions for a row nobody picked. `scrollTo` uses `EnsureVisible` rather than
+  `PositionAtCenter`, so a one-place move does not jump a row that was already in view.
+
+**Ordering matters and is stated where it is relied on:** the restore is connected **before**
+`_ensure_a_current_row`, so the fallback keeps its job of covering a genuinely empty start instead
+of silently overriding a restore.
+
+**Owner:** Implementer
+**Priority:** Medium — no data is at risk, but `REQ-016` is reordering the queue and this made
+reordering more than one place actively unpleasant
+**Phase:** Phase 3 — a defect in `REQ-016`'s surface, not new work
+**Depends on:** nothing
+**Relevant context:** `REQ-016`, `T-081`, `T126-R1` (the precedent), `T081-R3`, `T-086`,
+`ui/queue_view.py`
+**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
+**Risk:** Low — one saved id restored across a reset the view already instruments
+
+#### Acceptance criteria
+
+- After a reorder the keyboard is on **the job that moved**, asserted by job id rather than by row
+  number or scroll offset
+- The restore does not create a selection where there was none
+- A job that left the queue restores nothing, and the existing fallback still covers an empty start
+- `ruff`, `ruff format`, both `mypy` gates and the queue-view suite are clean
+
+#### Out of scope
+
+- What reordering *does*. `T-081` settled it and `queue_position` is unchanged
+
+---
+
+
 ---
 
 

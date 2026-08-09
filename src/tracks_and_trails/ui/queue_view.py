@@ -1346,6 +1346,10 @@ class QueueView(QWidget):
         )
         #: The job whose editor was open when a reset began, carried across it (`T126-R1`).
         self._reopen_for: str | None = None
+        #: The job the keyboard was on when a reset began, carried across it (`T-194`), and
+        #: whether it was also selected. Mirrors `_reopen_for` and is cleared the same way.
+        self._restore_to: str | None = None
+        self._restore_selected: bool = False
         self._thumbnails = ThumbnailStore(
             loader=thumbnail_loader, cache_root=cache_root, parent=self
         )
@@ -1462,6 +1466,12 @@ class QueueView(QWidget):
         # resolves to the job the user is choosing a format for. After the reset the row number
         # may name a different job, or no job, which is why the restore is by id.
         self._model.modelAboutToBeReset.connect(self._commit_open_editor)
+        # **And where the keyboard was** (`T-194`). A reset drops the current index, and
+        # `_ensure_a_current_row` then fills the hole with row 0 — so every reorder scrolled the
+        # queue back to the top and a user moving a track several places had to scroll down again
+        # between presses. Saved by **id** for `_reopen_editor`'s reason: a reorder is one of the
+        # resets, so the row number is precisely what cannot be trusted.
+        self._model.modelAboutToBeReset.connect(self._remember_current_row)
 
         # A picture arriving repaints the rows showing it; nothing about the queue changed.
         self._thumbnails.ready.connect(self._on_thumbnail_ready)
@@ -1486,6 +1496,10 @@ class QueueView(QWidget):
         # row — and then returns when the index is invalid. Nothing set one, so the declared
         # keyboard route did nothing until a *pointer* had selected a row, which is not a keyboard
         # route at all (`NFR-005`).
+        # **Before `_ensure_a_current_row`**, which only fills a hole — restoring first means
+        # there is no hole to fill, and the fallback keeps its job of covering a genuinely empty
+        # start rather than quietly overriding a restore (`T-194`).
+        self._model.modelReset.connect(self._restore_current_row)
         self._model.modelReset.connect(self._ensure_a_current_row)
         # A reset drops the selection, and the per-job actions have to hear about it
         # (`T081-R3`). Removal and clearing both reset the model now, so this is the path a
@@ -1689,6 +1703,47 @@ class QueueView(QWidget):
             return
         self._list.setCurrentIndex(index)
         self._list.edit(index)
+
+    def _remember_current_row(self) -> None:
+        """Note which job the keyboard was on, before the rows are replaced (`T-194`).
+
+        Whether it was *selected* is remembered too, because the two are different statements and
+        `_ensure_a_current_row` exists to keep them apart: a current index is where the keyboard
+        is, and a selection is what the user chose. Restoring a selection nobody made would offer
+        the per-row file actions for a row nobody picked, which is what `T-086` forbids.
+        """
+        index = self._list.currentIndex()
+        job_id = self._model.job_id_at(index.row()) if index.isValid() else None
+        self._restore_to = job_id
+        self._restore_selected = bool(job_id) and self._list.selectionModel().isSelected(index)
+
+    def _restore_current_row(self) -> None:
+        """Put the keyboard back where it was, and bring that row into view (`T-194`).
+
+        **By id, never by row number**, for `_reopen_editor`'s reason: a reorder is one of the
+        three resets, so the row the job had is exactly the thing that has changed. Following the
+        *job* rather than the position is also what a user moving a track wants — the row they are
+        moving stays under them as it travels.
+
+        A job that left the queue restores nothing and leaves the hole for `_ensure_a_current_row`.
+        """
+        job_id, self._restore_to = self._restore_to, None
+        selected, self._restore_selected = self._restore_selected, False
+        if job_id is None:
+            return
+        row = self._model.row_of(job_id)
+        if row is None:
+            return
+        index = self._model.index(row, JOB_COLUMN)
+        mode = (
+            QItemSelectionModel.SelectionFlag.ClearAndSelect
+            if selected
+            else QItemSelectionModel.SelectionFlag.NoUpdate
+        )
+        self._list.selectionModel().setCurrentIndex(index, mode)
+        # `PositionAtCenter` would jump a row that was already comfortably visible. `EnsureVisible`
+        # scrolls only when it has to, which is what keeps a one-place move from moving the view.
+        self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
 
     def trigger_verb(self, job_id: str, verb: Verb) -> None:
         """Activate a verb from somewhere other than the row — the overflow menu, or a key.
