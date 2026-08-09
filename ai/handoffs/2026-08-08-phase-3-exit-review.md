@@ -1,5 +1,15 @@
 # Phase 3 exit review — request, 2026-08-08
 
+> **Superseded 2026-08-08: this submission was reviewed and changes were requested.** Two Medium
+> findings followed — `P3EXIT-R1` and `P3EXIT-R2` — and **both are now corrected**.
+> **The re-submission is `ai/handoffs/2026-08-08-phase-3-exit-review-2.md`.**
+>
+> Kept exactly as submitted, with this note, because the review is *about* it — editing the claims
+> it was judged on would erase the judgement. **Two of its claims are known wrong**: it reports both
+> test-inclusive mypy gates passing when both were red at the candidate head, and it describes
+> criterion 1's `fps` evidence as resting on a derived fixture when `T-185` had already captured a
+> recorded one. `ai/REVIEWS.md` and the re-submission hold current truth.
+
 **From:** Implementer
 **To:** Reviewer (Codex)
 **What is asked:** the **independent phase exit review** — exit criterion 6. It has never been
