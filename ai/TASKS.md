@@ -2071,7 +2071,9 @@ it is not in the `ok`/`warn`/`stop` set.
 
 **Status:** Proposed — **maintainer-raised, 2026-08-08**, from a review of the add dialog: *"the
 drop down should be where you select a preset (and this should be made clear)"*, and after seeing
-four alternatives, *"still feeling really cluttered"*.
+four alternatives, *"still feeling really cluttered"*. **The layout was ruled on 2026-08-09** across
+five rounds of mockups; **two requirement-level rulings remain open** and gate the template half
+only. The entry records one reversal along the way — see *The proposal*.
 **Owner:** Planner → Implementer. **The ruling comes first; this is not agreed work.**
 **Priority:** Medium — no function is missing; the complaint is that the surface is unusable enough
 that a user does the wrong thing
@@ -2113,23 +2115,39 @@ Three findings from reading it, all of which point the same way:
 it is building an anonymous, unnamed preset per row. **That is the clutter** — and it explains why
 the dropdown accumulated commands: they had nowhere else to live.
 
-#### The proposal
+#### The proposal — **the shape was chosen by the maintainer on 2026-08-09**
+
+Five rounds of mockups were reviewed. The chosen shape is *"V2 + G2"* in that sequence:
 
 - **The row picks a preset.** The combo lists presets only, the column reads *Preset*, and every
   entry in it is a value that sticks.
-- **`Options…` and the output template become preset properties**, edited in the preset manager —
-  which `T-111` already built and which `T111-R1` already gave an options editor.
-- **`Choose specific formats…` stays per-item**, because it is the only one that genuinely is: the
-  available formats differ per video, so the choice cannot be carried by a preset.
+- **`Choose specific formats…` stays per-item**, because the available formats differ per video and
+  the choice cannot be carried by a preset.
+- **`Options…` stays per-item too.** ***This reverses an earlier proposal in this entry*** which
+  folded post-processing options into presets on the grounds that `OptionsDialog` already returns a
+  derived preset. **The maintainer rejected it, and the reason is worth keeping:** the control went
+  missing from a mockup and was noticed immediately, which is what removing a capability feels like.
+  Folding it in would make a one-off variation cost a named preset the user never wanted.
+- **Both per-item verbs become icon buttons** — a list glyph for the format table, a gear for
+  options. **Matched pair, not one word and one glyph**: two controls of the same kind should not
+  look like two different kinds. The width this reclaims goes to the preset combo, because long
+  preset names elide first and the preset name is the one thing that must stay readable.
+- **The output template leaves the row**, subject to ruling 1 below.
 - **The download root becomes `REQ-023`'s *default download directory*** — a setting, owned by
   `T-146`, which does not exist yet. Root + template compose into the path; the template does the
   organising, the root does the locating.
 - **`Manage presets…` moves to the dialog footer.** It edits the shared library and has nothing to
   do with any row.
 
-**Result: the row is a checkbox, a name, a preset, and one verb.**
+**Result: the row is a checkbox, a name, a preset combo, and two icon buttons.**
 
-#### The three rulings this needs, and none is the implementer's
+**The cost of the gear pair, stated rather than discovered.** A gear is conventional for settings
+and needs no teaching. **A list glyph is not conventional for "choose specific formats"** — it is
+learnable in one click and permanent after that, but it is *learned rather than guessed*, and that
+is the trade this shape accepts. `UX-005` §5 is not violated — the control is offered and does what
+it says — but a first-run user will hover it.
+
+#### The two rulings this still needs, and neither is the implementer's
 
 1. **Does a per-item output template survive?** `REQ-011` reads *"output path and filename control
    via a configurable output template, with a live preview of the resulting path **for the current
@@ -2137,22 +2155,36 @@ the dropdown accumulated commands: they had nowhere else to live.
    defensible reading under which a single application-level template satisfies `REQ-011` and
    per-item override is not required. **It is a reading, not a fact**, and removing a shipped
    control on it is a maintainer call.
-2. **Do per-item post-processing options survive?** Same shape. Folding them into presets is
-   cleaner and costs a user who wants a one-off variation a named preset they did not want.
-   *(`UX_SPEC` §8's `[D]` already makes editing a built-in **duplicate it first**, so the
-   "one-off" path creates a preset today anyway — which argues the cost is already being paid.)*
-3. **`docs/UX_SPEC.md` §8's preset-manager clause is `[T]` — ruled** — and binds the manager to
+2. **`docs/UX_SPEC.md` §8's preset-manager clause is `[T]` — ruled** — and binds the manager to
    *"the format control's `Manage presets…`"*. Moving it to the footer amends a ruled clause.
+
+*(**A third ruling was open and is now taken.** It asked whether per-item post-processing options
+survive. **They do** — see the proposal above. Nothing in this entry folds `REQ-010`'s seven options
+into presets, and `ui/options_dialog.py` keeps its per-row entry point.)*
 
 **A `UX-` decision should also record where library-wide actions live**, because "footer, not per
 row" will apply again.
 
 #### Acceptance criteria
 
-*(Conditional on the rulings. Written so the shape is reviewable now.)*
+*(The **shape** is ruled; the two open rulings above still gate the template half.)*
 
 - The row's combo contains **only selectable values**; no entry in it opens a window
 - The column header names what the control sets
+- **Each icon button carries an accessible name and role**, set explicitly in code.
+  **A tooltip does not satisfy this** — it is a hover affordance, not an accessible name, and
+  `NFR-005` requires screen-reader labels on all controls while `T-200`'s criterion is a name *and*
+  a role for every control in the tree
+- **`tests/ui/test_windows_accessibility.py` covers both new buttons.** This is the criterion most
+  likely to be missed, and it **fails on the Windows job alone** — `T-146` records exactly that
+  happening after the Linux suite passed and three commits had been pushed
+- **The two icon buttons are one matched pair**: same size, same border treatment, same weight.
+  A test asserting they are styled by the same role rather than individually, per the convention
+  `T-192` established and `test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces
+- **The icons read in both palettes.** `T-021` owns the glyph work and `T-202` owns colour, but an
+  icon that vanishes into the dark ground is this task's defect to not create
+- **The width reclaimed from the two labels goes to the preset combo**, not to whitespace — the
+  preset name is what must stay readable, and it is what elides first today
 - **Nothing is removed until its replacement exists.** If the per-item template goes, `T-195`'s
   default template and `T-146`'s directory are in place first, and a test asserts a job with no
   per-item template still writes where the user expects
