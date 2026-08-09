@@ -685,6 +685,25 @@ until that ruling is taken.**
 - Logs contain no cookie contents, cookie paths, proxy credentials, or token-like query
   parameters — verified by an automated redaction test (`NFR-007`)
 - Updating yt-dlp in-app changes the reported version and reverting restores the baseline
+- *(Added 2026-08-09 by maintainer ruling)* **The built window matches the flow that was agreed** —
+  evidenced by a **recorded checklist run against the running application**, in `ai/evidence/`, the
+  way Phase 2's criterion 8 was evidenced
+
+  **Why it is here and not in Phase 3.** The maintainer ruled on 2026-08-09 that Phase 3 would not
+  exit until the GUI was right, and reversed it the same day — *"since this is going to effect other
+  tasks, lets just do it all in phase 4 as originally planned"* — with the checklist moved here:
+  *"we will do the checklist run at the end of phase 4 to hash out the GUI."* **Phase 3 exits on its
+  existing six criteria.** This is the criterion that carries the intent.
+
+  **Why a checklist and not an inspection.** Phase 2's criterion 8 found **eleven defects against
+  2153 passing tests, none reported by any gate**, and then needed two further runs to reach 40 of
+  40. `P2EXIT-R12` was a checklist claiming a pass over its own recorded failures, and `P2EXIT-R10`
+  was the same row claimed met and reset twice. **A walked-through session is not evidence**; the
+  recorded run is.
+
+  **It runs last.** `T-203` reshapes the add dialog's row, `T-204` fixes a defect in it, and
+  `T-146`/`T-195`–`T-202` add the surfaces the checklist would cover. A run taken before those land
+  checks an application that is about to change.
 - Reviewed and signed off
 
 ---
