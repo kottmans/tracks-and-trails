@@ -8,8 +8,9 @@
 **Last updated:** 2026-08-09 — **Phase 3 exited.** Its exit review was approved at `ccdbd0f` after
 four passes; all six criteria are met and `P3EXIT-R1` through `P3EXIT-R3` are resolved. **Phase 4 is
 the current phase**, decomposed into `## Proposed — Phase 4` with ten entries and **nothing started**.
-`## In Review` holds `T-192`, `T-193` and `T-194` — all Phase 4 polish, all awaiting a verdict, none
-part of Phase 3's exit.
+**`## In Review` is empty**: `T-192`, `T-193`, `T-194` and the two corrections they produced —
+`T-205` and `T-206` — were all approved 2026-08-09. **Nothing is awaiting a verdict**, and the only
+open GUI defect is `T-204`, under `## Proposed — Phase 4`.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -99,13 +100,13 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-***Three Phase 4 polish tasks await verdicts**: `T-192`, `T-193` and `T-194`, all maintainer-found
-while Phase 3 was closing. **None was part of Phase 3's exit** and the exit review gave them no
-verdict.*
+***Empty.*** `T-192`, `T-193`, `T-194`, `T-205` and `T-206` were all approved on 2026-08-09 and are
+under `## Complete`. **Nothing is awaiting a verdict.**
 
-*(**This preface said "Empty" while the section held all three.** `P3EXIT-R4` found it. It was true
-when Phase 3's queue drained and stopped being true as each polish task landed — the section grew
-and its own description did not.)*
+*(**This preface has now been wrong in both directions.** It said *"Empty"* while the section held
+three tasks — `P3EXIT-R4` found that — and it then described three awaiting verdicts after every one
+had been approved. **A section's description is a claim about the section**, and it goes stale on
+every entry that moves in or out; it is the line to re-read whenever this file's queues change.)*
 
 ***Phase 3 carries no open work.*** All **eleven** deliverables approved — nine additive plus
 `T-169` and `T-170`, which withdraw a Phase 2 deliverable; of the six loose items, five built and
