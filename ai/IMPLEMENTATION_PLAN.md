@@ -656,6 +656,23 @@ unaffected.)*
 - Accessibility pass: keyboard navigation, focus order, screen-reader labels (`NFR-005`)
 - Error-surface pass: every taxonomy class has a tested, actionable presentation (`NFR-006`)
 
+**Decomposed 2026-08-09**, on maintainer direction, into `ai/TASKS.md` §`## Proposed — Phase 4`.
+**Before that date the phase had one task against eight deliverables** — `T-146`, filed under
+`## Proposed — Phase 3` and stating `Phase: Phase 4`. That is the condition Phase 3 was in on
+2026-08-01, and `T-146`'s own closing note named it as the reason to decompose early: *"Phase 3 had
+zero tasks against seven plan deliverables, so its size was an estimate from prose rather than from
+work anybody had broken down."*
+
+**Every deliverable and every exit criterion above now names an owner**, and the mapping is in that
+section rather than here, so there is one place to correct when it is wrong. `T-195`–`T-202` are the
+new entries; `T-146` and `T-021` were already filed. **Two further entries, `T-203` and `T-204`, are
+maintainer-found and are *not* plan deliverables** — they must not be counted as satisfying one,
+which is the conflation `P3EXIT-R1` found in Phase 3's records.
+
+**`T-203` carries an open ruling** and is written as a proposal: it would remove per-item controls
+that `REQ-011` and `docs/UX_SPEC.md` §8/§9.1 currently describe. **Nothing in it is agreed work
+until that ruling is taken.**
+
 ### Exit criteria
 
 - Every function is reachable by keyboard alone, verified end to end **on Linux**
