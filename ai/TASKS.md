@@ -5,19 +5,27 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — **every Phase 3 deliverable is approved and all six loose items are
-resolved.** `T-111` was the last deliverable and is Complete; `T-143`, `T-180`, `T-189`, `T-186` and
-`T-188` are approved and `T-171` is refused by `DAT-008`. `## In Review` holds `T-192` alone, which
-is Phase 4 polish. **Phase 3's exit review is the only thing outstanding.**
+**Last updated:** 2026-08-09 — **Phase 3 exited.** Its exit review was approved at `ccdbd0f` after
+four passes; all six criteria are met and `P3EXIT-R1` through `P3EXIT-R3` are resolved. **Phase 4 is
+the current phase**, decomposed into `## Proposed — Phase 4` with ten entries and **nothing started**.
+`## In Review` holds `T-192`, `T-193` and `T-194` — all Phase 4 polish, all awaiting a verdict, none
+part of Phase 3's exit.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here: the current phase is Phase 3, and everything in it is done but the exit review.**
-Phase 2 exited 2026-08-05, Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26; every exit review is in
-`ai/REVIEWS.md`.
+**Start here: the current phase is Phase 4, and nothing in it has been started.** Phase 3 exited
+2026-08-09, Phase 2 on 2026-08-05, Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26; every exit
+review is in `ai/REVIEWS.md`. **Actionable work is `## Proposed — Phase 4`** — ten entries — and
+`## In Review`, which holds three Phase 4 polish tasks awaiting verdicts.
+
+*(**This line has now been wrong twice, and both times it was found by review rather than by
+reading it.** `P3EXIT-R1` found it saying Phase 2 three days after Phase 3 began; `P3EXIT-R4` found
+it saying Phase 3 after Phase 3 exited — inside the commit that recorded the exit. **The line most
+likely to be stale is the one that says what is current**, because nothing else in the file breaks
+when it rots.)*
 
 *(This said **"The current phase is Phase 2"** and named that phase's planning gates. It was true
 until 2026-08-05 and was still standing on 2026-08-08, at the top of the file whose job is to say
@@ -91,15 +99,20 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-*Empty. **Every Phase 3 deliverable and every loose item ruled into the phase is closed.** All
-**eleven** deliverables approved — nine additive plus `T-169` and `T-170`, which withdraw a Phase 2
-deliverable; of the six loose items, five built and approved — `T-143`, `T-180`,
-`T-189`, `T-186`, `T-188` — and `T-171` refused by `DAT-008`.*
+***Three Phase 4 polish tasks await verdicts**: `T-192`, `T-193` and `T-194`, all maintainer-found
+while Phase 3 was closing. **None was part of Phase 3's exit** and the exit review gave them no
+verdict.*
 
-***The phase exit review is the only thing outstanding***, and it is exit criterion 6. Criteria
-1–5 are met. It is not the same as the thirteen task reviews already done: it asks whether the
-phase as a whole did what it set out to, and Phase 2's precedent is that it can find what focused
-reviews did not — that one returned six verdicts before approving.*
+*(**This preface said "Empty" while the section held all three.** `P3EXIT-R4` found it. It was true
+when Phase 3's queue drained and stopped being true as each polish task landed — the section grew
+and its own description did not.)*
+
+***Phase 3 carries no open work.*** All **eleven** deliverables approved — nine additive plus
+`T-169` and `T-170`, which withdraw a Phase 2 deliverable; of the six loose items, five built and
+approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused by `DAT-008`.
+**The exit review is complete**: approved at `ccdbd0f` on 2026-08-09, all six criteria met, after
+four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
+this one returned four verdicts before approving.*
 
 ### T-192 — The stopped-queue message hides at the right, against the ffmpeg summary
 
@@ -2871,7 +2884,9 @@ Assert, on `windows-latest`:
 
 **Status:** **Complete — Approved 2026-08-08 at `3ce0b8b`.** `T188-R1` is **Resolved** with no open
 findings, after three correction passes. **This closes the last of the six loose items the
-maintainer ruled into Phase 3**, leaving the phase exit review as the only thing outstanding.
+maintainer ruled into Phase 3**, which left the phase exit review as the only thing outstanding
+**as of that date**. *(That review was approved at `ccdbd0f` on 2026-08-09 and Phase 3 has exited;
+the clause is kept because it records what this task's approval closed.)*
 *(Was: Blocked on `T188-R1` (High) — the recorded fixture was added *beside* the synthetic evidence
 rather than **adopted**, leaving criteria 3 and 4 unmet.)*
 

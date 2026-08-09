@@ -96,10 +96,11 @@ not carry into Phase 4.
 |---|---|
 | `P3EXIT-R1` | **Resolved** at the third pass — one taxonomy, **eleven deliverables, nine additive and two subtractive** |
 | `P3EXIT-R2` | **Resolved**, and re-confirmed at the third pass |
-| `P3EXIT-R3` | **Corrected, unverified.** `IMPLEMENTATION_PLAN.md` still said `T-189`'s workflow had never executed. **A second instance the finding did not name** — the deliverables table row — was found by sweep and corrected with it |
+| `P3EXIT-R3` | **Resolved** at the fourth pass. `IMPLEMENTATION_PLAN.md` had said `T-189`'s workflow never executed. **A second instance the finding did not name** — the deliverables table row — was found by sweep and corrected with it, which the approval credits: *"fixing only the named line would not have"* closed the class |
+| `P3EXIT-R4` | **Open — Medium, coordination only.** Raised *after* approval, against these records: this block still said `P3EXIT-R3` was unverified and that criterion 6 was unmet, while the snapshot above said Phase 3 had exited. `ai/TASKS.md`'s header said Phase 3 was current. **The approval at `ccdbd0f` is not reopened** |
 
-The current submission is `ai/handoffs/2026-08-09-phase-3-exit-review-4.md`. **Criterion 6 is the
-only criterion still unmet**, and no verdict is claimed for it.
+**Criterion 6 is met.** The final submission was
+`ai/handoffs/2026-08-09-phase-3-exit-review-4.md`, approved at `ccdbd0f`.
 
 ## 2026-08-08: Phase 3 is complete but for its exit review
 
