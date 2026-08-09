@@ -24,8 +24,10 @@ from tracks_and_trails import __version__
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.main_window import (
     _MAX_COORD,
+    ACTIONABLE_STATUS_PROPERTY,
     APP_NAME,
     APP_SLUG,
     DEFAULT_SIZE,
@@ -749,3 +751,79 @@ def test_a_window_with_no_retry_route_offers_without_raising(
         if button.text().replace("&", "") == "Retry all":
             button.click()
     box.close()
+
+
+# --- T-192: the stopped queue asks for a press, and has to look like it ----------------------
+
+
+def test_the_queue_state_sits_at_the_left_and_the_summary_at_the_right(
+    qapp: QApplication,
+) -> None:
+    """**`T-192`.** The two status-bar labels must not run together as one sentence.
+
+    Both used `addPermanentWidget`, which packs to the **right** end, so the bar read
+    *"Queue stopped — press Start to download  ffmpeg found; all post-processing features are
+    available."* — one line in which the half asking the user to act is the tail of the half that
+    does not. Asserted on measured positions rather than on which method was called, because the
+    defect a reader sees is the distance between them.
+    """
+    window = MainWindow(concurrency=3)
+    window.resize(1000, 600)
+    window.show()
+    qapp.processEvents()
+
+    bar = window.statusBar()
+    gate = window.findChild(QLabel, "queueGateState")
+    summary = window.findChild(QLabel, "environmentSummary")
+    assert bar is not None and gate is not None and summary is not None
+
+    gate_x = gate.mapTo(bar, gate.rect().topLeft()).x()
+    summary_x = summary.mapTo(bar, summary.rect().topLeft()).x()
+
+    assert gate_x < bar.width() // 4, (
+        f"the queue state starts at x={gate_x} in a {bar.width()}px bar; it belongs at the left "
+        "edge, where a reader starts"
+    )
+    assert summary_x > gate_x + gate.width(), (
+        "the environment summary overlaps or precedes the queue state; they read as one sentence"
+    )
+
+
+def test_only_the_stopped_state_is_emphasised(qapp: QApplication) -> None:
+    """A bar where everything is emphasised emphasises nothing (`T-192`).
+
+    The stopped line is the one asking for a press; the running line reports, like the summary
+    beside it. **`NFR-005` is satisfied before this**: both states are already distinct *in words*,
+    and the weight is a second channel rather than the carrier.
+    """
+    # The theme is applied here rather than relied on: `qapp` does not set a stylesheet, and
+    # without one the property would be correct while nothing drew differently — which is the half
+    # of this that a user actually sees. Restored afterwards so it does not leak into other tests.
+    previous = qapp.styleSheet()
+    theme.apply(qapp, theme.LIGHT)
+    try:
+        window = MainWindow(concurrency=3)
+        gate = window.findChild(QLabel, "queueGateState")
+        assert gate is not None
+
+        assert gate.property(ACTIONABLE_STATUS_PROPERTY) is True, (
+            "a stopped queue is not marked actionable, so the sheet cannot emphasise it"
+        )
+        stopped_weight = gate.font().weight()
+        assert stopped_weight > 400, (
+            f"the stopped queue draws at weight {stopped_weight}; the sheet rule did not reach it"
+        )
+
+        window.show_queue_running(True)
+        qapp.processEvents()
+
+        assert gate.property(ACTIONABLE_STATUS_PROPERTY) is False, (
+            "the running queue is still marked actionable; the emphasis never turns off"
+        )
+        assert gate.font().weight() < stopped_weight, (
+            f"running weight {gate.font().weight()} is not lighter than stopped {stopped_weight}; "
+            "the property changed but nothing repolished the widget, so the rule applied once at "
+            "construction and then silently stopped"
+        )
+    finally:
+        qapp.setStyleSheet(previous)

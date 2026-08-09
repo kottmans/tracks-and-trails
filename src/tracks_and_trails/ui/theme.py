@@ -445,6 +445,23 @@ QToolBar QWidget[toolbarSpacer="true"] {{
        `[primaryAction]` above gives. */
     background: transparent;
 }}
+QStatusBar QLabel[actionableStatus="true"] {{
+    /* **The one status-bar line that asks the user to press something** (`T-192`). It sat hard
+       against the environment summary at the right end, so *"…press Start to download"* and
+       *"ffmpeg found; all post-processing features are available"* ran together as one sentence and
+       the request read as the tail of the report. It is on the left now (`addWidget`), and this is
+       the second half: weight and colour so it is found rather than parsed.
+
+       `warn` rather than `danger`: a stopped queue is a state the user chose or has not left yet,
+       not a failure. `NFR-005` is satisfied before this rule exists — the label says "Queue
+       stopped — press Start to download" in words, and this is a second channel on top of them.
+
+       A role rather than an object name, for the reason `[primaryAction]` above gives. The
+       property is false while the queue runs, so the running line stays as quiet as the summary
+       beside it. */
+    color: {theme.warn};
+    font-weight: 600;
+}}
 QComboBox, QLineEdit {{
     background-color: {theme.surface};
     border: 1px solid {theme.border};

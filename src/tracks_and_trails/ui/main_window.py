@@ -94,6 +94,18 @@ STEP_UP_LABEL: Final = "+"
 #: A role, not a name, for the reason `PRIMARY_ACTION_PROPERTY` gives.
 STEP_BUTTON_PROPERTY: Final = "stepButton"
 
+#: The dynamic property that marks a status-bar statement the user is expected to **act on**
+#: (`T-192`). A role, not a name, for the reason `PRIMARY_ACTION_PROPERTY` gives.
+#:
+#: **True only while the queue is stopped**, which is the one status-bar line that asks for a press.
+#: The running state and the environment summary are reports, and a bar where everything is
+#: emphasised emphasises nothing.
+#:
+#: **`NFR-005` is satisfied before this property exists, not by it**: the label already says
+#: *"Queue stopped — press Start to download"* in words, and the weight and colour are a second
+#: channel on top. Nothing here is the only carrier of the state.
+ACTIONABLE_STATUS_PROPERTY: Final = "actionableStatus"
+
 PRIMARY_ACTION_PROPERTY: Final = "primaryAction"
 
 #: The dynamic property marking the toolbar's expanding spacer, so the sheet can stop it
@@ -404,7 +416,14 @@ class MainWindow(QMainWindow):
         self._gate.setObjectName("queueGateState")
         self._gate.setAccessibleName("Queue state")
         self._gate.setTextFormat(Qt.TextFormat.PlainText)
-        self.statusBar().addPermanentWidget(self._gate)
+        #: **On the left, and not a permanent widget** (`T-192`). `addPermanentWidget` packs to the
+        #: *right* end, which put this hard against the environment summary — the two ran together
+        #: as one sentence (*"…press Start to download  ffmpeg found; all post-processing…"*) and
+        #: the one that asks the user to act read as the tail of the one that does not.
+        #:
+        #: `addWidget` puts it at the left, where the eye starts, and leaves the summary alone on
+        #: the right. The gap between them is then the width of the bar rather than a space.
+        self.statusBar().addWidget(self._gate)
         #: Whether this installation can merge (`REQ-024`). **Pessimistic until told**: the add
         #: dialog offers the merge mode from this, and claiming a capability nobody has confirmed
         #: is what `REQ-024` exists to prevent. `app.py` reports it during composition.
@@ -1029,6 +1048,15 @@ class MainWindow(QMainWindow):
         self._gate.setText(
             "Queue running" if running else "Queue stopped — press Start to download"
         )
+        # **Emphasised only while stopped** (`T-192`). The stopped line is the one that asks for a
+        # press; the running one reports. Re-polished by hand because Qt does not restyle on a
+        # property change on its own — a dynamic-property selector that is set and never repolished
+        # is a rule that applies once, at construction, and then silently stops.
+        self._gate.setProperty(ACTIONABLE_STATUS_PROPERTY, not running)
+        style = self._gate.style()
+        if style is not None:
+            style.unpolish(self._gate)
+            style.polish(self._gate)
 
     def _run_toggled(self, running: bool) -> None:
         """Hand the queue's run state to whoever composition said owns it.

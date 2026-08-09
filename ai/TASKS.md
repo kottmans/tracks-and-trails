@@ -94,6 +94,63 @@ deliverables approved; of the six loose items, five built and approved — `T-14
 phase as a whole did what it set out to, and Phase 2's precedent is that it can find what focused
 reviews did not — that one returned six verdicts before approving.*
 
+### T-192 — The stopped-queue message hides at the right, against the ffmpeg summary
+
+**Status:** **In Review — found by the maintainer 2026-08-08 and fixed the same day.** *(Built by
+the Implementer; no criterion is claimed approved.)*
+
+**What it was.** Both status-bar labels used `addPermanentWidget`, which packs to the **right** end
+of a `QStatusBar`. The queue-gate line and the environment summary therefore sat hard against each
+other and read as one sentence:
+
+> Queue stopped — press Start to download  ffmpeg found; all post-processing features are available.
+
+**The half asking the user to act read as the tail of the half that does not** — and it was the far
+end of a 1344px window from where a reader starts.
+
+**The fix, in two halves.** `addWidget` puts the gate line at the **left**, so the gap between it
+and the summary is the width of the bar rather than a space. And a dynamic property,
+`ACTIONABLE_STATUS_PROPERTY`, marks the state the user is expected to act on, which the sheet draws
+in `warn` at weight 600.
+
+**Emphasised only while stopped.** The running line reports, like the summary beside it, and a bar
+where everything is emphasised emphasises nothing. **`NFR-005` is satisfied before the property
+exists, not by it**: the label already says *"Queue stopped — press Start to download"* in words,
+and the weight and colour are a second channel on top.
+
+**A role, not an object name** (`T-132`'s rule, enforced by
+`test_the_sheet_styles_by_class_so_a_new_widget_inherits_it`), and the widget is **repolished** by
+hand on each change — Qt does not restyle on a property change, so a selector that is set and never
+repolished applies once at construction and then silently stops.
+
+**Owner:** Implementer
+**Priority:** Medium — no data is at risk, but `UX-006`'s whole point is that a stopped queue
+explains itself, and this is that explanation being hard to find
+**Phase:** Phase 4 — polish. **Not a Phase 3 blocker**: `T-181` and `UX-006` are approved and the
+message says the right words; where it sits and how it is weighted is presentation
+**Depends on:** nothing
+**Relevant context:** `UX-006`, `T-181`, `T181-R1`, `T-132` (style by role), `NFR-005`,
+`ui/main_window.py`, `ui/theme.py`
+**Affected surfaces:** `ui/main_window.py`, `ui/theme.py`, `tests/ui/test_main_window.py`
+**Risk:** Low — presentation only; no state, no persistence, no behaviour
+
+#### Acceptance criteria
+
+- The queue-gate line sits at the left of the status bar and the environment summary at the right,
+  asserted on **measured positions** rather than on which method was called
+- Only the stopped state is emphasised; the running state draws as quietly as the summary
+- The state remains legible in words alone (`NFR-005`), with weight and colour as a second channel
+- The emphasis is styled **by role**, and the widget is repolished so the rule keeps applying
+- `warn` clears `MINIMUM_CONTRAST` on both themes and both status-bar surfaces
+- `ruff`, `ruff format`, both `mypy` gates, and the main-window and theme suites are clean
+
+#### Out of scope
+
+- Anything the message *says*. `UX-006` settled the wording and `T-181` is approved
+
+---
+
+
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
