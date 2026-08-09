@@ -4479,6 +4479,18 @@ def test_an_open_playlist_shows_entries_and_a_way_back(
     viewport = staging_list(dialog).viewport()
 
     try:
+        # **A refresh straight after opening**, which is what the dialog actually does. The first
+        # `T204-R4` fix restored geometry *inside* the `dataChanged` emit, before Qt re-measured
+        # the view, so `visualRect` answered a stale — sometimes empty — rectangle and the panel
+        # was erased the instant it opened. The committed tests processed events and missed it.
+        opened_at = panel.geometry()
+        dialog.refresh()
+        QApplication.processEvents()
+        assert panel.geometry() == opened_at, (
+            f"a refresh moved the panel from {opened_at} to {panel.geometry()}"
+        )
+        assert panel.isVisible() and panel.height() > 0, "the panel vanished when it was refreshed"
+
         table = panel.picker.table
         row_height = table.rowHeight(0)
         assert row_height > 0

@@ -1701,10 +1701,27 @@ class AddUrlDialog(QDialog):
         row, panel = self._expanded, self._panel
         if row is None or panel is None:
             return
-        index = self._index_of(row)
-        if not index.isValid():
-            return
-        panel.setGeometry(self._list.visualRect(index))
+
+        def restore() -> None:
+            # **Read after Qt has re-laid the view out, not during the emit.** `dataChanged` is
+            # delivered *before* the view re-measures, so `visualRect` still answers the old
+            # geometry — and stamping that onto the panel is worse than leaving it alone: the first
+            # version of this fix wrote a stale, sometimes empty, rectangle over a live panel and
+            # **made it vanish on open**. Deferred by a turn, which is the ordering `T108-R2`
+            # already established one widget over.
+            if row is not self._expanded or panel is not self._panel:
+                return
+            index = self._index_of(row)
+            if not index.isValid():
+                return
+            rect = self._list.visualRect(index)
+            # **An empty rectangle is not an answer.** A row scrolled out of view, or measured
+            # before layout, reports one — and it would hide the panel rather than move it.
+            if rect.isEmpty():
+                return
+            panel.setGeometry(rect)
+
+        QTimer.singleShot(0, restore)
 
     def remount_panel(self) -> None:
         """Put the open panel back on its row after a model reset, or close it if the row is gone.

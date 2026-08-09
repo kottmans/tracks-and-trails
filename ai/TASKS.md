@@ -321,6 +321,16 @@ That limit is recorded in the regression's docstring rather than hidden by choos
 window size. **Shortening the third line is the remaining work** and is left for its own entry,
 because it is a question about what a row should *say* and not about how tall a panel may be.
 
+**A regression I introduced, and could not reproduce headlessly.** The first `T204-R4` fix restored
+the panel's geometry *inside* the `dataChanged` emit — before Qt re-measures the view — so
+`visualRect` answered a stale, sometimes empty, rectangle and **the panel vanished the moment it was
+opened**. It is now deferred by a turn and refuses an empty rectangle.
+
+**The deferral is principled and unproven.** Removing it again does **not** fail any test: offscreen
+Qt reports a usable `visualRect` immediately, so the headless suite cannot tell the two orderings
+apart. **The reported symptom is reproducible only on a real display**, which is `OPS-003`'s shape —
+verification here rests on the maintainer looking at it.
+
 #### Acceptance criteria
 
 - **A panel never exceeds the list's visible height**, asserted against a real viewport at a small
