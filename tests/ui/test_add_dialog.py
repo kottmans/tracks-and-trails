@@ -4490,6 +4490,10 @@ def test_an_open_playlist_shows_entries_and_a_way_back(
             f"a refresh moved the panel from {opened_at} to {panel.geometry()}"
         )
         assert panel.isVisible() and panel.height() > 0, "the panel vanished when it was refreshed"
+        assert panel.autoFillBackground(), (
+            "the panel paints no background, so the delegate's row — thumbnail and all — shows "
+            "through underneath it"
+        )
 
         # **Resizing the window must not break it** (`T-210`). An opened row's height is bounded by
         # the viewport now, and Qt does not re-ask a delegate for `sizeHint` when the viewport
@@ -4513,6 +4517,10 @@ def test_an_open_playlist_shows_entries_and_a_way_back(
         )
 
         collapse = panel.collapse_button
+        assert collapse.property("disclosure") is True, (
+            "the collapse control is not styled by the disclosure role, so it draws as a framed "
+            "button beside a painted triangle — two looks for one gesture"
+        )
         bottom = collapse.mapTo(viewport, collapse.rect().bottomLeft()).y()
         assert 0 <= bottom <= viewport.height(), (
             f"the collapse control is at y={bottom} in a {viewport.height()}px viewport, so the "

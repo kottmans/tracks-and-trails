@@ -83,7 +83,7 @@ from typing import Any, Final, Protocol, cast
 
 from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QSize, Qt, QTimer, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QAction, QFontMetrics, QKeyEvent, QPixmap, QResizeEvent
+from PySide6.QtGui import QAction, QFontMetrics, QKeyEvent, QPalette, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -454,6 +454,18 @@ def row_summary(row: Row) -> str:
     return f"{headline_text(row)}\n{second}"
 
 
+#: How many closed rows the list asks to show before an opened one has to fight for room (`T-210`).
+#:
+#: **Eight, against the panel rather than picked.** An opened playlist wants roughly 314px for its
+#: entries plus its summary and controls; eight closed rows is about that, so a list at its hint can
+#: hold one open row without the window being dragged taller. `VISIBLE_ENTRIES` is the same number
+#: for the same reason, and they are separate constants because they answer different questions.
+WANTED_ROWS: Final = 8
+
+#: Used only before the first row exists, when `sizeHintForRow` has nothing to measure.
+_CLOSED_ROW_ESTIMATE: Final = 64
+
+
 class StagingList(QListView):
     """The staged rows, asking for the width the row anatomy was designed for (`T-150`).
 
@@ -489,8 +501,19 @@ class StagingList(QListView):
 
     # Qt's override names, hence the camelCase.
     def sizeHint(self) -> QSize:
+        """The width the row anatomy needs, and the height an opened one does (`T-150`, `T-210`).
+
+        **Height was left to Qt and it split the dialog evenly**, so the list opened too short to
+        hold an expanded playlist and the maintainer had to drag the window taller every time. The
+        hint asks for `WANTED_ROWS` closed rows — enough that opening one has somewhere to go.
+
+        A hint, not a minimum, for the reason the class docstring gives about width: short has to
+        keep working, and a floor would put that out of reach rather than honour it.
+        """
         hint = super().sizeHint()
-        return QSize(max(hint.width(), self._row_width()), hint.height())
+        row = self.sizeHintForRow(0) if self.model().rowCount() else 0
+        wanted = (row or _CLOSED_ROW_ESTIMATE) * WANTED_ROWS + 2 * self.frameWidth()
+        return QSize(max(hint.width(), self._row_width()), max(hint.height(), wanted))
 
     def changeEvent(self, event: QEvent) -> None:
         if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
@@ -580,6 +603,13 @@ class RowPanel(QWidget):
         super().__init__(parent)
         self.setObjectName(object_name)
         self._row = row
+        # **Opaque, because the row is still painted underneath** (`T-210`). `setIndexWidget` puts
+        # this widget over the item, but a `QWidget` paints nothing by default — so the delegate's
+        # own anatomy showed through wherever the panel had no child: the thumbnail behind the
+        # heading, and the row's *Download as* line behind the summary. Filling the background is
+        # what makes "the row, opened" look like one thing instead of two stacked.
+        self.setAutoFillBackground(True)
+        self.setBackgroundRole(QPalette.ColorRole.Base)
 
         layout = QVBoxLayout(self)
 
@@ -595,6 +625,10 @@ class RowPanel(QWidget):
         self._collapse.setAccessibleName(f"Collapse {summary_name.lower()}")
         self._collapse.setArrowType(Qt.ArrowType.DownArrow)
         self._collapse.setAutoRaise(True)
+        # Styled by role, not by name, so the next panel with a disclosure inherits the look
+        # instead of remembering it — the convention `T-192` established and
+        # `test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces.
+        self._collapse.setProperty("disclosure", True)
         self._collapse.clicked.connect(lambda: self.closed.emit(True))
         heading.addWidget(self._collapse, 0, Qt.AlignmentFlag.AlignTop)
 

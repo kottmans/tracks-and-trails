@@ -445,6 +445,24 @@ QToolBar QWidget[toolbarSpacer="true"] {{
        `[primaryAction]` above gives. */
     background: transparent;
 }}
+QToolButton[disclosure="true"] {{
+    /* **The way out of an opened row, drawn as the way in** (`T-210`). The closed row paints a
+       disclosure triangle through the style; this is a real `QToolButton` because the panel covers
+       that painting and the control has to exist as a widget to be reachable — but it must not
+       *look* like a button, or the two halves of one gesture are drawn as two different things.
+
+       A role rather than an object name, for the reason `[primaryAction]` gives: the next panel
+       that needs a disclosure inherits this instead of remembering it. */
+    border: none;
+    background: transparent;
+    padding: 0px;
+}}
+QToolButton[disclosure="true"]:hover {{
+    /* Enough to say it is live, without a frame the painted triangle does not have. */
+    background: {theme.selection};
+    border-radius: 3px;
+}}
+
 QStatusBar QLabel[actionableStatus="true"] {{
     /* **The one status-bar line that asks the user to press something** (`T-192`). It sat hard
        against the environment summary at the right end, so *"…press Start to download"* and
