@@ -1634,6 +1634,64 @@ preset with no opinion falls back to — not a second template implementation.
   per-item control goes
 - Following the OS theme, and window geometry — both excluded by `T-146` and still excluded
 
+### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
+
+**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 4
+**Depends on:** `T-146` for the screen.
+**Relevant context:** `REQ-023`, `REQ-026`, `NFR-007`, `T-014`, `core/models.py`
+(`_require_credential_free_proxy`, `DownloadRequest.proxy`, `DownloadRequest.rate_limit_bytes`),
+`downloader/ytdlp_adapter.py` §618–621, `core/logging.py` §128–129, `core/settings.py`
+**Affected surfaces:** `core/settings.py`, the settings dialog, `core/models.py` if retries become
+a request field, `downloader/ytdlp_adapter.py`
+**Risk:** **Medium–High, and the risk is redaction, not networking.** A proxy is the one setting in
+`REQ-023` that can carry a credential into a log
+
+#### Scope
+
+**Two of the three already work; this is mostly a surface.** `DownloadRequest` carries `proxy` and
+`rate_limit_bytes`, and `ytdlp_adapter.py` maps them onto yt-dlp's `proxy` and `ratelimit`. What is
+missing is a place to set them and a value that persists.
+
+**Retries is the one that does not exist.** No `retries` field is on `DownloadRequest` and nothing
+maps one. `REQ-023` names it, so it is in scope — and it needs a decision this entry does not take:
+whether "retry policy" means yt-dlp's own `--retries` (per-fragment, inside one attempt) or this
+application's job-level retry from `REQ-015`/`REQ-018`. **They are different things with the same
+name**, and a settings control that says "Retries" while setting the other one is `T-075`'s defect:
+a control that looks like a choice and changes something else. **Name which one before building it.**
+
+**The proxy is the hazard, and it is already half-defended.** `T-014` made `DownloadRequest` refuse
+a proxy carrying userinfo, and `core/logging.py` carries a rule specifically for
+`user:pass@proxy.invalid:8080` because the URL rule anchors on `://` and walked straight past it.
+**A settings-level proxy is a new way for that string to enter the system** — it becomes persisted
+state in `settings.toml`, which no redaction rule covers today. `T-197` owns the redaction gate;
+this task must not land a stored proxy without it.
+
+#### Acceptance criteria
+
+- The screen sets **rate limit** and **proxy**, both persist, and both reach a real download —
+  asserted through the options the adapter builds, not against the stored value
+- **A proxy carrying userinfo is refused at entry**, with the reason, by the same rule `T-014` put on
+  `DownloadRequest` — not a second validator on the dialog
+- **A stored proxy never reaches a log**, including `settings.toml` read failures and `ARC-008`
+  reports that quote the offending value. This is the case `NFR-007` does not yet cover, and it is
+  the acceptance criterion most likely to be skipped
+- **The retry setting names which retry it is** — yt-dlp's fragment retries or the job-level retry —
+  in the control's own label and in the entry, and the other one is stated as out of scope
+- A rate limit of zero, negative, or non-numeric **reports under `ARC-008`** rather than being
+  coerced into "unlimited", which would silently remove a limit the user asked for
+- The settings-implemented record (`T-146`, extended by `T-195`) gains these three
+
+#### Out of scope
+
+- Cookie source — `T-197`, which is where the redaction gate is built
+- Per-job network overrides. `REQ-023` asks for settings; nothing asks for per-row proxies, and
+  `T-203` is arguing per-row controls *down* rather than up
+- yt-dlp's wider network surface — `--socket-timeout`, `--source-address`, `--impersonate` and the
+  rest belong to Phase 4.5's audit (`T-183`), and `SEC-003` already excluded `--impersonate`
+
 ---
 
 ## Proposed — Phase 4.5
