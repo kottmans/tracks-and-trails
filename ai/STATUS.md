@@ -5,7 +5,7 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-09 — Phase 3 exited
 **Last verified against repository:** 2026-08-09 **for the block immediately below** — the pushed
 range, the CI run and its five job results were read from `git log` and `gh run view` after the run
 completed, not from a run taken earlier. The Phase 3 block beneath it was verified 2026-08-06 — its task states,
@@ -17,9 +17,12 @@ statement of what is true now.
 
 ---
 
-**Current phase:** **Phase 3 — Format and content depth.** **Phase 2 exited 2026-08-05** (commit
-`38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
-were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
+**Current phase:** **Phase 4 — Settings, polish, and accessibility.** **Phase 3 exited 2026-08-09**,
+approved at `ccdbd0f` after four exit-review passes; Phase 2 exited 2026-08-05 (commit `38504b3`),
+Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
+
+**Phase 4 is decomposed** — `ai/TASKS.md` §`## Proposed — Phase 4`, ten entries, every plan
+deliverable and exit criterion owned. **Nothing is in progress**; the phase has not been started.
 
 ## 2026-08-09: the session's work is pushed, CI is green, and Phase 4 is decomposed
 
@@ -59,8 +62,13 @@ file rather than asserted.
   **the panel outlives the control that dismisses it.** Which user action reaches that state is not
   yet confirmed, and the reproduction is the first deliverable.
 
-**What is still outstanding:** **Phase 3's exit review.** `P3EXIT-R1` and `P3EXIT-R2` are
-**Resolved**; `P3EXIT-R3` was raised by the third pass, is corrected, and awaits verification.
+**Phase 3's exit review is complete. Approved at `ccdbd0f`, 2026-08-09.** `P3EXIT-R1`, `P3EXIT-R2`
+and `P3EXIT-R3` are all **Resolved**, and criterion 6 is met. **Four passes.** Every finding was a
+document outliving the thing that changed it; none was about the product.
+
+**What is outstanding is now Phase 4's**, and nothing blocks starting it. `T-192`, `T-193` and
+`T-194` sit in `## In Review` with no verdicts — Phase 4 polish, explicitly outside the exit.
+`T-204` should land before `T-203`, which depends on it.
 
 ### The pass budget, and the standing authorization that now governs it
 
