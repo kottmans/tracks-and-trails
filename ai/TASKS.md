@@ -8,9 +8,8 @@
 **Last updated:** 2026-08-09 — **Phase 3 exited.** Its exit review was approved at `ccdbd0f` after
 four passes; all six criteria are met and `P3EXIT-R1` through `P3EXIT-R3` are resolved. **Phase 4 is
 the current phase**, decomposed into `## Proposed — Phase 4` with ten entries and **nothing started**.
-**`## In Review` is empty**: `T-192`, `T-193`, `T-194` and the two corrections they produced —
-`T-205` and `T-206` — were all approved 2026-08-09. **Nothing is awaiting a verdict**, and the only
-open GUI defect is `T-204`, under `## Proposed — Phase 4`.
+**`T-192`, `T-193`, `T-194`, `T-205` and `T-206` were approved 2026-08-09.** For what is awaiting
+a verdict now, read `## In Review` — this header does not duplicate it, for `T204-R2`'s reason.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -100,13 +99,15 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-***Empty.*** `T-192`, `T-193`, `T-194`, `T-205` and `T-206` were all approved on 2026-08-09 and are
-under `## Complete`. **Nothing is awaiting a verdict.**
+*Implementation is finished and a verdict has not been recorded. **The entries below are the
+contents; this preface does not list them.***
 
-*(**This preface has now been wrong in both directions.** It said *"Empty"* while the section held
-three tasks — `P3EXIT-R4` found that — and it then described three awaiting verdicts after every one
-had been approved. **A section's description is a claim about the section**, and it goes stale on
-every entry that moves in or out; it is the line to re-read whenever this file's queues change.)*
+*(**This line has been wrong three times.** It said *"Empty"* while the section held three tasks
+(`P3EXIT-R4`); it then said *"three awaiting verdicts"* after all three were approved; and it said
+*"Empty"* again with `T-204` sitting directly beneath it (`T204-R2`). Each time an entry moved and
+the description did not — including once immediately after I wrote that this was the line to
+re-read whenever the queues change. **So it no longer enumerates.** A description that lists its
+section's contents is a second copy of the section, and the copy is what rots.)*
 
 ***Phase 3 carries no open work.*** All **eleven** deliverables approved — nine additive plus
 `T-169` and `T-170`, which withdraw a Phase 2 deliverable; of the six loose items, five built and
@@ -208,15 +209,32 @@ different, split this entry rather than fixing one and closing both.
 
 ---
 
-## Ready
-
 ### T-207 — Reproduce T-204 through a reachable transition
 
-**Status:** **Ready — review correction for `T204-R1` and `T204-R2`.** The submitted regression
-kills the old role ordering, but it makes a resolved row `PROBING` by assigning `row.state`
-directly. Production sets `PROBING` only from `WAITING`; a `READY` row receiving that status is
-made `FAILED`. The test therefore proves a useful invariant under an invented transition, not the
-maintainer-reported gesture it says it reproduces.
+**Status:** **In Review — corrected 2026-08-09.** *(Was: Ready. The submitted regression killed the
+old role ordering, but it made a resolved row `PROBING` by assigning `row.state` directly.
+Production sets `PROBING` only from `WAITING`; a `READY` row receiving that status is made `FAILED`.
+The test therefore proved a useful invariant under an invented transition, not the
+maintainer-reported gesture it said it reproduced.)*
+
+**Every step of the replacement is a route a user can reach.** The picker opens through
+`open_playlist_picker`; an entry is unchecked with `Space`, the gesture the report describes; the
+row stops being committable because **its job left the queue** — `manager.job_changed` with a
+non-startable status, which `_on_job_changed` turns into `FAILED`, message *"this URL left the
+queue while the dialog was open"*; and the panel closes through `toggle_playlist`, the slot the
+delegate's disclosure signal is wired to. **The selection made in the picker is asserted to survive
+the close.** The old-order mutation fails it.
+
+**`T204-R2` is corrected with it**, and structurally: `## In Review`'s preface **no longer
+enumerates its contents**. It had been wrong three times — *"Empty"* over three tasks, *"three
+awaiting verdicts"* over none, and *"Empty"* again with `T-204` directly beneath it — the last
+immediately after I wrote that it was the line to re-read whenever the queues change. A description
+that lists its section is a second copy of it, and the copy is what rots.
+
+**The role comment is corrected too.** `T204-R1` noted it overstated the case: it reasoned from a
+`READY` row entering `PROBING`, which cannot happen, and said closing would discard the selection
+when `close_panel(keep=True)` and `_on_entries_chosen` both preserve it. **What closing costs is the
+interaction, not the data**, and it now says so.
 **Owner:** Implementer
 **Priority:** High — T-204's criterion 1 and its claim to close a trapped-user report depend on a
 reachable reproduction, not only a mutation of the suspected guard
@@ -251,6 +269,8 @@ trigger from the one the test assigns
 - T-204's unobserved row/panel-overlap screenshot; geometry remains unchanged
 
 ---
+
+## Ready
 
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
