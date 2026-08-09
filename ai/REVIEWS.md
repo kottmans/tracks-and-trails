@@ -13017,3 +13017,58 @@ initial review’s independently reproduced 2803, the relevant source/test tree 
 the measured head, and the five-job CI run is independently verified. T-193/T-194 remain unreviewed
 Phase 4 work outside this exit verdict. Real sites remain unverified. Only `ai/REVIEWS.md` was
 modified by the reviewer; no commit or push was made.
+
+
+## 2026-08-09 — P3EXIT-R3 focused correction re-review
+
+**Reviewer:** Codex
+
+**Prior evidence head:** `c317625`
+**Correction head:** `ccdbd0f`
+**Handoff-only head:** `1863da8`
+**Scope:** `P3EXIT-R3` and the semantic sibling sweep in its docs-only correction. The maintainer’s
+standing instruction authorizes as many focused exit-review passes as necessary, superseding the
+handoff’s statement—written before that instruction—that no fourth pass was authorized.
+
+**Verdict:** **Approved at `ccdbd0f`.** `P3EXIT-R3` is **Resolved**. `P3EXIT-R1` and `P3EXIT-R2`
+remain resolved, no open blocking Phase 3 finding remains, and **Phase 3 exit criterion 6 is met**.
+Phase 3 is reviewed and signed off. The later `1863da8` adds only the correction handoff and does
+not move the approved implementation/evidence boundary.
+
+### Finding result
+
+| ID | Severity | Blocks approval | Result | Evidence |
+|---|---|---|---|---|
+| `P3EXIT-R3` | Medium | No | **Resolved.** Both current occurrences in `IMPLEMENTATION_PLAN.md` now close T-189’s residual by execution: the six-item table row and the exit-summary paragraph name run `31295392039` at `9fe22fb`, all five jobs successful, and the required-run variable active without turning the merge proof into a failure. The old “never executed” state remains only as explicit history. | Direct correction inspection and semantic search. The reviewer had already independently queried GitHub and verified the run head/conclusion, all five job conclusions, and the successful Windows-platform type, desktop, and Full suite steps. STATUS and the handoff now agree with the canonical plan. |
+
+The correction’s sibling sweep matters: the original finding cited the exit-summary paragraph, but
+the T-189 table row repeated the same false current claim. Correcting both closes the defect class;
+fixing only the named line would not have.
+
+### Phase 3 exit result
+
+| Criterion | Result |
+|---|---|
+| Format table matches recorded `yt-dlp -F` evidence | **Met** |
+| Separate video/audio pair merges on Linux and Windows | **Met**; T-189’s CI residual is now closed by execution |
+| Preview matches the written Windows-safe path | **Met** |
+| Rendered template containment | **Met** |
+| Partial download resumes across restart or states refusal | **Met** |
+| Reviewed and signed off | **Met at `ccdbd0f`** |
+
+### Reviewer verification
+
+| Check | Result |
+|---|---|
+| `git diff --check c317625..1863da8` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| Ruff format at correction-head shape (excluding the later handoff) | **pass, 224 files** |
+| Task placement | **14 passed** |
+| Source/test diff after the previously verified code head | **empty** |
+| GitHub Actions run `31295392039` | **completed/success at `9fe22fb`; all five jobs success** |
+
+The full suite and both mypy gates were not repeated for this docs-only correction. Their accepted
+results remain **2807 passed, 17 skipped, 2 deselected, 4 warnings** and both mypy platforms clean
+over 125 files; no source or test file changed after those measurements. T-192, T-193 and T-194
+remain unreviewed Phase 4 work and receive no verdict here. Real sites remain unverified. Only
+`ai/REVIEWS.md` was modified by the reviewer; no commit or push was made.
