@@ -13109,3 +13109,45 @@ state and actionable work. The maintainer's standing authorization covers the ne
 | Source/test changes after approved evidence head | **not reopened; finding is confined to post-approval coordination truth** |
 
 Only `ai/REVIEWS.md` was modified by the reviewer. No commit or push was made.
+
+
+## 2026-08-09 — P3EXIT-R4 focused correction re-review
+
+**Reviewer:** Codex
+
+**Prior coordination head:** `6114f51`
+**Review-record head:** `ed43469`
+**Correction head:** `4aea3dc`
+**Scope:** `P3EXIT-R4` and its current-claim sibling sweep in STATUS and TASKS. Phase 3's approved
+implementation/evidence boundary at `ccdbd0f` and the Phase 4 task implementations are not reopened.
+
+**Verdict:** **Approved — exit coordination complete at `4aea3dc`.** `P3EXIT-R4` is
+**Resolved**. STATUS, TASKS, and IMPLEMENTATION_PLAN now agree that Phase 3 exited at `ccdbd0f`,
+all six criteria are met, Phase 4 is current, and T-192/T-193/T-194 are unreviewed Phase 4 work.
+
+### Finding result
+
+| ID | Severity | Blocks approval | Result | Evidence |
+|---|---|---|---|---|
+| `P3EXIT-R4` | Medium | No | **Resolved.** STATUS's live findings block now marks P3EXIT-R1 through R3 resolved and criterion 6 met. TASKS's header and “Start here” line name Phase 4 as current, and its `## In Review` preface names the three entries the section actually contains. The lower 2026-08-08 STATUS narrative and T-188 completion clause remain explicitly dated history rather than live claims. | Direct correction inspection, semantic search across all three current-truth files, and the task-placement gate. |
+
+The correction-head STATUS row describes P3EXIT-R4 as open because only the Reviewer may resolve a
+finding; that was accurate when the implementer returned the batch. The routine post-verdict
+snapshot update may change that row to Resolved or replace the duplicated state with a link to this
+canonical review record. It does not require another product or exit-criterion pass unless it
+introduces a new contradiction.
+
+### Reviewer verification at `4aea3dc`
+
+| Check | Result |
+|---|---|
+| `git diff --check ed43469..4aea3dc` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass, 226 files** |
+| `python -m pytest -q tests/unit/test_task_placement.py` | **14 passed** |
+| Semantic search for the superseded live claims | **none outside explicitly dated/history-qualified text** |
+| Correction diff | **STATUS and TASKS only; no source or test change** |
+
+The product suite and mypy gates were not repeated for this docs-only correction. Their accepted
+Phase 3 evidence remains unchanged. Only `ai/REVIEWS.md` was modified by the reviewer; no commit or
+push was made.
