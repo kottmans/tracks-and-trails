@@ -1525,6 +1525,51 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ---
 
+## Proposed — Phase 4
+
+*(**Section added 2026-08-09**, on maintainer direction, after Phase 3's work was pushed. **Phase 4
+had no section of its own.** `T-146` sat under `## Proposed — Phase 3` stating `Phase: Phase 4`, and
+**seven of the plan's eight deliverables had no entry anywhere.** That is the condition
+`IMPLEMENTATION_PLAN.md` §Phase 3 was in on 2026-08-01 — "zero tasks against seven plan
+deliverables" — and `T-146`'s own closing note called it out as the reason to decompose early.)*
+
+**`ai/IMPLEMENTATION_PLAN.md` §Phase 4 is the authority for what belongs here.** The map below is
+this file's claim to cover it, and it is the first thing a reviewer should attack: a deliverable
+with no owner is the failure this section exists to prevent, and a map that *claims* an owner it
+does not have is worse than no map.
+
+| Plan deliverable | Owner |
+|---|---|
+| Full settings dialog covering `REQ-023` | `T-146` — the screen, the menu, the directory, the theme |
+| — its deferred `REQ-023` keys: default preset, output template | `T-195` |
+| Network options: rate limit, proxy, retry policy | `T-196` |
+| Cookie source configuration, redaction verified (`REQ-026`, `REQ-EXCL-003`) | `T-197` |
+| In-app yt-dlp version display and update action (`REQ-025`, `OPS-002`) | `T-198` |
+| ffmpeg detection, capability reporting, override path (`REQ-024`) | `T-199` |
+| Theme: brand palette, light and dark (`ARCHITECTURE.md` §8) | `T-146` (the selector) and `T-021` (the small-size glyph). **Both palettes already exist** |
+| Accessibility pass: keyboard, focus order, screen-reader labels (`NFR-005`) | `T-200` |
+| Error-surface pass: every taxonomy class tested and actionable (`NFR-006`) | `T-201` |
+
+| Plan exit criterion | Owner |
+|---|---|
+| Every function reachable by keyboard alone, verified on Linux | `T-200` |
+| A screen reader announces every control meaningfully (Orca, Linux) | `T-200` |
+| No information is conveyed by colour alone | `T-202` |
+| Logs carry no cookies, cookie paths, proxy credentials or token-like parameters (`NFR-007`) | `T-197` |
+| Updating yt-dlp changes the reported version; reverting restores the baseline | `T-198` |
+| Reviewed and signed off | the phase exit review, as in Phases 1–3 |
+
+**Polish carried into the phase rather than planned for it.** `T-191`, `T-192`, `T-193` and `T-194`
+are maintainer-found defects filed during Phase 3 and ruled Phase 4; `T-203` and `T-204` come from
+the 2026-08-08 review of the add dialog. They are not plan deliverables and **must not be counted as
+satisfying one** — that conflation is what `P3EXIT-R1` found in Phase 3's own records.
+
+**What this section does not settle.** `T-203` proposes removing a control that `REQ-011` and
+`UX_SPEC` §8/§9.1 currently describe. It is written as a **proposal with an open ruling**, not as
+agreed work, and it says so in its own entry.
+
+---
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
