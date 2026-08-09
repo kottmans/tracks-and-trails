@@ -28,6 +28,7 @@ from tracks_and_trails.ui.playlist_picker import (
     DURATION_COLUMN,
     INDEX_COLUMN,
     TITLE_COLUMN,
+    VISIBLE_ENTRIES,
     PlaylistPicker,
 )
 from tracks_and_trails.ui.playlist_selection import PlaylistSelection
@@ -390,3 +391,52 @@ def test_a_picker_opened_on_an_existing_selection_shows_it(
     finally:
         widget.deleteLater()
         qapp.processEvents()
+
+
+# --- T-193: the panel is as tall as its entries, up to a cap ---------------------------------
+
+
+def _picker_of(count: int) -> PlaylistPicker:
+    entries = tuple(
+        PlaylistEntry(
+            url=f"https://example.invalid/{i}", title=f"Track {i}", duration_seconds=200.0
+        )
+        for i in range(count)
+    )
+    return PlaylistPicker(entries, PlaylistSelection.all_of(count))
+
+
+def test_the_table_grows_with_its_entries(qapp: QApplication) -> None:
+    """**`T-193`.** A sixteen-entry playlist must not be drawn at a two-entry height.
+
+    `QTableView`'s inherited `sizeHint` is a fixed default that ignores the model, so the panel was
+    the same height whatever it held — a real sixteen-track album showed **two rows**, with the rest
+    behind the table's own scrollbar *inside* the staging list's.
+
+    Asserted as a comparison between counts rather than against pixel numbers: the point is that the
+    height follows the content, and pinning a number would fail on the first font change — which is
+    `T118-R15`, this project's record of exactly that.
+    """
+    small = _picker_of(2)._table.sizeHint().height()
+    larger = _picker_of(6)._table.sizeHint().height()
+
+    assert larger > small, (
+        f"six entries ask for {larger}px and two ask for {small}px; the panel is not reading its "
+        "own row count, which is the defect"
+    )
+
+
+def test_the_table_stops_growing_at_the_cap(qapp: QApplication) -> None:
+    """Bounded, so a 200-track playlist does not ask for a 6,000px row.
+
+    The cap is what puts one scrollbar in the interaction instead of two: below it nothing scrolls
+    inside the panel at all, and above it the entries scroll within a panel of fixed height.
+    """
+    at_cap = _picker_of(VISIBLE_ENTRIES)._table.sizeHint().height()
+    far_past = _picker_of(200)._table.sizeHint().height()
+
+    assert far_past == at_cap, (
+        f"200 entries ask for {far_past}px against the cap's {at_cap}px; the row would be taller "
+        "than the dialog"
+    )
+    assert _picker_of(VISIBLE_ENTRIES + 4)._table.sizeHint().height() == at_cap

@@ -208,6 +208,115 @@ reordering more than one place actively unpleasant
 
 ---
 
+### T-193 — The playlist picker shows two entries at a time, and can stick open showing none
+
+**Status:** **In Review — the sizing half is fixed, 2026-08-08. The stuck-open half is not, and
+needs a reproduction.** *(Built by the Implementer; no criterion is claimed approved.)*
+
+**Symptom 1 is fixed and measured.** `EntryTable.sizeHint` now derives its height from the model's
+row count, capped at `VISIBLE_ENTRIES = 8`. Measured before and after, same fixture sizes:
+
+| Entries | Table height |
+|---|---|
+| 2 | 62px |
+| 4 | 122px |
+| 8 | 242px |
+| 16 | **242px** — was the same as 2 entries |
+| 200 | 242px |
+
+So a sixteen-track album shows eight rows instead of two, and below the cap **nothing scrolls inside
+the panel at all** — which is what removes the second scrollbar rather than merely making it
+reachable. The cap is asserted as a comparison between counts, not against pixels: pinning a number
+would fail on the first font change, which is `T118-R15`.
+
+**Symptom 2 is not fixed, and the reason is `T-193`'s own acceptance criterion.** It says reproduce
+the stuck state in a failing test *before* fixing it, because both prior findings at this seam
+needed a second round after a fix aimed at a guess. **The obvious cause is already guarded**:
+`T108-R2` found exactly *"the row stayed tall and blank while `_expanded` still pointed at it"* on a
+model reset, and `remount_panel` fixes it by row identity. So the path the maintainer hit is a
+different one, and it has not been found.
+
+**What would pin it down:** whether the playlist was still probing when it was opened, whether a
+second URL was pasted or removed while it was open, and whether the disclosure was toggled twice
+quickly. The one-turn window between `open_playlist_picker` setting `_expanded` and `_mount_panel`
+running is the untested seam most likely to hold it.
+
+*(Was: Proposed — found by the maintainer, 2026-08-08, pasting a real 16-item YouTube playlist. Two
+symptoms, two mechanisms, one surface.)*
+
+**This is `T-110`/`P-19`'s panel — an approved Phase 3 deliverable — so it bears on the phase exit.**
+The exit review had been submitted when this arrived; see the note at the end.
+
+#### What is wrong
+
+**1. The entry list shows two or three rows of sixteen, behind a scrollbar inside a scrollbar.**
+`AddUrlDialog.panel_height_for` returns `self._panel.sizeHint().height()`, and the panel's hint
+comes from a `QTableView` whose default hint is a fixed default rather than one derived from its
+row count. So a sixteen-entry playlist is drawn at the same height as a two-entry one, and the rest
+is reachable only through the table's own scrollbar — **nested inside the staging list's scrollbar**,
+which is the "scrolling isn't straightforward" half of the report.
+
+*(The `sizeHint`-not-a-constant reasoning in `panel_height_for` is sound and is not what is wrong:
+the panel is being asked what it wants, and the panel's answer does not account for its content.)*
+
+**2. The row can sit expanded with nothing under it.** Observed with the disclosure open, the row
+grown to full panel height, and the area beneath it empty. `open_playlist_picker` sets `_expanded`
+and defers the mount by one event-loop turn (`T108-R2`), so between those two moments
+`panel_height_for` already returns a height while `setIndexWidget` has not run. **If the mount does
+not complete, the row stays tall and empty** — and `T107-R2` and `T108-R2` are this project's record
+of the same geometry seam failing in two other ways, so a third is credible rather than surprising.
+
+#### Scope
+
+Make the panel's height follow its content, bounded so a 200-entry playlist does not demand a
+2,000px row — a visible-rows cap with the table scrolling inside it is the ordinary answer, and it
+is what makes one scrollbar rather than two. Then find the path that leaves a row expanded with no
+widget, and make it either mount or close.
+
+**Reproduce before fixing.** Both symptoms came from one real playlist; the second was reached by
+interaction the report does not fully pin down, and a fix aimed at a guess is how `T107-R2` and
+`T108-R2` each got a second round.
+
+#### Acceptance criteria
+
+- A playlist of sixteen shows enough entries at once to be chosen from, asserted on the **panel's
+  measured height against its row count** rather than on a constant
+- The height is bounded for a large playlist, and the entries scroll **inside** the panel — one
+  scrollbar in the interaction, not two
+- A row that is expanded always has a panel under it, or is not expanded — asserted by driving the
+  open/close path rather than by inspecting state
+- The stuck state is reproduced in a test **before** it is fixed, and that test fails without the fix
+- `docs/UX_SPEC.md` §7's keyboard route still opens and closes the panel
+- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog and playlist-picker suites are clean
+
+#### Out of scope
+
+- What the picker *contains*. `T-110` and `UX-007`'s `P-19` settled the checkboxes, the tri-state
+  group and the columns; this is how much of it you can see and whether it appears at all
+
+**Owner:** Implementer
+**Priority:** **Medium-High** — `REQ-004` is *choose which entries to enqueue*, and choosing from
+two visible rows of sixteen is the feature being technically present and practically unusable
+**Phase:** Phase 3 — it is a defect in a Phase 3 deliverable, not new work
+**Depends on:** nothing
+**Relevant context:** `T-110`, `P-19`, `T107-R2`, `T108-R2`, `T118-R15`, `docs/UX_SPEC.md` §7,
+`ui/add_dialog.py` (`panel_height_for`, `_mount_panel`), `ui/playlist_picker.py`
+**Affected surfaces:** `ui/add_dialog.py`, `ui/playlist_picker.py`, their tests
+**Risk:** Medium — the panel geometry seam has produced two prior findings, and both were about a
+size arriving at the wrong moment rather than being computed wrongly
+
+#### Why this was filed rather than fixed immediately
+
+The Phase 3 exit review was mid-flight. **Submitting an exit for a phase while knowing an approved
+deliverable has a reproducible defect in its main interaction is the shape this session has caught
+four times already** — a document asserting something that had stopped being true. So it is filed,
+the exit submission is held, and the disposition is the maintainer's.
+
+---
+
+
+---
+
 
 ---
 
@@ -1228,81 +1337,6 @@ beats designing it against an imagined one.
 ---
 
 ## Proposed — Phase 3
-
-### T-193 — The playlist picker shows two entries at a time, and can stick open showing none
-
-**Status:** **Proposed — found by the maintainer, 2026-08-08**, pasting a real 16-item YouTube
-playlist. Two symptoms, two mechanisms, one surface.
-
-**This is `T-110`/`P-19`'s panel — an approved Phase 3 deliverable — so it bears on the phase exit.**
-The exit review had been submitted when this arrived; see the note at the end.
-
-#### What is wrong
-
-**1. The entry list shows two or three rows of sixteen, behind a scrollbar inside a scrollbar.**
-`AddUrlDialog.panel_height_for` returns `self._panel.sizeHint().height()`, and the panel's hint
-comes from a `QTableView` whose default hint is a fixed default rather than one derived from its
-row count. So a sixteen-entry playlist is drawn at the same height as a two-entry one, and the rest
-is reachable only through the table's own scrollbar — **nested inside the staging list's scrollbar**,
-which is the "scrolling isn't straightforward" half of the report.
-
-*(The `sizeHint`-not-a-constant reasoning in `panel_height_for` is sound and is not what is wrong:
-the panel is being asked what it wants, and the panel's answer does not account for its content.)*
-
-**2. The row can sit expanded with nothing under it.** Observed with the disclosure open, the row
-grown to full panel height, and the area beneath it empty. `open_playlist_picker` sets `_expanded`
-and defers the mount by one event-loop turn (`T108-R2`), so between those two moments
-`panel_height_for` already returns a height while `setIndexWidget` has not run. **If the mount does
-not complete, the row stays tall and empty** — and `T107-R2` and `T108-R2` are this project's record
-of the same geometry seam failing in two other ways, so a third is credible rather than surprising.
-
-#### Scope
-
-Make the panel's height follow its content, bounded so a 200-entry playlist does not demand a
-2,000px row — a visible-rows cap with the table scrolling inside it is the ordinary answer, and it
-is what makes one scrollbar rather than two. Then find the path that leaves a row expanded with no
-widget, and make it either mount or close.
-
-**Reproduce before fixing.** Both symptoms came from one real playlist; the second was reached by
-interaction the report does not fully pin down, and a fix aimed at a guess is how `T107-R2` and
-`T108-R2` each got a second round.
-
-#### Acceptance criteria
-
-- A playlist of sixteen shows enough entries at once to be chosen from, asserted on the **panel's
-  measured height against its row count** rather than on a constant
-- The height is bounded for a large playlist, and the entries scroll **inside** the panel — one
-  scrollbar in the interaction, not two
-- A row that is expanded always has a panel under it, or is not expanded — asserted by driving the
-  open/close path rather than by inspecting state
-- The stuck state is reproduced in a test **before** it is fixed, and that test fails without the fix
-- `docs/UX_SPEC.md` §7's keyboard route still opens and closes the panel
-- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog and playlist-picker suites are clean
-
-#### Out of scope
-
-- What the picker *contains*. `T-110` and `UX-007`'s `P-19` settled the checkboxes, the tri-state
-  group and the columns; this is how much of it you can see and whether it appears at all
-
-**Owner:** Implementer
-**Priority:** **Medium-High** — `REQ-004` is *choose which entries to enqueue*, and choosing from
-two visible rows of sixteen is the feature being technically present and practically unusable
-**Phase:** Phase 3 — it is a defect in a Phase 3 deliverable, not new work
-**Depends on:** nothing
-**Relevant context:** `T-110`, `P-19`, `T107-R2`, `T108-R2`, `T118-R15`, `docs/UX_SPEC.md` §7,
-`ui/add_dialog.py` (`panel_height_for`, `_mount_panel`), `ui/playlist_picker.py`
-**Affected surfaces:** `ui/add_dialog.py`, `ui/playlist_picker.py`, their tests
-**Risk:** Medium — the panel geometry seam has produced two prior findings, and both were about a
-size arriving at the wrong moment rather than being computed wrongly
-
-#### Why this was filed rather than fixed immediately
-
-The Phase 3 exit review was mid-flight. **Submitting an exit for a phase while knowing an approved
-deliverable has a reproducible defect in its main interaction is the shape this session has caught
-four times already** — a document asserting something that had stopped being true. So it is filed,
-the exit submission is held, and the disposition is the maintainer's.
-
----
 
 ### T-146 — A Settings menu, and the screen behind it
 

@@ -43,7 +43,7 @@ satisfy the key and not the requirement.
 from collections.abc import Sequence
 from typing import Any, Final
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSize, Qt, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
@@ -78,6 +78,19 @@ COLUMN_COUNT: Final = len(COLUMN_HEADERS)
 #: What the tri-state group header reads (`P-5`). Named once because the label and the accessible
 #: name are the same sentence.
 GROUP_TEXT: Final = "Every entry"
+
+#: How many entries the table shows before it starts scrolling inside itself (`T-193`).
+#:
+#: **The panel had no height of its own**, so it inherited `QTableView`'s fixed default hint — the
+#: same height for a two-entry playlist and a sixteen-entry one. A real sixteen-track album showed
+#: **two rows**, with the other fourteen behind the table's own scrollbar *inside* the staging
+#: list's, which is two scrollbars in one gesture.
+#:
+#: Eight is chosen against the dialog rather than picked: the staging list is the shorter half of a
+#: window that opens around 700px, and eight rows plus the group control and the header is most of
+#: what it can give without the panel becoming the dialog. Below eight nothing scrolls at all,
+#: which is the case that matters — most playlists a user pastes are shorter than this.
+VISIBLE_ENTRIES: Final = 8
 
 #: `Qt.CheckState` for each of `GroupCheck`'s three answers. A mapping rather than a chain of
 #: conditionals so the three-valued shape survives contact with Qt's own three-valued type.
@@ -253,6 +266,33 @@ class EntryTable(QTableView):
     to *replace* what Qt does with them, and a filter that let the default through afterwards would
     give `Ctrl`+`A` a highlight and a check that disagree.
     """
+
+    def sizeHint(self) -> QSize:
+        """As tall as its rows, up to `VISIBLE_ENTRIES` (`T-193`).
+
+        **Asked of the rows rather than guessed**, for the reason `AddUrlDialog.panel_height_for`
+        gives about constants: a fixed number here would be a second opinion about how tall a row
+        is, and the first font change would make it the wrong one (`T118-R15`).
+
+        `QTableView`'s inherited hint is a fixed default that ignores the model entirely, which is
+        why a sixteen-entry playlist was drawn at the height of a two-entry one. Capped so a
+        200-track playlist does not ask for a 6,000px row; the table scrolls inside the cap, and
+        below it nothing scrolls at all.
+        """
+        hint = super().sizeHint()
+        # `model()` is non-optional in the stubs, so guarding it is a `redundant-expr` error —
+        # the same shape `P3EXIT-R2` caught in `T-192`'s test.
+        model = self.model()
+        if not model.rowCount():
+            return hint
+        rows = min(model.rowCount(), VISIBLE_ENTRIES)
+        header = self.horizontalHeader()
+        wanted = (
+            (header.height() if header.isVisible() else 0)
+            + sum(self.rowHeight(row) for row in range(rows))
+            + 2 * self.frameWidth()
+        )
+        return QSize(hint.width(), wanted)
 
     #: The user asked for the rows named to be toggled together.
     toggle_requested = Signal(object)
