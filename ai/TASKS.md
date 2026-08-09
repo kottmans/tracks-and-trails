@@ -342,11 +342,14 @@ the exit submission is held, and the disposition is the maintainer's.
 ---
 
 
-## Ready
-
 ### T-205 — Include the playlist header in its pre-mount height
 
-**Status:** Ready — opened by `T193-R1` (2026-08-09); blocks approval of T-193's sizing half.
+**Status:** **In Review — corrected 2026-08-09.** `EntryTable.sizeHint` now asks
+`header.isHidden()` rather than `header.isVisible()`, so the header's height is counted while
+the picker is still unmounted — which is when `AddUrlDialog.panel_height_for` asks for it.
+**The first correction's test was also wrong** and a mutation caught it: it re-measured the
+hint *after* `show()`, where `isVisible()` is already true and both versions agree. The test
+now captures the hint unmounted, mounts at that height, and asserts the scroll range.
 **Owner:** Implementer
 **Priority:** Medium — the sizing change still leaves every at-or-below-cap playlist scrolling,
 which is the interaction the task exists to remove
@@ -378,7 +381,11 @@ the dialog asks for the hint before the panel is visible
 
 ### T-206 — Reopen a queue editor without selecting its row
 
-**Status:** Ready — opened by `T194-R1` (2026-08-09); blocks approval of T-194.
+**Status:** **In Review — corrected 2026-08-09.** `_reopen_editor` now positions the editor
+through `selectionModel().setCurrentIndex(index, NoUpdate)` instead of the view's own
+`setCurrentIndex`, which selects. Selection is `_restore_current_row`'s to decide; both
+handlers run on `modelReset` and the last writer was winning. Two regressions cover it —
+an unselected row stays unselected, and a selected one stays selected.
 **Owner:** Implementer
 **Priority:** Medium — a reset with an editor open creates a selection the user never made and
 therefore exposes selection-scoped row actions
@@ -407,6 +414,8 @@ unselected cases must be proved together
 - Changing reorder semantics or the format editor's commit/reopen behavior
 
 ---
+
+## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
