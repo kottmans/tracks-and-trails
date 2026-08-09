@@ -117,6 +117,13 @@ handoff in order to say it was *not* part of the reviewed boundary. A durable re
 its content to a file scheduled for deletion is a document whose truth lives somewhere it does not
 control, which is the same failure as a stale current-truth claim.
 
+**Historical records keep their references, and that is not an exception to the rule.** This section
+binds **current-truth** files, which are rewritten to reflect reality. `REVIEWS.md` and
+`DECISIONS.md` are append-only above, and *"a review was requested in `ai/handoffs/X`"* stays true
+after `X` is deleted — it is a statement about the past, not a live pointer. **Rewriting them to
+remove a reference would be the larger error.** So a deleted handoff may leave a name behind in
+history; what it must not leave behind is a current-truth file that cannot answer its own question.
+
 ## 7. Hard rules
 
 **Scope**
