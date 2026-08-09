@@ -13248,3 +13248,97 @@ review result. T-204's stuck-open panel remains deliberately unresolved and outs
 
 The Reviewer modified only `ai/REVIEWS.md` and added the two explicitly requested Open-finding
 entries to `ai/TASKS.md`. No source or test file was changed. No commit or push was made.
+
+
+## 2026-08-09 — T193-R1 / T194-R1 focused correction re-review
+
+**Reviewer:** Codex
+
+**Review base:** `027dc7c`
+**Candidate head:** `a6fbf67`
+**Correction commits:** `89b4d8f` (`T193-R1`), `28e0ab5` (`T194-R1`)
+**Evidence head:** `ac16fa1`; the later `a6fbf67` adds only the submitted handoff
+**Scope:** The two blocking Medium findings from the T-192/T-193/T-194 initial review and the
+correction diffs. T-192 remains approved and is not reopened. This is the ordinary focused
+correction pass under `AGENTS.md` §10.
+
+**Verdict:** **Approved at `a6fbf67`.** `T193-R1` and `T194-R1` are **Resolved**. No open
+blocking or non-blocking finding remains for T-193's submitted sizing half or T-194.
+
+### Finding results
+
+| ID | Severity | Blocks approval | Result | Evidence |
+|---|---|---|---|---|
+| `T193-R1` | Medium | No | **Resolved.** `EntryTable.sizeHint()` now includes the horizontal header according to its configured hidden state while the picker is still unmounted. The shown-widget regression takes that pre-mount hint, mounts the table at it, and proves zero scroll range for 2, 6, and 8 entries plus a positive range above the eight-row cap. | `ui/playlist_picker.py:290-302`; `test_playlist_picker.py:445-503`; cache-cleared mutation back to `isVisible()` produced **3 failed, 1 passed**, with exactly the three at/below-cap cases failing. |
+| `T194-R1` | Medium | No | **Resolved.** `_reopen_editor()` sets the restored job current through the selection model with `NoUpdate`, then edits it. The reset connections still run `_restore_current_row` before `_ensure_a_current_row` and `_reopen_editor` last; both remembering and reopening remain by job id. An editor-open unselected row stays unselected, while a selected row stays selected. | `ui/queue_view.py:1463-1511, 1671-1714`; `test_queue_view.py:3191-3273`; mutation back to the view's selecting `setCurrentIndex()` produced **1 failed, 1 passed**. An opposite mutation that never restored selection also produced **1 passed, 1 failed**, killing the selected-state test. |
+
+### Rulings on the challenged evidence
+
+The T-193 change from `header.height()` to `header.sizeHint().height()` is warranted and remains
+inside the finding. This method is computing a pre-layout size request; the header's intrinsic size
+hint is the relevant answer, whereas `height()` is mutable current geometry. The reviewer's
+offscreen font/style probe happened to return 21 px from both APIs before and after mounting, but
+that equality does not make the current-geometry dependency the sound contract. The row contribution
+continues to come from `model.rowCount()` and per-row heights, not a pinned count or pixel constant.
+
+The two T-194 tests form a legitimate pair. The selected case is not expected to kill the original
+selecting mutation because both implementations preserve an existing selection; it kills the
+opposite over-correction that would use `NoUpdate` for restoration regardless of prior state. The
+unselected case kills the submitted defect. Together they prove that `_reopen_editor` leaves the
+selection decision made by `_restore_current_row` intact in both directions.
+
+The tests reach the real editor lifecycle. `QListView.edit()` calls the delegate's `createEditor()`,
+which records `editing_job_id`; `modelAboutToBeReset` then calls `_commit_open_editor()`, which copies
+that id to `_reopen_for`, and the last `modelReset` slot calls `_reopen_editor()`. A temporary
+strengthening probe asserted `editing_job_id == "job-2"` after the reset in both cases and passed
+**2/2**. The handoff and test helper call this nonexistent seam `_remember_editor`; the live method
+is `_commit_open_editor`. That naming slip does not simulate or bypass the wiring and is recorded as
+a non-actionable note, not an Open finding.
+
+The prior mutation-policy ruling stands. These UI behaviors are outside `ai/TESTING.md` §7's
+enumerated high-risk set, so §3 governs and mutation evidence is not mandatory. The independently
+repeated mutations are additional evidence that the corrected regressions are not vacuous.
+
+The changes stay inside `ui/`, add no yt-dlp access or lower-layer dependency, and do not alter
+`ARCHITECTURE.md` §7's error taxonomy. They preserve UX-005/T118-R14's by-id editor restoration and
+the parent T-194 no-invented-selection rule. T-204's stuck-open playlist panel remains the accepted,
+separate half of T-193 and is not reviewed here.
+
+### Reviewer verification
+
+All Python tools were invoked as `.venv/bin/python3 -m <tool>`. Qt tests used
+`QT_QPA_PLATFORM=offscreen`; mutation trees were fresh `git archive` copies under `/tmp`, had all
+`__pycache__` directories removed before execution, and used `PYTHONDONTWRITEBYTECODE=1` with an
+explicit candidate-tree `PYTHONPATH`.
+
+| Check | Result |
+|---|---|
+| `git diff --check 027dc7c..a6fbf67` | **pass** |
+| Source/test boundary | **four files, 164 insertions and 2 deletions; no source/test change from `ac16fa1` through `a6fbf67`** |
+| `.venv/bin/python3 -m ruff check .` | **pass** |
+| `.venv/bin/python3 -m ruff format --check .` | **pass, 165 files at candidate head** |
+| `.venv/bin/python3 -m mypy src` | **pass, 51 files** |
+| `.venv/bin/python3 -m mypy` | **pass, 125 files** |
+| `.venv/bin/python3 -m mypy --platform win32` | **pass, 125 files** |
+| Task placement | **14 passed** |
+| Picker, queue-view, main-window, add-dialog and theme-metrics suites | **318 passed in 81.88 s** |
+| Full default suite, with loopback/process permission | **2813 passed, 17 skipped, 2 deselected, 4 warnings in 382.49 s** |
+| T-193 visibility mutation | **3 failed, 1 passed**, expected negative proof |
+| T-194 selecting mutation | **1 failed, 1 passed**, expected negative proof |
+| T-194 opposite no-selection mutation | **1 passed, 1 failed**, expected complementary negative proof |
+| Post-reset editor-reopen strengthening probe | **2 passed** |
+
+The submitted format count of 164 is accurate for its explicitly named evidence head `ac16fa1`.
+The candidate head reports 165 because `a6fbf67` adds the handoff itself, which Ruff treats as a
+format input; the gate remains green. The first sandboxed full-suite attempt was stopped after the
+sandbox denied integration-test resources; the permitted rerun above is the valid result. The four
+warnings are the existing `libpyside: Failed to disconnect` warnings at `ui/job_detail.py:463`,
+outside this diff.
+
+### Merge readiness and residuals
+
+**Merge-ready at `a6fbf67`.** There are no Open findings, so no new `ai/TASKS.md` entry was created.
+The source/test correction is unchanged after its measured evidence head. Windows runtime was not
+independently exercised; both mypy platforms are clean. T-204 remains an explicit, separate open
+task and is not a residual of either correction. Only `ai/REVIEWS.md` was modified by the Reviewer;
+no source, test, task, commit, or push was made.
