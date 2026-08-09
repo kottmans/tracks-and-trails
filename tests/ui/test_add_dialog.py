@@ -37,8 +37,8 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QEvent, QModelIndex, QRect, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter
+from PySide6.QtCore import QEvent, QModelIndex, QPoint, QPointF, QRect, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
@@ -4587,6 +4587,64 @@ def test_a_value_refresh_leaves_the_open_panel_over_its_row(
         panel.done_button.click()
         QApplication.processEvents()
         assert dialog.open_panel is None, "the panel's own Done button did not close it"
+    finally:
+        dialog.close()
+
+
+def _wheel_down(target: QWidget) -> QWheelEvent:
+    """One notch of wheel-down, aimed at `target`'s centre."""
+    centre = QPointF(target.rect().center())
+    return QWheelEvent(
+        centre,
+        QPointF(target.mapToGlobal(target.rect().center())),
+        QPoint(0, 0),
+        QPoint(0, -120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+
+
+def test_one_wheel_notch_does_not_jump_the_list_to_its_end(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-210`.** *"Once the inner scroll bar reaches the bottom, it immediately jumps you to the
+    bottom of the other scroll bar."*
+
+    `QListView` scrolls per **item**, and a wheel notch is three of them — so with an opened
+    playlist in the list, one "item" was the whole panel and a single notch flew past it to the
+    end. Per-pixel scroll mode is the fix; this asserts the symptom, not the setting: after one
+    notch from the top, the list is somewhere in the middle, **not at its end**.
+
+    *(A first correction made the inner table consume the wheel at its edge — fixing the handoff
+    the maintainer had said was fine, and leaving the jump. The handoff stays stock.)*
+    """
+    dialog, _ = resolved(dialogs, managers, spin, PLAYLIST, SINGLE_ITEM, AUDIO_ONLY)
+    row = dialog.rows[0]
+    dialog.resize(900, 560)
+    dialog.show()
+    QApplication.processEvents()
+    dialog.open_playlist_picker(row)
+    QApplication.processEvents()
+    assert dialog.open_panel is not None, "the playlist row did not open"
+
+    listing = staging_list(dialog)
+    bar = listing.verticalScrollBar()
+    try:
+        assert bar.maximum() > 100, (
+            f"the list has only {bar.maximum()}px of scroll range, too little to witness a jump"
+        )
+        bar.setValue(0)
+        listing.wheelEvent(_wheel_down(listing.viewport()))
+
+        assert bar.value() > 0, "the wheel scrolled nothing at all"
+        assert bar.value() < bar.maximum(), (
+            "one wheel notch put the list at its end — the jump the maintainer reported, drawn "
+            "out by per-item scrolling treating an opened playlist as one step"
+        )
     finally:
         dialog.close()
 

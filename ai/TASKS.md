@@ -328,12 +328,20 @@ plain `QWidget` subclass does not paint a stylesheet background without `WA_Styl
 and no offscreen probe can show the difference, since every headless render path fills the
 background that a real compositor does not. The screen was the only gate that worked.
 
-**One more usability item, same session:** the wheel handed an exhausted gesture to the outer list —
-*"once the inner scroll bar reaches the bottom, it immediately jumps you to the bottom of the
-other"* — so `EntryTable.wheelEvent` now consumes at its edges and still passes the wheel through
-when it has no scroll range of its own. Asserted on the handler's accepted flag directly: `sendEvent`
-rewrites it in flight and — measured — performs no parent propagation for a synthesised wheel, so
-the flag the handler hands back is the only honest witness this seam owns.
+**One more usability item, same session — and the first correction fixed the wrong side.** The
+report: *"once the inner scroll bar reaches the bottom, it immediately jumps you to the bottom of
+the other."* I made `EntryTable` consume the wheel at its edges — severing the inner-to-outer
+handoff, **which the maintainer then said was fine and should stay**: *"the inner scroll bar was
+working fine, and should probably continue working the way it was."* That correction is reverted;
+the picker's wheel behaviour is stock again.
+
+**The jump was the outer list's, in two layers, and the regression measured both.** `QListView`
+scrolls per *item* — a catapult when one "item" is an opened playlist — and switching to per-pixel
+alone still jumped **166px of 166**, because `updateGeometries` resets the scrollbar's `singleStep`
+to the *first item's height* on every pass: the panel again, by another route. `StagingList` now
+scrolls per pixel **and** re-pins the step to a text line after Qt's reset. The regression asserts
+the symptom — one notch from the top must not land at the end — and both mutations (per-item mode
+back, step un-pinned) fail it independently.
 
 **A regression I introduced, and could not reproduce headlessly.** The first `T204-R4` fix restored
 the panel's geometry *inside* the `dataChanged` emit — before Qt re-measures the view — so

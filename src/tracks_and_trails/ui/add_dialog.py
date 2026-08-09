@@ -493,6 +493,14 @@ class StagingList(QListView):
 
     def __init__(self, parent: QWidget | None, *, selectors: Sequence[str]) -> None:
         super().__init__(parent)
+        # **By pixels, not items** (`T-210`). `QListView` scrolls per *item* by default and a wheel
+        # notch is three of them — reasonable when rows are a line high, and a catapult here, where
+        # one "item" can be a whole opened playlist: the moment the wheel reached this list it
+        # jumped past the panel to the end. The maintainer's words: *"the screen still jumps
+        # instead of gradually scrolling for the outside scroll bar."* Per-pixel makes a notch a
+        # notch, whatever is open. *(A first correction consumed the wheel at the inner table's
+        # edge instead — fixing the handoff rather than the jump. The handoff was fine.)*
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         #: What the third line may have to hold, from the catalogue the dialog was given.
         self._selectors = tuple(selectors)
         #: Cached because `sizeHint` is called on every layout pass and the answer searches for a
@@ -501,6 +509,18 @@ class StagingList(QListView):
         self._wanted: int | None = None
 
     # Qt's override names, hence the camelCase.
+    def updateGeometries(self) -> None:
+        """Keep the wheel gradual whatever is open (`T-210`).
+
+        Per-pixel mode alone was not enough, and the regression measured why: on every geometry
+        update `QListView` resets the vertical scrollbar's `singleStep` **to the first item's
+        height** — so with an opened playlist first in the list, one wheel notch (three steps) was
+        three panels, and the list still flew to its end (166px of 166). The step is re-pinned to a
+        text line here, after Qt's reset, which is the only place that survives it.
+        """
+        super().updateGeometries()
+        self.verticalScrollBar().setSingleStep(max(self.fontMetrics().height(), 12))
+
     def sizeHint(self) -> QSize:
         """The width the row anatomy needs, and the height an opened one does (`T-150`, `T-210`).
 
