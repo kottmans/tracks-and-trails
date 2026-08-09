@@ -124,6 +124,44 @@ after `X` is deleted — it is a statement about the past, not a live pointer. *
 remove a reference would be the larger error.** So a deleted handoff may leave a name behind in
 history; what it must not leave behind is a current-truth file that cannot answer its own question.
 
+### The roadmap is a published artifact, never a repository file
+
+**The maintainer keeps one roadmap, as a published artifact, for their own reference.** It is
+**never committed** — no `roadmap*.html`, no `roadmap*.md`, nothing under `ai/` or `docs/`. Two
+were removed from this repository on 2026-08-08 for that reason.
+
+**It is derived, not authoritative.** `ai/IMPLEMENTATION_PLAN.md` §Phase *N* and `ai/TASKS.md`
+§`## Proposed — Phase N` remain canonical; the roadmap is a rendering of them. **Where they
+disagree, they are right and it is stale.** Nothing in the repository may cite it, for the reason
+handoffs may not be cited: it is not a home.
+
+**Update it — the same artifact, keeping its URL — when:**
+
+- a phase exits or begins,
+- a task's disposition changes in a way the phase's shape depends on (approved, blocked, re-phased,
+  or newly filed),
+- a ruling opens or closes.
+
+**One artifact, updated in place.** Not one per phase: a bookmark that keeps working is the point,
+and a graveyard of superseded roadmaps is the thing this rule replaces.
+
+**What it contains**, in this order:
+
+1. **A dependency graph** of the phase's tasks — real edges, not a decorative sequence. Label an
+   edge where the *reason* for the dependency is not obvious from the two node names.
+2. **The stages**, expanded: each task's one-line substance and the trap in it.
+3. **Every plan deliverable mapped to an owning task**, and **every exit criterion mapped** too. A
+   deliverable with no owner is the thing this section exists to surface.
+4. **Which entries are *not* plan deliverables** — carried-in polish and defects. They must not be
+   counted as satisfying one.
+5. **Open rulings**, listed separately, each named as the maintainer's to take.
+
+**Diagram legibility is part of the deliverable.** Mermaid in a rendered artifact does not honour
+HTML in labels — `<br/>` and `<b>` are stripped, so `T-200<br/>Accessibility` renders as
+`T-200Accessibility`. **Use single-line plain-text labels with a visible separator.** Mermaid also
+scales an SVG down to its container by default, which shrinks text as the graph grows; set
+`useMaxWidth: false` and let the container scroll.
+
 ## 7. Hard rules
 
 **Scope**
@@ -437,6 +475,7 @@ A worker in a parallel wave (§9) adds, and reports rather than applies:
 | Review findings and evidence | `ai/REVIEWS.md`; in a parallel wave, `ai/reviews/T-0NN.md` with `ai/REVIEWS.md` as the index |
 | Test policy and commands | `ai/TESTING.md` |
 | A review request or correction being sent | `ai/handoffs/` — **transient, deleted once its verdict is in `ai/REVIEWS.md`** (§6) |
+| A visual roadmap of the current phase | **A published artifact, never a repository file** (§6). Derived from the plan and `TASKS.md`, which stay canonical |
 
 Do not copy a fact into a second authoritative-looking place. Link to the canonical home.
 **Never link to `ai/handoffs/`** — it is not a home, it is an outbox.
