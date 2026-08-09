@@ -91,8 +91,9 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-*Empty. **Every Phase 3 deliverable and every loose item ruled into the phase is closed.** Nine
-deliverables approved; of the six loose items, five built and approved — `T-143`, `T-180`,
+*Empty. **Every Phase 3 deliverable and every loose item ruled into the phase is closed.** All
+**eleven** deliverables approved — nine additive plus `T-169` and `T-170`, which withdraw a Phase 2
+deliverable; of the six loose items, five built and approved — `T-143`, `T-180`,
 `T-189`, `T-186`, `T-188` — and `T-171` refused by `DAT-008`.*
 
 ***The phase exit review is the only thing outstanding***, and it is exit criterion 6. Criteria

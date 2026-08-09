@@ -50,10 +50,15 @@ on this branch**, from a cleared bytecode cache.
 - **`IMPLEMENTATION_PLAN.md`'s six-item table** marked `T-189`, `T-171`, `T-186` and `T-188`
   **Open**, with a sentence directly below saying all loose items were dispositioned. All four are
   resolved and both now say so.
-- **The deliverable count.** The file said *nine* while its table holds *eleven* rows. Both are
-  right, and the reason is now stated once rather than left to be rediscovered: nine `REQ`-bearing
-  deliverables, plus `T-169` and `T-170`, which **removed** a Phase 2 deliverable rather than adding
-  one. Counting them would claim the phase built eleven things when two of them deleted something.
+- **The deliverable count.** The file said *nine* while its table holds *eleven* rows. **Eleven is
+  the number** — nine additive and two subtractive. `T-169` and `T-170` withdraw a Phase 2
+  deliverable, and withdrawing one is deliverable work.
+
+  *(A first correction tried to keep the nine by calling them the `REQ`-bearing deliverables.
+  **That was false** and the re-review said so: `T-169` cites `REQ-020` and `REQ-021`, `T-170` cites
+  `REQ-020` and `DAT-006`. "Nine" is the decomposition count — eight tasks plus `T-181` — and it
+  stopped being the deliverable count when the withdrawals joined the table. The plan, `STATUS.md`
+  and this document now all say eleven.)*
 - **`STATUS.md`'s current snapshot** still listed four loose items as needing a disposition and
   `T-189` as still to do.
 - **`TASKS.md`'s header** said `T-111` was in review, and — at the top of the file whose job is to

@@ -21,7 +21,9 @@ were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378
 
 ## 2026-08-08: Phase 3 is complete but for its exit review
 
-**Everything is done except criterion 6.** All nine deliverables are approved, and **all six loose
+**Everything is done except criterion 6.** **All eleven deliverables are approved** — nine additive
+and two subtractive, `T-169` and `T-170` being the withdrawal of a Phase 2 deliverable — and **all
+six loose
 items ruled into the phase are resolved** — `T-143`, `T-180`, `T-189`, `T-186` and `T-188` built and
 approved, `T-171` **refused** by `DAT-008`. `## In Review` holds only `T-192`, which is Phase 4
 polish and not part of this exit.

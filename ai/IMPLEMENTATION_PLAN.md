@@ -614,16 +614,22 @@ correction. Named here so their absence reads as a decision rather than an overs
 - A partial download resumes after restart, or clearly states it cannot
 - Reviewed and signed off
 
-**Every deliverable in the table above is approved as of 2026-08-08**, and criteria 1–5 are met.
+**All eleven deliverables in the table above are approved as of 2026-08-08**, and criteria 1–5 are
+met.
 **Criterion 6 — the exit review — is the only one outstanding**, and nothing else gates it: all six
 loose items are dispositioned, five built and approved and `T-171` refused by `DAT-008`.
 
-*(**The table holds eleven rows and the phase is usually described as "nine deliverables".** Both
-are right and the difference is worth stating once rather than being rediscovered: `REQ-`-bearing
-deliverables number nine — `T-107`, `T-108`, `T-109`, `T-110`, `T-111`, `T-112`, `T-113`, `T-114`,
-`T-181` — and the other two rows, `T-169` and `T-170`, are the **removal** of a Phase 2 deliverable
-rather than the addition of one. Counting them as deliverables would say this phase built eleven
-things when two of them deleted something.)*
+*(**Phase 3 has eleven deliverables: nine additive and two subtractive.** `T-107`, `T-108`,
+`T-109`, `T-110`, `T-111`, `T-112`, `T-113`, `T-114` and `T-181` add capability; `T-169` and
+`T-170` **withdraw** one. All eleven are deliverables, all eleven are approved, and the paragraph
+above calls the withdrawals deliverables because they are.*
+
+*The phase was decomposed into eight tasks and `T-181` made nine, so **"nine" is the decomposition
+count and stopped being the deliverable count** when the two withdrawals joined this table.
+`P3EXIT-R1` found the file using both numbers, and a first correction tried to keep the nine by
+calling them the `REQ`-bearing ones — **which is false**: the `T-169` row cites `REQ-020` and
+`REQ-021`, `T-170` cites `REQ-020` and `DAT-006`, and withdrawing a requirement is requirement
+work. **Eleven is the number.** Additive versus subtractive is the distinction that holds.)*
 
 *(**One residual survives `T-189`'s approval**: the workflow edit that makes a missing ffmpeg fail
 exit criterion 2's proof has never executed on a runner. The criterion's Windows evidence — run
