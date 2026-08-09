@@ -272,6 +272,63 @@ trigger from the one the test assigns
 
 ## Ready
 
+### T-209 — An opened row can be taller than the list, putting its own Done button out of reach
+
+**Status:** **In Progress — maintainer-reported, 2026-08-09**: *"This is still WAY too scrunched,
+you can barely see a playlist if its expanded out. You also can't re-collapse it."*
+**Owner:** Implementer
+**Priority:** **High** — the second half is a trap: a user who opens a playlist with the pointer has
+no pointer route back out
+**Phase:** Phase 4
+**Depends on:** nothing. **Not `T-204`** — that fixed a row that stopped *offering* its disclosure;
+this is a row whose disclosure is covered and whose replacement control is off-screen.
+**Relevant context:** `T-193` (`VISIBLE_ENTRIES`), `T-108`, `T-110`, `UX-007` (`P-1`, `P-19`),
+`ui/add_dialog.py` (`panel_height_for`, `RowPanel`, `StagingList`), `ui/playlist_picker.py`
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Medium — layout, and `T118-R15` is the record of a height promise that held at one font
+
+#### Scope
+
+**Two independent causes, and the second is why the panel cannot be closed.**
+
+1. **Nothing bounds the panel to the viewport.** `panel_height_for` returns
+   `self._panel.sizeHint().height()` outright. A playlist picker asks for its summary, its group
+   control, eight entry rows and a *Done* button; when that exceeds the list's visible height the
+   row is simply drawn taller than the list, and the bottom of it — **the `Done` button, which is
+   the only pointer route out** — is below the fold. `setIndexWidget` covers the row's painted
+   anatomy, so the disclosure triangle is not available either. `Esc` and `←` still work, which is
+   why no test caught it: **the keyboard route is fine and the pointer has none.**
+2. **The list is never given a height.** `StagingList` sets a *width* hint and records why —
+   *"the dialog set no size at all"* — but height was left to Qt, which splits the dialog roughly
+   evenly. The paste box takes about 290 px of a 711 px window to hold one line of URL, and the
+   list gets what is left. That is what makes cause 1 reachable at ordinary window sizes.
+
+**A third thing makes it worse and is not this task's to fix.** The row's third line renders the raw
+selector — `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]` — which
+wraps to two lines of developer output inside the summary the panel reproduces. It is recorded here
+and left alone.
+
+#### Acceptance criteria
+
+- **A panel never exceeds the list's visible height**, asserted against a real viewport at a small
+  window size rather than against a constant
+- **`Done` is inside the visible area whenever a panel is open** — asserted on its position against
+  the viewport, which is the user-visible fact, not on the panel's `sizeHint`
+- **The entries compress rather than the button disappearing.** `T-193`'s cap stays the *maximum*;
+  what is shown is the lesser of that and what fits
+- **The list is given a height hint**, so the first paint favours the rows over the paste box. A
+  hint and not a minimum, for the reason `StagingList` already gives about width: narrow — and now
+  short — has to keep working
+- **The pointer can always close an open panel**, driven through the panel's own control rather
+  than through `close_panel`
+- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog and playlist-picker suites are clean
+
+#### Out of scope
+
+- The verbose third line, above
+- `T-203`'s control redesign, which changes what the row holds and not how tall the panel may be
+- The dialog's overall default size. `StagingList`'s hint is the lever this task uses
+
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
 **Status:** **Ready — follow-up for non-blocking `T204-R3`.** The T-204 multi-row test is a useful
