@@ -13072,3 +13072,40 @@ results remain **2807 passed, 17 skipped, 2 deselected, 4 warnings** and both my
 over 125 files; no source or test file changed after those measurements. T-192, T-193 and T-194
 remain unreviewed Phase 4 work and receive no verdict here. Real sites remain unverified. Only
 `ai/REVIEWS.md` was modified by the reviewer; no commit or push was made.
+
+
+## 2026-08-09 — Phase 3 post-approval coordination review
+
+**Reviewer:** Codex
+
+**Approved implementation/evidence head:** `ccdbd0f`
+**Coordination head:** `6114f51`
+**Scope:** The current-truth coordination commits made after Phase 3 approval. The approved
+implementation, Phase 3 product evidence, and unreviewed Phase 4 tasks are not reopened.
+
+**Verdict:** **Changes requested on exit coordination.** Approval at `ccdbd0f` remains the exact
+implementation/evidence verdict, but `P3EXIT-R4` is a blocking Medium against the records that are
+supposed to carry that verdict forward: the latest pushed current-truth files simultaneously say
+Phase 3 has and has not exited.
+
+### Finding
+
+| ID | Severity | Blocks approval | Area | Finding | Required correction | Status |
+|---|---|---|---|---|---|---|
+| `P3EXIT-R4` | **Medium** | **Yes — coherent exit coordination** | `ai/STATUS.md`, `ai/TASKS.md` | Commit `6114f51` correctly changes STATUS's top snapshot to Phase 4 and says the Phase 3 exit is complete, but leaves the live `### Where the findings stand` table saying `P3EXIT-R3` is “Corrected, unverified” and the following sentence saying criterion 6 is the only criterion unmet. TASKS remains dated 2026-08-08 and says in both its header and “Start here” line that Phase 3 is current and only its exit review remains; the live `## In Review` preface repeats that claim while the section actually contains T-192, T-193 and T-194. These are not merely the explicitly dated historical blocks lower in the files. | Sweep the live STATUS finding/submission block and TASKS header/current-phase/`## In Review` preface so they agree with the approved plan: Phase 3 exited at `ccdbd0f`; `P3EXIT-R1..R3` are resolved; criterion 6 is met; Phase 4 is current; T-192/T-193/T-194 are the unreviewed Phase 4 queue. Preserve genuinely dated historical narrative as history. | **Open** |
+
+This is the same defect class as the earlier findings—a current claim stayed in place after the
+fact it described changed—and is Medium because no product behavior or earlier evidence is broken.
+It blocks the coordination close because `STATUS.md` and `TASKS.md` are authoritative for current
+state and actionable work. The maintainer's standing authorization covers the next focused pass.
+
+### Reviewer verification at `6114f51`
+
+| Check | Result |
+|---|---|
+| `git status --short --branch` | **clean; `main` matches `origin/main`** |
+| Direct inspection of `6114f51` | **STATUS top corrected; live findings/submission block unchanged** |
+| Semantic search across STATUS, TASKS, and IMPLEMENTATION_PLAN | **plan coherent; the live STATUS and TASKS contradictions above remain** |
+| Source/test changes after approved evidence head | **not reopened; finding is confined to post-approval coordination truth** |
+
+Only `ai/REVIEWS.md` was modified by the reviewer. No commit or push was made.
