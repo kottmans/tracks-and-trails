@@ -287,8 +287,15 @@ class EntryTable(QTableView):
             return hint
         rows = min(model.rowCount(), VISIBLE_ENTRIES)
         header = self.horizontalHeader()
+        # **`isHidden()`, not `isVisible()`** (`T193-R1`). A widget is not *visible* until every
+        # ancestor is shown, and this hint is asked **before the picker is mounted** — so
+        # `isVisible()` answered "has this been shown yet", omitted the header's height, and left
+        # every picker up to eight entries with a scroll range it should not have had. `isHidden()`
+        # reports what was *configured*: it is `False` for a header nobody hid, mounted or not, and
+        # becomes `True` only if one is hidden deliberately. The vertical header is hidden that way
+        # in `_build`; this one never is.
         wanted = (
-            (header.height() if header.isVisible() else 0)
+            (0 if header.isHidden() else header.sizeHint().height())
             + sum(self.rowHeight(row) for row in range(rows))
             + 2 * self.frameWidth()
         )

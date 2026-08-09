@@ -440,3 +440,64 @@ def test_the_table_stops_growing_at_the_cap(qapp: QApplication) -> None:
         "than the dialog"
     )
     assert _picker_of(VISIBLE_ENTRIES + 4)._table.sizeHint().height() == at_cap
+
+
+def _shown_table_scroll_range(qapp: QApplication, count: int) -> int:
+    """How far a **mounted** picker of `count` entries can scroll inside itself.
+
+    Mounted on purpose (`T193-R1`). The two tests above ask an unmounted widget for its
+    `sizeHint`, and that is what let the defect through: `isVisible()` is `False` for every widget
+    whose ancestors have not been shown, so the header contributed nothing to the hint and the
+    table was short by exactly its height. **A hidden widget answers questions about layout
+    differently from a shown one**, and the promise this task makes — *below the cap nothing
+    scrolls* — is only meaningful once something is on screen.
+    """
+    picker = _picker_of(count)
+    # **The hint is taken while the picker is unmounted, because that is when the dialog takes
+    # it.** `AddUrlDialog.panel_height_for` sizes the row *before* the panel goes on screen, so a
+    # height measured after `show()` is a height the product never uses — and a test that measures
+    # it there agrees with the defect instead of catching it. This is the mistake the first
+    # correction for `T193-R1` made, and a mutation back to `isVisible()` survived it.
+    wanted = picker._table.sizeHint()
+    picker.resize(600, 400)
+    picker.show()
+    qapp.processEvents()
+    picker._table.resize(wanted)
+    qapp.processEvents()
+    try:
+        return int(picker._table.verticalScrollBar().maximum())
+    finally:
+        picker.close()
+
+
+@pytest.mark.parametrize("count", [2, 6, VISIBLE_ENTRIES])
+def test_a_shown_picker_does_not_scroll_at_or_below_the_cap(qapp: QApplication, count: int) -> None:
+    """**`T193-R1`.** At or below `VISIBLE_ENTRIES`, every entry is reachable without scrolling.
+
+    This is the promise `T-193` was accepted on — *"below the cap nothing scrolls at all"* — and
+    the original tests could not see it, because they compared `sizeHint` values on widgets that
+    were never shown. The header's height was omitted from every one of those hints, so a picker
+    of two entries still carried a scroll range in the built dialog.
+
+    Asserted on the **scroll range of a mounted table**, which is the user-visible fact, rather
+    than on the arithmetic that produces it.
+    """
+    scrollable = _shown_table_scroll_range(qapp, count)
+
+    assert scrollable == 0, (
+        f"a shown picker of {count} entries can still scroll {scrollable}px inside itself; at or "
+        "below the cap every entry must be reachable without scrolling"
+    )
+
+
+def test_a_shown_picker_scrolls_above_the_cap(qapp: QApplication) -> None:
+    """Above the cap the entries scroll **inside** the panel, which is the other half of the deal.
+
+    Without this, the test above passes on a picker so tall it never scrolls at any size — the
+    cap would be doing nothing and nobody would know.
+    """
+    scrollable = _shown_table_scroll_range(qapp, VISIBLE_ENTRIES + 8)
+
+    assert scrollable > 0, (
+        "a shown picker above the cap does not scroll, so the cap is not bounding anything"
+    )
