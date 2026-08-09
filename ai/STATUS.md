@@ -5,8 +5,10 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08
-**Last verified against repository:** 2026-08-06 **for the Phase 3 block below** — its task states,
+**Last updated:** 2026-08-09
+**Last verified against repository:** 2026-08-09 **for the block immediately below** — the pushed
+range, the CI run and its five job results were read from `git log` and `gh run view` after the run
+completed, not from a run taken earlier. The Phase 3 block beneath it was verified 2026-08-06 — its task states,
 verdicts and commit SHAs were checked against `ai/TASKS.md` and `git log`. The Phase 1 and Phase 2
 narrative from `## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a
 statement of what is true now.
@@ -18,6 +20,48 @@ statement of what is true now.
 **Current phase:** **Phase 3 — Format and content depth.** **Phase 2 exited 2026-08-05** (commit
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
+
+## 2026-08-09: the session's work is pushed, CI is green, and Phase 4 is decomposed
+
+**Everything from 2026-08-05 onward is on `origin/main`.** 42 commits, `bf30d82..9fe22fb`, pushed
+2026-08-09 on maintainer direction. Before this, the last green CI was `54e24ab` and **every commit
+of this session's work had been made without CI seeing any of it.**
+
+**CI run `31295392039` at `9fe22fb`: all five jobs succeeded** — `linux`, `frozen linux`,
+`frozen windows`, `STARBASE coverage`, `windows desktop`.
+
+**`T-189`'s gate has now executed on a runner, and it passed.** That was recorded as a real external
+residual by the Phase 3 exit review — *"`T-189`'s own gate has never executed on a runner"* — and
+the exit submission named the first CI run at that head as the requirement's first genuine exercise.
+**This was that run.** `TRACKSANDTRAILS_REQUIRE_FFMPEG=1` did not turn the required merge cases into
+failures on `windows desktop`, which means ffmpeg was present on `STARBASE` and **criterion 2's
+Windows evidence is a real pass rather than a silent skip.** The residual is closed by execution,
+not by argument.
+
+**`## In Review` holds `T-192`, `T-193` and `T-194`** — all three maintainer-found, all three Phase 4
+polish, none part of Phase 3's exit. *(The 2026-08-08 block below says it holds only `T-192`. That
+was true when written; `T-193` and `T-194` were filed and built later the same day.)*
+
+**Phase 4 is decomposed** into `ai/TASKS.md` §`## Proposed — Phase 4`, added today. **It had no
+section and one task — `T-146` — against eight plan deliverables.** Ten entries were filed:
+`T-195`–`T-202` against the plan, and `T-203`/`T-204` from the maintainer's review of the add
+dialog. Every deliverable and exit criterion now names an owner, and the map was checked against the
+file rather than asserted.
+
+**Two things in that set are not agreed work and must not be read as such.**
+
+- **`T-203`** would remove per-item controls that `REQ-011` and `docs/UX_SPEC.md` §8/§9.1 currently
+  describe. It rests on a *reading* of `REQ-011` — that *"for the current item"* describes the
+  preview rather than the template's scope — and **carries three open rulings**, including an
+  amendment to a `[T]` clause. Nothing is built until they are taken.
+- **`T-204`** is a High-priority defect with a mechanism read from the code: a row draws no
+  disclosure while it is not `committable`, and nothing closes an open panel when that happens, so
+  **the panel outlives the control that dismisses it.** Which user action reaches that state is not
+  yet confirmed, and the reproduction is the first deliverable.
+
+**What is still outstanding:** **Phase 3's exit review, third pass.** The maintainer authorised it;
+`P3EXIT-R1`'s taxonomy is corrected and committed, and **the re-submission handoff has not been
+written.** That remains the only thing between Phase 3 and its exit.
 
 ## 2026-08-08: Phase 3 is complete but for its exit review
 
