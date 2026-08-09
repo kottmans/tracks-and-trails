@@ -1871,6 +1871,69 @@ says is unavailable must be one the add dialog does not offer.
 - Changing which features need ffmpeg. That is `T-109`'s and `T-181`'s settled ground; this task
   reports it and does not re-derive it
 
+### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
+
+**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** High — it owns **two of the phase's six exit criteria**, and it is the deliverable
+most likely to be discovered late, because every surface it covers was signed off individually
+**Phase:** Phase 4 — and it should start **late**, after `T-146` and `T-195`–`T-199` have added
+their controls. A pass run before the phase's new surfaces exist verifies the wrong application.
+**Depends on:** `T-146`, `T-195`, `T-196`, `T-197`, `T-198`, `T-199` — every task that adds a
+control. **Also `T-203`**, if it is ruled in: it changes the row's control set, and re-running this
+pass afterwards would be doing it twice.
+**Relevant context:** `NFR-005`, `OPS-004`, `OPS-003`, `T-026`,
+`tests/ui/test_windows_accessibility.py`, and the per-surface keyboard work already done in
+`T-107`, `T-110`, `T-181`, `T-192`, `T105-R3`, `T118-R5`, `UX-007`'s `P-20` and `P-22`
+**Affected surfaces:** potentially every widget module; `tests/ui/`
+**Risk:** Medium — low per change, and high in aggregate, because the finding is usually "this was
+never reachable" rather than "this broke"
+
+#### Scope
+
+**Keyboard reachability has been argued surface by surface and never verified end to end.**
+`T105-R3` established that `NFR-005` requires reachability rather than a particular arrangement;
+`T118-R5` established that a context menu is not authority to drop a visible control; `UX-007`
+ruled the preset manager's layout and the template preview's tab stop. **Every one of those is a
+local judgement.** This task is the global one: *can a user who never touches the mouse do
+everything the application does?*
+
+**The plan splits the screen-reader criterion by platform and this task inherits the split.**
+
+- **Linux (Orca)** — in scope, and the exit criterion says *verified*.
+- **Windows** — `OPS-004` splits it. That the **UI Automation tree exposes a correct name and role**
+  for every control is automated by `T-026` and is testable. Whether **Narrator's announcements are
+  coherent** is subjective, belongs to the pre-release Windows session, and the plan says this phase
+  **may exit with that gap named, but not hidden.** This task's job is to name it, not close it.
+
+**`tests/ui/test_windows_accessibility.py` names every menu by hand.** `T-146`'s entry records that
+this gate caught a `Settings` menu appearing on the Windows job alone, after Linux had passed and
+three commits had been pushed. **Every task in this phase that adds a menu or a control will meet
+it**, and this task owns making it complete rather than incidental.
+
+#### Acceptance criteria
+
+- **Every function is reachable by keyboard alone**, verified end to end on Linux — including the
+  add dialog's row controls, the format table, the playlist picker, the preset manager, the options
+  and template editors, the queue's per-job actions, and every control this phase adds
+- The verification is **a test, not a session**. A walked-through checklist is what
+  `P2EXIT-R12` found claiming a pass over its own recorded failures
+- **Focus order is asserted**, not just reachability: tab order follows visual order on each
+  surface, and a modal returns focus to what opened it
+- **Every control has a name and a role** in the accessibility tree, asserted for the whole tree
+  rather than per widget — a per-widget list is a list that drifts
+- **Orca announces every control meaningfully on Linux**, and what "meaningfully" was taken to mean
+  is written down with the result
+- **The Windows Narrator gap is recorded as unverified**, in `STATUS.md` and in the phase exit
+  submission, with `OPS-004` named. Stating it is the criterion; closing it is not
+- `tests/ui/test_windows_accessibility.py` covers the menus and controls this phase added
+
+#### Out of scope
+
+- **Closing the Narrator gap.** `OPS-003`: there is no Windows machine. The pre-release session owns it
+- Colour contrast and colour-only information — `T-202`
+- High-contrast themes, font scaling, and reduced motion. None is requested; each is its own decision
+
 ---
 
 ## Proposed — Phase 4.5
