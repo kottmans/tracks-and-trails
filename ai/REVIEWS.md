@@ -13151,3 +13151,100 @@ introduces a new contradiction.
 The product suite and mypy gates were not repeated for this docs-only correction. Their accepted
 Phase 3 evidence remains unchanged. Only `ai/REVIEWS.md` was modified by the reviewer; no commit or
 push was made.
+
+
+## 2026-08-09 — T-192, T-193 and T-194 initial review
+
+**Reviewer:** Codex
+
+**Base:** `949ccb0`
+**Candidate head:** `027dc7c`
+**Implementation commits:** `7958518`, `e4cfe0e`, `eff93ab`, `9fe22fb`
+**Submission:** `ai/handoffs/2026-08-09-t192-t193-t194-review.md` at `4141311`, with its completed
+suite row at `027dc7c`
+**Scope:** T-192, T-193's explicitly submitted sizing half, and T-194. Later markdown-only commits
+through the review-record checkout do not move the source/test boundary.
+
+**Verdict:** **Changes requested.** T-192 is **Approved**. T-193's split is legitimate—T-204 owns
+the independently reproduced stuck-open-panel defect—but T-193's sizing half has a blocking
+Medium. T-194 has a separate blocking Medium. The correction re-review is limited to `T193-R1`,
+`T194-R1`, and their correction diffs under the ordinary two-pass budget in `AGENTS.md` §10.
+
+### Findings
+
+| ID | Severity | Blocks approval | Location | Finding | Required correction | Status |
+|---|---|---|---|---|---|---|
+| `T193-R1` | **Medium** | **Yes — T-193 acceptance criteria 1–2** | `src/tracks_and_trails/ui/playlist_picker.py:289`; `tests/ui/test_playlist_picker.py:409` | `EntryTable.sizeHint()` includes the header only when `header.isVisible()`. The dialog asks for the panel's hint before mounting it, when the header is configured to be shown (`isHidden() == False`) but `isVisible() == False`; the hint therefore omits 21 px. After showing a 700 px-wide picker, 2, 6 and 8 entries all still have a vertical scroll maximum of 1, with the last row extending below the viewport. The added tests inspect hidden widgets and compare only their hints, so they pass while the claimed “below the cap nothing scrolls” behavior is false. | Base header inclusion on whether the header is configured hidden, not whether the unmounted widget is currently visible. Add a shown/mounted regression proving no vertical scroll range through eight entries, all capped rows inside the viewport, and a positive range above eight; retain the row-count-derived and 200-entry cap proofs. | **Open** |
+| `T194-R1` | **Medium** | **Yes — T-194 acceptance criterion 2** | `src/tracks_and_trails/ui/queue_view.py:1704`; `tests/ui/test_queue_view.py:3159` | The ordinary reset path correctly restores the current job by id without selecting it, but an open format editor takes a later path: `_reopen_editor`, connected after `_restore_current_row`, calls `QListView.setCurrentIndex(index)`, which selects the row. The reviewer opened an editor on an unselected current job, reordered/refreshed, and observed the same job and editor restored with `hasSelection() == True`. That invents the selection T-194 promises not to create and can expose selection-scoped actions for a row the user never selected. The new test does not open an editor, so it cannot reach the overwrite. | Reopen the editor while preserving the selection state already restored by `_restore_current_row` (for example, set current through the selection model with `NoUpdate` before editing). Add selected and unselected editor-open reset cases; retain the by-id, removed-job fallback, and restore-before-fallback proofs. | **Open** |
+
+Both findings are Medium because their triggers are narrow and neither threatens data. Both block
+because the corresponding submitted task acceptance criterion is observably unmet. `T-205` and
+`T-206` are the correction entries in TASKS; no task was created for any accepted area.
+
+### Task rulings
+
+**T-192 — Approved.** The correction in `e4cfe0e` removes only the impossible
+`statusBar() is not None` guard; both genuinely nullable `findChild` results remain checked. The
+status label is installed with `addWidget` at the left and the environment label remains a
+permanent right-side widget. The stopped state sets the role property and explicitly
+unpolishes/polishes the label. The committed test reads rendered font weight, not merely the
+property: the reviewer also observed stopped → running → stopped as 600 → 400 → 600. In the
+negative probe, changing the property without repolishing left the weight at 600; repolishing
+changed it to 400. The text itself carries the state and action, so colour and weight are a second
+channel under NFR-005. `warn` clears 4.5:1 on both possible status-bar grounds in both themes:
+light 6.28/6.77 and dark 8.06/7.42 for window/surface.
+
+**T-193 split — accepted.** Sizing and the stuck-open panel are separate mechanisms and fixes.
+T-204 has a concrete reproduction-first contract for the latter, preserves the three-valued
+`EXPANDED_ROLE`, and explicitly excludes T-193's sizing. Deferring that defect therefore does not
+make the submitted sizing change incomplete. It remains real, High-priority Phase 4 work and this
+review gives T-204 no verdict. The sizing half itself is not approvable because of `T193-R1`.
+
+**Mutation evidence — not required.** `ai/TESTING.md` §7 says its enumerated high-risk behaviors
+require explicit coverage; status-bar placement, panel sizing and current-row restoration are not
+in that list. Section 3 therefore governs this source-plus-test change. This ruling does not excuse
+a regression that tests the wrong lifecycle state: `T193-R1` is a behavior failure with a passing
+hidden-widget test, not a demand for mutation tooling.
+
+**Architecture and decisions.** The bounded changes remain in `ui/`, import neither yt-dlp nor a
+new lower-layer dependency, and do not alter the §7 error taxonomy. T-192's words-plus-weight/colour
+presentation follows NFR-005. UX-004 and UX-009's control-location rulings are unchanged. T-194's
+ordinary path follows UX-005/T118-R14 by job id and its reset slots execute restore before fallback;
+`T194-R1` is the editor-reopen sibling that violates the no-invented-selection rule.
+
+### Reviewer verification
+
+All Python tools were invoked as `.venv/bin/python3 -m <tool>` because the direct script shebangs
+are broken. `PYTHONDONTWRITEBYTECODE=1` was set throughout; Qt tests used
+`QT_QPA_PLATFORM=offscreen`.
+
+| Check | Result |
+|---|---|
+| `git diff --check 949ccb0..027dc7c` | **pass** |
+| Source/test boundary | **seven files; only the four named implementation commits; `62c1c4b..027dc7c` is empty under `src/` and `tests/`** |
+| `python3 -m ruff check .` | **pass** |
+| `python3 -m ruff format --check .` | **pass, 227 files** |
+| `python3 -m mypy src` | **pass, 51 files** |
+| `python3 -m mypy` | **pass, 125 files** |
+| `python3 -m mypy --platform win32` | **pass, 125 files** |
+| Main-window, queue-view, playlist-picker, theme-metrics and add-dialog suites | **312 passed in 82.94 s** |
+| Task placement before adding the two finding tasks | **14 passed in 0.08 s** |
+| Full default suite, with loopback permission | **2807 passed, 17 skipped, 2 deselected, 4 warnings in 382.30 s** |
+| T-192 rendered/negative probe | **600 → 400 → 600 across stopped/running/stopped; property-only mutation stayed 600 until repolish** |
+| T-193 mounted geometry probe | **2/6/8 rows: vertical maximum 1; 16 rows: 9. Adding the omitted 21 px header made 2/6/8 become 0 and 16 become 8** |
+| T-194 reset probe | **slot order restore → fallback; by-id reorder and removed-job fallback pass without selection; editor-open reset restores the id but changes no-selection to selected** |
+
+The first sandboxed full-suite attempt was stopped after its loopback HTTP fixture received
+`PermissionError: [Errno 1] Operation not permitted`; application behavior had not run for that
+case. The permitted rerun above is the valid full-suite result. The four warnings are the existing
+`libpyside: Failed to disconnect` warnings at `ui/job_detail.py:463`, outside this diff.
+
+### Merge readiness and residuals
+
+**Not merge-ready as a group.** T-192 is ready. T-193 and T-194 are not ready until `T193-R1` and
+`T194-R1` are corrected and independently verified in the one allowed focused re-review. Windows
+was not independently run; the accepted CI claim remains external evidence rather than a local
+review result. T-204's stuck-open panel remains deliberately unresolved and outside this verdict.
+
+The Reviewer modified only `ai/REVIEWS.md` and added the two explicitly requested Open-finding
+entries to `ai/TASKS.md`. No source or test file was changed. No commit or push was made.

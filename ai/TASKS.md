@@ -344,6 +344,70 @@ the exit submission is held, and the disposition is the maintainer's.
 
 ## Ready
 
+### T-205 — Include the playlist header in its pre-mount height
+
+**Status:** Ready — opened by `T193-R1` (2026-08-09); blocks approval of T-193's sizing half.
+**Owner:** Implementer
+**Priority:** Medium — the sizing change still leaves every at-or-below-cap playlist scrolling,
+which is the interaction the task exists to remove
+**Phase:** Phase 4 — focused correction to T-193
+**Depends on:** nothing
+**Relevant context:** `T-193`, `T193-R1`, `ui/playlist_picker.py` (`EntryTable.sizeHint`),
+`tests/ui/test_playlist_picker.py`
+**Affected surfaces:** `ui/playlist_picker.py`, `tests/ui/test_playlist_picker.py`
+**Risk:** Low — one height term and its mounted-widget proof; the seam is timing-sensitive because
+the dialog asks for the hint before the panel is visible
+
+#### Acceptance criteria
+
+- The pre-mount size hint includes the horizontal header when that header is configured to be
+  shown; it must not use whole-widget visibility as a proxy for that configuration
+- Shown 2-, 6-, and 8-entry pickers have no vertical scroll range and every entry fits inside the
+  table viewport
+- A shown 16-entry picker is capped at eight visible entries and has a positive vertical scroll
+  range; a 200-entry picker asks for the same height
+- The regression test exercises a shown/mounted widget and fails at `027dc7c`, where the hidden
+  size-hint tests pass while the visible table still scrolls
+- `ruff`, `ruff format`, both mypy gates, and the playlist-picker/add-dialog suites are clean
+
+#### Out of scope
+
+- T-204's stuck-open panel defect and T-193's already-accepted scope split
+
+---
+
+### T-206 — Reopen a queue editor without selecting its row
+
+**Status:** Ready — opened by `T194-R1` (2026-08-09); blocks approval of T-194.
+**Owner:** Implementer
+**Priority:** Medium — a reset with an editor open creates a selection the user never made and
+therefore exposes selection-scoped row actions
+**Phase:** Phase 4 — focused correction to T-194
+**Depends on:** nothing
+**Relevant context:** `T-194`, `T194-R1`, `T126-R1`, `T-086`, `ui/queue_view.py`
+(`_restore_current_row`, `_reopen_editor`), `tests/ui/test_queue_view.py`
+**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
+**Risk:** Low — current-index and selection restoration share a reset path, so the selected and
+unselected cases must be proved together
+
+#### Acceptance criteria
+
+- With a format editor open on an unselected current job, a reorder/reset restores the current job
+  by id and reopens its editor without creating a selection
+- A job that was selected remains selected after the same path; the correction does not erase a
+  real user selection
+- The restore slot still runs before the fallback slot, and a removed current job still falls back
+  to the first surviving row without selecting it
+- The unselected-editor regression fails at `027dc7c`, where `_reopen_editor` calls the view's
+  selecting `setCurrentIndex` after `_restore_current_row` preserved no selection
+- `ruff`, `ruff format`, both mypy gates, and the queue-view suite are clean
+
+#### Out of scope
+
+- Changing reorder semantics or the format editor's commit/reopen behavior
+
+---
+
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** **Ready — the decision landed as `REL-002` (2026-08-04), so the blocker is gone.**
