@@ -4819,14 +4819,19 @@ def test_teardown_forgets_the_editor_whatever_row_it_is_billed_to(
     assert isinstance(delegate, RowDelegate)
 
     control = open_row_editor(dialog, 0)
-    assert delegate.editing_job_id is not None
+    # Read into locals: mypy narrows the *property* across asserts, so `is not None` here followed
+    # by `is None` below reads as a contradiction and everything after it as unreachable — the
+    # `P3EXIT-R2` family, one gate over.
+    opened = delegate.editing_job_id
+    assert opened is not None
 
     # Qt bills the destruction to whatever the index resolves to *now* — a shifted row.
     delegate.destroyEditor(control, dialog._model.index(1, 0))
     QApplication.processEvents()
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
-    assert delegate.editing_job_id is None, (
+    remembered = delegate.editing_job_id
+    assert remembered is None, (
         "teardown trusted the row number and kept a reference to a deleted editor"
     )
     # The crash site: with the stale reference cleared this is a no-op, not a RuntimeError.
