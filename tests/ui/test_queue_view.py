@@ -3186,3 +3186,88 @@ def test_a_reorder_does_not_invent_a_selection(
     assert not view._list.selectionModel().hasSelection(), (
         "the restore selected the row it made current; the two are different statements"
     )
+
+
+def _view_with_an_open_editor(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    *,
+    selected: bool,
+) -> tuple[QueueView, str]:
+    """A queue view with `job-2` current, an editor open on it, and selection set as asked.
+
+    The editor is opened through `QListView.edit`, which reaches the delegate's `createEditor` and
+    so sets the `editing_job_id` that `_remember_editor` reads. Poking `_reopen_for` directly would
+    skip the very wiring under test.
+    """
+    for position in range(4):
+        queue.add(make_job(f"job-{position}", tmp_path, queue_position=position))
+    view = views(jobs=queue, manager=managers())
+
+    row = view.model.row_of("job-2")
+    assert row is not None
+    index = view.model.index(row, 0)
+    mode = (
+        QItemSelectionModel.SelectionFlag.ClearAndSelect
+        if selected
+        else QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    view._list.selectionModel().setCurrentIndex(index, mode)
+    view._list.edit(index)
+    assert view._delegate.editing_job_id == "job-2", (
+        "the editor never opened, so this proves nothing"
+    )
+    return view, "job-2"
+
+
+def test_a_reset_with_an_open_editor_does_not_invent_a_selection(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """**`T194-R1`.** The editor-reopen path selected the row the restore had left unselected.
+
+    `_restore_current_row` is careful to use `NoUpdate`, and `_reopen_editor` — connected to the
+    **same** `modelReset` — then called `QListView.setCurrentIndex`, which selects. So the fix held
+    for an ordinary reorder and was undone whenever an editor happened to be open, with the last
+    handler winning.
+
+    This is the case the original `T-194` tests could not see: neither of them opened an editor, so
+    both agreed with a fix that only worked when the other path was idle.
+    """
+    view, moved = _view_with_an_open_editor(queue, managers, views, tmp_path, selected=False)
+
+    view.model.refresh()
+
+    assert view.model.job_id_at(view._list.currentIndex().row()) == moved
+    assert not view._list.selectionModel().hasSelection(), (
+        "reopening the editor selected the row; current and selected are different statements and "
+        "the per-row file actions key on the second"
+    )
+
+
+def test_a_reset_with_an_open_editor_keeps_a_selection_that_existed(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The other direction, so the fix is not "never select" (`T194-R1`).
+
+    A restore that dropped a real selection would satisfy the test above and be just as wrong.
+    `_reopen_editor` must leave selection alone in **both** directions — it is
+    `_restore_current_row`'s to decide.
+    """
+    view, moved = _view_with_an_open_editor(queue, managers, views, tmp_path, selected=True)
+
+    view.model.refresh()
+
+    current = view._list.currentIndex()
+    assert view.model.job_id_at(current.row()) == moved
+    assert view._list.selectionModel().isSelected(current), (
+        "the reset dropped a selection the user had made; reopening an editor must not clear one "
+        "any more than it may invent one"
+    )

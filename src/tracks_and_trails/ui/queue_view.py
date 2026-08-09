@@ -1701,7 +1701,16 @@ class QueueView(QWidget):
         index = self._model.index(row, JOB_COLUMN)
         if not self._model.flags(index) & Qt.ItemFlag.ItemIsEditable:
             return
-        self._list.setCurrentIndex(index)
+        # **Through the selection model with `NoUpdate`** (`T194-R1`). `QAbstractItemView`'s own
+        # `setCurrentIndex` *selects* what it makes current, so reopening an editor after a reset
+        # invented a selection nobody made — undoing, on this path, exactly what
+        # `_restore_current_row` is careful to preserve on the ordinary one. Both handlers run on
+        # `modelReset`, so the last writer won and the fix was invisible whenever an editor was
+        # open. Selection is `_restore_current_row`'s to decide; this method only says where the
+        # editor goes.
+        self._list.selectionModel().setCurrentIndex(
+            index, QItemSelectionModel.SelectionFlag.NoUpdate
+        )
         self._list.edit(index)
 
     def _remember_current_row(self) -> None:
