@@ -7,7 +7,8 @@
 **Status:** Active
 **Last updated:** 2026-08-09 — **Phase 3 exited.** Its exit review was approved at `ccdbd0f` after
 four passes; all six criteria are met and `P3EXIT-R1` through `P3EXIT-R3` are resolved. **Phase 4 is
-the current phase**, decomposed into `## Proposed — Phase 4` with ten entries and **nothing started**.
+the current phase.** Its plan deliverables are decomposed under `## Proposed — Phase 4` and **none has
+been started**; the carried-in defects are a separate set and several are done.
 **`T-192`, `T-193`, `T-194`, `T-205` and `T-206` were approved 2026-08-09.** For what is awaiting
 a verdict now, read `## In Review` — this header does not duplicate it, for `T204-R2`'s reason.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
@@ -16,10 +17,11 @@ a verdict now, read `## In Review` — this header does not duplicate it, for `T
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here: the current phase is Phase 4, and nothing in it has been started.** Phase 3 exited
-2026-08-09, Phase 2 on 2026-08-05, Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26; every exit
-review is in `ai/REVIEWS.md`. **Actionable work is `## Proposed — Phase 4`** — ten entries — and
-`## In Review`, which holds three Phase 4 polish tasks awaiting verdicts.
+**Start here: the current phase is Phase 4.** No plan deliverable has been started; the work done
+so far is carried-in defects. Phase 3 exited 2026-08-09, Phase 2 on 2026-08-05, Phase 1 on
+2026-07-29 and Phase 0 on 2026-07-26; every exit review is in `ai/REVIEWS.md`. **Actionable work is
+`## Proposed — Phase 4` and `## Ready`; what awaits a verdict is `## In Review`.** None of the three
+says how many it holds, for `T204-R2`'s reason.
 
 *(**This line has now been wrong twice, and both times it was found by review rather than by
 reading it.** `P3EXIT-R1` found it saying Phase 2 three days after Phase 3 began; `P3EXIT-R4` found
@@ -270,11 +272,16 @@ trigger from the one the test assigns
 
 ---
 
-## Ready
+### T-210 — An opened row can be taller than the list, putting its own Done button out of reach
 
-### T-209 — An opened row can be taller than the list, putting its own Done button out of reach
+**Status:** **In Review — fixed 2026-08-09.** ***Filed as `T-209` and renumbered the same day:***
+***that id was already Codex's, filed to own `T204-R4`. I took it from a remembered maximum***
+***instead of reading the file, and two tasks briefly shared it. Commits `ce7f012` and***
+***`9222305` name the wrong one.***
 
-**Status:** **In Review — fixed 2026-08-09.** Maintainer-reported: *"This is still WAY too scrunched,
+**This is a different defect from `T-209`'s**, and both are real: `T-209` is a mounted panel
+**collapsing to its minimum** after a value-only refresh; this is a panel **legitimately taller
+than the viewport** because nothing bounded it. Maintainer-reported: *"This is still WAY too scrunched,
 you can barely see a playlist if its expanded out. You also can't re-collapse it."*
 **Owner:** Implementer
 **Priority:** **High** — the second half is a trap: a user who opens a playlist with the pointer has
@@ -334,6 +341,8 @@ because it is a question about what a row should *say* and not about how tall a 
 - The verbose third line, above
 - `T-203`'s control redesign, which changes what the row holds and not how tall the panel may be
 - The dialog's overall default size. `StagingList`'s hint is the lever this task uses
+
+## Ready
 
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
