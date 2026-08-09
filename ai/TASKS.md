@@ -1346,7 +1346,12 @@ already names every setting asked for. **The phase is an open question — see b
 **Priority:** Medium — nothing is blocked by its absence, and two of its settings are the ones a
 user reaches for first
 **Phase:** **Phase 4 as the plan stands.** `ARC-007` deferred the full dialog there deliberately,
-and moving it is a maintainer call rather than this task's to make
+and moving it is a maintainer call rather than this task's to make. *(**This entry sits under
+`## Proposed — Phase 3` and belongs to Phase 4.** It was filed before Phase 4 had a section;
+`## Proposed — Phase 4`, added 2026-08-09, names this task as the owner of the settings-dialog
+deliverable and `T-195` as the owner of the `REQ-023` keys listed under *Out of scope* below. It is
+left here rather than moved because the section note that follows `T-190` is Phase 3's, and
+separating them is a bigger edit than the inconsistency costs.)*
 **Depends on:** `T-105` (`docs/UX_SPEC.md`) for the screen's layout. *(This also read `T-170`,
 "for the minimal Settings shell introduced with the download-record control". **There is no shell**
 — `T-170` built one to hold *Clear download records*, and both went when the records did. This task
