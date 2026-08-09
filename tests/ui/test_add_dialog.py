@@ -4448,6 +4448,60 @@ def test_a_default_naming_nothing_in_the_catalogue_falls_back(
 # --- T-111: the Manage presets… entry on the format control (UX_SPEC §8's P-6) --------------
 
 
+def test_an_open_playlist_shows_entries_and_a_way_back(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-210`.** *"The table is still way too small to actually scroll and read"*, and *"you also
+    still cannot re-collapse it back to a playlist view."*
+
+    Two causes, one measurement each.
+
+    **The summary was the whole row.** `RowPanel` reproduced `row_text`, which ends with the format
+    selector — `bestvideo[height<=1080][ext=mp4]+bestaudio[...]` — wrapping to two more lines inside
+    a panel bounded by the viewport. The entries got what was left, which was one of sixteen. It now
+    shows `row_summary`: the same composed pieces, without the tail the control beside it already
+    answers.
+
+    **The way out was at the bottom.** `setIndexWidget` covers the row's own disclosure while the
+    panel is open, so the panel supplies the control that closes it — and `Done`, at the bottom, is
+    the first thing below the fold on a tall panel. A collapse triangle now sits at the top, where
+    it cannot be pushed off.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(900, 700)
+    dialog.show()
+    QApplication.processEvents()
+
+    panel = _open_the_picker(dialog, row)
+    QApplication.processEvents()
+    viewport = staging_list(dialog).viewport()
+
+    try:
+        table = panel.picker.table
+        row_height = table.rowHeight(0)
+        assert row_height > 0
+        visible_rows = table.viewport().height() // row_height
+        assert visible_rows >= 4, (
+            f"the picker shows {visible_rows} of 7 entries in a {viewport.height()}px viewport; "
+            "the panel is spending its height on something other than the entries"
+        )
+
+        collapse = panel.collapse_button
+        bottom = collapse.mapTo(viewport, collapse.rect().bottomLeft()).y()
+        assert 0 <= bottom <= viewport.height(), (
+            f"the collapse control is at y={bottom} in a {viewport.height()}px viewport, so the "
+            "pointer has no visible way back to the closed row"
+        )
+
+        collapse.click()
+        QApplication.processEvents()
+        assert dialog.open_panel is None, "the collapse control did not close the panel"
+    finally:
+        dialog.close()
+
+
 def test_a_value_refresh_leaves_the_open_panel_over_its_row(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],

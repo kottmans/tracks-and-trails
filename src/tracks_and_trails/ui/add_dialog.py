@@ -97,6 +97,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QStyle,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -430,9 +431,27 @@ def row_text(row: Row, effective: Preset | None = None) -> str:
     construction — which is the property the old two-writers arrangement kept losing, most
     recently as `T118-R8`.
     """
-    second = " — ".join(part for part in (detail_text(row), state_text(row)) if part)
     tail = selector_text(row, effective)
-    return f"{headline_text(row)}\n{second}" + (f"\n{tail}" if tail else "")
+    return row_summary(row) + (f"\n{tail}" if tail else "")
+
+
+def row_summary(row: Row) -> str:
+    """The row without what it downloads as — headline and detail only (`T-210`).
+
+    **What an opened row says about itself.** `RowPanel` reproduces the row it covers, and using
+    the whole of `row_text` put the format selector in there too:
+    `bestvideo[height<=1080][ext=mp4]+bestaudio[...]` wrapped to two more lines, and the entry
+    table got what was left. In a 700px window that was **one visible entry** out of sixteen.
+
+    The selector is worth showing on the *closed* row, where it is the only place the choice is
+    visible. Inside the panel it is answered by the control the user came through, and it costs
+    the picker the space it exists for.
+
+    **Still composed from the delegate's own pieces** rather than written again — `row_text` is
+    now this plus the tail, so the two cannot drift (`T118-R8`).
+    """
+    second = " — ".join(part for part in (detail_text(row), state_text(row)) if part)
+    return f"{headline_text(row)}\n{second}"
 
 
 class StagingList(QListView):
@@ -548,6 +567,22 @@ class RowPanel(QWidget):
         self._row = row
 
         layout = QVBoxLayout(self)
+
+        # **The way out sits at the top** (`T-210`). `setIndexWidget` covers the row's own
+        # disclosure while the panel is open, so the panel has to supply the control that closes
+        # it — and a control at the *bottom* is the first thing to fall below the fold when the
+        # panel is tall, which is exactly when a user most wants it. `Done` is still there for the
+        # keyboard order and for the reader who works downward; this is the one that is always
+        # visible, and it is drawn as the triangle it replaces.
+        heading = QHBoxLayout()
+        self._collapse = QToolButton(self)
+        self._collapse.setObjectName("formatPanelCollapse")
+        self._collapse.setAccessibleName(f"Collapse {summary_name.lower()}")
+        self._collapse.setArrowType(Qt.ArrowType.DownArrow)
+        self._collapse.setAutoRaise(True)
+        self._collapse.clicked.connect(lambda: self.closed.emit(True))
+        heading.addWidget(self._collapse, 0, Qt.AlignmentFlag.AlignTop)
+
         self._summary = QLabel(summary, self)
         self._summary.setObjectName("formatPanelSummary")
         self._summary.setAccessibleName(summary_name)
@@ -555,7 +590,8 @@ class RowPanel(QWidget):
         # Site metadata, so it is never interpreted as markup (`T016-R6`'s rule; this label is
         # created here rather than in `_build`, so it sets its own format).
         self._summary.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self._summary)
+        heading.addWidget(self._summary, 1)
+        layout.addLayout(heading)
 
         self._body = self._build_body(row)
         layout.addWidget(self._body)
@@ -577,6 +613,11 @@ class RowPanel(QWidget):
     @property
     def done_button(self) -> QPushButton:
         return self._close
+
+    @property
+    def collapse_button(self) -> QToolButton:
+        """The always-visible way out, at the top of the panel (`T-210`)."""
+        return self._collapse
 
     def focus_chain(self) -> list[QWidget]:
         """The keyboard order through the panel, stated rather than left to construction order."""
@@ -1389,7 +1430,7 @@ class AddUrlDialog(QDialog):
         def build() -> RowPanel:
             panel = FormatPanel(
                 row,
-                row_text(row, self.preset_for(row)),
+                row_summary(row),
                 ffmpeg_available=self._ffmpeg_available,
                 parent=self._list,
             )
@@ -1417,7 +1458,7 @@ class AddUrlDialog(QDialog):
         def build() -> RowPanel:
             panel = PlaylistPanel(
                 row,
-                row_text(row, self.preset_for(row)),
+                row_summary(row),
                 selection=selection,
                 parent=self._list,
             )
@@ -1444,7 +1485,7 @@ class AddUrlDialog(QDialog):
         def build() -> RowPanel:
             panel = TemplatePanel(
                 row,
-                row_text(row, self.preset_for(row)),
+                row_summary(row),
                 template=template,
                 parent=self._list,
             )
