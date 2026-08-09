@@ -85,254 +85,14 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-*`T-189` and `T-186` are submitted and unreviewed. Every Phase 3 **deliverable** is approved and in
-`## Complete` — `T-109`, `T-110`, `T-112`, `T-113`, `T-114`, then `T-111` (the ninth and last),
-then `T-143` and `T-180` out of the loose items the maintainer ruled into the phase.*
+*Empty. **Every Phase 3 deliverable and every loose item ruled into the phase is closed.** Nine
+deliverables approved; of the six loose items, five built and approved — `T-143`, `T-180`,
+`T-189`, `T-186`, `T-188` — and `T-171` refused by `DAT-008`.*
 
-***All nine Phase 3 deliverables are approved, and five of the six loose items are answered.***
-`T-143` and `T-180` built and approved; `T-171` **refused** by `DAT-008`; `T-189` and `T-186` in
-review here. **`T-188` is the only one left**, and no amount of work closes it — `OPS-013` holds it
-open until a public source with a *stated licence* publishes a separate video/audio pair. Then exit
-criterion 6, the exit review itself.*
-
----
-
-### T-188 — A recorded source with a separate video and audio stream
-
-**Status:** **In Review — corrected 2026-08-08, awaiting re-review.** Reviewed and **Blocked** on
-`T188-R1` (High): the recorded fixture was added *beside* the synthetic evidence rather than
-**adopted**, leaving criteria 3 and 4 unmet. Both are now met — the shared `pair` fixture reads the
-recorded manifest, so every routing, slot, mode-switch and ffmpeg assertion runs on it, and
-`derived_format_columns` still carries the pair, and **criterion 4 cannot be met as written without
-losing evidence nothing else supplies.** *(Built by the Implementer; no criterion is claimed
-approved.)*
-
-#### Criterion 4 needs a maintainer amendment, and the measurement says why
-
-`T188-R1` asked for the synthetic pair to be **removed** rather than relabelled, and that is right
-as far as it goes — the first correction reworded the entries as *"no longer the evidence"* and left
-them listed, which is not what *stop claiming the pair* means. **Removing them was tried and it
-breaks five `tests/ui/test_format_table.py` cases**, including `T-075`'s refusal path.
-
-The reason is measurable rather than a matter of judgement:
-
-| Fixture | pairable | COMPLETE formats |
-|---|---|---|
-| `derived_format_columns` | **yes** | **4** |
-| `dash_akamai_big_buck_bunny` | yes | **0** |
-
-The format table needs **one source that is pairable *and* contains a complete format** — a
-pairable source is what makes the mode control exist, and a complete format inside it is what the
-refusal has to refuse. **No recorded source can supply that combination**, and the reason is
-structural: DASH separates the streams by construction, which is exactly why it is the merge-pair
-evidence. A recorded source cannot be both.
-
-So the derived pair is **not** redundant. It stopped being the evidence for `REQ-008`'s routing —
-`dash_akamai_big_buck_bunny` is that, and the selection tests read it — while remaining the only
-evidence for the table's *pairable-with-a-complete-format* path.
-
-**Settled by maintainer ruling, 2026-08-08: criterion 4 is amended**, on the argument that the
-original wording would have forced the provenance to lie. `what_is_synthetic` declares which entries
-are *synthetic*; `formats[3]` and `formats[4]` are synthetic and still present, so dropping them
-from that list to satisfy the wording would have made a truthful field false. Removing the formats
-was the alternative and costs five cases.
-
-**The criterion now binds the property it was protecting** — the derived fixture is not `REQ-008`'s
-evidence, the recorded one is — rather than a mechanism that could only be satisfied by making a
-fixture dishonest. The removal was implemented, measured and reverted rather than argued from;
-commit `1ba5f73` is the attempt and `71a9dfa` is what it found. The maintainer ruled on the surveyed candidate — **take it, and label it
-honestly** — and `tests/fixtures/infodicts/dash_akamai_big_buck_bunny.json` is that fixture.
-
-**Criterion 2 was amended rather than left unmet — maintainer ruling, 2026-08-08.** It required the
-licence to be *stated by the source*, which this one is not: Big Buck Bunny's CC BY 3.0 comes from
-the work's identity, not from Akamai. The ruling to accept the source was already on the record and
-the reviewer treated it as authority — **but a ruling to accept a source is not an amendment to a
-criterion**, and leaving the line standing would have put this task exactly where `T143-R1` blocked
-`T-143`: everything delivered, one criterion unmet, and the gap closed by narrative instead of by an
-amendment. The criterion now binds the purpose it was written for — excluding *belief about a
-publisher's practice* — rather than the mechanism that happened to enforce it.
-
-**`T188-R1` is the session's own defect class, one more time.** A fixture was captured that closed
-a gap, and the sibling asserting that gap was left saying *"NO acceptable recorded source
-supplies"* the pair — falsified by the very commit that added it. `T-143`'s stale premise and the
-whole of `T-186` are the same shape: **a document outliving the thing that changed it.** Recorded
-because three instances in one session is a pattern rather than a coincidence.
-
-**What it proves and what it does not.** Ten video-only formats carrying `acodec: 'none'` beside
-one audio-only carrying `vcodec: 'none'` — `REQ-008`'s pair, from a real published manifest.
-Until now `kind_of`'s routing met only shapes this project authored: `derived_format_columns` is
-synthetic and says so, and `T-108`'s end-to-end case drives a local HLS presentation this project
-generates. **A rule that only ever meets its own inputs has no evidence behind it**, and that is
-the gap this closes. It does **not** show a site *extractor* produces the shape — see the caveat.
-
-**The caveat is in the fixture, not only here.** Its `why` and `content_licence` blocks record that
-the extractor is `generic`, that yt-dlp parses the `.mpd` directly rather than running
-site-specific code, and that the licence is known from the content's identity rather than stated by
-the source. Anyone reading the fixture meets the limitation without reading this entry.
-
-**Why `generic` is the right seam anyway**, which is the argument for accepting it: the literal
-`'none'` originates in DASH parsing. An `AdaptationSet` declares `mimeType` `video/mp4` or
-`audio/mp4`, yt-dlp fills the codec the representation lacks with `'none'` rather than leaving it
-unknown, and `_as_stream_presence` maps that to `False`. So this pins the exact mechanism the
-routing depends on. A site extractor would be *additional* evidence, not different evidence.
-
-**Both fixtures are kept.** The synthetic one names its own shapes and stays legible; the recorded
-one shows something published has them.
-
-#### A side-finding for `OPS-013` and `T-185`, not acted on here
-
-**This source reports `fps` on all ten video formats.** `OPS-013` states that *"`fps` is reported
-by none of the seven acceptable sources probed"* on 2026-08-07 and amended Phase 3's exit criterion
-1 on exactly that basis, leaving `fps` covered by the derived fixture *"until `T-185` finds an
-acceptable source"*.
-
-**This is recorded rather than acted on**, because whether it changes anything turns on the same
-judgement the maintainer just made here — is a DASH reference stream an *acceptable source* for
-that purpose too? That is `OPS-013`'s question and `T-185`'s, not this task's. Flagged because a
-fixture that happens to satisfy another decision's reopening condition is precisely the kind of
-thing that gets discovered once and then lost.
-
-*(Was: Proposed — filed 2026-08-07 by `T-108`; the gap `OPS-013` is holding open. Surveyed
-2026-08-08, one candidate found, needing a maintainer ruling rather than more searching.)*
-
-#### The 2026-08-08 survey
-
-**`media.ccc.de` is now closed rather than unresolved.** This entry says *"if a conference is found
-whose API states a licence, this task is nearly done"*, and the original probe sampled **one**
-conference — 0 of 222 for 38c3. The whole archive has now been swept: **452 conferences, 16,828
-events, zero with a stated licence.** The right shape and no licence, permanently. That is a
-disposition rather than a pending search, and nobody needs to look there again.
-
-**The recorded sources are confirmed dead ends, not merely unpromising.** `video.blender.org`
-serves five progressive MP4s reporting `vcodec: None` — *unknown*, not the explicit `'none'` the
-routing needs — and its API returns **zero `streamingPlaylists`**, so no HLS split-track variant is
-hiding behind the extractor.
-
-**One viable candidate: a DASH manifest.** DASH is separate-track by construction, and the
-DASH-IF / Akamai reference stream produces exactly the pair `T-108` merges:
-
-| | `vcodec` | `acodec` | count |
-|---|---|---|---|
-| video-only | `avc1.64000d` | **`none`** | 10 |
-| audio-only | **`none`** | `mp4a.40.5` | 1 |
-
-`https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd` — **Big Buck Bunny, CC BY 3.0, Blender
-Foundation**, which this project already records from two other sources. Unsigned, and a stable
-reference stream for years. It meets `ai/TESTING.md` §5's three stated tests.
-
-**Why it is not simply committed — two weaknesses, and they are the maintainer's to weigh:**
-
-1. **The extractor is `generic`, not a site extractor.** Every existing fixture pins a real site's
-   output; this would pin yt-dlp's **DASH manifest parsing**. That is arguably where `vcodec: 'none'`
-   comes from and so exactly what the routing should be proven against — but it is a different kind
-   of evidence from what the recorded set holds.
-2. **The licence is known from the content's identity, not stated by the source.** Stronger than
-   `media.ccc.de`, which states nothing; weaker than PeerTube, which states it in the API.
-
-This entry asks for *"a committed fixture from a public source"* and warns that a presentation this
-project generates *"does not show that any real site publishes that shape"*. **A CDN-hosted
-reference stream sits between those two**, which is why it is put to the maintainer rather than
-quietly counted.
-
-**Recommendation: take it**, recording the `generic` extractor and the licence provenance in the
-fixture's own `content_licence` block. If a real site extractor is wanted instead, `T-188` stays
-open and `OPS-013` keeps holding it — which is already a disposition and not a gap.
-
-**No acceptable source this project records publishes a merge pair.** `REQ-008`'s subject is *"a
-separate video and audio stream to be merged"*, and routing a format into the video or the audio
-slot needs yt-dlp's explicit `vcodec: 'none'` / `acodec: 'none'` — the distinction `T-108` widened
-the projection to keep. Every recorded fixture publishes complete progressive files: archive.org,
-Wikimedia Commons and PeerTube all name codecs for both streams or for neither. So the pair
-`T-108` merges is exercised by `derived_format_columns`, which says so in its own
-`what_is_synthetic`.
-
-**One source was found and rejected, and that is the useful half of this entry.** `media.ccc.de`
-sets `vcodec: 'none'` for its `mp3` and `opus` recordings beside a named `acodec`, and `'h264'` with
-no `acodec` for its video ones — a real, recorded example of all three states in one item. It is
-**not committed**, because its API states no licence for any event of any conference sampled
-(0 of 222 for 38c3), and `ai/TESTING.md` §5 requires freely licensed. CCC talks are widely believed
-to be CC BY; belief is not what §5 asks for. *If a conference is found whose API states a licence,
-this task is nearly done.*
-
-**It also has no video-only half**, so even committed it would only close part of this: it gives a
-genuine `AUDIO_ONLY`, not a `VIDEO_ONLY` to pair with it. A DASH or adaptive-streaming source is
-what supplies both.
-
-**Narrowed 2026-08-07 by `T108-R1`.** The routing is no longer evidenced *only* against a synthetic
-fixture: `test_a_chosen_video_and_audio_pair_produce_one_merged_file` builds a **local HLS
-presentation** with a video-only variant and a separate audio group, and drives it through real
-yt-dlp — so `kind_of` is exercised against a real extractor's output on every run, and that is what
-corrected the rule (an `EXT-X-MEDIA:TYPE=AUDIO` group reports no `acodec` at all). What remains
-unclosed is narrower and worth being exact about: **a committed fixture from a public source**, for
-the unit-level routing tests and for `ai/TESTING.md` §5's recorded set. A presentation this project
-generates proves the code reads yt-dlp correctly; it does not prove any real site publishes that
-shape.
-
-**Owner:** Implementer
-**Priority:** Low — no user-visible behaviour depends on it, and `T-108`'s routing is asserted
-against a declared-synthetic fixture in the meantime
-**Phase:** Phase 3
-**Depends on:** nothing. It needs the network and a deliberate act, like `T-185`
-**Relevant context:** `OPS-013` (what permits the gap, and on what conditions), `T-185` (the same
-search, for `fps`, which succeeded), `ai/TESTING.md` §5, `tests/fixtures/capture.py`,
-`src/tracks_and_trails/ui/format_selection.py` (`kind_of`, `pairable`)
-**Affected surfaces:** `tests/fixtures/infodicts/*.json`, `tests/unit/test_format_selection.py`,
-`tests/ui/test_add_dialog.py` where they name the derived fixture. **No `src/`**
-**Risk:** Low to run; Medium to get wrong, for `T-185`'s reason — a fixture is a contract, and a
-careless capture is how data reaches the repository permanently
-
-#### Acceptance criteria
-
-- **A source publishing a video-only and an audio-only format in one item is found and captured, or
-  this task closes with the finding that no acceptable one does.** `OPS-013`'s conditions are the
-  bar: freely licensed, unsigned, unlikely to change
-- The licence is **verifiable for the specific work**, and the fixture records how it was
-  established — stated by the source, or fixed by the identity of the work itself.
-  **What stays excluded is belief about a publisher's usual practice**: media.ccc.de's talks are
-  widely thought to be CC BY and its API states no licence for any of 16,828 events across 452
-  conferences (surveyed 2026-08-08), which is the case this criterion was written to refuse.
-  *(**Amended 2026-08-08 by maintainer ruling.** It read "the licence is **stated by the source**,
-  not inferred from what the publisher usually does" — which excluded the belief it was aimed at
-  and also excluded a work whose licence is a matter of record. `dash_akamai_big_buck_bunny` is the
-  second case: Big Buck Bunny is CC BY 3.0 from the Blender Foundation, and this project already
-  records that same film from archive.org and PeerTube under the same claim. The mechanism was
-  amended and the purpose kept — the precedent is `OPS-013`, which bound exit criterion 1 to where
-  a source reports a column rather than listing exceptions. `ai/TESTING.md` §5 is untouched: it
-  requires freely licensed, unsigned and unlikely to change, and never required the statement.)*
-- `tests/unit/test_format_selection.py`'s routing assertions read the recorded fixture rather than
-  the derived one, and say which
-- `derived_format_columns` **stops being the evidence for `REQ-008`'s pair**, and its provenance
-  says so — the routing assertions read the recorded fixture, and `why_this_source` names it. It
-  keeps its place for the shapes no source happens to have, **and for the one combination no
-  recorded source can supply**: a fixture that is *pairable* and also holds *complete* formats,
-  which `tests/ui/test_format_table.py` needs at once.
-  *(**Amended 2026-08-08 by maintainer ruling**, after the original wording was implemented and
-  measured. It read "its `what_is_synthetic` stops claiming the pair", which **would have forced
-  the provenance to lie**: that field declares which entries are *synthetic*, `formats[3]` and
-  `formats[4]` are synthetic and still present, and dropping them from the list would make the
-  declaration false. Removing the formats themselves was tried — commit `1ba5f73` — and costs five
-  format-table cases, because `dash_akamai_big_buck_bunny` is pairable with **zero** complete
-  formats. That is structural, not incidental: DASH separates the streams by construction, which is
-  the very property that makes it the merge-pair evidence, so no recorded source can be both. The
-  criterion now binds the property it was protecting — the derived fixture is not the pair's
-  evidence — rather than a mechanism that would have made the fixture dishonest to satisfy.)*
-- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture, selection and
-  dialog tests are clean
-
-#### Out of scope
-
-- Relaxing `ai/TESTING.md` §5 to admit a source whose licence is unstated or which churns. That
-  trade was declined for `fps` in `OPS-013` and nothing here reopens it
-- Changing what the projection reads. `T-108` did that; this makes the fixtures catch up
-
----
-
-
----
-
-
----
-
+***The phase exit review is the only thing outstanding***, and it is exit criterion 6. Criteria
+1–5 are met. It is not the same as the thirteen task reviews already done: it asks whether the
+phase as a whole did what it set out to, and Phase 2's precedent is that it can find what focused
+reviews did not — that one returned six verdicts before approving.*
 
 ## Ready
 
@@ -2091,6 +1851,242 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-188 — A recorded source with a separate video and audio stream
+
+**Status:** **Complete — Approved 2026-08-08 at `3ce0b8b`.** `T188-R1` is **Resolved** with no open
+findings, after three correction passes. **This closes the last of the six loose items the
+maintainer ruled into Phase 3**, leaving the phase exit review as the only thing outstanding.
+*(Was: Blocked on `T188-R1` (High) — the recorded fixture was added *beside* the synthetic evidence
+rather than **adopted**, leaving criteria 3 and 4 unmet.)*
+
+**The reviewer independently reproduced the removal result** — 5 failed, 34 passed at `1ba5f73` —
+which is why that attempt is in history rather than described in prose. A measurement someone else
+can re-run beats an assertion that removing the pair would have cost something. Both are now met — the shared `pair` fixture reads the
+recorded manifest, so every routing, slot, mode-switch and ffmpeg assertion runs on it, and
+`derived_format_columns` still carries the pair, and **criterion 4 cannot be met as written without
+losing evidence nothing else supplies.** *(Built by the Implementer; no criterion is claimed
+approved.)*
+
+#### Criterion 4 needs a maintainer amendment, and the measurement says why
+
+`T188-R1` asked for the synthetic pair to be **removed** rather than relabelled, and that is right
+as far as it goes — the first correction reworded the entries as *"no longer the evidence"* and left
+them listed, which is not what *stop claiming the pair* means. **Removing them was tried and it
+breaks five `tests/ui/test_format_table.py` cases**, including `T-075`'s refusal path.
+
+The reason is measurable rather than a matter of judgement:
+
+| Fixture | pairable | COMPLETE formats |
+|---|---|---|
+| `derived_format_columns` | **yes** | **4** |
+| `dash_akamai_big_buck_bunny` | yes | **0** |
+
+The format table needs **one source that is pairable *and* contains a complete format** — a
+pairable source is what makes the mode control exist, and a complete format inside it is what the
+refusal has to refuse. **No recorded source can supply that combination**, and the reason is
+structural: DASH separates the streams by construction, which is exactly why it is the merge-pair
+evidence. A recorded source cannot be both.
+
+So the derived pair is **not** redundant. It stopped being the evidence for `REQ-008`'s routing —
+`dash_akamai_big_buck_bunny` is that, and the selection tests read it — while remaining the only
+evidence for the table's *pairable-with-a-complete-format* path.
+
+**Settled by maintainer ruling, 2026-08-08: criterion 4 is amended**, on the argument that the
+original wording would have forced the provenance to lie. `what_is_synthetic` declares which entries
+are *synthetic*; `formats[3]` and `formats[4]` are synthetic and still present, so dropping them
+from that list to satisfy the wording would have made a truthful field false. Removing the formats
+was the alternative and costs five cases.
+
+**The criterion now binds the property it was protecting** — the derived fixture is not `REQ-008`'s
+evidence, the recorded one is — rather than a mechanism that could only be satisfied by making a
+fixture dishonest. The removal was implemented, measured and reverted rather than argued from;
+commit `1ba5f73` is the attempt and `71a9dfa` is what it found. The maintainer ruled on the surveyed candidate — **take it, and label it
+honestly** — and `tests/fixtures/infodicts/dash_akamai_big_buck_bunny.json` is that fixture.
+
+**Criterion 2 was amended rather than left unmet — maintainer ruling, 2026-08-08.** It required the
+licence to be *stated by the source*, which this one is not: Big Buck Bunny's CC BY 3.0 comes from
+the work's identity, not from Akamai. The ruling to accept the source was already on the record and
+the reviewer treated it as authority — **but a ruling to accept a source is not an amendment to a
+criterion**, and leaving the line standing would have put this task exactly where `T143-R1` blocked
+`T-143`: everything delivered, one criterion unmet, and the gap closed by narrative instead of by an
+amendment. The criterion now binds the purpose it was written for — excluding *belief about a
+publisher's practice* — rather than the mechanism that happened to enforce it.
+
+**`T188-R1` is the session's own defect class, one more time.** A fixture was captured that closed
+a gap, and the sibling asserting that gap was left saying *"NO acceptable recorded source
+supplies"* the pair — falsified by the very commit that added it. `T-143`'s stale premise and the
+whole of `T-186` are the same shape: **a document outliving the thing that changed it.** Recorded
+because three instances in one session is a pattern rather than a coincidence.
+
+**What it proves and what it does not.** Ten video-only formats carrying `acodec: 'none'` beside
+one audio-only carrying `vcodec: 'none'` — `REQ-008`'s pair, from a real published manifest.
+Until now `kind_of`'s routing met only shapes this project authored: `derived_format_columns` is
+synthetic and says so, and `T-108`'s end-to-end case drives a local HLS presentation this project
+generates. **A rule that only ever meets its own inputs has no evidence behind it**, and that is
+the gap this closes. It does **not** show a site *extractor* produces the shape — see the caveat.
+
+**The caveat is in the fixture, not only here.** Its `why` and `content_licence` blocks record that
+the extractor is `generic`, that yt-dlp parses the `.mpd` directly rather than running
+site-specific code, and that the licence is known from the content's identity rather than stated by
+the source. Anyone reading the fixture meets the limitation without reading this entry.
+
+**Why `generic` is the right seam anyway**, which is the argument for accepting it: the literal
+`'none'` originates in DASH parsing. An `AdaptationSet` declares `mimeType` `video/mp4` or
+`audio/mp4`, yt-dlp fills the codec the representation lacks with `'none'` rather than leaving it
+unknown, and `_as_stream_presence` maps that to `False`. So this pins the exact mechanism the
+routing depends on. A site extractor would be *additional* evidence, not different evidence.
+
+**Both fixtures are kept.** The synthetic one names its own shapes and stays legible; the recorded
+one shows something published has them.
+
+#### A side-finding for `OPS-013` and `T-185`, not acted on here
+
+**This source reports `fps` on all ten video formats.** `OPS-013` states that *"`fps` is reported
+by none of the seven acceptable sources probed"* on 2026-08-07 and amended Phase 3's exit criterion
+1 on exactly that basis, leaving `fps` covered by the derived fixture *"until `T-185` finds an
+acceptable source"*.
+
+**This is recorded rather than acted on**, because whether it changes anything turns on the same
+judgement the maintainer just made here — is a DASH reference stream an *acceptable source* for
+that purpose too? That is `OPS-013`'s question and `T-185`'s, not this task's. Flagged because a
+fixture that happens to satisfy another decision's reopening condition is precisely the kind of
+thing that gets discovered once and then lost.
+
+*(Was: Proposed — filed 2026-08-07 by `T-108`; the gap `OPS-013` is holding open. Surveyed
+2026-08-08, one candidate found, needing a maintainer ruling rather than more searching.)*
+
+#### The 2026-08-08 survey
+
+**`media.ccc.de` is now closed rather than unresolved.** This entry says *"if a conference is found
+whose API states a licence, this task is nearly done"*, and the original probe sampled **one**
+conference — 0 of 222 for 38c3. The whole archive has now been swept: **452 conferences, 16,828
+events, zero with a stated licence.** The right shape and no licence, permanently. That is a
+disposition rather than a pending search, and nobody needs to look there again.
+
+**The recorded sources are confirmed dead ends, not merely unpromising.** `video.blender.org`
+serves five progressive MP4s reporting `vcodec: None` — *unknown*, not the explicit `'none'` the
+routing needs — and its API returns **zero `streamingPlaylists`**, so no HLS split-track variant is
+hiding behind the extractor.
+
+**One viable candidate: a DASH manifest.** DASH is separate-track by construction, and the
+DASH-IF / Akamai reference stream produces exactly the pair `T-108` merges:
+
+| | `vcodec` | `acodec` | count |
+|---|---|---|---|
+| video-only | `avc1.64000d` | **`none`** | 10 |
+| audio-only | **`none`** | `mp4a.40.5` | 1 |
+
+`https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd` — **Big Buck Bunny, CC BY 3.0, Blender
+Foundation**, which this project already records from two other sources. Unsigned, and a stable
+reference stream for years. It meets `ai/TESTING.md` §5's three stated tests.
+
+**Why it is not simply committed — two weaknesses, and they are the maintainer's to weigh:**
+
+1. **The extractor is `generic`, not a site extractor.** Every existing fixture pins a real site's
+   output; this would pin yt-dlp's **DASH manifest parsing**. That is arguably where `vcodec: 'none'`
+   comes from and so exactly what the routing should be proven against — but it is a different kind
+   of evidence from what the recorded set holds.
+2. **The licence is known from the content's identity, not stated by the source.** Stronger than
+   `media.ccc.de`, which states nothing; weaker than PeerTube, which states it in the API.
+
+This entry asks for *"a committed fixture from a public source"* and warns that a presentation this
+project generates *"does not show that any real site publishes that shape"*. **A CDN-hosted
+reference stream sits between those two**, which is why it is put to the maintainer rather than
+quietly counted.
+
+**Recommendation: take it**, recording the `generic` extractor and the licence provenance in the
+fixture's own `content_licence` block. If a real site extractor is wanted instead, `T-188` stays
+open and `OPS-013` keeps holding it — which is already a disposition and not a gap.
+
+**No acceptable source this project records publishes a merge pair.** `REQ-008`'s subject is *"a
+separate video and audio stream to be merged"*, and routing a format into the video or the audio
+slot needs yt-dlp's explicit `vcodec: 'none'` / `acodec: 'none'` — the distinction `T-108` widened
+the projection to keep. Every recorded fixture publishes complete progressive files: archive.org,
+Wikimedia Commons and PeerTube all name codecs for both streams or for neither. So the pair
+`T-108` merges is exercised by `derived_format_columns`, which says so in its own
+`what_is_synthetic`.
+
+**One source was found and rejected, and that is the useful half of this entry.** `media.ccc.de`
+sets `vcodec: 'none'` for its `mp3` and `opus` recordings beside a named `acodec`, and `'h264'` with
+no `acodec` for its video ones — a real, recorded example of all three states in one item. It is
+**not committed**, because its API states no licence for any event of any conference sampled
+(0 of 222 for 38c3), and `ai/TESTING.md` §5 requires freely licensed. CCC talks are widely believed
+to be CC BY; belief is not what §5 asks for. *If a conference is found whose API states a licence,
+this task is nearly done.*
+
+**It also has no video-only half**, so even committed it would only close part of this: it gives a
+genuine `AUDIO_ONLY`, not a `VIDEO_ONLY` to pair with it. A DASH or adaptive-streaming source is
+what supplies both.
+
+**Narrowed 2026-08-07 by `T108-R1`.** The routing is no longer evidenced *only* against a synthetic
+fixture: `test_a_chosen_video_and_audio_pair_produce_one_merged_file` builds a **local HLS
+presentation** with a video-only variant and a separate audio group, and drives it through real
+yt-dlp — so `kind_of` is exercised against a real extractor's output on every run, and that is what
+corrected the rule (an `EXT-X-MEDIA:TYPE=AUDIO` group reports no `acodec` at all). What remains
+unclosed is narrower and worth being exact about: **a committed fixture from a public source**, for
+the unit-level routing tests and for `ai/TESTING.md` §5's recorded set. A presentation this project
+generates proves the code reads yt-dlp correctly; it does not prove any real site publishes that
+shape.
+
+**Owner:** Implementer
+**Priority:** Low — no user-visible behaviour depends on it, and `T-108`'s routing is asserted
+against a declared-synthetic fixture in the meantime
+**Phase:** Phase 3
+**Depends on:** nothing. It needs the network and a deliberate act, like `T-185`
+**Relevant context:** `OPS-013` (what permits the gap, and on what conditions), `T-185` (the same
+search, for `fps`, which succeeded), `ai/TESTING.md` §5, `tests/fixtures/capture.py`,
+`src/tracks_and_trails/ui/format_selection.py` (`kind_of`, `pairable`)
+**Affected surfaces:** `tests/fixtures/infodicts/*.json`, `tests/unit/test_format_selection.py`,
+`tests/ui/test_add_dialog.py` where they name the derived fixture. **No `src/`**
+**Risk:** Low to run; Medium to get wrong, for `T-185`'s reason — a fixture is a contract, and a
+careless capture is how data reaches the repository permanently
+
+#### Acceptance criteria
+
+- **A source publishing a video-only and an audio-only format in one item is found and captured, or
+  this task closes with the finding that no acceptable one does.** `OPS-013`'s conditions are the
+  bar: freely licensed, unsigned, unlikely to change
+- The licence is **verifiable for the specific work**, and the fixture records how it was
+  established — stated by the source, or fixed by the identity of the work itself.
+  **What stays excluded is belief about a publisher's usual practice**: media.ccc.de's talks are
+  widely thought to be CC BY and its API states no licence for any of 16,828 events across 452
+  conferences (surveyed 2026-08-08), which is the case this criterion was written to refuse.
+  *(**Amended 2026-08-08 by maintainer ruling.** It read "the licence is **stated by the source**,
+  not inferred from what the publisher usually does" — which excluded the belief it was aimed at
+  and also excluded a work whose licence is a matter of record. `dash_akamai_big_buck_bunny` is the
+  second case: Big Buck Bunny is CC BY 3.0 from the Blender Foundation, and this project already
+  records that same film from archive.org and PeerTube under the same claim. The mechanism was
+  amended and the purpose kept — the precedent is `OPS-013`, which bound exit criterion 1 to where
+  a source reports a column rather than listing exceptions. `ai/TESTING.md` §5 is untouched: it
+  requires freely licensed, unsigned and unlikely to change, and never required the statement.)*
+- `tests/unit/test_format_selection.py`'s routing assertions read the recorded fixture rather than
+  the derived one, and say which
+- `derived_format_columns` **stops being the evidence for `REQ-008`'s pair**, and its provenance
+  says so — the routing assertions read the recorded fixture, and `why_this_source` names it. It
+  keeps its place for the shapes no source happens to have, **and for the one combination no
+  recorded source can supply**: a fixture that is *pairable* and also holds *complete* formats,
+  which `tests/ui/test_format_table.py` needs at once.
+  *(**Amended 2026-08-08 by maintainer ruling**, after the original wording was implemented and
+  measured. It read "its `what_is_synthetic` stops claiming the pair", which **would have forced
+  the provenance to lie**: that field declares which entries are *synthetic*, `formats[3]` and
+  `formats[4]` are synthetic and still present, and dropping them from the list would make the
+  declaration false. Removing the formats themselves was tried — commit `1ba5f73` — and costs five
+  format-table cases, because `dash_akamai_big_buck_bunny` is pairable with **zero** complete
+  formats. That is structural, not incidental: DASH separates the streams by construction, which is
+  the very property that makes it the merge-pair evidence, so no recorded source can be both. The
+  criterion now binds the property it was protecting — the derived fixture is not the pair's
+  evidence — rather than a mechanism that would have made the fixture dishonest to satisfy.)*
+- `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture, selection and
+  dialog tests are clean
+
+#### Out of scope
+
+- Relaxing `ai/TESTING.md` §5 to admit a source whose licence is unstated or which churns. That
+  trade was declined for `fps` in `OPS-013` and nothing here reopens it
+- Changing what the projection reads. `T-108` did that; this makes the fixtures catch up
+
+---
 
 ### T-186 — Finish the withdrawn-History prose sweep
 
