@@ -92,15 +92,18 @@ not carry into Phase 4.
 
 ### Where the findings stand
 
-| Finding | State |
-|---|---|
-| `P3EXIT-R1` | **Resolved** at the third pass — one taxonomy, **eleven deliverables, nine additive and two subtractive** |
-| `P3EXIT-R2` | **Resolved**, and re-confirmed at the third pass |
-| `P3EXIT-R3` | **Resolved** at the fourth pass. `IMPLEMENTATION_PLAN.md` had said `T-189`'s workflow never executed. **A second instance the finding did not name** — the deliverables table row — was found by sweep and corrected with it, which the approval credits: *"fixing only the named line would not have"* closed the class |
-| `P3EXIT-R4` | **Open — Medium, coordination only.** Raised *after* approval, against these records: this block still said `P3EXIT-R3` was unverified and that criterion 6 was unmet, while the snapshot above said Phase 3 had exited. `ai/TASKS.md`'s header said Phase 3 was current. **The approval at `ccdbd0f` is not reopened** |
+**`P3EXIT-R1` through `P3EXIT-R4` are all Resolved. Criterion 6 is met.** Phase 3's exit was
+approved at `ccdbd0f`, and the exit coordination at `4aea3dc`.
 
-**Criterion 6 is met.** The final submission was
-`ai/handoffs/2026-08-09-phase-3-exit-review-4.md`, approved at `ccdbd0f`.
+**`ai/REVIEWS.md` is canonical for every finding's state, and this file no longer restates it.**
+That is a deliberate structural change rather than a summary being trimmed: **duplicating finding
+state here is what produced `P3EXIT-R4`.** This block previously carried a per-finding table, and
+when the fourth pass resolved `P3EXIT-R3` the table went on saying *"Corrected, unverified"* four
+screens below a snapshot that already said the phase had exited. **A second copy of a fact is a
+second thing that can rot**, and the reviewer proposed the replacement in the approval itself.
+
+Read `ai/REVIEWS.md` for what each finding was, what it required, and who resolved it. The
+submissions are `ai/handoffs/2026-08-09-phase-3-exit-review-3.md` through `-5.md`.
 
 ## 2026-08-08: Phase 3 is complete but for its exit review
 
