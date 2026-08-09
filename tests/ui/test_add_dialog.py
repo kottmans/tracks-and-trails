@@ -3331,7 +3331,7 @@ def _expanded_role_of(dialog: AddUrlDialog, row: Row) -> object:
     return dialog._model.data(index, EXPANDED_ROLE)
 
 
-def test_a_row_that_stops_being_committable_can_still_close_its_panel(
+def test_a_row_that_left_the_queue_can_still_close_its_picker(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
@@ -3339,35 +3339,58 @@ def test_a_row_that_stops_being_committable_can_still_close_its_panel(
     """**`T-204`.** The panel must not outlive the control that dismisses it.
 
     The maintainer's report: *"I think it removed the video from being downloaded, but it made
-    everything inaccessible."* `EXPANDED_ROLE` answered `None` — *not a playlist, draw no
-    disclosure* — for any row that was not `committable`, and `RowDelegate` both **paints** the
-    triangle and **hit-tests the click** on `isinstance(..., bool)`. So a row that left `READY`
-    with its picker open lost the triangle *and* the target under it, while `close_panel` and
-    `remount_panel` — driven by the dialog's own `_expanded` and by index validity — left the
-    panel mounted. There was no way out but cancelling the dialog.
+    everything inaccessible."* `EXPANDED_ROLE` answered `None` — which `T-140` defines as *not a
+    playlist, draw no disclosure* — for **any** row that was not `committable`, and `RowDelegate`
+    both **paints** the triangle and **hit-tests the click** on `isinstance(..., bool)`. So the
+    affordance and the target under it went at once, while the panel stayed mounted.
 
-    **Driven, not faked.** The panel is opened through `open_playlist_picker`, and the state moves
-    the way every internal route moves it — `row.state = …` followed by the dialog's own redraw.
-    What is *not* poked is `_expanded`: that is the state under test, and setting it would assert
-    the setup.
+    **Every step is a route a user can reach** (`T204-R1`). The picker opens through
+    `open_playlist_picker`; an entry is unchecked with `Space`, which is the gesture the report
+    describes; the row stops being committable because **its job left the queue** —
+    `manager.job_changed` with a status that is not startable, which `_on_job_changed` turns into
+    `FAILED`; and the panel is closed through `toggle_playlist`, the slot the delegate's disclosure
+    signal is wired to.
+
+    *(An earlier version assigned `PROBING` to a `READY` row directly. `T204-R1` found that
+    production only reaches `PROBING` from `WAITING`, so that test proved the role's invariant and
+    not the reported defect.)*
     """
-    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog, manager = resolved(dialogs, managers, spin, PLAYLIST)
+    row = dialog.rows[0]
     panel = _open_the_picker(dialog, row)
     assert isinstance(_expanded_role_of(dialog, row), bool), (
-        "an open playlist row did not offer a disclosure before the state changed"
+        "an open playlist row did not offer a disclosure before anything changed"
     )
 
-    # A re-probe: the row is still on screen and still a playlist, and it is no longer `READY`.
-    row.state = RowState.PROBING
-    dialog.refresh()
+    # Uncheck one entry, the way the report describes — `Space` on the picker's current row.
+    QTest.keyClick(panel.picker.table, Qt.Key.Key_Space)
+    QApplication.processEvents()
+    chosen = row.entry_selection
+    assert isinstance(chosen, PlaylistSelection) and len(chosen.checked) == 6, (
+        f"the keystroke did not uncheck exactly one entry: {chosen}"
+    )
+
+    job_id = row.job_id
+    assert isinstance(job_id, str) and job_id
+    manager.job_changed.emit(job_id, JobStatus.CANCELLED.value)
     QApplication.processEvents()
 
-    assert dialog.open_panel is panel, (
-        "the panel closed on its own; this test is asserting the wrong thing"
+    assert row.state is RowState.FAILED and not row.committable, (
+        f"the job leaving the queue did not make the row uncommittable: {row.state}"
     )
+    assert dialog.open_panel is panel, "the panel closed on its own; this asserts the wrong thing"
     assert isinstance(_expanded_role_of(dialog, row), bool), (
         "the row kept its panel and stopped offering a disclosure, so the only way out of the "
         "picker is cancelling the dialog — the panel outlived the control that dismisses it"
+    )
+
+    # Close the way the triangle does: the delegate emits into `toggle_playlist`.
+    dialog.toggle_playlist(job_id)
+    QApplication.processEvents()
+
+    assert dialog.open_panel is None, "the real disclosure route did not close the panel"
+    assert row.entry_selection == chosen, (
+        f"closing discarded the choice made in the picker: {row.entry_selection} != {chosen}"
     )
 
 

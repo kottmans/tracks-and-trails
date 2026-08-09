@@ -845,9 +845,17 @@ class StagingModel(QAbstractListModel):
             # open could only be escaped by cancelling the dialog.
             #
             # **Chosen over closing the panel on the state change**, which was the other way to
-            # satisfy `T-204`: `PROBING` is transient and a re-probe returns to `READY`, so closing
-            # would yank an open picker away mid-choice and discard a selection the user was still
-            # making. Keeping the control costs nothing — it does exactly what it says.
+            # satisfy `T-204`. The reachable case is a row whose **job left the queue** —
+            # `_on_job_changed` turns a non-startable status into `FAILED` — and closing there would
+            # take the picker away from a user who was still choosing, without being asked. It would
+            # not necessarily *lose* the choice: `close_panel(keep=True)` writes it through, and
+            # `_on_entries_chosen` has already written each toggle onto the row. **What closing
+            # costs is the interaction, not the data.** Keeping the control costs neither: it
+            # continues to do exactly what it says.
+            #
+            # *(`T204-R1` corrected an earlier version of this comment, which reasoned from a
+            # `READY` row entering `PROBING`. Production only reaches `PROBING` from `WAITING`, so
+            # that path does not exist.)*
             if row is self._dialog.expanded_row:
                 return True
             if not row.committable:
