@@ -4491,6 +4491,18 @@ def test_an_open_playlist_shows_entries_and_a_way_back(
         )
         assert panel.isVisible() and panel.height() > 0, "the panel vanished when it was refreshed"
 
+        # **Resizing the window must not break it** (`T-210`). An opened row's height is bounded by
+        # the viewport now, and Qt does not re-ask a delegate for `sizeHint` when the viewport
+        # changes — so without a resize hook the row kept a height measured against the old
+        # viewport while the panel was laid out to the new one, and the row showed nothing at all.
+        dialog.resize(900, 900)
+        QApplication.processEvents()
+        assert panel.isVisible() and panel.height() > 0, "growing the window emptied the panel"
+        grown = dialog._model.index(dialog.rows.index(row), 0)
+        assert staging_list(dialog).visualRect(grown).height() == panel.height(), (
+            "after a resize the row and its panel disagree about how tall the row is"
+        )
+
         table = panel.picker.table
         row_height = table.rowHeight(0)
         assert row_height > 0

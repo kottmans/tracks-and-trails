@@ -83,7 +83,7 @@ from typing import Any, Final, Protocol, cast
 
 from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QSize, Qt, QTimer, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QAction, QFontMetrics, QKeyEvent, QPixmap
+from PySide6.QtGui import QAction, QFontMetrics, QKeyEvent, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -497,6 +497,21 @@ class StagingList(QListView):
             self._wanted = None
             self.updateGeometry()
         super().changeEvent(event)
+
+    #: Emitted when the viewport's height changes, so whoever sizes rows against it can re-measure.
+    #:
+    #: **A row's height depends on the viewport now** (`T-210`): an opened row is bounded by what
+    #: the list can show, so a resize changes the answer. Qt does not re-ask a delegate for
+    #: `sizeHint` when the viewport changes, so without this the row kept a height measured against
+    #: the *old* viewport while the panel inside it was laid out to the new one — the two
+    #: disagreed, and an expanded row showed nothing at all.
+    viewport_resized = Signal()
+
+    # Qt's override name, hence the camelCase.
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        if event.oldSize().height() != event.size().height():
+            self.viewport_resized.emit()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """`→` opens the current row, `←` closes it (`docs/UX_SPEC.md` §7).
@@ -1261,6 +1276,9 @@ class AddUrlDialog(QDialog):
         layout.addLayout(header)
 
         self._list = StagingList(box, selectors=selector_candidates(self._presets))
+        # A taller or shorter list changes how tall an opened row may be, so the rows are
+        # re-measured and the open panel put back over the one it belongs to (`T-210`).
+        self._list.viewport_resized.connect(self._on_list_resized)
         self._list.setObjectName("stagingList")
         self._list.setAccessibleName("The URLs you pasted, and what each one is")
         self._list.setAccessibleDescription(
@@ -1685,6 +1703,19 @@ class AddUrlDialog(QDialog):
         self._list.setUniformItemSizes(True)
         self.refresh()
         self._list.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _on_list_resized(self) -> None:
+        """Re-measure the rows and re-place the open panel after the list changes height.
+
+        **Only when something is open.** A closed row's height does not depend on the viewport, so
+        a resize with nothing expanded costs one comparison.
+        """
+        if self._expanded is None or self._panel is None:
+            return
+        index = self._index_of(self._expanded)
+        if index.isValid():
+            self._model.dataChanged.emit(index, index, [Qt.ItemDataRole.SizeHintRole])
+        self.relayout_panel()
 
     def relayout_panel(self) -> None:
         """Put the open panel back over its row, without remounting it (`T204-R4`).
