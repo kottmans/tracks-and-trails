@@ -2167,6 +2167,87 @@ row" will apply again.
 - Multi-select in the add dialog. It would change the answer here, and nothing asks for it
 - yt-dlp's wider option surface — `T-183` and the escape hatch own that
 
+### T-204 — A row that stops being committable keeps its panel and loses the way to close it
+
+**Status:** Proposed — **maintainer-reported, 2026-08-08**: *"Pretty sure I just clicked on one of
+the videos (near the checkmark). I think it removed the video from being downloaded, but it made
+everything inaccessible."* And separately: *"with multiple items in the queue, the playlist loses
+the arrow to collapse it again."*
+**Owner:** Implementer
+**Priority:** **High.** The reported end state is an application the user cannot get out of without
+cancelling the dialog, and the work of choosing entries goes with it
+**Phase:** Phase 4 — polish. Filed against Phase 3 code; not a Phase 3 blocker.
+**Depends on:** nothing.
+**Relevant context:** `ui/add_dialog.py` §829–837 (the `EXPANDED_ROLE` handler), §1525–1548
+(`close_panel`), §1550–1576 (`remount_panel`), `ui/staging.py` §164–167 (`committable`),
+`ui/row_delegate.py` (the twisty painter), `T-140` (the three-valued role), `T108-R2`, `T107-R2`,
+`UX-005` §5
+**Affected surfaces:** `ui/add_dialog.py`, `ui/row_delegate.py`, `tests/ui/`
+**Risk:** Medium — the fix is small; **the geometry seam it sits in has needed a second review round
+every time it has been opened** (`T107-R2`, `T108-R2`)
+
+#### The mechanism, read from the code rather than guessed
+
+**`EXPANDED_ROLE` is three-valued and one of its values withdraws the control.**
+
+```python
+if entry_selection_of(row) is None or not row.committable:
+    return None
+return row is self._dialog.expanded_row
+```
+
+`None` means *not a playlist* — **the delegate draws no disclosure at all.** `False` means a
+playlist that is closed. `committable` is `state is RowState.READY` (`ui/staging.py` §167).
+
+**So a row that leaves `READY` while its panel is open stops drawing the triangle that closes it.**
+
+**Nothing else closes the panel.** `close_panel` is driven by `self._expanded`, and `remount_panel`
+closes the panel only when the row's **index is invalid** — a row that *went away*. A row that still
+exists but is no longer `READY` keeps `_expanded` set, keeps its mounted `setIndexWidget` panel, and
+has no drawn affordance. **The panel outlives the control that dismisses it.**
+
+**What is verified and what is not.** The code path above is read, not inferred. **Which user action
+takes the row out of `READY` is not yet confirmed** — the report says "near the checkmark", which is
+either the row's own include checkbox or an entry's. The reproduction is the first deliverable.
+
+**`T108-R2` is the same class and is worth reading first**: a structural reset left the panel
+pointing at a row it was no longer mounted on, *"the row stayed tall and blank"*, and reopening was
+refused because the stale state still said it was open. **That was found in review, after a fix
+aimed at a guess.** This entry exists so the same thing does not happen twice.
+
+#### The second report is probably the same bug
+
+*"With multiple items in the queue, the playlist loses the arrow to collapse it again"* has the same
+signature: the disclosure is absent where a playlist should draw one. **Whether the trigger is the
+same is unconfirmed** — treat them as one investigation and two tests, and if they turn out
+different, split this entry rather than fixing one and closing both.
+
+#### Acceptance criteria
+
+- **A failing test reproduces the stuck state first**, driving the surface the way the report
+  describes — not by setting `_expanded` directly, which would prove the fix and not the bug
+- **A row with an open panel always has a way to close it**, whatever its state. Either the
+  disclosure keeps being drawn while a panel is mounted, or the panel closes when the row stops
+  being committable — **and the choice is recorded**, because they behave differently for a row
+  that is merely re-probing and will return to `READY`
+- **Whatever was chosen in the panel survives** the close, whichever route closes it. `close_panel`
+  already distinguishes `keep`; the fix must not lose a 16-entry selection to a state flicker
+- **The missing-arrow report is covered by its own test**, with a queue holding more than one item
+- `EXPANDED_ROLE`'s three values still mean what `T-140` ruled — **absent must keep meaning "not a
+  playlist"**. If the fix makes a non-committable playlist answer `False` instead of `None`, the
+  comment at §829 is updated, since it currently states the collapsed reasoning as settled
+- The row's painted anatomy and the panel do not overlap in the fixed state — the maintainer's
+  third screenshot shows the row's own text drawn into the panel area, **which may be a second
+  defect**; if it is, it is filed separately rather than absorbed here
+
+#### Out of scope
+
+- `T-203`'s redesign of the row's controls. **This bug is present whatever the controls become**,
+  and fixing it must not wait on a ruling
+- `T-193`'s sizing, which is fixed and committed
+- Reworking `setIndexWidget` into a different expansion mechanism. That is a larger change than a
+  trapped user justifies, and `T-108` chose this one deliberately
+
 ---
 
 ## Proposed — Phase 4.5
