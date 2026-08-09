@@ -3199,7 +3199,8 @@ def _view_with_an_open_editor(
     """A queue view with `job-2` current, an editor open on it, and selection set as asked.
 
     The editor is opened through `QListView.edit`, which reaches the delegate's `createEditor` and
-    so sets the `editing_job_id` that `_remember_editor` reads. Poking `_reopen_for` directly would
+    so sets the `editing_job_id` that `_commit_open_editor` reads on `modelAboutToBeReset`. Poking
+    `_reopen_for` directly would
     skip the very wiring under test.
     """
     for position in range(4):
