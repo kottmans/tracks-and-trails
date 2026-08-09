@@ -59,21 +59,39 @@ file rather than asserted.
   **the panel outlives the control that dismisses it.** Which user action reaches that state is not
   yet confirmed, and the reproduction is the first deliverable.
 
-**What is still outstanding:** **Phase 3's exit review, third pass — submitted, awaiting verdict.**
+**What is still outstanding:** **Phase 3's exit review.** `P3EXIT-R1` and `P3EXIT-R2` are
+**Resolved**; `P3EXIT-R3` was raised by the third pass, is corrected, and awaits verification.
 
-**The third pass is explicitly authorized.** `AGENTS.md` §10 caps the budget at one comprehensive
-review plus one focused correction re-review, and the 2026-08-08 review record states that a third
-focused pass requires the maintainer to authorize it. **The maintainer did so on 2026-08-09**:
-*"authorize the 3rd pass, write the handoff and run the tests at the submitted head."* **Recorded
-here because `ai/REVIEWS.md` is the Reviewer's file** under `AGENTS.md` §4 and carries no
-implementer edit.
+### The pass budget, and the standing authorization that now governs it
 
-`P3EXIT-R2` is **Resolved**. `P3EXIT-R1`'s remaining count/scope half is corrected — **eleven
-deliverables, nine additive and two subtractive**, in those words in `IMPLEMENTATION_PLAN.md`,
-here, and in the submission. *"REQ-bearing"* is gone and was refuted correctly.
+`AGENTS.md` §10 caps the ordinary budget at one comprehensive review plus one focused correction
+re-review. **Recorded here because `ai/REVIEWS.md` is the Reviewer's file** under `AGENTS.md` §4 and
+carries no implementer edit.
 
-The submission is `ai/handoffs/2026-08-09-phase-3-exit-review-3.md`. **Criterion 6 is the only
-criterion still unmet**, and no verdict is claimed for it.
+- **Third pass — authorized 2026-08-09**, individually: *"authorize the 3rd pass, write the handoff
+  and run the tests at the submitted head."*
+- **All further passes — authorized 2026-08-09**, as a **standing grant for this exit review only**:
+  *"You have authorization for as many passes as necessary given that this is the exit review (but
+  still keep it focused)… Go back and forth as necessary without my manual prompts."*
+
+**The grant is bounded three ways**, and the bounds are part of it: it covers **the Phase 3 exit
+review**, it requires passes stay **focused** rather than widening, and it was given for a period
+when the maintainer is **away and unavailable**. It is not authority for anything else, and it does
+not carry into Phase 4.
+
+**Consequence:** the implementer may invoke the reviewer directly and iterate without a prompt.
+`AGENTS.md` §10's "explicit maintainer authorization" is satisfied by the quotation above.
+
+### Where the findings stand
+
+| Finding | State |
+|---|---|
+| `P3EXIT-R1` | **Resolved** at the third pass — one taxonomy, **eleven deliverables, nine additive and two subtractive** |
+| `P3EXIT-R2` | **Resolved**, and re-confirmed at the third pass |
+| `P3EXIT-R3` | **Corrected, unverified.** `IMPLEMENTATION_PLAN.md` still said `T-189`'s workflow had never executed. **A second instance the finding did not name** — the deliverables table row — was found by sweep and corrected with it |
+
+The current submission is `ai/handoffs/2026-08-09-phase-3-exit-review-4.md`. **Criterion 6 is the
+only criterion still unmet**, and no verdict is claimed for it.
 
 ## 2026-08-08: Phase 3 is complete but for its exit review
 
