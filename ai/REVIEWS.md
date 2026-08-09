@@ -12959,3 +12959,61 @@ not independently repeated in this focused pass; the initial review independentl
 same result, and the correction changes only documents plus one dead type guard. Windows runtime,
 real sites, and the first execution of T-189’s workflow remain unverified as previously recorded.
 Only `ai/REVIEWS.md` was modified by the reviewer. No commit or push was made.
+
+
+## 2026-08-09 — Phase 3 exit authorized third pass
+
+**Reviewer:** Codex
+
+**Prior candidate:** `2049980`
+**Taxonomy correction:** `7032241`
+**Measured code head:** `a5f65c9`
+**Submission commit:** `d85bf85`
+**Current evidence head:** `c317625` (review metadata only after `a5f65c9`)
+**Scope:** The maintainer-authorized third focused pass on the unresolved count/scope half of
+`P3EXIT-R1`, exact-code-head gates, and the T-189 workflow execution offered by the re-submission.
+T-192, T-193 and T-194 are Phase 4 work and receive no product verdict here.
+
+**Verdict:** **Blocked.** `P3EXIT-R1` is **Resolved** and `P3EXIT-R2` remains **Resolved**. A new
+blocking Medium, `P3EXIT-R3`, is open: the canonical Phase 3 plan says T-189’s workflow has never
+executed, while the current STATUS, handoff, and independently verified CI run say it has executed
+successfully. Criterion 6 and the Phase 3 exit remain not met. This was the explicitly authorized
+third pass; another focused pass on a Medium blocker requires a new maintainer authorization under
+`AGENTS.md` §10.
+
+### Finding results
+
+| ID | Severity | Blocks approval | Result | Evidence / required correction |
+|---|---|---|---|---|
+| `P3EXIT-R1` | Medium | No | **Resolved.** The plan, STATUS and current handoff now use one taxonomy: **eleven deliverables, nine additive and two subtractive**. T-169/T-170 remain under `### Deliverables` and the sentence “Two Phase 3 deliverables remove a Phase 2 deliverable” remains correctly unchanged under that taxonomy. “Nine” is explicitly historical decomposition count, not current deliverable count; “REQ-bearing” is rejected rather than reused. | Direct inspection of `7032241` and every live occurrence. All eleven table rows are approved and the six loose items remain separately dispositioned. |
+| `P3EXIT-R2` | Medium | No | **Remains Resolved.** No source or test file differs between measured head `a5f65c9` and current evidence head `c317625`. Both test-inclusive mypy gates pass over 125 files; the handoff’s 223-file format count is reproduced when the later third-pass handoff file is excluded from current HEAD. | Exact tree comparison plus local gates. |
+| `P3EXIT-R3` | **Medium** | **Yes — Phase 3 exit truth / criterion 2 evidence** | **Open.** `IMPLEMENTATION_PLAN.md:634-637` says “One residual survives,” that T-189’s workflow “has never executed on a runner,” and cites only older run `31233348009`. Current STATUS and the re-submission say the opposite: run `31295392039` at `9fe22fb` executed the workflow, all five jobs passed, and the residual is closed. The reviewer independently queried GitHub: the run is completed/success, head SHA is `9fe22fb`, and `linux`, `frozen linux`, `frozen windows`, `STARBASE coverage`, and `windows desktop` all concluded success; the Windows job’s type, desktop, and Full suite steps all succeeded. The old plan paragraph is therefore false current truth at the exact exit record being signed. | Replace the plan’s present-tense “never executed” residual with the verified execution result and close the residual there, using the same run/head and bounded claim already in STATUS. Preserve the earlier unexecuted state in historical review text rather than as the plan’s current answer. |
+
+`P3EXIT-R3` is Medium rather than High because the gate actually passed and no product behavior is
+broken. It blocks because `IMPLEMENTATION_PLAN.md` is current truth and materially misstates the
+execution of the gate protecting exit criterion 2.
+
+### Reviewer verification
+
+The repository’s moved `.venv` interpreter remains unusable, so local Python checks used a
+temporary `/tmp` venv populated only from the already-installed project site-packages. It was
+removed after verification; no dependency was downloaded or installed into the maintainer’s
+environment.
+
+| Check | Result |
+|---|---|
+| `git diff --check 2049980..c317625` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| Ruff format at measured code head shape (excluding the later third-pass handoff file) | **pass, 223 files** |
+| `python -m mypy` | **pass, 125 files** |
+| `python -m mypy --platform win32` | **pass, 125 files** |
+| Task placement | **14 passed** |
+| `git diff a5f65c9..c317625 -- src tests` | **empty** |
+| GitHub Actions run `31295392039` | **completed/success at `9fe22fb`; all five jobs success** |
+
+The implementer’s local full-suite result (**2807 passed, 17 skipped, 2 deselected, 4 warnings**)
+was not independently repeated. The count is consistent with T-193/T-194 adding four tests to the
+initial review’s independently reproduced 2803, the relevant source/test tree is unchanged after
+the measured head, and the five-job CI run is independently verified. T-193/T-194 remain unreviewed
+Phase 4 work outside this exit verdict. Real sites remain unverified. Only `ai/REVIEWS.md` was
+modified by the reviewer; no commit or push was made.
