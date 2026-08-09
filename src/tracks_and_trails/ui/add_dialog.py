@@ -198,6 +198,20 @@ DEFAULT_RESOLVE_DELAY_MS: Final = 400
 #: honest rendering of a missing value rather than an invented one.
 UNKNOWN_TEXT: Final = "Unknown"
 
+#: How many lines of URL the paste box asks for before it stops growing (`T-209`).
+#:
+#: **Four, chosen against the work rather than picked.** A single URL is the common paste and a
+#: handful is the rest; beyond that the box scrolls, which is what a text box does. It was
+#: previously unbounded, and Qt gave one line of URL about as much of the dialog as sixteen staged
+#: rows — which is what put an opened playlist's *Done* button below the fold.
+URL_BOX_LINES: Final = 4
+
+#: Breathing room left below an opened row, so its last control is not flush against the fold.
+#:
+#: A panel sized to the viewport exactly would put *Done* on the final pixel of the visible area,
+#: where it reads as clipped even when it is not.
+PANEL_VIEWPORT_MARGIN: Final = 8
+
 #: How a failed withdrawal announces itself. A prefix rather than a whole message, because the
 #: URL and the reason belong in it and `NFR-005` forbids signalling the state any other way.
 WITHDRAW_FAILED_PREFIX: Final = "Still queued:"
@@ -1113,9 +1127,18 @@ class AddUrlDialog(QDialog):
         )
         self._urls.setPlaceholderText("https://…  (one URL per line)")
         self._urls.textChanged.connect(self._on_urls_changed)
+        # **The box holds URLs; the list is what the user reads** (`T-209`). Qt split the dialog
+        # roughly evenly between them, so a single pasted line was given about as much height as
+        # sixteen staged rows — and an opened playlist then had nowhere to go. Capped at
+        # `URL_BOX_LINES` and given the layout's *last* claim on spare height, so the rows take the
+        # growth. A maximum rather than a fixed height: a short box still shrinks with the window.
+        self._urls.setMaximumHeight(self._urls.fontMetrics().lineSpacing() * URL_BOX_LINES)
         layout.addWidget(self._urls)
 
-        layout.addWidget(self._build_list())
+        listing = self._build_list()
+        layout.addWidget(listing)
+        # Spare height goes to the rows, which is the half of the dialog that grows with the work.
+        layout.setStretchFactor(listing, 1)
 
         self._status = QLabel(self)
         self._status.setObjectName("statusMessage")
@@ -1325,10 +1348,27 @@ class AddUrlDialog(QDialog):
         The panel's own `sizeHint`, asked of the widget rather than assumed: a constant here would
         be a second opinion about how tall a table is, and the first font change would make it the
         wrong one — `T118-R15` is this project's record of exactly that promise.
+
+        **Bounded by what the list can actually show** (`T-209`). Unbounded, a playlist picker asked
+        for its summary, eight entries and a *Done* button, the row was drawn taller than the list,
+        and the bottom of it went below the fold — taking with it **the only pointer route out of
+        the panel**, since `setIndexWidget` covers the row's own disclosure. `Esc` and `←` still
+        worked, which is why nothing caught it: the keyboard was fine and the pointer had nothing.
+
+        The panel's layout absorbs the difference by compressing the entry table, which is the one
+        part of it that should give: the summary says which row this is and *Done* is the way out,
+        so neither may be the thing that shrinks. `T-193`'s cap stays the **maximum** number of
+        entries; this decides how many of them fit.
         """
         if row is not self._expanded or self._panel is None:
             return 0
-        return self._panel.sizeHint().height()
+        wanted = self._panel.sizeHint().height()
+        available = self._list.viewport().height() - PANEL_VIEWPORT_MARGIN
+        # **Never below the panel's own minimum.** The cap exists to keep *Done* reachable, so
+        # shrinking past the height that shows *Done* would defeat it — and a list that has not been
+        # laid out yet reports a viewport that means nothing, which is the trap `T193-R1` caught one
+        # widget over. The floor makes both cases the same answer: show the panel's controls.
+        return max(self._panel.minimumSizeHint().height(), min(wanted, available))
 
     @property
     def expanded_row(self) -> Row | None:

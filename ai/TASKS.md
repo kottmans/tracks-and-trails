@@ -274,7 +274,7 @@ trigger from the one the test assigns
 
 ### T-209 — An opened row can be taller than the list, putting its own Done button out of reach
 
-**Status:** **In Progress — maintainer-reported, 2026-08-09**: *"This is still WAY too scrunched,
+**Status:** **In Review — fixed 2026-08-09.** Maintainer-reported: *"This is still WAY too scrunched,
 you can barely see a playlist if its expanded out. You also can't re-collapse it."*
 **Owner:** Implementer
 **Priority:** **High** — the second half is a trap: a user who opens a playlist with the pointer has
@@ -303,10 +303,16 @@ this is a row whose disclosure is covered and whose replacement control is off-s
    evenly. The paste box takes about 290 px of a 711 px window to hold one line of URL, and the
    list gets what is left. That is what makes cause 1 reachable at ordinary window sizes.
 
-**A third thing makes it worse and is not this task's to fix.** The row's third line renders the raw
-selector — `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]` — which
-wraps to two lines of developer output inside the summary the panel reproduces. It is recorded here
-and left alone.
+**A third cause was scoped out and turned out to be load-bearing.** The row's third line renders the
+raw selector — `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]` —
+and the panel reproduces it in a word-wrapping summary label. **Measured after the fix**: the entry
+table compresses to 70px, the picker to 121px, and the panel's floor is still **217px** — the
+difference is the summary. So the fix holds at the 700px window the report came from **and not below
+roughly 600px**, where the wrapped summary alone exceeds the viewport.
+
+That limit is recorded in the regression's docstring rather than hidden by choosing a comfortable
+window size. **Shortening the third line is the remaining work** and is left for its own entry,
+because it is a question about what a row should *say* and not about how tall a panel may be.
 
 #### Acceptance criteria
 

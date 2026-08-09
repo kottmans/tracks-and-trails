@@ -4444,6 +4444,57 @@ def test_a_default_naming_nothing_in_the_catalogue_falls_back(
 # --- T-111: the Manage presets… entry on the format control (UX_SPEC §8's P-6) --------------
 
 
+def test_an_open_playlist_keeps_its_done_button_on_screen(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-209`.** *"You can barely see a playlist if its expanded out. You also can't re-collapse
+    it."*
+
+    `panel_height_for` returned the panel's `sizeHint` outright, so a picker asking for its summary,
+    eight entries and a *Done* button was simply drawn taller than the list. The bottom went below
+    the fold — and with it **the only pointer route out**, because `setIndexWidget` covers the row's
+    own disclosure. `Esc` and `←` still worked, which is why nothing caught it.
+
+    Asserted at a **shown window** against the viewport, because the defect is a relationship
+    between two heights and neither is visible in a `sizeHint`. 700px is the height the maintainer
+    reported it at.
+
+    **This does not hold at every size, and the limit is known.** Below roughly 600px the panel
+    still overflows, and the cause is not the entry table — that compresses to `MINIMUM_ENTRIES`.
+    It is the **summary label**, which word-wraps the row's third line: the raw selector string
+    `bestvideo[height<=1080][ext=mp4]+bestaudio[...]`, which at a narrow width wraps to several
+    lines and makes the panel's own minimum taller than a short viewport. `T-209` records that the
+    verbose line was scoped out and then turned out to be load-bearing.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(900, 700)
+    dialog.show()
+    QApplication.processEvents()
+
+    panel = _open_the_picker(dialog, row)
+    QApplication.processEvents()
+
+    listing = staging_list(dialog)
+    viewport = listing.viewport()
+    done = panel.done_button
+    bottom = done.mapTo(viewport, done.rect().bottomLeft()).y()
+
+    try:
+        assert bottom <= viewport.height(), (
+            f"Done sits {bottom - viewport.height()}px below the visible area, so the pointer has "
+            "no way to close the panel it opened"
+        )
+        assert panel.height() <= viewport.height(), (
+            f"the panel is {panel.height()}px inside a {viewport.height()}px viewport"
+        )
+        # It must still be worth opening: the cap compresses the entries, it does not collapse them.
+        assert panel.picker.table.height() > 0, "the entry table was compressed out of existence"
+    finally:
+        dialog.close()
+
+
 def test_the_control_names_its_two_halves(
     qapp: QApplication,
     managers: Callable[..., DownloadManager],

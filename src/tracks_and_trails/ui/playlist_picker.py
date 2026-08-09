@@ -92,6 +92,13 @@ GROUP_TEXT: Final = "Every entry"
 #: which is the case that matters — most playlists a user pastes are shorter than this.
 VISIBLE_ENTRIES: Final = 8
 
+#: The fewest entries the table will shrink to before the panel stops compressing (`T-209`).
+#:
+#: **Two, so the table is visibly a list rather than a single row.** Below the cap the panel asks
+#: for `VISIBLE_ENTRIES`; in a window too short for that, the entries give way — the summary says
+#: which row this is and *Done* is the way out, so neither of those may be what shrinks.
+MINIMUM_ENTRIES: Final = 2
+
 #: `Qt.CheckState` for each of `GroupCheck`'s three answers. A mapping rather than a chain of
 #: conditionals so the three-valued shape survives contact with Qt's own three-valued type.
 _GROUP_STATES: Final = {
@@ -300,6 +307,30 @@ class EntryTable(QTableView):
             + 2 * self.frameWidth()
         )
         return QSize(hint.width(), wanted)
+
+    def minimumSizeHint(self) -> QSize:
+        """Small enough that the panel can fit a short window (`T-209`).
+
+        **`sizeHint` is what the table wants; this is what it will accept.** Qt takes the larger of
+        a widget's minimum and its parent's remaining space, so a table whose minimum equalled its
+        preferred height made the whole panel incompressible — and the panel then overflowed the
+        list, taking its own *Done* button below the fold.
+
+        `MINIMUM_ENTRIES` rows, because a picker showing nothing is not worth opening: the entries
+        compress, and the summary and *Done* do not.
+        """
+        hint = super().minimumSizeHint()
+        model = self.model()
+        rows = min(model.rowCount(), MINIMUM_ENTRIES)
+        if not rows:
+            return hint
+        header = self.horizontalHeader()
+        wanted = (
+            (0 if header.isHidden() else header.sizeHint().height())
+            + sum(self.rowHeight(row) for row in range(rows))
+            + 2 * self.frameWidth()
+        )
+        return QSize(hint.width(), min(hint.height(), wanted) if hint.height() else wanted)
 
     #: The user asked for the rows named to be toggled together.
     toggle_requested = Signal(object)
