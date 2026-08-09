@@ -1802,8 +1802,19 @@ class RowDelegate(QStyledItemDelegate):
         return choice
 
     def destroyEditor(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:
-        """Forget the open row. Every close route reaches here, which is why it is the one hook."""
-        if self._editing_row == index.row():
+        """Forget the open row. Every close route reaches here, which is why it is the one hook.
+
+        **By identity, never by row number** (`T-211`, and it is `T118-R14`'s rule at teardown).
+        This compared `index.row()` to the remembered row — but Qt destroys editors *during* a
+        reset, after the rows have already shifted, so the row it names here is precisely the
+        number that cannot be trusted. On a mismatch the guard skipped, `_editor` kept pointing at
+        a widget whose C++ half was being deleted, and the next `commit_and_close_editor` walked
+        into it: two *"commitData called with an editor that does not belong to this view"*
+        warnings, then `RuntimeError: Internal C++ object (QComboBox) already deleted` — a crash
+        the maintainer hit live. The editor being destroyed *is* the thing to forget; which row it
+        was billed to is irrelevant.
+        """
+        if editor is self._editor:
             self._editing_row = None
             self._editor = None
             self._editing_job_id = None

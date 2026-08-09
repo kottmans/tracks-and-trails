@@ -366,6 +366,42 @@ verification here rests on the maintainer looking at it.
 - `T-203`'s control redesign, which changes what the row holds and not how tall the panel may be
 - The dialog's overall default size. `StagingList`'s hint is the lever this task uses
 
+### T-211 — Destroying an editor trusted the row it was billed to, and crashed
+
+**Status:** **In Review — fixed 2026-08-09.** Maintainer-hit live, traceback from the konsole:
+two `QAbstractItemView::commitData called with an editor that does not belong to this view`
+warnings, then `RuntimeError: Internal C++ object (PySide6.QtWidgets.QComboBox) already deleted`
+from `commit_and_close_editor` via `StagingModel.refresh` → `commit_open_editor`.
+**Owner:** Implementer
+**Priority:** **High** — an uncaught exception in the resolve path; the dialog dies under the user
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T118-R14` (row numbers are not identity), `T108-R2` (the dead-editor class),
+`ui/row_delegate.py` (`destroyEditor`, `commit_and_close_editor`), `ui/add_dialog.py`
+(`StagingModel.refresh`)
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low — one comparison, and the rule it moves to is the one the file already states
+
+#### The mechanism
+
+`RowDelegate.destroyEditor` forgot the open editor only when `index.row()` equalled the remembered
+`_editing_row`. **But Qt destroys editors *during* a reset, after the rows have shifted** — so the
+row it names at teardown is exactly the number `T118-R14` established cannot be trusted. On a
+mismatch the guard skipped, `_editor` kept pointing at a widget whose C++ half was deleted, and the
+next `commit_open_editor` committed it: the two warnings, then the crash.
+
+**The fix is the file's own rule applied at teardown**: forget by *identity* — `editor is
+self._editor` — because the editor being destroyed is the thing to forget, and which row it was
+billed to is irrelevant.
+
+#### Acceptance criteria
+
+- `destroyEditor` with an index naming **a different row** still clears the delegate's editor
+  state, and a subsequent `commit_open_editor` is a no-op rather than a `RuntimeError` — asserted
+  after the deferred delete has actually run
+- The mutation back to the row comparison fails the regression
+- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog suite are clean
+
 ## Ready
 
 ### T-208 — Reproduce the multi-row missing-disclosure report

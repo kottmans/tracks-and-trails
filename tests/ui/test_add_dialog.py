@@ -4800,6 +4800,39 @@ def test_choosing_the_entry_opens_the_manager_and_keeps_the_row_s_format(
     )
 
 
+def test_teardown_forgets_the_editor_whatever_row_it_is_billed_to(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-211`.** The crash from the maintainer's konsole, reproduced at its seam.
+
+    `destroyEditor` compared the index's row to the remembered one — but Qt destroys editors
+    *during* a reset, after rows have shifted, so the row it names at teardown is `T118-R14`'s
+    untrustworthy number exactly. On a mismatch the delegate kept `_editor` pointing at a deleted
+    widget; the next `commit_open_editor` then walked into it — two *"editor that does not belong
+    to this view"* warnings, then `RuntimeError: Internal C++ object already deleted`.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
+    listing = staging_list(dialog)
+    delegate = listing.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+
+    control = open_row_editor(dialog, 0)
+    assert delegate.editing_job_id is not None
+
+    # Qt bills the destruction to whatever the index resolves to *now* — a shifted row.
+    delegate.destroyEditor(control, dialog._model.index(1, 0))
+    QApplication.processEvents()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+    assert delegate.editing_job_id is None, (
+        "teardown trusted the row number and kept a reference to a deleted editor"
+    )
+    # The crash site: with the stale reference cleared this is a no-op, not a RuntimeError.
+    assert dialog.commit_open_editor() is False
+
+
 def test_the_manager_opens_a_turn_after_the_button_is_pressed(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
