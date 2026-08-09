@@ -111,21 +111,28 @@ by execution rather than by argument.
 | `mypy` (src + tests) | Success: no issues found in 125 source files |
 | `mypy --platform win32` | Success: no issues found in 125 source files |
 | `pytest tests/unit/test_task_placement.py` | 14 passed |
-| `QT_QPA_PLATFORM=offscreen pytest` | **NOT REPORTED — see below** |
+| `QT_QPA_PLATFORM=offscreen pytest` | **2807 passed, 17 skipped, 2 deselected, 4 warnings** in 380.29 s |
 | CI at `9fe22fb`, run `31295392039` | **all five jobs success** |
 
-### The full suite is not reported here, and that is deliberate
+### On the suite row, which was open when this was first submitted
 
-**It was still running when the maintainer asked for this handoff**, and I am not writing a number I
-do not have. **That is the entire content of `P3EXIT-R2`** — figures reported from a run that had not
-finished proving them — so an absent result is stated as absent rather than filled from the last
-known-good run.
+**This document was submitted with that row reading `NOT REPORTED`.** The run had not finished, and
+a number I did not have is exactly what `P3EXIT-R2` was about, so it was left absent rather than
+filled from the last known-good run. **The run has since completed and the row now carries its real
+result.** The earlier state is described here rather than erased, because the difference between *a
+figure that was measured* and *a figure that was assumed* is this finding's whole subject.
 
-**What stands in for it, and what does not.** CI run `31295392039` ran the suite to green on five
-jobs at `9fe22fb`, which is **two commits before** this candidate. Everything between `9fe22fb` and
-`a5f65c9` is under `ai/` — **no `src/` or `tests/` file differs across that range** — so the CI
-result is strong evidence and is *not* a local re-run at the candidate head. **Treat this row as
-open.** If you want it closed before ruling, say so and I will supply it.
+**When it ran, precisely.** Launched at `a5f65c9` with `__pycache__` cleared, finished after this
+document's first commit at `d85bf85`. **No `src/` or `tests/` file differs between those two heads**
+— verified, zero files — so the tree it measured is the candidate's tree.
+
+**The count moved from 2803 to 2807** since the previous submission. That is `T-193` and `T-194`
+adding four tests; both are in `## In Review` and neither is claimed by this exit.
+
+**The 4 warnings are not new.** They are `libpyside: Failed to disconnect` from
+`ui/job_detail.py:463`, and `job_detail.py` is untouched by either product commit in this range.
+I have not attributed them further — they are outside this pass, and I am reporting rather than
+explaining them.
 
 **On the head these figures describe.** They were measured at `a5f65c9`, and this document is
 committed after it. **No file under `src/` or `tests/` differs between `a5f65c9` and the candidate
