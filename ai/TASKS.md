@@ -2078,8 +2078,12 @@ only. The entry records one reversal along the way — see *The proposal*.
 **Priority:** Medium — no function is missing; the complaint is that the surface is unusable enough
 that a user does the wrong thing
 **Phase:** Phase 4 — polish. **Not a Phase 3 blocker.**
-**Depends on:** a maintainer ruling on the three questions below, and on `T-146`/`T-195` for the
-settings that would absorb what the row gives up.
+**Depends on:** **`T-204`, which should land first** — this task adds two hit regions to the delegate
+geometry `T-204`'s defect is in, and fixing that geometry after adding to it is the harder order.
+Also a maintainer ruling on the one question below, and `T-146`/`T-195` for the settings that absorb
+what the row gives up. *(**Phase confirmed 2026-08-09:** the maintainer briefly ruled this into
+Phase 3 and reversed it the same day — *"since this is going to effect other tasks, lets just do it
+all in phase 4 as originally planned"*. Phase 3 exits on its existing six criteria.)*
 **Relevant context:** `REQ-007`, `REQ-011`, `REQ-023`, `docs/UX_SPEC.md` §8 and §9.1, `UX-004`,
 `UX-005` §5, `UX-007` (`P-22`, `P-23`), `ARC-002`, `core/models.py`
 (`Preset.output_template`, `DownloadRequest.output_template`), `ui/row_delegate.py` §203–294 and
@@ -2087,8 +2091,11 @@ settings that would absorb what the row gives up.
 `ui/preset_manager.py`
 **Affected surfaces:** `ui/row_delegate.py`, `ui/add_dialog.py`, `ui/preset_manager.py`,
 `docs/UX_SPEC.md`, possibly `ai/REQUIREMENTS.md`
-**Risk:** Medium — the *code* is contained; the risk is ruling away a capability and finding a use
-for it later
+**Risk:** **Medium–High, and the reason changed on 2026-08-09.** It was filed as *"the code is
+contained; the risk is ruling away a capability"*. The capability half shrank — options survive and
+only the template is still in question — but reading the delegate showed the icons must be
+**painted and hit-tested**, which puts the work in the seam that produced `T107-R2`, `T108-R2` and
+`T-204`. The risk is geometry, not scope
 
 #### The defect, stated once
 
@@ -2147,23 +2154,42 @@ learnable in one click and permanent after that, but it is *learned rather than 
 is the trade this shape accepts. `UX-005` §5 is not violated — the control is offered and does what
 it says — but a first-run user will hover it.
 
-#### The two rulings this still needs, and neither is the implementer's
+#### The one ruling this still needs
 
-1. **Does a per-item output template survive?** `REQ-011` reads *"output path and filename control
-   via a configurable output template, with a live preview of the resulting path **for the current
-   item**"*. **"For the current item" describes the preview, not the template's scope** — a
-   defensible reading under which a single application-level template satisfies `REQ-011` and
-   per-item override is not required. **It is a reading, not a fact**, and removing a shipped
-   control on it is a maintainer call.
-2. **`docs/UX_SPEC.md` §8's preset-manager clause is `[T]` — ruled** — and binds the manager to
-   *"the format control's `Manage presets…`"*. Moving it to the footer amends a ruled clause.
+**Does a per-item output template survive?** `REQ-011` reads *"output path and filename control via
+a configurable output template, with a live preview of the resulting path **for the current
+item**"*. **"For the current item" describes the preview, not the template's scope** — a defensible
+reading under which a single application-level template satisfies `REQ-011` and per-item override is
+not required. **It is a reading, not a fact**, and removing a shipped control on it is a maintainer
+call.
 
-*(**A third ruling was open and is now taken.** It asked whether per-item post-processing options
-survive. **They do** — see the proposal above. Nothing in this entry folds `REQ-010`'s seven options
-into presets, and `ui/options_dialog.py` keeps its per-row entry point.)*
+**This ruling now gates the layout, not just the template.** If the per-item template survives, the
+row carries **three** icon buttons rather than two, and the matched-pair argument above has to
+accommodate a third glyph — for which there is even less convention than the list icon.
 
-**A `UX-` decision should also record where library-wide actions live**, because "footer, not per
-row" will apply again.
+*(**Two rulings that were open are now taken, both 2026-08-09.**
+**Per-item post-processing options survive** — nothing here folds `REQ-010`'s seven options into
+presets, and `ui/options_dialog.py` keeps its per-row entry point.
+**`Manage presets…` moves to the footer** — `UX-009` accepts it, amends `docs/UX_SPEC.md` §8's `[T]`
+clause, and generalises the rule so the next library-wide action does not re-argue it.)*
+
+#### What the delegate already does, and what it costs this task
+
+**`NFR-001` is not a problem here, and it looked like one.** `UX-004` measured a real control on
+every row at **85.7 ms for 150 rows and 116.2 ms for 200**, against `NFR-001`'s ~100 ms budget, and
+recorded a sequencing note that `T-119` should reduce it to one reused widget. `T-119` was
+**cancelled into `T-118`**, so that note reads as unfinished.
+
+**It is finished.** `ui/row_delegate.py` has `paint`, `sizeHint`, `editorEvent` and `createEditor`,
+and **no `openPersistentEditor` exists anywhere in `ui/`** — so the row is *painted*, and a real
+combo materialises only on the row being edited. Two more icons are two more painted glyphs, not two
+more widgets per row. **The measurement in `UX-004` describes an arrangement that was never shipped.**
+
+**The cost lands somewhere else instead.** Painted icons must be hit-tested in `editorEvent`, beside
+the twisty that is already handled there — which puts this task in **the delegate's paint-and-hit-test
+seam**. That seam produced `T107-R2` and `T108-R2`, and it currently holds `T-204`'s open defect.
+**Two icons mean two new hit regions in the geometry that is already wrong.** This is the risk this
+task actually carries, and it is why `T-204` should land first.
 
 #### Acceptance criteria
 
