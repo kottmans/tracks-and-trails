@@ -59,9 +59,21 @@ file rather than asserted.
   **the panel outlives the control that dismisses it.** Which user action reaches that state is not
   yet confirmed, and the reproduction is the first deliverable.
 
-**What is still outstanding:** **Phase 3's exit review, third pass.** The maintainer authorised it;
-`P3EXIT-R1`'s taxonomy is corrected and committed, and **the re-submission handoff has not been
-written.** That remains the only thing between Phase 3 and its exit.
+**What is still outstanding:** **Phase 3's exit review, third pass — submitted, awaiting verdict.**
+
+**The third pass is explicitly authorized.** `AGENTS.md` §10 caps the budget at one comprehensive
+review plus one focused correction re-review, and the 2026-08-08 review record states that a third
+focused pass requires the maintainer to authorize it. **The maintainer did so on 2026-08-09**:
+*"authorize the 3rd pass, write the handoff and run the tests at the submitted head."* **Recorded
+here because `ai/REVIEWS.md` is the Reviewer's file** under `AGENTS.md` §4 and carries no
+implementer edit.
+
+`P3EXIT-R2` is **Resolved**. `P3EXIT-R1`'s remaining count/scope half is corrected — **eleven
+deliverables, nine additive and two subtractive**, in those words in `IMPLEMENTATION_PLAN.md`,
+here, and in the submission. *"REQ-bearing"* is gone and was refuted correctly.
+
+The submission is `ai/handoffs/2026-08-09-phase-3-exit-review-3.md`. **Criterion 6 is the only
+criterion still unmet**, and no verdict is claimed for it.
 
 ## 2026-08-08: Phase 3 is complete but for its exit review
 
