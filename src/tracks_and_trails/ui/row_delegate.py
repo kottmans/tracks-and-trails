@@ -767,12 +767,19 @@ class RowDelegate(QStyledItemDelegate):
         #
         # Drawn against the *unindented* body, which is where `_twisty_rect` hit-tests it.
         expanded = index.data(EXPANDED_ROLE)
-        if isinstance(expanded, bool):
+        # **Only the closed state is painted** (`T-210`). An opened row is covered by its panel, and
+        # the panel carries its own disclosure — the way out has to be a real widget, because the
+        # painting underneath it is not reachable and has no accessibility node. Drawing the open
+        # triangle here as well put **two arrows side by side** on every expanded row.
+        #
+        # `EXPANDED_ROLE` still answers all three values and `sizeHint` still reserves the width for
+        # any of them, so the row's anatomy does not shift when it opens (`T-140`).
+        if expanded is False:
             self._paint_twisty(
                 painter,
                 option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING),
                 muted,
-                opened=expanded,
+                opened=False,
             )
         if _depth(index):
             self._paint_rail(painter, option.rect, muted)

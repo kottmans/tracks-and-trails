@@ -445,6 +445,19 @@ QToolBar QWidget[toolbarSpacer="true"] {{
        `[primaryAction]` above gives. */
     background: transparent;
 }}
+QWidget[rowPanel="true"] {{
+    /* **An opened row is drawn over a row that is still being painted** (`T-210`). `setIndexWidget`
+       puts the panel above the item, but the delegate goes on drawing the row underneath — so
+       every pixel the panel does not cover showed the row through it: a sliver of thumbnail beside
+       the heading, and the row's *Download as* line in the gap above the entries.
+
+       **`setAutoFillBackground` does not do this when a stylesheet is set**, which is the whole
+       reason this rule exists rather than a line of Python: a styled widget paints what the sheet
+       says and nothing else. Stated here so the panel is opaque by the same mechanism that colours
+       it. */
+    background: {theme.surface};
+}}
+
 QToolButton[disclosure="true"] {{
     /* **The way out of an opened row, drawn as the way in** (`T-210`). The closed row paints a
        disclosure triangle through the style; this is a real `QToolButton` because the panel covers

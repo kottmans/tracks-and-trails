@@ -456,11 +456,12 @@ def row_summary(row: Row) -> str:
 
 #: How many closed rows the list asks to show before an opened one has to fight for room (`T-210`).
 #:
-#: **Eight, against the panel rather than picked.** An opened playlist wants roughly 314px for its
-#: entries plus its summary and controls; eight closed rows is about that, so a list at its hint can
-#: hold one open row without the window being dragged taller. `VISIBLE_ENTRIES` is the same number
-#: for the same reason, and they are separate constants because they answer different questions.
-WANTED_ROWS: Final = 8
+#: **Five, tuned against the built window rather than picked.** Eight opened the dialog taller than
+#: the maintainer wanted — *"the vertical window should be slightly smaller"* — and the list grows
+#: when a row opens anyway, so the hint only has to give an opened row somewhere to start.
+#: `VISIBLE_ENTRIES` is a different number for a different question: how many entries the picker
+#: shows before it scrolls.
+WANTED_ROWS: Final = 5
 
 #: Used only before the first row exists, when `sizeHintForRow` has nothing to measure.
 _CLOSED_ROW_ESTIMATE: Final = 64
@@ -608,8 +609,12 @@ class RowPanel(QWidget):
         # own anatomy showed through wherever the panel had no child: the thumbnail behind the
         # heading, and the row's *Download as* line behind the summary. Filling the background is
         # what makes "the row, opened" look like one thing instead of two stacked.
+        # `setAutoFillBackground` is ignored once a stylesheet is set, so the opacity is a sheet
+        # rule keyed on this role. Both are kept: the property is what the sheet matches, and the
+        # fill is what an unstyled test window falls back to.
         self.setAutoFillBackground(True)
         self.setBackgroundRole(QPalette.ColorRole.Base)
+        self.setProperty("rowPanel", True)
 
         layout = QVBoxLayout(self)
 

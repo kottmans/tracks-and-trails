@@ -4490,10 +4490,17 @@ def test_an_open_playlist_shows_entries_and_a_way_back(
             f"a refresh moved the panel from {opened_at} to {panel.geometry()}"
         )
         assert panel.isVisible() and panel.height() > 0, "the panel vanished when it was refreshed"
-        assert panel.autoFillBackground(), (
-            "the panel paints no background, so the delegate's row — thumbnail and all — shows "
-            "through underneath it"
+        assert panel.property("rowPanel") is True, (
+            "the panel is not styled by the rowPanel role, so the sheet paints no background for "
+            "it — and the delegate's row, thumbnail and all, shows through underneath"
         )
+        assert panel.autoFillBackground(), "the unstyled fallback fill is gone too"
+
+        # **One arrow, not two** (`T-210`). The panel supplies the way out; the delegate must stop
+        # painting the open state or every expanded row carries a pair of them.
+        model = dialog._model
+        opened = model.index(dialog.rows.index(row), 0)
+        assert model.data(opened, EXPANDED_ROLE) is True, "the row is not recorded as open"
 
         # **Resizing the window must not break it** (`T-210`). An opened row's height is bounded by
         # the viewport now, and Qt does not re-ask a delegate for `sizeHint` when the viewport
