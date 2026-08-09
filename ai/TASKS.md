@@ -1999,6 +1999,69 @@ worse than one that admits there is none — it sends the user to try things. `T
 - Retry *policy* — `T-196` owns the setting, `REQ-015`/`REQ-018` own the behaviour
 - The per-job log view itself, built by `T-084`. This task presents errors; the log stays verbatim
 
+### T-202 — Nothing is said by colour alone
+
+**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** Medium — it is a named exit criterion, and it is cheap if done as a sweep and
+expensive if discovered in the exit review
+**Phase:** Phase 4 — **after** the phase's new surfaces exist, for `T-200`'s reason
+**Depends on:** `T-146` (the theme selector — a rule that holds in light and fails in dark is not a
+rule), `T-201` (error presentation is the densest use of semantic colour)
+**Relevant context:** `NFR-005`, `ARCHITECTURE.md` §8, `ui/theme.py` (`ok`, `warn`, `stop`),
+`T-130` and `T130-R1` (both palettes' contrast), `T-192`'s `ACTIONABLE_STATUS_PROPERTY`,
+`ui/queue_view.py`, `ui/format_table.py`, `ui/row_delegate.py`
+**Affected surfaces:** `ui/theme.py` and every widget that uses a semantic colour
+**Risk:** Low individually, Medium in aggregate — the failures are in places nobody thinks of as
+information, like a disabled row's grey
+
+#### Scope
+
+`NFR-005` ends with *"and no information conveyed by color alone"*, and the plan repeats it as its
+own exit criterion. **`ui/theme.py` defines three semantic colours** — `ok`, `warn`, `stop` — in
+both palettes. Every place one of them carries meaning needs a second channel: a word, a shape, an
+icon, a weight, or a position.
+
+**`T-192` already set the pattern and it should be named as precedent.** The stopped-queue status
+uses `theme.warn` **and** `font-weight: 600`, applied through a dynamic property so the style is
+selected by *role* rather than by object name — which
+`test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces. **A new widget in that role
+inherits both channels.** That is the shape to reuse: the second channel belongs in the stylesheet
+next to the colour, not bolted on per widget.
+
+**Where to look, from the surfaces that use semantic colour today:** job state in the queue, failed
+versus cancelled versus interrupted, the ffmpeg gate summary, format-table rows that cannot be
+chosen, a row that is not committable, the *Read* badge, progress against stalled progress, and
+anything drawn `muted` to mean *unavailable* rather than merely *secondary*.
+
+**Grey is the one most likely to be missed.** A disabled or muted colour saying *this cannot be
+used* is information conveyed by colour alone, and it does not look like a semantic colour because
+it is not in the `ok`/`warn`/`stop` set.
+
+#### Acceptance criteria
+
+- **Every use of a semantic colour is enumerated**, and each carries a second, non-colour channel —
+  the enumeration is the deliverable, because an unenumerated use is how this criterion gets
+  claimed without being met
+- **The second channel is asserted by a test**, not by inspection. A test that reads the rendered
+  text or the widget's role — not one that asserts a colour, which proves the opposite of what is
+  wanted
+- **It holds in both palettes.** Light and dark are checked, since `T130-R1` already found contrast
+  problems that differed between them
+- **Muted-as-unavailable is covered**, or the sweep records that grey is used only for secondary
+  emphasis and never for state
+- The rule is written where the next widget's author will meet it — beside the styling convention
+  `T-192` established, so it is inherited rather than remembered
+- No **new** colour-only signal is added by `T-195`–`T-201`; this task is also the check on them
+
+#### Out of scope
+
+- Contrast ratios and colour blindness simulation. Worth wanting, not requested, and
+  `T-130`/`T130-R1` already fought the contrast fight for both palettes
+- Changing the palette. `ARCHITECTURE.md` §8 owns the brand colours; this task adds channels
+  beside them
+- High-contrast or user-supplied themes — not requested, and each needs its own decision
+
 ---
 
 ## Proposed — Phase 4.5
