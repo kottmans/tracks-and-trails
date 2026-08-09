@@ -643,7 +643,10 @@ line would not have"* closed the defect class.
 
 - **Windows runtime is verified only by CI** (`OPS-003`) — no person has run the application there.
 - **Real sites are unverified**; every fixture is recorded or derived (`ai/TESTING.md` §5).
-- **`T-192`, `T-193` and `T-194` are unreviewed Phase 4 work** and received no verdict.
+- **`T-192`, `T-193` and `T-194` received no verdict from *this* review** — they are Phase 4
+  polish and were outside its boundary. *(They were reviewed separately on 2026-08-09 and are
+  approved, along with the two corrections they produced, `T-205` and `T-206`. The exclusion
+  above is a statement about this exit's scope, not about their state.)*
 
 *(**Phase 3 has eleven deliverables: nine additive and two subtractive.** `T-107`, `T-108`,
 `T-109`, `T-110`, `T-111`, `T-112`, `T-113`, `T-114` and `T-181` add capability; `T-169` and

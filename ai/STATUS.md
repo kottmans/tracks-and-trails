@@ -67,8 +67,9 @@ and `P3EXIT-R3` are all **Resolved**, and criterion 6 is met. **Four passes.** E
 document outliving the thing that changed it; none was about the product.
 
 **What is outstanding is now Phase 4's**, and nothing blocks starting it. `T-192`, `T-193` and
-`T-194` sit in `## In Review` with no verdicts — Phase 4 polish, explicitly outside the exit.
-`T-204` should land before `T-203`, which depends on it.
+`T-194` were reviewed separately on 2026-08-09 and are **approved**, with `T-205` and `T-206` —
+the two corrections that review produced — approved with them. **`## In Review` is empty.**
+**`T-204` is the only open GUI defect**, and it should land before `T-203`, which depends on it.
 
 ### The pass budget, and the standing authorization that now governs it
 
