@@ -321,6 +321,20 @@ That limit is recorded in the regression's docstring rather than hidden by choos
 window size. **Shortening the third line is the remaining work** and is left for its own entry,
 because it is a question about what a row should *say* and not about how tall a panel may be.
 
+**Maintainer-confirmed on screen, 2026-08-09:** *"Looks like the issue regarding the clipping/bleed
+through is fixed."* The working mechanism took three attempts, and the miss is worth keeping: the
+sheet rule and the `rowPanel` property existed one commit earlier and painted nothing, because **a
+plain `QWidget` subclass does not paint a stylesheet background without `WA_StyledBackground`** —
+and no offscreen probe can show the difference, since every headless render path fills the
+background that a real compositor does not. The screen was the only gate that worked.
+
+**One more usability item, same session:** the wheel handed an exhausted gesture to the outer list —
+*"once the inner scroll bar reaches the bottom, it immediately jumps you to the bottom of the
+other"* — so `EntryTable.wheelEvent` now consumes at its edges and still passes the wheel through
+when it has no scroll range of its own. Asserted on the handler's accepted flag directly: `sendEvent`
+rewrites it in flight and — measured — performs no parent propagation for a synthesised wheel, so
+the flag the handler hands back is the only honest witness this seam owns.
+
 **A regression I introduced, and could not reproduce headlessly.** The first `T204-R4` fix restored
 the panel's geometry *inside* the `dataChanged` emit — before Qt re-measures the view — so
 `visualRect` answered a stale, sometimes empty, rectangle and **the panel vanished the moment it was

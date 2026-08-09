@@ -45,7 +45,7 @@ from typing import Any, Final
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSize, Qt, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -338,6 +338,28 @@ class EntryTable(QTableView):
     select_all_requested = Signal()
 
     # Qt's override name, hence the camelCase.
+    # Qt's override name, hence the camelCase.
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """The wheel stops at the table's edge instead of grabbing the whole list (`T-210`).
+
+        Qt *ignores* a wheel event a scroll area cannot use, which hands it to the next scroll
+        area up — so the moment the entries hit bottom, the outer staging list took over
+        mid-gesture and the dialog jumped to its own end. The maintainer's words: *"once the inner
+        scroll bar reaches the bottom, it immediately jumps you to the bottom of the other."*
+
+        Consumed at the edges instead: reaching an end simply stops. The outer list is scrolled by
+        pointing at it, not through this table — the boundary a nested list needs to feel like a
+        thing rather than a hole.
+
+        **A table with no scroll range of its own still passes the wheel along.** A short picker
+        consuming wheels it cannot use would be a dead patch between the user and the list.
+        """
+        if self.verticalScrollBar().maximum() == 0:
+            event.ignore()
+            return
+        super().wheelEvent(event)
+        event.accept()
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
         if key == int(Qt.Key.Key_Space):

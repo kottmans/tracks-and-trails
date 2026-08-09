@@ -18,9 +18,10 @@ from pathlib import Path
 from typing import Final
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from tracks_and_trails.core.models import MediaInfo, PlaylistEntry
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
@@ -488,6 +489,83 @@ def test_a_shown_picker_does_not_scroll_at_or_below_the_cap(qapp: QApplication, 
         f"a shown picker of {count} entries can still scroll {scrollable}px inside itself; at or "
         "below the cap every entry must be reachable without scrolling"
     )
+
+
+def _wheel_down(target: QWidget) -> QWheelEvent:
+    """One notch of wheel-down, aimed at `target`'s centre."""
+    centre = QPointF(target.rect().center())
+    return QWheelEvent(
+        centre,
+        QPointF(target.mapToGlobal(target.rect().center())),
+        QPoint(0, 0),
+        QPoint(0, -120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+
+
+def test_the_wheel_stops_at_the_tables_edge(qapp: QApplication) -> None:
+    """**`T-210`.** *"Once the inner scroll bar reaches the bottom, it immediately jumps you to the
+    bottom of the other scroll bar."*
+
+    Qt hands an unusable wheel event to the next scroll area up, so the outer staging list took
+    over the gesture the instant the entries ended. **The acceptance flag is the propagation
+    contract**: an accepted event goes no further, an ignored one is the parent's — which makes
+    this testable without a compositor, unlike the panel's painting.
+    """
+    picker = _picker_of(16)
+    picker.resize(600, 400)
+    picker.show()
+    qapp.processEvents()
+    table = picker._table
+    table.resize(table.sizeHint())
+    qapp.processEvents()
+    bar = table.verticalScrollBar()
+    assert bar.maximum() > 0, "sixteen entries did not overflow the cap, so this proves nothing"
+
+    try:
+        bar.setValue(bar.maximum())
+        event = _wheel_down(table)
+        # **The handler is called directly, and the flag read before Qt's routing touches it.**
+        # `sendEvent` runs the notify machinery, which rewrites the accepted flag as it goes and —
+        # measured here — performs no parent propagation for a synthesised wheel at all, so both a
+        # spy on the parent and the post-`sendEvent` flag witness nothing. What this seam *owns* is
+        # the flag it hands back: accepted stops the gesture, ignored donates it to the outer list.
+        table.wheelEvent(event)
+
+        assert event.isAccepted(), (
+            "a wheel at the table's bottom edge was handed to the outer list, which is the jump"
+        )
+        assert bar.value() == bar.maximum(), "the consumed wheel somehow scrolled past the end"
+    finally:
+        picker.close()
+
+
+def test_a_short_picker_does_not_eat_the_wheel(qapp: QApplication) -> None:
+    """The other direction: a table with nothing to scroll passes the wheel to the list behind it.
+
+    Consuming a wheel it cannot use would make a two-entry picker a dead patch in the middle of a
+    scrollable dialog — the opposite defect, one hover away.
+    """
+    picker = _picker_of(2)
+    picker.resize(600, 400)
+    picker.show()
+    qapp.processEvents()
+    table = picker._table
+    table.resize(table.sizeHint())
+    qapp.processEvents()
+    assert table.verticalScrollBar().maximum() == 0, "two entries should not scroll at all"
+
+    try:
+        event = _wheel_down(table)
+        table.wheelEvent(event)
+        assert not event.isAccepted(), (
+            "a table with no scroll range consumed the wheel, walling off the list behind it"
+        )
+    finally:
+        picker.close()
 
 
 def test_a_shown_picker_scrolls_above_the_cap(qapp: QApplication) -> None:
