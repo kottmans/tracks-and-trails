@@ -114,307 +114,6 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
-### T-192 — The stopped-queue message hides at the right, against the ffmpeg summary
-
-**Status:** **In Review — found by the maintainer 2026-08-08 and fixed the same day.** *(Built by
-the Implementer; no criterion is claimed approved.)*
-
-**What it was.** Both status-bar labels used `addPermanentWidget`, which packs to the **right** end
-of a `QStatusBar`. The queue-gate line and the environment summary therefore sat hard against each
-other and read as one sentence:
-
-> Queue stopped — press Start to download  ffmpeg found; all post-processing features are available.
-
-**The half asking the user to act read as the tail of the half that does not** — and it was the far
-end of a 1344px window from where a reader starts.
-
-**The fix, in two halves.** `addWidget` puts the gate line at the **left**, so the gap between it
-and the summary is the width of the bar rather than a space. And a dynamic property,
-`ACTIONABLE_STATUS_PROPERTY`, marks the state the user is expected to act on, which the sheet draws
-in `warn` at weight 600.
-
-**Emphasised only while stopped.** The running line reports, like the summary beside it, and a bar
-where everything is emphasised emphasises nothing. **`NFR-005` is satisfied before the property
-exists, not by it**: the label already says *"Queue stopped — press Start to download"* in words,
-and the weight and colour are a second channel on top.
-
-**A role, not an object name** (`T-132`'s rule, enforced by
-`test_the_sheet_styles_by_class_so_a_new_widget_inherits_it`), and the widget is **repolished** by
-hand on each change — Qt does not restyle on a property change, so a selector that is set and never
-repolished applies once at construction and then silently stops.
-
-**Owner:** Implementer
-**Priority:** Medium — no data is at risk, but `UX-006`'s whole point is that a stopped queue
-explains itself, and this is that explanation being hard to find
-**Phase:** Phase 4 — polish. **Not a Phase 3 blocker**: `T-181` and `UX-006` are approved and the
-message says the right words; where it sits and how it is weighted is presentation
-**Depends on:** nothing
-**Relevant context:** `UX-006`, `T-181`, `T181-R1`, `T-132` (style by role), `NFR-005`,
-`ui/main_window.py`, `ui/theme.py`
-**Affected surfaces:** `ui/main_window.py`, `ui/theme.py`, `tests/ui/test_main_window.py`
-**Risk:** Low — presentation only; no state, no persistence, no behaviour
-
-#### Acceptance criteria
-
-- The queue-gate line sits at the left of the status bar and the environment summary at the right,
-  asserted on **measured positions** rather than on which method was called
-- Only the stopped state is emphasised; the running state draws as quietly as the summary
-- The state remains legible in words alone (`NFR-005`), with weight and colour as a second channel
-- The emphasis is styled **by role**, and the widget is repolished so the rule keeps applying
-- `warn` clears `MINIMUM_CONTRAST` on both themes and both status-bar surfaces
-- `ruff`, `ruff format`, both `mypy` gates, and the main-window and theme suites are clean
-
-#### Out of scope
-
-- Anything the message *says*. `UX-006` settled the wording and `T-181` is approved
-
-### T-194 — Reordering a row scrolls the queue back to the top
-
-**Status:** **In Review — found by the maintainer 2026-08-08 and fixed the same day.** *(Built by
-the Implementer; no criterion is claimed approved.)*
-
-**What it was.** A reorder resets the model, which drops the current index. `_ensure_a_current_row`
-then filled the hole with **row 0**, and the view followed it. Moving a track several places meant
-scrolling back down between every press — the maintainer's report exactly.
-
-**The fix follows `T126-R1`'s precedent rather than inventing one.** That correction already
-remembers the open editor across a reset and restores it **by id**, for the reason a reorder makes
-unavoidable: the row number is the thing that changed. `_remember_current_row` and
-`_restore_current_row` are the same pair for the keyboard's position.
-
-**Two details worth the reviewer's attention:**
-
-- **Restoring follows the *job*, not the offset.** A pixel offset would be wrong the moment rows
-  shift, and following the job is also what the user is doing — the row being moved stays under
-  them as it travels.
-- **Current is restored; selection is only restored if there was one.** `_ensure_a_current_row`'s
-  own docstring is the rule: a current index is where the keyboard is, a selection is what the user
-  chose, and `T-086` offers the per-row file actions on a *selection*. Promoting one to the other
-  would offer actions for a row nobody picked. `scrollTo` uses `EnsureVisible` rather than
-  `PositionAtCenter`, so a one-place move does not jump a row that was already in view.
-
-**Ordering matters and is stated where it is relied on:** the restore is connected **before**
-`_ensure_a_current_row`, so the fallback keeps its job of covering a genuinely empty start instead
-of silently overriding a restore.
-
-**Owner:** Implementer
-**Priority:** Medium — no data is at risk, but `REQ-016` is reordering the queue and this made
-reordering more than one place actively unpleasant
-**Phase:** Phase 3 — a defect in `REQ-016`'s surface, not new work
-**Depends on:** nothing
-**Relevant context:** `REQ-016`, `T-081`, `T126-R1` (the precedent), `T081-R3`, `T-086`,
-`ui/queue_view.py`
-**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
-**Risk:** Low — one saved id restored across a reset the view already instruments
-
-#### Acceptance criteria
-
-- After a reorder the keyboard is on **the job that moved**, asserted by job id rather than by row
-  number or scroll offset
-- The restore does not create a selection where there was none
-- A job that left the queue restores nothing, and the existing fallback still covers an empty start
-- `ruff`, `ruff format`, both `mypy` gates and the queue-view suite are clean
-
-#### Out of scope
-
-- What reordering *does*. `T-081` settled it and `queue_position` is unchanged
-
----
-
-### T-193 — The playlist picker shows two entries at a time, and can stick open showing none
-
-**Status:** **In Review — the sizing half is fixed, 2026-08-08. The stuck-open half is not.**
-*(Built by the Implementer; no criterion is claimed approved.)*
-
-**The stuck-open half now has a mechanism and an owner: `T-204`.** It was traced on 2026-08-09 from
-the maintainer's reproduction — *"I think it removed the video from being downloaded, but it made
-everything inaccessible"*. `EXPANDED_ROLE` returns `None` — *not a playlist, draw no disclosure* —
-whenever a row is not `committable`, and nothing closes an open panel when that happens, so **the
-panel outlives the control that dismisses it**. **Acceptance criteria 3 and 4 below are `T-204`'s to
-meet, not this task's**, and this entry does not claim them. What is offered for review here is the
-sizing half alone.
-
-**Symptom 1 is fixed and measured.** `EntryTable.sizeHint` now derives its height from the model's
-row count, capped at `VISIBLE_ENTRIES = 8`. Measured before and after, same fixture sizes:
-
-| Entries | Table height |
-|---|---|
-| 2 | 62px |
-| 4 | 122px |
-| 8 | 242px |
-| 16 | **242px** — was the same as 2 entries |
-| 200 | 242px |
-
-So a sixteen-track album shows eight rows instead of two, and below the cap **nothing scrolls inside
-the panel at all** — which is what removes the second scrollbar rather than merely making it
-reachable. The cap is asserted as a comparison between counts, not against pixels: pinning a number
-would fail on the first font change, which is `T118-R15`.
-
-**Symptom 2 is not fixed, and the reason is `T-193`'s own acceptance criterion.** It says reproduce
-the stuck state in a failing test *before* fixing it, because both prior findings at this seam
-needed a second round after a fix aimed at a guess. **The obvious cause is already guarded**:
-`T108-R2` found exactly *"the row stayed tall and blank while `_expanded` still pointed at it"* on a
-model reset, and `remount_panel` fixes it by row identity. So the path the maintainer hit is a
-different one, and it has not been found.
-
-**What would pin it down:** whether the playlist was still probing when it was opened, whether a
-second URL was pasted or removed while it was open, and whether the disclosure was toggled twice
-quickly. The one-turn window between `open_playlist_picker` setting `_expanded` and `_mount_panel`
-running is the untested seam most likely to hold it.
-
-*(Was: Proposed — found by the maintainer, 2026-08-08, pasting a real 16-item YouTube playlist. Two
-symptoms, two mechanisms, one surface.)*
-
-**This is `T-110`/`P-19`'s panel — an approved Phase 3 deliverable — so it bears on the phase exit.**
-The exit review had been submitted when this arrived; see the note at the end.
-
-#### What is wrong
-
-**1. The entry list shows two or three rows of sixteen, behind a scrollbar inside a scrollbar.**
-`AddUrlDialog.panel_height_for` returns `self._panel.sizeHint().height()`, and the panel's hint
-comes from a `QTableView` whose default hint is a fixed default rather than one derived from its
-row count. So a sixteen-entry playlist is drawn at the same height as a two-entry one, and the rest
-is reachable only through the table's own scrollbar — **nested inside the staging list's scrollbar**,
-which is the "scrolling isn't straightforward" half of the report.
-
-*(The `sizeHint`-not-a-constant reasoning in `panel_height_for` is sound and is not what is wrong:
-the panel is being asked what it wants, and the panel's answer does not account for its content.)*
-
-**2. The row can sit expanded with nothing under it.** Observed with the disclosure open, the row
-grown to full panel height, and the area beneath it empty. `open_playlist_picker` sets `_expanded`
-and defers the mount by one event-loop turn (`T108-R2`), so between those two moments
-`panel_height_for` already returns a height while `setIndexWidget` has not run. **If the mount does
-not complete, the row stays tall and empty** — and `T107-R2` and `T108-R2` are this project's record
-of the same geometry seam failing in two other ways, so a third is credible rather than surprising.
-
-#### Scope
-
-Make the panel's height follow its content, bounded so a 200-entry playlist does not demand a
-2,000px row — a visible-rows cap with the table scrolling inside it is the ordinary answer, and it
-is what makes one scrollbar rather than two. Then find the path that leaves a row expanded with no
-widget, and make it either mount or close.
-
-**Reproduce before fixing.** Both symptoms came from one real playlist; the second was reached by
-interaction the report does not fully pin down, and a fix aimed at a guess is how `T107-R2` and
-`T108-R2` each got a second round.
-
-#### Acceptance criteria
-
-- A playlist of sixteen shows enough entries at once to be chosen from, asserted on the **panel's
-  measured height against its row count** rather than on a constant
-- The height is bounded for a large playlist, and the entries scroll **inside** the panel — one
-  scrollbar in the interaction, not two
-- A row that is expanded always has a panel under it, or is not expanded — asserted by driving the
-  open/close path rather than by inspecting state
-- The stuck state is reproduced in a test **before** it is fixed, and that test fails without the fix
-- `docs/UX_SPEC.md` §7's keyboard route still opens and closes the panel
-- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog and playlist-picker suites are clean
-
-#### Out of scope
-
-- What the picker *contains*. `T-110` and `UX-007`'s `P-19` settled the checkboxes, the tri-state
-  group and the columns; this is how much of it you can see and whether it appears at all
-
-**Owner:** Implementer
-**Priority:** **Medium-High** — `REQ-004` is *choose which entries to enqueue*, and choosing from
-two visible rows of sixteen is the feature being technically present and practically unusable
-**Phase:** Phase 3 — it is a defect in a Phase 3 deliverable, not new work
-**Depends on:** nothing
-**Relevant context:** `T-110`, `P-19`, `T107-R2`, `T108-R2`, `T118-R15`, `docs/UX_SPEC.md` §7,
-`ui/add_dialog.py` (`panel_height_for`, `_mount_panel`), `ui/playlist_picker.py`
-**Affected surfaces:** `ui/add_dialog.py`, `ui/playlist_picker.py`, their tests
-**Risk:** Medium — the panel geometry seam has produced two prior findings, and both were about a
-size arriving at the wrong moment rather than being computed wrongly
-
-#### Why this was filed rather than fixed immediately
-
-The Phase 3 exit review was mid-flight. **Submitting an exit for a phase while knowing an approved
-deliverable has a reproducible defect in its main interaction is the shape this session has caught
-four times already** — a document asserting something that had stopped being true. So it is filed,
-the exit submission is held, and the disposition is the maintainer's.
-
----
-
-
----
-
-
----
-
-
-### T-205 — Include the playlist header in its pre-mount height
-
-**Status:** **In Review — corrected 2026-08-09.** `EntryTable.sizeHint` now asks
-`header.isHidden()` rather than `header.isVisible()`, so the header's height is counted while
-the picker is still unmounted — which is when `AddUrlDialog.panel_height_for` asks for it.
-**The first correction's test was also wrong** and a mutation caught it: it re-measured the
-hint *after* `show()`, where `isVisible()` is already true and both versions agree. The test
-now captures the hint unmounted, mounts at that height, and asserts the scroll range.
-**Owner:** Implementer
-**Priority:** Medium — the sizing change still leaves every at-or-below-cap playlist scrolling,
-which is the interaction the task exists to remove
-**Phase:** Phase 4 — focused correction to T-193
-**Depends on:** nothing
-**Relevant context:** `T-193`, `T193-R1`, `ui/playlist_picker.py` (`EntryTable.sizeHint`),
-`tests/ui/test_playlist_picker.py`
-**Affected surfaces:** `ui/playlist_picker.py`, `tests/ui/test_playlist_picker.py`
-**Risk:** Low — one height term and its mounted-widget proof; the seam is timing-sensitive because
-the dialog asks for the hint before the panel is visible
-
-#### Acceptance criteria
-
-- The pre-mount size hint includes the horizontal header when that header is configured to be
-  shown; it must not use whole-widget visibility as a proxy for that configuration
-- Shown 2-, 6-, and 8-entry pickers have no vertical scroll range and every entry fits inside the
-  table viewport
-- A shown 16-entry picker is capped at eight visible entries and has a positive vertical scroll
-  range; a 200-entry picker asks for the same height
-- The regression test exercises a shown/mounted widget and fails at `027dc7c`, where the hidden
-  size-hint tests pass while the visible table still scrolls
-- `ruff`, `ruff format`, both mypy gates, and the playlist-picker/add-dialog suites are clean
-
-#### Out of scope
-
-- T-204's stuck-open panel defect and T-193's already-accepted scope split
-
----
-
-### T-206 — Reopen a queue editor without selecting its row
-
-**Status:** **In Review — corrected 2026-08-09.** `_reopen_editor` now positions the editor
-through `selectionModel().setCurrentIndex(index, NoUpdate)` instead of the view's own
-`setCurrentIndex`, which selects. Selection is `_restore_current_row`'s to decide; both
-handlers run on `modelReset` and the last writer was winning. Two regressions cover it —
-an unselected row stays unselected, and a selected one stays selected.
-**Owner:** Implementer
-**Priority:** Medium — a reset with an editor open creates a selection the user never made and
-therefore exposes selection-scoped row actions
-**Phase:** Phase 4 — focused correction to T-194
-**Depends on:** nothing
-**Relevant context:** `T-194`, `T194-R1`, `T126-R1`, `T-086`, `ui/queue_view.py`
-(`_restore_current_row`, `_reopen_editor`), `tests/ui/test_queue_view.py`
-**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
-**Risk:** Low — current-index and selection restoration share a reset path, so the selected and
-unselected cases must be proved together
-
-#### Acceptance criteria
-
-- With a format editor open on an unselected current job, a reorder/reset restores the current job
-  by id and reopens its editor without creating a selection
-- A job that was selected remains selected after the same path; the correction does not erase a
-  real user selection
-- The restore slot still runs before the fallback slot, and a removed current job still falls back
-  to the first surviving row without selecting it
-- The unselected-editor regression fails at `027dc7c`, where `_reopen_editor` calls the view's
-  selecting `setCurrentIndex` after `_restore_current_row` preserved no selection
-- `ruff`, `ruff format`, both mypy gates, and the queue-view suite are clean
-
-#### Out of scope
-
-- Changing reorder semantics or the format editor's commit/reopen behavior
-
----
-
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -2960,6 +2659,311 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+### T-192 — The stopped-queue message hides at the right, against the ffmpeg summary
+
+**Status:** **Complete — Approved 2026-08-09 at `027dc7c`.** Found by the maintainer
+2026-08-08 and fixed the same day. The reviewer ran a **negative probe**: a property-only
+change does not restyle, and the explicit repolish moves the weight 600 → 400 — the failure
+a test asserting the property rather than the rendered result would have missed.
+
+**What it was.** Both status-bar labels used `addPermanentWidget`, which packs to the **right** end
+of a `QStatusBar`. The queue-gate line and the environment summary therefore sat hard against each
+other and read as one sentence:
+
+> Queue stopped — press Start to download  ffmpeg found; all post-processing features are available.
+
+**The half asking the user to act read as the tail of the half that does not** — and it was the far
+end of a 1344px window from where a reader starts.
+
+**The fix, in two halves.** `addWidget` puts the gate line at the **left**, so the gap between it
+and the summary is the width of the bar rather than a space. And a dynamic property,
+`ACTIONABLE_STATUS_PROPERTY`, marks the state the user is expected to act on, which the sheet draws
+in `warn` at weight 600.
+
+**Emphasised only while stopped.** The running line reports, like the summary beside it, and a bar
+where everything is emphasised emphasises nothing. **`NFR-005` is satisfied before the property
+exists, not by it**: the label already says *"Queue stopped — press Start to download"* in words,
+and the weight and colour are a second channel on top.
+
+**A role, not an object name** (`T-132`'s rule, enforced by
+`test_the_sheet_styles_by_class_so_a_new_widget_inherits_it`), and the widget is **repolished** by
+hand on each change — Qt does not restyle on a property change, so a selector that is set and never
+repolished applies once at construction and then silently stops.
+
+**Owner:** Implementer
+**Priority:** Medium — no data is at risk, but `UX-006`'s whole point is that a stopped queue
+explains itself, and this is that explanation being hard to find
+**Phase:** Phase 4 — polish. **Not a Phase 3 blocker**: `T-181` and `UX-006` are approved and the
+message says the right words; where it sits and how it is weighted is presentation
+**Depends on:** nothing
+**Relevant context:** `UX-006`, `T-181`, `T181-R1`, `T-132` (style by role), `NFR-005`,
+`ui/main_window.py`, `ui/theme.py`
+**Affected surfaces:** `ui/main_window.py`, `ui/theme.py`, `tests/ui/test_main_window.py`
+**Risk:** Low — presentation only; no state, no persistence, no behaviour
+
+#### Acceptance criteria
+
+- The queue-gate line sits at the left of the status bar and the environment summary at the right,
+  asserted on **measured positions** rather than on which method was called
+- Only the stopped state is emphasised; the running state draws as quietly as the summary
+- The state remains legible in words alone (`NFR-005`), with weight and colour as a second channel
+- The emphasis is styled **by role**, and the widget is repolished so the rule keeps applying
+- `warn` clears `MINIMUM_CONTRAST` on both themes and both status-bar surfaces
+- `ruff`, `ruff format`, both `mypy` gates, and the main-window and theme suites are clean
+
+#### Out of scope
+
+- Anything the message *says*. `UX-006` settled the wording and `T-181` is approved
+
+### T-193 — The playlist picker shows two entries at a time, and can stick open showing none
+
+**Status:** **Complete — the sizing half Approved 2026-08-09 at `a6fbf67`**, after
+`T193-R1`. **The stuck-open half is `T-204`'s**, and the reviewer ruled the split legitimate:
+*"sizing and the stuck-open panel are independent mechanisms with distinct correction
+contracts."* **Acceptance criteria 3 and 4 below are `T-204`'s** and are not claimed here.
+
+**The stuck-open half now has a mechanism and an owner: `T-204`.** It was traced on 2026-08-09 from
+the maintainer's reproduction — *"I think it removed the video from being downloaded, but it made
+everything inaccessible"*. `EXPANDED_ROLE` returns `None` — *not a playlist, draw no disclosure* —
+whenever a row is not `committable`, and nothing closes an open panel when that happens, so **the
+panel outlives the control that dismisses it**. **Acceptance criteria 3 and 4 below are `T-204`'s to
+meet, not this task's**, and this entry does not claim them. What is offered for review here is the
+sizing half alone.
+
+**Symptom 1 is fixed and measured.** `EntryTable.sizeHint` now derives its height from the model's
+row count, capped at `VISIBLE_ENTRIES = 8`. Measured before and after, same fixture sizes:
+
+| Entries | Table height |
+|---|---|
+| 2 | 62px |
+| 4 | 122px |
+| 8 | 242px |
+| 16 | **242px** — was the same as 2 entries |
+| 200 | 242px |
+
+So a sixteen-track album shows eight rows instead of two, and below the cap **nothing scrolls inside
+the panel at all** — which is what removes the second scrollbar rather than merely making it
+reachable. The cap is asserted as a comparison between counts, not against pixels: pinning a number
+would fail on the first font change, which is `T118-R15`.
+
+**Symptom 2 is not fixed, and the reason is `T-193`'s own acceptance criterion.** It says reproduce
+the stuck state in a failing test *before* fixing it, because both prior findings at this seam
+needed a second round after a fix aimed at a guess. **The obvious cause is already guarded**:
+`T108-R2` found exactly *"the row stayed tall and blank while `_expanded` still pointed at it"* on a
+model reset, and `remount_panel` fixes it by row identity. So the path the maintainer hit is a
+different one, and it has not been found.
+
+**What would pin it down:** whether the playlist was still probing when it was opened, whether a
+second URL was pasted or removed while it was open, and whether the disclosure was toggled twice
+quickly. The one-turn window between `open_playlist_picker` setting `_expanded` and `_mount_panel`
+running is the untested seam most likely to hold it.
+
+*(Was: Proposed — found by the maintainer, 2026-08-08, pasting a real 16-item YouTube playlist. Two
+symptoms, two mechanisms, one surface.)*
+
+**This is `T-110`/`P-19`'s panel — an approved Phase 3 deliverable — so it bears on the phase exit.**
+The exit review had been submitted when this arrived; see the note at the end.
+
+#### What is wrong
+
+**1. The entry list shows two or three rows of sixteen, behind a scrollbar inside a scrollbar.**
+`AddUrlDialog.panel_height_for` returns `self._panel.sizeHint().height()`, and the panel's hint
+comes from a `QTableView` whose default hint is a fixed default rather than one derived from its
+row count. So a sixteen-entry playlist is drawn at the same height as a two-entry one, and the rest
+is reachable only through the table's own scrollbar — **nested inside the staging list's scrollbar**,
+which is the "scrolling isn't straightforward" half of the report.
+
+*(The `sizeHint`-not-a-constant reasoning in `panel_height_for` is sound and is not what is wrong:
+the panel is being asked what it wants, and the panel's answer does not account for its content.)*
+
+**2. The row can sit expanded with nothing under it.** Observed with the disclosure open, the row
+grown to full panel height, and the area beneath it empty. `open_playlist_picker` sets `_expanded`
+and defers the mount by one event-loop turn (`T108-R2`), so between those two moments
+`panel_height_for` already returns a height while `setIndexWidget` has not run. **If the mount does
+not complete, the row stays tall and empty** — and `T107-R2` and `T108-R2` are this project's record
+of the same geometry seam failing in two other ways, so a third is credible rather than surprising.
+
+#### Scope
+
+Make the panel's height follow its content, bounded so a 200-entry playlist does not demand a
+2,000px row — a visible-rows cap with the table scrolling inside it is the ordinary answer, and it
+is what makes one scrollbar rather than two. Then find the path that leaves a row expanded with no
+widget, and make it either mount or close.
+
+**Reproduce before fixing.** Both symptoms came from one real playlist; the second was reached by
+interaction the report does not fully pin down, and a fix aimed at a guess is how `T107-R2` and
+`T108-R2` each got a second round.
+
+#### Acceptance criteria
+
+- A playlist of sixteen shows enough entries at once to be chosen from, asserted on the **panel's
+  measured height against its row count** rather than on a constant
+- The height is bounded for a large playlist, and the entries scroll **inside** the panel — one
+  scrollbar in the interaction, not two
+- A row that is expanded always has a panel under it, or is not expanded — asserted by driving the
+  open/close path rather than by inspecting state
+- The stuck state is reproduced in a test **before** it is fixed, and that test fails without the fix
+- `docs/UX_SPEC.md` §7's keyboard route still opens and closes the panel
+- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog and playlist-picker suites are clean
+
+#### Out of scope
+
+- What the picker *contains*. `T-110` and `UX-007`'s `P-19` settled the checkboxes, the tri-state
+  group and the columns; this is how much of it you can see and whether it appears at all
+
+**Owner:** Implementer
+**Priority:** **Medium-High** — `REQ-004` is *choose which entries to enqueue*, and choosing from
+two visible rows of sixteen is the feature being technically present and practically unusable
+**Phase:** Phase 3 — it is a defect in a Phase 3 deliverable, not new work
+**Depends on:** nothing
+**Relevant context:** `T-110`, `P-19`, `T107-R2`, `T108-R2`, `T118-R15`, `docs/UX_SPEC.md` §7,
+`ui/add_dialog.py` (`panel_height_for`, `_mount_panel`), `ui/playlist_picker.py`
+**Affected surfaces:** `ui/add_dialog.py`, `ui/playlist_picker.py`, their tests
+**Risk:** Medium — the panel geometry seam has produced two prior findings, and both were about a
+size arriving at the wrong moment rather than being computed wrongly
+
+#### Why this was filed rather than fixed immediately
+
+The Phase 3 exit review was mid-flight. **Submitting an exit for a phase while knowing an approved
+deliverable has a reproducible defect in its main interaction is the shape this session has caught
+four times already** — a document asserting something that had stopped being true. So it is filed,
+the exit submission is held, and the disposition is the maintainer's.
+
+---
+
+
+---
+
+
+---
+
+
+### T-194 — Reordering a row scrolls the queue back to the top
+
+**Status:** **Complete — Approved 2026-08-09 at `a6fbf67`**, after `T194-R1`. Found by the
+maintainer 2026-08-08 and fixed the same day.
+
+**What it was.** A reorder resets the model, which drops the current index. `_ensure_a_current_row`
+then filled the hole with **row 0**, and the view followed it. Moving a track several places meant
+scrolling back down between every press — the maintainer's report exactly.
+
+**The fix follows `T126-R1`'s precedent rather than inventing one.** That correction already
+remembers the open editor across a reset and restores it **by id**, for the reason a reorder makes
+unavoidable: the row number is the thing that changed. `_remember_current_row` and
+`_restore_current_row` are the same pair for the keyboard's position.
+
+**Two details worth the reviewer's attention:**
+
+- **Restoring follows the *job*, not the offset.** A pixel offset would be wrong the moment rows
+  shift, and following the job is also what the user is doing — the row being moved stays under
+  them as it travels.
+- **Current is restored; selection is only restored if there was one.** `_ensure_a_current_row`'s
+  own docstring is the rule: a current index is where the keyboard is, a selection is what the user
+  chose, and `T-086` offers the per-row file actions on a *selection*. Promoting one to the other
+  would offer actions for a row nobody picked. `scrollTo` uses `EnsureVisible` rather than
+  `PositionAtCenter`, so a one-place move does not jump a row that was already in view.
+
+**Ordering matters and is stated where it is relied on:** the restore is connected **before**
+`_ensure_a_current_row`, so the fallback keeps its job of covering a genuinely empty start instead
+of silently overriding a restore.
+
+**Owner:** Implementer
+**Priority:** Medium — no data is at risk, but `REQ-016` is reordering the queue and this made
+reordering more than one place actively unpleasant
+**Phase:** Phase 3 — a defect in `REQ-016`'s surface, not new work
+**Depends on:** nothing
+**Relevant context:** `REQ-016`, `T-081`, `T126-R1` (the precedent), `T081-R3`, `T-086`,
+`ui/queue_view.py`
+**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
+**Risk:** Low — one saved id restored across a reset the view already instruments
+
+#### Acceptance criteria
+
+- After a reorder the keyboard is on **the job that moved**, asserted by job id rather than by row
+  number or scroll offset
+- The restore does not create a selection where there was none
+- A job that left the queue restores nothing, and the existing fallback still covers an empty start
+- `ruff`, `ruff format`, both `mypy` gates and the queue-view suite are clean
+
+#### Out of scope
+
+- What reordering *does*. `T-081` settled it and `queue_position` is unchanged
+
+---
+
+### T-205 — Include the playlist header in its pre-mount height
+
+**Status:** **Complete — Approved 2026-08-09 at `a6fbf67`.** `EntryTable.sizeHint` now asks
+`header.isHidden()` rather than `header.isVisible()`, so the header's height is counted while
+the picker is still unmounted — which is when `AddUrlDialog.panel_height_for` asks for it.
+**The first correction's test was also wrong** and a mutation caught it: it re-measured the
+hint *after* `show()`, where `isVisible()` is already true and both versions agree. The test
+now captures the hint unmounted, mounts at that height, and asserts the scroll range.
+**Owner:** Implementer
+**Priority:** Medium — the sizing change still leaves every at-or-below-cap playlist scrolling,
+which is the interaction the task exists to remove
+**Phase:** Phase 4 — focused correction to T-193
+**Depends on:** nothing
+**Relevant context:** `T-193`, `T193-R1`, `ui/playlist_picker.py` (`EntryTable.sizeHint`),
+`tests/ui/test_playlist_picker.py`
+**Affected surfaces:** `ui/playlist_picker.py`, `tests/ui/test_playlist_picker.py`
+**Risk:** Low — one height term and its mounted-widget proof; the seam is timing-sensitive because
+the dialog asks for the hint before the panel is visible
+
+#### Acceptance criteria
+
+- The pre-mount size hint includes the horizontal header when that header is configured to be
+  shown; it must not use whole-widget visibility as a proxy for that configuration
+- Shown 2-, 6-, and 8-entry pickers have no vertical scroll range and every entry fits inside the
+  table viewport
+- A shown 16-entry picker is capped at eight visible entries and has a positive vertical scroll
+  range; a 200-entry picker asks for the same height
+- The regression test exercises a shown/mounted widget and fails at `027dc7c`, where the hidden
+  size-hint tests pass while the visible table still scrolls
+- `ruff`, `ruff format`, both mypy gates, and the playlist-picker/add-dialog suites are clean
+
+#### Out of scope
+
+- T-204's stuck-open panel defect and T-193's already-accepted scope split
+
+---
+
+### T-206 — Reopen a queue editor without selecting its row
+
+**Status:** **Complete — Approved 2026-08-09 at `a6fbf67`.** `_reopen_editor` now positions the editor
+through `selectionModel().setCurrentIndex(index, NoUpdate)` instead of the view's own
+`setCurrentIndex`, which selects. Selection is `_restore_current_row`'s to decide; both
+handlers run on `modelReset` and the last writer was winning. Two regressions cover it —
+an unselected row stays unselected, and a selected one stays selected.
+**Owner:** Implementer
+**Priority:** Medium — a reset with an editor open creates a selection the user never made and
+therefore exposes selection-scoped row actions
+**Phase:** Phase 4 — focused correction to T-194
+**Depends on:** nothing
+**Relevant context:** `T-194`, `T194-R1`, `T126-R1`, `T-086`, `ui/queue_view.py`
+(`_restore_current_row`, `_reopen_editor`), `tests/ui/test_queue_view.py`
+**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
+**Risk:** Low — current-index and selection restoration share a reset path, so the selected and
+unselected cases must be proved together
+
+#### Acceptance criteria
+
+- With a format editor open on an unselected current job, a reorder/reset restores the current job
+  by id and reopens its editor without creating a selection
+- A job that was selected remains selected after the same path; the correction does not erase a
+  real user selection
+- The restore slot still runs before the fallback slot, and a removed current job still falls back
+  to the first surviving row without selecting it
+- The unselected-editor regression fails at `027dc7c`, where `_reopen_editor` calls the view's
+  selecting `setCurrentIndex` after `_restore_current_row` preserved no selection
+- `ruff`, `ruff format`, both mypy gates, and the queue-view suite are clean
+
+#### Out of scope
+
+- Changing reorder semantics or the format editor's commit/reopen behavior
+
+---
+
 
 ### T-188 — A recorded source with a separate video and audio stream
 
