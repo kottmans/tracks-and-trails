@@ -1753,6 +1753,65 @@ first time. That is precisely the material `REQ-026` says is never logged.
 - `--netrc` and client certificates, which `SEC-003` ruled *in* but assigned to Phase 4.5's audit
 - Re-opening `DAT-003`. Its reopening condition is stated in the decision; this task works inside it
 
+### T-198 — Report the yt-dlp version, update it in place, and be able to go back
+
+**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** Medium — `C-002` says sites break constantly, and without this a broken site stays
+broken until the next release of this application
+**Phase:** Phase 4
+**Depends on:** `T-033`, which bundles the pinned baseline into the frozen artifact and whose entry
+already names this task's half as *"the in-app update action (`OPS-002`, Phase 4)"*.
+**Relevant context:** `REQ-025`, `OPS-002`, `C-002`, `T-033`, `T-012` (yt-dlp in a spawned worker),
+`T-035` (environment resolution), `downloader/worker.py`
+**Affected surfaces:** a version/update surface in the settings dialog or `Help`, the environment
+resolution path, packaging
+**Risk:** **Medium–High**, and it is a *packaging* risk rather than a UI one — an update that lands
+somewhere the frozen build does not read is an update that silently does nothing
+
+#### Scope
+
+`OPS-002` is accepted and states the shape: **ship a pinned baseline the user can update in
+place.** `T-033` built the baseline half. This task builds the reporting and the update, and the
+part `OPS-002`'s own title implies but nobody has built — **getting back**.
+
+**The revert is a plan exit criterion, not a nicety.** §Phase 4 reads: *"Updating yt-dlp in-app
+changes the reported version and **reverting restores the baseline**."* An update route with no way
+back turns `C-002` around: today a broken site waits for a release; with a one-way update, a bad
+yt-dlp release breaks the application until the *next* yt-dlp release. **The baseline is the thing
+that makes updating safe**, which is why `T-033` bundled it.
+
+**Where an updated yt-dlp lives is the real question**, and it differs between a source checkout and
+a frozen build. `T-012` runs yt-dlp in a spawned worker and `T-035` resolves the environment; an
+update that writes next to the source but is read from the frozen bundle produces a reported version
+that changes and a behaviour that does not — **the worst outcome available here**, because it looks
+like it worked.
+
+#### Acceptance criteria
+
+- The version in use is **reported in the UI**, and it is the version the **worker actually
+  imports** — read from the running environment, not from a pinned constant or a packaging manifest
+- Updating **changes the reported version**, and a download afterwards runs on the new one — proved
+  through the worker, not the parent process
+- **Reverting restores the baseline**, and the reported version returns to it. This is the criterion
+  most likely to be built last and dropped
+- The update **works the same way in the frozen artifact**, or the frozen build states plainly that
+  it cannot update and why. `OPS-003` means the Windows half is CI-only, so a claim that it works
+  there needs a CI proof, not a Linux one
+- A failed update — no network, a refused index, a corrupt download — **leaves the working version
+  in place** and reports. A half-updated yt-dlp is a broken application
+- Nothing about the update path writes a token, an index URL with credentials, or a path into a
+  log (`NFR-007`, and `T-197`'s gate is what proves it)
+
+#### Out of scope
+
+- Updating **Tracks & Trails itself**. `REQ-025` is explicit: *"without reinstalling Tracks &
+  Trails"* — this updates yt-dlp only
+- Automatic or background updates. Nothing asks for them, and an unattended update of the component
+  `C-002` calls the volatile one needs its own decision
+- Updating **ffmpeg** — `T-199` owns ffmpeg, and `REQ-024` asks for detection and an override, not
+  an installer
+
 ---
 
 ## Proposed — Phase 4.5
