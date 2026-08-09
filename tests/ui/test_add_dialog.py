@@ -3390,11 +3390,15 @@ def test_a_row_that_left_the_queue_can_still_close_its_picker(
         "picker is cancelling the dialog — the panel outlived the control that dismisses it"
     )
 
-    # Close the way the triangle does: the delegate emits into `toggle_playlist`.
-    dialog.toggle_playlist(job_id)
+    # **Closed by pressing the control the user has** (`T204-R1`). Calling `toggle_playlist` was
+    # calling the receiving slot, which proves the slot and not the route. While a panel is open
+    # `setIndexWidget` covers the row's disclosure, so the panel's own *Done* button is the pointer
+    # route out — and it is the one the report says was missing.
+    assert panel is not None
+    panel.done_button.click()
     QApplication.processEvents()
 
-    assert dialog.open_panel is None, "the real disclosure route did not close the panel"
+    assert dialog.open_panel is None, "the panel's own Done button did not close it"
     assert row.entry_selection == chosen, (
         f"closing discarded the choice made in the picker: {row.entry_selection} != {chosen}"
     )
@@ -4442,6 +4446,56 @@ def test_a_default_naming_nothing_in_the_catalogue_falls_back(
 
 
 # --- T-111: the Manage presets… entry on the format control (UX_SPEC §8's P-6) --------------
+
+
+def test_a_value_refresh_leaves_the_open_panel_over_its_row(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T204-R4`.** A value-only refresh re-measured the row and left the panel behind.
+
+    `StagingModel.refresh` emits `dataChanged` with **no roles**, so it carries `SizeHintRole` and
+    the view re-lays the row out. An index widget keeps whatever geometry it was last given, so the
+    panel collapsed toward its minimum while the row stayed tall — the picker body and *Done* were
+    clipped, and the delegate's painting showed through underneath. That is `T-204`'s criterion 6,
+    and it is why the pointer had no way to close the panel.
+
+    **Shown, and asserted on geometry.** The committed regression for `T204-R1` neither showed the
+    dialog nor measured the panel, which is exactly why a green suite hid this.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(900, 700)
+    dialog.show()
+    QApplication.processEvents()
+
+    panel = _open_the_picker(dialog, row)
+    QApplication.processEvents()
+    listing = staging_list(dialog)
+    before = panel.size()
+    assert before.height() > 100, f"the panel never opened to a usable size: {before}"
+
+    try:
+        # The reachable transition from `T204-R1`: the row's job leaves the queue.
+        job_id = row.job_id
+        assert isinstance(job_id, str) and job_id
+        dialog._on_job_changed(job_id, JobStatus.CANCELLED.value)
+        QApplication.processEvents()
+
+        index = dialog._model.index(dialog.rows.index(row), 0)
+        assert panel.size() == before, (
+            f"the value refresh shrank the panel from {before} to {panel.size()}"
+        )
+        assert panel.geometry() == listing.visualRect(index), (
+            "the panel no longer covers its row, so the row paints through underneath"
+        )
+
+        # And it can still be closed by the control the panel offers.
+        panel.done_button.click()
+        QApplication.processEvents()
+        assert dialog.open_panel is None, "the panel's own Done button did not close it"
+    finally:
+        dialog.close()
 
 
 def test_an_open_playlist_keeps_its_done_button_on_screen(

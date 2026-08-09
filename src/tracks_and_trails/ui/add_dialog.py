@@ -981,6 +981,14 @@ class StagingModel(QAbstractListModel):
         if rows == self._shown:
             if rows:
                 self.dataChanged.emit(self.index(0, 0), self.index(len(rows) - 1, 0))
+                # **A value-only refresh re-lays the row out too, and the panel does not follow**
+                # (`T204-R4`). This emit names no roles, so it carries `SizeHintRole` with the
+                # rest and the view re-measures the row — but an index widget keeps whatever
+                # geometry it was last given, so the mounted panel collapsed toward its minimum
+                # while the row stayed tall: **the picker and its `Done` button were clipped and
+                # the delegate's painting showed through underneath.** The structural path already
+                # remounts (below); this one only has to put the geometry back.
+                self._dialog.relayout_panel()
             return
 
         # **Commit while `_shown` is still the old tuple** (`T118-R14`). This is the whole of the
@@ -1636,6 +1644,26 @@ class AddUrlDialog(QDialog):
         self._list.setUniformItemSizes(True)
         self.refresh()
         self._list.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def relayout_panel(self) -> None:
+        """Put the open panel back over its row, without remounting it (`T204-R4`).
+
+        **Geometry only.** `remount_panel` exists for a *structural* reset, where Qt has forgotten
+        the widget-to-index association entirely and `setIndexWidget` must be called again. A
+        value-only `dataChanged` keeps the association and merely re-measures the row, so calling
+        `setIndexWidget` here would tear down and rebuild a live panel — and the picker holds the
+        user's half-made selection.
+
+        Silent when nothing is open, because every value refresh reaches this and most of them have
+        no panel to move.
+        """
+        row, panel = self._expanded, self._panel
+        if row is None or panel is None:
+            return
+        index = self._index_of(row)
+        if not index.isValid():
+            return
+        panel.setGeometry(self._list.visualRect(index))
 
     def remount_panel(self) -> None:
         """Put the open panel back on its row after a model reset, or close it if the row is gone.
