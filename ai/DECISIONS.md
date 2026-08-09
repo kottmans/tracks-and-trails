@@ -4614,6 +4614,62 @@ deleted. And every path the download *reports* is resolved and contained before 
 
 ---
 
+## UX-009 — Library-wide actions live in the dialog footer, not on a row
+
+**Status:** **Accepted** (2026-08-09) — maintainer ruling, taken while reviewing `T-203`'s mockups
+**Date:** 2026-08-09
+**Amends:** `docs/UX_SPEC.md` §8's `[T]` clause binding the preset manager to *"the format control's
+`Manage presets…`"*. **Narrows** `UX-004`, which put "the rest" of the row's controls in a menu on
+the row. **Does not amend** `UX-004`'s core ruling — the per-row format choice stays a visible
+control on the row, which is the part `T118-R5` fought for.
+
+### Context
+
+`UX-004` ruled that the row carries a visible format control and that other actions live in a menu.
+What it did not anticipate is *which* actions would end up in that menu. By Phase 3's end the format
+combo held four commands beside its presets — `Choose specific formats…`, `Options…`,
+`Where it goes…` and `Manage presets…` — and the maintainer's review of the built dialog on
+2026-08-08 was that **the control looks like a value picker while containing commands**, and appears
+to accept a choice it discards.
+
+**One of the four is not like the others.** `Choose specific formats…`, `Options…` and
+`Where it goes…` all act on **the row they are on**. `Manage presets…` opens the shared preset
+library — it does the same thing from every row, and the row it was invoked from is irrelevant to
+it. It was offered once per row, on every row, because the combo was the only place it could go.
+
+### Decision
+
+**An action whose effect does not depend on the row it was invoked from belongs in the dialog's
+footer, not on a row.**
+
+1. **`Manage presets…` moves to the Add URLs footer.** `docs/UX_SPEC.md` §8's `[T]` clause is
+   amended to say so. The five operations `REQ-007` names are unchanged — this moves the door, not
+   the room.
+2. **The rule generalises**, which is why this is a decision rather than a line in `T-203`: the next
+   library-wide action will ask the same question, and the answer should not be re-argued.
+3. **Per-row actions stay per-row.** This decision says nothing about how they are drawn — that is
+   `T-203`'s, and the maintainer ruled its layout separately on the same day.
+
+### Rationale
+
+A per-row control implies per-row effect. Offering a library-wide command from a row teaches the
+opposite, and it costs the row width on something that is identical everywhere. The footer already
+holds the actions that apply to the dialog rather than to any row.
+
+**`UX-005` §5's rule is the same instinct one step further on** — nothing is drawn that would be
+refused. A command that is drawn N times and means one thing is not refused, but it is drawn N−1
+times more than it means anything.
+
+### What this does not decide
+
+- **How the remaining per-row verbs are drawn.** `T-203` owns that.
+- **Whether a per-item output template survives at all.** Still open, still the maintainer's, and
+  it is the one ruling `T-203` is waiting on.
+- **Anything about the queue's rows.** This is the add dialog's footer; the main window has its own
+  anatomy in `UX-005`.
+
+---
+
 ## DAT-007 — The thumbnail cache partitions by database, and the shared one is adopted once
 
 **Status:** **Accepted** (2026-08-08) — maintainer ratification, required by the Reviewer in
