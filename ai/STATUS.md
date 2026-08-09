@@ -102,8 +102,9 @@ when the fourth pass resolved `P3EXIT-R3` the table went on saying *"Corrected, 
 screens below a snapshot that already said the phase had exited. **A second copy of a fact is a
 second thing that can rot**, and the reviewer proposed the replacement in the approval itself.
 
-Read `ai/REVIEWS.md` for what each finding was, what it required, and who resolved it. The
-submissions are `ai/handoffs/2026-08-09-phase-3-exit-review-3.md` through `-5.md`.
+Read `ai/REVIEWS.md` for what each finding was, what it required, and who resolved it. **Five
+submissions were made**, the last at `4aea3dc`; they were handoffs and are deleted per `AGENTS.md`
+§6.
 
 ## 2026-08-08: Phase 3 is complete but for its exit review
 
@@ -209,7 +210,7 @@ only copy — deliberate, and recorded here so nobody later reads its absence as
 
 **Codex reviewed `T-111` at `bf30d82` and requested changes**, with three findings: two High, one
 Medium. All three are corrected and awaiting re-review; **none is claimed closed**, which is the
-reviewer's call. `ai/handoffs/2026-08-08-T-111-r2.md` is the re-review handoff.
+reviewer's call.
 
 - **`T111-R1` (High) — the route the code's own docstring promised.** `_build_form` said the seven
   post-processing options have an editor already and that a second set of controls would be two
@@ -811,8 +812,8 @@ a task from building a `[P]` clause until it is ratified; 25 were open, and ever
 deliverable's surface was decided by at least one — so eight of the nine were startable and none was
 finishable. `T-181` was the exception only because `UX-006` settled its surface when it was accepted.
 
-**`UX-007` ruled all 25 on 2026-08-07**, question by question, from the pack at
-`ai/handoffs/2026-08-07-ux-spec-ruling-pack.md`. **Three were ruled against what the spec
+**`UX-007` ruled all 25 on 2026-08-07**, question by question, from a Planner's recommendation
+pack — whose recommendations `UX-007` itself records, question by question. **Three were ruled against what the spec
 proposed** — the format table is an expanding row rather than a modal (`P-1`), the template preview
 is focusable rather than a live region (`P-22`, on the spec's own argument against itself), and
 per-job pause is `T-113`'s to decide rather than settled here (`P-10`). A blanket ratification would
@@ -1143,7 +1144,7 @@ garbage.
 
 **Ruled 2026-08-04: the `T-128` prerequisite is satisfied, and a measurement replaces it.** The two
 crashes were not recurrences of `T-074`'s fault, so the premise `OPS-007` was originally made on is
-intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; the other half — the independent exit review — was requested 2026-08-05 in `ai/handoffs/2026-08-05-phase-2-exit-review.md` and **signed the phase off at `8de5a72`**. `ai/REVIEWS.md` holds every verdict, and **no tally is kept here** — a count beside the record is a second copy of it, and it drifts the moment another verdict lands. It read *"three times"* against five.
+intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; the other half — the independent exit review — was requested 2026-08-05 and **signed the phase off at `8de5a72`**. `ai/REVIEWS.md` holds every verdict, and **no tally is kept here** — a count beside the record is a second copy of it, and it drifts the moment another verdict lands. It read *"three times"* against five.
 
 *(The paragraph below is kept as written, because it is the reasoning the measurement was chosen by.)* **Phase 2's exit then waited on a clean 60-run Linux soak** against the
 corrected teardown — sized against the measured 2-in-39 baseline, where an unchanged rate gives a
