@@ -13441,3 +13441,68 @@ pass. T204-R3 does not hold that correction open because T-208 now owns it, but 
 as closed evidence for T-204. The row/panel overlap and Windows runtime remain unverified. The
 Reviewer modified only `ai/REVIEWS.md` and added T-207/T-208 to `ai/TASKS.md`; no source or test file
 was changed, and no commit or push was made.
+
+## 2026-08-09 — T204-R1 / T204-R2 focused correction re-review
+
+**Task:** T-204 — keep a playlist panel closable after its row stops being committable
+
+**Original implementation:** `f18786a..01ce5bf`
+
+**Prior review record:** `48bfcac`
+
+**Correction head reviewed:** `6aded1a`
+
+**Verdict:** **Changes requested**
+
+This was the ordinary focused correction pass. The correction now drives the status change through
+`manager.job_changed` and preserves the user's picker selection, but it still invokes the dialog
+slot directly instead of proving a user can close the shown panel. Exercising the same path in a
+shown dialog reproduces T-204's outstanding overlap criterion: the panel collapses to its size hint,
+clips its body and Done button, and exposes row painting underneath. The full suite remains green
+because the committed regression neither shows the dialog nor checks panel geometry.
+
+### Findings
+
+| ID | Severity | Blocks approval | Status | Finding and required correction |
+|---|---|---:|---|---|
+| **T204-R1** | **High** | **Yes** | **Open — partially corrected** | `tests/ui/test_add_dialog.py:3338` now uses a real picker gesture and real `manager.job_changed` path, but closes with `dialog.toggle_playlist(job_id)`. That calls the receiving slot directly and skips the view/delegate event route the test claims to exercise. In a shown-dialog probe, clicking the exposed disclosure location emitted no `disclosure_toggled` signal and left the panel open. Replace the direct slot call with a real user event on an actually available close control or event route, and assert the panel closes while retaining the selection. |
+| **T204-R4** | **High** | **Yes** | **Open** | `src/tracks_and_trails/ui/add_dialog.py:2481` refreshes row data after the reachable `job_changed` transition, but does not restore the mounted index widget's geometry. In the shown-dialog reproduction the row remained `485x407` while its `PlaylistPanel` collapsed to `190x26`; the picker body and Done button were clipped and delegate-painted row content showed through. This is the unresolved row/panel overlap in T-204 criterion 6 and leaves no working pointer close path. Keep the mounted panel laid out to the row after value-only refreshes, audit the sibling refresh paths, and add a shown-widget regression that checks geometry plus a real close interaction. T-209 owns the correction. |
+| **T204-R2** | **Medium** | **Yes** | **Open — partially corrected** | `ai/TASKS.md:10` and `ai/TASKS.md:19` still say Phase 4 has ten entries with nothing started, while `## In Review` contains T-204 and T-207; line 22 also says the section holds three tasks when it holds two. Removing the local `## In Review` enumeration fixed one stale copy but not the sibling current-truth summaries in the same file. Remove or derive every live count/state copy so the header and start-here block agree with the actual queues. |
+| **T204-R3** | **Medium** | **No** | **Open follow-up** | The maintainer's separate multi-row report remains unreproduced. T-208 continues to own the investigation; it does not block this correction, and its passing guard is not evidence that the report is explained. |
+
+### Independent verification
+
+Python tools were invoked as `.venv/bin/python3 -m <tool>`. Qt tests used
+`QT_QPA_PLATFORM=offscreen`. Mutation/probe trees were fresh archives under `/tmp`; bytecode caches
+were removed before the old-order mutation.
+
+| Check | Real result |
+|---|---|
+| `git diff --check 48bfcac..6aded1a` | **pass** |
+| Correction source/test boundary | **2 files, 53 insertions and 22 deletions** |
+| `.venv/bin/python3 -m ruff check .` | **pass** |
+| `.venv/bin/python3 -m ruff format --check .` | **pass, 163 files** |
+| `.venv/bin/python3 -m mypy src` | **pass, 51 files** |
+| `.venv/bin/python3 -m mypy` | **pass, 125 files** |
+| `.venv/bin/python3 -m mypy --platform win32` | **pass, 125 files** |
+| Task-placement gate before this review entry | **14 passed** |
+| Add-dialog, row-delegate and playlist-picker suites | **216 passed in 88.66 s** |
+| Full default suite, with loopback/process permission | **2815 passed, 17 skipped, 2 deselected, 4 warnings in 382.99 s** |
+| Corrected reachable regression | **1 passed** |
+| Old-order role mutation against corrected regression | **1 failed**, expected negative proof |
+| Shown-dialog geometry and pointer probes | **panel `190x26` versus row `485x407`; pointer click emitted 0 disclosure signals and did not close it** |
+
+The four suite warnings are the existing `libpyside: Failed to disconnect` warnings at
+`ui/job_detail.py:463`, outside this correction. Windows runtime was not independently exercised;
+both static platform gates are clean.
+
+### Merge readiness and pass budget
+
+**Not merge-ready at `6aded1a`.** T204-R1 and T204-R4 are High and remain in the current review;
+AGENTS.md §10 therefore authorizes another focused correction and verification pass despite the
+ordinary two-pass budget. T204-R2 should be corrected in the same batch. T204-R3 remains the
+non-blocking T-208 follow-up.
+
+The Reviewer added this record and T-209 only. No source or test file was changed for this review,
+and no commit or push was made. The unrelated uncommitted T-203 work present in the shared checkout
+was not reviewed or modified.
