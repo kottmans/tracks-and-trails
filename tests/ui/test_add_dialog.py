@@ -110,6 +110,7 @@ from tracks_and_trails.ui.row_delegate import (
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
+    PRESETS_HEADER_TEXT,
     ROW_HEIGHT,
     ROW_PRESET_NAME,
     SELECTOR_LINES,
@@ -118,6 +119,7 @@ from tracks_and_trails.ui.row_delegate import (
     TEMPLATE_AVAILABLE_ROLE,
     TEMPLATE_DATA,
     TEMPLATE_TEXT,
+    VERBS_HEADER_TEXT,
     VERBS_ROLE,
     RowDelegate,
     selector_line_width,
@@ -4440,6 +4442,59 @@ def test_a_default_naming_nothing_in_the_catalogue_falls_back(
 
 
 # --- T-111: the Manage presets… entry on the format control (UX_SPEC §8's P-6) --------------
+
+
+def test_the_control_names_its_two_halves(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-203`, option *D*.** The complaint was that the control looks like a value picker while
+    containing commands, so the two halves are named and ruled apart.
+
+    Asserted on **order** rather than presence alone: a heading that does not sit above the entries
+    it describes is worse than no heading.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    entries = [control.itemText(index) for index in range(control.count())]
+
+    assert PRESETS_HEADER_TEXT in entries, entries
+    assert VERBS_HEADER_TEXT in entries, entries
+    assert entries.index(PRESETS_HEADER_TEXT) == 0, (
+        f"the presets heading is not above the presets: {entries}"
+    )
+    assert entries.index(VERBS_HEADER_TEXT) > entries.index(PRESETS_HEADER_TEXT), entries
+    assert entries.index(OPTIONS_TEXT) > entries.index(VERBS_HEADER_TEXT), (
+        f"a verb sits above the heading that introduces it: {entries}"
+    )
+
+
+def test_the_group_headings_cannot_be_chosen(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    spin: Callable[..., bool],
+) -> None:
+    """A heading a user can commit is a value that is not a value.
+
+    That is the exact confusion `T-203` exists to remove, so landing on one with `↓` and pressing
+    `Enter` must be impossible rather than merely unlikely. `QComboBox`'s model is a
+    `QStandardItemModel` in practice and not by contract, so this is the test that notices if the
+    flag change is ever skipped.
+    """
+    dialog, _row = _staged(dialogs, managers, spin)
+    control = open_row_editor(dialog, 0)
+    model = control.model()
+
+    for heading in (PRESETS_HEADER_TEXT, VERBS_HEADER_TEXT):
+        row = [control.itemText(i) for i in range(control.count())].index(heading)
+        flags = model.flags(model.index(row, 0))
+        assert not flags & Qt.ItemFlag.ItemIsSelectable, (
+            f"{heading!r} can be selected, so the keyboard can commit a heading as a format"
+        )
+        assert not flags & Qt.ItemFlag.ItemIsEnabled, f"{heading!r} is still enabled"
 
 
 def test_the_footer_offers_the_preset_manager_where_a_store_is_wired(

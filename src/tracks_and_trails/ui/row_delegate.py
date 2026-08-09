@@ -45,7 +45,15 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPalette, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QFontMetrics,
+    QMouseEvent,
+    QPainter,
+    QPalette,
+    QPixmap,
+    QStandardItemModel,
+)
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QAbstractItemView,
@@ -299,6 +307,39 @@ PRESET_INHERITABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 12
 #: a row that follows the batch has made a choice — the same one as everything else — and a blank
 #: reads as no format at all rather than as the one below it (`T118-R4`).
 INHERITED_TEXT: Final = "Same as all"
+
+#: The two group labels inside the format control (`T-203`, option *D*, 2026-08-09).
+#:
+#: **The complaint was that the control "looks like a value picker while containing commands."** A
+#: separator alone draws the boundary; naming the halves says what the boundary *is*. Only added
+#: when there are verbs to separate from — a control holding presets alone has one half and needs
+#: no heading for it.
+PRESETS_HEADER_TEXT: Final = "Presets"
+
+#: The heading over the entries that open a window rather than choosing a value.
+VERBS_HEADER_TEXT: Final = "Just this item"
+
+
+def _add_section_header(choice: QComboBox, text: str, *, at: int | None = None) -> None:
+    """Insert a non-selectable group label into `choice`.
+
+    **Selectable would be worse than absent.** A heading a user can land on with `↓` and commit
+    with `Enter` is a value that is not a value — the exact confusion `T-203` exists to remove — so
+    the item's flags are cleared and the keyboard steps over it.
+
+    `QComboBox`'s model is a `QStandardItemModel` in practice and not by contract, so the flag
+    change is attempted and skipped rather than assumed. **If it is ever skipped the heading is
+    still drawn and merely selectable**, which is a cosmetic loss and not a broken control —
+    `test_the_group_headings_cannot_be_chosen` is what would notice.
+    """
+    position = choice.count() if at is None else at
+    choice.insertItem(position, text, None)
+    model = choice.model()
+    if isinstance(model, QStandardItemModel):
+        item = model.item(position)
+        if item is not None:
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+
 
 #: The editor's object name. Shared by every row deliberately: they are one control reused, and a
 #: test asserting the keyboard surface counts them rather than naming twenty of them.
@@ -1744,7 +1785,9 @@ class RowDelegate(QStyledItemDelegate):
         )
         offered_verbs = [(text, data) for role, text, data in verbs if index.data(role)]
         if offered_verbs:
+            _add_section_header(choice, PRESETS_HEADER_TEXT, at=0)
             choice.insertSeparator(choice.count())
+            _add_section_header(choice, VERBS_HEADER_TEXT)
         for text, data in offered_verbs:
             choice.addItem(text, data)
         # `MANAGE_PRESETS_*` is deliberately absent: `UX-009` moved it to the dialog's footer,
