@@ -456,12 +456,12 @@ def row_summary(row: Row) -> str:
 
 #: How many closed rows the list asks to show before an opened one has to fight for room (`T-210`).
 #:
-#: **Five, tuned against the built window rather than picked.** Eight opened the dialog taller than
-#: the maintainer wanted — *"the vertical window should be slightly smaller"* — and the list grows
+#: **Seven, tuned against the built window rather than picked.** Eight opened the dialog taller than
+#: the maintainer wanted — *"slightly smaller"* — and five took too much off. The list grows
 #: when a row opens anyway, so the hint only has to give an opened row somewhere to start.
 #: `VISIBLE_ENTRIES` is a different number for a different question: how many entries the picker
 #: shows before it scrolls.
-WANTED_ROWS: Final = 5
+WANTED_ROWS: Final = 7
 
 #: Used only before the first row exists, when `sizeHintForRow` has nothing to measure.
 _CLOSED_ROW_ESTIMATE: Final = 64
@@ -609,12 +609,22 @@ class RowPanel(QWidget):
         # own anatomy showed through wherever the panel had no child: the thumbnail behind the
         # heading, and the row's *Download as* line behind the summary. Filling the background is
         # what makes "the row, opened" look like one thing instead of two stacked.
-        # `setAutoFillBackground` is ignored once a stylesheet is set, so the opacity is a sheet
-        # rule keyed on this role. Both are kept: the property is what the sheet matches, and the
-        # fill is what an unstyled test window falls back to.
+        # **Three things, and it takes all three** (`T-210`). This took two attempts that changed
+        # nothing on screen while passing their tests, so each is spelled out:
+        #
+        # 1. `setAutoFillBackground` is **ignored once a stylesheet is set**, so the opacity has to
+        #    come from a sheet rule. It is kept for the unstyled case a test window runs in.
+        # 2. A plain `QWidget` subclass **does not paint a stylesheet background at all** unless
+        #    `WA_StyledBackground` is set. Without it the sheet's rule matches and draws nothing,
+        #    which is why the delegate's row kept showing through a panel that "had" a background.
+        # 3. A property set **after** the sheet was applied needs a repolish, or the rule never
+        #    matches. That is `T-192`'s lesson, applied one widget over.
         self.setAutoFillBackground(True)
         self.setBackgroundRole(QPalette.ColorRole.Base)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("rowPanel", True)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
         layout = QVBoxLayout(self)
 
