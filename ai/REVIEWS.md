@@ -12789,3 +12789,57 @@ stale-bytecode cause is consistent with the impossible source/runtime disagreeme
 handoff; this review avoided that state rather than treating the earlier run as evidence. The source
 was not re-captured from the network, and Windows runtime and real CI remain unverified. Only
 `ai/REVIEWS.md` was modified in this review; no commit or push was made.
+
+
+## 2026-08-08 — T188-R1 third focused correction re-review
+
+**Reviewer:** Codex
+
+**Review base:** `226366d`
+**Correction head:** `3ce0b8b`
+**Scope:** The unresolved criterion-4 half of `T188-R1`, the two maintainer amendments that govern
+the final criteria, and regressions in the correction boundary. T-186 remains closed.
+
+**Verdict:** **Approved at `3ce0b8b`.** `T188-R1` is **Resolved**. No open T-188 finding remains.
+
+### Finding result
+
+| ID | Re-review result | Evidence |
+|---|---|---|
+| `T188-R1` | **Resolved.** Criterion 3 remains satisfied: the shared routing evidence reads the recorded DASH fixture. Criterion 4 is now satisfied as amended by the maintainer: `derived_format_columns` explicitly disclaims being `REQ-008`’s pair evidence, names `dash_akamai_big_buck_bunny` as that evidence, and truthfully retains and declares its synthetic pair for the distinct pairable-with-complete-format UI state. The licence criterion is also satisfied as amended: provenance must verify the licence for the specific work rather than rely on publisher practice, and the fixture states that Big Buck Bunny’s identity establishes CC BY 3.0. | The amendment followed a real negative proof rather than a narrative exception. Running `tests/ui/test_format_table.py` from removal commit `1ba5f73` independently produced **5 failed, 34 passed**: removing formats `140`/`137` removes the mode, announcement and `T-075` refusal paths (and the heightless-format case). At the restored head, `derived_format_columns` is pairable with four `COMPLETE` formats, while the recorded DASH fixture is pairable with zero. An independent sweep found no committed recorded fixture combining pairability and a complete format. Keeping the synthetic entries in `what_is_synthetic` is therefore truthful provenance for unique evidence, not the superseded claim that they prove `REQ-008`. |
+
+### Amendment review
+
+The criterion-4 amendment preserves the property behind the original wording. Removing the pair
+loses a UI state no recorded fixture can currently express; removing the pair’s names only from
+`what_is_synthetic` would falsely present constructed formats as recorded. The amended criterion
+instead makes the evidence boundary explicit: recorded DASH proves that a published source has the
+merge pair, while the derived fixture proves a pairable table that also contains complete formats.
+
+The criterion-2 amendment also keeps its exclusion intact. “Verifiable for the specific work”
+admits a licence fixed by the work’s identity but continues to reject an assumption based on a
+publisher’s usual practice. It does not relax `ai/TESTING.md` §5’s freely-licensed, unsigned and
+stable-source rules. Both are maintainer scope rulings recorded in the task entry, not implementer
+claims treated as amendments.
+
+### Reviewer verification at `3ce0b8b`
+
+Python checks used `PYTHONDONTWRITEBYTECODE=1` and a fresh `PYTHONPYCACHEPREFIX`.
+
+| Check | Result |
+|---|---|
+| `git diff --check 226366d..3ce0b8b` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass**, 221 files |
+| `.venv/bin/python -m mypy src tests` | **pass**, 125 files |
+| `.venv/bin/python -m mypy --platform win32 src tests` | **pass**, 125 files |
+| Task placement, fixture, selection, format-table and dialog suites at the restored head | **372 passed, 11 skipped** |
+| `tests/ui/test_format_table.py` at removal commit `1ba5f73` | **5 failed, 34 passed**, expected negative proof |
+| All committed recorded fixtures: pairable plus `COMPLETE` audit | **none**; derived fixture is pairable with four complete formats |
+
+The implementer’s full-suite result (**2801 passed, 17 skipped, 2 deselected**) was not
+independently repeated. The temporary removal reaching history before its named dialog/format-table
+gate ran is a recorded process error, but the failing commit was reverted and the restored head was
+verified, so it does not affect approval. The source was not re-captured from the network; Windows
+runtime and real CI remain unverified. Only `ai/REVIEWS.md` was modified in this review; no commit
+or push was made.
