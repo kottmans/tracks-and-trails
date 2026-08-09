@@ -19,7 +19,36 @@ statement of what is true now.
 `38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
 were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-## 2026-08-08: all nine Phase 3 deliverables are approved, and `## In Review` is empty
+## 2026-08-08: Phase 3 is complete but for its exit review
+
+**Everything is done except criterion 6.** All nine deliverables are approved, and **all six loose
+items ruled into the phase are resolved** — `T-143`, `T-180`, `T-189`, `T-186` and `T-188` built and
+approved, `T-171` **refused** by `DAT-008`. `## In Review` holds only `T-192`, which is Phase 4
+polish and not part of this exit.
+
+**The exit review was requested and came back Changes requested**, on two Medium findings — and both
+are worth recording because neither is about the product:
+
+- **`P3EXIT-R2`** — both test-inclusive mypy gates were **red at the submitted head**, on a
+  `redundant-expr` in `T-192`'s own new test, and **the handoff reported them passing**. The figures
+  in that submission were taken from a run that predated the last commit. *The gate results were
+  stale in exactly the way this session spent three tasks sweeping out of the documents.*
+- **`P3EXIT-R1`** — the plan, `STATUS.md` and `TASKS.md`'s header still described the four loose
+  items as open, the deliverable count disagreed with its own table, and the handoff described
+  criterion 1's `fps` evidence as derived-only. **It is not**: `T-185` captured
+  `peertube_big_buck_bunny_60fps`, a *recorded* fixture carrying real 30 and 60 fps, which closed
+  the gap `OPS-013` was written around. I read `OPS-013` as current without checking that the task
+  it named as its own closer had since closed it.
+
+**Four times in one session a document outlived the thing that changed it** — `T-143`'s premise,
+`T-186`'s comments, `T-188`'s fixture provenance, and now the exit submission itself. The first
+three were found by review; so was this one.
+
+*(Superseded below: the entry that said four loose items still needed a disposition and that `T-189`
+remained to be done. Both were true when written on 2026-08-08 and neither was true by the end of
+the same day.)*
+
+## 2026-08-08: all nine Phase 3 deliverables are approved, and `## In Review` was empty
 
 **`T-143` and `T-180` are Approved.** `T143-R1`, `T180-R1` and `T180-R2` are all **Resolved**, no
 open finding remains on either, and with `T-111` complete **every Phase 3 deliverable is through**.

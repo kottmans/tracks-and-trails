@@ -588,17 +588,17 @@ accepted decisions by design.
 **Six tasks filed against this phase are in its scope and are not deliverables** — maintainer
 ruling, 2026-08-08, so that Phase 4 opens without Phase 3 questions still attached to it. They
 accumulated as findings and maintainer reports during the phase and had never been ruled in or out,
-which is the position both prior exit reviews found wrong rows in. **The exit is not clear while any
-of them is unresolved**, and "resolved" includes an explicit refusal:
+which is the position both prior exit reviews found wrong rows in. The exit was not clear while any
+of them was unresolved, and "resolved" included an explicit refusal. **All six are now resolved**:
 
 | Task | What it is | Disposition |
 |---|---|---|
 | `T-143` | A playlist's entries are never probed, so their rows stay bare | **Approved 2026-08-08.** Its premise was already half-closed by `T137-R2`; the criterion was **amended** and pre-download size deferred to `T-191` |
 | `T-180` | Two permitted instances share one thumbnail cache and sweep each other's pictures | **Approved 2026-08-08**, on `DAT-007` and a production-seam regression |
-| `T-189` | The required ffmpeg CI cases skip instead of failing | **Open.** It guards exit criterion 2's evidence: the proof takes a fixture that skips when the tool is absent, and the self-hosted Windows runner records rather than installs it |
-| `T-171` | Whether files carry provenance | **Open, and the maintainer's** — the measurement is done and the decision is not. Moved here from "Phase 4 or later" by the same ruling |
-| `T-186` | Finish the withdrawn-History prose sweep | **Open.** Comments and docstrings only; no runtime behaviour |
-| `T-188` | A recorded source with a separate video and audio stream | **Open, and held open by `OPS-013`** — it needs a licensed public source to exist, which no amount of work here produces |
+| `T-189` | The required ffmpeg CI cases skip instead of failing | **Approved 2026-08-08.** A missing tool now fails the two jobs carrying `T-108`'s proof rather than skipping inside them. **Residual:** the workflow edit has never executed on a runner |
+| `T-171` | Whether files carry provenance | **Refused 2026-08-08 — `DAT-008`.** The application writes no provenance of its own. A disposition, which is what the ruling asked for |
+| `T-186` | Finish the withdrawn-History prose sweep | **Approved 2026-08-08**, after three passes — the third searched claims about *cardinality* rather than the word *History* |
+| `T-188` | A recorded source with a separate video and audio stream | **Approved 2026-08-08.** `dash_akamai_big_buck_bunny` is a recorded DASH manifest publishing the pair; criteria 2 and 4 were amended after being implemented and measured |
 
 *(`T-146` and `T-190` also sit under `## Proposed — Phase 3` and are **not** in this set. `T-146` is
 a Settings screen `ARC-007` deferred to Phase 4 deliberately; `T-190` is a `docs/UX_SPEC.md` §6
@@ -614,10 +614,21 @@ correction. Named here so their absence reads as a decision rather than an overs
 - A partial download resumes after restart, or clearly states it cannot
 - Reviewed and signed off
 
-**All nine deliverables are approved as of 2026-08-08**, and criteria 1–5 are met. **Criterion 6 is
-the only one outstanding**, and it is gated on the four loose items above being dispositioned, not
-on any deliverable. *(`T-189` is the one that touches an already-signed criterion: exit criterion 2
-is marked Met on evidence that can silently become a skip.)*
+**Every deliverable in the table above is approved as of 2026-08-08**, and criteria 1–5 are met.
+**Criterion 6 — the exit review — is the only one outstanding**, and nothing else gates it: all six
+loose items are dispositioned, five built and approved and `T-171` refused by `DAT-008`.
+
+*(**The table holds eleven rows and the phase is usually described as "nine deliverables".** Both
+are right and the difference is worth stating once rather than being rediscovered: `REQ-`-bearing
+deliverables number nine — `T-107`, `T-108`, `T-109`, `T-110`, `T-111`, `T-112`, `T-113`, `T-114`,
+`T-181` — and the other two rows, `T-169` and `T-170`, are the **removal** of a Phase 2 deliverable
+rather than the addition of one. Counting them as deliverables would say this phase built eleven
+things when two of them deleted something.)*
+
+*(**One residual survives `T-189`'s approval**: the workflow edit that makes a missing ffmpeg fail
+exit criterion 2's proof has never executed on a runner. The criterion's Windows evidence — run
+`31233348009`, ffmpeg 8.1.2, the merge test passing rather than skipping — predates it and is
+unaffected.)*
 
 ---
 

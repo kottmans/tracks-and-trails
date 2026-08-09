@@ -5,18 +5,24 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-08 — **`T-109`, `T-110`, `T-112`, `T-113` and `T-114` are all Approved**.
-**`T-111`, the last Phase 3 deliverable, is implemented and sits in `## In Review`** with three
-gaps named in its own entry; it is submitted, not ratified. `UX-008` accepted and amended.
+**Last updated:** 2026-08-08 — **every Phase 3 deliverable is approved and all six loose items are
+resolved.** `T-111` was the last deliverable and is Complete; `T-143`, `T-180`, `T-189`, `T-186` and
+`T-188` are approved and `T-171` is refused by `DAT-008`. `## In Review` holds `T-192` alone, which
+is Phase 4 polish. **Phase 3's exit review is the only thing outstanding.**
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here: Phase 1 exited 2026-07-29.** All eight criteria are met and the exit review is in
-`ai/REVIEWS.md`. **The current phase is Phase 2, all three of its planning gates are clear, and
-`T-078` — the choke point the phase descends from — was approved at `0f9986f` on 2026-07-30.**
+**Start here: the current phase is Phase 3, and everything in it is done but the exit review.**
+Phase 2 exited 2026-08-05, Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26; every exit review is in
+`ai/REVIEWS.md`.
+
+*(This said **"The current phase is Phase 2"** and named that phase's planning gates. It was true
+until 2026-08-05 and was still standing on 2026-08-08, at the top of the file whose job is to say
+what is actionable now — found by `P3EXIT-R1`. Phase 2's planning-gate detail is below, where the
+rest of its history lives.)*
 
 **The live queue** — rebuilt from the sections below on 2026-07-31, not written alongside them.
 `COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
