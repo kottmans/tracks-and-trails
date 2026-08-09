@@ -210,6 +210,83 @@ different, split this entry rather than fixing one and closing both.
 
 ## Ready
 
+### T-207 — Reproduce T-204 through a reachable transition
+
+**Status:** **Ready — review correction for `T204-R1` and `T204-R2`.** The submitted regression
+kills the old role ordering, but it makes a resolved row `PROBING` by assigning `row.state`
+directly. Production sets `PROBING` only from `WAITING`; a `READY` row receiving that status is
+made `FAILED`. The test therefore proves a useful invariant under an invented transition, not the
+maintainer-reported gesture it says it reproduces.
+**Owner:** Implementer
+**Priority:** High — T-204's criterion 1 and its claim to close a trapped-user report depend on a
+reachable reproduction, not only a mutation of the suspected guard
+**Phase:** Phase 4 — focused correction to T-204
+**Depends on:** nothing
+**Relevant context:** `T-204`, `T204-R1`, `T204-R2`, `ui/add_dialog.py`
+(`_on_media_probed`, `_on_job_changed`, `EXPANDED_ROLE`, `toggle_playlist`),
+`tests/ui/test_add_dialog.py`
+**Affected surfaces:** `tests/ui/test_add_dialog.py`, `ai/TASKS.md`; `ui/add_dialog.py` only if a
+reachable reproduction shows that the current invariant fix is incomplete
+**Risk:** Medium — the production change is small and coherent, but the report may have a different
+trigger from the one the test assigns
+
+#### Acceptance criteria
+
+- Audit every production path that can take a playlist row out of `READY` while its panel is open,
+  and name the actual interaction or manager signal that reaches the stuck state
+- Reproduce that path through the real interaction/signal wiring, without assigning a post-probe
+  `row.state` directly; the regression fails at the pre-fix boundary and passes with the correction
+- After the transition, close through the real disclosure route and prove that a changed playlist
+  selection survives; asserting only that `EXPANDED_ROLE` is a `bool` is not the whole user outcome
+- If no reachable path exists, reclassify the code change truthfully as invariant hardening and do
+  not claim that it reproduces or closes the maintainer's first report; keep that report actionable
+  rather than waiting for it to recur
+- Correct the `## In Review` preface so it names T-204 instead of saying the section is empty and
+  nothing awaits a verdict
+- `ruff`, `ruff format`, both mypy gates, task placement and the affected UI suites are clean
+
+#### Out of scope
+
+- T-208's separate multi-row report
+- T-204's unobserved row/panel-overlap screenshot; geometry remains unchanged
+
+---
+
+### T-208 — Reproduce the multi-row missing-disclosure report
+
+**Status:** **Ready — follow-up for non-blocking `T204-R3`.** The T-204 multi-row test is a useful
+guard, but it passes with and without the role-order correction. The maintainer's report that a
+playlist loses its collapse arrow with multiple items therefore remains unexplained and gets its
+own entry now, as T-204's investigation rule required, rather than only if somebody encounters it
+again.
+**Owner:** Implementer
+**Priority:** Medium — the reported end state traps the user in the panel, but the trigger is not
+yet reproducible and a simple second-row reconcile is proven unaffected
+**Phase:** Phase 4 — follow-up to T-204
+**Depends on:** nothing; coordinate with T-207 if its reachable trigger also needs multiple rows
+**Relevant context:** `T-204`, `T204-R3`, `T108-R2`, `ui/add_dialog.py` (`remount_panel`,
+`EXPANDED_ROLE`), `tests/ui/test_add_dialog.py`
+**Affected surfaces:** investigation first; `ui/add_dialog.py` and its tests only if reproduced
+**Risk:** Medium — the report may be the same state gate, a remount/identity defect, or a distinct
+geometry path, and assuming which one is how T-204 reached review without reproducing it
+
+#### Acceptance criteria
+
+- Recover or elicit the exact multi-row gesture sequence and reproduce it through the built dialog
+- Establish whether the missing arrow comes from role admission, structural remounting, row
+  identity, or geometry; do not credit the current passing guard as reproduction evidence
+- If the defect remains, add a regression that fails before its correction and proves the panel can
+  be closed without losing the playlist selection
+- If it cannot be reproduced, record the attempts and keep the report explicitly known-unverified;
+  closing the task requires a maintainer disposition, not an agent inference that it was T-204
+- Run the checks required by `ai/TESTING.md` §3 for whatever surfaces the investigation changes
+
+#### Out of scope
+
+- The separate row/panel-overlap screenshot unless the reproduced trigger proves they are one defect
+
+---
+
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** **Ready — the decision landed as `REL-002` (2026-08-04), so the blocker is gone.**

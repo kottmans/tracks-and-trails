@@ -13342,3 +13342,102 @@ The source/test correction is unchanged after its measured evidence head. Window
 independently exercised; both mypy platforms are clean. T-204 remains an explicit, separate open
 task and is not a residual of either correction. Only `ai/REVIEWS.md` was modified by the Reviewer;
 no source, test, task, commit, or push was made.
+
+
+## 2026-08-09 — T-204 initial review
+
+**Reviewer:** Codex
+
+**Review base:** `f18786a`
+**Candidate head:** `01ce5bf`
+**Implementation commit:** `01ce5bf`
+**Submission:** local `ai/handoffs/2026-08-09-t204-review.md`
+**Scope:** T-204's disclosure-role correction and regressions. Later docs-only commits through the
+review checkout do not change `src/` or `tests/` and do not move the implementation boundary.
+
+**Verdict:** **Changes requested.** The role-order correction is coherent, but T-204 is not
+merge-ready: its claimed reproduction fabricates a transition no production path performs, so the
+maintainer's first report is still not connected to the fix. A separate current-truth contradiction
+also says the In Review section is empty while it contains T-204. The unexplained multi-row report
+is split now into non-blocking follow-up T-208 rather than being treated as closed or deferred until
+it recurs. The ordinary focused correction pass is limited to `T204-R1`, `T204-R2`, and their
+correction diff; T-208 is independent follow-up work.
+
+### Findings
+
+| ID | Severity | Blocks approval | Location | Finding | Required correction | Status |
+|---|---|---|---|---|---|---|
+| `T204-R1` | **High** | **Yes — acceptance criteria 1–3** | `tests/ui/test_add_dialog.py:3334-3371`; `src/tracks_and_trails/ui/add_dialog.py:2042-2099` | The mutation is real, but the test is not the claimed reproduction. It opens a resolved `READY` row and directly assigns `row.state = PROBING`. Production assigns `PROBING` only when a `WAITING` row receives the probing status; a `READY` row receiving that status takes the later branch and becomes `FAILED`. No production path found in the bounded source performs `READY → PROBING`, and neither the reported near-checkmark gesture nor another real interaction/signal is driven. The test also stops after asserting that the role is a `bool`; it does not close through the disclosure or prove the changed selection survives that post-transition close. The code is useful invariant hardening, but the evidence cannot claim it reproduced or closed the user's trapped-panel defect. | Identify and drive the real user/signal transition that leaves an open playlist non-committable, make that regression fail at the pre-fix boundary, then close through the actual disclosure route and prove a changed selection survives. If no reachable transition exists, correct the task, test, and code rationale to call this invariant hardening and keep the first report open rather than claiming it reproduced. Audit the sibling report through T-208 rather than inferring the same trigger. | **Open** — T-207 |
+| `T204-R2` | **Medium** | **Yes — actionable current truth** | `ai/TASKS.md:101-120` | The `## In Review` preface says “Empty” and “Nothing is awaiting a verdict” immediately before T-204, whose status is In Review. This contradiction was introduced when T-204 moved into the section, despite the adjacent warning that this exact preface has already been wrong in both directions. Task placement passes because it validates heading/status structure, not prose. | Update the live preface to name T-204 and its review state; re-run task placement. | **Open** — T-207 |
+| `T204-R3` | **Medium** | **No — follow-up split now** | `tests/ui/test_add_dialog.py:3374-3410`; `ai/TASKS.md:127-133` | The maintainer's multi-row missing-arrow report is not reproduced. The new test passes both with and without the correction, so it guards a simple second-row reconcile but supplies no evidence about the report's trigger. Waiting until it recurs would discard an already-reported user-visible trap, and T-204 explicitly required a split if the investigations diverged. | Recover or elicit the gesture sequence, determine whether the cause is role admission, remounting/identity, or geometry, and add a failing regression before any correction. Until then keep the report known-unverified. | **Open, non-blocking** — T-208 |
+
+`T204-R1` is High because an explicit acceptance criterion is unmet and the task's core claim—closing
+a user-visible trap—has not been tied to reachable behavior. The code's invariant may still be
+correct; severity follows the shipped uncertainty and unmet criterion, not the size of a likely
+test-only correction. `T204-R2` blocks because TASKS is current truth and materially misstates what
+awaits review. `T204-R3` is non-blocking once split: the current correction need not claim a second,
+unknown trigger, but the existing report must remain actionable.
+
+### Rulings on the challenged areas
+
+**The role ordering itself is correct.** `entry_selection_of(row) is None` remains first, so a
+single item still returns absent regardless of row state. For a playlist, an already-open row now
+returns `True` before committability is considered; a closed non-committable playlist still returns
+`None`; and a closed committable playlist returns `False`. Independent probes passed all three
+changed-state cases, and the existing T-140 test still distinguishes ordinary, closed-playlist and
+open-playlist rendering. The site comment describes the new order and keeps UX-005 §5: closing an
+already-open panel is a valid action, not a control that would be refused.
+
+**Keeping the disclosure is the better of T-204's two choices.** It preserves interaction
+continuity and gives a mounted panel an honest close action rather than withdrawing its only
+affordance. The alternative could also preserve the already-made selection by closing with
+`keep=True`, so the current comment's claim that closing necessarily “would discard” the selection
+is too strong. More importantly, its `PROBING` re-probe scenario is not reachable from a resolved
+row in the inspected code. T-207 must either demonstrate that route or rewrite the rationale; this
+does not make the role order itself wrong.
+
+**The negative mutation is valid but narrower than claimed.** In a fresh archive with bytecode
+caches removed, restoring the old committability-first ordering made the primary regression fail
+**1/1**. The multi-row test still passed **1/1** under the same mutation, confirming it is a guard,
+not evidence for that report. These UI behaviors are outside `ai/TESTING.md` §7's enumerated
+high-risk set, so mutation was required by T-204's own criterion rather than by §7.
+
+**Architecture remains intact.** The product change stays in `ui/`, introduces no yt-dlp access or
+lower-layer dependency, and does not touch the error taxonomy. The T-140 role shape and UX-005 §5
+are preserved. The reported row/panel overlap was not observed or changed; because no geometry
+changed, it remains a known-unverified screenshot rather than evidence credited to this fix.
+
+### Reviewer verification
+
+Python tools were invoked as `.venv/bin/python3 -m <tool>`. Qt tests used
+`QT_QPA_PLATFORM=offscreen`. Negative and strengthening probes used fresh `git archive 01ce5bf`
+trees under `/tmp`, removed every `__pycache__` before execution, set
+`PYTHONDONTWRITEBYTECODE=1`, and used an explicit archive `PYTHONPATH`.
+
+| Check | Result |
+|---|---|
+| `git diff --check f18786a..01ce5bf` | **pass** |
+| Source/test boundary | **two files, 105 insertions and 2 deletions; no later source/test change through the review checkout** |
+| `.venv/bin/python3 -m ruff check .` | **pass** |
+| `.venv/bin/python3 -m ruff format --check .` | **pass, 163 files** |
+| `.venv/bin/python3 -m mypy src` | **pass, 51 files** |
+| `.venv/bin/python3 -m mypy` | **pass, 125 files** |
+| `.venv/bin/python3 -m mypy --platform win32` | **pass, 125 files** |
+| Task placement before the review entries | **14 passed** |
+| Add-dialog, row-delegate and playlist-picker suites | **216 passed in 88.49 s** |
+| Full default suite, with loopback/process permission | **2815 passed, 17 skipped, 2 deselected, 4 warnings in 383.83 s** |
+| Old-order mutation, primary regression | **1 failed**, expected negative proof |
+| Old-order mutation, multi-row guard | **1 passed**, confirms non-reproduction |
+| Three-valued-role, selection-preserving close and real status-handler probes | **4 passed** |
+
+The four warnings are the existing `libpyside: Failed to disconnect` warnings at
+`ui/job_detail.py:463`, outside this diff. Windows runtime was not independently exercised; both
+static platform gates are clean.
+
+### Merge readiness and residuals
+
+**Not merge-ready at `01ce5bf`.** T204-R1 and T204-R2 require the one ordinary focused correction
+pass. T204-R3 does not hold that correction open because T-208 now owns it, but it may not be cited
+as closed evidence for T-204. The row/panel overlap and Windows runtime remain unverified. The
+Reviewer modified only `ai/REVIEWS.md` and added T-207/T-208 to `ai/TASKS.md`; no source or test file
+was changed, and no commit or push was made.
