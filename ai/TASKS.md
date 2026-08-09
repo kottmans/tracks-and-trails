@@ -1692,6 +1692,67 @@ this task must not land a stored proxy without it.
 - yt-dlp's wider network surface — `--socket-timeout`, `--source-address`, `--impersonate` and the
   rest belong to Phase 4.5's audit (`T-183`), and `SEC-003` already excluded `--impersonate`
 
+### T-197 — Cookie source, and the redaction gate that has to prove it
+
+**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** High — it is the phase's only deliverable whose failure mode is a leaked credential
+**Phase:** Phase 4
+**Depends on:** `T-146` for the screen. **Not blocked by `T-196`**, but the redaction gate this task
+builds is what `T-196`'s stored proxy needs, so building this first is the cheaper order.
+**Relevant context:** `REQ-026`, `REQ-EXCL-002`, `NFR-007`, `DAT-003`, `DAT-004`, `SEC-003`,
+`T-038` (handler-level redaction), `T-014`, `core/logging.py` §18–20 and §183–205,
+`core/models.py` (`DownloadRequest.cookies_from_browser`), `ai/DECISIONS.md` §1064
+**Affected surfaces:** `core/models.py`, `core/settings.py`, `core/logging.py`, the settings dialog,
+`downloader/ytdlp_adapter.py`
+**Risk:** **High.** It adds a credential-bearing path to persisted state, and `DAT-003`/`DAT-004`
+are the boundary it crosses
+
+#### Scope
+
+**`REQ-026` names two sources and only one is modelled.** `DownloadRequest.cookies_from_browser`
+exists and carries a browser *name*. **A cookies file has no field at all** — so "or a cookies file"
+is unbuilt, and building it is what puts a user-chosen *path* into this application's hands for the
+first time. That is precisely the material `REQ-026` says is never logged.
+
+**Two existing findings make the shape of this task.**
+
+- **`DAT-003` §1064 records that `cookies_from_browser` is a browser name *"by intent, not by
+  construction"*.** Nothing enforces it. A user who types a path into that field today produces a
+  request carrying a path through a field the redaction reasoning assumes is a name. **This task
+  either constrains it or stops relying on the assumption**, and the choice is recorded.
+- **`DAT-003` deliberately preserves a cookie path that yt-dlp itself names** inside a diagnostic,
+  because `NFR-006` requires messages verbatim. **The gate must distinguish supplied from
+  observed**, or it will either leak what this application supplied or corrupt a message it must
+  keep. A gate that cannot tell them apart is not a gate.
+
+#### Acceptance criteria
+
+- The screen sets a cookie source: **a browser profile, or a cookies file**, or neither. Both reach
+  a real download through the adapter's options
+- **An automated redaction test is the phase exit criterion**, and it is this task's deliverable.
+  It asserts that no log line, no stored diagnostic, no `ARC-008` settings report and no crash path
+  contains: cookie contents, a cookie file path this application supplied, proxy credentials, or a
+  token-like query parameter
+- **The supplied/observed distinction is tested in both directions**: a path this application
+  supplied is absent, and a path yt-dlp named inside its own message is **still present, verbatim**,
+  per `DAT-003`. One test proving each — the second is the one a redaction change will break
+- **`settings.toml` is covered.** A cookie path or proxy stored there does not reach a log through
+  the settings layer's own error path, which is a route `T-038`'s handler-level redaction was not
+  written against
+- `cookies_from_browser` **either rejects a value that is not a browser name, or the entry records
+  that it does not and what protects the path instead** — `DAT-003` §1064 stops being an assumption
+- A cookie file that is missing, unreadable, or not a cookies file **reports** rather than silently
+  downloading unauthenticated, which would look like a paywall bypass failing quietly
+
+#### Out of scope
+
+- **Any bypass.** `REQ-EXCL-002` is explicit: this exists so a user reaches content they already
+  have an account for. Nothing here defeats a paywall, a geo-restriction or an authentication check
+- `-u`/`-p` username and password options — **excluded by `SEC-003`**
+- `--netrc` and client certificates, which `SEC-003` ruled *in* but assigned to Phase 4.5's audit
+- Re-opening `DAT-003`. Its reopening condition is stated in the decision; this task works inside it
+
 ---
 
 ## Proposed — Phase 4.5
