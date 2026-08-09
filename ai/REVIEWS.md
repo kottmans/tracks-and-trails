@@ -12907,3 +12907,55 @@ behavior ran; the permitted consolidated rerun is the 293-pass result above. Win
 real sites were not contacted, and the T-189 workflow remains unexecuted. Only `ai/REVIEWS.md` was
 modified by the reviewer; reviewed source, tests, current-truth coordination files, and the handoff
 were not edited. No commit or push was made.
+
+
+## 2026-08-08 — Phase 3 exit findings focused re-review
+
+**Reviewer:** Codex
+
+**Prior candidate:** `7958518`
+**Correction implementation head:** `dc2161c`
+**Candidate head:** `2049980` (adds the prior review record only)
+**Re-submission commit:** `1943149` (review metadata only)
+**Scope:** `P3EXIT-R1`, `P3EXIT-R2`, and regressions in their correction diff. T-192’s product
+behavior and the five already-substantiated functional exit criteria were not reopened.
+
+**Verdict:** **Blocked.** `P3EXIT-R2` is **Resolved**. `P3EXIT-R1` remains **Open — Medium,
+blocks approval** because the corrected deliverable count still contradicts the table and prose it
+is meant to reconcile. This is the ordinary focused correction re-review; with only a blocking
+Medium remaining, `AGENTS.md` §10 requires the maintainer to authorize a third focused pass, accept
+the documented risk, change scope, or carry the issue into a named follow-up. Criterion 6 and the
+Phase 3 exit remain not met pending that choice.
+
+### Finding results
+
+| ID | Severity | Blocks approval | Re-review result | Evidence / remaining correction |
+|---|---|---|---|---|
+| `P3EXIT-R1` | **Medium** | **Yes — Phase 3 exit truth** | **Open — partially corrected.** The four loose-item dispositions now agree; STATUS’s top snapshot and TASKS’ header describe the current phase; and the FPS correction is accurate. The committed PeerTube fixture independently reports FPS on five formats with values 30 and 60, so the T-188 DASH observation reopens nothing. **The count/scope half remains contradictory:** the section is headed `### Deliverables`, its table contains T-169/T-170, and the paragraph below explicitly calls them “Two Phase 3 deliverables.” The new explanation then says that counting them as deliverables would be wrong. Its proposed distinction—nine “REQ-bearing” deliverables—also cannot carry the difference, because the T-169 row explicitly bears `REQ-020` and `REQ-021` and T-170 bears `REQ-020`. | Choose one taxonomy and apply it consistently: either eleven deliverables, of which nine are additive and two subtractive; or nine deliverables plus two withdrawal tasks, with T-169/T-170 moved/labelled outside the Deliverables set and the “Two Phase 3 deliverables” sentence rewritten. Then make STATUS and the re-submission use the same terms. Do not use “REQ-bearing” as the discriminator. |
+| `P3EXIT-R2` | Medium | No | **Resolved.** The correction removes only the statically impossible `bar is not None` check. The genuinely nullable `gate` and `summary` results remain guarded, and the position assertions are unchanged. Both required test-inclusive mypy invocations now pass at the candidate source tree. | Direct diff inspection plus both bare mypy gates and the affected test suite. |
+
+### Reviewer verification at `2049980`
+
+The repository’s moved `.venv` interpreter remains unusable, so the review again used a temporary
+venv under `/tmp` populated only from the already-installed project site-packages. It was removed
+after verification. No dependency was downloaded or installed into the maintainer’s environment.
+
+| Check | Result |
+|---|---|
+| `git diff --check 7958518..2049980` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .`, excluding the later re-submission file absent at `2049980` | **pass, 222 files** |
+| `python -m mypy` | **pass, 125 files** |
+| `python -m mypy --platform win32` | **pass, 125 files** |
+| Task placement plus affected main-window suite | **73 passed** (14 + 59) |
+| Recorded FPS audit | PeerTube: **5**, values **30/60**; derived: **4**; DASH: **10**, value **30** |
+
+Running Ruff format at `1943149` reports 223 rather than 222 because Ruff formats Python code
+blocks in Markdown and that review-metadata commit adds the re-submission file. Excluding that file
+reproduces the candidate’s 222 count, so the implementer’s corrected figure is accepted.
+
+The implementer’s corrected-head full-suite result (**2803 passed, 17 skipped, 2 deselected**) was
+not independently repeated in this focused pass; the initial review independently obtained the
+same result, and the correction changes only documents plus one dead type guard. Windows runtime,
+real sites, and the first execution of T-189’s workflow remain unverified as previously recorded.
+Only `ai/REVIEWS.md` was modified by the reviewer. No commit or push was made.
