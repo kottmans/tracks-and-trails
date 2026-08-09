@@ -131,10 +131,16 @@ So the derived pair is **not** redundant. It stopped being the evidence for `REQ
 `dash_akamai_big_buck_bunny` is that, and the selection tests read it — while remaining the only
 evidence for the table's *pairable-with-a-complete-format* path.
 
-**This is the maintainer's to settle, not the Implementer's** (`T143-R1`): either amend criterion 4
-to say `what_is_synthetic` stops claiming the pair *as `REQ-008` evidence* while keeping it for the
-table's combination, or accept losing five format-table cases. The removal was implemented, measured
-and reverted rather than argued from — commit `1ba5f73` is the attempt and this is what it found. The maintainer ruled on the surveyed candidate — **take it, and label it
+**Settled by maintainer ruling, 2026-08-08: criterion 4 is amended**, on the argument that the
+original wording would have forced the provenance to lie. `what_is_synthetic` declares which entries
+are *synthetic*; `formats[3]` and `formats[4]` are synthetic and still present, so dropping them
+from that list to satisfy the wording would have made a truthful field false. Removing the formats
+was the alternative and costs five cases.
+
+**The criterion now binds the property it was protecting** — the derived fixture is not `REQ-008`'s
+evidence, the recorded one is — rather than a mechanism that could only be satisfied by making a
+fixture dishonest. The removal was implemented, measured and reverted rather than argued from;
+commit `1ba5f73` is the attempt and `71a9dfa` is what it found. The maintainer ruled on the surveyed candidate — **take it, and label it
 honestly** — and `tests/fixtures/infodicts/dash_akamai_big_buck_bunny.json` is that fixture.
 
 **Criterion 2 was amended rather than left unmet — maintainer ruling, 2026-08-08.** It required the
@@ -295,8 +301,21 @@ careless capture is how data reaches the repository permanently
   requires freely licensed, unsigned and unlikely to change, and never required the statement.)*
 - `tests/unit/test_format_selection.py`'s routing assertions read the recorded fixture rather than
   the derived one, and say which
-- `derived_format_columns` keeps its place for the shapes no source happens to have, and its
-  `what_is_synthetic` stops claiming the pair
+- `derived_format_columns` **stops being the evidence for `REQ-008`'s pair**, and its provenance
+  says so — the routing assertions read the recorded fixture, and `why_this_source` names it. It
+  keeps its place for the shapes no source happens to have, **and for the one combination no
+  recorded source can supply**: a fixture that is *pairable* and also holds *complete* formats,
+  which `tests/ui/test_format_table.py` needs at once.
+  *(**Amended 2026-08-08 by maintainer ruling**, after the original wording was implemented and
+  measured. It read "its `what_is_synthetic` stops claiming the pair", which **would have forced
+  the provenance to lie**: that field declares which entries are *synthetic*, `formats[3]` and
+  `formats[4]` are synthetic and still present, and dropping them from the list would make the
+  declaration false. Removing the formats themselves was tried — commit `1ba5f73` — and costs five
+  format-table cases, because `dash_akamai_big_buck_bunny` is pairable with **zero** complete
+  formats. That is structural, not incidental: DASH separates the streams by construction, which is
+  the very property that makes it the merge-pair evidence, so no recorded source can be both. The
+  criterion now binds the property it was protecting — the derived fixture is not the pair's
+  evidence — rather than a mechanism that would have made the fixture dishonest to satisfy.)*
 - `ruff`, `ruff format`, bare `mypy` and `mypy --platform win32`, and the fixture, selection and
   dialog tests are clean
 
