@@ -8,8 +8,10 @@ open.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active — created 2026-08-06 for `T-105`, at the start of Phase 3
-**Last updated:** 2026-08-07 — `UX-007` ruled every open `[P]` clause; before it, `UX-006` (the
-queue is stopped until started) and `ARC-010` (option coverage) amended §2, §2.1 and §6
+**Last updated:** 2026-08-09 — `UX-010` amended §2.2's group chip: a queue group's chip is
+done-of-total progress, and the History count rule stays History's. Before it, 2026-08-07: `UX-007`
+ruled every open `[P]` clause; `UX-006` (the queue is stopped until started) and `ARC-010` (option
+coverage) amended §2, §2.1 and §6
 **Update when:** A surface changes, a `UX-` entry is accepted or amended, or a §10 question is ruled on.
 **Does not contain:** Why a decision was made (`ai/DECISIONS.md`), what must be tested
 (`ai/TESTING.md`), the visual palette (`ARCHITECTURE.md` §8), or Phase 4's settings dialog
@@ -136,9 +138,14 @@ list it empties.
 (`NFR-005`): `Done`, `Queued`, `62%`, `Failed`. *(This read "Queue tab only", against a History tab
 whose every row was finished. There is one surface now and the rule is unchanged.)*
 
-**[T]** A *group* header is the exception (`UX-005`, 2026-08-05): its chip is a **count** of the
-members present — `16 items` — because a count is not a state. Never `14 of 16`. This was written
-for History's groups and holds for the queue's, which are the ones that remain.
+**[T]** A *group* header is the exception. **A queue group's chip is progress — `0 of 3`, done of
+total — and never a percentage** (`UX-010`, 2026-08-09): the entries' totals arrive one at a time,
+so a fraction across them has a denominator that grows while it runs. *(This clause read "its chip
+is a **count** of the members present — `16 items` … Never `14 of 16`. This was written for
+History's groups and holds for the queue's" — extending `T-145`'s History ruling past its own
+reasons. History's denominator claimed records the list did not hold; every member of a live queue
+group is present. The built chip and this clause disagreed from the day the History tab was
+withdrawn, found 2026-08-09 by a screenshot put beside the spec; `UX-010` ruled for the build.)*
 
 ---
 

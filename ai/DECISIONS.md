@@ -4829,3 +4829,42 @@ download context — in any output file or sidecar. No control is added, and no 
 - **The reopening condition**, stated so a later reader does not have to guess: a container-portable
   key that MP4 and M4A model natively, plus a measured survival path through tools this application
   does not run. Both are missing today.
+
+## UX-010 — A queue group's chip is progress: done of total
+
+**Status:** **Accepted** (2026-08-09) — maintainer ruling: *"For #3, go with option B"*, choosing
+between the two options the UI review presented side by side
+**Date:** 2026-08-09
+**Amends:** `docs/UX_SPEC.md` §2.2's sentence extending the History count rule to queue groups.
+**Does not amend** the History-group ruling itself (`T-145`'s *"14 items, never 14 of 16"*) — its
+reasons were History's, and they stay recorded with it.
+
+### Context
+
+The two documents that describe the group chip disagreed, and by `UX_SPEC` §1's own rule that is a
+defect in one of them. The spec said a group chip is a **count of the members present** —
+*"`16 items` … Never `14 of 16`"* — and that the rule, written for History's groups, *"holds for
+the queue's, which are the ones that remain."* The built queue chip reads `0 of 3`
+(`ui/queue_view.py`, `STATE_CHIP_ROLE`), and `T-162`'s out-of-scope note had already called the
+queue's `0 of 16` chip *"correct — nothing has downloaded yet."* The disagreement was found
+2026-08-09 by a maintainer-requested UI review that put a screenshot of the built window beside the
+spec.
+
+### Decision
+
+1. **A queue group's chip reads done-of-total** — `0 of 3` — because the one glanceable question
+   about a live group is how far along it is, and every member is present, so the denominator is
+   honest.
+2. **Never a percentage.** The entries' totals arrive one at a time, so a fraction across them has
+   a denominator that grows while it runs. This was the build's own recorded reasoning and it
+   stands.
+3. **The History rule is not reversed.** Its two reasons — a denominator claiming records the list
+   did not hold, and a stored original count drifting on removal — are about History, which is
+   withdrawn. Neither applies to a live queue group, which is why extending the rule to the queue
+   was a transcription error rather than a ruling.
+
+### Rejected
+
+- **Option A — `3 items` on the queue group**, the spec as written. A member count on a live group
+  is nearly furniture: the header's detail line already carries `3 items · 3 failed`, and "how
+  many" matters less at a glance than "how far".
