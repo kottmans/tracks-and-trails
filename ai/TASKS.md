@@ -2712,6 +2712,39 @@ happening. A finished bar is furniture: the argument History used to drop its gr
 - Failed-row presentation — `T-201`, including the byte-line suppression added to it 2026-08-09
 - The chip's own text — `UX-010` just ruled the group chip; the ordinary chips are settled
 
+### T-217 — Placeholder thumbnails read as intentional, not broken
+
+**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review.
+**Owner:** Implementer
+**Priority:** Low — cosmetic
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing
+**Relevant context:** `ui/row_delegate.py` (thumbnail painting, `placeholder_hue`),
+`ui/thumbnails.py`, `T-021` (the small-size glyph work, adjacent but separate), `T-202`,
+`ARCHITECTURE.md` §8
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/`
+**Risk:** Low
+
+#### Scope
+
+A row with no artwork draws a flat colored rectangle, which reads as a broken image rather than a
+placeholder. A faint glyph over the same hue block makes the absence look chosen: a note for
+audio, a film frame for video.
+
+#### Acceptance criteria
+
+- A row with no artwork draws a **low-opacity glyph over its hue block**, and audio and video are
+  distinguishable
+- The glyph is **decorative**: no accessible name is added and the accessibility tree is unchanged
+- It **reads in both palettes**, checked against both grounds — an icon that vanishes into the dark
+  ground is this task's defect to not create (`T-203`'s phrasing, reused on purpose)
+- Real artwork replaces it with no layout shift, and the existing thumbnail tests still pass
+
+#### Out of scope
+
+- The application icon's small sizes — `T-021`
+- Fetching or generating artwork — the glyph marks absence; it does not fill it
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
