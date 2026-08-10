@@ -2782,6 +2782,42 @@ exists.
 - The verb bar and its disabled states — a documented keyboard-chain choice, not reopened here
 - Any change to when rows appear or how probing works (`UX-003`)
 
+### T-219 — The dialog footer speaks the naming rule, not the selector
+
+**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** the In Review add-dialog chain receiving verdicts — same file as `T-218`
+**Relevant context:** `T126-R2`, `T140-R3`, `T-159` — three findings establishing that surfaces
+speak the naming rule, never raw selector syntax; `ui/format_text.py` (the rule),
+`ui/add_dialog.py` (the footer line under *Download as*)
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+The footer under *Download as* prints
+`Every row · Format selector: bestvideo[height<=1080][ext=mp4]+…` — yt-dlp syntax on the primary
+add surface, after three review findings moved every row to the naming rule. The dialog's own
+footer is the last surface still speaking syntax.
+
+#### Acceptance criteria
+
+- The footer line names what rows inherit **in the naming rule's words, through the same function
+  the rows use** — a second phrasing of the same fact is `T140-R3`'s defect and is not built
+- The **raw selector stays reachable** — a tooltip on the line, or the options editor — and this
+  entry records where it went
+- **No visible surface in the dialog prints selector syntax**; a test asserts the footer text for
+  a built-in preset
+- A screen reader hears the same words a sighted user reads — the accessible description carries
+  the friendly line, not the selector
+
+#### Out of scope
+
+- The selector's role in requests, presets, or `REQ-009`'s custom-selector escape hatch — this
+  changes one label, not what is downloaded
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
