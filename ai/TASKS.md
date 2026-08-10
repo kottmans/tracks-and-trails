@@ -2818,6 +2818,43 @@ footer is the last surface still speaking syntax.
 - The selector's role in requests, presets, or `REQ-009`'s custom-selector escape hatch — this
   changes one label, not what is downloaded
 
+### T-220 — The toolbar and the run control: build and spec disagree
+
+**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review's closing note.
+**Owner:** Implementer, with a Planner edit if the spec side wins
+**Priority:** Low — a two-line reconciliation, in whichever direction
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing
+**Relevant context:** `docs/UX_SPEC.md` §2.1 (*"`+ Add URLs` first, as the primary action; the run
+control; `Clear finished`; and the `Concurrent downloads` control"*, and the run control *"reads
+`Start` … and `Stop`"*), `UX-006`, `T-181` (the status-line and tooltip treatment, untouched),
+`ui/main_window.py` (toolbar construction),
+`tests/ui/test_windows_accessibility.py` (names controls by hand — it moves when they do)
+**Affected surfaces:** `ui/main_window.py` and its tests, or `docs/UX_SPEC.md` §2.1
+**Risk:** Low
+
+#### Scope
+
+The built toolbar runs `+ Add URLs`, `Concurrent downloads`, then `Start queue` and
+`Clear finished` at the far right; §2.1 orders Add URLs, run control, Clear finished, concurrency,
+and names the control `Start`/`Stop`. By the spec's own §1, a disagreement is a defect in one of
+the two — this entry does not choose which.
+
+#### Acceptance criteria
+
+- **The toolbar and §2.1 agree**, in whichever direction the maintainer prefers, and the choice is
+  recorded here. If the build wins, the spec amendment is the Planner's edit, the way `UX-010`'s
+  was
+- The run control's label question is settled the same way — `Start`/`Stop` per the spec, or the
+  spec adopts `Start queue`/`Stop queue`
+- `T-181`'s status-bar statement and tooltip treatment are untouched
+- `tests/ui/test_windows_accessibility.py` still names every control, updated if any moved
+
+#### Out of scope
+
+- Adding or removing any toolbar control — `ARC-007`'s concurrency control stays until `T-146`
+  decides its fate, and nothing else changes membership
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
