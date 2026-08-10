@@ -7,6 +7,7 @@ widget, and the file is hand-editable by design, so `concurrency = 0` must not r
 No Qt and no network, per `tests/` layout. This module is `core/`.
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,8 @@ from tracks_and_trails.core.settings import (
     CONCURRENCY_DEFAULT,
     CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
+    THEME_DEFAULT,
+    THEME_NAMES,
     Settings,
     add_preset,
     all_presets,
@@ -31,6 +34,8 @@ from tracks_and_trails.core.settings import (
     settings_path,
     update_preset,
     with_concurrency,
+    with_download_directory,
+    with_theme,
 )
 
 
@@ -1104,3 +1109,164 @@ def test_preset_named_finds_both_kinds_and_answers_none_for_neither() -> None:
     assert preset_named(settings, "Mine") is not None
     assert preset_named(settings, preset_registry.AUDIO_MP3.name) == preset_registry.AUDIO_MP3
     assert preset_named(settings, "Never existed") is None
+
+
+# --- T-146: the download folder and the theme -------------------------------------------------
+
+
+def test_a_stored_download_folder_is_used_as_written(tmp_path: Path) -> None:
+    """The ordinary case: a folder that exists and can be written to is the answer."""
+    folder = tmp_path / "Trail recordings"
+    folder.mkdir()
+    target = write(tmp_path, f'[downloads]\ndirectory = "{folder}"\n')
+
+    read = load(target)
+
+    assert read.settings.download_directory == folder
+    assert read.problem is None
+
+
+def test_a_download_folder_that_is_gone_reports_and_falls_back(tmp_path: Path) -> None:
+    """**`ARC-008` and `T-146`'s criterion**: report rather than revert silently.
+
+    Reported *and* fallen back from, which is the pair `ARC-008` asks for — the application still
+    starts, and the user is told their folder is not there rather than finding files somewhere
+    else without explanation.
+
+    **Not recreated.** The picker only offers folders that exist, so a stored one that is gone was
+    deleted or lives on a drive that is not mounted; making an empty folder in its place would
+    answer a question nobody asked and hide the likelier cause.
+    """
+    missing = tmp_path / "on-a-drive-that-is-not-mounted"
+    target = write(tmp_path, f'[downloads]\ndirectory = "{missing}"\n')
+
+    read = load(target)
+
+    assert read.settings.download_directory is None
+    assert read.problem is not None
+    assert str(missing) in read.problem.reason
+    assert not missing.exists(), "a missing download folder was recreated rather than reported"
+
+
+def test_a_download_folder_that_is_a_file_reports_and_falls_back(tmp_path: Path) -> None:
+    a_file = tmp_path / "not-a-folder.txt"
+    a_file.write_text("", encoding="utf-8")
+    target = write(tmp_path, f'[downloads]\ndirectory = "{a_file}"\n')
+
+    read = load(target)
+
+    assert read.settings.download_directory is None
+    assert read.problem is not None and "not a folder" in read.problem.reason
+
+
+def test_a_download_folder_that_cannot_be_written_reports_and_falls_back(tmp_path: Path) -> None:
+    """A read-only folder is a real deployment state — a mounted share, someone else's directory.
+
+    Skipped as root, which bypasses the permission bits entirely and would make this assert that
+    `os.access` agrees with itself.
+    """
+    # Asked of the attribute rather than of `sys.platform`, which mypy narrows under
+    # `--platform win32` until everything after it is unreachable.
+    effective_user = getattr(os, "geteuid", None)
+    if effective_user is None:
+        pytest.skip("POSIX permission bits are not how Windows refuses a write")
+    if effective_user() == 0:
+        pytest.skip("root ignores the permission bits this asserts on")
+    locked = tmp_path / "read-only"
+    locked.mkdir(mode=0o500)
+    target = write(tmp_path, f'[downloads]\ndirectory = "{locked}"\n')
+    try:
+        read = load(target)
+    finally:
+        locked.chmod(0o700)
+
+    assert read.settings.download_directory is None
+    assert read.problem is not None and "cannot be written to" in read.problem.reason
+
+
+def test_an_absent_or_empty_download_folder_is_silent(tmp_path: Path) -> None:
+    """Omission is silent, because `save()`'s header promises deleting a line is safe."""
+    assert load(write(tmp_path, "[queue]\nconcurrency = 3\n")).problem is None
+    empty = load(write(tmp_path, '[downloads]\ndirectory = ""\n'))
+    assert empty.settings.download_directory is None
+    assert empty.problem is None, "an empty folder value was reported as a broken setting"
+
+
+def test_a_download_folder_that_is_not_a_string_reports(tmp_path: Path) -> None:
+    read = load(write(tmp_path, "[downloads]\ndirectory = 7\n"))
+
+    assert read.settings.download_directory is None
+    assert read.problem is not None and "not a path" in read.problem.reason
+
+
+def test_a_theme_is_read_and_an_unknown_one_is_reported(tmp_path: Path) -> None:
+    """Unknown names are refused rather than clamped: two palettes have no nearest neighbour."""
+    assert load(write(tmp_path, '[appearance]\ntheme = "dark"\n')).settings.theme == "dark"
+
+    read = load(write(tmp_path, '[appearance]\ntheme = "solarized"\n'))
+    assert read.settings.theme == THEME_DEFAULT
+    assert read.problem is not None and "solarized" in read.problem.reason
+
+
+def test_a_broken_theme_does_not_cost_the_user_their_download_folder(tmp_path: Path) -> None:
+    """**Read independently, reported together** — `T109-R5`'s rule, extended to `T-146`'s keys."""
+    folder = tmp_path / "kept"
+    folder.mkdir()
+    read = load(
+        write(tmp_path, f'[downloads]\ndirectory = "{folder}"\n\n[appearance]\ntheme = 3\n')
+    )
+
+    assert read.settings.download_directory == folder, (
+        "an unreadable theme discarded a perfectly good download folder"
+    )
+    assert read.settings.theme == THEME_DEFAULT
+    assert read.problem is not None
+
+
+def test_the_folder_and_the_theme_survive_a_save_and_load(tmp_path: Path) -> None:
+    """The round trip, which is what "survives a restart" means at this layer."""
+    folder = tmp_path / "Trail recordings"
+    folder.mkdir()
+    target = tmp_path / "settings.toml"
+    settings = with_theme(with_download_directory(Settings(), folder), "dark")
+
+    assert save(settings, target) is None
+    read = load(target)
+
+    assert read.problem is None
+    assert read.settings.download_directory == folder
+    assert read.settings.theme == "dark"
+
+
+def test_saving_the_folder_and_theme_keeps_the_presets_readable(tmp_path: Path) -> None:
+    """All three kinds of setting coexist in one file, and all three come back.
+
+    `T-146` adds two sibling tables to a file that already holds an array of tables, and the
+    round trip is what proves the writer did not corrupt the reader's view of either.
+
+    **What this does *not* prove, stated because the first draft claimed it did:** that the
+    tables must precede `[[preset]]`. A TOML table header is an absolute path from the root, so
+    writing them afterwards round-trips just as well — mutating `save()` to emit them last leaves
+    this test green. The order is for whoever opens the file, and `save()` says so.
+    """
+    folder = tmp_path / "Trail recordings"
+    folder.mkdir()
+    target = tmp_path / "settings.toml"
+    settings = add_preset(
+        with_theme(with_download_directory(Settings(), folder), "dark"), a_preset(name="Mine")
+    )
+
+    assert save(settings, target) is None
+    read = load(target)
+
+    assert read.problem is None, read.problem
+    assert read.settings.download_directory == folder
+    assert read.settings.theme == "dark"
+    assert [preset.name for preset in read.settings.presets] == ["Mine"]
+
+
+def test_with_theme_refuses_a_name_this_application_does_not_have() -> None:
+    """Bounded at the value, exactly as `with_concurrency` bounds a number."""
+    assert with_theme(Settings(), "dark").theme == "dark"
+    assert with_theme(Settings(), "solarized").theme == THEME_DEFAULT
+    assert set(THEME_NAMES) == {"light", "dark"}

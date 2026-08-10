@@ -289,14 +289,20 @@ def test_the_application_menu_bar_exposes_exactly_file_and_help(tree: Tree) -> N
     worth keeping. It arrived with `T-170` as the only route to *Clear download records*; this
     equality caught it, on the Windows job alone, after the Linux suite had passed and three more
     commits had been pushed — `AGENTS.md` §8's asymmetry working as intended. It went when `REQ-020`
-    was withdrawn and the screen had nothing left in it. `T-146` brings the menu back with the
-    settings `REQ-023` names, and will trip this equality again, which is the point of it.
+    was withdrawn and the screen had nothing left in it.
+
+    **It is back, and permanently this time** (`T-146`, 2026-08-10): the screen behind it holds the
+    download folder, the theme and the concurrency limit that `REQ-023` names, so unlike `T-170`'s
+    version it does not depend on a requirement that could be withdrawn under it. This equality
+    tripped again on the same change, which is exactly what it is for — updating it is a deliberate
+    act, and the list below is the whole of the application's menu bar.
     """
     items = [node for node in tree.application_controls() if node.control_type == UIA_MENU_ITEM]
     names = sorted(node.name for node in items)
 
-    assert names == ["File", "Help"], (
-        f"the application menu bar exposes {names}; expected exactly ['File', 'Help']. "
+    assert names == ["File", "Help", "Settings"], (
+        f"the application menu bar exposes {names}; expected exactly "
+        f"['File', 'Help', 'Settings']. "
         f"Application controls: {describe(tree.application_controls())}"
     )
     assert all(node.ancestor_roles[:1] == (UIA_MENU_BAR,) for node in items), (

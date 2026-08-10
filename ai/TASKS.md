@@ -213,6 +213,170 @@ actually tried.
 - Retry *policy* — `REQ-018` and `T-196` own it
 - How the failure reads when it does surface — `T-201`
 
+### T-146 — A Settings menu, and the screen behind it
+
+**Status:** **In Review — built 2026-08-10**, on maintainer instruction (*"Do T-215 and then
+T-146"*). **The first plan deliverable of Phase 4 to be built.** Filed against `REQ-023`, which
+already names every setting asked for. *(**The phase question below is closed:** Phase 3 exited and
+Phase 4 opened 2026-08-09, with this task named the owner of its settings-dialog deliverable. No
+re-phasing happened or is needed.)*
+
+**What was built.** A `Settings` menu between `File` and `Help`, and `ui/settings_dialog.py`
+behind it holding three of `REQ-023`'s eight settings: the **download folder** (a picker, plus
+*Use the default folder*), the **theme** (light/dark radio buttons, applied to the running
+application with no restart), and the **concurrency limit**. `core/settings.py` gains two sibling
+tables — `[downloads] directory` and `[appearance] theme` — with `ARC-008` validation, and
+`compose()` resolves the folder as *explicit argument → stored choice → platform default*.
+
+**The concurrency choice this task's criteria require recording: kept in both places.** The
+toolbar control stays and the screen mirrors it. One value in `settings.toml`, two views of it:
+composition applies and saves once, then tells the window, which updates whichever controls
+exist — so neither control writes to the other and there is no echo. **Removing the toolbar copy
+was rejected as not this task's to take**: `docs/UX_SPEC.md` §2.1's own wording anticipates the
+move, but the toolbar's composition is `T-220`'s open ruling, whose out-of-scope list says
+*"`ARC-007`'s concurrency control stays until `T-146` decides its fate"* — deciding it stays,
+pending that ruling, is the decision this records.
+
+**The path question `ARC-008` posed, answered.** A number out of range can be clamped because it
+still says how many; a folder that is gone says nothing repairable. So: absent or empty is silent;
+not a string, missing, not a directory, or not writable **reports and falls back** to the platform
+folder. A missing folder is deliberately **not recreated** — the picker only offers folders that
+exist, so its absence means it was deleted or its drive is unmounted, and making an empty one
+there would hide the likelier cause. Writability is `os.access`, which is not a guarantee on
+Windows; the docstring says so rather than over-promising.
+**Owner:** Implementer
+**Priority:** Medium — nothing is blocked by its absence, and two of its settings are the ones a
+user reaches for first
+**Phase:** **Phase 4 as the plan stands.** `ARC-007` deferred the full dialog there deliberately,
+and moving it is a maintainer call rather than this task's to make. *(**This entry sits under
+`## Proposed — Phase 3` and belongs to Phase 4.** It was filed before Phase 4 had a section;
+`## Proposed — Phase 4`, added 2026-08-09, names this task as the owner of the settings-dialog
+deliverable and `T-195` as the owner of the `REQ-023` keys listed under *Out of scope* below. It is
+left here rather than moved because the section note that follows `T-190` is Phase 3's, and
+separating them is a bigger edit than the inconsistency costs.)*
+**Depends on:** `T-105` (`docs/UX_SPEC.md`) for the screen's layout. *(This also read `T-170`,
+"for the minimal Settings shell introduced with the download-record control". **There is no shell**
+— `T-170` built one to hold *Clear download records*, and both went when the records did. This task
+builds the `Settings` menu, the dialog and its keyboard route from nothing. `T169-R4` caught the
+entry still promising an implementer a starting point that had been deleted.)*
+**Relevant context:** `REQ-023`, `ARC-007`, `ARC-008`, `DAT-001`, `ARCHITECTURE.md` §5
+and §8, `core/settings.py`, `ui/theme.py`, `ui/main_window.py`,
+`app.default_output_directory`. `ui/settings_dialog.py` and `tests/ui/test_settings_dialog.py` are
+deleted, but they are in history at `3578fcc` and the menu wiring there is worth reading before
+writing it again
+**Affected surfaces:** `core/settings.py`, `ui/main_window.py`, a new settings dialog module,
+`ui/theme.py`'s selection path, `app.py`
+**Risk:** Medium — it adds persisted state, and `ARC-008` governs what a bad value does
+
+#### Scope
+
+**No requirement changes, and that is the first thing to establish.** `REQ-023` already reads:
+
+> Provide a settings screen covering: default download directory, default preset, concurrency
+> limit, output template, ffmpeg location, network options (rate limit, proxy, retries), cookie
+> source, and **theme**.
+
+Both settings named in the request — the download directory and light/dark — are in that list
+verbatim. **This task owns the whole route** — the `Settings` menu, the dialog behind it and its
+keyboard path. `T-170` built a minimal version of exactly that to hold *Clear download records*,
+and it was removed on 2026-08-06 when the records were withdrawn: a settings screen whose only
+control does nothing is `UX-005` §5's own objection. So there is no shell to extend, and the menu
+bar is `File` and `Help`.
+
+**Three things already exist, so this is smaller than it looks.**
+
+- **Both palettes are built.** `ui/theme.py` ships `LIGHT` and `DARK` as complete `Theme` values
+  with `THEMES` keyed by name, and `T130-R1` already fought the contrast problems in both. What is
+  missing is a *selector*: `theme.apply()` defaults to `LIGHT` and nothing ever passes `DARK`.
+- **The download directory is explicitly a placeholder.** `app.default_output_directory`'s own
+  docstring says *"Where downloads go until `core/settings.py` lets the user say otherwise."* This
+  task is the "otherwise".
+- **The settings layer exists.** `ARC-007` landed `core/settings.py` in Phase 2 with exactly one
+  key, `concurrency`, and one main-window control.
+
+**Two accepted decisions constrain this and must not be quietly widened.**
+
+- **`ARC-007` excluded every other `REQ-023` setting on purpose** — it put the layer in place and
+  said only the concurrency key lands in Phase 2. Adding keys is this task's job, not a Phase 2
+  follow-up's.
+- **`ARC-008` requires a `settings.toml` that exists and cannot be used to *report*** rather than
+  revert silently. Every key added here inherits that, and a new key with a lenient coercion path
+  would be the first exception — so each needs its own decision about what a bad value does.
+  `concurrency` clamps out-of-range integers and rejects non-integers; a *path* has no equivalent
+  clamp, which is the substantive design question in this task.
+
+**The phase question, stated rather than assumed.** `ARC-007` and `IMPLEMENTATION_PLAN.md` §Phase 4
+both put the full dialog in Phase 4, after Phase 3. The request did not ask to re-phase it and this
+entry does not do so. **If the maintainer wants the theme toggle and the download directory sooner,
+that is a plan amendment** of the same kind as criterion 8 — recorded in `IMPLEMENTATION_PLAN.md`
+with the ruling named. *(This argued the point against `T-170`'s shell, which no longer exists. The
+conclusion is unchanged and now rests on nothing but the plan, which is where it always rested.)*
+
+#### Acceptance criteria
+
+- The `Settings` menu, its keyboard route and the screen behind it are **built here**, and there
+  is exactly one settings surface when the task is done. The Windows accessibility contract in
+  `tests/ui/test_windows_accessibility.py` names every menu by hand and currently expects
+  `File`/`Help` — it is the gate that caught the last `Settings` menu appearing, on the Windows job
+  alone, after the Linux suite had passed and three commits had been pushed
+- The screen sets the **default download directory**; a chosen directory survives a restart and is
+  what a new job actually uses — asserted against a real job, not against the stored value
+- The screen switches **light and dark**; the change applies to the running window without a
+  restart, and survives one
+- A directory that has been deleted, is not writable, or is not a directory **reports** under
+  `ARC-008` rather than silently reverting, and the application still starts
+- `docs/DEVELOPMENT.md` or the UX spec records which `REQ-023` settings are implemented and which
+  remain, so the screen never claims coverage it does not have
+- The concurrency control that `ARC-007` put in the main window is either moved here or
+  deliberately kept in both places, with the choice recorded
+
+#### What was built, against those criteria
+
+- **The menu, its route and the screen**: `Settings → Settings…`, `actionSettings`, and
+  `ui/settings_dialog.py`. Exactly one settings surface. The Windows accessibility equality
+  tripped, as its own docstring predicted it would, and is updated to `['File', 'Help',
+  'Settings']` deliberately rather than loosened to a subset.
+- **The folder survives a restart and is what a job uses**, asserted against a real job:
+  `test_a_chosen_download_folder_survives_a_restart_and_is_where_a_job_goes` composes against a
+  settings file that already names a folder — which is what a restart *is* — and reads the
+  folder off a request built by the dialog's own `_request_for`, not off the stored value.
+- **Light and dark, without a restart and across one**: `choose_theme` applies to the running
+  `QApplication` and saves; `run()` applies the stored palette at launch. `compose()` deliberately
+  does **not** restyle — it would restyle the `QApplication` every test in the session shares —
+  so it carries the name and `run()` applies it.
+- **A bad folder reports and the application still starts** (`ARC-008`): five unit tests, one per
+  shape — gone, a file, unwritable, not a string, empty. A missing folder is proved *not* to be
+  recreated.
+- **`docs/DEVELOPMENT.md` carries the coverage table** — three built, five owned by named tasks —
+  and `SETTINGS_STILL_TO_COME` says the same thing **on the screen**, so it cannot read as
+  complete. `docs/UX_SPEC.md` §2's *"there is no Settings menu"* is corrected.
+- **Four mutations fail their own evidence**: the stored folder never reaching a job; a deleted
+  folder reverting silently; a cancelled picker treated as *use the default*; the mirrored
+  spinner echoing back into composition.
+- **A fifth mutation passed, and the claim it disproved is corrected rather than left standing.**
+  `save()`'s comment and a test docstring both said the new tables *had* to precede `[[preset]]`
+  or they would be read as members of it. A TOML table header is an absolute path from the root,
+  so writing them last round-trips just as well. Both now say the order is for the reader, and
+  the test says what it does not prove.
+
+#### Out of scope
+
+- The other five `REQ-023` settings — default preset, output template, ffmpeg location, network
+  options, cookie source. Each has its own Phase 3 or Phase 4 owner
+- Download-record retention and any action that clears records. **There are no records** —
+  `REQ-020` is withdrawn and migration `0009` dropped the table. This once said `T-170` owned that
+  slice and the shell this task extends; both are gone, and a settings screen must not reintroduce
+  either
+- **Following the OS theme automatically.** Worth wanting and not requested; it is a third state
+  beyond light and dark and needs its own decision
+- Window geometry, which `ARC-007` deliberately keeps out of this layer (`window.toml`)
+
+*(**Decomposed 2026-08-01.** Phase 3 had **zero** tasks against
+seven plan deliverables, so its size was an estimate from prose rather than from work anybody had
+broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
+starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
+it.)*
+
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -1228,116 +1392,6 @@ beats designing it against an imagined one.
 ---
 
 ## Proposed — Phase 3
-
-### T-146 — A Settings menu, and the screen behind it
-
-**Status:** Proposed — **requested by the maintainer, 2026-08-05.** Filed against `REQ-023`, which
-already names every setting asked for. *(**The phase question below is closed:** Phase 3 exited and
-Phase 4 opened 2026-08-09, with this task named the owner of its settings-dialog deliverable. No
-re-phasing happened or is needed.)*
-**Owner:** Implementer
-**Priority:** Medium — nothing is blocked by its absence, and two of its settings are the ones a
-user reaches for first
-**Phase:** **Phase 4 as the plan stands.** `ARC-007` deferred the full dialog there deliberately,
-and moving it is a maintainer call rather than this task's to make. *(**This entry sits under
-`## Proposed — Phase 3` and belongs to Phase 4.** It was filed before Phase 4 had a section;
-`## Proposed — Phase 4`, added 2026-08-09, names this task as the owner of the settings-dialog
-deliverable and `T-195` as the owner of the `REQ-023` keys listed under *Out of scope* below. It is
-left here rather than moved because the section note that follows `T-190` is Phase 3's, and
-separating them is a bigger edit than the inconsistency costs.)*
-**Depends on:** `T-105` (`docs/UX_SPEC.md`) for the screen's layout. *(This also read `T-170`,
-"for the minimal Settings shell introduced with the download-record control". **There is no shell**
-— `T-170` built one to hold *Clear download records*, and both went when the records did. This task
-builds the `Settings` menu, the dialog and its keyboard route from nothing. `T169-R4` caught the
-entry still promising an implementer a starting point that had been deleted.)*
-**Relevant context:** `REQ-023`, `ARC-007`, `ARC-008`, `DAT-001`, `ARCHITECTURE.md` §5
-and §8, `core/settings.py`, `ui/theme.py`, `ui/main_window.py`,
-`app.default_output_directory`. `ui/settings_dialog.py` and `tests/ui/test_settings_dialog.py` are
-deleted, but they are in history at `3578fcc` and the menu wiring there is worth reading before
-writing it again
-**Affected surfaces:** `core/settings.py`, `ui/main_window.py`, a new settings dialog module,
-`ui/theme.py`'s selection path, `app.py`
-**Risk:** Medium — it adds persisted state, and `ARC-008` governs what a bad value does
-
-#### Scope
-
-**No requirement changes, and that is the first thing to establish.** `REQ-023` already reads:
-
-> Provide a settings screen covering: default download directory, default preset, concurrency
-> limit, output template, ffmpeg location, network options (rate limit, proxy, retries), cookie
-> source, and **theme**.
-
-Both settings named in the request — the download directory and light/dark — are in that list
-verbatim. **This task owns the whole route** — the `Settings` menu, the dialog behind it and its
-keyboard path. `T-170` built a minimal version of exactly that to hold *Clear download records*,
-and it was removed on 2026-08-06 when the records were withdrawn: a settings screen whose only
-control does nothing is `UX-005` §5's own objection. So there is no shell to extend, and the menu
-bar is `File` and `Help`.
-
-**Three things already exist, so this is smaller than it looks.**
-
-- **Both palettes are built.** `ui/theme.py` ships `LIGHT` and `DARK` as complete `Theme` values
-  with `THEMES` keyed by name, and `T130-R1` already fought the contrast problems in both. What is
-  missing is a *selector*: `theme.apply()` defaults to `LIGHT` and nothing ever passes `DARK`.
-- **The download directory is explicitly a placeholder.** `app.default_output_directory`'s own
-  docstring says *"Where downloads go until `core/settings.py` lets the user say otherwise."* This
-  task is the "otherwise".
-- **The settings layer exists.** `ARC-007` landed `core/settings.py` in Phase 2 with exactly one
-  key, `concurrency`, and one main-window control.
-
-**Two accepted decisions constrain this and must not be quietly widened.**
-
-- **`ARC-007` excluded every other `REQ-023` setting on purpose** — it put the layer in place and
-  said only the concurrency key lands in Phase 2. Adding keys is this task's job, not a Phase 2
-  follow-up's.
-- **`ARC-008` requires a `settings.toml` that exists and cannot be used to *report*** rather than
-  revert silently. Every key added here inherits that, and a new key with a lenient coercion path
-  would be the first exception — so each needs its own decision about what a bad value does.
-  `concurrency` clamps out-of-range integers and rejects non-integers; a *path* has no equivalent
-  clamp, which is the substantive design question in this task.
-
-**The phase question, stated rather than assumed.** `ARC-007` and `IMPLEMENTATION_PLAN.md` §Phase 4
-both put the full dialog in Phase 4, after Phase 3. The request did not ask to re-phase it and this
-entry does not do so. **If the maintainer wants the theme toggle and the download directory sooner,
-that is a plan amendment** of the same kind as criterion 8 — recorded in `IMPLEMENTATION_PLAN.md`
-with the ruling named. *(This argued the point against `T-170`'s shell, which no longer exists. The
-conclusion is unchanged and now rests on nothing but the plan, which is where it always rested.)*
-
-#### Acceptance criteria
-
-- The `Settings` menu, its keyboard route and the screen behind it are **built here**, and there
-  is exactly one settings surface when the task is done. The Windows accessibility contract in
-  `tests/ui/test_windows_accessibility.py` names every menu by hand and currently expects
-  `File`/`Help` — it is the gate that caught the last `Settings` menu appearing, on the Windows job
-  alone, after the Linux suite had passed and three commits had been pushed
-- The screen sets the **default download directory**; a chosen directory survives a restart and is
-  what a new job actually uses — asserted against a real job, not against the stored value
-- The screen switches **light and dark**; the change applies to the running window without a
-  restart, and survives one
-- A directory that has been deleted, is not writable, or is not a directory **reports** under
-  `ARC-008` rather than silently reverting, and the application still starts
-- `docs/DEVELOPMENT.md` or the UX spec records which `REQ-023` settings are implemented and which
-  remain, so the screen never claims coverage it does not have
-- The concurrency control that `ARC-007` put in the main window is either moved here or
-  deliberately kept in both places, with the choice recorded
-
-#### Out of scope
-
-- The other five `REQ-023` settings — default preset, output template, ffmpeg location, network
-  options, cookie source. Each has its own Phase 3 or Phase 4 owner
-- Download-record retention and any action that clears records. **There are no records** —
-  `REQ-020` is withdrawn and migration `0009` dropped the table. This once said `T-170` owned that
-  slice and the shell this task extends; both are gone, and a settings screen must not reintroduce
-  either
-- **Following the OS theme automatically.** Worth wanting and not requested; it is a third state
-  beyond light and dark and needs its own decision
-- Window geometry, which `ARC-007` deliberately keeps out of this layer (`window.toml`)
-
-*(**Decomposed 2026-08-01.** Phase 3 had **zero** tasks against
-seven plan deliverables, so its size was an estimate from prose rather than from work anybody had
-broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
-starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
-it.)*
 
 ### T-190 — `docs/UX_SPEC.md` §6 still says its screen is unspecified
 

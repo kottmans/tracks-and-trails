@@ -13,6 +13,7 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QLabel,
     QMainWindow,
     QMenu,
@@ -73,12 +74,56 @@ def test_window_has_the_application_title_and_icon(window: MainWindow) -> None:
     ]
 
 
-def test_menu_bar_exposes_quit_and_about(window: MainWindow) -> None:
+def test_menu_bar_exposes_quit_about_and_settings(window: MainWindow) -> None:
     titles = {menu.title() for menu in window.menuBar().findChildren(QMenu)}
-    assert {"&File", "&Help"} <= titles
+    assert {"&File", "&Help", "&Settings"} <= titles
 
     names = {action.objectName() for action in window.findChildren(QAction)}
-    assert {"actionQuit", "actionAbout"} <= names
+    assert {"actionQuit", "actionAbout", "actionSettings"} <= names
+
+
+def test_the_settings_item_is_disabled_on_a_window_that_cannot_write_settings(
+    window: MainWindow,
+) -> None:
+    """`REQ-023`, `T-146`: the menu route exists, and does nothing it cannot do.
+
+    Every setting the screen edits is written by composition (`ARC-007`), so a window built
+    without those callbacks — this fixture's, and most of `tests/ui/` — offers the item disabled
+    rather than a screen whose controls are inert. `open_settings` refuses for the same reason,
+    which is the second half rather than a trust in the first.
+    """
+    action = window.settings_action
+    assert action is not None, "the Settings menu item is missing entirely"
+    assert not action.isEnabled(), (
+        "a window with no settings writers offers an enabled Settings item, so the screen behind "
+        "it would open with controls that change nothing"
+    )
+    assert window.open_settings() is None
+
+
+def test_the_settings_item_opens_the_screen_when_composition_wired_it(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The route a user takes: the menu item, not the method behind it (`REQ-023`, `T-146`)."""
+    window = MainWindow(
+        tmp_path / "window.toml",
+        output_directory=tmp_path / "downloads",
+        theme="light",
+        on_directory_chosen=lambda _directory: None,
+        on_theme_chosen=lambda _name: None,
+    )
+    try:
+        action = window.settings_action
+        assert action is not None and action.isEnabled()
+
+        action.trigger()
+        qapp.processEvents()
+
+        screens = window.findChildren(QDialog, "settingsDialog")
+        assert len(screens) == 1, f"{len(screens)} settings screens opened from one menu item"
+    finally:
+        window.close()
+        qapp.processEvents()
 
 
 def test_every_action_carries_an_accessibility_label(window: MainWindow) -> None:

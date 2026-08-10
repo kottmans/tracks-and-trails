@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.job_detail import STATUS_TEXT
@@ -228,3 +229,23 @@ def test_applying_to_something_without_qts_setters_does_not_raise() -> None:
     are asked for rather than assumed.
     """
     theme.apply(object(), LIGHT)
+
+
+def test_the_settings_layer_and_the_palettes_agree_on_the_names() -> None:
+    """**The one assertion binding `THEME_NAMES` to `THEMES`** (`T-146`).
+
+    `core/settings.py` validates a stored theme name against a tuple of its own, because `core/**`
+    may not import Qt (`AGENTS.md` §7) and `ui/theme.py` reaches Qt for `QPalette`. Two lists of
+    the same names is two places to drift — a palette added in one and not the other would be a
+    theme the settings file refuses to store, and one removed would be a stored name that resolves
+    to no palette at all.
+
+    Asserted here because this is a module that may import both.
+    """
+    assert set(core_settings.THEME_NAMES) == set(theme.THEMES), (
+        f"the settings layer accepts {sorted(core_settings.THEME_NAMES)} and the palettes are "
+        f"{sorted(theme.THEMES)}; a name in one and not the other cannot round-trip"
+    )
+    assert core_settings.THEME_DEFAULT in theme.THEMES, (
+        "the default theme name resolves to no palette, so a first run has nothing to wear"
+    )

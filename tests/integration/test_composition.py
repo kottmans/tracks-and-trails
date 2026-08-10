@@ -37,6 +37,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from tracks_and_trails import app as application
 from tracks_and_trails.core import presets
+from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo
@@ -52,6 +53,7 @@ from tracks_and_trails.downloader.protocol import (
 )
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
+from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN, SIZE_COLUMN
 from tracks_and_trails.ui.row_delegate import PRESET_ROLE
 from tracks_and_trails.ui.row_verbs import Verb
@@ -432,6 +434,89 @@ def test_a_stopped_queue_still_reads_a_url_the_user_pastes(
         "a URL pasted into a first-run window was never read: the pause gate caught a staged "
         "probe, and the add dialog can only ever offer what it has read (UX-003)"
     )
+
+
+def test_a_chosen_download_folder_survives_a_restart_and_is_where_a_job_goes(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`T-146`'s criterion, asserted against a real job** rather than against the stored value.
+
+    *"A chosen directory survives a restart and is what a new job actually uses"* — and the second
+    half is the one that fails quietly. `T-075` is the shape it fails in: a control that changes
+    what is stored and not what runs. So this composes an application whose settings file already
+    names a folder — which is what a restart *is*, the file being the only thing that crosses one
+    — and then reads the folder off a job the composed application built for itself.
+
+    Not passed as `output_directory=`: that argument is how the tests redirect downloads away from
+    a real home directory, and it outranks the stored setting deliberately. A test that passed it
+    would be asserting on its own argument.
+    """
+    chosen = tmp_path / "Trail recordings"
+    chosen.mkdir()
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.with_download_directory(core_settings.Settings(), chosen), settings_file
+        )
+        is None
+    )
+
+    composition = composed(
+        settings_file=settings_file, output_directory=None, entry_point=child_probing_then_waiting
+    )
+
+    assert composition.output_directory == chosen, (
+        f"the composed application downloads into {composition.output_directory}, not the folder "
+        "the settings file names"
+    )
+    dialog = composition.window.open_add_dialog()
+    assert dialog is not None
+    try:
+        type_urls(dialog, "https://composed.invalid/where-does-this-go")
+        dialog.resolve()
+        assert spin(lambda: bool(dialog.rows) and dialog.rows[0].committable, timeout=60), (
+            f"the URL never resolved: {dialog.status_text()}"
+        )
+        # Through the dialog's own single request builder (`T-075`, `UX-004`) — the one every
+        # committed job goes through, rather than a second construction this test invented.
+        built = dialog._request_for(dialog.rows[0])
+        assert Path(built.output_directory) == chosen, (
+            f"a job this application built writes to {built.output_directory}, not the chosen "
+            f"folder {chosen}. The setting is stored and does not run — T-075's shape"
+        )
+    finally:
+        dialog.close()
+        QApplication.processEvents()
+
+
+def test_the_theme_the_file_names_is_the_one_composition_reports(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """`REQ-023`, `T-146`: the stored palette reaches the running application through `run()`.
+
+    **`compose()` carries the name rather than applying it**, and that is deliberate: restyling
+    the `QApplication` here would restyle the one every other test in this session shares, which
+    is the rule the `theme.apply` comment in `run()` states. So the assertion is that composition
+    *reports* what the file said, and `tests/unit/test_theme.py` owns what `apply` then does with
+    it.
+    """
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.with_theme(core_settings.Settings(), "dark"), settings_file
+        )
+        is None
+    )
+
+    composition = composed(settings_file=settings_file)
+
+    assert composition.theme == "dark", (
+        f"the settings file asks for dark and composition reports {composition.theme!r}"
+    )
+    assert composition.theme in ui_theme.THEMES, "composition reported a theme with no palette"
 
 
 def connection_count(sender: QObject, signal_name: str) -> int:

@@ -281,6 +281,32 @@ docs/             developer and operator documentation
 packaging/        PyInstaller spec and the frozen smoke test (T-020)
 ```
 
+## Which `REQ-023` settings the screen actually holds
+
+`REQ-023` names eight settings. **Settings → Settings… holds three** (`T-146`); the rest are filed
+and not built, and the screen says so itself rather than reading as complete.
+
+| Setting | Where it is | Stored as |
+|---|---|---|
+| Default download directory | Settings screen | `[downloads] directory` |
+| Theme (light/dark) | Settings screen | `[appearance] theme` |
+| Concurrency limit | Settings screen **and** the toolbar — one value, two controls | `[queue] concurrency` |
+| Default preset | not built — `T-195` | `default_preset` (written already by the preset manager) |
+| Output template | not built — `T-195` | — |
+| ffmpeg location | not built — `T-199` | — |
+| Network options (rate limit, proxy, retries) | not built — `T-196` | — |
+| Cookie source | not built — `T-197` | — |
+
+**The concurrency control is deliberately in both places** (`T-146`'s recorded choice). Its home is
+one value in `settings.toml` and both controls are views of it: composition applies and saves once,
+then tells the window, which updates whichever controls exist. Removing the toolbar copy is a
+change to the toolbar's composition, which is `T-220`'s open ruling and not this task's to take.
+
+**A bad value reports rather than reverting silently** (`ARC-008`). A download folder that has been
+deleted, is a file, or cannot be written to falls back to the platform's downloads folder *and*
+says so on startup; a missing one is **not** recreated, because the picker only offers folders that
+exist, so its absence means it was deleted or its drive is not mounted.
+
 ## Rules that will bite you
 
 These are enforced by tests and CI, not by review. Read `ARCHITECTURE.md` §4 before moving code

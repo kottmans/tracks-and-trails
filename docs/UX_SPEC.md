@@ -126,8 +126,12 @@ rather than storing one.
 **`Clear history` left the toolbar with the list it emptied** (2026-08-06), and nothing replaced it:
 `REQ-020` was withdrawn the same day, so there is nothing anywhere to clear. `Clear finished` stays
 — it clears completed **queue rows**, and with no records beside it there is nothing left for it to
-be confused with. **There is no Settings menu**: the shell built to hold the records control went
-with the control, and `T-146` brings it back with the settings `REQ-023` names.
+be confused with. **[T]** *(built 2026-08-10 by `T-146`)* **`Settings` is a menu between `File`
+and `Help`**, and the screen behind it holds the three `REQ-023` settings this phase built — the
+download folder, the theme, and the concurrency limit the toolbar also shows. The screen states
+the five it does not hold, so it never reads as complete; `docs/DEVELOPMENT.md` carries the table.
+*(There was no Settings menu between 2026-08-06 and then: the shell built to hold the withdrawn
+records control went with the control.)*
 
 **The rule the toolbar keeps:** nothing on it acts on a *selection*, and every verb on it names the
 list it empties.

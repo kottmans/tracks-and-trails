@@ -162,6 +162,12 @@ def run(argv: Sequence[str]) -> int:
         # Non-zero so a script can tell it apart from a normal run that the user closed.
         return 3
 
+    # **The stored palette, once the settings file has been read** (`REQ-023`, `T-146`). The call
+    # above dressed the application in the default so anything shown before this point — the
+    # already-running refusal, most concretely — is styled; this is the user's own choice, applied
+    # before the window is visible so there is no flash of the other theme.
+    theme.apply(composition.app, theme.THEMES[composition.theme])
+
     composition.window.show()
     return app.exec()
 
@@ -262,6 +268,10 @@ class Composition:
     output_directory: Path
     database_path: Path
     settings_path: Path
+    #: The palette the settings file asked for (`REQ-023`, `T-146`). Carried rather than applied,
+    #: because `compose()` restyling the `QApplication` would restyle the one every other test in
+    #: the session shares — the rule the `theme.apply` note in `run()` states. `run()` applies it.
+    theme: str
     #: The cache root this database's instance owns alone (`T-180`). Held for `database_path`'s
     #: reason — the partition is a claim about the assembled graph, and a root nothing can reach
     #: is a root nothing can check (`T180-R2`).
@@ -307,11 +317,10 @@ def compose(
     from tracks_and_trails.persistence.repositories import JobRepository
     from tracks_and_trails.persistence.store import PersistentJobStore
     from tracks_and_trails.persistence.writer import QueueWriter, open_connection_factory
+    from tracks_and_trails.ui import theme as ui_theme
     from tracks_and_trails.ui.main_window import MainWindow
 
     database_path = database if database is not None else db.database_path()
-    downloads = output_directory if output_directory is not None else default_output_directory()
-    downloads.mkdir(parents=True, exist_ok=True)
 
     # **Ownership before anything opens the database** (`A-004`, `ARC-006`, `T-087`). An atomic
     # kernel lock, not `QLocalServer` — Qt documents two local servers listening on one Windows pipe
@@ -361,6 +370,19 @@ def compose(
     # other one had added. One current value, replaced on every write.
     held = _Held(settings_read.settings)
     settings = settings_read.settings
+
+    # **Where downloads land, decided here and nowhere else** (`REQ-023`, `T-146`). Three sources,
+    # most specific first: the explicit argument (which is how every test redirects downloads away
+    # from a real home directory, `ai/TESTING.md` §5), then the user's stored choice, then the
+    # platform's own downloads folder. `load()` has already refused a stored folder that is gone,
+    # is a file, or cannot be written to, and said why — so by here it is either usable or `None`.
+    directory_is_default = output_directory is None and settings.download_directory is None
+    downloads = output_directory
+    if downloads is None:
+        downloads = settings.download_directory
+    if downloads is None:
+        downloads = default_output_directory()
+    downloads.mkdir(parents=True, exist_ok=True)
     manager = DownloadManager(
         store,
         # History is no longer a second injected sink (`T050-R1`, `T050-R2`): a completion is an
@@ -402,6 +424,41 @@ def compose(
         manager.set_concurrency(chosen.concurrency)
         held.settings = chosen
         app_settings.save(chosen, settings_file)
+        # **Both controls follow the value, from here** (`T-146`). The toolbar spinner and the
+        # settings screen's edit one setting, so the window is told what was applied rather than
+        # each control telling the other — one writer, two views, and no round trip between them.
+        window.show_concurrency(chosen.concurrency)
+
+    def choose_download_directory(directory: Path | None) -> None:
+        """Apply and remember where downloads go (`REQ-023`, `T-146`).
+
+        **Both halves, in this order**, for `choose_concurrency`'s reason one function up: the
+        window is handed the resolved folder so the *next* add dialog builds its requests against
+        it, and the file is written so the choice survives a restart. Applying without saving is a
+        setting that forgets itself; saving without applying is `T-075`'s shape — a control that
+        changes what is stored and not what runs.
+
+        `None` means *use the platform's downloads folder*, and composition is what resolves that:
+        `ui/` is handed a path and never learns what `platformdirs` is (`ARC-007`).
+        """
+        resolved = directory if directory is not None else default_output_directory()
+        resolved.mkdir(parents=True, exist_ok=True)
+        chosen = app_settings.with_download_directory(held.settings, directory)
+        held.settings = chosen
+        app_settings.save(chosen, settings_file)
+        window.show_download_directory(resolved, is_default=directory is None)
+
+    def choose_theme(name: str) -> None:
+        """Wear a palette now, and at the next launch (`REQ-023`, `ARCHITECTURE.md` §8, `T-146`).
+
+        Applied to the `QApplication`, which is what `ui/theme.py` themes — so every widget
+        already built follows, and the criterion that the change needs no restart is this call
+        rather than a promise about one.
+        """
+        chosen = app_settings.with_theme(held.settings, name)
+        held.settings = chosen
+        app_settings.save(chosen, settings_file)
+        ui_theme.apply(app, ui_theme.THEMES[chosen.theme])
 
     def save_preset(preset: Preset) -> str | None:
         """Keep the options editor's answer under a name (`P-4`, `REQ-007`, `T109-R5`).
@@ -532,6 +589,13 @@ def compose(
         cache_root=cache_root,
         concurrency=settings.concurrency,
         on_concurrency_changed=choose_concurrency,
+        # `T-146`'s screen: what it opens showing, and the two writers behind it. The theme is
+        # applied by `run()` rather than here — `compose()` restyling the shared `QApplication`
+        # is what the note above `theme.apply` in `run()` forbids.
+        theme=settings.theme,
+        directory_is_default=directory_is_default,
+        on_directory_chosen=choose_download_directory,
+        on_theme_chosen=choose_theme,
         on_run_changed=choose_run,
         on_remove_requested=remove_job,
         on_reorder_requested=reorder_queue,
@@ -644,6 +708,7 @@ def compose(
         output_directory=downloads,
         database_path=database_path,
         settings_path=settings_file if settings_file is not None else app_settings.settings_path(),
+        theme=settings.theme,
         cache_root=cache_root,
         shutdown=shutdown,
         instance=instance,

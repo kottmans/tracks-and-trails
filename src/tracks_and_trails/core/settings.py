@@ -47,6 +47,7 @@ show one, and `save()` writes the file that control edits. `ARC-008` decided it;
 deleted rather than amended, because it described behaviour that no longer exists.)*
 """
 
+import os
 import tomllib
 from contextlib import suppress
 from dataclasses import dataclass, fields, replace
@@ -86,6 +87,27 @@ CONCURRENCY_MAXIMUM: Final = 16
 #: siblings rather than nesting deeper.
 _TABLE: Final = "queue"
 _CONCURRENCY_KEY: Final = "concurrency"
+
+#: `T-146`'s two keys, as **sibling tables** rather than more `[queue]` members — the shape
+#: `_TABLE`'s note above promised. Neither is a queue setting: one says where files land and one
+#: says what the window looks like.
+_DOWNLOADS_TABLE: Final = "downloads"
+_DIRECTORY_KEY: Final = "directory"
+_APPEARANCE_TABLE: Final = "appearance"
+_THEME_KEY: Final = "theme"
+
+#: The themes a settings file may name (`REQ-023`, `ARCHITECTURE.md` §8).
+#:
+#: **Named here rather than read from `ui/theme.py`**, which owns the palettes: `core/**` may not
+#: import Qt (`AGENTS.md` §7), and `ui.theme` reaches Qt for `QPalette`. So this is a second place
+#: the names appear, and a second place is a place to drift —
+#: `tests/unit/test_theme.py` holds the one assertion that binds them, in the layer where
+#: importing both is allowed.
+#:
+#: **Following the OS theme is deliberately not a third name.** `T-146` puts it out of scope: it
+#: is a third state rather than a third palette, and it needs its own decision.
+THEME_NAMES: Final = ("light", "dark")
+THEME_DEFAULT: Final = "light"
 
 #: The array-of-tables a user's saved presets live in (`DAT-001`, `T109-R5`).
 #:
@@ -159,6 +181,20 @@ class Settings:
     #: is hand-editable, a preset can be deleted, and the resolver answers in every case.
     default_preset: str = ""
 
+    #: Where downloads are written, or `None` for the platform's own downloads directory
+    #: (`REQ-023`, `T-146`). `app.default_output_directory` is what `None` resolves to, and its
+    #: docstring called itself the placeholder "until `core/settings.py` lets the user say
+    #: otherwise" — this field is the otherwise.
+    #:
+    #: **`None` rather than the resolved default**, for `default_preset`'s reason one field up:
+    #: storing today's platform answer would freeze it into the file, so a user who never chose a
+    #: directory would keep the answer their first launch happened to compute.
+    download_directory: Path | None = None
+
+    #: Which palette the window wears (`REQ-023`, `ARCHITECTURE.md` §8, `T-146`). One of
+    #: `THEME_NAMES`; `load()` refuses anything else, so this is always a name `ui/theme.py` knows.
+    theme: str = THEME_DEFAULT
+
     def __post_init__(self) -> None:
         # A `Settings` built in code is held to the bound; a file is not. `load()` corrects what it
         # reads because a malformed file is not a programming error, and a caller passing 0 is.
@@ -221,6 +257,105 @@ def _concurrency_from(raw: Any) -> int:
     if isinstance(raw, bool) or not isinstance(raw, int):
         return CONCURRENCY_DEFAULT
     return min(max(raw, CONCURRENCY_MINIMUM), CONCURRENCY_MAXIMUM)
+
+
+def _directory_from(raw: Any) -> tuple[Path | None, str | None]:
+    """Coerce a stored download directory into one that can be written to. **Never raises.**
+
+    **The substantive design question `T-146` names**, in its own words: *"a path has no equivalent
+    clamp"*. `concurrency` can be pulled into range because a number out of range still says how
+    many; a directory that is gone says nothing that can be repaired. So the answers differ by
+    what the value can still mean:
+
+    | The value | Answer | Reported |
+    |---|---|---|
+    | Absent, or an empty string | the platform default | **No** — as for any deleted line |
+    | Not a string | the platform default | **Yes** — a table or a number names no directory |
+    | A path that does not exist | the platform default | **Yes** |
+    | A path that is not a directory | the platform default | **Yes** |
+    | A directory that cannot be written to | the platform default | **Yes** |
+    | A usable directory | itself | **No** |
+
+    **A missing directory is reported rather than created**, which is the difference between this
+    and composition's `mkdir` on the default. The default is a path this application chose and may
+    make; a stored one is a path the *user* chose from a picker that only offers directories that
+    exist, so its absence means it was deleted or its drive is not mounted. Recreating an empty
+    folder where their files used to be would answer a question nobody asked, and would hide the
+    unmounted drive that is the likelier cause (`ARC-008` reports rather than reverting silently).
+
+    **Writability is asked with `os.access`, and that is not a guarantee.** On Windows it consults
+    the read-only attribute rather than the ACL, so a directory it calls writable can still refuse
+    a file. This is a check for the ordinary broken cases — a read-only mount, someone else's
+    folder — and the download's own error path stays the authority on whether a write succeeds
+    (`NFR-006` carries the message either way). Claiming more would be the kind of over-promise
+    `AGENTS.md` §7 forbids.
+    """
+    if raw is None:
+        return None, None
+    if not isinstance(raw, str):
+        return None, (
+            f"{_DOWNLOADS_TABLE}.{_DIRECTORY_KEY} is {raw!r}, which is not a path. "
+            "Downloads will go to the default folder."
+        )
+    if not raw.strip():
+        # Deliberately silent: an empty value is how a user says "use the default" without
+        # deleting the line, and `save()`'s header promises deleting it is safe.
+        return None, None
+
+    candidate = Path(raw).expanduser()
+    try:
+        if not candidate.exists():
+            return None, (
+                f"The download folder in your settings no longer exists, so downloads will go to "
+                f"the default folder instead.\n{candidate}"
+            )
+        if not candidate.is_dir():
+            return None, (
+                f"The download folder in your settings is a file, not a folder, so downloads "
+                f"will go to the default folder instead.\n{candidate}"
+            )
+        if not os.access(candidate, os.W_OK):
+            return None, (
+                f"The download folder in your settings cannot be written to, so downloads will "
+                f"go to the default folder instead.\n{candidate}"
+            )
+    except OSError as error:
+        # **This function's never-raises contract, kept against the filesystem** — the same lesson
+        # `T102-R1` taught about decoding: a check that can raise is a check that can stop the
+        # application starting, which is the opposite of what `ARC-008` promises. A path on a
+        # disconnected network share raises here rather than answering False.
+        return None, (
+            f"The download folder in your settings could not be checked, so downloads will go to "
+            f"the default folder instead.\n{candidate}\n{type(error).__name__}: {error}"
+        )
+    return candidate, None
+
+
+def _theme_from(raw: Any) -> tuple[str, str | None]:
+    """Coerce a stored theme name. **Never raises.**
+
+    Unknown names are reported rather than clamped for `_directory_from`'s reason: `"solarized"`
+    expresses a preference this application cannot honour, and picking the nearest of two would be
+    inventing an answer. Absent is silent, as every omission here is.
+    """
+    if raw is None:
+        return THEME_DEFAULT, None
+    if not isinstance(raw, str) or raw not in THEME_NAMES:
+        return THEME_DEFAULT, (
+            f"{_APPEARANCE_TABLE}.{_THEME_KEY} is {raw!r}, which is not one of "
+            f"{', '.join(THEME_NAMES)}. The {THEME_DEFAULT} theme is in use."
+        )
+    return raw, None
+
+
+def _section_of(document: dict[str, Any], table: str) -> tuple[dict[str, Any], str | None]:
+    """One optional table, or an empty one and a reason it could not be read."""
+    section = document.get(table)
+    if section is None:
+        return {}, None
+    if not isinstance(section, dict):
+        return {}, f"The [{table}] section is a {type(section).__name__}, not a section."
+    return section, None
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,9 +469,34 @@ def load(path: Path | None = None) -> SettingsFile:
     presets, preset_reason = _presets_from(document)
     default, default_reason = _default_preset_from(document, presets)
 
+    # `T-146`'s two, read the same independent way and for the same reason: a theme name nobody
+    # recognises must not cost the user their download folder.
+    downloads_table, downloads_reason = _section_of(document, _DOWNLOADS_TABLE)
+    directory, directory_reason = _directory_from(downloads_table.get(_DIRECTORY_KEY))
+    appearance_table, appearance_reason = _section_of(document, _APPEARANCE_TABLE)
+    theme, theme_reason = _theme_from(appearance_table.get(_THEME_KEY))
+
     def answer(concurrency: int, reason: str | None = None) -> SettingsFile:
-        parts = [part for part in (reason, preset_reason, default_reason) if part]
-        settings = Settings(concurrency=concurrency, presets=presets, default_preset=default)
+        parts = [
+            part
+            for part in (
+                reason,
+                preset_reason,
+                default_reason,
+                downloads_reason,
+                directory_reason,
+                appearance_reason,
+                theme_reason,
+            )
+            if part
+        ]
+        settings = Settings(
+            concurrency=concurrency,
+            presets=presets,
+            default_preset=default,
+            download_directory=directory,
+            theme=theme,
+        )
         if not parts:
             return SettingsFile(settings)
         return SettingsFile(settings, SettingsProblem(target, "\n\n".join(parts)))
@@ -766,6 +926,28 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             if settings.default_preset
             else ""
         )
+        # **Written after `[queue]` and before the presets, for the reader's sake only** (`T-146`).
+        # A TOML table header is an absolute path from the root, so `[downloads]` after a
+        # `[[preset]]` would still be a top-level table and would still round-trip — measured, by
+        # mutating this order and watching the round-trip test stay green. What the order buys is
+        # that the file's settings sit together above a list that grows without limit, which is
+        # the point of a format `DAT-001` chose for being hand-editable.
+        #
+        # *(This comment claimed the order was load-bearing — that a later header would be read as
+        # a member of the preceding preset. That is bare-key behaviour, not table-header
+        # behaviour, and the mutation is what showed the claim up.)*
+        downloads_lines = (
+            f"\n\n[{_DOWNLOADS_TABLE}]\n"
+            "# Where downloads are written. Delete the line for your usual downloads folder.\n"
+            f"{_DIRECTORY_KEY} = {_toml_string(str(settings.download_directory))}\n"
+            if settings.download_directory is not None
+            else ""
+        )
+        appearance_lines = (
+            f"\n\n[{_APPEARANCE_TABLE}]\n"
+            f"# The window's palette: {' or '.join(THEME_NAMES)}.\n"
+            f"{_THEME_KEY} = {_toml_string(settings.theme)}\n"
+        )
         scratch.write_text(
             "# Tracks & Trails settings.\n"
             "# Safe to delete: every value falls back to its default.\n"
@@ -775,7 +957,8 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             f"maximum {CONCURRENCY_MAXIMUM}, default {CONCURRENCY_DEFAULT}.\n"
             "# Each one is a separate worker process, so a higher number is not always faster.\n"
             f"{_CONCURRENCY_KEY} = {settings.concurrency}\n"
-            + "".join(_preset_lines(preset) for preset in settings.presets),
+            f"{downloads_lines}"
+            f"{appearance_lines}" + "".join(_preset_lines(preset) for preset in settings.presets),
             encoding="utf-8",
         )
         scratch.replace(target)
@@ -794,3 +977,21 @@ def with_concurrency(settings: Settings, limit: int) -> Settings:
     handing over `40` gets the maximum — the same answers `load()` gives a file saying either.
     """
     return replace(settings, concurrency=min(max(limit, CONCURRENCY_MINIMUM), CONCURRENCY_MAXIMUM))
+
+
+def with_download_directory(settings: Settings, directory: Path | None) -> Settings:
+    """`settings` with the download folder set, or cleared back to the platform's (`T-146`).
+
+    A named function for `with_concurrency`'s reason: one place the value changes, so the meaning
+    of `None` cannot be re-invented at each call site.
+    """
+    return replace(settings, download_directory=directory)
+
+
+def with_theme(settings: Settings, name: str) -> Settings:
+    """`settings` wearing `name`, or the default if it is not a theme this application has.
+
+    Refused rather than stored, so a caller cannot persist a name `ui/theme.py` would fail to
+    resolve — the same bound-at-the-value rule `with_concurrency` applies to a number.
+    """
+    return replace(settings, theme=name if name in THEME_NAMES else THEME_DEFAULT)

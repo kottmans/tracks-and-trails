@@ -58,6 +58,7 @@ from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.options_dialog import PresetSink
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
+from tracks_and_trails.ui.settings_dialog import SettingsDialog
 
 APP_NAME: Final = "Tracks & Trails"
 
@@ -331,9 +332,22 @@ class MainWindow(QMainWindow):
         presets: Callable[[], Sequence[Preset]] | None = None,
         default_preset: Callable[[], str] | None = None,
         cache_root: Path | None = None,
+        theme: str | None = None,
+        directory_is_default: bool = True,
+        on_directory_chosen: Callable[[Path | None], None] | None = None,
+        on_theme_chosen: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
+        #: `T-146`'s screen, and what composition has to supply for it to do anything: the theme
+        #: in force, whether the download folder is a choice or the platform's, and the two
+        #: writers. `ui/` owns no settings file (`ARC-007`), so every one of these is handed in.
+        self._theme = theme
+        self._directory_is_default = directory_is_default
+        self._on_directory_chosen = on_directory_chosen
+        self._on_theme_chosen = on_theme_chosen
+        self._settings_action: QAction | None = None
+        self._settings_dialog: SettingsDialog | None = None
         #: The cache root both thumbnail stores write under (`T-180`). Composition derives it from
         #: the database so two permitted instances stop sweeping each other's pictures; this window
         #: only carries it to the two widgets that fetch, and never learns what a database is.
@@ -1225,7 +1239,7 @@ class MainWindow(QMainWindow):
         return self._concurrency
 
     def _build_menus(self) -> None:
-        """File → Add URLs…, File → Quit, and Help → About.
+        """File → Add URLs…, File → Quit, Settings → Settings…, and Help → About.
 
         Every action gets an explicit status tip and object name. Visible text is usually
         announced anyway, but `NFR-005` requires screen-reader labels on all controls, and
@@ -1266,6 +1280,22 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
+        # **`Settings` is its own menu, between File and Help** (`REQ-023`, `T-146`). It was here
+        # for six hours on 2026-08-06 holding `T-170`'s one records control, and left with
+        # `REQ-020`; this is the screen `T-146` always owned. The Windows accessibility equality
+        # in `tests/ui/test_windows_accessibility.py` is written against this menu bar by hand and
+        # is the gate that caught the last one, on the Windows job alone.
+        settings_menu = menu_bar.addMenu("&Settings")
+        settings_action = QAction("&Settings...", self)
+        settings_action.setMenuRole(QAction.MenuRole.NoRole)
+        settings_action.setObjectName("actionSettings")
+        settings_action.setStatusTip("Where downloads go, the theme, and how many run at once")
+        settings_action.setEnabled(self._can_open_settings)
+        settings_action.triggered.connect(self.open_settings)
+        settings_menu.addAction(settings_action)
+        #: Held so a test drives the route a user takes rather than the method behind it.
+        self._settings_action = settings_action
+
         help_menu = menu_bar.addMenu("&Help")
         about_action = QAction(f"&About {APP_NAME}", self)
         about_action.setMenuRole(QAction.MenuRole.NoRole)
@@ -1273,6 +1303,104 @@ class MainWindow(QMainWindow):
         about_action.setObjectName("actionAbout")
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
+
+    @property
+    def _can_open_settings(self) -> bool:
+        """Whether composition supplied enough for the screen to change anything.
+
+        Every setting it edits is written by composition (`ARC-007`), so a window built without
+        those callbacks — which is most windows in `tests/ui/` — gets the menu item disabled
+        rather than a screen whose controls do nothing. The same rule `Add URLs...` follows.
+        """
+        return (
+            self._on_directory_chosen is not None
+            and self._on_theme_chosen is not None
+            and self._output_directory is not None
+            and self._theme is not None
+        )
+
+    @property
+    def settings_action(self) -> QAction | None:
+        """The `Settings` menu item, so a test can drive the route a user takes."""
+        return self._settings_action
+
+    def open_settings(self) -> SettingsDialog | None:
+        """Open the Settings screen (`REQ-023`, `T-146`).
+
+        Returned so a test drives the same route the user takes, exactly as `open_add_dialog` is
+        asserted. `None` when composition supplied no writers — the action is disabled then, and
+        this is the second half of that rather than a trust in the first.
+
+        **Held while it is open**, so a concurrency change made on the toolbar can reach the
+        screen's own spinner. Two controls edit one value (`REQ-013`), and a screen showing a
+        stale number is a screen that will write it back.
+        """
+        if (
+            self._on_directory_chosen is None
+            or self._on_theme_chosen is None
+            or self._output_directory is None
+            or self._theme is None
+        ):
+            return None
+        dialog = SettingsDialog(
+            download_directory=self._output_directory,
+            directory_is_default=self._directory_is_default,
+            theme=self._theme,
+            # The toolbar spinner is the value in force where there is one. A window built without
+            # a control bar has no limit on screen, so the screen opens on the documented default
+            # rather than on a zero the spinbox's own range would refuse.
+            concurrency=(
+                self._concurrency.value()
+                if self._concurrency is not None
+                else settings.CONCURRENCY_DEFAULT
+            ),
+            on_directory_chosen=self._on_directory_chosen,
+            on_theme_chosen=self._theme_chosen,
+            on_concurrency_chosen=self._concurrency_chosen,
+            parent=self,
+        )
+        self._settings_dialog = dialog
+        dialog.finished.connect(self._forget_settings_dialog)
+        dialog.open()
+        return dialog
+
+    def _forget_settings_dialog(self) -> None:
+        self._settings_dialog = None
+
+    def _theme_chosen(self, name: str) -> None:
+        """Remember what the screen picked, so reopening it shows the theme in force."""
+        self._theme = name
+        if self._on_theme_chosen is not None:
+            self._on_theme_chosen(name)
+
+    def show_download_directory(self, directory: Path, *, is_default: bool) -> None:
+        """Take the folder composition resolved, and tell the open screen about it (`T-146`).
+
+        **The window holds it, not just the screen**, because this is the folder the add dialog
+        builds its requests against: a change that only reached the settings screen would be a
+        setting that appeared to work and moved nothing until a restart, which is the shape
+        `T-075` was.
+        """
+        self._output_directory = directory
+        self._directory_is_default = is_default
+        if self._settings_dialog is not None:
+            self._settings_dialog.show_download_directory(directory, is_default=is_default)
+
+    def show_concurrency(self, limit: int) -> None:
+        """Follow a limit changed elsewhere, on both controls that show it (`T-146`).
+
+        Signals blocked around each assignment: the toolbar spinner and the screen's spinner both
+        report `valueChanged`, and either echoing back into composition would turn one user
+        change into an unbounded round trip between two controls.
+        """
+        if self._concurrency is not None:
+            blocked = self._concurrency.blockSignals(True)
+            try:
+                self._concurrency.setValue(limit)
+            finally:
+                self._concurrency.blockSignals(blocked)
+        if self._settings_dialog is not None:
+            self._settings_dialog.show_concurrency(limit)
 
     def show_about(self) -> QMessageBox:
         """Build the About box and show it.
