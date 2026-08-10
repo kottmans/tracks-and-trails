@@ -255,9 +255,11 @@ def test_a_queued_playlist_entry_left_on_disk_is_probed_after_restart(
     # expects bytes to move has to press Start exactly as a user does. Called on the manager
     # rather than through the toolbar because the seam under test here is not the control.
     #
-    # `ARC-009`'s probe-before-download is what this test is about, and the gate does not change
-    # it: a probe is exempt from the gate, so the entry is *read* either way. What Start buys is
-    # the download that follows, which is the state this asserts on.
+    # `ARC-009`'s probe-before-download is what this test is about, and Start is now what buys
+    # **both** halves: since `T-215` composition holds the previous run's rows until the queue is
+    # started, so this entry is read and *then* downloaded on the far side of this call. *(This
+    # comment said the probe ran either way, the gate being blind to it. Running it either way is
+    # what turned an offline launch into a wall of failures.)*
     composition.manager.start_queue()
 
     assert spin(lambda: shown_status(composition, "entry-1") is JobStatus.RUNNING, timeout=60), (
@@ -268,6 +270,167 @@ def test_a_queued_playlist_entry_left_on_disk_is_probed_after_restart(
     assert stored.title == "A video that exists", (
         "startup downloaded a flat playlist entry without first probing it; the live add-dialog "
         "path honours ARC-009, but the durable restart path still admits QUEUED as DOWNLOAD"
+    )
+
+
+def test_an_offline_launch_leaves_the_durable_queue_held(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`T-215`.** A bad network moment at launch must not rewrite the queue into failures.
+
+    **Observed live before it was filed**: launched with unreachable URLs, every durably-`QUEUED`
+    row became `Failed` within a second — queue stopped, user touching nothing. Startup admitted
+    those rows as probe sessions; the stopped-queue gate exempted *every* probe; a failed probe
+    fails the job. `REQ-018` then retried the network error and failed it again. The user's
+    standing queue is data they committed, and this rewrote it into work they must retry row by
+    row.
+
+    The proof is in three parts, because a bare "nothing happened yet" assertion would pass on a
+    slow runner for entirely the wrong reason:
+
+    1. **The mechanism, and no clock is involved in it** — `compose()` admitted synchronously, so
+       the moment it returns the row is either started or not started at all. The manager must be
+       holding **nothing**: `active_job_ids()` empty, which covers running, reserved *and*
+       waiting. Asked that way deliberately — the first draft of this test asked `_sessions`
+       alone and **passed on the unfixed tree**, because the startup probe was still a
+       reservation at that instant. A reservation is a start whose transition has not landed
+       yet, which is started, not held.
+    2. **What the user sees** — the row still reads `QUEUED`, which `UX-006` shows as `Held`.
+    3. **A positive control** — pressing Start reaches `FAILED` carrying the extractor's own text.
+       Deferral is not suppression (`T-215`'s own criterion), and a test that could not observe
+       the failure at all would be no evidence that it had been deferred.
+    """
+    database = tmp_path / "offline-launch.sqlite3"
+    connection = db.connect(database)
+    repository = JobRepository(connection)
+    request = DownloadRequest(
+        url="https://example.invalid/queued-last-session",
+        output_directory=str(tmp_path / "downloads"),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+    repository.append([Job(id="held-1", url=request.url, request=request, queue_position=0)])
+    connection.close()
+
+    # The offline shape: every session kind fails with the timeout a launch on a train produces.
+    composition = composed(database=database, entry_point=child_failing_to_extract)
+    manager = composition.manager
+
+    assert not manager.active_job_ids(), (
+        f"the manager took on {manager.active_job_ids()} at launch with the queue stopped: the "
+        "startup probe ran unattended, which is the network moment T-215 is about"
+    )
+    assert spin(lambda: shown_status(composition, "held-1") is not None, timeout=30), (
+        "the queue view never showed the row a previous run left behind"
+    )
+    assert shown_status(composition, "held-1") is JobStatus.QUEUED, (
+        f"the held row reads {shown_status(composition, 'held-1')}, not Held (UX-006)"
+    )
+    stored = composition.store.get("held-1")
+    assert stored is not None and stored.error_message is None, (
+        "a row that has never been checked is carrying a failure message, so it claims knowledge "
+        "it does not have"
+    )
+
+    # **The positive control.** Start is what the user presses; the probe runs then, fails then,
+    # and says why — the same failure, moved to the moment it was actually attempted.
+    manager.start_queue()
+    assert spin(lambda: shown_status(composition, "held-1") is JobStatus.FAILED, timeout=60), (
+        "the deferred row never failed once the queue was started, so the fix suppressed the "
+        "failure rather than deferring it"
+    )
+    failed = composition.store.get("held-1")
+    assert failed is not None and failed.error_message is not None
+    assert "urlopen error" in failed.error_message, (
+        f"the extractor's own message did not survive the deferral: {failed.error_message!r}"
+    )
+
+
+def test_a_held_row_still_probes_and_downloads_once_the_queue_starts(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`T-215`'s other half**: deferring must not strand a row that can never start.
+
+    The risk the deferral creates is an unprobed row nobody probes — held at launch, and then
+    still held after Start because the drain carried it as a download, or not at all. So this
+    drives the same seam with a child that answers: held while stopped, and once started it is
+    **probed and then downloaded**, with the title from the probe proving `ARC-009`'s order
+    survived the parking.
+    """
+    database = tmp_path / "held-then-started.sqlite3"
+    connection = db.connect(database)
+    repository = JobRepository(connection)
+    request = DownloadRequest(
+        url="https://example.invalid/held-then-started",
+        output_directory=str(tmp_path / "downloads"),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+    repository.append([Job(id="wake-1", url=request.url, request=request, queue_position=0)])
+    connection.close()
+
+    composition = composed(database=database, entry_point=child_probing_then_waiting)
+    manager = composition.manager
+
+    assert not manager.active_job_ids(), (
+        "the row did not wait for Start, so what follows proves nothing about waking it"
+    )
+
+    manager.start_queue()
+    assert spin(lambda: shown_status(composition, "wake-1") is JobStatus.RUNNING, timeout=60), (
+        "a row held at launch never reached its download after Start: the deferral stranded it"
+    )
+    stored = composition.store.get("wake-1")
+    assert stored is not None and stored.title == "A video that exists", (
+        "the held row was downloaded without being probed first; the deferral must park the "
+        "probe, not replace it with a download (ARC-009)"
+    )
+
+
+def test_a_stopped_queue_still_reads_a_url_the_user_pastes(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**The exemption `T-215` narrowed down to, guarded.** Staging is attended reading.
+
+    `_gate_blocks` stops the queue's own rows and exempts a *staged* probe, and `UX-006` makes
+    that exemption load-bearing rather than considerate: the queue is stopped at **every** launch,
+    so a gate over staged probes leaves a first-run window unable to read anything pasted into it.
+
+    **Nothing tested it.** Every add-dialog test builds its manager through a fixture that calls
+    `start_queue()`, so the whole suite runs with the queue *running* and the launch state — which
+    is the only state a first paste ever happens in — was covered nowhere. Measured, not assumed:
+    with `_gate_blocks` mutated to gate staged probes too, `tests/ui/test_add_dialog.py` passed
+    142 tests. This is the test that fails.
+
+    Driven at the manager, which is the seam the rule lives on; the dialog's own use of it is
+    `tests/ui/test_add_dialog.py`'s subject.
+    """
+    composition = composed(entry_point=child_probing_then_waiting)
+    manager = composition.manager
+    assert not manager.is_running, (
+        "the composed queue is running at launch, so this cannot prove what a stopped one reads"
+    )
+
+    read: list[str] = []
+    manager.media_probed.connect(lambda job_id, _media: read.append(job_id))
+    staged = manager.stage(
+        DownloadRequest(
+            url="https://example.invalid/just-pasted",
+            output_directory=str(tmp_path / "downloads"),
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+        )
+    )
+
+    assert spin(lambda: staged in read, timeout=60), (
+        "a URL pasted into a first-run window was never read: the pause gate caught a staged "
+        "probe, and the add dialog can only ever offer what it has read (UX-003)"
     )
 
 

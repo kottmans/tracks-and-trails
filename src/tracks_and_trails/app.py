@@ -591,12 +591,22 @@ def compose(
     # things get probed; the continuation then carries each one into its download. Writing the
     # rule twice is the risk here, and it is why `waiting_jobs` hands the status over rather than
     # letting this loop guess from the id.
+    #
+    # **Held until the user starts the queue, not admitted now** (`T-215`). This loop called
+    # `admit` here, and a `QUEUED` row is admitted as a *probe* — which the stopped-queue gate
+    # exempts, deliberately, so the add dialog can read what the user pastes into a window whose
+    # queue is stopped, as `UX-006` says every window's is. So every row a previous run left
+    # behind was read the instant this window opened, with nobody watching: a launch with no
+    # usable network failed all of them, `REQ-018` retried the network errors and failed them
+    # again, and a queue the user had committed became a wall of `Failed` rows to retry by hand.
+    # `admit_when_started` carries the reasoning and why the gate is the wrong place for it.
     for job_id, status in durable_waiting:
         kind = SessionKind.PROBE if status is JobStatus.QUEUED else SessionKind.DOWNLOAD
-        manager.admit(job_id, kind)
+        manager.admit_when_started(job_id, kind)
     if durable_queued:
         logging.getLogger("tracksandtrails.app").info(
-            "admitted %d job(s) left queued by a previous run", len(durable_queued)
+            "holding %d job(s) left queued by a previous run until the queue is started",
+            len(durable_queued),
         )
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
 

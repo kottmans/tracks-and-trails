@@ -596,6 +596,12 @@ class DownloadManager(QObject):
         #: is what every deferred start was silently assumed to be until a retried **probe**
         #: came back as a download and began writing media nobody had confirmed.
         self._intended_kind: dict[str, SessionKind] = {}
+        #: What a previous run left queued, waiting for the user to start the queue before it is
+        #: admitted at all (`T-215`). **Not `_waiting`**, and the difference is the point: a job
+        #: in `_waiting` has been admitted and runs the moment its lane allows, which for a probe
+        #: is immediately — the stopped-queue gate exempts probes so the add dialog can read what
+        #: the user pastes. These have not been admitted, so nothing reads them until Start.
+        self._held_for_start: list[tuple[str, SessionKind]] = []
         #: Whether the queue is running (`UX-001`, `UX-006`, `T-181`). **Not a job status** — that
         #: is the whole decision. The gate governs what this manager *starts*; it never changes a
         #: job, which is why `T-080` could delete `JobStatus.PAUSED` outright.
@@ -716,6 +722,11 @@ class DownloadManager(QObject):
             return
         self._running = True
         self.queue_running.emit(True)
+        # **What the last run left is admitted here, and nowhere earlier** (`T-215`). Between
+        # setting the gate open and filling slots, so these rows take their turn in the same fill
+        # as everything else rather than waiting for a tick. Emptied by `_admit_held_for_start`,
+        # so a stop/start cycle does not re-admit what is already running.
+        self._admit_held_for_start()
         self._fill_free_slots()
 
     # --- removal (`UX-001`) -------------------------------------------------------------
@@ -1051,6 +1062,38 @@ class DownloadManager(QObject):
             self._start_when_free(job_id, kind)
         except KeyError as missing:
             self.start_rejected.emit(job_id, f"this job is not in the queue: {missing}")
+
+    def admit_when_started(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
+        """Admit `job_id` **the first time the queue is started**, and not before (`T-215`).
+
+        For work this manager inherited rather than work someone asked for: the rows a previous
+        run left queued, which composition hands over at launch (`T-115`). `admit()` is wrong for
+        them, and the difference is not the gate — it is that a `QUEUED` row is admitted as a
+        *probe*, and the gate exempts probes so the add dialog can read what the user pastes
+        while the queue sits stopped, which `UX-006` says it does at every launch.
+
+        **So an inherited row was read the instant the window opened**, with nobody watching, and
+        a launch with no usable network failed every one of them — `REQ-018` then retried the
+        network error and failed them again, turning a queue the user had committed into a wall
+        of `Failed` rows to retry by hand. Observed live, offscreen, in under a second.
+
+        **Deferred here rather than by widening the gate**, which was tried first and is wrong:
+        the gate cannot tell an inherited probe from the one the add dialog runs when the user
+        adds a playlist, and holding *those* leaves freshly queued entries bare until Start —
+        the report `T-143` exists to have fixed. Startup is the only moment at which nobody has
+        asked for anything, so a caller who knows it is startup is the one that can say so.
+
+        Held rather than admitted means the manager reports nothing for these rows — they are not
+        `active_job_ids()`, not `_waiting`, and `is_idle` stays true. That is the honest answer:
+        an inherited row is not work in flight until the user asks for it.
+        """
+        self._held_for_start.append((job_id, kind))
+
+    def _admit_held_for_start(self) -> None:
+        """Hand every held row to `admit`, once. Called from `start_queue` alone."""
+        held, self._held_for_start = self._held_for_start, []
+        for job_id, kind in held:
+            self.admit(job_id, kind)
 
     def stage(self, request: DownloadRequest) -> str:
         """Read `request.url` **without creating a queue job** (`T118-R1`, `UX-003`).
