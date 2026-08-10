@@ -3416,6 +3416,71 @@ def test_an_open_playlist_keeps_its_disclosure_when_another_url_joins_the_batch(
     )
 
 
+def test_removing_a_row_above_keeps_the_open_panels_way_back_on_screen(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-208`: a reproduced multi-row route that loses the arrow** — and its fix.
+
+    With a row above and a row below, an open playlist fills the viewport and the list is
+    scrolled. Removing the row above shrinks the scroll range; Qt keeps the *offset*, so the
+    surviving row — panel and all — slides up until its top is above the fold **and stays
+    there**: fifty event-loop turns do not move it back. The collapse control lives at that top,
+    and an open row's twisty is deliberately not painted (`T-210`'s one-arrow rule), so the
+    removal has quietly taken the arrow with it. `remount_panel` now re-anchors the row's top
+    into view exactly when it left.
+
+    **This is one reproduced route, not a claim about the maintainer's report.** The exact
+    gesture behind *"with multiple items … the playlist loses the arrow"* is still theirs to
+    confirm; what this pins is that this route existed, is fixed, and cannot come back — with
+    the selection surviving the close, which is the criterion's second half.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
+    dialog.resize(900, 700)
+    dialog.show()
+    try:
+        qapp.processEvents()
+        playlist = dialog.rows[1]
+        panel = _open_the_picker(dialog, playlist)
+        qapp.processEvents()
+
+        # A choice the close must keep: `Space` on the picker's current entry, the real gesture.
+        QTest.keyClick(panel.picker.table, Qt.Key.Key_Space)
+        qapp.processEvents()
+        chosen = playlist.entry_selection
+        assert isinstance(chosen, PlaylistSelection) and len(chosen.checked) == 6
+
+        # A third row below, so the scroll range stays real once the first row goes.
+        existing = "\n".join(fixture_url(name) for name in (SINGLE_ITEM, PLAYLIST))
+        type_urls(dialog, existing + "\n" + fixture_url(AUDIO_ONLY))
+        dialog.resolve()
+        assert spin(lambda: len(dialog.rows) == 3 and all(s in SETTLED for s in states(dialog)))
+        qapp.processEvents()
+
+        dialog.remove_row(dialog.rows[0])
+        qapp.processEvents()
+
+        viewport = staging_list(dialog).viewport()
+        collapse = panel.collapse_button
+        top = collapse.mapTo(viewport, collapse.rect().topLeft()).y()
+        assert 0 <= top <= viewport.height(), (
+            f"after the removal the collapse control sits at y={top} in a "
+            f"{viewport.height()}px viewport — the arrow left the screen and stayed gone"
+        )
+
+        collapse.click()
+        qapp.processEvents()
+        assert dialog.open_panel is None, "the way back did not close the panel"
+        assert playlist.entry_selection == chosen, (
+            f"closing discarded the choice made before the removal: "
+            f"{playlist.entry_selection} != {chosen}"
+        )
+    finally:
+        dialog.close()
+
+
 def test_a_playlist_row_offers_a_disclosure_and_a_single_item_does_not(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],

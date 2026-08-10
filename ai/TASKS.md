@@ -441,17 +441,43 @@ shape; **built 2026-08-10** and submitted against it unchanged.)*
 - yt-dlp's wider option surface — `T-183` and the escape hatch own that
 
 
-
-
-## Ready
-
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
-**Status:** **Ready — follow-up for non-blocking `T204-R3`.** The T-204 multi-row test is a useful
-guard, but it passes with and without the role-order correction. The maintainer's report that a
-playlist loses its collapse arrow with multiple items therefore remains unexplained and gets its
-own entry now, as T-204's investigation rule required, rather than only if somebody encounters it
-again.
+**Status:** **In Review — one multi-row route reproduced and fixed 2026-08-10; whether it is the
+report is the maintainer's call.** Probe scripts drove a shown dialog through six multi-row
+gestures against one question — *what escape does the expanded playlist offer right now?* An
+expanded row's twisty is deliberately unpainted (`T-210`'s one-arrow rule), so "the arrow is
+lost" means exactly: role expanded, and the panel's collapse control absent or outside the
+viewport.
+
+| Gesture, picker open on the playlist | Result |
+|---|---|
+| A sibling re-probes (value refresh) | intact |
+| A sibling fails (value refresh) | intact |
+| A URL is added (structural remount) | intact |
+| **The row above is removed**, content below | **BROKEN — collapse at y=−63, permanent: 50 turns never recover it** |
+| A second playlist opened over the first | first closes; second mounts at its 190×26 minimum for **one turn**, healed by the deferred remount — handed to `T-209`'s audit |
+| The playlist row leaves `READY` | `T-204` §1, already fixed and guarded |
+
+**The break is scroll anchoring, and the negative findings matter as much**: not role admission
+(`EXPANDED_ROLE` answered `True` throughout), not row identity (the panel followed its row), not
+a stale mount (panel geometry equalled `visualRect` exactly). Removing a row above shrinks the
+scroll range and Qt keeps the *offset*, so the surviving row — panel and all — slides up until
+its top, **where the collapse control lives**, sits above the fold and stays there. Two rows
+alone heal by clamping; a third row below makes it permanent.
+
+**Fix**: `remount_panel` re-anchors the row's top into view (`PositionAtTop`) exactly when the
+remount finds it above the viewport — a reset that moved nothing does not move the view.
+**Regression**: `test_removing_a_row_above_keeps_the_open_panels_way_back_on_screen`, which also
+proves the close keeps a selection made before the removal; removing the re-anchor fails it.
+
+**What is not claimed:** that this is the gesture behind *"with multiple items … the playlist
+loses the arrow"*, or the only one. The route existed, is fixed, and cannot come back; **the
+disposition on the report itself stays with the maintainer**, exactly as the criteria require —
+the maintainer was away overnight, so "elicit the exact gesture" could not be run.
+*(Was: Ready — follow-up for non-blocking `T204-R3`: the T-204 multi-row guard passes with and
+without the role-order correction, so the report remained unexplained and got its own entry, as
+T-204's investigation rule required.)*
 **Owner:** Implementer
 **Priority:** Medium — the reported end state traps the user in the panel, but the trigger is not
 yet reproducible and a simple second-row reconcile is proven unaffected
@@ -459,19 +485,26 @@ yet reproducible and a simple second-row reconcile is proven unaffected
 **Depends on:** nothing; coordinate with T-207 if its reachable trigger also needs multiple rows
 **Relevant context:** `T-204`, `T204-R3`, `T108-R2`, `ui/add_dialog.py` (`remount_panel`,
 `EXPANDED_ROLE`), `tests/ui/test_add_dialog.py`
-**Affected surfaces:** investigation first; `ui/add_dialog.py` and its tests only if reproduced
+**Affected surfaces:** `ui/add_dialog.py` (`remount_panel`), `tests/ui/test_add_dialog.py`
+*(was: investigation first — a route was reproduced, so the surfaces followed)*
 **Risk:** Medium — the report may be the same state gate, a remount/identity defect, or a distinct
 geometry path, and assuming which one is how T-204 reached review without reproducing it
 
 #### Acceptance criteria
 
 - Recover or elicit the exact multi-row gesture sequence and reproduce it through the built dialog
+  *(partially met 2026-08-10: one route reproduced through the built dialog; the maintainer's own
+  gesture could not be elicited overnight and remains unconfirmed)*
 - Establish whether the missing arrow comes from role admission, structural remounting, row
   identity, or geometry; do not credit the current passing guard as reproduction evidence
+  *(met: geometry — scroll anchoring; role admission, identity and mount staleness each ruled out
+  by direct observation, recorded above)*
 - If the defect remains, add a regression that fails before its correction and proves the panel can
-  be closed without losing the playlist selection
+  be closed without losing the playlist selection *(met: the regression above, mutation-checked)*
 - If it cannot be reproduced, record the attempts and keep the report explicitly known-unverified;
   closing the task requires a maintainer disposition, not an agent inference that it was T-204
+  *(the disposition half still binds: the report stays known-unverified until the maintainer says
+  this route was, or was not, what they saw)*
 - Run the checks required by `ai/TESTING.md` §3 for whatever surfaces the investigation changes
 
 #### Out of scope
@@ -479,6 +512,9 @@ geometry path, and assuming which one is how T-204 reached review without reprod
 - The separate row/panel-overlap screenshot unless the reproduced trigger proves they are one defect
 
 ---
+
+
+## Ready
 
 ### T-209 — Keep an open row panel laid out after a value refresh
 
@@ -808,7 +844,6 @@ xdist worker is its own process, so a `QApplication` per worker is not a problem
   processes, which is what makes it worth having.
 
 ---
-
 
 
 *(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
@@ -8030,7 +8065,6 @@ call rather than an implementation detail.
 ---
 
 
-
 ### T-162 — A probed entry keeps saying "Probing" after its probe has finished
 
 **Status:** **Complete — 2026-08-05.** A drawn stage now wins only when it could still be happening in the current status, from a table keyed by status. **Reclassified Phase 2 by `P2EXIT-R11`**, and the reviewer's reasoning is worth keeping: the closed-list rule governs which task owns a defect found by running the window, and cannot defer a failure of an *independent* Phase 2 criterion. This broke criterion 1's accurate-per-job-progress promise and `REQ-014`'s current-stage promise, so filing it as Phase 3 while calling criterion 1 met was a claim stated over the top of evidence already written down.
@@ -8269,7 +8303,6 @@ section, now repeated one layer further out by the fix for it.
   it, stated as such and disclosed rather than dressed up as an end-to-end proof
 
 ---
-
 
 
 ### T-149 — A paused queue looks exactly like a running one
@@ -11055,7 +11088,6 @@ effective request**. A delegate is what supplies the first and third, and `T118-
 is only removable by drawing one reusable editor instead of a widget per row. Delivering `T-118`
 first and this second would mean correcting a row anatomy against findings that the correction
 itself replaces.
-
 
 
 ### T-115 — Nothing drains the queue: jobs beyond the limit never start

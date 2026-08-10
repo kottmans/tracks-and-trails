@@ -1859,7 +1859,17 @@ class AddUrlDialog(QDialog):
             return
         self._list.setUniformItemSizes(False)
         self._list.setIndexWidget(index, panel)
-        panel.setGeometry(self._list.visualRect(index))
+        rect = self._list.visualRect(index)
+        panel.setGeometry(rect)
+        # **The open panel's way back stays on screen** (`T-208`'s reproduced route). Removing a
+        # row *above* an open playlist shrinks the scroll range, and Qt keeps the offset — so the
+        # surviving row, panel and all, slides up until its top sits above the fold and stays
+        # there. The collapse control lives at that top, and the row's own twisty is deliberately
+        # not painted while it is open (`T-210`'s one-arrow rule), so the reset has quietly
+        # removed the arrow. Re-anchored only when the top actually left the viewport: a reset
+        # that moved nothing — or moved this row down — must not yank the view around.
+        if rect.top() < 0:
+            self._list.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtTop)
 
     @property
     def open_panel(self) -> RowPanel | None:
