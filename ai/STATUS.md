@@ -59,6 +59,14 @@ disproving a claim I had written in `save()` and a test docstring — that the n
 precede `[[preset]]` or be read as members of it. A TOML table header is absolute; both places now
 say the order is for the reader, and the test says what it does not prove.
 
+**Figures at `b9caa40`**: full suite **2854 passed, 17 skipped, 2 deselected, 4 known warnings**
+in 770.71 s offscreen with `TRACKSANDTRAILS_REQUIRE_FFMPEG=1`; `ruff check`, `ruff format --check`
+(165 files) and all three mypy gates (52 source, 127 with tests, 127 under `--platform win32`)
+clean. The four warnings are the pre-existing `libpyside: Failed to disconnect` ones at
+`ui/job_detail.py:463`, outside both tasks. **Eight mutations across the two tasks fail their own
+evidence**, and a ninth passed — that one is the corrected claim above. Nothing is pushed; CI has
+not run.
+
 ## 2026-08-10 (maintainer session): three live-use reports, ruled and filed
 
 **The maintainer exercised the built dialogs on a real display and reported three things**; each
