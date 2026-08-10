@@ -13506,3 +13506,148 @@ non-blocking T-208 follow-up.
 The Reviewer added this record and T-209 only. No source or test file was changed for this review,
 and no commit or push was made. The unrelated uncommitted T-203 work present in the shared checkout
 was not reviewed or modified.
+
+## 2026-08-09 — T-204 third focused correction re-review
+
+**Task:** T-204 — keep a playlist panel closable after its row stops being committable
+
+**Correction base:** `6aded1a`
+
+**Correction head reviewed:** `9813f19`
+
+**Prior review record:** `9668147`
+
+**Verdicts:**
+
+- **T-207: Approved with follow-up at `9813f19`.** Its source/test outcome is proved; `T207-R1`
+  is a non-blocking current-truth cleanup.
+- **T-204: Approved with follow-ups at `9813f19`.** `T204-R1`, `T204-R4`, and `T204-R2` are
+  Resolved. The separate unreproduced report remains with T-208, and T-209 retains its broader
+  reset-class audit.
+
+This was the additional focused pass AGENTS.md §10 authorizes while High findings remain. It stayed
+bounded to the three open findings and their correction hunks; the independently reviewed T-210,
+T-211, and T-203 work at the same head is recorded separately below.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Independent result |
+|---|---|---:|---|---|
+| **T204-R1** | **High** | **Yes** | **Resolved** | `test_a_row_that_left_the_queue_can_still_close_its_picker` now closes through the mounted panel's real `Done` control and proves the changed `PlaylistSelection` survives. A separate shown-dialog strengthening probe drove the same `manager.job_changed` transition and closed with `QTest.mouseClick(panel.done_button, LeftButton)`; the panel closed. The receiving slot is no longer called directly. |
+| **T204-R4** | **High** | **Yes** | **Resolved** | `StagingModel.refresh` follows a value-only `dataChanged` with `relayout_panel`; restoration runs after Qt's layout turn, refuses an empty rectangle, and checks row/panel identity before applying it. The committed shown-widget regression keeps panel geometry equal to the row's `visualRect` across the reachable transition and closes through the panel. The maintainer's real-display observation supplies the evidence the offscreen ordering cannot. |
+| **T204-R2** | **Medium** | **Yes** | **Resolved** | The header, Start-here block, and `## In Review` preface no longer duplicate live section counts or contents. `tests/unit/test_task_placement.py` remains green. |
+| **T204-R3** | **Medium** | **No** | **Open follow-up — T-208** | Unchanged by design. The multi-row report remains unreproduced and its passing guard is still not evidence that T-204 explained it. |
+| **T207-R1** | **Low** | **No** | **Open follow-up — T-203 documentation/current-truth correction** | `ai/TASKS.md:222-228` still says the corrected test closes through `toggle_playlist`, the direct-slot route T204-R1 rejected. The code and test use `Done`. Correct that sentence when T203-R2's Planner-owned reconciliation updates this same current-truth file; it does not reopen the proved behavior. |
+
+**T204-R4 is closed without claiming T-209 complete.** The finding's reachable value-refresh path
+and geometry are independently proved. T-209 asks the broader question across both panel kinds and
+every reset class; those criteria were not submitted or run, so T-209 correctly remains Ready.
+
+The deferral in `relayout_panel` remains **unprovable headlessly**, not silently promoted to proof:
+removing it does not fail offscreen because that plugin returns a usable `visualRect` in the same
+turn. The maintainer verified the real-display clipping/bleed-through correction. That is sufficient
+for this finding under OPS-003's manual-observation boundary, while the limitation stays recorded.
+
+### Independent verification
+
+Python tools were invoked as `.venv/bin/python -m <tool>`. Qt tests used
+`QT_QPA_PLATFORM=offscreen`.
+
+| Check | Real result |
+|---|---|
+| `git diff --check 6aded1a..9813f19` | **pass** |
+| `.venv/bin/python -m ruff check .` | **pass** |
+| `.venv/bin/python -m ruff format --check .` | **pass, 163 files** |
+| `.venv/bin/python -m mypy src` | **pass, 51 files** |
+| `.venv/bin/python -m mypy` | **pass, 125 files** |
+| `.venv/bin/python -m mypy --platform win32` | **pass, 125 files** |
+| Task placement plus focused new/changed UI tests | **25 passed in 6.57 s** |
+| Add-dialog, row-delegate, and playlist-picker suites | **220 passed in 132.71 s** |
+| Shown real-pointer strengthening probe | **1 passed in 0.87 s** |
+| Corrected end-to-end merge route, with loopback permission | **1 passed in 2.69 s** |
+
+GitHub Actions run `31347577337` at `9813f19` **completed successfully**: Linux, Windows desktop,
+frozen Linux, frozen Windows, and the STARBASE coverage marker all succeeded. In particular,
+`linux / Tests` and `windows desktop / Full suite` — the two jobs red at `f35d509` — are green at
+the reviewed head. This is the final external result, not a substitution of local figures.
+
+`git show 9668147` confirms it changed only `ai/REVIEWS.md` and appended the prior 65-line focused
+re-review record; the recorded payload is byte-identical to the verdict returned by the Reviewer.
+
+The Reviewer modified only `ai/REVIEWS.md`. No source or test file remains changed, and no commit or
+push was made.
+
+## 2026-08-09 — T-210 / T-211 / T-203 initial comprehensive review
+
+**Tasks:** T-210 — bound an opened row to the staging viewport; T-211 — forget a destroyed editor
+by identity; T-203 — make the row control presets-only and move its verbs to a labelled bar
+
+**Review base:** `6aded1a`
+
+**Implementation head reviewed:** `9813f19`
+
+**Overall verdict:** **Changes requested**
+
+**Per-task verdicts:**
+
+| Task | Verdict | Reason |
+|---|---|---|
+| **T-210** | **Changes requested** | The new top collapse route removes the original pointer trap, but the panel still exceeds the viewport and puts `Done` below it at the documented short-window sizes, contrary to two acceptance criteria. |
+| **T-211** | **Approved at `9813f19`** | Identity-based teardown clears the exact editor being destroyed regardless of shifted row numbering; the regression reaches the former crash site after deferred deletion. |
+| **T-203** | **Changes requested** | The target-naming guardrail is not exposed to accessibility, and the durable design/specification plus the task's own acceptance contract still describe a different control shape. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Finding and required correction | Status |
+|---|---|---:|---|---|---|
+| **T210-R1** | **Medium** | **Yes — acceptance criteria** | `src/tracks_and_trails/ui/add_dialog.py:1532-1558`; `tests/ui/test_add_dialog.py:4387-4465`; `ai/TASKS.md:313-322,356-361` | `panel_height_for` deliberately floors the row at `minimumSizeHint`, so it is not bounded when the viewport is shorter than that floor. An offscreen shown-dialog probe measured: at 600px, viewport 213px / panel 210px / `Done` y=200; at 550px, viewport 163px / panel 210px / `Done` y=200; at 500px, viewport 113px / panel 210px / `Done` y=200. The committed regression begins at 700px and then grows to 900px before its content/close assertions, so it never gates the admitted below-600 failure. The top collapse button remains visible, making this a narrow-window correctness gap with a workaround rather than the original no-exit High defect; it still blocks because T-210 explicitly requires the panel never exceed the viewport and `Done` always remain inside it. Either satisfy those criteria at the stated small size, or obtain a maintainer scope ruling and rewrite the criteria, regression, and stale explanation consistently. The correction must also replace the remaining T-209 citations in T-210 source comments and stop claiming the panel still reproduces the raw-selector third line: current `row_summary` omits it. | **Open** |
+| **T203-R1** | **High** | **Yes — NFR-005 and the ruled target guardrail** | `src/tracks_and_trails/ui/add_dialog.py:1350-1374,2298-2320`; `tests/ui/test_add_dialog.py:4712-4743` | The visual label names the row, but the accessible tree does not. With Big Buck Bunny current, the widget displays `For Big Buck Bunny:` while `QAccessible` reports the label name as only `Which item the adjust buttons act on`; the three controls are announced as acting on `the current item`. Because the buttons precede the list in tab order and the label is not focusable or associated as their label, a screen-reader user reaching the bar is not told which row will change. This defeats the exact guardrail that justified moving per-row verbs to a shared bar and violates NFR-005's meaningful labelling obligation. Publish the current row's identity through the accessible label/button relationship or through dynamically updated button names/descriptions, and add an independent `QAccessible` regression that changes the current row and proves the announced target changes with it. | **Open** |
+| **T203-R2** | **Medium** | **Yes — current truth and acceptance contract** | `docs/UX_SPEC.md:176-178,205,316-318,401-402`; `ai/TASKS.md:413-617`; `UX-009` | The build follows the maintainer's Option A ruling, but the durable records do not. UX_SPEC still says `Choose specific formats…`, `Options…`, and `Manage presets…` are reached from the format control; UX-009 amends only the library-wide action and explicitly leaves the remaining layout to T-203. T-203 itself contains mutually exclusive histories — Option A at the top, then Option D, then a painted two-icon proposal — and its live criteria still require a nonexistent column header, two icons, Windows icon coverage, icon styling, and removal/migration work the submitted bar does not perform. This is not a source-code objection to Option A; it is the absence of a coherent durable ruling and acceptance contract for the source that exists. A permitted Planner/Documentation Maintainer must record the chosen bar shape durably, reconcile UX_SPEC §§4, 6, 8 and the §9.1 route as applicable, and rewrite T-203's current scope/criteria to Option A. Also correct T-207's stale direct-slot sentence identified above. T-203 cannot be approved while the authoritative `[T]` clauses and its own criteria describe the old or rejected controls. | **Open** |
+
+T203-R1 is High because accessibility was not incidental to this design: it ruled out the painted
+alternatives, and the resulting shared control still withholds the row identity needed to use it
+safely. T210-R1 is Medium because the new top collapse control is visible and the outer list can
+scroll, so the short-window case has a workaround; its explicit acceptance-criterion violation is
+why it blocks.
+
+### What is accepted and what remains open
+
+**T-211 is approved.** `destroyEditor` now clears state only when the editor being destroyed is the
+remembered editor; a shifted index cannot preserve a dead C++ object. The focused regression passes
+after `DeferredDelete`, and `commit_open_editor()` returns `False` at the former crash site. The
+old row-number comparison is exactly the mutation the submitted evidence says fails.
+
+**The REQ-011 per-item-template ruling does not block this submitted Option A.** The implementation
+keeps `Naming and folders…` as a per-row button and removes no template capability. A future change
+that removes that capability still requires the maintainer ruling T-203 records; this review does
+not take it by implication.
+
+**T-209 is not reviewed or approved here.** T204-R4's concrete correction is resolved above, while
+T-209's broader both-panel/every-reset criteria remain Ready and unexecuted.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| `git diff --check 6aded1a..9813f19` | **pass** |
+| `.venv/bin/python -m ruff check .` | **pass** |
+| `.venv/bin/python -m ruff format --check .` | **pass, 163 files** |
+| `.venv/bin/python -m mypy src` | **pass, 51 files** |
+| `.venv/bin/python -m mypy` | **pass, 125 files** |
+| `.venv/bin/python -m mypy --platform win32` | **pass, 125 files** |
+| Add-dialog, row-delegate, and playlist-picker suites | **220 passed in 132.71 s** |
+| New/changed focused UI tests plus task placement | **25 passed in 6.57 s** |
+| Corrected end-to-end merged-file route | **1 passed in 2.69 s** with loopback permission |
+| Short-window shown-widget probe | **Confirmed the 210px floor exceeds 163px and 113px viewports; `Done` is below both** |
+| Accessibility-interface probe | **Visible target `For Big Buck Bunny:`; accessible label `Which item the adjust buttons act on`; buttons name only `the current item`** |
+
+The first local end-to-end attempt failed before product code because the sandbox refused the
+fixture's loopback socket (`PermissionError: [Errno 1] Operation not permitted`). Re-running the
+same test with loopback permission passed; the sandbox failure is not product evidence.
+
+GitHub Actions run `31347577337` is the external result for this head. **All five jobs succeeded**:
+Linux, Windows desktop, frozen Linux, frozen Windows, and the STARBASE coverage marker. No local
+figure is substituted for that external result.
+
+The Reviewer modified only `ai/REVIEWS.md`. Temporary probes were removed. No source or test file
+remains changed, and no commit or push was made.
