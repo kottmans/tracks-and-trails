@@ -5,12 +5,14 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — the maintainer-directed overnight session: `T-210` approved at
-`de98190` and recorded; `T-203` rebuilt as option *E*; `T-208`'s arrow-loss route reproduced and
-fixed; `T-209`'s criteria run as written. **Four commits held locally, nothing pushed.**
-**Last verified against repository:** 2026-08-10 **for the block immediately below** — task
-states were checked against `ai/TASKS.md` after the placement gate ran, and every test figure
-names its run. The three 2026-08-09 blocks were verified that day; the Phase 3 block beneath
+**Last updated:** 2026-08-10 — the verdict session: the five held commits pushed to `f3791f5` on
+the maintainer's instruction, CI and Prose green at that head; Codex returned the overnight
+verdicts — `T-209` Complete, `T-208` Blocked on the maintainer's report disposition, `T-203`
+Changes requested (`T203-R3` High, `T203-R4` Medium) — and `T-221` is filed.
+**Last verified against repository:** 2026-08-10 **for the two 2026-08-10 blocks** — task
+states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
+read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
+day; the Phase 3 block beneath
 them 2026-08-06. The Phase 1 and Phase 2 narrative from `## Next` onward was last swept
 2026-08-04 and is kept for its reasoning, not as a statement of what is true now.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
@@ -25,8 +27,49 @@ Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
 **Phase 4 is decomposed** — `ai/TASKS.md` §`## Proposed — Phase 4`, with every plan deliverable and
 exit criterion owned. `T-212` (filed 2026-08-09) closed the one gap: the recorded-checklist-run
 criterion the maintainer added that day had no owner. **The carried-in defect queue is nearly
-through**: the add-dialog chain is Complete, the overnight session's three (`T-203` as option
-*E*, `T-208`, `T-209`) await verdicts, and no plan deliverable has been started.
+through**: the add-dialog chain and `T-209` are Complete, `T-208` waits only on the maintainer's
+report disposition, `T-203` needs one focused correction pass (`T203-R3`/`T203-R4`), and no plan
+deliverable has been started.
+
+## 2026-08-10 (verdict session): T-209 approved, T-208 blocked on a disposition, T-203 changes requested
+
+**The five held commits are on `origin/main`.** Pushed to `f3791f5` on the maintainer's
+instruction during the review — which supersedes the next block's held-locally line — and
+**CI run `31397135268` and Prose run `31397135274` both completed green at that head.** The
+review record reports those runs as queued because they were when it was written; they finished
+after it.
+
+**Codex's combined review returned all three overnight verdicts.** `ai/REVIEWS.md` holds the
+record, committed with the placement moves at `6c139e2`; the outcome by task:
+
+- **`T-209` — Approved with follow-up, moved to `## Complete`.** Both panel kinds and the
+  value-refresh route were independently verified: the reviewer disabled `relayout_panel` and all
+  three regressions failed, 190×26 panels against 852×336 rows. `T209-R1` (Low, non-blocking) is
+  owned by **`T-221`, filed Blocked**: whether the one-turn 190×26 mount transient is a visible
+  flash needs the maintainer's real display, which offscreen tests cannot supply.
+- **`T-208` — correction verified, moved to `## Blocked` on the maintainer.** The reviewer
+  independently removed the re-anchor and reproduced the collapse control at y=−63; the fix and
+  its regression stand. What remains is the task's own closing rule (`T208-R1`): **the maintainer
+  must say whether remove-row-above was the gesture they observed**, direct the investigation to
+  continue, or deliberately close the report on this bounded correction. No source change is
+  requested.
+- **`T-203` — Changes requested (`T203-R3` High, `T203-R4` Medium), still `## In Review`.**
+  `T203-R1` and `T203-R2` are Resolved — the bar is gone and the menu binds to the row it opened
+  from. The new findings: **the declared Menu-key/Shift+F10 door opens no menu** — a keyboard
+  context event carries a position off every row, `_show_row_menu` returns instead of falling
+  back to `currentIndex()`, and the committed two-door test drives the handler with a row-centred
+  point, so it only ever proved a second pointer route. The painted `⋮` has no accessibility node
+  by design, so without that sibling door the three verbs are pointer-only for exactly the users
+  `NFR-005` protects. And **live Phase 4 contracts still require the removed bar**: the phase
+  preface, `T-200`'s audit clause, `T-218`'s criterion and out-of-scope list, and one test
+  docstring. One focused correction pass covers both findings — `AGENTS.md` §10 permits it with a
+  High open — and the contract reconciliation is that pass's work, not this record's.
+
+**Still held on `T-203`: `T-213`/`T-218`/`T-219`** — same file, now waiting on the correction
+pass rather than the verdict. `T-218` is additionally named by `T203-R4`, so its contract gets
+reconciled before it is built. **All four returned handoffs are deleted** per `AGENTS.md` §6 —
+their verdicts are in `ai/REVIEWS.md`, which is where the durable record lives. **The roadmap
+artifact is revised for this state, same URL.**
 
 ## 2026-08-10 (overnight session): T-203 built as option E, T-208 reproduced, T-209's criteria run
 
