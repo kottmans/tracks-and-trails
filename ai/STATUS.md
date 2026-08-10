@@ -48,6 +48,11 @@ inference that it was `T-204`.
 review's corrections `T-205` and `T-206`. None of this chain is a plan deliverable; the plan's
 deliverables (`T-146`, `T-195`–`T-202`, `T-212`) are all still Proposed.
 
+**A maintainer-requested audit of the whole tree ran 2026-08-09** and filed `T-213` (four
+verified-dead items and a label with two sources of truth) and `T-214` (the layering test enforces
+no internal direction rule, and seven deliberately Qt-free `ui/` modules are held to nothing).
+Its larger structural findings are with the maintainer as proposals, not filed work.
+
 ## 2026-08-09: the session's work is pushed, CI is green, and Phase 4 is decomposed
 
 **Everything from 2026-08-05 onward is on `origin/main`.** 42 commits, `bf30d82..9fe22fb`, pushed
