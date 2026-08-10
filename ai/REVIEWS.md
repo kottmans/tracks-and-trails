@@ -12513,6 +12513,89 @@ remains unverified. Across these three reviews, only `ai/REVIEWS.md` was changed
 reviewed source, tests, `ai/TASKS.md`, `ai/STATUS.md`, and `ai/DECISIONS.md` were not edited, and no
 commit or push was made.
 
+## 2026-08-10 — T-215 and T-146 combined review
+
+**Tasks:** T-215 — an offline launch keeps a held queue held; T-146 — a Settings menu and the
+screen behind it
+
+**Task-specific implementation boundaries:**
+
+- T-215: `e0b8bbe..c025dd6`
+- T-146: `c025dd6..b9caa40`
+- Combined implementation tree: `b9caa40`
+- Later coordination-only head inspected: `2c42095`
+
+**Verdicts:**
+
+| Task | Verdict | Reason |
+|---|---|---|
+| **T-215** | **Approved in the combined tree at `b9caa40`** | Inherited `QUEUED` and `READY` rows are not admitted before Start, Start drains them once, and the attended staged-probe exemption remains intact. |
+| **T-146** | **Changes requested** | One valid hand-edited directory form can still abort startup, and all three Settings-screen writers silently accept a change that failed to persist. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Surface | Finding and requested correction | Status |
+|---|---|---:|---|---|---|
+| **T146-R1** | **High** | **Yes — ARC-008 and T-146's startup criterion** | `src/tracks_and_trails/core/settings.py:262-331` | `_directory_from()` promises never to raise, but `Path(raw).expanduser()` runs before its exception guard. A syntactically valid file containing `directory = "~tracks-and-trails-review-user-that-cannot-exist/downloads"` deterministically raises `RuntimeError: Could not determine home directory` from `load()`, so composition never reaches the fallback or warning dialog. This is a portable-profile/hand-edit case for the format the module explicitly calls hand-editable, and it violates ARC-008's rule that an existing unusable setting reports, falls back, and still starts. Put path construction/expansion under the total coercion boundary, report the unusable value, and add a regression that reaches `load()` with an unresolvable named-user home. Audit the sibling pre-check operations for non-`OSError` path failures rather than guarding only filesystem probes. | **Open** |
+| **T146-R2** | **Medium** | **Yes — observable correctness and NFR-006** | `src/tracks_and_trails/app.py:411-461`; `src/tracks_and_trails/ui/main_window.py:705-720` | `choose_concurrency`, `choose_download_directory`, and `choose_theme` all discard `save()`'s failure after advancing `held.settings` and applying the visible/runtime value. In the explicitly supported read-only/full/disconnected-config state, the screen therefore shows the new folder/theme/limit as accepted, provides no error, and silently restores the old value next launch. The same composition already checks this return for presets, and the window exposes `report_transiently()` specifically for composition write failures. Handle the write answer consistently across all three settings and tell the user what did not persist; keep the in-memory policy deliberate and tested. Gate at least one Settings-screen route through a deterministic failed save and audit all three sibling writers. | **Open** |
+
+T146-R1 is High because the task and ARC-008 explicitly require the application to keep starting
+when a stored path cannot be used; this path terminates composition instead. T146-R2 is Medium
+because it needs a persistence failure and the chosen value still works for the current session,
+but it blocks on the silent, observable loss of a settings-screen change and NFR-006's honest-error
+rule.
+
+### What is accepted
+
+**T-215's selected design is sound.** Composition alone knows that a row is inherited, so parking
+that row before admission preserves the attended probe lane used by a new paste. `start_queue()`
+opens the gate, drains the one-shot held list through the existing admission path, and then fills
+slots; the committed composition tests cover offline hold, probe-before-download after Start, and
+the stopped-window paste exemption. The rejected all-durable-probes gate is recorded with the
+specific T-143 regression it would restore rather than retained as an unexplained abandoned shape.
+
+**Most of T-146 is coherent.** The menu route, one dialog, three-key coverage statement, mirrored
+concurrency controls, directory precedence, stored theme launch path, and bad-folder reporting for
+missing/file/unwritable/non-string values match the task. The TOML-order self-report is also closed
+correctly: the implementation comment and test now distinguish root table headers from bare keys
+and state that the order is for a human reader only. No finding remains on either self-reported
+item.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| `git diff --check e0b8bbe..b9caa40` and `b9caa40..2c42095` | **pass** |
+| `.venv/bin/python -m ruff check .` | **pass** |
+| `.venv/bin/python -m ruff format --check .` | **pass, 165 files** |
+| `.venv/bin/python -m mypy src` | **pass, 52 files** |
+| bare `.venv/bin/python -m mypy` | **pass, 127 files** |
+| `.venv/bin/python -m mypy --platform win32` | **pass, 127 files** |
+| Settings/theme unit tests and Settings/MainWindow UI tests | **230 passed in 1.39 s** |
+| Composition suite | **33 passed in 16.52 s** |
+| Manager suite, permitted loopback rerun | **154 passed in 154.05 s** |
+| Unresolvable-home reviewer probe | **Reproduced:** `load()` raised `RuntimeError: Could not determine home directory` |
+
+The first manager run inside the filesystem/process sandbox produced 138 passes and 16 failures;
+every failure stopped at `ThreadingHTTPServer` socket creation:
+`PermissionError: [Errno 1] Operation not permitted`. The identical suite passed once loopback
+access was permitted, so those
+failures are environment evidence, not product failures. The implementer's coordination-only
+`2c42095` records the separately completed full suite at the implementation tree as **2854 passed,
+17 skipped, 2 deselected, 4 known warnings in 770.71 s**; this review did not rerun that whole
+suite.
+
+### Final disposition
+
+T-215 has no open finding and is moved to Complete. T-146 needs one focused correction pass covering
+both findings and their sibling paths. Native Windows behavior, a real-display theme
+change, and the native directory picker remain the handoff's known-unverified interactive areas;
+none changes these code-path verdicts.
+
+The Reviewer modified `ai/REVIEWS.md` and moved the approved T-215 entry to Complete in
+`ai/TASKS.md`, also truing that file's Phase 4 header. No reviewed source or test file was changed,
+and no commit or push was made.
+
 
 ## 2026-08-08 — T-143 / T-180 focused correction re-review
 
