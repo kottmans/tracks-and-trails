@@ -5,14 +5,14 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09 — the add-dialog chain's verdicts arrived and were acted on:
-`T-204`/`T-207`/`T-211` Complete, `T-210` corrected under a maintainer scope ruling, and `T-203`
-**reshaped to option *E*** (`UX-011`) with its rebuild deliberately held on maintainer instruction
-**Last verified against repository:** 2026-08-09 **for the block immediately below** — task states
-were checked against `ai/TASKS.md` and `ai/REVIEWS.md` after the placement gate ran, and the CI
-claim names its run. The two earlier 2026-08-09 blocks were verified the same day; the Phase 3
-block beneath them 2026-08-06. The Phase 1 and Phase 2 narrative from `## Next` onward was last
-swept 2026-08-04 and is kept for its reasoning, not as a statement of what is true now.
+**Last updated:** 2026-08-10 — the maintainer-directed overnight session: `T-210` approved at
+`de98190` and recorded; `T-203` rebuilt as option *E*; `T-208`'s arrow-loss route reproduced and
+fixed; `T-209`'s criteria run as written. **Four commits held locally, nothing pushed.**
+**Last verified against repository:** 2026-08-10 **for the block immediately below** — task
+states were checked against `ai/TASKS.md` after the placement gate ran, and every test figure
+names its run. The three 2026-08-09 blocks were verified that day; the Phase 3 block beneath
+them 2026-08-06. The Phase 1 and Phase 2 narrative from `## Next` onward was last swept
+2026-08-04 and is kept for its reasoning, not as a statement of what is true now.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -24,8 +24,49 @@ Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
 
 **Phase 4 is decomposed** — `ai/TASKS.md` §`## Proposed — Phase 4`, with every plan deliverable and
 exit criterion owned. `T-212` (filed 2026-08-09) closed the one gap: the recorded-checklist-run
-criterion the maintainer added that day had no owner. **The phase has started**: the add-dialog
-polish chain is built and awaiting review.
+criterion the maintainer added that day had no owner. **The carried-in defect queue is nearly
+through**: the add-dialog chain is Complete, the overnight session's three (`T-203` as option
+*E*, `T-208`, `T-209`) await verdicts, and no plan deliverable has been started.
+
+## 2026-08-10 (overnight session): T-203 built as option E, T-208 reproduced, T-209's criteria run
+
+**Maintainer-directed and run unattended** — *"Please do T-203, T208 and T209 overnight. I wont
+be available for prompts"* — which is also the instruction that lifted `T-203`'s build hold.
+**Five commits are held locally on `de98190` and nothing was pushed** — four of work and this
+record: pushing changes the tree under a reviewer, and the review trigger is the maintainer's.
+In order:
+
+- **The T-210 verdict, recorded.** Codex's focused re-review ran in this checkout mid-session
+  and approved `T-210` at `de98190` (`T210-R1` Resolved — the scope ruling judged legitimate);
+  the record commit carries its REVIEWS entry and the Complete move verbatim.
+- **`T-203` — option *E* built, In Review.** The three verbs are `QAction`s in the row's own
+  menu under *Just this item*; one builder feeds both doors — the painted `⋮` carved from the
+  control's trailing edge, and the context routes that always existed — so they cannot drift.
+  A menu opened from a row acts on that row, which retires `T203-R1`'s machinery structurally.
+  The bar is removed whole; four mutations each fail their own regression. **One deliberate
+  mechanism change**: `_show_row_menu` pops the menu up instead of exec-ing it — a nested exec
+  cannot be returned from headlessly and PySide's compiled `exec` resists patching.
+- **`T-208` — one arrow-loss route reproduced, fixed, In Review.** Six multi-row gestures
+  probed; the break is **scroll anchoring** (roles, identity and mount staleness each ruled out
+  by observation): removing a row above an open playlist strands the collapse control
+  off-viewport permanently. `remount_panel` re-anchors; the regression proves a selection
+  survives the close. **The report stays known-unverified — the disposition is the
+  maintainer's.**
+- **`T-209` — criteria run as written, In Review.** The real signal after a real keystroke,
+  the panel still the row's index widget, the selection surviving *Done*; the other panel kind
+  under the same path. Proved to fail at `6aded1a` both ways (worktree transplant: 190×26 in an
+  852×407 row) and to fail again with `relayout_panel` disabled. The audit's one open finding —
+  every open spends a turn at the panel's minimum — is recorded, not fixed: reordering the
+  mount-deferral seam was not an overnight call, and whether the turn is a visible flash needs
+  a real display.
+
+**Figures at the session head**: full suite **2824 passed, 17 skipped, 2 deselected, 4 known
+warnings** in 389.29 s offscreen with `TRACKSANDTRAILS_REQUIRE_FFMPEG=1`; ruff, format, and all
+three mypy gates clean at every commit. No CI ran — nothing was pushed.
+
+**Held on `T-203`'s verdict:** `T-213`/`T-218`/`T-219`, same-file. **Handoffs ready untracked:**
+`2026-08-10-t203-option-e.md` and `2026-08-10-t208-t209-review.md`, beside the T-210 one whose
+review already returned. **The roadmap artifact was revised** for this state, same URL.
 
 ## 2026-08-09 (third session): the verdicts, a scope ruling, and T-203 reshaped to option E
 
