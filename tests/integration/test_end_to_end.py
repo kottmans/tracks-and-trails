@@ -42,12 +42,11 @@ from urllib.parse import quote
 
 import psutil
 import pytest
+from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import (
-    QAbstractItemDelegate,
     QApplication,
-    QComboBox,
     QListView,
-    QWidget,
+    QPushButton,
 )
 
 from tracks_and_trails import app as application
@@ -60,7 +59,6 @@ from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui.format_selection import FormatKind, kind_of
-from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_DATA, ROW_PRESET_NAME
 
 REPO_ROOT = Path(__file__).parents[2]
 
@@ -1571,8 +1569,8 @@ def choose_pair_and_queue(composition: application.Composition, url: str) -> str
 
     **Through the dialog rather than by building a request**, for `queue_one`'s reason and one
     more: `T-108`'s criterion is about a *selection* producing a merged file, so a test that
-    assembled the selector itself would skip the part under review — the control's entry, the
-    panel, the mode, and the routing of each row into its slot.
+    assembled the selector itself would skip the part under review — the verb bar's format
+    button, the panel, the mode, and the routing of each row into its slot.
     """
     dialog = composition.window.open_add_dialog()
     dialog._urls.setPlainText(url)
@@ -1594,19 +1592,22 @@ def choose_pair_and_queue(composition: application.Composition, url: str) -> str
         f"the URL never resolved: {dialog.status_text()}"
     )
 
-    control = dialog.edit_row(0)
-    assert control, "the resolved row offered no format control"
-    editor = staging_editor(dialog)
-    entry = editor.findData(CHOOSE_FORMATS_DATA)
-    assert entry >= 0, (
-        "the control offers no 'Choose specific formats…' entry for a row with formats: "
-        f"{[editor.itemText(i) for i in range(editor.count())]}"
-    )
-    editor.setCurrentIndex(entry)
+    # **`T-203` rerouted this gesture.** The row's combo holds presets only; the three per-row
+    # commands are a bar above the list that acts on whichever row is current. So the route is now
+    # *make the row current, press the button* — the same route `choose_in_editor` sends the UI
+    # suite's sentinel choices down, driven here through the real widgets rather than a combo
+    # entry that no longer exists.
     listing = dialog.findChild(QListView, "stagingList")
     assert listing is not None
-    listing.commitData(editor)
-    listing.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+    listing.selectionModel().setCurrentIndex(
+        dialog.model.index(0, 0), QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    button = dialog.findChild(QPushButton, "chooseFormatsButton")
+    assert button is not None, "the dialog offers no format-table button"
+    assert button.isEnabled(), (
+        f"the bar refused the format table for a resolved single item — {dialog.status_text()}"
+    )
+    button.click()
     composition.app.processEvents()
 
     panel = dialog.open_format_panel
@@ -1638,18 +1639,6 @@ def choose_pair_and_queue(composition: application.Composition, url: str) -> str
         time.sleep(0.005)
     assert dialog.queued_job_ids, f"the pair never persisted: {dialog.status_text()}"
     return dialog.queued_job_ids[0]
-
-
-def staging_editor(dialog: QWidget) -> QComboBox:
-    """The one open row control, by the name it is declared under.
-
-    Exactly one, because `T118-R10` builds one editor rather than one per row.
-    """
-    open_controls = dialog.findChildren(QComboBox, ROW_PRESET_NAME)
-    assert len(open_controls) == 1, f"{len(open_controls)} row controls are open at once"
-    editor = open_controls[0]
-    assert isinstance(editor, QComboBox)
-    return editor
 
 
 def test_a_chosen_video_and_audio_pair_produce_one_merged_file(
