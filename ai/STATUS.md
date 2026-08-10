@@ -5,12 +5,11 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — the correction pass: `T-203`'s two open findings corrected on
-maintainer instruction (*"do the T-203 correction pass"*) — the keyboard door falls back to the
-current index with a shown dispatch regression (`T203-R3`), and the four stale option-A
-contracts now state `UX-011` (`T203-R4`). One commit of work and records, held unpushed on
-`a0bb539`, awaiting the focused re-review.
-**Last verified against repository:** 2026-08-10 **for the three 2026-08-10 blocks** — task
+**Last updated:** 2026-08-10 — the re-review verdict: **`T-203` Approved at `fe1d246` and moved
+to Complete**; `T203-R3` and `T203-R4` are Resolved, no open finding or follow-up remains, and
+`T-213`/`T-218`/`T-219` no longer wait on it. Prose is green at `fe1d246`; CI was still queued
+when this was written and is not reported as passing.
+**Last verified against repository:** 2026-08-10 **for the four 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
 read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
 day; the Phase 3 block beneath
@@ -28,9 +27,25 @@ Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
 **Phase 4 is decomposed** — `ai/TASKS.md` §`## Proposed — Phase 4`, with every plan deliverable and
 exit criterion owned. `T-212` (filed 2026-08-09) closed the one gap: the recorded-checklist-run
 criterion the maintainer added that day had no owner. **The carried-in defect queue is nearly
-through**: the add-dialog chain and `T-209` are Complete, `T-208` waits only on the maintainer's
-report disposition, `T-203`'s correction pass (`T203-R3`/`T203-R4`) is built and awaiting its
-focused re-review, and no plan deliverable has been started.
+through**: the add-dialog chain, `T-209` and now `T-203` are Complete, `T-208` waits only on the
+maintainer's report disposition, `T-221` on the maintainer's display, and the same-file trio
+`T-213`/`T-218`/`T-219` is unblocked. No plan deliverable has been started.
+
+## 2026-08-10 (re-review verdict): T-203 approved at fe1d246, Complete
+
+**Codex's focused re-review returned Approved at `fe1d246`** — `ai/REVIEWS.md` holds the record.
+`T203-R3` and `T203-R4` are **Resolved**: the reviewer independently re-ran the gates (ruff,
+format, all three mypy, the four suites at 240 passed) and verified both mutations in isolated
+archives — the new keyboard regression over the pre-correction source opened no menu, and the
+raw-position anchor mutation at `fe1d246` popped outside the current row. **No open finding or
+follow-up remains; `T-203` is moved to `## Complete`**, and the placement gate passes on the
+moved entry.
+
+**Unblocked by this verdict: `T-213`/`T-218`/`T-219`** — the same-file hold is over; `T-218`
+builds against its reconciled contract. **Prose run `31404743592` completed green at `fe1d246`;
+CI run `31404743641` was still queued when this block was written** — its verdict belongs to
+whoever reads the completed run, not to this record. The returned handoff is deleted per
+`AGENTS.md` §6, and the roadmap artifact is revised for this state at its same URL.
 
 ## 2026-08-10 (correction pass): T-203's keyboard door opened, its stale contracts reconciled
 

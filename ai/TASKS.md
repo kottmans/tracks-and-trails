@@ -118,357 +118,6 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
-### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
-
-**Status:** **In Review — corrected 2026-08-10, awaiting focused re-review (`T203-R3` High,
-`T203-R4` Medium).** The pointer door and row-bound menu are correct, and `T203-R1`/`T203-R2`
-are Resolved. The correction batch answers the two open findings: `_show_row_menu` falls back to
-`currentIndex()` when the keyboard-reason position names no row and anchors the popup on the
-resolved row, with a shown `CustomContextMenu` dispatch regression that failed on the
-uncorrected tree; and the live Phase 4 contracts — the phase preface, `T-200`, `T-218` — plus
-one test docstring now state `UX-011`'s option *E*. The hold on the rebuild was lifted by the
-maintainer the same night — *"Please do T-203, T208 and T209 overnight"* — which is the
-instruction this build acts under. What was built, in one paragraph:
-**the three verbs are `QAction`s in the row's own menu** under a *Just this item* heading, above
-the Read-again/Choose-a-format/Remove entries the menu already held; the menu opens from a
-**painted `⋮` zone carved from the trailing edge of the row's format control**
-(`_menu_zone_of`, one definition for paint and hit test) and from the context hook that already
-existed — right-click, and since the `T203-R3` correction the Menu key and Shift+F10 through the
-current-index fallback — **through one builder**, `row_menu`, so the doors cannot drift; **the bar is removed whole** — label,
-three buttons, and `T203-R1`'s
-announcement machinery — with `focus_chain()` narrowed and its hand-transcribed test order
-updated. **Four mutations fail their own regressions**: the zone anchored at the wrong edge, the
-zone hit-test removed, the menu retargeted to the current row, and the `⋮` door unwired.
-**One deliberate mechanism change rode along**: `_show_row_menu` now `popup`s the menu instead
-of `exec`-ing it — an exec'd nested event loop cannot be returned from headlessly (and PySide's
-compiled `exec` resists patching), so the doors would have been undrivable end to end; the menu
-is deleted on close, one widget per opening.
-
-*(Was: Ready — reshaped to option *E* by maintainer ruling, 2026-08-09, the rebuild held on
-maintainer instruction while machines changed.)* The shape was ruled **twice**, and the second
-ruling stands. Option *A* — the verb bar — was ruled, built, reviewed, and **rejected on sight**
-by the maintainer; that rejection and round 7's replacement candidates never reached this
-repository, which `T203-R2`'s reconciliation surfaced. Round 8 rendered *A* as built beside *E*
-and *G* at full and narrow widths, and the maintainer ruled: *"I'm leaning towards option E. I
-wasn't a fan of how A looked at all."* **`UX-011` records the ruling durably** and
-`docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1 carry *E* as ruled contract — a **Planner pass made under
-explicit maintainer instruction** (*"lets go ahead with your suggestion"*), the unlock
-`AGENTS.md` §4 names. **The `[T]` clauses were re-verified against the built widgets at
-submission**, per the criterion below: §3's menu shape and doors, §4's *first under Just this
-item*, §6's `P-3` route and §9.1's rename all describe what the build does.
-
-**What the rebuild removes and what it keeps.** The bar — label, three buttons, and the
-`T203-R1` announcement machinery — is superseded and comes out; a menu anchored to its row does
-not have the target-naming problem that machinery existed to solve. **Kept, already built and
-reviewed**: the presets-only combo, the `Naming and folders…` rename, and the footer's
-`Manage presets…`. *(Was: In Review — corrected, awaiting re-review, when the correction was
-still option *A*'s; and before that Blocked on a Planner for the records `T203-R2` named.)*
-
-- **`T203-R1` — High. Resolved 2026-08-10 at `3a8aaa9`.** Corrected 2026-08-09 on the bar;
-  retired 2026-08-10 with the bar. The
-  bar drew `For <row>:` while `QAccessible` reported the label as *"Which item the adjust buttons
-  act on"* and the three buttons as acting on *"the current item"*. Because the buttons came
-  **before** the list in tab order, a screen-reader user was told a row would change and never
-  which one. The correction (announcements carrying the unelided headline, following the current
-  row, mutation-checked) shipped and held while the bar existed; **under option *E* the finding's
-  lesson is structural** — a menu opened from a row cannot act on any other row — and the
-  machinery went with the shape that needed it. The regression is **replaced, not deleted
-  without successor**: `test_the_menu_acts_on_the_row_it_was_opened_from` opens row 1's menu
-  while row 0 is current and proves the verb acts on row 1, and the retarget-to-current mutation
-  fails it.
-- **`T203-R2` — Medium. Resolved 2026-08-10 at `3a8aaa9`.** Corrected 2026-08-09 by the
-  Planner pass above — and the pass itself caught the deeper version of the same defect. The
-  finding: the spec still described the
-  controls option *A* replaced, and this entry's own criteria required a column header that does
-  not exist, two icons, icon styling and Windows icon coverage. Reconciling the records surfaced
-  that **the design conversation had moved past the repository's last recorded ruling**: round 7
-  records *A* rejected on sight, and nothing in-repo said so. The correction: `UX-011` filed with
-  the full arc (icons → *A* built and rejected → *E* ruled); the spec regions amended to *E* as
-  ruled contract with the ruled-against history kept visible; the criteria below rewritten to
-  *E*. **The `REQ-011` per-item-template ruling is deliberately not taken by it** — the menu
-  keeps `Naming and folders…` and removes no capability, exactly as Codex ruled.
-- **`T203-R3` — High. Corrected 2026-08-10, awaiting re-review.** The Menu-key/Shift+F10 route
-  was dead: Qt's keyboard context event is positioned off every row, and `_show_row_menu`
-  resolved only `indexAt(position)` and returned, even with a valid current row — while the
-  committed two-door test called the handler with a row-centred point, proving a second
-  pointer-shaped route. The correction is the queue's `T124-R1` shape relearned: fall back to
-  `currentIndex()` when the position names no row, anchor the popup on the resolved row's
-  rectangle, and open nothing when neither position nor current index names a row.
-  `test_the_menu_key_reaches_the_current_rows_menu` drives Qt's shown `CustomContextMenu`
-  dispatch with the current row distinguishable by its menu's own contents; it failed on the
-  uncorrected tree, and mutating the anchor back to the widget-derived point fails it again.
-  The painted `⋮` deliberately has no accessibility node, so this sibling route is what
-  `NFR-005` requires.
-- **`T203-R4` — Medium. Corrected 2026-08-10, awaiting re-review.** Live Phase 4 consumers
-  still instructed future work against the rejected bar: the phase preface called option A ruled
-  and built, `T-200` said its accessibility pass audits the bar's buttons, and `T-218` required
-  the disabled bar to stay. All four named consumers now state `UX-011`'s option *E* — the
-  preface, `T-200`'s dependency clause, `T-218`'s criterion and out-of-scope list, and
-  `test_the_row_control_offers_only_presets`'s docstring — and a sweep of the current-truth
-  files found no fifth live consumer. Explicitly historical descriptions of option A remain
-  history, as the finding directed.
-
-**Codex was explicit that this is not an objection to the source.** *"This is not a source-code
-objection to Option A; it is the absence of a coherent durable ruling and acceptance contract for
-the source that exists."* **The `REQ-011` per-item-template ruling does not block it either** — the
-build keeps `Naming and folders…` and removes no template capability, so that ruling is still open
-and still not taken by implication.
-
-*(Was: In Review — option *A* built. The maintainer ruled the shape across six mockup rounds —
-*"implement option A"* — after the accessibility constraint, a painted control having no
-accessibility node, ruled out the icon shapes, `B` included.)*
-
-**What was built as option *A*** *(superseded — the bar comes out in the *E* rebuild; the combo
-half survives)*. The row's combo holds **presets, full stop** — every entry is a value that
-sticks, asserted exhaustively. The three per-row verbs were **real buttons in a verb bar** above
-the list, labelled *"For &lt;current row&gt;:"*, with the three guardrails ruled in: the label
-names the target; **a press scrolls the named row into view before opening**; with nothing current
-the bar says *"Select an item to adjust"* and is disabled — disabled, not hidden, so the keyboard
-chain is the same in every state. Enablement reads the model's own roles, so bar and model cannot
-disagree (a playlist's *formats* is disabled; its formats belong to its entries). Option *D*'s
-combo headers, built the same day to be looked at, went with the verbs.
-
-**The bar buttons initially made the dialog refuse to narrow past 571px** — caught by the
-narrowing contract's own test — and carry explicit small minimums so narrow keeps working.
-
-**Older tests keep their gesture**: `choose_in_editor` reroutes a verb sentinel through the bar,
-so eighteen call sites still describe "open the formats for this row" by the route a user now has.
-
-Maintainer-raised 2026-08-08 from
-a review of the add dialog: *"the drop down should be where you select a preset (and this should be
-made clear)"*, and after seeing four alternatives, *"still feeling really cluttered"*.
-
-**What was built first (option *D*, chosen 2026-08-09: *"Lets do D first just to see how it would
-look in practice"* — and superseded the same day by option *A* above; the separator went with the
-verbs, the two renames survived it).** The smallest change that answered *"make it clear"*:
-
-- **A separator splits the combo.** Above the rule every entry is a value that sticks; below it
-  every entry opens a window and puts the selection back. The rule does not make that untrue — it
-  makes it visible.
-- **`Where it goes…` is renamed `Naming and folders…`**, on maintainer direction. That label
-  promised a folder picker and opened a `%(field)s` template editor, which is why the maintainer
-  read it as a destination picker in review. **Where the root is** becomes `REQ-023`'s download
-  directory under `T-146`; the two are named differently so they cannot be confused once both exist.
-- **`Manage presets…` moved to the dialog footer**, per `UX-009`, disabled rather than hidden when
-  composition wires no manager.
-
-**Two things the build corrected in the proposal below.**
-
-- **There is no column header to rename.** The staging list is a `QListView`, not a table. Every
-  mockup drew a *Preset* column header that does not exist, and the criterion below that named it
-  is struck.
-- **`focus_chain()` is declared in code, and a new button must be added to it.** The first attempt
-  hid the button when nothing was wired, which broke this dialog's own stated rule — *"nothing here
-  hides: the retry button is disabled rather than removed … so the chain is the same in every
-  state."* Hiding would make the declared keyboard order depend on composition's wiring, which is
-  what `T-060` and `T016-R4` exist to prevent.
-
-**What is not built, and the ruling is now taken.** The icon-button shapes (*G2*, and the
-maintainer's stated preference *B*) were **rejected on the accessibility constraint, 2026-08-09**:
-`setAccessibleName` appears exactly once in `ui/row_delegate.py`, on the `QComboBox` editor.
-Painted controls have no accessibility node, so painted verbs would vanish from the tree that
-`NFR-005` requires and `T-200` audits. The maintainer accepted the constraint and chose the bar;
-`UX-011` records it. *(This paragraph said the shapes were "blocked on an accessibility ruling"
-and that this slice "deliberately does not decide it" — true when written, superseded by the
-option-A ruling the same day.)*
-
-**Still outstanding:** the `REQ-011` template ruling — and only that. The `docs/UX_SPEC.md`
-amendment this line used to name was made 2026-08-09 (`UX-011`, under explicit maintainer
-instruction per `AGENTS.md` §4).
-**Owner:** Implementer. *(Was: Planner → Implementer, "the ruling comes first; this is not agreed
-work" — the shape ruling is taken and the work is built.)*
-**Priority:** Medium — no function is missing; the complaint is that the surface is unusable enough
-that a user does the wrong thing
-**Phase:** Phase 4 — polish. **Not a Phase 3 blocker.**
-**Depends on:** nothing any longer. *(Was: `T-204` first — a dependency priced for the icon shape,
-which would have added two hit regions to the delegate geometry `T-204`'s defect was in. The bar
-is real widgets, one set, outside the delegate; and `T-204` landed first anyway, approved
-2026-08-09. The remaining `T-146`/`T-195` half gates only the ruling-gated template removal below,
-not this task.)* *(**Phase confirmed 2026-08-09:** the maintainer briefly ruled this into
-Phase 3 and reversed it the same day — *"since this is going to effect other tasks, lets just do it
-all in phase 4 as originally planned"*. Phase 3 exits on its existing six criteria.)*
-**Relevant context:** `REQ-007`, `REQ-011`, `REQ-023`, `docs/UX_SPEC.md` §8 and §9.1, `UX-004`,
-`UX-005` §5, `UX-007` (`P-22`, `P-23`), `ARC-002`, `core/models.py`
-(`Preset.output_template`, `DownloadRequest.output_template`), `ui/row_delegate.py` §203–294 and
-§1728–1734, `ui/add_dialog.py` §879–900, `ui/options_dialog.py` §139–143, `ui/template_editor.py`,
-`ui/preset_manager.py`
-**Affected surfaces:** `ui/row_delegate.py`, `ui/add_dialog.py`, `ui/preset_manager.py`,
-`docs/UX_SPEC.md`, possibly `ai/REQUIREMENTS.md`
-**Risk:** **Low now, and the history of the estimate is worth keeping.** Filed as *"the risk is
-ruling away a capability"*; re-priced Medium–High when the icon shape put the work in the
-delegate's paint-and-hit-test seam (`T107-R2`, `T108-R2`, `T-204`); and the bar avoided that seam
-entirely — real widgets, one set, no new hit regions. **The risk that actually arrived was neither:
-the bar shipped naming its target only in pixels** (`T203-R1`), which is the risk a *shared*
-control carries that per-row controls never did. Corrected, with a `QAccessible` regression.
-
-#### The defect, stated once
-
-The row's format control is a `QComboBox` whose list holds the presets and then four entries that
-are **not presets but verbs**: `Choose specific formats…`, `Options…`, `Where it goes…`,
-`Manage presets…`. Selecting one opens a window and puts the selection back. **The control looks
-like a value picker while containing commands, and appears to accept a choice it discards.**
-
-#### What the code says, and it changes the question
-
-Three findings from reading it, all of which point the same way:
-
-1. **`Where it goes…` is not a folder picker.** It opens `ui/template_editor.py` — `REQ-011`'s
-   **output template** editor, with live preview and edit-time validation. The label promises
-   somewhere to put a file and delivers a `%(field)s` language. **The maintainer's reading of it as
-   a destination picker is itself evidence the label is wrong.**
-2. **`Preset` already carries `output_template`.** `core/models.py` puts it on `Preset` *and* on
-   `DownloadRequest`. **Where a download goes is already a preset property.**
-3. **`OptionsDialog` already operates on presets.** Its own docstring: *"Set `REQ-010`'s seven
-   options for one download, **or for a preset**… Takes the `Preset` being edited… and answers with
-   a **derived preset**."*
-
-**So two of the three per-row verbs are already preset-shaped.** The row is not configuring an item;
-it is building an anonymous, unnamed preset per row. **That is the clutter** — and it explains why
-the dropdown accumulated commands: they had nowhere else to live.
-
-#### The proposal — ***superseded 2026-08-09***: *"V2 + G2"* was chosen, then its icons fell to
-the accessibility constraint
-
-*(**Kept as history, not contract** — `T203-R2` found this section standing beside the option-A
-status as two live, mutually exclusive shapes. The bullets below describe the icon shape the
-maintainer first chose; the icons were then ruled out — painted controls have no accessibility
-node — and option *A* replaced them with the bar. What survived into the build: the presets-only
-combo, both per-item verbs staying per-item, the rename, the footer move, and the `REQ-023`
-root/template split. What did not: the two icon buttons and everything priced against them.)*
-
-Five rounds of mockups were reviewed. The chosen shape was *"V2 + G2"* in that sequence:
-
-- **The row picks a preset.** The combo lists presets only, the column reads *Preset*, and every
-  entry in it is a value that sticks.
-- **`Choose specific formats…` stays per-item**, because the available formats differ per video and
-  the choice cannot be carried by a preset.
-- **`Options…` stays per-item too.** ***This reverses an earlier proposal in this entry*** which
-  folded post-processing options into presets on the grounds that `OptionsDialog` already returns a
-  derived preset. **The maintainer rejected it, and the reason is worth keeping:** the control went
-  missing from a mockup and was noticed immediately, which is what removing a capability feels like.
-  Folding it in would make a one-off variation cost a named preset the user never wanted.
-- **Both per-item verbs become icon buttons** — a list glyph for the format table, a gear for
-  options. **Matched pair, not one word and one glyph**: two controls of the same kind should not
-  look like two different kinds. The width this reclaims goes to the preset combo, because long
-  preset names elide first and the preset name is the one thing that must stay readable.
-- **The output template leaves the row**, subject to ruling 1 below.
-- **The download root becomes `REQ-023`'s *default download directory*** — a setting, owned by
-  `T-146`, which does not exist yet. Root + template compose into the path; the template does the
-  organising, the root does the locating.
-- **`Manage presets…` moves to the dialog footer.** It edits the shared library and has nothing to
-  do with any row.
-
-**Result: the row is a checkbox, a name, a preset combo, and two icon buttons.**
-
-**The cost of the gear pair, stated rather than discovered.** A gear is conventional for settings
-and needs no teaching. **A list glyph is not conventional for "choose specific formats"** — it is
-learnable in one click and permanent after that, but it is *learned rather than guessed*, and that
-is the trade this shape accepts. `UX-005` §5 is not violated — the control is offered and does what
-it says — but a first-run user will hover it.
-
-#### The one ruling this still needs
-
-**Does a per-item output template survive?** `REQ-011` reads *"output path and filename control via
-a configurable output template, with a live preview of the resulting path **for the current
-item**"*. **"For the current item" describes the preview, not the template's scope** — a defensible
-reading under which a single application-level template satisfies `REQ-011` and per-item override is
-not required. **It is a reading, not a fact**, and removing a shipped control on it is a maintainer
-call.
-
-*(**The layout half of this is moot under option A** — this said the ruling gates whether the row
-carries two icon buttons or three. The bar carries all three verbs as labelled buttons whatever
-the ruling says; what it still gates is only whether `Naming and folders…` is later removed, and
-removal additionally waits on `T-146`/`T-195` per the criteria below.)*
-
-*(**Two rulings that were open are now taken, both 2026-08-09.**
-**Per-item post-processing options survive** — nothing here folds `REQ-010`'s seven options into
-presets, and `ui/options_dialog.py` keeps its per-row entry point.
-**`Manage presets…` moves to the footer** — `UX-009` accepts it, amends `docs/UX_SPEC.md` §8's `[T]`
-clause, and generalises the rule so the next library-wide action does not re-argue it.)*
-
-#### What the delegate already does, and what it would have cost the icon shape
-
-*(**History.** This section priced the painted icons: two more hit regions in the delegate's
-paint-and-hit-test seam. Option *A*'s bar is real widgets outside the delegate, so the cost never
-arrived — the `NFR-001` finding stands and is why one shared bar beats one real widget set per
-row.)*
-
-**`NFR-001` is not a problem here, and it looked like one.** `UX-004` measured a real control on
-every row at **85.7 ms for 150 rows and 116.2 ms for 200**, against `NFR-001`'s ~100 ms budget, and
-recorded a sequencing note that `T-119` should reduce it to one reused widget. `T-119` was
-**cancelled into `T-118`**, so that note reads as unfinished.
-
-**It is finished.** `ui/row_delegate.py` has `paint`, `sizeHint`, `editorEvent` and `createEditor`,
-and **no `openPersistentEditor` exists anywhere in `ui/`** — so the row is *painted*, and a real
-combo materialises only on the row being edited. Two more icons are two more painted glyphs, not two
-more widgets per row. **The measurement in `UX-004` describes an arrangement that was never shipped.**
-
-**The cost lands somewhere else instead.** Painted icons must be hit-tested in `editorEvent`, beside
-the twisty that is already handled there — which puts this task in **the delegate's paint-and-hit-test
-seam**. That seam produced `T107-R2` and `T108-R2`, and it currently holds `T-204`'s open defect.
-**Two icons mean two new hit regions in the geometry that is already wrong.** This is the risk this
-task actually carries, and it is why `T-204` should land first.
-
-#### Acceptance criteria — **rewritten 2026-08-09 to option *E*, per `UX-011`**
-
-*(Rewritten twice in one day, and the second time is the honest one: first from the icon shape to
-the built bar for `T203-R2`, then to *E* when reconciling the records surfaced that the bar had
-been rejected on sight. The contract below was written before the build and describes the ruled
-shape; **built 2026-08-10** and submitted against it unchanged.)*
-
-- The row's combo contains **only selectable values**; no entry in it opens a window — asserted
-  exhaustively over the combo's contents *(already built and holding)*
-- **The three verbs are entries in the row's menu** — `Choose specific formats…`, `Options…`,
-  `Naming and folders…` under a *Just this item* heading, **above** the Retry/Remove entries the
-  menu already holds — and it is **one menu, not two lookalikes**: the `⋮` route and the
-  context-menu routes produce the same actions, asserted on the actions rather than on two menus
-  happening to agree
-- **The `⋮` zone is painted on the trailing edge of the row's format control** and hit-tested in
-  `editorEvent`, beside the twisty that is already handled there. This is the delegate seam
-  (`T107-R2`, `T108-R2`, `T-204`): the hit region's geometry gets its own regression, and a press
-  anywhere else on the control still opens the preset combo, asserted both ways
-- **The menu acts on the row it was opened from — including when that row is not the selected
-  one.** Open the menu on row 1 while row 0 is current; the verbs act on row 1. This is the
-  structural replacement for `T203-R1`'s announcement machinery, and it is the criterion that
-  proves the shape's whole argument
-- **The keyboard route is the context menu's, and it already exists**: Menu key and Shift+F10
-  reach the same menu (`NFR-005`, the route `_show_row_menu` answers today). The painted `⋮` is
-  an affordance with no accessibility node, acceptable on the disclosure triangle's precedent
-  **because** the sibling route exists — if that route ever narrows, this criterion fails
-- **The menu offers what the row can actually do**, reading the model's own roles the way the bar
-  did: a playlist's formats entry is not offered as actionable — its formats belong to its
-  entries (`T-110`) — following the existing menu's idiom for conditional entries (Retry appears
-  only on a failed row)
-- **The bar is removed whole**: `verbBarLabel`, the three buttons, their `focus_chain()` slots,
-  and `T203-R1`'s announcement machinery, with `focus_chain`'s declared order updated and its
-  test still green. The `T203-R1` regression is **replaced** by the row-anchored one above, not
-  deleted without successor
-- **Older tests keep their gesture**: `choose_in_editor`'s verb sentinels reroute through the
-  menu, so existing call sites still describe "open the formats for this row" by the route a user
-  now has
-- **Nothing else can clip.** The `⋮` is fixed-width; the narrowing contract's test stays green
-  with the bar gone
-- **`Manage presets…` sits in the dialog footer** per `UX-009`, disabled rather than hidden when
-  composition wires no manager *(already built and holding)*
-- **Nothing is removed until its replacement exists**: the ruling-gated removal of
-  `Naming and folders…`, if it ever happens, waits for `T-195`'s default template and `T-146`'s
-  directory, with a test that a job with no per-item template still writes where the user
-  expects — and for the `REQ-011` ruling itself
-- `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1 describe *E* as ruled contract (`UX-011`) — done
-  2026-08-09 by the Planner pass; **the `[T]` clauses are re-verified against the built widgets
-  at submission**, so the spec and the build converge in the same review
-- Keyboard reachability of every surviving control is re-verified — **or `T-200` runs after this
-  task**, which is the cheaper order and why `T-200` names this dependency. The menu's items are
-  real `QAction`s with names; the whole-dialog Windows sweep is `T-200`'s `OPS-004` split
-
-#### Out of scope
-
-- **`T-204`'s disclosure bug.** It is in the same surface and is a separate defect; this task must
-  not be credited with fixing it
-- The playlist entry picker's sizing — fixed by `T-193`
-- Multi-select in the add dialog. It would change the answer here, and nothing asks for it
-- yt-dlp's wider option surface — `T-183` and the escape hatch own that
-
 
 ## Ready
 
@@ -3300,6 +2949,359 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
+
+**Status:** **Complete — approved 2026-08-10 at `fe1d246`.** All four findings are Resolved.
+The pointer door and row-bound menu are correct, and the correction batch answers the last two:
+`_show_row_menu` falls back to
+`currentIndex()` when the keyboard-reason position names no row and anchors the popup on the
+resolved row, with a shown `CustomContextMenu` dispatch regression that failed on the
+uncorrected tree; and the live Phase 4 contracts — the phase preface, `T-200`, `T-218` — plus
+one test docstring now state `UX-011`'s option *E*. The hold on the rebuild was lifted by the
+maintainer the same night — *"Please do T-203, T208 and T209 overnight"* — which is the
+instruction this build acts under. What was built, in one paragraph:
+**the three verbs are `QAction`s in the row's own menu** under a *Just this item* heading, above
+the Read-again/Choose-a-format/Remove entries the menu already held; the menu opens from a
+**painted `⋮` zone carved from the trailing edge of the row's format control**
+(`_menu_zone_of`, one definition for paint and hit test) and from the context hook that already
+existed — right-click, and since the `T203-R3` correction the Menu key and Shift+F10 through the
+current-index fallback — **through one builder**, `row_menu`, so the doors cannot drift; **the bar is removed whole** — label,
+three buttons, and `T203-R1`'s
+announcement machinery — with `focus_chain()` narrowed and its hand-transcribed test order
+updated. **Four mutations fail their own regressions**: the zone anchored at the wrong edge, the
+zone hit-test removed, the menu retargeted to the current row, and the `⋮` door unwired.
+**One deliberate mechanism change rode along**: `_show_row_menu` now `popup`s the menu instead
+of `exec`-ing it — an exec'd nested event loop cannot be returned from headlessly (and PySide's
+compiled `exec` resists patching), so the doors would have been undrivable end to end; the menu
+is deleted on close, one widget per opening.
+
+*(Was: Ready — reshaped to option *E* by maintainer ruling, 2026-08-09, the rebuild held on
+maintainer instruction while machines changed.)* The shape was ruled **twice**, and the second
+ruling stands. Option *A* — the verb bar — was ruled, built, reviewed, and **rejected on sight**
+by the maintainer; that rejection and round 7's replacement candidates never reached this
+repository, which `T203-R2`'s reconciliation surfaced. Round 8 rendered *A* as built beside *E*
+and *G* at full and narrow widths, and the maintainer ruled: *"I'm leaning towards option E. I
+wasn't a fan of how A looked at all."* **`UX-011` records the ruling durably** and
+`docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1 carry *E* as ruled contract — a **Planner pass made under
+explicit maintainer instruction** (*"lets go ahead with your suggestion"*), the unlock
+`AGENTS.md` §4 names. **The `[T]` clauses were re-verified against the built widgets at
+submission**, per the criterion below: §3's menu shape and doors, §4's *first under Just this
+item*, §6's `P-3` route and §9.1's rename all describe what the build does.
+
+**What the rebuild removes and what it keeps.** The bar — label, three buttons, and the
+`T203-R1` announcement machinery — is superseded and comes out; a menu anchored to its row does
+not have the target-naming problem that machinery existed to solve. **Kept, already built and
+reviewed**: the presets-only combo, the `Naming and folders…` rename, and the footer's
+`Manage presets…`. *(Was: In Review — corrected, awaiting re-review, when the correction was
+still option *A*'s; and before that Blocked on a Planner for the records `T203-R2` named.)*
+
+- **`T203-R1` — High. Resolved 2026-08-10 at `3a8aaa9`.** Corrected 2026-08-09 on the bar;
+  retired 2026-08-10 with the bar. The
+  bar drew `For <row>:` while `QAccessible` reported the label as *"Which item the adjust buttons
+  act on"* and the three buttons as acting on *"the current item"*. Because the buttons came
+  **before** the list in tab order, a screen-reader user was told a row would change and never
+  which one. The correction (announcements carrying the unelided headline, following the current
+  row, mutation-checked) shipped and held while the bar existed; **under option *E* the finding's
+  lesson is structural** — a menu opened from a row cannot act on any other row — and the
+  machinery went with the shape that needed it. The regression is **replaced, not deleted
+  without successor**: `test_the_menu_acts_on_the_row_it_was_opened_from` opens row 1's menu
+  while row 0 is current and proves the verb acts on row 1, and the retarget-to-current mutation
+  fails it.
+- **`T203-R2` — Medium. Resolved 2026-08-10 at `3a8aaa9`.** Corrected 2026-08-09 by the
+  Planner pass above — and the pass itself caught the deeper version of the same defect. The
+  finding: the spec still described the
+  controls option *A* replaced, and this entry's own criteria required a column header that does
+  not exist, two icons, icon styling and Windows icon coverage. Reconciling the records surfaced
+  that **the design conversation had moved past the repository's last recorded ruling**: round 7
+  records *A* rejected on sight, and nothing in-repo said so. The correction: `UX-011` filed with
+  the full arc (icons → *A* built and rejected → *E* ruled); the spec regions amended to *E* as
+  ruled contract with the ruled-against history kept visible; the criteria below rewritten to
+  *E*. **The `REQ-011` per-item-template ruling is deliberately not taken by it** — the menu
+  keeps `Naming and folders…` and removes no capability, exactly as Codex ruled.
+- **`T203-R3` — High. Resolved 2026-08-10 at `fe1d246`.** The Menu-key/Shift+F10 route
+  was dead: Qt's keyboard context event is positioned off every row, and `_show_row_menu`
+  resolved only `indexAt(position)` and returned, even with a valid current row — while the
+  committed two-door test called the handler with a row-centred point, proving a second
+  pointer-shaped route. The correction is the queue's `T124-R1` shape relearned: fall back to
+  `currentIndex()` when the position names no row, anchor the popup on the resolved row's
+  rectangle, and open nothing when neither position nor current index names a row.
+  `test_the_menu_key_reaches_the_current_rows_menu` drives Qt's shown `CustomContextMenu`
+  dispatch with the current row distinguishable by its menu's own contents; it failed on the
+  uncorrected tree, and mutating the anchor back to the widget-derived point fails it again.
+  The painted `⋮` deliberately has no accessibility node, so this sibling route is what
+  `NFR-005` requires.
+- **`T203-R4` — Medium. Resolved 2026-08-10 at `fe1d246`.** Live Phase 4 consumers
+  still instructed future work against the rejected bar: the phase preface called option A ruled
+  and built, `T-200` said its accessibility pass audits the bar's buttons, and `T-218` required
+  the disabled bar to stay. All four named consumers now state `UX-011`'s option *E* — the
+  preface, `T-200`'s dependency clause, `T-218`'s criterion and out-of-scope list, and
+  `test_the_row_control_offers_only_presets`'s docstring — and a sweep of the current-truth
+  files found no fifth live consumer. Explicitly historical descriptions of option A remain
+  history, as the finding directed.
+
+**Codex was explicit that this is not an objection to the source.** *"This is not a source-code
+objection to Option A; it is the absence of a coherent durable ruling and acceptance contract for
+the source that exists."* **The `REQ-011` per-item-template ruling does not block it either** — the
+build keeps `Naming and folders…` and removes no template capability, so that ruling is still open
+and still not taken by implication.
+
+*(Was: In Review — option *A* built. The maintainer ruled the shape across six mockup rounds —
+*"implement option A"* — after the accessibility constraint, a painted control having no
+accessibility node, ruled out the icon shapes, `B` included.)*
+
+**What was built as option *A*** *(superseded — the bar comes out in the *E* rebuild; the combo
+half survives)*. The row's combo holds **presets, full stop** — every entry is a value that
+sticks, asserted exhaustively. The three per-row verbs were **real buttons in a verb bar** above
+the list, labelled *"For &lt;current row&gt;:"*, with the three guardrails ruled in: the label
+names the target; **a press scrolls the named row into view before opening**; with nothing current
+the bar says *"Select an item to adjust"* and is disabled — disabled, not hidden, so the keyboard
+chain is the same in every state. Enablement reads the model's own roles, so bar and model cannot
+disagree (a playlist's *formats* is disabled; its formats belong to its entries). Option *D*'s
+combo headers, built the same day to be looked at, went with the verbs.
+
+**The bar buttons initially made the dialog refuse to narrow past 571px** — caught by the
+narrowing contract's own test — and carry explicit small minimums so narrow keeps working.
+
+**Older tests keep their gesture**: `choose_in_editor` reroutes a verb sentinel through the bar,
+so eighteen call sites still describe "open the formats for this row" by the route a user now has.
+
+Maintainer-raised 2026-08-08 from
+a review of the add dialog: *"the drop down should be where you select a preset (and this should be
+made clear)"*, and after seeing four alternatives, *"still feeling really cluttered"*.
+
+**What was built first (option *D*, chosen 2026-08-09: *"Lets do D first just to see how it would
+look in practice"* — and superseded the same day by option *A* above; the separator went with the
+verbs, the two renames survived it).** The smallest change that answered *"make it clear"*:
+
+- **A separator splits the combo.** Above the rule every entry is a value that sticks; below it
+  every entry opens a window and puts the selection back. The rule does not make that untrue — it
+  makes it visible.
+- **`Where it goes…` is renamed `Naming and folders…`**, on maintainer direction. That label
+  promised a folder picker and opened a `%(field)s` template editor, which is why the maintainer
+  read it as a destination picker in review. **Where the root is** becomes `REQ-023`'s download
+  directory under `T-146`; the two are named differently so they cannot be confused once both exist.
+- **`Manage presets…` moved to the dialog footer**, per `UX-009`, disabled rather than hidden when
+  composition wires no manager.
+
+**Two things the build corrected in the proposal below.**
+
+- **There is no column header to rename.** The staging list is a `QListView`, not a table. Every
+  mockup drew a *Preset* column header that does not exist, and the criterion below that named it
+  is struck.
+- **`focus_chain()` is declared in code, and a new button must be added to it.** The first attempt
+  hid the button when nothing was wired, which broke this dialog's own stated rule — *"nothing here
+  hides: the retry button is disabled rather than removed … so the chain is the same in every
+  state."* Hiding would make the declared keyboard order depend on composition's wiring, which is
+  what `T-060` and `T016-R4` exist to prevent.
+
+**What is not built, and the ruling is now taken.** The icon-button shapes (*G2*, and the
+maintainer's stated preference *B*) were **rejected on the accessibility constraint, 2026-08-09**:
+`setAccessibleName` appears exactly once in `ui/row_delegate.py`, on the `QComboBox` editor.
+Painted controls have no accessibility node, so painted verbs would vanish from the tree that
+`NFR-005` requires and `T-200` audits. The maintainer accepted the constraint and chose the bar;
+`UX-011` records it. *(This paragraph said the shapes were "blocked on an accessibility ruling"
+and that this slice "deliberately does not decide it" — true when written, superseded by the
+option-A ruling the same day.)*
+
+**Still outstanding:** the `REQ-011` template ruling — and only that. The `docs/UX_SPEC.md`
+amendment this line used to name was made 2026-08-09 (`UX-011`, under explicit maintainer
+instruction per `AGENTS.md` §4).
+**Owner:** Implementer. *(Was: Planner → Implementer, "the ruling comes first; this is not agreed
+work" — the shape ruling is taken and the work is built.)*
+**Priority:** Medium — no function is missing; the complaint is that the surface is unusable enough
+that a user does the wrong thing
+**Phase:** Phase 4 — polish. **Not a Phase 3 blocker.**
+**Depends on:** nothing any longer. *(Was: `T-204` first — a dependency priced for the icon shape,
+which would have added two hit regions to the delegate geometry `T-204`'s defect was in. The bar
+is real widgets, one set, outside the delegate; and `T-204` landed first anyway, approved
+2026-08-09. The remaining `T-146`/`T-195` half gates only the ruling-gated template removal below,
+not this task.)* *(**Phase confirmed 2026-08-09:** the maintainer briefly ruled this into
+Phase 3 and reversed it the same day — *"since this is going to effect other tasks, lets just do it
+all in phase 4 as originally planned"*. Phase 3 exits on its existing six criteria.)*
+**Relevant context:** `REQ-007`, `REQ-011`, `REQ-023`, `docs/UX_SPEC.md` §8 and §9.1, `UX-004`,
+`UX-005` §5, `UX-007` (`P-22`, `P-23`), `ARC-002`, `core/models.py`
+(`Preset.output_template`, `DownloadRequest.output_template`), `ui/row_delegate.py` §203–294 and
+§1728–1734, `ui/add_dialog.py` §879–900, `ui/options_dialog.py` §139–143, `ui/template_editor.py`,
+`ui/preset_manager.py`
+**Affected surfaces:** `ui/row_delegate.py`, `ui/add_dialog.py`, `ui/preset_manager.py`,
+`docs/UX_SPEC.md`, possibly `ai/REQUIREMENTS.md`
+**Risk:** **Low now, and the history of the estimate is worth keeping.** Filed as *"the risk is
+ruling away a capability"*; re-priced Medium–High when the icon shape put the work in the
+delegate's paint-and-hit-test seam (`T107-R2`, `T108-R2`, `T-204`); and the bar avoided that seam
+entirely — real widgets, one set, no new hit regions. **The risk that actually arrived was neither:
+the bar shipped naming its target only in pixels** (`T203-R1`), which is the risk a *shared*
+control carries that per-row controls never did. Corrected, with a `QAccessible` regression.
+
+#### The defect, stated once
+
+The row's format control is a `QComboBox` whose list holds the presets and then four entries that
+are **not presets but verbs**: `Choose specific formats…`, `Options…`, `Where it goes…`,
+`Manage presets…`. Selecting one opens a window and puts the selection back. **The control looks
+like a value picker while containing commands, and appears to accept a choice it discards.**
+
+#### What the code says, and it changes the question
+
+Three findings from reading it, all of which point the same way:
+
+1. **`Where it goes…` is not a folder picker.** It opens `ui/template_editor.py` — `REQ-011`'s
+   **output template** editor, with live preview and edit-time validation. The label promises
+   somewhere to put a file and delivers a `%(field)s` language. **The maintainer's reading of it as
+   a destination picker is itself evidence the label is wrong.**
+2. **`Preset` already carries `output_template`.** `core/models.py` puts it on `Preset` *and* on
+   `DownloadRequest`. **Where a download goes is already a preset property.**
+3. **`OptionsDialog` already operates on presets.** Its own docstring: *"Set `REQ-010`'s seven
+   options for one download, **or for a preset**… Takes the `Preset` being edited… and answers with
+   a **derived preset**."*
+
+**So two of the three per-row verbs are already preset-shaped.** The row is not configuring an item;
+it is building an anonymous, unnamed preset per row. **That is the clutter** — and it explains why
+the dropdown accumulated commands: they had nowhere else to live.
+
+#### The proposal — ***superseded 2026-08-09***: *"V2 + G2"* was chosen, then its icons fell to
+the accessibility constraint
+
+*(**Kept as history, not contract** — `T203-R2` found this section standing beside the option-A
+status as two live, mutually exclusive shapes. The bullets below describe the icon shape the
+maintainer first chose; the icons were then ruled out — painted controls have no accessibility
+node — and option *A* replaced them with the bar. What survived into the build: the presets-only
+combo, both per-item verbs staying per-item, the rename, the footer move, and the `REQ-023`
+root/template split. What did not: the two icon buttons and everything priced against them.)*
+
+Five rounds of mockups were reviewed. The chosen shape was *"V2 + G2"* in that sequence:
+
+- **The row picks a preset.** The combo lists presets only, the column reads *Preset*, and every
+  entry in it is a value that sticks.
+- **`Choose specific formats…` stays per-item**, because the available formats differ per video and
+  the choice cannot be carried by a preset.
+- **`Options…` stays per-item too.** ***This reverses an earlier proposal in this entry*** which
+  folded post-processing options into presets on the grounds that `OptionsDialog` already returns a
+  derived preset. **The maintainer rejected it, and the reason is worth keeping:** the control went
+  missing from a mockup and was noticed immediately, which is what removing a capability feels like.
+  Folding it in would make a one-off variation cost a named preset the user never wanted.
+- **Both per-item verbs become icon buttons** — a list glyph for the format table, a gear for
+  options. **Matched pair, not one word and one glyph**: two controls of the same kind should not
+  look like two different kinds. The width this reclaims goes to the preset combo, because long
+  preset names elide first and the preset name is the one thing that must stay readable.
+- **The output template leaves the row**, subject to ruling 1 below.
+- **The download root becomes `REQ-023`'s *default download directory*** — a setting, owned by
+  `T-146`, which does not exist yet. Root + template compose into the path; the template does the
+  organising, the root does the locating.
+- **`Manage presets…` moves to the dialog footer.** It edits the shared library and has nothing to
+  do with any row.
+
+**Result: the row is a checkbox, a name, a preset combo, and two icon buttons.**
+
+**The cost of the gear pair, stated rather than discovered.** A gear is conventional for settings
+and needs no teaching. **A list glyph is not conventional for "choose specific formats"** — it is
+learnable in one click and permanent after that, but it is *learned rather than guessed*, and that
+is the trade this shape accepts. `UX-005` §5 is not violated — the control is offered and does what
+it says — but a first-run user will hover it.
+
+#### The one ruling this still needs
+
+**Does a per-item output template survive?** `REQ-011` reads *"output path and filename control via
+a configurable output template, with a live preview of the resulting path **for the current
+item**"*. **"For the current item" describes the preview, not the template's scope** — a defensible
+reading under which a single application-level template satisfies `REQ-011` and per-item override is
+not required. **It is a reading, not a fact**, and removing a shipped control on it is a maintainer
+call.
+
+*(**The layout half of this is moot under option A** — this said the ruling gates whether the row
+carries two icon buttons or three. The bar carries all three verbs as labelled buttons whatever
+the ruling says; what it still gates is only whether `Naming and folders…` is later removed, and
+removal additionally waits on `T-146`/`T-195` per the criteria below.)*
+
+*(**Two rulings that were open are now taken, both 2026-08-09.**
+**Per-item post-processing options survive** — nothing here folds `REQ-010`'s seven options into
+presets, and `ui/options_dialog.py` keeps its per-row entry point.
+**`Manage presets…` moves to the footer** — `UX-009` accepts it, amends `docs/UX_SPEC.md` §8's `[T]`
+clause, and generalises the rule so the next library-wide action does not re-argue it.)*
+
+#### What the delegate already does, and what it would have cost the icon shape
+
+*(**History.** This section priced the painted icons: two more hit regions in the delegate's
+paint-and-hit-test seam. Option *A*'s bar is real widgets outside the delegate, so the cost never
+arrived — the `NFR-001` finding stands and is why one shared bar beats one real widget set per
+row.)*
+
+**`NFR-001` is not a problem here, and it looked like one.** `UX-004` measured a real control on
+every row at **85.7 ms for 150 rows and 116.2 ms for 200**, against `NFR-001`'s ~100 ms budget, and
+recorded a sequencing note that `T-119` should reduce it to one reused widget. `T-119` was
+**cancelled into `T-118`**, so that note reads as unfinished.
+
+**It is finished.** `ui/row_delegate.py` has `paint`, `sizeHint`, `editorEvent` and `createEditor`,
+and **no `openPersistentEditor` exists anywhere in `ui/`** — so the row is *painted*, and a real
+combo materialises only on the row being edited. Two more icons are two more painted glyphs, not two
+more widgets per row. **The measurement in `UX-004` describes an arrangement that was never shipped.**
+
+**The cost lands somewhere else instead.** Painted icons must be hit-tested in `editorEvent`, beside
+the twisty that is already handled there — which puts this task in **the delegate's paint-and-hit-test
+seam**. That seam produced `T107-R2` and `T108-R2`, and it currently holds `T-204`'s open defect.
+**Two icons mean two new hit regions in the geometry that is already wrong.** This is the risk this
+task actually carries, and it is why `T-204` should land first.
+
+#### Acceptance criteria — **rewritten 2026-08-09 to option *E*, per `UX-011`**
+
+*(Rewritten twice in one day, and the second time is the honest one: first from the icon shape to
+the built bar for `T203-R2`, then to *E* when reconciling the records surfaced that the bar had
+been rejected on sight. The contract below was written before the build and describes the ruled
+shape; **built 2026-08-10** and submitted against it unchanged.)*
+
+- The row's combo contains **only selectable values**; no entry in it opens a window — asserted
+  exhaustively over the combo's contents *(already built and holding)*
+- **The three verbs are entries in the row's menu** — `Choose specific formats…`, `Options…`,
+  `Naming and folders…` under a *Just this item* heading, **above** the Retry/Remove entries the
+  menu already holds — and it is **one menu, not two lookalikes**: the `⋮` route and the
+  context-menu routes produce the same actions, asserted on the actions rather than on two menus
+  happening to agree
+- **The `⋮` zone is painted on the trailing edge of the row's format control** and hit-tested in
+  `editorEvent`, beside the twisty that is already handled there. This is the delegate seam
+  (`T107-R2`, `T108-R2`, `T-204`): the hit region's geometry gets its own regression, and a press
+  anywhere else on the control still opens the preset combo, asserted both ways
+- **The menu acts on the row it was opened from — including when that row is not the selected
+  one.** Open the menu on row 1 while row 0 is current; the verbs act on row 1. This is the
+  structural replacement for `T203-R1`'s announcement machinery, and it is the criterion that
+  proves the shape's whole argument
+- **The keyboard route is the context menu's, and it already exists**: Menu key and Shift+F10
+  reach the same menu (`NFR-005`, the route `_show_row_menu` answers today). The painted `⋮` is
+  an affordance with no accessibility node, acceptable on the disclosure triangle's precedent
+  **because** the sibling route exists — if that route ever narrows, this criterion fails
+- **The menu offers what the row can actually do**, reading the model's own roles the way the bar
+  did: a playlist's formats entry is not offered as actionable — its formats belong to its
+  entries (`T-110`) — following the existing menu's idiom for conditional entries (Retry appears
+  only on a failed row)
+- **The bar is removed whole**: `verbBarLabel`, the three buttons, their `focus_chain()` slots,
+  and `T203-R1`'s announcement machinery, with `focus_chain`'s declared order updated and its
+  test still green. The `T203-R1` regression is **replaced** by the row-anchored one above, not
+  deleted without successor
+- **Older tests keep their gesture**: `choose_in_editor`'s verb sentinels reroute through the
+  menu, so existing call sites still describe "open the formats for this row" by the route a user
+  now has
+- **Nothing else can clip.** The `⋮` is fixed-width; the narrowing contract's test stays green
+  with the bar gone
+- **`Manage presets…` sits in the dialog footer** per `UX-009`, disabled rather than hidden when
+  composition wires no manager *(already built and holding)*
+- **Nothing is removed until its replacement exists**: the ruling-gated removal of
+  `Naming and folders…`, if it ever happens, waits for `T-195`'s default template and `T-146`'s
+  directory, with a test that a job with no per-item template still writes where the user
+  expects — and for the `REQ-011` ruling itself
+- `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1 describe *E* as ruled contract (`UX-011`) — done
+  2026-08-09 by the Planner pass; **the `[T]` clauses are re-verified against the built widgets
+  at submission**, so the spec and the build converge in the same review
+- Keyboard reachability of every surviving control is re-verified — **or `T-200` runs after this
+  task**, which is the cheaper order and why `T-200` names this dependency. The menu's items are
+  real `QAction`s with names; the whole-dialog Windows sweep is `T-200`'s `OPS-004` split
+
+#### Out of scope
+
+- **`T-204`'s disclosure bug.** It is in the same surface and is a separate defect; this task must
+  not be credited with fixing it
+- The playlist entry picker's sizing — fixed by `T-193`
+- Multi-select in the add dialog. It would change the answer here, and nothing asks for it
+- yt-dlp's wider option surface — `T-183` and the escape hatch own that
+
+
 
 ### T-209 — Keep an open row panel laid out after a value refresh
 

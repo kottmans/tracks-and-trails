@@ -13811,3 +13811,53 @@ its task-specific head with one non-blocking follow-up.
 
 The Reviewer changed `ai/REVIEWS.md` and `ai/TASKS.md` only. Temporary probes and mutation trees
 were not added to the repository; no reviewed source or test file was modified.
+
+## 2026-08-10 — T-203 focused correction re-review
+
+**Task:** T-203 — the row's controls: one preset picker and the per-item verbs in the row's menu
+
+**Correction boundary:** `a0bb539..fe1d246`
+
+**Scope:** T203-R3, T203-R4, and the correction diff only, per `AGENTS.md` §10.
+
+**Verdict:** **Approved at `fe1d246`**
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Resolution |
+|---|---|---:|---|---|
+| **T203-R3** | **High** | **Yes — NFR-005 and an explicit acceptance criterion** | **Resolved at `fe1d246`** | `_show_row_menu` uses the row under a pointer position and falls back to the valid current index when a keyboard-reason position names no row. The keyboard fallback anchors the popup inside the resolved row; with neither a pointed row nor a current row it opens nothing. The shown `CustomContextMenu` regression distinguishes the playlist current row by the menu's own contents and checks the anchor. |
+| **T203-R4** | **Medium** | **Yes — current truth and future acceptance contracts** | **Resolved at `fe1d246`** | The Phase 4 preface, T-200 dependency, T-218 criterion/out-of-scope clause, and presets-only test docstring now consistently describe `UX-011` option E and the row's menu. The superseded option-A passages remain explicitly historical rather than live instructions. |
+
+### Independent verification
+
+The keyboard regression passed at the correction head and was then run in two isolated archives:
+once with the new test over the pre-correction `a0bb539` source, and once at `fe1d246` with the
+popup anchor mutated back to the raw event position. The former opened no menu; the latter opened
+off the resolved row. Both mutations therefore fail at the behavior they are meant to gate.
+
+| Check | Real result |
+|---|---|
+| `git diff --check a0bb539..fe1d246` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 163 files** |
+| `mypy src` | **pass, 51 files** |
+| bare `mypy` | **pass, 125 files** |
+| `mypy --platform win32` | **pass, 125 files** |
+| Exact keyboard regression | **1 passed in 0.93 s** |
+| Add-dialog, row-delegate, playlist-picker and task-placement suites | **240 passed in 138.65 s** |
+| Pre-correction fallback mutation | **1 failed as expected:** no visible row menu |
+| Raw-position anchor mutation | **1 failed as expected:** popup at viewport `(1, 162)`, outside current row `(0, 80, 485, 80)` |
+
+The archive mutation runs emitted only the known sandbox cache-write warning and offscreen Qt
+plugin messages; neither affected the assertions. The full suite and a native Windows runtime
+were not rerun for this focused two-file behavior correction. The observed checkout and
+`origin/main` both resolve to `fe1d246`; the handoff's earlier held-unpushed statement no longer
+describes the remote ref, but it does not change the reviewed tree.
+
+### Final disposition
+
+No open finding or follow-up remains for T-203. The task is Complete at `fe1d246`; T-213,
+T-218, and T-219 no longer wait on its review. The Reviewer changed `ai/REVIEWS.md` and T-203's
+status/placement in `ai/TASKS.md` only. No reviewed source or test file was modified, and no
+commit or push was made.
