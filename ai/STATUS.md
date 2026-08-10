@@ -5,7 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **`T-199` is Approved at `245676f` and Complete**, after four
+**Last updated:** 2026-08-10 — **`T-197` is built and In Review at `c5cbb94`**: the cookie source
+and the redaction gate the phase exits on. **`T-199` is Approved at `245676f` and Complete**, after four
 findings and two passes on `T199-R3`; the `DAT-003` amendment is corrected twice over its own
 contradictions and now names its forbidden sinks in a table. **`T-197` is unblocked** on the ruled
 shape. **`T-215` and `T-146` are Complete and pushed, and CI is green at `bc7445f`** — all five jobs, the Windows desktop one included, which is what closes `T146-R4` and
@@ -36,6 +37,25 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-10 (T-197): the cookie source, and the gate the phase exits on
+
+**Built on the shape `DAT-003`'s amendment ruled**, which had to be taken first: the path is a
+settings value reaching a worker as a session argument, never `DownloadRequest`, which keeps *"a
+cookie path this application supplies is never in the database"* structural. `cookies_from_browser`
+gains a validator. CI was green at `55a267a` before this started — all five jobs.
+
+**Two findings from my own work, recorded rather than smoothed.** The **validator caught a live
+instance of the defect `DAT-003` predicted**: a test was already constructing a request with a
+cookies *path* in `cookies_from_browser`, the gap `T-049` called *by intent, not by construction*.
+And **the redaction gate did not gate**: mutating `redact` to return `<redacted>` for everything
+passed all five of its tests, which is the *scrubs everything* failure the decision records twice.
+It now asserts that legitimate content survives alongside asserting secrets vanish, and covers a
+scheme-less proxy — a rule that had been untested because every fixture proxy was a well-formed URL.
+
+**Six mutations fail their evidence.** Figures: ruff, format, all three mypy gates clean;
+`tests/unit`, all of `tests/ui` and composition **2552 passed, 17 skipped**. In Review at
+`c5cbb94`, held locally; the handoff is ready untracked.
 
 ## 2026-08-10 (T-199): what ffmpeg performs is no longer offered without it
 
