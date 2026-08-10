@@ -2331,7 +2331,16 @@ class AddUrlDialog(QDialog):
         `CustomContextMenu` rather than `contextMenuEvent`, for the reason `T-086`'s file actions
         use it: the menu key and Shift+F10 both raise it, so the actions are not mouse-only
         (`NFR-005`). The delegate's `⋮` zone lands here too, carrying the click's viewport
-        position — so every door resolves the row the same way: whatever row is under the point.
+        position — so every pointer door resolves the row the same way: whatever row is under
+        the point.
+
+        **The current row when the position names none** (`T203-R3`, the queue's `T124-R1`
+        lesson relearned): Qt raises a keyboard-reason request with a position derived from the
+        widget rather than from a row, so resolving through `indexAt` alone answered "no row"
+        for every Menu-key/Shift+F10 request and the declared route silently did nothing. The
+        painted `⋮` has no accessibility node by design, so this fallback *is* the keyboard
+        door `NFR-005` requires. The popup then anchors on the resolved row rather than at the
+        widget-derived point, so the menu opens beside what it acts on.
 
         **`popup`, not `exec`** (`T-203`). The same menu with the same grabs, shown without a
         nested event loop — `exec` cannot be returned from headlessly, so a door that exec'd
@@ -2339,12 +2348,14 @@ class AddUrlDialog(QDialog):
         one widget with one lifetime rather than a child accumulating per right-click.
         """
         clicked = self._list.indexAt(position)
-        row = self._row_at(clicked.row()) if clicked.isValid() else None
+        index = clicked if clicked.isValid() else self._list.currentIndex()
+        row = self._row_at(index.row()) if index.isValid() else None
         if row is None:
             return
+        anchor = position if clicked.isValid() else self._list.visualRect(index).center()
         menu = self.row_menu(row)
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        menu.popup(self._list.viewport().mapToGlobal(position))
+        menu.popup(self._list.viewport().mapToGlobal(anchor))
 
     def _retry_row(self, row: Row) -> None:
         if row.state is not RowState.FAILED:

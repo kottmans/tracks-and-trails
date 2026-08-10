@@ -120,19 +120,21 @@ this one returned four verdicts before approving.*
 
 ### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
 
-**Status:** **In Review — Changes requested 2026-08-10 (`T203-R3` High, `T203-R4` Medium).**
-The pointer door and row-bound menu are correct, and `T203-R1`/`T203-R2` are Resolved. The
-declared Menu-key/Shift+F10 door is not: a keyboard context event supplies a point off every row,
-and `_show_row_menu` returns instead of falling back to the current index. The live Phase 4
-contracts for `T-200` and `T-218` also still require the removed option-A bar. The hold on the
-rebuild was lifted by the maintainer the same night — *"Please do T-203, T208 and T209
-overnight"* — which is the instruction this build acts under. What was built, in one paragraph:
+**Status:** **In Review — corrected 2026-08-10, awaiting focused re-review (`T203-R3` High,
+`T203-R4` Medium).** The pointer door and row-bound menu are correct, and `T203-R1`/`T203-R2`
+are Resolved. The correction batch answers the two open findings: `_show_row_menu` falls back to
+`currentIndex()` when the keyboard-reason position names no row and anchors the popup on the
+resolved row, with a shown `CustomContextMenu` dispatch regression that failed on the
+uncorrected tree; and the live Phase 4 contracts — the phase preface, `T-200`, `T-218` — plus
+one test docstring now state `UX-011`'s option *E*. The hold on the rebuild was lifted by the
+maintainer the same night — *"Please do T-203, T208 and T209 overnight"* — which is the
+instruction this build acts under. What was built, in one paragraph:
 **the three verbs are `QAction`s in the row's own menu** under a *Just this item* heading, above
 the Read-again/Choose-a-format/Remove entries the menu already held; the menu opens from a
 **painted `⋮` zone carved from the trailing edge of the row's format control**
 (`_menu_zone_of`, one definition for paint and hit test) and from the context hook that already
-existed — right-click works; `T203-R3` owns the broken Menu-key/Shift+F10 half — **through one
-builder**, `row_menu`, so the working doors cannot drift; **the bar is removed whole** — label,
+existed — right-click, and since the `T203-R3` correction the Menu key and Shift+F10 through the
+current-index fallback — **through one builder**, `row_menu`, so the doors cannot drift; **the bar is removed whole** — label,
 three buttons, and `T203-R1`'s
 announcement machinery — with `focus_chain()` narrowed and its hand-transcribed test order
 updated. **Four mutations fail their own regressions**: the zone anchored at the wrong edge, the
@@ -185,18 +187,26 @@ still option *A*'s; and before that Blocked on a Planner for the records `T203-R
   ruled contract with the ruled-against history kept visible; the criteria below rewritten to
   *E*. **The `REQ-011` per-item-template ruling is deliberately not taken by it** — the menu
   keeps `Naming and folders…` and removes no capability, exactly as Codex ruled.
-- **`T203-R3` — High. Open, blocks approval.** The Menu-key/Shift+F10 route is dead. Qt's
-  keyboard context event is positioned off every row; `_show_row_menu` resolves only
-  `indexAt(position)` and returns, even with a valid current row. The committed two-door test
-  calls the handler with a row-centred point and therefore proves a second pointer-shaped route.
-  Fall back to the current index, use a valid popup anchor for that case, and drive Qt's shown
-  `CustomContextMenu` dispatch in the correction regression. The painted `⋮` deliberately has no
-  accessibility node, so the sibling route is load-bearing under `NFR-005`.
-- **`T203-R4` — Medium. Open, blocks approval.** Live Phase 4 consumers still instruct future
-  work against the rejected bar: the phase preface calls option A ruled and built, `T-200` says
-  its accessibility pass audits the bar's buttons, and `T-218` requires the disabled bar to stay.
-  Reconcile those task contracts and the stale test docstring with `UX-011`; keep the explicitly
-  historical descriptions of option A as history.
+- **`T203-R3` — High. Corrected 2026-08-10, awaiting re-review.** The Menu-key/Shift+F10 route
+  was dead: Qt's keyboard context event is positioned off every row, and `_show_row_menu`
+  resolved only `indexAt(position)` and returned, even with a valid current row — while the
+  committed two-door test called the handler with a row-centred point, proving a second
+  pointer-shaped route. The correction is the queue's `T124-R1` shape relearned: fall back to
+  `currentIndex()` when the position names no row, anchor the popup on the resolved row's
+  rectangle, and open nothing when neither position nor current index names a row.
+  `test_the_menu_key_reaches_the_current_rows_menu` drives Qt's shown `CustomContextMenu`
+  dispatch with the current row distinguishable by its menu's own contents; it failed on the
+  uncorrected tree, and mutating the anchor back to the widget-derived point fails it again.
+  The painted `⋮` deliberately has no accessibility node, so this sibling route is what
+  `NFR-005` requires.
+- **`T203-R4` — Medium. Corrected 2026-08-10, awaiting re-review.** Live Phase 4 consumers
+  still instructed future work against the rejected bar: the phase preface called option A ruled
+  and built, `T-200` said its accessibility pass audits the bar's buttons, and `T-218` required
+  the disabled bar to stay. All four named consumers now state `UX-011`'s option *E* — the
+  preface, `T-200`'s dependency clause, `T-218`'s criterion and out-of-scope list, and
+  `test_the_row_control_offers_only_presets`'s docstring — and a sweep of the current-truth
+  files found no fifth live consumer. Explicitly historical descriptions of option A remain
+  history, as the finding directed.
 
 **Codex was explicit that this is not an objection to the source.** *"This is not a source-code
 objection to Option A; it is the absence of a coherent durable ruling and acceptance contract for
@@ -1718,12 +1728,14 @@ maintainer ruled the UI review's suggestions into tasks, are polish under it too
 also amended `T-201` (the reason on the failed row) and produced `UX-010` (the queue group's chip).
 Every one of them is polish or maintenance: none satisfies a plan deliverable.)*
 
-**What this section does not settle.** *(Narrowed 2026-08-09, the same day it was written.)*
-`T-203`'s **shape is ruled** — *"implement option A"*, after six mockup rounds — and built; the row's
-combo holds presets only and the three per-row verbs are a labelled bar above the list. **What stays
-open is the `REQ-011` per-item template ruling** — whether a per-item output template survives at
-all — **and the `docs/UX_SPEC.md` §8/§9.1 amendment `UX-009` requires**, which the Implementer may
-not write (`AGENTS.md` §4). Neither is agreed work until taken.
+**What this section does not settle.** *(Narrowed 2026-08-09; re-trued 2026-08-10 for `T203-R4`,
+which found this paragraph still instructing Phase 4 against the bar the maintainer had rejected
+on sight.)* `T-203`'s **shape is ruled by `UX-011`** — option *E*, after eight mockup rounds — and
+built: the row's combo holds presets only, and the three per-row verbs are entries in the row's
+own menu, one menu behind the `⋮` zone and the context-menu routes. The spec amendment this
+paragraph once held open is **written** — `UX-011` amends `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1.
+**What stays open is the `REQ-011` per-item template ruling** — whether a per-item output template
+survives at all. It is not agreed work until taken.
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
@@ -2037,8 +2049,10 @@ most likely to be discovered late, because every surface it covers was signed of
 **Phase:** Phase 4 — and it should start **late**, after `T-146` and `T-195`–`T-199` have added
 their controls. A pass run before the phase's new surfaces exist verifies the wrong application.
 **Depends on:** `T-146`, `T-195`, `T-196`, `T-197`, `T-198`, `T-199` — every task that adds a
-control. **Also `T-203`** — ruled in and built 2026-08-09 (option A): its verb bar and buttons are
-part of the control set this pass audits, so it lands first.
+control. **Also `T-203`** — re-ruled to option *E* by `UX-011` and built 2026-08-10: the row's
+menu is part of the control set this pass audits — real `QAction`s reached through the keyboard
+route, with the painted `⋮` deliberately holding no accessibility node because that sibling route
+exists — so it lands first.
 **Relevant context:** `NFR-005`, `OPS-004`, `OPS-003`, `T-026`,
 `tests/ui/test_windows_accessibility.py`, and the per-surface keyboard work already done in
 `T-107`, `T-110`, `T-181`, `T-192`, `T105-R3`, `T118-R5`, `UX-007`'s `P-20` and `P-22`
@@ -2535,12 +2549,13 @@ exists.
   first row
 - The **duplicate label below the list is gone**; the paste box placeholder stays
 - The hint is **not a control**: the declared focus chain is unchanged (`T-060`), and the disabled
-  verb bar and retry button stay exactly as the chain rule put them
+  retry button stays exactly as the chain rule put it. The per-row verbs hold no chain slot to
+  preserve — `UX-011` put them in the row's menu, reached through the list itself
 - The dialog's **narrowing contract still holds** — the `T-203` chain's own test is the gate
 
 #### Out of scope
 
-- The verb bar and its disabled states — a documented keyboard-chain choice, not reopened here
+- The row's menu and its doors — `UX-011`'s ruled shape and `T-203`'s contract, not reopened here
 - Any change to when rows appear or how probing works (`UX-003`)
 
 ### T-219 — The dialog footer speaks the naming rule, not the selector

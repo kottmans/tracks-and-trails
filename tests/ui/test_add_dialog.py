@@ -48,6 +48,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QContextMenuEvent,
     QFont,
     QFontMetrics,
     QImage,
@@ -4953,8 +4954,8 @@ def test_the_row_control_offers_only_presets(
     """**`T-203`, the point of it.** Every entry in the combo is a value that sticks.
 
     The verbs opened windows and put the selection back — a value picker containing commands. They
-    are the bar's now, so the honest assertion is exhaustive: nothing in this control carries
-    sentinel data, and none of the verb wordings appears.
+    are the row's menu's now (`UX-011`, option *E*), so the honest assertion is exhaustive: nothing
+    in this control carries sentinel data, and none of the verb wordings appears.
     """
     dialog, _row = _staged(dialogs, managers, spin)
     control = open_row_editor(dialog, 0)
@@ -5099,6 +5100,95 @@ def test_the_two_doors_produce_the_same_actions(
         )
         assert CHOOSE_FORMATS_TEXT in by_context, (
             "neither door offered the format table for a ready single item"
+        )
+    finally:
+        dialog.hide()
+
+
+def test_the_menu_key_reaches_the_current_rows_menu(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """**`T203-R3`'s regression.** The keyboard door opens the *current* row's menu.
+
+    Driven through Qt's own `CustomContextMenu` dispatch on a shown dialog, with the object the
+    Menu key produces: a keyboard-reason context event positioned **off every row**, because its
+    position derives from the widget rather than from a row (`test_row_verb_wiring.py`'s
+    `_press_the_menu_key`, including why the literal key press cannot be sent under `offscreen`).
+    A handler that resolves only `indexAt` answers "no row" for every keyboard request — the
+    two-door test above calls `_show_row_menu` with a row-centred point, so it proves a second
+    pointer-shaped route and could not see this one dead.
+
+    The current row is the **playlist**, whose menu differs from row 0's by absence
+    (`T-110`: no format-table entry), so the assertion also proves *which* row the fallback
+    resolved: the current one, not whatever happens to sit under the widget-derived point.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
+    listing = staging_list(dialog)
+    dialog.show()
+    try:
+        qapp.processEvents()
+        assert listing.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu, (
+            "without this policy the platform routes the Menu key to a default menu instead of "
+            "to this application, and the row's verbs stay pointer-only"
+        )
+        current = dialog.model.index(1, 0)
+        listing.selectionModel().setCurrentIndex(
+            current, QItemSelectionModel.SelectionFlag.NoUpdate
+        )
+
+        viewport = listing.viewport()
+        last = listing.visualRect(dialog.model.index(dialog.model.rowCount() - 1, 0))
+        off_any_row = QPoint(1, max(last.bottom() + 2, viewport.height() + 2))
+        assert not listing.indexAt(off_any_row).isValid(), (
+            "the probe position landed on a row, so this asserts the mouse route rather than "
+            "the keyboard one"
+        )
+        QApplication.sendEvent(
+            viewport,
+            QContextMenuEvent(
+                QContextMenuEvent.Reason.Keyboard, off_any_row, viewport.mapToGlobal(off_any_row)
+            ),
+        )
+        qapp.processEvents()
+
+        menu = _popped_menu(listing)
+        offered = [action.text() for action in menu.actions() if not action.isSeparator()]
+        expected = [
+            action.text()
+            for action in dialog.row_menu(dialog.rows[1]).actions()
+            if not action.isSeparator()
+        ]
+        assert offered == expected, (
+            f"the keyboard door offers {offered}, not the current row's menu {expected}"
+        )
+        assert CHOOSE_FORMATS_TEXT not in offered, (
+            "the format table is offered, so this is row 0's menu — the fallback resolved the "
+            "wrong row"
+        )
+        anchor = viewport.mapFromGlobal(menu.pos())
+        assert listing.visualRect(current).contains(anchor), (
+            f"the menu popped at viewport {anchor}, not anchored on the current row "
+            f"{listing.visualRect(current)} — a keyboard opening placed off its row"
+        )
+        _close_menu(menu)
+
+        # The other half of the fallback's guard: with no current row the keyboard request has
+        # no row to answer for, and the door opens nothing rather than guessing.
+        listing.selectionModel().setCurrentIndex(
+            QModelIndex(), QItemSelectionModel.SelectionFlag.NoUpdate
+        )
+        QApplication.sendEvent(
+            viewport,
+            QContextMenuEvent(
+                QContextMenuEvent.Reason.Keyboard, off_any_row, viewport.mapToGlobal(off_any_row)
+            ),
+        )
+        qapp.processEvents()
+        assert not [child for child in listing.findChildren(QMenu) if child.isVisible()], (
+            "with no current row and no row under the point, a menu opened anyway"
         )
     finally:
         dialog.hide()

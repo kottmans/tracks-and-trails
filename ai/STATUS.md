@@ -5,11 +5,12 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — the verdict session: the five held commits pushed to `f3791f5` on
-the maintainer's instruction, CI and Prose green at that head; Codex returned the overnight
-verdicts — `T-209` Complete, `T-208` Blocked on the maintainer's report disposition, `T-203`
-Changes requested (`T203-R3` High, `T203-R4` Medium) — and `T-221` is filed.
-**Last verified against repository:** 2026-08-10 **for the two 2026-08-10 blocks** — task
+**Last updated:** 2026-08-10 — the correction pass: `T-203`'s two open findings corrected on
+maintainer instruction (*"do the T-203 correction pass"*) — the keyboard door falls back to the
+current index with a shown dispatch regression (`T203-R3`), and the four stale option-A
+contracts now state `UX-011` (`T203-R4`). One commit of work and records, held unpushed on
+`a0bb539`, awaiting the focused re-review.
+**Last verified against repository:** 2026-08-10 **for the three 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
 read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
 day; the Phase 3 block beneath
@@ -28,8 +29,34 @@ Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
 exit criterion owned. `T-212` (filed 2026-08-09) closed the one gap: the recorded-checklist-run
 criterion the maintainer added that day had no owner. **The carried-in defect queue is nearly
 through**: the add-dialog chain and `T-209` are Complete, `T-208` waits only on the maintainer's
-report disposition, `T-203` needs one focused correction pass (`T203-R3`/`T203-R4`), and no plan
-deliverable has been started.
+report disposition, `T-203`'s correction pass (`T203-R3`/`T203-R4`) is built and awaiting its
+focused re-review, and no plan deliverable has been started.
+
+## 2026-08-10 (correction pass): T-203's keyboard door opened, its stale contracts reconciled
+
+**Maintainer-directed** — *"do the T-203 correction pass"* — and bounded to the two open
+findings, per `AGENTS.md` §10's focused-correction shape. **One commit of work and records is
+held unpushed on `a0bb539`.**
+
+- **`T203-R3` (High) — corrected.** `_show_row_menu` now falls back to `currentIndex()` when
+  the keyboard-reason position names no row — the queue's `T124-R1` shape relearned — and
+  anchors the popup on the resolved row's rectangle rather than at the widget-derived point;
+  with neither a row under the point nor a current row, it opens nothing.
+  `test_the_menu_key_reaches_the_current_rows_menu` drives Qt's shown `CustomContextMenu`
+  dispatch with the **playlist** current, so the menu's own contents prove which row the
+  fallback resolved. **Reproduced before correcting**: the test failed on the uncorrected tree
+  (no menu opened), and mutating the anchor back to the raw position fails it again.
+- **`T203-R4` (Medium) — corrected.** The four named consumers now state `UX-011`'s option
+  *E*: the Phase 4 preface (which also no longer holds open the spec amendment `UX-011` already
+  wrote), `T-200`'s dependency clause, `T-218`'s criterion and out-of-scope list, and
+  `test_the_row_control_offers_only_presets`'s docstring. A sweep of the current-truth files
+  found no fifth live consumer; explicitly historical option-A descriptions remain history.
+
+**Figures**: `ruff check`, `ruff format --check` (163 files), `mypy src` (51 files), bare
+`mypy` and `mypy --platform win32` (125 files each) all clean; add-dialog, row-delegate,
+playlist-picker and task-placement suites **240 passed in 132.79 s** offscreen — 239 plus the
+new regression. **Held on the re-review now, not the correction:** `T-213`/`T-218`/`T-219`,
+same file. A handoff for the focused re-review is ready untracked.
 
 ## 2026-08-10 (verdict session): T-209 approved, T-208 blocked on a disposition, T-203 changes requested
 
