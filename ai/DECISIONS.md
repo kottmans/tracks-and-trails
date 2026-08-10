@@ -1154,15 +1154,54 @@ request, so a worker's arguments are no longer derivable from the job row alone.
 loss of one property — a queued job no longer fully describes its own invocation — and it is
 accepted deliberately, because the alternative is the guarantee above stopping being structural.
 
+#### When each half of the credential is decided (maintainer ruling, 2026-08-10)
+
+**Reading the path at spawn means a queued job authenticates with whatever cookie file is set when
+it *starts*, not when it was queued.** That follows from the ruling rather than being chosen
+separately, and it was not stated in the first drafting — the review asked for it explicitly, and
+an entailed consequence nobody wrote down is the silence this decision exists to have stopped.
+
+The two halves of `REQ-026` therefore bind at different moments, and the ruling is that **this is
+correct and deliberate**:
+
+| Half | Where it lives | When it is decided |
+|---|---|---|
+| **A browser profile** (`cookies_from_browser`) | `DownloadRequest`, and `Preset` | **When the job is queued.** It is a per-download choice a preset can carry (`T159-R1`) |
+| **A cookie file** | `settings.toml` | **When the worker starts.** It is machine configuration, and row one forbids the job carrying it |
+
+**What that means for a user, stated plainly because it is a surprise otherwise:** changing or
+clearing the cookie file changes authentication for **everything already queued and not yet
+started**. Clearing it is the case that reads best — the user said *stop using my cookies*, and
+every job that has not run yet obeys. Switching from one file to another is the case that reads
+worst, and it is the price of the guarantee.
+
+**The alternatives, and why each loses.** Moving the browser name into settings as well would make
+the two halves consistent, and would remove a per-preset capability `T159-R1` records as
+deliberate — a change to approved behaviour far beyond `T-197`. Snapshotting the file path into
+each job would fix authentication at queue time, and requires the path in `DownloadRequest`, which
+is the thing this ruling exists to prevent.
+
 #### Reopening conditions, as they now stand
 
 The original three stand — sync, export, cloud backup, or a bug report attaching the database —
 and *"any other secret-bearing persisted field"* stands. Two are **taken** by this ruling and are
 no longer pending: cookie-file support, and constraining `cookies_from_browser`. Added:
 
-- **A cookie path reaching `DownloadRequest`, the job row, or any durable record**, by any route.
-  Row one is structural only while that stays true, and the moment it does not this decision is
-  back to being a filtered promise and must say so.
+- **A cookie path reaching a sink other than `settings.toml`.** Named precisely, because the
+  first drafting of this clause said *"any durable record"* and **contradicted the ruling in the
+  same breath**: `settings.toml` is durable, and is exactly where this ruling puts the path, so
+  the condition fired the moment it was written. The authorised sink is that file and the
+  arguments handed to a worker process. The forbidden ones, by name:
+
+  | Sink | Why it is forbidden |
+  |---|---|
+  | `DownloadRequest`, and so the `jobs` row | Row one of the table above is structural only while the model cannot carry the value |
+  | `error_message`, or any stored diagnostic this application composes | The verbatim-storage rule protects *third-party* prose; a path we wrote into a message is a value we supplied |
+  | Any log this application emits | `T-038` binds emission in full, whatever the provenance of the text |
+  | Any future export, sync, backup, or bug-report bundle | The original reopening conditions already cover these; this row is the reminder that a cookie path makes them sharper |
+
+  Reaching any of those is what puts this decision back to being a filtered promise, and it must
+  then say so.
 - **Constraining `url`.** Still untaken, and still the remaining half of `T-049`'s caveat: a
   credential the user typed into a URL is in the database today, deliberately.
 

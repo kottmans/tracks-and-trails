@@ -1649,8 +1649,13 @@ first time. That is precisely the material `REQ-026` says is never logged.
   `cookies_from_browser`. `AGENTS.md` §5 puts the decision above this entry, so the entry gave way.
   **The ruling was taken before any code**, and `DAT-003`'s 2026-08-10 amendment records it: cookie
   files land this phase; **the path is settings-only and never enters `DownloadRequest`**, which
-  keeps the never-in-the-database guarantee structural; and `cookies_from_browser` gains a
-  validator. This task now works inside *that*
+  keeps the never-in-the-database guarantee structural; `cookies_from_browser` gains a validator;
+  and **the two halves bind at different moments on purpose** — a browser profile when the job is
+  queued, a cookie file when the worker starts. This task now works inside *that*, and its own
+  criteria inherit two things from it: **a cookie file setting applies to jobs already queued**,
+  which the screen should not imply otherwise, and the forbidden sinks are named in the decision
+  rather than left as *any durable record*, since `settings.toml` is durable and is where the path
+  is meant to live
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
