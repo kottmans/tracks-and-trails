@@ -202,13 +202,6 @@ DEFAULT_RESOLVE_DELAY_MS: Final = 400
 #: honest rendering of a missing value rather than an invented one.
 UNKNOWN_TEXT: Final = "Unknown"
 
-#: What the verb bar says, on screen and to a screen reader, when no row is current (`T-203`).
-#:
-#: One string for both because they are one fact. `T203-R1` was the two halves disagreeing: the
-#: label drew the row's name while the accessible tree described the label's *purpose*, so the
-#: identity a sighted user could read was the identity a screen-reader user could not.
-NO_TARGET_TEXT: Final = "Select an item to adjust"
-
 #: How many lines of URL the paste box asks for before it stops growing (`T-210`).
 #:
 #: **Four, chosen against the work rather than picked.** A single URL is the common paste and a
@@ -1354,51 +1347,6 @@ class AddUrlDialog(QDialog):
         header.addStretch(1)
         layout.addLayout(header)
 
-        # **The verb bar** (`T-203`, option *A*): the three per-row commands as real buttons,
-        # labelled for the current row. Real widgets because a painted control has no accessibility
-        # node — the constraint that ruled out icons on the row — and **one set rather than one per
-        # row**, which keeps `UX-004`'s per-row-widget cost out of the question entirely.
-        verbs = QHBoxLayout()
-        self._verb_label = QLabel(box)
-        self._verb_label.setObjectName("verbBarLabel")
-        self._verb_label.setAccessibleName(NO_TARGET_TEXT)
-        # Site metadata ends up in this label (`T016-R6`): titles are the site's text.
-        self._verb_label.setTextFormat(Qt.TextFormat.PlainText)
-        verbs.addWidget(self._verb_label)
-        self._formats_button = QPushButton(CHOOSE_FORMATS_TEXT, box)
-        self._formats_button.setObjectName("chooseFormatsButton")
-        self._formats_button.clicked.connect(lambda: self._bar_open(self.open_format_table))
-        verbs.addWidget(self._formats_button)
-        self._options_button = QPushButton(OPTIONS_TEXT, box)
-        self._options_button.setObjectName("rowOptionsButton")
-        self._options_button.clicked.connect(lambda: self._bar_open(self.open_options))
-        verbs.addWidget(self._options_button)
-        self._template_button = QPushButton(TEMPLATE_TEXT, box)
-        self._template_button.setObjectName("namingFoldersButton")
-        self._template_button.clicked.connect(lambda: self._bar_open(self.open_template_editor))
-        verbs.addWidget(self._template_button)
-        # **One definition of what each button is called when it names its target** (`T203-R1`).
-        # Without the ellipsis the visible labels carry: *"…"* means *"this opens a window"*, which
-        # is a promise to the eye and noise in the middle of a spoken sentence.
-        self._verb_buttons: tuple[tuple[QPushButton, str], ...] = (
-            (self._formats_button, "Choose specific formats"),
-            (self._options_button, "Options"),
-            (self._template_button, "Naming and folders"),
-        )
-        # **Narrow keeps working** (`T-160`'s contract, asserted by the narrowing test): the
-        # buttons' natural minimums summed to a 571px floor the user could not drag under. An
-        # explicit small minimum lets the layout compress them — clipped text at extreme widths is
-        # the price, and it is the same trade the row anatomy already makes when narrowed.
-        for control in (
-            self._verb_label,
-            self._formats_button,
-            self._options_button,
-            self._template_button,
-        ):
-            control.setMinimumWidth(24)
-        verbs.addStretch(1)
-        layout.addLayout(verbs)
-
         self._list = StagingList(box, selectors=selector_candidates(self._presets))
         # A taller or shorter list changes how tall an opened row may be, so the rows are
         # re-measured and the open panel put back over the one it belongs to (`T-210`).
@@ -1409,13 +1357,15 @@ class AddUrlDialog(QDialog):
             "Each line you pasted, with what it turned out to be. " + EDIT_HINT
         )
         self._list.setModel(self._model)
-        # The bar follows the keyboard: whichever row is current is the one the verbs act on.
-        self._list.selectionModel().currentChanged.connect(lambda *_: self._update_verb_bar())
         delegate = RowDelegate(thumbnails=self._thumbnails, parent=self._list)
         # **The disclosure triangle opens the playlist picker** (`P-19`, `docs/UX_SPEC.md` §7).
         # The same signal the queue's groups use, so the gesture means the same thing on both
         # lists — and `StagingList` gives it the `→` / `←` half the spec's keyboard table names.
         delegate.disclosure_toggled.connect(self.toggle_playlist)
+        # **The `⋮` zone is the context menu's second door** (`T-203`, `UX-011` option *E*). The
+        # delegate emits the click's viewport position, so the same slot the context-menu routes
+        # use resolves the row the same way — one menu, not two lookalikes.
+        delegate.menu_requested.connect(self._show_row_menu)
         self._list.setItemDelegate(delegate)
         self._list.setUniformItemSizes(True)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -1439,11 +1389,6 @@ class AddUrlDialog(QDialog):
         if selection is not None:
             selection.currentChanged.connect(self._show_selector)
         layout.addWidget(self._list)
-
-        # **The no-target state is set here rather than left to the first refresh** (`T203-R1`).
-        # A dialog that has resolved nothing still has three focusable buttons in the chain, and
-        # until this ran they announced a target the bar did not have.
-        self._update_verb_bar()
 
         return box
 
@@ -1520,12 +1465,9 @@ class AddUrlDialog(QDialog):
         return [
             self._urls,
             self._retry_button,
-            # `T-203`'s verb bar, in visual order between the retry button and the list it acts
-            # on. Disabled-when-nothing-current keeps all three in the chain in every state — the
-            # rule stated above, the same one the retry button follows.
-            self._formats_button,
-            self._options_button,
-            self._template_button,
+            # `T-203`'s verb bar sat here until `UX-011` moved its three verbs into the row's
+            # menu: real `QAction`s reached through the list itself (the Menu key, Shift+F10), so
+            # the chain has nothing separate to hold for them.
             self._list,
             # Focusable because it is selectable: a message kept verbatim (`NFR-006`) that cannot
             # be copied into a bug report is half the point. `T016-R4` is what happens when a
@@ -2296,61 +2238,6 @@ class AddUrlDialog(QDialog):
         self._urls.blockSignals(False)
         self._refresh()
 
-    def _bar_open(self, opener: Callable[[Row], None]) -> None:
-        """One verb-bar press: scroll the named row into view, then open (`T-203`).
-
-        **The scroll is a guardrail, not decoration.** The bar acts on the *current* row, and a
-        current row can be scrolled out of sight — acting on something invisible is the failure
-        that makes an action bar worse than per-row controls. Bringing it on screen first means
-        the label, the row and the window that opens are visibly about one thing.
-        """
-        row = self._current_row()
-        if row is None or row not in self._model.shown:
-            return
-        index = self._model.index(self._model.shown.index(row), 0)
-        if index.isValid():
-            self._list.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
-        opener(row)
-
-    def _update_verb_bar(self) -> None:
-        """Aim the bar at the current row, or say plainly that there is none (`T-203`).
-
-        Enablement reads **the model's own roles** — the same answers the combo entries were gated
-        on — so the bar and the model cannot disagree about what a row offers. Disabled rather
-        than hidden, for `focus_chain`'s stated rule: the chain is the same in every state.
-
-        **The target is named in the accessible tree, not only in pixels** (`T203-R1`). The label
-        drew `For <row>:` while `QAccessible` reported it as *"Which item the adjust buttons act
-        on"* and the buttons as acting on *"the current item"* — so a screen-reader user, who
-        reaches these buttons **before** the list in tab order, was never told which row was about
-        to change. That is the guardrail that justified moving the verbs off the row into one
-        shared bar, and it was the half that did not exist.
-
-        Each button's accessible name carries the row, and it carries the **unelided** headline:
-        the label is elided to 300px because it has to fit, and an announcement has no width.
-        """
-        row = self._current_row()
-        if row is None or row not in self._model.shown:
-            self._verb_label.setText(NO_TARGET_TEXT)
-            self._verb_label.setAccessibleName(NO_TARGET_TEXT)
-            for button, verb in self._verb_buttons:
-                button.setEnabled(False)
-                button.setAccessibleName(f"{verb} — no item is selected")
-            return
-        index = self._model.index(self._model.shown.index(row), 0)
-        headline = headline_text(row)
-        self._verb_label.setText(
-            self._verb_label.fontMetrics().elidedText(
-                f"For {headline}:", Qt.TextElideMode.ElideRight, 300
-            )
-        )
-        self._verb_label.setAccessibleName(f"The adjust buttons act on {headline}")
-        for button, verb in self._verb_buttons:
-            button.setAccessibleName(f"{verb} for {headline}")
-        self._formats_button.setEnabled(bool(index.data(FORMATS_AVAILABLE_ROLE)))
-        self._options_button.setEnabled(bool(index.data(OPTIONS_AVAILABLE_ROLE)))
-        self._template_button.setEnabled(bool(index.data(TEMPLATE_AVAILABLE_ROLE)))
-
     def edit_row(self, index: int) -> bool:
         """Open the format control for one row. **The keyboard route, as a method** (`T118-R9`).
 
@@ -2369,33 +2256,85 @@ class AddUrlDialog(QDialog):
         self._list.edit(model_index)
         return True
 
+    def row_menu(self, row: Row) -> QMenu:
+        """The row's own menu: its per-item verbs, then what can be done to the line (`T-203`).
+
+        **One menu, two doors** (`UX-011`, option *E*): the `⋮` zone painted on the row's format
+        control and the context-menu routes — right-click, the Menu key, Shift+F10 — all land in
+        `_show_row_menu`, which builds here. Public because the criterion is that the doors
+        produce **the same actions**, and that has to be assertable on the actions rather than on
+        two menus happening to agree.
+
+        **The target is structural.** The menu is built for the row it was opened from — which
+        need not be the current row — so nothing announces a target and nothing can drift:
+        `T203-R1` was the shared bar failing to *say* which row it meant, and this shape has no
+        saying to get wrong.
+
+        **It offers what the row can actually do**, reading the model's own roles the way the
+        bar's enablement did (`UX-005` §5) — but by the menu's own idiom for conditional entries,
+        which is absence: Retry appears only on a failed row, and a playlist's formats entry is
+        not there at all, because its formats belong to its entries (`T-110`).
+        """
+        menu = QMenu(self._list)
+        shown = self._model.shown
+        index = self._model.index(shown.index(row), 0) if row in shown else QModelIndex()
+
+        offers_formats = index.isValid() and bool(index.data(FORMATS_AVAILABLE_ROLE))
+        offers_options = index.isValid() and bool(index.data(OPTIONS_AVAILABLE_ROLE))
+        offers_template = index.isValid() and bool(index.data(TEMPLATE_AVAILABLE_ROLE))
+        if offers_formats or offers_options or offers_template:
+            # `UX-011`'s heading, and its order: the per-item verbs sit **above** the entries the
+            # menu already held, first `Choose specific formats…`, per `docs/UX_SPEC.md` §4.
+            menu.addSection("Just this item")
+            if offers_formats:
+                formats = QAction(CHOOSE_FORMATS_TEXT, menu)
+                formats.triggered.connect(lambda: self.open_format_table(row))
+                menu.addAction(formats)
+            if offers_options:
+                options = QAction(OPTIONS_TEXT, menu)
+                options.triggered.connect(lambda: self.open_options(row))
+                menu.addAction(options)
+            if offers_template:
+                template = QAction(TEMPLATE_TEXT, menu)
+                template.triggered.connect(lambda: self.open_template_editor(row))
+                menu.addAction(template)
+            menu.addSeparator()
+
+        if row.state is RowState.FAILED:
+            retry = QAction("Read this URL again", menu)
+            retry.triggered.connect(lambda: self._retry_row(row))
+            menu.addAction(retry)
+        if index.isValid() and self._model.flags(index) & _EDITABLE:
+            # **The same editor the keyboard reaches** (`T118-R9`), offered here so the route is
+            # discoverable rather than only documented. Both go through `edit_row`.
+            choose = QAction("Choose a format for this URL…", menu)
+            choose.triggered.connect(lambda: self.edit_row(index.row()))
+            menu.addAction(choose)
+        remove = QAction("Remove this URL", menu)
+        remove.triggered.connect(lambda: self.remove_row(row))
+        menu.addAction(remove)
+        return menu
+
     def _show_row_menu(self, position: Any) -> None:
-        """Retry or remove one row. **A context menu, reachable from the keyboard.**
+        """Show one row's menu. **A context menu, reachable from the keyboard.**
 
         `CustomContextMenu` rather than `contextMenuEvent`, for the reason `T-086`'s file actions
         use it: the menu key and Shift+F10 both raise it, so the actions are not mouse-only
-        (`NFR-005`).
+        (`NFR-005`). The delegate's `⋮` zone lands here too, carrying the click's viewport
+        position — so every door resolves the row the same way: whatever row is under the point.
+
+        **`popup`, not `exec`** (`T-203`). The same menu with the same grabs, shown without a
+        nested event loop — `exec` cannot be returned from headlessly, so a door that exec'd
+        would be a route no test can drive to its actions. Deleted on close, so each opening is
+        one widget with one lifetime rather than a child accumulating per right-click.
         """
         clicked = self._list.indexAt(position)
         row = self._row_at(clicked.row()) if clicked.isValid() else None
         if row is None:
             return
-
-        menu = QMenu(self._list)
-        if row.state is RowState.FAILED:
-            retry = QAction("Read this URL again", menu)
-            retry.triggered.connect(lambda: self._retry_row(row))
-            menu.addAction(retry)
-        if clicked.flags() & _EDITABLE:
-            # **The same editor the keyboard reaches** (`T118-R9`), offered here so the route is
-            # discoverable rather than only documented. Both go through `edit_row`.
-            choose = QAction("Choose a format for this URL…", menu)
-            choose.triggered.connect(lambda: self.edit_row(clicked.row()))
-            menu.addAction(choose)
-        remove = QAction("Remove this URL", menu)
-        remove.triggered.connect(lambda: self.remove_row(row))
-        menu.addAction(remove)
-        menu.exec(self._list.viewport().mapToGlobal(position))
+        menu = self.row_menu(row)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.popup(self._list.viewport().mapToGlobal(position))
 
     def _retry_row(self, row: Row) -> None:
         if row.state is not RowState.FAILED:
@@ -2826,7 +2765,6 @@ class AddUrlDialog(QDialog):
             self._refresh_once()
         finally:
             self._refreshing = False
-        self._update_verb_bar()
 
     def _refresh_once(self) -> None:
         # **Recomputed here, on every refresh, and never accumulated** (`REQ-022`, `T-114`). The

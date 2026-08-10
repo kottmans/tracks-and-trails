@@ -47,7 +47,6 @@ from PySide6.QtCore import (
     Qt,
 )
 from PySide6.QtGui import (
-    QAccessible,
     QColor,
     QFont,
     QFontMetrics,
@@ -63,6 +62,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QLabel,
     QListView,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -121,6 +121,7 @@ from tracks_and_trails.ui.row_delegate import (
     INHERITED_TEXT,
     MANAGE_PRESETS_DATA,
     MANAGE_PRESETS_TEXT,
+    MENU_ZONE_WIDTH,
     OPTIONS_DATA,
     OPTIONS_TEXT,
     PADDING,
@@ -217,10 +218,8 @@ AUDIO_ONLY: Final = "archive_org_test_mp3"
 EXPECTED_TAB_ORDER: Final = (
     "urlInput",
     "retryFailedButton",
-    # `T-203`'s verb bar, between the retry button and the list it acts on.
-    "chooseFormatsButton",
-    "rowOptionsButton",
-    "namingFoldersButton",
+    # `T-203`'s verb bar sat here until `UX-011` moved its verbs into the row's menu — real
+    # `QAction`s reached through the list itself, so the chain holds nothing separate for them.
     "stagingList",
     # Selectable, therefore focusable, therefore declared (`T016-R4`).
     "statusMessage",
@@ -675,24 +674,31 @@ def choose_in_editor(dialog: AddUrlDialog, control: QComboBox, preset_name: str 
     is why the first version of this helper left the editor standing.
     """
     listing = staging_list(dialog)
-    # **`T-203` rerouted the verbs.** The three per-row commands left the combo for the verb bar,
-    # so a sentinel here is driven the way a user now drives it: close the editor, press the
-    # button for the current row. Every older test keeps describing the same gesture — "open the
-    # formats for this row" — by its real route.
-    verb_buttons = {
-        CHOOSE_FORMATS_DATA: "chooseFormatsButton",
-        OPTIONS_DATA: "rowOptionsButton",
-        TEMPLATE_DATA: "namingFoldersButton",
+    # **`T-203` rerouted the verbs, twice.** The three per-row commands left the combo for the
+    # verb bar, and `UX-011` then moved them into **the row's own menu** (option *E*). So a
+    # sentinel here is driven the way a user now drives it: close the editor, open the current
+    # row's menu, choose the entry. Every older test keeps describing the same gesture — "open
+    # the formats for this row" — by its real route.
+    verb_texts = {
+        CHOOSE_FORMATS_DATA: CHOOSE_FORMATS_TEXT,
+        OPTIONS_DATA: OPTIONS_TEXT,
+        TEMPLATE_DATA: TEMPLATE_TEXT,
     }
-    if preset_name in verb_buttons:
+    if preset_name in verb_texts:
         listing.closeEditor(control, QAbstractItemDelegate.EndEditHint.NoHint)
         QApplication.processEvents()
         QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        button = dialog.findChild(QPushButton, verb_buttons[preset_name])
-        assert button is not None and button.isEnabled(), (
-            f"the bar does not offer {verb_buttons[preset_name]} for the current row"
-        )
-        button.click()
+        current = listing.currentIndex()
+        assert current.isValid(), "no row is current, so the menu has no row to be opened from"
+        row = dialog._model.row_at(current.row())
+        assert row is not None
+        wanted = [
+            action
+            for action in dialog.row_menu(row).actions()
+            if action.text() == verb_texts[preset_name]
+        ]
+        assert wanted, f"the row's menu does not offer {verb_texts[preset_name]!r}"
+        wanted[0].trigger()
         QApplication.processEvents()
         return
     control.setCurrentIndex(control.findData(preset_name))
@@ -4784,170 +4790,196 @@ def test_the_row_control_offers_only_presets(
         )
 
 
-def test_the_bar_acts_on_the_current_row_and_says_so(
+def test_the_menu_offers_what_the_row_can_do(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
 ) -> None:
-    """The bar names its target and offers what that row can actually do (`T-203`).
+    """The row's menu offers what that row can actually do, by absence (`T-203`, `UX-011`).
 
     A single item offers the format table; a playlist does not — its formats belong to its
-    entries (`T-110`) — and the bar must say so by enablement, reading the model's own roles.
+    entries (`T-110`) — and under option *E* the menu says so the way it already said Retry:
+    the entry is **not there**, following the menu's own idiom for conditional entries rather
+    than the bar's enablement.
     """
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
-    listing = staging_list(dialog)
-    label = dialog.findChild(QLabel, "verbBarLabel")
-    formats = dialog.findChild(QPushButton, "chooseFormatsButton")
-    assert label is not None and formats is not None
 
-    listing.selectionModel().setCurrentIndex(
-        dialog.model.index(0, 0), QItemSelectionModel.SelectionFlag.NoUpdate
+    single = dialog.row_menu(dialog.rows[0])
+    texts = [action.text() for action in single.actions() if not action.isSeparator()]
+    assert texts[:3] == [CHOOSE_FORMATS_TEXT, OPTIONS_TEXT, TEMPLATE_TEXT], (
+        f"a ready single item's verbs are {texts}, not the three under Just this item"
     )
-    assert label.text().startswith("For "), label.text()
-    single_label = label.text()
-    assert formats.isEnabled(), "a ready single item was refused its format table"
+    assert "Remove this URL" in texts
+    assert "Read this URL again" not in texts, "Retry is offered on a row that has not failed"
+    # **The heading is real menu furniture, not a comment**: a separator action carrying the
+    # `UX-011` wording, above the verbs it introduces.
+    sections = [action.text() for action in single.actions() if action.isSeparator()]
+    assert "Just this item" in sections
 
-    listing.selectionModel().setCurrentIndex(
-        dialog.model.index(1, 0), QItemSelectionModel.SelectionFlag.NoUpdate
-    )
-    assert label.text().startswith("For ") and label.text() != single_label, (
-        "the label did not follow the current row"
-    )
-    assert not formats.isEnabled(), (
+    playlist = dialog.row_menu(dialog.rows[1])
+    playlist_texts = [action.text() for action in playlist.actions()]
+    assert CHOOSE_FORMATS_TEXT not in playlist_texts, (
         "a playlist offers the format table, but its formats belong to its entries"
     )
+    assert OPTIONS_TEXT in playlist_texts and TEMPLATE_TEXT in playlist_texts, (
+        "the per-item verbs a playlist genuinely has went missing with the one it does not"
+    )
 
 
-def test_the_bar_names_its_target_to_a_screen_reader_too(
+def test_the_menu_acts_on_the_row_it_was_opened_from(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
 ) -> None:
-    """**`T203-R1`.** The announced target follows the current row, not just the drawn one.
+    """**`T203-R1`'s successor, and the criterion that proves the shape** (`T-203`, `UX-011`).
 
-    The bar drew `For <row>:` while `QAccessible` reported the label as *"Which item the adjust
-    buttons act on"* and every button as acting on *"the current item"*. **The buttons come before
-    the list in tab order**, so a screen-reader user arriving at them was told a row would change
-    and never which one — defeating the guardrail that justified one shared bar over per-row
-    controls.
-
-    Asserted through `QAccessible` rather than through the widgets' own `accessibleName()`, because
-    what a screen reader receives is the interface's answer and not the property that fed it.
+    The bar acted on the *current* row and had to announce which one that was — the announcement
+    was the machinery `T203-R1` found missing. A menu is opened *from* a row; opened on row 1
+    while row 0 is current, its verbs act on row 1. Nothing announces a target because nothing
+    needs to: the target is structural.
     """
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
     listing = staging_list(dialog)
-    label = dialog.findChild(QLabel, "verbBarLabel")
-    assert label is not None
-
-    announced: list[str] = []
-    for position in (0, 1):
-        listing.selectionModel().setCurrentIndex(
-            dialog.model.index(position, 0), QItemSelectionModel.SelectionFlag.NoUpdate
-        )
-        headline = headline_text(dialog.rows[position])
-        for name in ("chooseFormatsButton", "rowOptionsButton", "namingFoldersButton"):
-            button = dialog.findChild(QPushButton, name)
-            assert button is not None
-            spoken = QAccessible.queryAccessibleInterface(button).text(QAccessible.Text.Name)
-            assert headline in spoken, (
-                f"{name} is announced as {spoken!r}, which does not name the row it will act on"
-            )
-        spoken_label = QAccessible.queryAccessibleInterface(label).text(QAccessible.Text.Name)
-        assert headline in spoken_label, (
-            f"the bar's label is announced as {spoken_label!r} — its purpose rather than its target"
-        )
-        announced.append(spoken_label)
-
-    assert announced[0] != announced[1], (
-        "both rows are announced identically, so the announcement does not follow the current row"
-    )
-
-    # **The unelided headline, deliberately.** The drawn label is elided to 300px because it has to
-    # fit in the bar; an announcement has no width, and truncating it would lose the identity this
-    # test exists to prove is present.
-    long_row = max(dialog.rows[:2], key=lambda row: len(headline_text(row)))
     listing.selectionModel().setCurrentIndex(
-        dialog.model.index(dialog.rows.index(long_row), 0),
-        QItemSelectionModel.SelectionFlag.NoUpdate,
+        dialog.model.index(0, 0), QItemSelectionModel.SelectionFlag.NoUpdate
     )
-    assert (
-        QAccessible.queryAccessibleInterface(label)
-        .text(QAccessible.Text.Name)
-        .endswith(headline_text(long_row))
-    ), "the announced target is elided; a screen reader was given the truncated label"
+
+    menu = dialog.row_menu(dialog.rows[1])
+    wanted = [action for action in menu.actions() if action.text() == CHOOSE_FORMATS_TEXT]
+    assert wanted, "row 1 offers no format table"
+    wanted[0].trigger()
+    QApplication.processEvents()
+
+    assert dialog.expanded_row is dialog.rows[1], (
+        "the menu was opened from row 1 and acted on a different row"
+    )
+    assert listing.currentIndex().row() == 0, (
+        "acting on the opened-from row should not have required making it current"
+    )
 
 
-def test_the_bar_says_it_has_no_target_when_nothing_is_current(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-) -> None:
-    """**`T203-R1`, the other end.** No target is stated, not left describing the last one.
+def _popped_menu(listing: QListView) -> QMenu:
+    """The row menu a door just opened, and there must be exactly one.
 
-    A freshly built dialog has resolved nothing and still puts three buttons in the keyboard
-    chain. Until the bar was updated at construction they announced a target that did not exist.
+    `_show_row_menu` pops the menu up rather than exec-ing it — a nested event loop cannot be
+    returned from headlessly — so the opened menu is a real, visible child the test can read.
     """
-    dialog = dialogs(managers(entry_point=child_never_returning))
-    for name in ("chooseFormatsButton", "rowOptionsButton", "namingFoldersButton"):
-        button = dialog.findChild(QPushButton, name)
-        assert button is not None
-        spoken = QAccessible.queryAccessibleInterface(button).text(QAccessible.Text.Name)
-        assert "no item is selected" in spoken, (
-            f"{name} is announced as {spoken!r} while the bar has no target"
-        )
+    menus = [menu for menu in listing.findChildren(QMenu) if menu.isVisible()]
+    assert len(menus) == 1, f"{len(menus)} row menus are open at once"
+    return menus[0]
 
 
-def test_the_bar_is_dead_when_nothing_is_current(
+def _close_menu(menu: QMenu) -> None:
+    """Close a popped-up menu and let its deferred deletion actually run (`WA_DeleteOnClose`)."""
+    menu.close()
+    QApplication.processEvents()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_the_two_doors_produce_the_same_actions(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
-) -> None:
-    """No target, no verbs — said in words, with the buttons still in the keyboard chain."""
-    dialog = dialogs(managers(entry_point=child_never_returning))
-    label = dialog.findChild(QLabel, "verbBarLabel")
-    assert label is not None and label.text() == "Select an item to adjust"
-    chain = dialog.focus_chain()
-    for name in ("chooseFormatsButton", "rowOptionsButton", "namingFoldersButton"):
-        button = dialog.findChild(QPushButton, name)
-        assert button is not None and not button.isEnabled(), name
-        assert button in chain, f"{name} left the declared keyboard order with its state"
-
-
-def test_a_bar_press_brings_its_row_into_view(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
     spin: Callable[..., bool],
 ) -> None:
-    """The guardrail (`T-203`): acting on a row you cannot see is the bar's failure mode.
+    """One menu, not two lookalikes (`T-203`, `UX-011`): the `⋮` and the context route agree.
 
-    The current row is scrolled out of sight, the button is pressed, and the row must be back in
-    the viewport with its panel open — the label, the row and the window visibly about one thing.
+    Asserted **on the actions each door produces**, not on two builders happening to look alike:
+    both doors are driven — the context route with a point over the row, the `⋮` zone with a real
+    click through the delegate — and the two menus they open must offer the same entries in the
+    same order.
     """
-    # The formats button, deliberately: the options route opens a **modal** dialog, and a
-    # modal under `exec()` never returns to a headless test. The guardrail under test is the
-    # scroll, and the format panel opens in place (`P-1`), so one press witnesses both.
-    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST, AUDIO_ONLY)
-    row = dialog.rows[0]
-    dialog.resize(900, 520)
-    dialog.show()
-    QApplication.processEvents()
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
     listing = staging_list(dialog)
+    dialog.show()
     try:
-        listing.selectionModel().setCurrentIndex(
-            dialog.model.index(0, 0), QItemSelectionModel.SelectionFlag.NoUpdate
-        )
-        listing.verticalScrollBar().setValue(listing.verticalScrollBar().maximum())
-        button = dialog.findChild(QPushButton, "chooseFormatsButton")
-        assert button is not None and button.isEnabled()
+        qapp.processEvents()
+        index = listing.model().index(0, 0)
 
-        button.click()
-        QApplication.processEvents()
+        dialog._show_row_menu(listing.visualRect(index).center())
+        by_context = [action.text() for action in _popped_menu(listing).actions()]
+        _close_menu(_popped_menu(listing))
 
-        rect = listing.visualRect(dialog.model.index(dialog.rows.index(row), 0))
-        assert rect.intersects(listing.viewport().rect()), (
-            "the press acted on a row that stayed out of sight"
+        option = QStyleOptionViewItem()
+        option.rect = listing.visualRect(index)
+        option.font = listing.font()
+        option.fontMetrics = QFontMetrics(option.font)
+        delegate = listing.itemDelegate()
+        assert isinstance(delegate, RowDelegate)
+        QTest.mouseClick(
+            listing.viewport(),
+            Qt.MouseButton.LeftButton,
+            pos=delegate._menu_zone_of(option, index).center(),
         )
-        assert dialog.open_panel is not None, "the press scrolled but opened nothing"
+        qapp.processEvents()
+        by_zone = [action.text() for action in _popped_menu(listing).actions()]
+        _close_menu(_popped_menu(listing))
+
+        assert by_context == by_zone, (
+            f"the two doors disagree: context {by_context} versus ⋮ {by_zone}"
+        )
+        assert CHOOSE_FORMATS_TEXT in by_context, (
+            "neither door offered the format table for a ready single item"
+        )
     finally:
-        dialog.close()
+        dialog.hide()
+
+
+def test_the_menu_zone_is_carved_from_the_control_and_both_sides_work(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """The `⋮` zone's geometry, and both sides of its line (`T-203`).
+
+    This is the delegate's paint-and-hit-test seam — `T107-R2`, `T108-R2`, `T-204` — so the zone
+    gets what the twisty got: its rectangle asserted against the control it is carved from, and a
+    click driven at real coordinates on **each** side. In the zone: the menu, and no editor.
+    On the combo: the editor, exactly as before the zone existed.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    listing = staging_list(dialog)
+    dialog.show()
+    try:
+        qapp.processEvents()
+        index = listing.model().index(0, 0)
+        option = QStyleOptionViewItem()
+        option.rect = listing.visualRect(index)
+        option.font = listing.font()
+        option.fontMetrics = QFontMetrics(option.font)
+        delegate = listing.itemDelegate()
+        assert isinstance(delegate, RowDelegate)
+
+        control = delegate._control_of(option, index)
+        zone = delegate._menu_zone_of(option, index)
+        assert zone.width() == MENU_ZONE_WIDTH, "the zone is not the fixed width it promises"
+        assert zone.right() == control.right() and zone.top() == control.top(), (
+            f"the zone {zone} is not flush with the control's trailing edge {control}"
+        )
+        assert control.contains(zone), "the zone left the control it is carved from"
+
+        QTest.mouseClick(listing.viewport(), Qt.MouseButton.LeftButton, pos=zone.center())
+        qapp.processEvents()
+        opened = _popped_menu(listing)
+        assert not listing.findChildren(QComboBox, ROW_PRESET_NAME), (
+            "a click in the ⋮ zone opened the preset combo as well as the menu"
+        )
+        _close_menu(opened)
+
+        combo_half = QPoint(
+            control.left() + (control.width() - MENU_ZONE_WIDTH) // 2, control.center().y()
+        )
+        QTest.mouseClick(listing.viewport(), Qt.MouseButton.LeftButton, pos=combo_half)
+        qapp.processEvents()
+        assert len(listing.findChildren(QComboBox, ROW_PRESET_NAME)) == 1, (
+            "a click on the combo's own half no longer opens the preset editor"
+        )
+        assert not [menu for menu in listing.findChildren(QMenu) if menu.isVisible()], (
+            "the combo click leaked into the ⋮ zone"
+        )
+    finally:
+        dialog.hide()
 
 
 def test_the_manager_opens_a_turn_after_the_button_is_pressed(

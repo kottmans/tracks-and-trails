@@ -42,12 +42,7 @@ from urllib.parse import quote
 
 import psutil
 import pytest
-from PySide6.QtCore import QItemSelectionModel
-from PySide6.QtWidgets import (
-    QApplication,
-    QListView,
-    QPushButton,
-)
+from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails import app as application
 from tracks_and_trails.core.errors import ErrorKind, is_retryable
@@ -59,6 +54,7 @@ from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui.format_selection import FormatKind, kind_of
+from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT
 
 REPO_ROOT = Path(__file__).parents[2]
 
@@ -1569,8 +1565,8 @@ def choose_pair_and_queue(composition: application.Composition, url: str) -> str
 
     **Through the dialog rather than by building a request**, for `queue_one`'s reason and one
     more: `T-108`'s criterion is about a *selection* producing a merged file, so a test that
-    assembled the selector itself would skip the part under review — the verb bar's format
-    button, the panel, the mode, and the routing of each row into its slot.
+    assembled the selector itself would skip the part under review — the row menu's formats
+    entry, the panel, the mode, and the routing of each row into its slot.
     """
     dialog = composition.window.open_add_dialog()
     dialog._urls.setPlainText(url)
@@ -1592,22 +1588,21 @@ def choose_pair_and_queue(composition: application.Composition, url: str) -> str
         f"the URL never resolved: {dialog.status_text()}"
     )
 
-    # **`T-203` rerouted this gesture.** The row's combo holds presets only; the three per-row
-    # commands are a bar above the list that acts on whichever row is current. So the route is now
-    # *make the row current, press the button* — the same route `choose_in_editor` sends the UI
-    # suite's sentinel choices down, driven here through the real widgets rather than a combo
-    # entry that no longer exists.
-    listing = dialog.findChild(QListView, "stagingList")
-    assert listing is not None
-    listing.selectionModel().setCurrentIndex(
-        dialog.model.index(0, 0), QItemSelectionModel.SelectionFlag.NoUpdate
+    # **`T-203` rerouted this gesture, twice.** The row's combo holds presets only; the verb bar
+    # that briefly followed was rejected on sight and `UX-011` ruled option *E*: the three
+    # per-row commands are entries in **the row's own menu**. So the route is now *open the row's
+    # menu, choose `Choose specific formats…`* — the same route `choose_in_editor` sends the UI
+    # suite's sentinel choices down, driven here through the menu's real action.
+    actions = [
+        action
+        for action in dialog.row_menu(dialog.rows[0]).actions()
+        if action.text() == CHOOSE_FORMATS_TEXT
+    ]
+    assert actions, (
+        f"the row's menu does not offer the format table for a resolved single item — "
+        f"{dialog.status_text()}"
     )
-    button = dialog.findChild(QPushButton, "chooseFormatsButton")
-    assert button is not None, "the dialog offers no format-table button"
-    assert button.isEnabled(), (
-        f"the bar refused the format table for a resolved single item — {dialog.status_text()}"
-    )
-    button.click()
+    actions[0].trigger()
     composition.app.processEvents()
 
     panel = dialog.open_format_panel

@@ -455,6 +455,17 @@ VERB_GAP: Final = 4
 #: by the row so a large font cannot push it outside its own row.
 CONTROL_HEIGHT: Final = 26
 
+#: The width of the `⋮` zone on the trailing edge of the row's format control (`T-203`, `UX-011`).
+#:
+#: **Fixed, not proportional.** The zone is a painted affordance for the row's menu, and one that
+#: grew with the control would take its width from the preset name — the one thing `UX-004` says
+#: must stay readable. At `MIN_CONTROL_WIDTH` the combo half keeps three quarters of the control.
+MENU_ZONE_WIDTH: Final = 16
+
+#: What the zone draws. A vertical ellipsis, deliberately distinct from the queue's `⋯` overflow:
+#: that one *is* a button with actions of its own, this one is a door to the row's menu.
+MENU_ZONE_GLYPH: Final = "⋮"
+
 #: **The declared keyboard route to a row's editor** (`T118-R9`).
 #:
 #: Stated here rather than left to `QAbstractItemView`'s default, because "the row controls are
@@ -619,6 +630,12 @@ class RowDelegate(QStyledItemDelegate):
     #: delegate that expanded a group by editing the list it draws would be two places deciding
     #: what a row is.
     disclosure_toggled = Signal(str)
+
+    #: The row's `⋮` zone was clicked (`T-203`, `UX-011` option *E*). Carries the click's viewport
+    #: position rather than a row id, because the receiver is the same slot the context-menu
+    #: routes already use — it resolves the row from the point, so the two doors cannot resolve
+    #: it differently.
+    menu_requested = Signal(object)
 
     def __init__(
         self,
@@ -860,6 +877,24 @@ class RowDelegate(QStyledItemDelegate):
         """
         body, tile = self._body_of(option, index)
         return self._control_rect(body, option.fontMetrics.height(), tile=tile[0])
+
+    def _menu_zone_of(
+        self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
+    ) -> QRect:
+        """Where the row's `⋮` zone sits: the trailing slice of the control (`T-203`, `UX-011`).
+
+        **Carved out of `_control_of`, never measured beside it**, so the paint, the click and
+        the combo's remaining room cannot disagree about where the control ends and the zone
+        begins. This is the delegate's paint-and-hit-test seam — `T107-R2`, `T108-R2` and
+        `T-204` are its record — which is why the zone has one definition and its own regression.
+        """
+        control = self._control_of(option, index)
+        return QRect(
+            control.right() - MENU_ZONE_WIDTH + 1,
+            control.top(),
+            MENU_ZONE_WIDTH,
+            control.height(),
+        )
 
     def _verbs_of(self, index: QModelIndex | _PersistentIndex) -> tuple[Verb, ...]:
         """What the model says this row offers. Empty on a surface that offers nothing."""
@@ -1312,8 +1347,13 @@ class RowDelegate(QStyledItemDelegate):
         else:
             label = INHERITED_TEXT if index.data(PRESET_INHERITABLE_ROLE) else ""
 
+        # **The combo stops where the `⋮` zone begins** (`T-203`, `UX-011` option *E*). The zone
+        # is carved from the control's own rect rather than laid out beside it, so the row's
+        # anatomy — text area, verbs, control slot — is unchanged by its existence; what the zone
+        # takes, it takes from the combo's width, which is why `MENU_ZONE_WIDTH` is fixed.
+        zone = self._menu_zone_of(option, index)
         box = QStyleOptionComboBox()
-        box.rect = self._control_of(option, index)
+        box.rect = self._control_of(option, index).adjusted(0, 0, -zone.width(), 0)
         box.palette = option.palette
         box.currentText = label
         box.state = QStyle.StateFlag.State_Enabled
@@ -1326,6 +1366,14 @@ class RowDelegate(QStyledItemDelegate):
         # The label is a separate element: `CC_ComboBox` draws the frame and the arrow, and
         # `CE_ComboBoxLabel` draws the text inside whatever room they left.
         style.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, box, painter, widget)
+
+        # **The menu's painted door** (`UX-011`): an affordance with no accessibility node,
+        # acceptable on the disclosure triangle's precedent because the same menu is reachable by
+        # right-click, the Menu key and Shift+F10 — real actions a screen reader announces.
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        palette = option.palette
+        painter.setPen(palette.highlightedText().color() if selected else palette.text().color())
+        painter.drawText(zone, Qt.AlignmentFlag.AlignCenter, MENU_ZONE_GLYPH)
 
     def _paint_tile(
         self,
@@ -1684,6 +1732,13 @@ class RowDelegate(QStyledItemDelegate):
 
         if not self._editable(index):
             return False
+        # **The `⋮` zone opens the row's menu; the rest of the control still opens the combo**
+        # (`T-203`, `UX-011` option *E*). Tested before the edit branch because the zone is inside
+        # the control's rect — carved from it, in `_menu_zone_of` — so the order here is what
+        # makes the two targets two, and the geometry regression asserts both sides of the line.
+        if self._menu_zone_of(option, index).contains(where):
+            self.menu_requested.emit(where)
+            return True
         if not self._control_of(option, index).contains(where):
             return False
         view = cast("QAbstractItemView | None", self.parent())
@@ -1743,10 +1798,10 @@ class RowDelegate(QStyledItemDelegate):
         current = index.data(PRESET_ROLE)
         if isinstance(current, str) and current and current not in offered:
             choice.insertItem(0, current, current)
-        # **Presets, full stop** (`T-203`, ruled option *A* on 2026-08-09). The three per-row verbs
-        # lived here as entries that opened windows and put the selection back — *"looks like a
-        # value picker while containing commands"*, the complaint that opened the task. They are
-        # now real buttons in the dialog's verb bar above the list, labelled for the current row;
+        # **Presets, full stop** (`T-203`, `UX-011` option *E*). The three per-row verbs lived
+        # here as entries that opened windows and put the selection back — *"looks like a value
+        # picker while containing commands"*, the complaint that opened the task. They are now
+        # entries in the row's own menu, behind the `⋮` zone and the context-menu routes;
         # `Manage presets…` went to the footer with `UX-009`. What remains is what the control
         # says it is: the preset this row downloads as.
         # `MANAGE_PRESETS_*` is deliberately absent: `UX-009` moved it to the dialog's footer,

@@ -5,11 +5,11 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **the add-dialog chain's verdicts arrived.** `T-204`, `T-207`,
-`T-210` and `T-211` are Complete; T-210's sub-600px scope ruling is approved at `de98190`;
-**`T-203` is reshaped to option *E*** (`UX-011`) and sits `Ready`, its rebuild held on maintainer
-instruction. **Phase 4 is the current phase**, its plan deliverables decomposed under
-`## Proposed — Phase 4` and **none started**; the carried-in defects are a separate set.
+**Last updated:** 2026-08-10 — **the overnight session the maintainer directed**: `T-203`'s
+option-*E* rebuild is built and In Review, its hold lifted by the same instruction; `T-204`,
+`T-207`, `T-210` and `T-211` are Complete, T-210's sub-600px scope ruling approved at `de98190`.
+**Phase 4 is the current phase**, its plan deliverables decomposed under `## Proposed — Phase 4`
+and **none started**; the carried-in defects are a separate set.
 For what is awaiting a verdict now, read `## In Review` — this header does not duplicate it, for
 `T204-R2`'s reason.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
@@ -118,19 +118,37 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
-## Ready
-
 ### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
 
-**Status:** **Ready — reshaped to option *E* by maintainer ruling, 2026-08-09; the build is the
-work ahead.** The shape has now been ruled **twice**, and the second ruling is the one that
-stands. Option *A* — the verb bar — was ruled, built, reviewed, and **rejected on sight** by the
-maintainer; that rejection and round 7's replacement candidates never reached this repository,
-which `T203-R2`'s reconciliation surfaced. Round 8 rendered *A* as built beside *E* and *G* at
-full and narrow widths, and the maintainer ruled: *"I'm leaning towards option E. I wasn't a fan
-of how A looked at all."* **`UX-011` records the ruling durably** and `docs/UX_SPEC.md` §§3, 4, 6,
-8 and 9.1 now carry *E* as ruled contract — a **Planner pass made under explicit maintainer
-instruction** (*"lets go ahead with your suggestion"*), the unlock `AGENTS.md` §4 names.
+**Status:** **In Review — option *E* built 2026-08-10, awaiting verdict.** The hold on the
+rebuild was lifted by the maintainer the same night — *"Please do T-203, T208 and T209
+overnight"* — which is the instruction this build acts under. What was built, in one paragraph:
+**the three verbs are `QAction`s in the row's own menu** under a *Just this item* heading, above
+the Read-again/Choose-a-format/Remove entries the menu already held; the menu opens from a
+**painted `⋮` zone carved from the trailing edge of the row's format control**
+(`_menu_zone_of`, one definition for paint and hit test) and from the context routes that
+already existed — right-click, the Menu key, Shift+F10 — **through one builder**, `row_menu`,
+so the doors cannot drift; **the bar is removed whole** — label, three buttons, and `T203-R1`'s
+announcement machinery — with `focus_chain()` narrowed and its hand-transcribed test order
+updated. **Four mutations fail their own regressions**: the zone anchored at the wrong edge, the
+zone hit-test removed, the menu retargeted to the current row, and the `⋮` door unwired.
+**One deliberate mechanism change rode along**: `_show_row_menu` now `popup`s the menu instead
+of `exec`-ing it — an exec'd nested event loop cannot be returned from headlessly (and PySide's
+compiled `exec` resists patching), so the doors would have been undrivable end to end; the menu
+is deleted on close, one widget per opening.
+
+*(Was: Ready — reshaped to option *E* by maintainer ruling, 2026-08-09, the rebuild held on
+maintainer instruction while machines changed.)* The shape was ruled **twice**, and the second
+ruling stands. Option *A* — the verb bar — was ruled, built, reviewed, and **rejected on sight**
+by the maintainer; that rejection and round 7's replacement candidates never reached this
+repository, which `T203-R2`'s reconciliation surfaced. Round 8 rendered *A* as built beside *E*
+and *G* at full and narrow widths, and the maintainer ruled: *"I'm leaning towards option E. I
+wasn't a fan of how A looked at all."* **`UX-011` records the ruling durably** and
+`docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1 carry *E* as ruled contract — a **Planner pass made under
+explicit maintainer instruction** (*"lets go ahead with your suggestion"*), the unlock
+`AGENTS.md` §4 names. **The `[T]` clauses were re-verified against the built widgets at
+submission**, per the criterion below: §3's menu shape and doors, §4's *first under Just this
+item*, §6's `P-3` route and §9.1's rename all describe what the build does.
 
 **What the rebuild removes and what it keeps.** The bar — label, three buttons, and the
 `T203-R1` announcement machinery — is superseded and comes out; a menu anchored to its row does
@@ -139,15 +157,17 @@ reviewed**: the presets-only combo, the `Naming and folders…` rename, and the 
 `Manage presets…`. *(Was: In Review — corrected, awaiting re-review, when the correction was
 still option *A*'s; and before that Blocked on a Planner for the records `T203-R2` named.)*
 
-- **`T203-R1` — High. Corrected 2026-08-09 on the bar; the correction retires with the bar.** The
+- **`T203-R1` — High. Corrected 2026-08-09 on the bar; retired 2026-08-10 with the bar.** The
   bar drew `For <row>:` while `QAccessible` reported the label as *"Which item the adjust buttons
-  act on"* and the three buttons as acting on *"the current item"*. Because the buttons come
+  act on"* and the three buttons as acting on *"the current item"*. Because the buttons came
   **before** the list in tab order, a screen-reader user was told a row would change and never
   which one. The correction (announcements carrying the unelided headline, following the current
-  row, mutation-checked) shipped and holds while the bar exists; **under option *E* the finding's
+  row, mutation-checked) shipped and held while the bar existed; **under option *E* the finding's
   lesson is structural** — a menu opened from a row cannot act on any other row — and the
-  machinery goes with the shape that needed it. The regression is replaced by one proving the
-  menu acts on the row it was opened from.
+  machinery went with the shape that needed it. The regression is **replaced, not deleted
+  without successor**: `test_the_menu_acts_on_the_row_it_was_opened_from` opens row 1's menu
+  while row 0 is current and proves the verb acts on row 1, and the retarget-to-current mutation
+  fails it.
 - **`T203-R2` — Medium. Corrected 2026-08-09 by the Planner pass above — and the pass itself
   caught the deeper version of the same defect.** The finding: the spec still described the
   controls option *A* replaced, and this entry's own criteria required a column header that does
@@ -364,7 +384,8 @@ task actually carries, and it is why `T-204` should land first.
 
 *(Rewritten twice in one day, and the second time is the honest one: first from the icon shape to
 the built bar for `T203-R2`, then to *E* when reconciling the records surfaced that the bar had
-been rejected on sight. The contract below describes the ruled shape, which is not yet built.)*
+been rejected on sight. The contract below was written before the build and describes the ruled
+shape; **built 2026-08-10** and submitted against it unchanged.)*
 
 - The row's combo contains **only selectable values**; no entry in it opens a window — asserted
   exhaustively over the combo's contents *(already built and holding)*
@@ -420,6 +441,9 @@ been rejected on sight. The contract below describes the ruled shape, which is n
 - yt-dlp's wider option surface — `T-183` and the escape hatch own that
 
 
+
+
+## Ready
 
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
