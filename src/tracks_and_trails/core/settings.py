@@ -96,6 +96,18 @@ _DIRECTORY_KEY: Final = "directory"
 _APPEARANCE_TABLE: Final = "appearance"
 _THEME_KEY: Final = "theme"
 
+#: `T-199`'s key: where ffmpeg is, when it is not on `PATH` (`REQ-023`, `REQ-024`, `OPS-001`).
+#: Its own table for `[downloads]`'s reason — it is not a queue setting, and `find_ffmpeg` already
+#: takes an override, so this is the setting that supplies one.
+_FFMPEG_TABLE: Final = "ffmpeg"
+_LOCATION_KEY: Final = "location"
+
+#: What a chosen file's name must contain to be taken for ffmpeg (`T-199`).
+#:
+#: Substring rather than equality, so `ffmpeg-7`, `ffmpeg.exe` and `ffmpeg_static` are all accepted
+#: — the check exists to catch a wrong file picked out of a dialog, not to police naming.
+FFMPEG_NAME: Final = "ffmpeg"
+
 #: The themes a settings file may name (`REQ-023`, `ARCHITECTURE.md` §8).
 #:
 #: **Named here rather than read from `ui/theme.py`**, which owns the palettes: `core/**` may not
@@ -194,6 +206,14 @@ class Settings:
     #: Which palette the window wears (`REQ-023`, `ARCHITECTURE.md` §8, `T-146`). One of
     #: `THEME_NAMES`; `load()` refuses anything else, so this is always a name `ui/theme.py` knows.
     theme: str = THEME_DEFAULT
+
+    #: Where ffmpeg is, or `None` to search `PATH` (`REQ-023`, `REQ-024`, `T-199`).
+    #:
+    #: **Validated as a file that exists, no further** — `find_ffmpeg` decides usability, because
+    #: it already applies the platform's own executable-discovery semantics (`shutil.which` on a
+    #: concrete path: `X_OK` on POSIX, `PATHEXT` on Windows) and this module may not. Two places
+    #: deciding whether a binary can run is two answers that can disagree.
+    ffmpeg_location: Path | None = None
 
     def __post_init__(self) -> None:
         # A `Settings` built in code is held to the bound; a file is not. `load()` corrects what it
@@ -346,6 +366,65 @@ def _directory_from(raw: Any) -> tuple[Path | None, str | None]:
     return candidate, None
 
 
+def _ffmpeg_location_from(raw: Any) -> tuple[Path | None, str | None]:
+    """Coerce a stored ffmpeg location. **Never raises**, and reports what it discards.
+
+    The same three-way split `_directory_from` uses, and the same reason each answer differs:
+    absent or empty is silent, because clearing the box is how a user asks for `PATH` again;
+    anything else that cannot be used is **reported** under `ARC-008`, because a setting that
+    silently did nothing is what `T-109` and `T-113` were both Criticals about — a path this
+    application did not choose, trusted without checking.
+
+    **Existence is the whole check here.** Whether the file can actually be executed is
+    `find_ffmpeg`'s answer, and it is deliberately not second-guessed: it applies the platform's
+    own rules, and a second opinion in this module would be a third behaviour to keep in step.
+    The application still starts either way — an unusable location resolves to no ffmpeg, and
+    `REQ-024` makes that a loss of features rather than a failure to run.
+    """
+    if raw is None:
+        return None, None
+    if not isinstance(raw, str):
+        return None, (
+            f"{_FFMPEG_TABLE}.{_LOCATION_KEY} is {raw!r}, which is not a path. ffmpeg will be "
+            "looked for on PATH."
+        )
+    if not raw.strip():
+        return None, None
+
+    try:
+        candidate = Path(raw).expanduser()
+        if not candidate.exists():
+            return None, (
+                f"The ffmpeg location in your settings does not exist, so ffmpeg will be looked "
+                f"for on PATH instead.\n{candidate}"
+            )
+        if not candidate.is_file():
+            return None, (
+                f"The ffmpeg location in your settings is not a file, so ffmpeg will be looked "
+                f"for on PATH instead.\n{candidate}"
+            )
+        if FFMPEG_NAME not in candidate.name.lower():
+            # **A name check, and it does not pretend to be more** (`T-199`). Nothing here runs
+            # the file to ask what it is: this module never executes anything, and `find_ffmpeg`
+            # gives the same reason — running an unknown binary is a larger surface than the
+            # question needs. So this catches the realistic mistake, which is picking the wrong
+            # file out of a dialog, and not a renamed impostor. `ffmpeg-7`, `ffmpeg.exe` and
+            # `ffmpeg_static` all pass, because rejecting a legitimately-named build would cost a
+            # real user more than the check is worth.
+            return None, (
+                f"The ffmpeg location in your settings does not look like ffmpeg, so ffmpeg will "
+                f"be looked for on PATH instead.\n{candidate}"
+            )
+    except (OSError, RuntimeError) as error:
+        # `T146-R1`'s lesson, applied where the same shapes arrive: expansion and the filesystem
+        # both raise, and `load()` promises it never does.
+        return None, (
+            f"The ffmpeg location in your settings could not be checked, so ffmpeg will be looked "
+            f"for on PATH instead.\n{raw}\n{type(error).__name__}: {error}"
+        )
+    return candidate, None
+
+
 def _theme_from(raw: Any) -> tuple[str, str | None]:
     """Coerce a stored theme name. **Never raises.**
 
@@ -490,6 +569,8 @@ def load(path: Path | None = None) -> SettingsFile:
     directory, directory_reason = _directory_from(downloads_table.get(_DIRECTORY_KEY))
     appearance_table, appearance_reason = _section_of(document, _APPEARANCE_TABLE)
     theme, theme_reason = _theme_from(appearance_table.get(_THEME_KEY))
+    ffmpeg_table, ffmpeg_reason = _section_of(document, _FFMPEG_TABLE)
+    ffmpeg_location, location_reason = _ffmpeg_location_from(ffmpeg_table.get(_LOCATION_KEY))
 
     def answer(concurrency: int, reason: str | None = None) -> SettingsFile:
         parts = [
@@ -502,6 +583,8 @@ def load(path: Path | None = None) -> SettingsFile:
                 directory_reason,
                 appearance_reason,
                 theme_reason,
+                ffmpeg_reason,
+                location_reason,
             )
             if part
         ]
@@ -511,6 +594,7 @@ def load(path: Path | None = None) -> SettingsFile:
             default_preset=default,
             download_directory=directory,
             theme=theme,
+            ffmpeg_location=ffmpeg_location,
         )
         if not parts:
             return SettingsFile(settings)
@@ -958,6 +1042,13 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             if settings.download_directory is not None
             else ""
         )
+        ffmpeg_lines = (
+            f"\n\n[{_FFMPEG_TABLE}]\n"
+            "# Where ffmpeg is. Delete the line to look for it on PATH.\n"
+            f"{_LOCATION_KEY} = {_toml_string(str(settings.ffmpeg_location))}\n"
+            if settings.ffmpeg_location is not None
+            else ""
+        )
         appearance_lines = (
             f"\n\n[{_APPEARANCE_TABLE}]\n"
             f"# The window's palette: {' or '.join(THEME_NAMES)}.\n"
@@ -973,6 +1064,7 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             "# Each one is a separate worker process, so a higher number is not always faster.\n"
             f"{_CONCURRENCY_KEY} = {settings.concurrency}\n"
             f"{downloads_lines}"
+            f"{ffmpeg_lines}"
             f"{appearance_lines}" + "".join(_preset_lines(preset) for preset in settings.presets),
             encoding="utf-8",
         )
@@ -1001,6 +1093,15 @@ def with_download_directory(settings: Settings, directory: Path | None) -> Setti
     of `None` cannot be re-invented at each call site.
     """
     return replace(settings, download_directory=directory)
+
+
+def with_ffmpeg_location(settings: Settings, location: Path | None) -> Settings:
+    """`settings` pointing at `location`, or cleared back to `PATH` resolution (`T-199`).
+
+    `None` is *look on `PATH`*, which is what clearing the box asks for — a named function so
+    that meaning lives in one place, exactly as `with_download_directory` holds its own.
+    """
+    return replace(settings, ffmpeg_location=location)
 
 
 def with_theme(settings: Settings, name: str) -> Settings:

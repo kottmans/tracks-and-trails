@@ -356,7 +356,6 @@ def compose(
     writer = QueueWriter(open_connection_factory(database_path))
     store = PersistentJobStore(connection, writer)
 
-    ffmpeg = find_ffmpeg(ffmpeg_override)
     # `ARC-007`: composition owns `settings.toml`; the manager receives a value. The read happens
     # here so a settings-format change cannot reach `downloader/`, which `T-097` enforces
     # statically.
@@ -370,6 +369,16 @@ def compose(
     # other one had added. One current value, replaced on every write.
     held = _Held(settings_read.settings)
     settings = settings_read.settings
+
+    # **The user's stored location outranks `PATH`, and the explicit argument outranks both**
+    # (`REQ-023`, `REQ-024`, `T-199`). Same precedence as the download folder below: the
+    # argument is the test seam, the setting is the user's answer, and `find_ffmpeg` falls back to
+    # `PATH` when neither says otherwise. `load()` has already discarded a location that is gone or
+    # is not a file, and said why — so what arrives here is either usable-looking or `None`, and
+    # `find_ffmpeg` makes the final call on whether it can actually run.
+    ffmpeg = find_ffmpeg(
+        ffmpeg_override if ffmpeg_override is not None else settings.ffmpeg_location
+    )
 
     # **Where downloads land, decided here and nowhere else** (`REQ-023`, `T-146`). Three sources,
     # most specific first: the explicit argument (which is how every test redirects downloads away
@@ -477,6 +486,22 @@ def compose(
         held.settings = chosen
         window.show_download_directory(resolved, is_default=directory is None)
         remember(chosen, "the download folder")
+
+    def choose_ffmpeg_location(location: Path | None) -> None:
+        """Point at an ffmpeg, or go back to `PATH` (`REQ-023`, `REQ-024`, `T-199`).
+
+        **Resolved immediately rather than at the next launch**, so the screen can say what the
+        choice actually bought — `find_ffmpeg` is what decides whether a file is a usable ffmpeg,
+        and asking it now is the difference between reporting a resolution and reporting a stored
+        string. The window's gate summary follows, which is `T-192`'s line and `T-199`'s criterion
+        that it reflects an overridden ffmpeg rather than only a `PATH` one.
+        """
+        chosen = app_settings.with_ffmpeg_location(held.settings, location)
+        held.settings = chosen
+        resolved = find_ffmpeg(location)
+        window.report_environment(resolved.summary(), ffmpeg_available=resolved.available)
+        window.show_ffmpeg_location(location, report=resolved)
+        remember(chosen, "the ffmpeg location")
 
     def choose_theme(name: str) -> None:
         """Wear a palette now, and at the next launch (`REQ-023`, `ARCHITECTURE.md` §8, `T-146`).
@@ -626,6 +651,9 @@ def compose(
         directory_is_default=directory_is_default,
         on_directory_chosen=choose_download_directory,
         on_theme_chosen=choose_theme,
+        ffmpeg_location=settings.ffmpeg_location,
+        ffmpeg_summary=ffmpeg.summary(),
+        on_ffmpeg_location_chosen=choose_ffmpeg_location,
         on_run_changed=choose_run,
         on_remove_requested=remove_job,
         on_reorder_requested=reorder_queue,

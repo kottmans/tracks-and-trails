@@ -37,6 +37,7 @@ import os
 import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Final
 
@@ -45,16 +46,38 @@ from platformdirs import user_data_dir
 #: Matches `ARCHITECTURE.md` §5's paths and `ui/main_window.py`'s slug.
 APP_SLUG: Final = "tracksandtrails"
 
+
+class FfmpegFeature(Enum):
+    """What stops working without ffmpeg, as a value the UI can key on (`REQ-024`, `T-199`).
+
+    **A member rather than a sentence, because two lists that must match will drift.** These were
+    four strings, and the surfaces that gate on ffmpeg matched them by nothing at all — the format
+    table hid its merge mode (`P-13`) while the options dialog went on offering audio conversion,
+    remuxing and embedding with ffmpeg absent. `UX-005` §5 says nothing is drawn that would be
+    refused, and that was three quarters untrue.
+
+    Now the report and the offer read the same members, and
+    `tests/ui/test_options_dialog.py::test_every_ffmpeg_feature_is_withdrawn_from_the_offer`
+    walks this enum: a member added here with no controls named against it fails that test rather
+    than quietly becoming a feature the application offers and cannot perform.
+
+    **This does not re-derive which features need ffmpeg** — `T-199` is explicit that this is
+    `T-109`'s and `T-181`'s settled ground. The wording is carried over exactly.
+    """
+
+    MERGE = "merging separate video and audio streams"
+    AUDIO = "extracting or converting audio"
+    CONTAINER = "remuxing and recoding"
+    EMBED = "embedding thumbnails, metadata, chapters and subtitles"
+
+
 #: Features that need ffmpeg, named in the terms a user would recognise (`REQ-024`, `REQ-010`).
 #:
 #: Spelled out rather than "some features are unavailable": a user who is told *what* stops
 #: working can decide whether they care, and one who is told nothing files a bug instead.
-FFMPEG_DEPENDENT_FEATURES: Final = (
-    "merging separate video and audio streams",
-    "extracting or converting audio",
-    "remuxing and recoding",
-    "embedding thumbnails, metadata, chapters and subtitles",
-)
+#:
+#: Derived from `FfmpegFeature` rather than restated, so the prose and the members cannot disagree.
+FFMPEG_DEPENDENT_FEATURES: Final = tuple(feature.value for feature in FfmpegFeature)
 
 
 #: The pinned baseline from `pyproject.toml`, restated here so a frozen artifact can check

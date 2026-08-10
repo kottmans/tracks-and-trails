@@ -13,6 +13,7 @@ its reason on screen rather than merely absent.
 
 from collections.abc import Callable, Iterator
 from dataclasses import replace
+from typing import Final
 
 import pytest
 from PySide6.QtCore import Qt
@@ -21,13 +22,16 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QLabel,
     QListWidget,
     QPushButton,
     QRadioButton,
+    QWidget,
 )
 
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.models import AudioCodec, Preset
+from tracks_and_trails.downloader.environment import FfmpegFeature
 from tracks_and_trails.ui.options_dialog import (
     AUDIO_CODEC_NAME,
     AUDIO_QUALITY_NAME,
@@ -39,7 +43,9 @@ from tracks_and_trails.ui.options_dialog import (
     EMBED_METADATA_NAME,
     EMBED_SUBTITLES_NAME,
     EMBED_THUMBNAIL_NAME,
+    FFMPEG_FEATURE_CONTROLS,
     NO_AUDIO_REASON,
+    NO_FFMPEG_REASON,
     NO_SINK_REASON,
     NO_SUBTITLES_REASON,
     SAVE_PRESET_NAME,
@@ -335,7 +341,6 @@ def test_a_language_is_chosen_by_a_check_rather_than_by_a_highlight(
 
 
 def _labels(dialog: OptionsDialog) -> list[str]:
-    from PySide6.QtWidgets import QLabel
 
     return [label.text() for label in dialog.findChildren(QLabel)]
 
@@ -602,3 +607,123 @@ def test_without_somewhere_to_save_the_button_is_not_drawn_and_the_reason_is(
 
     assert dialog.findChild(QPushButton, SAVE_PRESET_NAME) is None
     assert dialog.save_result_text() == NO_SINK_REASON
+
+
+# --- T-199: what ffmpeg performs is not offered when ffmpeg is absent -------------------------
+
+
+#: Controls that stay live with ffmpeg absent, and why each one may.
+#:
+#: **An explicit allowlist, because the assertion below is "everything else is off".** That shape
+#: is what makes a control *added* to this screen and never mapped fail the test: it would be
+#: enabled, unmapped, and not named here. A mapping-only assertion cannot do that — measured, by
+#: emptying a feature's control tuple and watching the first version of this test still pass.
+STILL_LIVE_WITHOUT_FFMPEG: Final = {
+    # The only container choice that asks for no post-processing at all.
+    CONTAINER_KEEP_NAME,
+    # Choosing *which* subtitles is not embedding them. yt-dlp writes them beside the file with
+    # no ffmpeg involved; only `embed_subtitles` needs it, and that checkbox is gated.
+    SUBTITLE_LANGUAGES_NAME,
+}
+
+
+def test_every_ffmpeg_feature_is_withdrawn_from_the_offer(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**`UX-005` §5 for the whole screen**, asserted as one agreement (`REQ-024`, `T-199`).
+
+    *Nothing is drawn that would be refused* — and this dialog refused nothing. The format table
+    hid its merge mode without ffmpeg (`P-13`), while every option **here** stayed live: audio
+    conversion, remuxing, recoding, and all four embeds. Three of the four features
+    `FfmpegReport.summary()` tells the user are unavailable were being offered on the same run.
+
+    **Two halves, and the second is the one that survives a mutation.** The first walks
+    `FfmpegFeature` and checks each mapped control is off — `KeyError` if a member is added with
+    no entry. That alone is weak: emptying a feature's tuple makes it vacuous, which is exactly
+    what happened when it was mutated. So the second half asserts the *screen*: every interactive
+    control is disabled except `STILL_LIVE_WITHOUT_FFMPEG`. A control added here and never mapped
+    fails that, which is the drift `T-199` names — *"two lists that must match are two lists that
+    will drift"*.
+    """
+    dialog = editor(preset_registry.AUDIO_MP3, ffmpeg_available=False)
+
+    for feature in FfmpegFeature:
+        for name in FFMPEG_FEATURE_CONTROLS[feature]:
+            control = dialog.findChild(QWidget, name)
+            assert control is not None, (
+                f"{feature.name} names control {name!r}, which this screen does not have — the "
+                "mapping and the dialog have drifted apart"
+            )
+            assert not control.isEnabled(), (
+                f"{name!r} is offered with ffmpeg absent, but {feature.value} needs ffmpeg. "
+                "UX-005 §5: nothing is drawn that would be refused"
+            )
+
+    offered = {
+        control.objectName()
+        for kind in (QCheckBox, QComboBox, QRadioButton, QListWidget)
+        for control in dialog.findChildren(kind)
+        if control.objectName() and control.isEnabled()
+    }
+    assert offered <= STILL_LIVE_WITHOUT_FFMPEG, (
+        f"{sorted(offered - STILL_LIVE_WITHOUT_FFMPEG)} stay live with ffmpeg absent. Either they "
+        "need ffmpeg — map them to a FfmpegFeature — or they do not, and STILL_LIVE_WITHOUT_FFMPEG "
+        "should say so and why"
+    )
+
+
+def test_the_screen_says_why_and_names_what_would_fix_it(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A greyed control with no explanation is a dead end rather than an answer (`T-139`).
+
+    The reason names ffmpeg **and** the Settings screen, because `T-199` builds the location
+    override in the same task: a user told only "ffmpeg was not found" on a machine that has it
+    somewhere unusual has been told the wrong thing to do about it.
+    """
+    dialog = editor(preset_registry.AUDIO_MP3, ffmpeg_available=False)
+
+    # Through the module's own label sweep, as every other reason assertion here does, rather
+    # than by an object name invented for this test.
+    assert NO_FFMPEG_REASON in _labels(dialog)
+    assert "Settings" in NO_FFMPEG_REASON, (
+        "the reason does not point at the override this task builds, so a user with ffmpeg "
+        "installed somewhere unusual is told to install it again"
+    )
+
+
+def test_keeping_the_arriving_container_survives_a_missing_ffmpeg(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The one choice that asks for no post-processing stays available.
+
+    Disabling it would leave the container group with no selectable member, which reads as *the
+    container you already have is unavailable too* — and that is not true, it is the only one that
+    is. `T-199` gates what ffmpeg performs, not what arrives.
+    """
+    dialog = editor(preset_registry.BEST_VIDEO, ffmpeg_available=False)
+
+    keep = dialog.findChild(QRadioButton, CONTAINER_KEEP_NAME)
+    assert keep is not None
+    assert keep.isEnabled(), "the arriving container was withdrawn along with the conversions"
+
+
+def test_ffmpeg_present_offers_everything_it_performs(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """The other direction, so the gate cannot pass by disabling everything always.
+
+    A test that only proved things are hidden without ffmpeg would pass an implementation that
+    hides them always — which is the shape `DAT-003` records twice under a different name.
+    """
+    dialog = editor(preset_registry.AUDIO_MP3, ffmpeg_available=True)
+
+    codec = dialog.findChild(QComboBox, AUDIO_CODEC_NAME)
+    assert codec is not None and codec.isEnabled()
+    for name in FFMPEG_FEATURE_CONTROLS[FfmpegFeature.EMBED]:
+        control = dialog.findChild(QWidget, name)
+        assert control is not None
+    thumbnail = dialog.findChild(QCheckBox, EMBED_THUMBNAIL_NAME)
+    assert thumbnail is not None and thumbnail.isEnabled(), (
+        "embedding is refused with ffmpeg present, so the gate is unconditional"
+    )

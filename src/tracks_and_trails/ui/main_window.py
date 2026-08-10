@@ -336,6 +336,9 @@ class MainWindow(QMainWindow):
         directory_is_default: bool = True,
         on_directory_chosen: Callable[[Path | None], None] | None = None,
         on_theme_chosen: Callable[[str], None] | None = None,
+        ffmpeg_location: Path | None = None,
+        ffmpeg_summary: str = "",
+        on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -348,6 +351,11 @@ class MainWindow(QMainWindow):
         self._on_theme_chosen = on_theme_chosen
         self._settings_action: QAction | None = None
         self._settings_dialog: SettingsDialog | None = None
+        #: `T-199`: where ffmpeg was told to be, what resolving it said, and the writer. Held so
+        #: the Settings screen opens on the truth rather than on the stored string.
+        self._ffmpeg_location = ffmpeg_location
+        self._ffmpeg_summary = ffmpeg_summary
+        self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
         #: The cache root both thumbnail stores write under (`T-180`). Composition derives it from
         #: the database so two permitted instances stop sweeping each other's pictures; this window
         #: only carries it to the two widgets that fetch, and never learns what a database is.
@@ -1356,6 +1364,9 @@ class MainWindow(QMainWindow):
             ),
             on_directory_chosen=self._on_directory_chosen,
             on_theme_chosen=self._theme_chosen,
+            ffmpeg_location=self._ffmpeg_location,
+            ffmpeg_summary=self._ffmpeg_summary,
+            on_ffmpeg_location_chosen=self._on_ffmpeg_location_chosen,
             on_concurrency_chosen=self._concurrency_chosen,
             parent=self,
         )
@@ -1385,6 +1396,19 @@ class MainWindow(QMainWindow):
         self._directory_is_default = is_default
         if self._settings_dialog is not None:
             self._settings_dialog.show_download_directory(directory, is_default=is_default)
+
+    def show_ffmpeg_location(self, location: Path | None, *, report: object) -> None:
+        """Take the resolution composition performed, and tell the open screen (`T-199`).
+
+        The *report* rather than the stored path, because what a user needs to see after choosing
+        a file is whether it turned out to be a usable ffmpeg — which only `find_ffmpeg` knows,
+        and which `ui/` may not compute (`downloader/` is not this layer's to call).
+        """
+        self._ffmpeg_location = location
+        summary = getattr(report, "summary", None)
+        self._ffmpeg_summary = summary() if callable(summary) else str(report)
+        if self._settings_dialog is not None:
+            self._settings_dialog.show_ffmpeg_location(location, self._ffmpeg_summary)
 
     def show_concurrency(self, limit: int) -> None:
         """Follow a limit changed elsewhere, on both controls that show it (`T-146`).

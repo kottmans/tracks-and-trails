@@ -87,6 +87,7 @@ from tracks_and_trails.core.presets import (
     format_choice_of,
     with_post_processing,
 )
+from tracks_and_trails.downloader.environment import FfmpegFeature
 from tracks_and_trails.ui.format_text import format_name
 
 __all__ = ["OptionsDialog"]
@@ -102,9 +103,47 @@ EMBED_THUMBNAIL_NAME: Final = "optionsEmbedThumbnail"
 EMBED_METADATA_NAME: Final = "optionsEmbedMetadata"
 EMBED_CHAPTERS_NAME: Final = "optionsEmbedChapters"
 SUBTITLE_LANGUAGES_NAME: Final = "optionsSubtitleLanguages"
+
 EMBED_SUBTITLES_NAME: Final = "optionsEmbedSubtitles"
 SAVE_PRESET_NAME: Final = "optionsSavePreset"
 SAVE_RESULT_NAME: Final = "optionsSaveResult"
+
+#: Which controls each `FfmpegFeature` owns on this screen (`REQ-024`, `T-199`, `UX-005` §5).
+#:
+#: **The mapping is here, and the test walks the enum.** `UX-005` §5 — nothing is drawn that would
+#: be refused — was three quarters untrue on this dialog: the format table hid its merge mode
+#: without ffmpeg (`P-13`) and this screen went on offering audio conversion, remuxing and
+#: embedding, every one of which ffmpeg performs. A feature added to `FfmpegFeature` with no entry
+#: here fails `test_every_ffmpeg_feature_is_withdrawn_from_the_offer` rather than silently becoming
+#: something offered and then refused.
+#:
+#: `MERGE` names no control **on this screen** and says so with an empty tuple rather than being
+#: absent: absence would be indistinguishable from an oversight, which is the failure this mapping
+#: exists to make impossible. Its surface is the format table, gated by `P-13` since `T-107`.
+FFMPEG_FEATURE_CONTROLS: Final[dict[FfmpegFeature, tuple[str, ...]]] = {
+    FfmpegFeature.MERGE: (),
+    FfmpegFeature.AUDIO: (AUDIO_CODEC_NAME, AUDIO_QUALITY_NAME),
+    FfmpegFeature.CONTAINER: (
+        CONTAINER_REMUX_NAME,
+        CONTAINER_RECODE_NAME,
+        CONTAINER_CHOICE_NAME,
+    ),
+    FfmpegFeature.EMBED: (
+        EMBED_THUMBNAIL_NAME,
+        EMBED_METADATA_NAME,
+        EMBED_CHAPTERS_NAME,
+        EMBED_SUBTITLES_NAME,
+    ),
+}
+
+#: Said once, where the controls it explains are (`NFR-006`, `REQ-024`).
+#:
+#: Names the thing to do about it. *"Requires ffmpeg"* on a disabled control tells a user what is
+#: wrong and not what would fix it, and this screen is where they are looking when they find out.
+NO_FFMPEG_REASON: Final = (
+    "ffmpeg was not found, so these options cannot be applied. Install ffmpeg, or set its "
+    "location in Settings."
+)
 
 #: What `P-4`'s control reads. The ellipsis is the platform's promise that it will ask something.
 SAVE_PRESET_TEXT: Final = "Save as preset…"
@@ -153,11 +192,18 @@ class OptionsDialog(QDialog):
         title: str = "Options for this download",
         save_preset: PresetSink | None = None,
         ask_name: Callable[[], tuple[str, bool]] | None = None,
+        ffmpeg_available: bool = True,
     ) -> None:
         super().__init__(parent)
         self._preset = preset
         self._offered_languages = tuple(subtitle_languages)
         self._save_preset = save_preset
+        #: **What this screen may offer** (`REQ-024`, `T-199`, `UX-005` §5). Every option on it
+        #: except *keep what arrives* is post-processing, and post-processing is ffmpeg's — so
+        #: with ffmpeg absent this dialog was offering three of the four things `FfmpegFeature`
+        #: says do not work. Defaults to `True` so the many tests that predate the gate, and the
+        #: preset manager's editor, keep their behaviour; composition passes the real answer.
+        self._ffmpeg_available = ffmpeg_available
         #: How the name is asked for. Injected so a test drives `P-4`'s whole route without a modal
         #: — `QInputDialog.getText` runs a nested event loop, and a test that entered one would
         #: never reach its assertions (`open_add_dialog`'s reason for `open()` over `exec()`).
@@ -349,7 +395,17 @@ class OptionsDialog(QDialog):
             item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
 
     def _update_enabled(self) -> None:
-        """Keep every control live exactly while it can act (`T-139`, `UX-005` §5)."""
+        """Keep every control live exactly while it can act (`T-139`, `UX-005` §5).
+
+        **Without ffmpeg, nothing here can act** (`REQ-024`, `T-199`). Every option on this screen
+        is post-processing, so the ffmpeg answer is applied last and overrides the per-control
+        reasoning above it: a control that this method has just enabled because the preset makes
+        it relevant is still disabled if nothing can perform it.
+
+        *Keep the container it arrives in* stays live, because it is the one choice that asks for
+        no post-processing at all — disabling it would leave the group with no selectable member
+        and imply the arriving container was also unavailable.
+        """
         converts = self._preset.media_kind is MediaKind.AUDIO
         self._audio_group.setEnabled(converts)
         self._audio_reason.setText("" if converts else NO_AUDIO_REASON)
@@ -365,6 +421,25 @@ class OptionsDialog(QDialog):
         self._languages.setEnabled(offered)
         self._embed_subtitles.setEnabled(offered)
         self._subtitle_reason.setText(SUBTITLES_HINT if offered else NO_SUBTITLES_REASON)
+
+        if not self._ffmpeg_available:
+            self._withdraw_what_ffmpeg_performs()
+
+    def _withdraw_what_ffmpeg_performs(self) -> None:
+        """Disable every control `FFMPEG_FEATURE_CONTROLS` names, and say why once.
+
+        By object name rather than by attribute, so the mapping the agreement test walks is the
+        same mapping this method obeys — one list, not two that must match.
+        """
+        for names in FFMPEG_FEATURE_CONTROLS.values():
+            for name in names:
+                control = self.findChild(QWidget, name)
+                if control is not None:
+                    control.setEnabled(False)
+        # On the audio reason line, which is the first thing this screen says about itself, and
+        # ahead of the narrower "this preset is not audio" text: a user with no ffmpeg needs the
+        # reason that explains the whole screen rather than one group of it.
+        self._audio_reason.setText(NO_FFMPEG_REASON)
 
     # --- `P-4`: saving these options under a name -----------------------------------------
 

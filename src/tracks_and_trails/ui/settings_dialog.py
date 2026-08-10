@@ -57,6 +57,7 @@ from tracks_and_trails.core.settings import (
 
 __all__ = [
     "DEFAULT_DIRECTORY_NOTE",
+    "FFMPEG_ON_PATH_NOTE",
     "SETTINGS_STILL_TO_COME",
     "THEME_LABELS",
     "SettingsDialog",
@@ -71,6 +72,10 @@ THEME_LABELS: Final = {"light": "Light", "dark": "Dark"}
 #: "the default" is not an answer to *where did my file go*.
 DEFAULT_DIRECTORY_NOTE: Final = "Your usual downloads folder"
 
+#: Shown where the path would be when none is set. Names the mechanism, because *"not set"* does
+#: not tell a user what the application is doing instead.
+FFMPEG_ON_PATH_NOTE: Final = "Looked for on PATH"
+
 #: The screen's own statement of what it does not yet cover (`T-146`).
 #:
 #: **`REQ-023` names eight settings and this screen has three.** A settings screen that shows only
@@ -78,8 +83,7 @@ DEFAULT_DIRECTORY_NOTE: Final = "Your usual downloads folder"
 #: so the honest thing is to say so where the user is looking rather than only in a document they
 #: will not read.
 SETTINGS_STILL_TO_COME: Final = (
-    "Still to come: default preset, output template, ffmpeg location, "
-    "network options, and cookie source."
+    "Still to come: default preset, output template, network options, and cookie source."
 )
 
 
@@ -97,6 +101,10 @@ class SettingsDialog(QDialog):
         on_theme_chosen: Callable[[str], None],
         on_concurrency_chosen: Callable[[int], None],
         choose_directory: Callable[[Path], Path | None] | None = None,
+        ffmpeg_location: Path | None = None,
+        ffmpeg_summary: str = "",
+        on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
+        choose_file: Callable[[Path | None], Path | None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -109,12 +117,17 @@ class SettingsDialog(QDialog):
         # Held before the sections are built, because each one reads its own starting value.
         self._theme = theme
         self._initial_concurrency = concurrency
+        self._ffmpeg_location = ffmpeg_location
+        self._ffmpeg_summary = ffmpeg_summary
+        self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
+        self._choose_file = choose_file or self._ask_for_a_file
 
         self.setObjectName("settingsDialog")
         self.setWindowTitle("Settings")
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_downloads_section())
+        layout.addWidget(self._build_ffmpeg_section())
         layout.addWidget(self._build_appearance_section())
         layout.addWidget(self._build_queue_section())
 
@@ -207,6 +220,86 @@ class SettingsDialog(QDialog):
         self._directory = directory
         self._directory_is_default = is_default
         self._show_directory()
+
+    # --- ffmpeg -------------------------------------------------------------------------
+
+    def _build_ffmpeg_section(self) -> QWidget:
+        """Where ffmpeg is, and what this application can do as a result (`REQ-024`, `T-199`)."""
+        box = QGroupBox("ffmpeg", self)
+        box.setObjectName("ffmpegSection")
+        layout = QVBoxLayout(box)
+
+        #: **The summary, not just the path.** `REQ-024` asks the application to report *which
+        #: features are unavailable*, and this is the screen a user reaches when they want to fix
+        #: that — so it says what is lost here rather than only in the status bar.
+        self._ffmpeg_state = QLabel(box)
+        self._ffmpeg_state.setObjectName("ffmpegState")
+        self._ffmpeg_state.setTextFormat(Qt.TextFormat.PlainText)
+        self._ffmpeg_state.setWordWrap(True)
+        self._ffmpeg_state.setAccessibleName("ffmpeg status")
+        layout.addWidget(self._ffmpeg_state)
+
+        self._ffmpeg_path = QLabel(box)
+        self._ffmpeg_path.setObjectName("ffmpegLocationValue")
+        # A path the user chose is their own text (`T016-R6`).
+        self._ffmpeg_path.setTextFormat(Qt.TextFormat.PlainText)
+        self._ffmpeg_path.setWordWrap(True)
+        self._ffmpeg_path.setAccessibleName("ffmpeg location")
+        layout.addWidget(self._ffmpeg_path)
+
+        row = QHBoxLayout()
+        choose = QPushButton("Choose ffmpeg...", box)
+        choose.setObjectName("chooseFfmpegLocation")
+        choose.setAccessibleName("Choose where ffmpeg is")
+        choose.clicked.connect(self._pick_an_ffmpeg)
+        row.addWidget(choose)
+
+        self._clear_ffmpeg = QPushButton("Look on PATH", box)
+        self._clear_ffmpeg.setObjectName("clearFfmpegLocation")
+        self._clear_ffmpeg.setAccessibleName("Look for ffmpeg on PATH")
+        self._clear_ffmpeg.clicked.connect(lambda: self._remember_ffmpeg(None))
+        row.addWidget(self._clear_ffmpeg)
+        row.addStretch(1)
+        layout.addLayout(row)
+
+        self._show_ffmpeg()
+        return box
+
+    def _show_ffmpeg(self) -> None:
+        self._ffmpeg_state.setText(self._ffmpeg_summary)
+        self._ffmpeg_path.setText(
+            str(self._ffmpeg_location) if self._ffmpeg_location is not None else FFMPEG_ON_PATH_NOTE
+        )
+        self._clear_ffmpeg.setEnabled(self._ffmpeg_location is not None)
+
+    def _ask_for_a_file(self, start: Path | None) -> Path | None:
+        """The real picker. Replaced in tests, for the module docstring's reason."""
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "Choose where ffmpeg is", str(start) if start is not None else ""
+        )
+        return Path(chosen) if chosen else None
+
+    def _pick_an_ffmpeg(self) -> None:
+        chosen = self._choose_file(self._ffmpeg_location)
+        if chosen is None:
+            # Cancelled — not the same as *look on PATH*, which is the other button.
+            return
+        self._remember_ffmpeg(chosen)
+
+    def _remember_ffmpeg(self, location: Path | None) -> None:
+        if self._on_ffmpeg_location_chosen is not None:
+            self._on_ffmpeg_location_chosen(location)
+
+    def show_ffmpeg_location(self, location: Path | None, summary: str) -> None:
+        """Show what composition resolved: the location, and what it bought (`T-199`).
+
+        Both come back rather than being assumed here, for `show_download_directory`'s reason —
+        whether a chosen file is a usable ffmpeg is `find_ffmpeg`'s answer, and `ui/` may not ask
+        `downloader/` directly.
+        """
+        self._ffmpeg_location = location
+        self._ffmpeg_summary = summary
+        self._show_ffmpeg()
 
     # --- appearance ---------------------------------------------------------------------
 

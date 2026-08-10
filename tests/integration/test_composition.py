@@ -24,6 +24,7 @@ on what the application shows. `store.get()` is for asserting agreement afterwar
 so spinning on it returns instantly and proves nothing.
 """
 
+import json
 import shutil
 import sqlite3
 import sys
@@ -2025,3 +2026,65 @@ def test_the_window_hands_the_partitioned_root_to_both_of_its_stores(
         )
     finally:
         dialog.deleteLater()
+
+
+def test_a_stored_ffmpeg_location_is_what_the_application_resolves(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T-199`'s criterion, through a real resolution rather than the stored value.**
+
+    *"The screen sets an ffmpeg location, it persists, and the resolution path prefers it over
+    `PATH`"* — and the second half is the one that fails quietly. So this composes against a
+    settings file that already names an ffmpeg, with a `PATH` that also has one, and asserts on
+    what `find_ffmpeg` actually returned: the stored file, not the one `PATH` would have found.
+
+    The stand-in is a real executable file rather than a mocked flag, because `find_ffmpeg`
+    applies the platform's own executable-discovery rules and a mock would assert nothing about
+    them.
+    """
+    chosen = tmp_path / "somewhere-else" / "ffmpeg"
+    chosen.parent.mkdir()
+    chosen.write_text("#!/bin/sh\n", encoding="utf-8")
+    chosen.chmod(0o755)
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.with_ffmpeg_location(core_settings.Settings(), chosen), settings_file
+        )
+        is None
+    )
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    assert composition.ffmpeg.path == chosen, (
+        f"the application resolved {composition.ffmpeg.path}, not the location the settings file "
+        "names — the setting is stored and does not run"
+    )
+    assert composition.ffmpeg.available
+    # `T-192`'s gate line, and `T-199`'s criterion that it reflects an *overridden* ffmpeg.
+    assert "ffmpeg found" in composition.ffmpeg.summary()
+
+
+def test_an_unusable_stored_ffmpeg_location_still_starts_the_application(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """`ARC-008`: report and fall back, and **the application still starts** (`REQ-024`).
+
+    A missing ffmpeg is a loss of features, never a failure to run — so the assertion is that
+    composition completed at all, and that what it reports names the features rather than a path
+    the user cannot act on.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text(
+        f"[ffmpeg]\nlocation = {json.dumps(str(tmp_path / 'gone' / 'ffmpeg'))}\n",
+        encoding="utf-8",
+    )
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    assert composition.window is not None, "an unusable ffmpeg location stopped the application"
+    read = core_settings.load(settings_file)
+    assert read.settings.ffmpeg_location is None
+    assert read.problem is not None and "does not exist" in read.problem.reason

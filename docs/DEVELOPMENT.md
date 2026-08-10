@@ -283,8 +283,9 @@ packaging/        PyInstaller spec and the frozen smoke test (T-020)
 
 ## Which `REQ-023` settings the screen actually holds
 
-`REQ-023` names eight settings. **Settings → Settings… holds three** (`T-146`); the rest are filed
-and not built, and the screen says so itself rather than reading as complete.
+`REQ-023` names eight settings. **Settings → Settings… holds four** — three from `T-146` and the
+ffmpeg location from `T-199`; the rest are filed and not built, and the screen says so itself
+rather than reading as complete.
 
 | Setting | Where it is | Stored as |
 |---|---|---|
@@ -293,7 +294,7 @@ and not built, and the screen says so itself rather than reading as complete.
 | Concurrency limit | Settings screen **and** the toolbar — one value, two controls | `[queue] concurrency` |
 | Default preset | not built — `T-195` | `default_preset` (written already by the preset manager) |
 | Output template | not built — `T-195` | — |
-| ffmpeg location | not built — `T-199` | — |
+| ffmpeg location | Settings screen | `[ffmpeg] location` |
 | Network options (rate limit, proxy, retries) | not built — `T-196` | — |
 | Cookie source | not built — `T-197` | — |
 

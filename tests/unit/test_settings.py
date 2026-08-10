@@ -9,6 +9,7 @@ No Qt and no network, per `tests/` layout. This module is `core/`.
 
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,7 @@ from tracks_and_trails.core.settings import (
     update_preset,
     with_concurrency,
     with_download_directory,
+    with_ffmpeg_location,
     with_theme,
 )
 
@@ -1391,3 +1393,90 @@ def test_every_settings_file_shape_leaves_the_application_startable(tmp_path: Pa
         target = write(tmp_path, body)
         read = load(target)
         assert isinstance(read.settings, Settings), f"{body!r} did not answer with settings"
+
+
+# --- T-199: the ffmpeg location -------------------------------------------------------------
+
+
+def test_a_stored_ffmpeg_location_is_used_as_written(tmp_path: Path) -> None:
+    binary = tmp_path / "ffmpeg"
+    binary.write_text("", encoding="utf-8")
+    read = load(write(tmp_path, f"[ffmpeg]\nlocation = {toml_path(binary)}\n"))
+
+    assert read.settings.ffmpeg_location == binary
+    assert read.problem is None
+
+
+@pytest.mark.parametrize(
+    ("name", "make", "expected"),
+    [
+        ("missing", lambda base: base / "not-here" / "ffmpeg", "does not exist"),
+        ("a directory", lambda base: base, "not a file"),
+        ("the wrong file entirely", lambda base: base / "ls", "does not look like ffmpeg"),
+    ],
+)
+def test_an_unusable_ffmpeg_location_reports_and_falls_back_to_path(
+    name: str, make: Callable[[Path], Path], expected: str, tmp_path: Path
+) -> None:
+    """**`ARC-008`, and `T-199`'s own criterion.** Report, fall back, keep starting.
+
+    `T-109`'s and `T-113`'s Criticals were both about trusting a path this application did not
+    choose. This is another one, so each shape is named separately rather than collapsed into
+    "unusable": a user who picked the wrong file out of a dialog and one whose drive is unmounted
+    need different sentences.
+    """
+    target = make(tmp_path)
+    if name == "the wrong file entirely":
+        target.write_text("", encoding="utf-8")
+    read = load(write(tmp_path, f"[ffmpeg]\nlocation = {toml_path(target)}\n"))
+
+    assert read.settings.ffmpeg_location is None, f"{name} produced a usable location"
+    assert read.problem is not None, f"{name} was discarded silently, against ARC-008"
+    assert expected in read.problem.reason, (
+        f"{name} reported {read.problem.reason!r}, which does not say {expected!r}"
+    )
+
+
+@pytest.mark.parametrize("named", ["ffmpeg", "ffmpeg.exe", "ffmpeg-7", "FFmpeg", "ffmpeg_static"])
+def test_a_legitimately_named_ffmpeg_build_is_accepted(named: str, tmp_path: Path) -> None:
+    """The name check must not cost a user a real build with an unusual filename.
+
+    The other direction of the check above, and the reason it is a substring rather than an
+    equality — a test proving only that wrong files are refused would pass an implementation that
+    refuses everything.
+    """
+    binary = tmp_path / named
+    binary.write_text("", encoding="utf-8")
+
+    read = load(write(tmp_path, f"[ffmpeg]\nlocation = {toml_path(binary)}\n"))
+
+    assert read.settings.ffmpeg_location == binary, f"{named} was refused: {read.problem}"
+
+
+def test_clearing_the_ffmpeg_location_returns_to_path_resolution(tmp_path: Path) -> None:
+    """`T-199`: clearing the override returns to `PATH`, silently — a request, not a fault."""
+    binary = tmp_path / "ffmpeg"
+    binary.write_text("", encoding="utf-8")
+    chosen = with_ffmpeg_location(Settings(), binary)
+    assert chosen.ffmpeg_location == binary
+
+    cleared = with_ffmpeg_location(chosen, None)
+    assert cleared.ffmpeg_location is None
+
+    target = tmp_path / "settings.toml"
+    assert save(cleared, target) is None
+    read = load(target)
+    assert read.settings.ffmpeg_location is None
+    assert read.problem is None, "clearing the override was reported as a broken setting"
+
+
+def test_the_ffmpeg_location_survives_a_save_and_load(tmp_path: Path) -> None:
+    binary = tmp_path / "ffmpeg"
+    binary.write_text("", encoding="utf-8")
+    target = tmp_path / "settings.toml"
+
+    assert save(with_ffmpeg_location(Settings(), binary), target) is None
+    read = load(target)
+
+    assert read.problem is None
+    assert read.settings.ffmpeg_location == binary

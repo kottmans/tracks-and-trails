@@ -114,6 +114,12 @@ REVIEWED_PUBLIC_API = frozenset(
         "APP_SLUG",
         "BASELINE_YTDLP_VERSION",
         "FFMPEG_DEPENDENT_FEATURES",
+        # `T-199`. **Transcribed deliberately, and it is a locate-side name.** The guard below
+        # exists to stop this module answering *"what version?"* or *"does it work?"*, which need
+        # an import and belong to `worker.py`. An enumeration of what ffmpeg performs answers
+        # neither: it is the same fact `FFMPEG_DEPENDENT_FEATURES` already exports, in a form the
+        # UI can key on so the report and the offer cannot drift.
+        "FfmpegFeature",
         "FfmpegReport",
         "YtdlpCandidate",
         "describe_candidates",

@@ -2008,6 +2008,10 @@ class AddUrlDialog(QDialog):
             subtitle_languages=(media.subtitle_languages if isinstance(media, MediaInfo) else ()),
             save_preset=self._save_preset,
             parent=self,
+            # `REQ-024`, `T-199`: what ffmpeg performs is not offered when ffmpeg is absent. The
+            # same answer this dialog already gates the format table's merge mode on (`P-13`), so
+            # the two surfaces cannot disagree about the same fact.
+            ffmpeg_available=self._ffmpeg_available,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
