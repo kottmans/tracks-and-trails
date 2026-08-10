@@ -202,7 +202,14 @@ DEFAULT_RESOLVE_DELAY_MS: Final = 400
 #: honest rendering of a missing value rather than an invented one.
 UNKNOWN_TEXT: Final = "Unknown"
 
-#: How many lines of URL the paste box asks for before it stops growing (`T-209`).
+#: What the verb bar says, on screen and to a screen reader, when no row is current (`T-203`).
+#:
+#: One string for both because they are one fact. `T203-R1` was the two halves disagreeing: the
+#: label drew the row's name while the accessible tree described the label's *purpose*, so the
+#: identity a sighted user could read was the identity a screen-reader user could not.
+NO_TARGET_TEXT: Final = "Select an item to adjust"
+
+#: How many lines of URL the paste box asks for before it stops growing (`T-210`).
 #:
 #: **Four, chosen against the work rather than picked.** A single URL is the common paste and a
 #: handful is the rest; beyond that the box scrolls, which is what a text box does. It was
@@ -1263,7 +1270,7 @@ class AddUrlDialog(QDialog):
         )
         self._urls.setPlaceholderText("https://…  (one URL per line)")
         self._urls.textChanged.connect(self._on_urls_changed)
-        # **The box holds URLs; the list is what the user reads** (`T-209`). Qt split the dialog
+        # **The box holds URLs; the list is what the user reads** (`T-210`). Qt split the dialog
         # roughly evenly between them, so a single pasted line was given about as much height as
         # sixteen staged rows — and an opened playlist then had nowhere to go. Capped at
         # `URL_BOX_LINES` and given the layout's *last* claim on spare height, so the rows take the
@@ -1354,25 +1361,30 @@ class AddUrlDialog(QDialog):
         verbs = QHBoxLayout()
         self._verb_label = QLabel(box)
         self._verb_label.setObjectName("verbBarLabel")
-        self._verb_label.setAccessibleName("Which item the adjust buttons act on")
+        self._verb_label.setAccessibleName(NO_TARGET_TEXT)
         # Site metadata ends up in this label (`T016-R6`): titles are the site's text.
         self._verb_label.setTextFormat(Qt.TextFormat.PlainText)
         verbs.addWidget(self._verb_label)
         self._formats_button = QPushButton(CHOOSE_FORMATS_TEXT, box)
         self._formats_button.setObjectName("chooseFormatsButton")
-        self._formats_button.setAccessibleName("Choose specific formats for the current item")
         self._formats_button.clicked.connect(lambda: self._bar_open(self.open_format_table))
         verbs.addWidget(self._formats_button)
         self._options_button = QPushButton(OPTIONS_TEXT, box)
         self._options_button.setObjectName("rowOptionsButton")
-        self._options_button.setAccessibleName("Options for the current item")
         self._options_button.clicked.connect(lambda: self._bar_open(self.open_options))
         verbs.addWidget(self._options_button)
         self._template_button = QPushButton(TEMPLATE_TEXT, box)
         self._template_button.setObjectName("namingFoldersButton")
-        self._template_button.setAccessibleName("Naming and folders for the current item")
         self._template_button.clicked.connect(lambda: self._bar_open(self.open_template_editor))
         verbs.addWidget(self._template_button)
+        # **One definition of what each button is called when it names its target** (`T203-R1`).
+        # Without the ellipsis the visible labels carry: *"…"* means *"this opens a window"*, which
+        # is a promise to the eye and noise in the middle of a spoken sentence.
+        self._verb_buttons: tuple[tuple[QPushButton, str], ...] = (
+            (self._formats_button, "Choose specific formats"),
+            (self._options_button, "Options"),
+            (self._template_button, "Naming and folders"),
+        )
         # **Narrow keeps working** (`T-160`'s contract, asserted by the narrowing test): the
         # buttons' natural minimums summed to a 571px floor the user could not drag under. An
         # explicit small minimum lets the layout compress them — clipped text at extreme widths is
@@ -1427,6 +1439,11 @@ class AddUrlDialog(QDialog):
         if selection is not None:
             selection.currentChanged.connect(self._show_selector)
         layout.addWidget(self._list)
+
+        # **The no-target state is set here rather than left to the first refresh** (`T203-R1`).
+        # A dialog that has resolved nothing still has three focusable buttons in the chain, and
+        # until this ran they announced a target the bar did not have.
+        self._update_verb_bar()
 
         return box
 
@@ -1536,7 +1553,7 @@ class AddUrlDialog(QDialog):
         be a second opinion about how tall a table is, and the first font change would make it the
         wrong one — `T118-R15` is this project's record of exactly that promise.
 
-        **Bounded by what the list can actually show** (`T-209`). Unbounded, a playlist picker asked
+        **Bounded by what the list can actually show** (`T-210`). Unbounded, a playlist picker asked
         for its summary, eight entries and a *Done* button, the row was drawn taller than the list,
         and the bottom of it went below the fold — taking with it **the only pointer route out of
         the panel**, since `setIndexWidget` covers the row's own disclosure. `Esc` and `←` still
@@ -2301,20 +2318,35 @@ class AddUrlDialog(QDialog):
         Enablement reads **the model's own roles** — the same answers the combo entries were gated
         on — so the bar and the model cannot disagree about what a row offers. Disabled rather
         than hidden, for `focus_chain`'s stated rule: the chain is the same in every state.
+
+        **The target is named in the accessible tree, not only in pixels** (`T203-R1`). The label
+        drew `For <row>:` while `QAccessible` reported it as *"Which item the adjust buttons act
+        on"* and the buttons as acting on *"the current item"* — so a screen-reader user, who
+        reaches these buttons **before** the list in tab order, was never told which row was about
+        to change. That is the guardrail that justified moving the verbs off the row into one
+        shared bar, and it was the half that did not exist.
+
+        Each button's accessible name carries the row, and it carries the **unelided** headline:
+        the label is elided to 300px because it has to fit, and an announcement has no width.
         """
         row = self._current_row()
-        buttons = (self._formats_button, self._options_button, self._template_button)
         if row is None or row not in self._model.shown:
-            self._verb_label.setText("Select an item to adjust")
-            for button in buttons:
+            self._verb_label.setText(NO_TARGET_TEXT)
+            self._verb_label.setAccessibleName(NO_TARGET_TEXT)
+            for button, verb in self._verb_buttons:
                 button.setEnabled(False)
+                button.setAccessibleName(f"{verb} — no item is selected")
             return
         index = self._model.index(self._model.shown.index(row), 0)
+        headline = headline_text(row)
         self._verb_label.setText(
             self._verb_label.fontMetrics().elidedText(
-                f"For {headline_text(row)}:", Qt.TextElideMode.ElideRight, 300
+                f"For {headline}:", Qt.TextElideMode.ElideRight, 300
             )
         )
+        self._verb_label.setAccessibleName(f"The adjust buttons act on {headline}")
+        for button, verb in self._verb_buttons:
+            button.setAccessibleName(f"{verb} for {headline}")
         self._formats_button.setEnabled(bool(index.data(FORMATS_AVAILABLE_ROLE)))
         self._options_button.setEnabled(bool(index.data(OPTIONS_AVAILABLE_ROLE)))
         self._template_button.setEnabled(bool(index.data(TEMPLATE_AVAILABLE_ROLE)))

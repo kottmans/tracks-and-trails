@@ -46,7 +46,15 @@ from PySide6.QtCore import (
     QRect,
     Qt,
 )
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QWheelEvent
+from PySide6.QtGui import (
+    QAccessible,
+    QColor,
+    QFont,
+    QFontMetrics,
+    QImage,
+    QPainter,
+    QWheelEvent,
+)
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
@@ -4477,6 +4485,73 @@ def test_an_open_playlist_shows_entries_and_a_way_back(
         dialog.close()
 
 
+def test_the_panel_fits_the_viewport_at_the_size_the_criteria_claim(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T210-R1`, and the bound is asserted where it is claimed rather than well inside it.**
+
+    The committed regression opened at 700px and grew to 900px, so it never touched the size the
+    task admitted was a problem. Codex measured the gap: 600px window → 213px viewport, 210px
+    panel; 550px → 163px; 500px → 113px. The panel keeps its `minimumSizeHint` at all three, so
+    below roughly 600px it is taller than the viewport and *Done* is under the fold.
+
+    **The maintainer ruled the small window out of scope on 2026-08-09** — *"go with your
+    suggestion for T210-R1"*, against the recommendation that fitting a 113px viewport costs the
+    picker every visible entry, which is the *"you can barely see a playlist"* complaint T-210
+    exists to answer. So this test states the real contract in two halves: **the criteria hold at
+    600px**, and **below it the documented route out is the one that must keep working.**
+
+    This is a bound, not a success. The gap is real and named; what is asserted is that it behaves
+    the way the task now says it does.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(900, 600)
+    dialog.show()
+    QApplication.processEvents()
+
+    panel = _open_the_picker(dialog, row)
+    QApplication.processEvents()
+
+    try:
+        viewport = staging_list(dialog).viewport()
+        assert panel.height() <= viewport.height(), (
+            f"at the claimed bound the panel is {panel.height()}px in a {viewport.height()}px "
+            "viewport — the criterion is stated for this size and does not hold at it"
+        )
+        done_bottom = panel.done_button.mapTo(viewport, panel.done_button.rect().bottomLeft()).y()
+        assert 0 <= done_bottom <= viewport.height(), (
+            f"Done ends at y={done_bottom} in a {viewport.height()}px viewport at the claimed bound"
+        )
+
+        # **Below the bound: the panel keeps its minimum and the top control is the way out.**
+        # Shrinking further would cost the entries, so the panel deliberately stops giving.
+        for height in (550, 500):
+            dialog.resize(900, height)
+            QApplication.processEvents()
+            viewport = staging_list(dialog).viewport()
+            assert panel.height() >= panel.minimumSizeHint().height(), (
+                f"at {height}px the panel shrank past its minimum, which costs the entries the "
+                "picker exists to show"
+            )
+            collapse = panel.collapse_button
+            top = collapse.mapTo(viewport, collapse.rect().topLeft()).y()
+            assert 0 <= top <= viewport.height(), (
+                f"at {height}px the collapse control is at y={top} in a {viewport.height()}px "
+                "viewport — below the bound it is the only pointer route out, so it must stay"
+            )
+
+        collapse = panel.collapse_button
+        collapse.click()
+        QApplication.processEvents()
+        assert dialog.open_panel is None, (
+            "the documented route out of a panel too tall for the viewport did not close it"
+        )
+    finally:
+        dialog.close()
+
+
 def test_a_value_refresh_leaves_the_open_panel_over_its_row(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
@@ -4741,6 +4816,84 @@ def test_the_bar_acts_on_the_current_row_and_says_so(
     assert not formats.isEnabled(), (
         "a playlist offers the format table, but its formats belong to its entries"
     )
+
+
+def test_the_bar_names_its_target_to_a_screen_reader_too(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T203-R1`.** The announced target follows the current row, not just the drawn one.
+
+    The bar drew `For <row>:` while `QAccessible` reported the label as *"Which item the adjust
+    buttons act on"* and every button as acting on *"the current item"*. **The buttons come before
+    the list in tab order**, so a screen-reader user arriving at them was told a row would change
+    and never which one — defeating the guardrail that justified one shared bar over per-row
+    controls.
+
+    Asserted through `QAccessible` rather than through the widgets' own `accessibleName()`, because
+    what a screen reader receives is the interface's answer and not the property that fed it.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    listing = staging_list(dialog)
+    label = dialog.findChild(QLabel, "verbBarLabel")
+    assert label is not None
+
+    announced: list[str] = []
+    for position in (0, 1):
+        listing.selectionModel().setCurrentIndex(
+            dialog.model.index(position, 0), QItemSelectionModel.SelectionFlag.NoUpdate
+        )
+        headline = headline_text(dialog.rows[position])
+        for name in ("chooseFormatsButton", "rowOptionsButton", "namingFoldersButton"):
+            button = dialog.findChild(QPushButton, name)
+            assert button is not None
+            spoken = QAccessible.queryAccessibleInterface(button).text(QAccessible.Text.Name)
+            assert headline in spoken, (
+                f"{name} is announced as {spoken!r}, which does not name the row it will act on"
+            )
+        spoken_label = QAccessible.queryAccessibleInterface(label).text(QAccessible.Text.Name)
+        assert headline in spoken_label, (
+            f"the bar's label is announced as {spoken_label!r} — its purpose rather than its target"
+        )
+        announced.append(spoken_label)
+
+    assert announced[0] != announced[1], (
+        "both rows are announced identically, so the announcement does not follow the current row"
+    )
+
+    # **The unelided headline, deliberately.** The drawn label is elided to 300px because it has to
+    # fit in the bar; an announcement has no width, and truncating it would lose the identity this
+    # test exists to prove is present.
+    long_row = max(dialog.rows[:2], key=lambda row: len(headline_text(row)))
+    listing.selectionModel().setCurrentIndex(
+        dialog.model.index(dialog.rows.index(long_row), 0),
+        QItemSelectionModel.SelectionFlag.NoUpdate,
+    )
+    assert (
+        QAccessible.queryAccessibleInterface(label)
+        .text(QAccessible.Text.Name)
+        .endswith(headline_text(long_row))
+    ), "the announced target is elided; a screen reader was given the truncated label"
+
+
+def test_the_bar_says_it_has_no_target_when_nothing_is_current(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """**`T203-R1`, the other end.** No target is stated, not left describing the last one.
+
+    A freshly built dialog has resolved nothing and still puts three buttons in the keyboard
+    chain. Until the bar was updated at construction they announced a target that did not exist.
+    """
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    for name in ("chooseFormatsButton", "rowOptionsButton", "namingFoldersButton"):
+        button = dialog.findChild(QPushButton, name)
+        assert button is not None
+        spoken = QAccessible.queryAccessibleInterface(button).text(QAccessible.Text.Name)
+        assert "no item is selected" in spoken, (
+            f"{name} is announced as {spoken!r} while the bar has no target"
+        )
 
 
 def test_the_bar_is_dead_when_nothing_is_current(
