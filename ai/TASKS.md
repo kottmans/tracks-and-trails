@@ -1954,8 +1954,10 @@ satisfying one** — that conflation is what `P3EXIT-R1` found in Phase 3's own 
 approved and Complete, with their review's corrections `T-205` and `T-206`. `T-204`'s fix produced
 a correction chain — `T-207`, `T-209`, `T-210`, `T-211`, with `T-208` holding the still-unreproduced
 multi-row report. `T-213` and `T-214`, filed 2026-08-09 from a maintainer-requested audit of the
-whole tree, are maintenance under the same rule. Every one of them is polish or maintenance: none
-satisfies a plan deliverable.)*
+whole tree, are maintenance under the same rule. `T-215`–`T-220`, filed later the same day when the
+maintainer ruled the UI review's suggestions into tasks, are polish under it too — the same review
+also amended `T-201` (the reason on the failed row) and produced `UX-010` (the queue group's chip).
+Every one of them is polish or maintenance: none satisfies a plan deliverable.)*
 
 **What this section does not settle.** *(Narrowed 2026-08-09, the same day it was written.)*
 `T-203`'s **shape is ruled** — *"implement option A"*, after six mockup rounds — and built; the row's

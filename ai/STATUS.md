@@ -5,8 +5,9 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09 — the add-dialog chain built and awaiting review; `T-212` filed to
-complete the Phase 4 map
+**Last updated:** 2026-08-09 — the UI review's suggestions ruled into tasks (`T-215`–`T-220`,
+`T-201` amended, `UX-010` accepted); before that, the add-dialog chain built and awaiting review,
+and `T-212` filed to complete the Phase 4 map
 **Last verified against repository:** 2026-08-09 **for the block immediately below** — the pushed
 range, the CI run and its five job results were read from `git log` and `gh run view` after the run
 completed, not from a run taken earlier. The Phase 3 block beneath it was verified 2026-08-06 — its task states,
@@ -52,6 +53,17 @@ deliverables (`T-146`, `T-195`–`T-202`, `T-212`) are all still Proposed.
 verified-dead items and a label with two sources of truth) and `T-214` (the layering test enforces
 no internal direction rule, and seven deliberately Qt-free `ui/` modules are held to nothing).
 Its larger structural findings are with the maintainer as proposals, not filed work.
+
+**The same day's UI review — real screenshots of the composed application, read against
+`docs/UX_SPEC.md` — was ruled into work by the maintainer.** `T-215`–`T-220` are filed: an offline
+launch keeps a held queue held (observed live: startup probes failed every queued row in a second,
+queue stopped); the finished row's triple-stated state and retired bar; placeholder-thumbnail
+glyphs; the add dialog's duplicated instruction; the footer's raw selector; and the toolbar/§2.1
+disagreement. `T-201` gained two criteria — the reason appears on the failed row itself, and
+terminal failures suppress the byte line. **`UX-010` is accepted** — the maintainer chose option B:
+a queue group's chip stays done-of-total (`0 of 3`) and `UX_SPEC` §2.2 is amended, ending a
+spec/build disagreement that had stood since the History tab was withdrawn. `T-218` and `T-219`
+wait for the In Review add-dialog chain's verdicts before touching its file, as `T-213` does.
 
 ## 2026-08-09: the session's work is pushed, CI is green, and Phase 4 is decomposed
 
