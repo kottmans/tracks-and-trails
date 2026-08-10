@@ -5,10 +5,11 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **`T-215` and `T-146` are Complete and pushed**; CI at `2d38abe`
-then **failed the Windows desktop job** on four of `T-146`'s own tests (`T146-R4`, test-only,
-corrected below). **`T-197` is blocked on a `DAT-003` ruling** that must happen before cookie-file
-support lands. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
+**Last updated:** 2026-08-10 — **`T-215` and `T-146` are Complete and pushed, and CI is green at
+`bc7445f`** — all five jobs, the Windows desktop one included, which is what closes `T146-R4` and
+`T146-R3` on Windows's own evidence rather than on my reasoning. **`T-199` is built and In Review**
+at `4fee30f`, held locally. **`T-197` is blocked on a `DAT-003` ruling** that must happen before
+cookie-file support lands. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
 and the screen behind it, holding three of `REQ-023`'s eight settings.
 **Last verified against repository:** 2026-08-10 **for the eight 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
@@ -34,6 +35,24 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
+## 2026-08-10 (T-199): what ffmpeg performs is no longer offered without it
+
+**Built on maintainer instruction immediately after `T-146` unblocked it, and the first criterion
+named a live defect.** `UX-005` §5 — *nothing is drawn that would be refused* — was **three
+quarters untrue**: the format table hid its merge mode without ffmpeg (`P-13`), while the options
+dialog went on offering audio conversion, remuxing, recoding and all four embeds — three of the
+four features `FfmpegReport.summary()` was telling the user, on the same run, were unavailable.
+The two sides had already drifted and nothing could notice, because they shared no vocabulary.
+
+`FfmpegFeature` is that vocabulary now, and `FFMPEG_DEPENDENT_FEATURES` derives from it. The
+options dialog gates on it; `[ffmpeg] location` joins `settings.toml` under `ARC-008`, resolved as
+*argument → setting → `PATH`* and asserted through a real resolution. **The agreement test's first
+version was vacuous under mutation** — emptying a feature's control tuple defeated it — so it now
+also asserts the screen: nothing interactive is enabled without ffmpeg but an explicit allowlist.
+Four mutations fail their evidence. Two existing guards fired and were updated deliberately:
+`environment.py`'s reviewed-export list, and `T-146`'s own honesty test noticing *ffmpeg* had left
+the still-to-come sentence. **In Review at `4fee30f`, held locally.**
+
 ## 2026-08-10 (pushed, and CI found a fourth): T146-R4, and T-197 blocked on a ruling
 
 **All eleven commits are pushed; `origin/main` is at `2d38abe`.** Prose passed. **CI failed** —
@@ -45,6 +64,11 @@ branch it never reached. **`T146-R4`, test-only**: `save()` escapes correctly th
 neighbours did not. Reproduced on Linux with a `PureWindowsPath` — the exact CI message — and every
 interpolation now goes through one `toml_path()` helper. **This is `T146-R3`'s defect class a third
 time**, and the helper exists so there is no fourth.
+
+**CI is green at `bc7445f`** — all five jobs, confirmed from the completed run: linux, windows
+desktop, frozen linux, frozen windows and STARBASE coverage. The Windows desktop job passing is
+what actually closes `T146-R4`, and `T146-R3` with it; both were platform claims I could not run
+locally, and Windows has now answered for itself.
 
 **`T-197` is blocked before any code was written.** `DAT-003`'s own reopening conditions say the
 decision *"must be revisited **before** [cookie-file support] lands, not after"*, and a second
