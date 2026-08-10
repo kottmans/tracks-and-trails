@@ -161,8 +161,31 @@ resolved.
 - **[T]** `UX-004`: every row carries a **visible** *Download as* control showing what it will be
   downloaded with, and a row that has not been overridden shows the batch preset explicitly as
   inherited — never blank, which reads as *none* rather than *the one above*.
-- **[T]** `UX-004`: Retry and Remove are a context menu, reachable by the Menu key and Shift+F10 as
-  well as by pointer.
+- **[T]** *(amended 2026-08-09 by `UX-011`; the combo half is built by `T-203`)* **The control
+  holds presets, full stop** — every entry in it is a value that sticks, and no entry opens a
+  window. The four commands it had accumulated by Phase 3's end — `Choose specific formats…`,
+  `Options…`, `Where it goes…`, `Manage presets…` — are gone from it: the first three move to the
+  row's own menu below, the last to the dialog footer (`UX-009`). *The control looked like a value
+  picker while containing commands, and appeared to accept a choice it discarded — the
+  maintainer's own misreading of it in review is the evidence.*
+- **[T]** *(ruled 2026-08-09, `UX-011`; `T-203` builds it — option E, round 8)* **The three
+  per-row verbs live in the row's menu**: `Choose specific formats…`, `Options…` and
+  `Naming and folders…`, under a *Just this item* heading, above the Retry/Remove entries that
+  menu already holds. The menu opens **two ways**: from a narrow `⋮` zone drawn on the trailing
+  edge of the row's format control, and by the routes the row's context menu already answers —
+  right-click, the Menu key, Shift+F10. One menu, not two lookalikes.
+- **[D]** *(`UX-011`)* **The menu is anchored to the row it acts on, so the target is structural.**
+  A shared control acting on "the current row" must *say* which row that is — that obligation is
+  what `T203-R1` was. A menu opened from a row cannot act on any other row, so no target label or
+  announcement machinery exists to drift.
+- **[T]** *(`UX-011`)* **The painted `⋮` is an affordance, not the only door.** The delegate paints
+  it, so it has no accessibility node — the same fact that rejected the icon shapes — and that is
+  acceptable here for the reason the painted disclosure triangle already is: the function it
+  exposes has a fully accessible sibling route (the Menu key / Shift+F10 menu), and the menu's
+  items are real widgets a screen reader announces.
+- **[T]** `UX-004`, *route shared since `UX-011`*: Retry and Remove are a context menu, reachable
+  by the Menu key and Shift+F10 as well as by pointer — the same menu the `⋮` opens, so the row
+  has one "more" place rather than two.
 
 ---
 
@@ -173,9 +196,12 @@ resolution, fps, codecs, bitrate, filesize/estimate, notes).*
 
 ### Where it lives
 
-**[T]** The table opens from the **format control** — the same *Download as* control `UX-004` put
-on every staging row and `UX-005` §6 puts on every retargetable queue row — through an entry reading
-**`Choose specific formats…`** below the preset list.
+**[T]** *(amended 2026-08-09 by `UX-011`; `T-203` builds it)* The table opens from the staging
+row's **menu** — its `Choose specific formats…` entry, the first under *Just this item* (§3).
+*Until `T-203` it opened from an entry of that name inside the row's format control; the control
+holds presets only now. The queue row's *Download as* control (`UX-005` §6) is a preset retarget
+and is not a route to the table — this clause once named both surfaces as one control, and they
+never were.*
 
 **[T]** **It opens as the staging row itself, expanded** — not as a modal dialog (`UX-007`,
 2026-08-07). *This file proposed the modal and was ruled against.* A modal opened from the add
@@ -202,7 +228,7 @@ is the one that reuses something already built.
 
 | Key | Does |
 |---|---|
-| `Enter` / `Space` on the control's `Choose specific formats…` | Opens the table |
+| Menu key / Shift+F10 on the row, then `Choose specific formats…` | Opens the table for that row |
 | `Tab` | Moves between the header row, the table body and the buttons |
 | `↑` `↓` | Move the current format |
 | `Space` on a header | Sorts by that column; again reverses |
@@ -313,9 +339,12 @@ it: five checkboxes and one free list are different screens.
 > validated **escape hatch** (`REQ-031`) carrying what has no field yet. This clause stays because
 > `T-109`'s screen has not been specified against the ruling yet; the question behind it is closed.
 
-- **[T]** *(ruled `P-3`, `UX-007`)* The editor is reachable **two ways**: as *"Options…"* on the format control, editing a
-  one-off choice for this download only; and from the preset manager (§8), editing a saved preset.
-  The same widget in both, with a different title and a different save action.
+- **[T]** *(ruled `P-3`, `UX-007`; route amended 2026-08-09 by `UX-011`, which `T-203` builds)*
+  The editor is reachable **two ways**: as the row menu's *"Options…"* entry, editing a one-off
+  choice for this download only *(until `T-203`, an entry of that name on the format control)*;
+  and from the preset manager (§8), editing a saved preset. The same widget in both, with a
+  different title and a different save action. **`P-3`'s substance is untouched** — what moved is
+  where the per-item entrance sits, not that it exists.
 - **[D]** Audio quality is offered only for a codec where a bitrate means something — `MP3_BITRATES`
   is MP3's scale, and `with_audio_quality` already refuses any other codec for that reason
   (`T076-R1`).
@@ -398,8 +427,13 @@ rather than new ones.
 
 `REQ-007`: *create, edit, duplicate, delete, set one as default.*
 
-- **[T]** *(ruled `P-6`, `UX-007`)* A **preset manager**, reached from the format control's `Manage presets…` and listing
-  built-ins and the user's own together, with the built-ins not deletable and marked as such.
+- **[T]** *(ruled `P-6`, `UX-007`; route amended 2026-08-09 by `UX-009`, built by `T-203`)* A
+  **preset manager**, reached from the add dialog footer's `Manage presets…` button — **disabled
+  rather than hidden** when composition wires no manager, per `UX-005` §5's own rule. *Until
+  `T-203` it was an entry on the format control, offered once per row on every row because the
+  combo was the only place it could go; `UX-009` rules that a library-wide action does not belong
+  on a row.* It lists built-ins and the user's own together, with the built-ins not deletable and
+  marked as such.
 - **[D]** A built-in cannot be edited in place. `custom_preset` and `with_audio_quality` already
   derive a new preset rather than mutating one, because a request that disagrees with the preset the
   user was shown defeats `REQ-009`. Editing a built-in therefore **duplicates it first**, visibly.
@@ -448,6 +482,14 @@ silent on the rest, so these are scope choices.
 
 ### 9.1 Output template editor — `REQ-011`, built by `T-112`
 
+- **[T]** *(`UX-011`; the rename is built by `T-203`, the menu route it builds next)* **Reached
+  from the row menu's `Naming and folders…` entry** — renamed from `Where it goes…` on maintainer
+  direction, because that label promised a folder picker and opened a `%(field)s` template editor,
+  and the maintainer's own misreading of it as a destination picker was the evidence. Where files
+  *root* is `REQ-023`'s download directory (`T-146`, not built yet); the two are named apart so
+  they cannot be confused once both exist. **Whether the per-item template itself survives is
+  `REQ-011`'s open ruling** — `UX-011` moves its entrance and deliberately does not take that
+  ruling by implication.
 - **[T]** `REQ-011` as amended (2026-08-01, `T046-R2` and `T046-R4`): a live preview of the resulting
   path, **labelled as the *intended* path** wherever the final container is yt-dlp's to choose.
   Audio extraction to a **named** codec previews exactly, through yt-dlp's own `ACODECS` table — the

@@ -5,15 +5,14 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09 — the UI review's suggestions ruled into tasks (`T-215`–`T-220`,
-`T-201` amended, `UX-010` accepted); before that, the add-dialog chain built and awaiting review,
-and `T-212` filed to complete the Phase 4 map
-**Last verified against repository:** 2026-08-09 **for the block immediately below** — the pushed
-range, the CI run and its five job results were read from `git log` and `gh run view` after the run
-completed, not from a run taken earlier. The Phase 3 block beneath it was verified 2026-08-06 — its task states,
-verdicts and commit SHAs were checked against `ai/TASKS.md` and `git log`. The Phase 1 and Phase 2
-narrative from `## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a
-statement of what is true now.
+**Last updated:** 2026-08-09 — the add-dialog chain's verdicts arrived and were acted on:
+`T-204`/`T-207`/`T-211` Complete, `T-210` corrected under a maintainer scope ruling, and `T-203`
+**reshaped to option *E*** (`UX-011`) with its rebuild deliberately held on maintainer instruction
+**Last verified against repository:** 2026-08-09 **for the block immediately below** — task states
+were checked against `ai/TASKS.md` and `ai/REVIEWS.md` after the placement gate ran, and the CI
+claim names its run. The two earlier 2026-08-09 blocks were verified the same day; the Phase 3
+block beneath them 2026-08-06. The Phase 1 and Phase 2 narrative from `## Next` onward was last
+swept 2026-08-04 and is kept for its reasoning, not as a statement of what is true now.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -27,6 +26,39 @@ Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
 exit criterion owned. `T-212` (filed 2026-08-09) closed the one gap: the recorded-checklist-run
 criterion the maintainer added that day had no owner. **The phase has started**: the add-dialog
 polish chain is built and awaiting review.
+
+## 2026-08-09 (third session): the verdicts, a scope ruling, and T-203 reshaped to option E
+
+**Codex returned both reviews at `9813f19`** — the third focused pass on `T-204`, and the initial
+review of `T-210`/`T-211`/`T-203`. `ai/REVIEWS.md` holds the records; the outcome by task:
+
+- **`T-204`, `T-207`, `T-211` — Approved, moved to `## Complete`.** `T204-R1`, `T204-R4` and
+  `T204-R2` are Resolved. `T-208` (the unreproduced multi-row report) and `T-209` (the broader
+  reset-class audit, its criteria never run) stay `Ready` as distinct follow-ups — approval of
+  `T-204` closes neither.
+- **`T-210` — Changes requested (`T210-R1`), corrected, awaiting re-review.** The panel's 210px
+  floor exceeds short viewports; the committed regression opened at 700px and never gated the size
+  the entry admitted was failing. **The maintainer ruled the sub-600px window out of scope** —
+  three options were put to him with the costs stated; fitting a 113px viewport costs the picker
+  every visible entry. The criteria now state the bound honestly, a regression asserts **at
+  600px** and pins the below-600 behaviour, and the two record defects (stale `T-209` citations,
+  a raw-selector claim `row_summary` had already falsified) are corrected.
+- **`T-203` — Changes requested (`T203-R1` High, `T203-R2` Medium), then reshaped.** `T203-R1`
+  (the bar announcing *"the current item"* to a screen reader, never which row) was corrected on
+  the bar, mutation-checked. Reconciling the records for `T203-R2` then surfaced that **the
+  design thread had moved past the repository**: round 7 records option *A* rejected on sight,
+  and no ruling after *"implement option A"* was ever recorded. Round 8 rendered *A* as built
+  beside *E* and *G*; **the maintainer ruled *E*** — *"I wasn't a fan of how A looked at all"* —
+  and `UX-011` now records the full arc. The spec carries *E* as **ruled contract**, `T-203` is
+  `Ready` with criteria rewritten to *E*, and **the rebuild is deliberately not started — the
+  maintainer instructed the build be held** (*"commit everything but hold off on building E"*,
+  while moving development machines). The bar stays in the tree, corrected, until the rebuild
+  removes it.
+
+**This push is maintainer-directed** (moving to the desktop), which lifts the previous block's
+*"do not push while these await verdicts"* — the verdicts arrived. `T-213`/`T-218`/`T-219`
+remain held: they were waiting on the chain's verdicts, and they now wait on `T-203`'s rebuild
+for the same same-file reason.
 
 ## 2026-08-09 (later session): the add-dialog chain is built and awaits Codex
 

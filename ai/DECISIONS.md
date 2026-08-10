@@ -4868,3 +4868,75 @@ spec.
 - **Option A — `3 items` on the queue group**, the spec as written. A member count on a live group
   is nearly furniture: the header's detail line already carries `3 items · 3 failed`, and "how
   many" matters less at a glance than "how far".
+
+## UX-011 — The row picks a preset; the per-row verbs are the row's own menu
+
+**Status:** **Accepted** (2026-08-09) — maintainer ruling on round 8: *"I'm leaning towards
+option E. I wasn't a fan of how A looked at all. I liked option B's look, but it sounds like there
+are too many downsides."*
+**Date:** 2026-08-09 *(recorded the same day for `T203-R2`, which found the shape ruling lived in
+a task entry's status line and nowhere durable — and found the previous ruling's trail stopped one
+step before the conversation did: **option A was built, reviewed, and rejected on sight**, and
+neither the rejection nor round 7's candidates had reached this repository)*
+**Amends:** `docs/UX_SPEC.md` §3's row anatomy, §4's *Where it lives* and its keyboard route, §6's
+`P-3` route, and adds §9.1's route clause. **Completes** `UX-009`, which moved `Manage presets…`
+to the footer and explicitly left the remaining layout to `T-203`. **Does not amend** `UX-004`'s
+core ruling — the per-row format choice stays a visible control on the row — and it **extends**
+`UX-004`'s context-menu clause: the menu is now the verbs' home too, one menu rather than two.
+
+### Context
+
+By Phase 3's end the row's format combo held four commands beside its presets, and the maintainer's
+review found the control *"looks like a value picker while containing commands"* — it appeared to
+accept a choice it discarded. `UX-009` took the one library-wide command to the footer and left the
+three genuinely per-row verbs — `Choose specific formats…`, `Options…`, and the template editor —
+without a ruled home. **Eight mockup rounds looked for one.** The icon shapes fell to
+accessibility; option A — a labelled verb bar above the list — was ruled, built and reviewed, and
+the maintainer rejected it on sight: it spent a row of vertical space and clipped its own labels.
+Round 8 rendered A as built beside E and G, and the maintainer chose E.
+
+### Decision
+
+**The combo holds presets, full stop** — every entry is a value that sticks. **The three per-row
+verbs live in the row's menu** (*option E, "one menu, two doors"*):
+
+- `Choose specific formats…`, `Options…` and `Naming and folders…` sit under a *Just this item*
+  heading, above the Retry/Remove entries the row's context menu already holds — **one menu**, so
+  the row ends with fewer distinct places to poke, not more.
+- The menu opens **two ways**: a narrow `⋮` zone on the trailing edge of the row's format control,
+  and the context-menu routes that already exist — right-click, the Menu key, Shift+F10.
+- **The target is structural, not announced.** A menu opened from a row acts on that row.
+  `T203-R1` — the bar telling a screen-reader user a row would change but never which one — is a
+  problem class this shape does not have, which is a load-bearing part of why it won.
+- **The painted `⋮` is an affordance, not the only door.** It has no accessibility node, and that
+  is acceptable for the reason the painted disclosure triangle already is: the function has a
+  fully accessible sibling route, and the menu's items are real widgets a screen reader announces.
+- The template verb is renamed **`Naming and folders…`** — `Where it goes…` promised a folder
+  picker and opened a template editor. *(Built already; survives from the A build, as do the
+  presets-only combo and the footer's `Manage presets…`.)*
+
+### Rejected
+
+- **Icon buttons on the row** (the *"V2 + G2"* shape, and the maintainer's preferred look, *B*) —
+  **ruled out by accessibility, not taste.** The row is delegate-painted; painted verbs have no
+  accessibility node and no sibling route was on offer, so they would vanish from the tree
+  `NFR-005` requires and `T-200` audits. The maintainer weighed the look against the downsides and
+  let it go.
+- **Option A — the verb bar** — ruled first, built, and **rejected on sight**: a full row of
+  vertical space spent whether or not any verb is wanted, labels that clip at the widths the
+  narrowing contract protects, and action-at-a-distance that needed `T203-R1`'s announcement
+  machinery just to say which row it targets.
+- **Option D** — a separator splitting the combo's values from its commands. Built to be looked
+  at; went with the verbs.
+- **Option F** — the verbs in the dialog footer. Traded A's clipping for footer crowding and kept
+  A's distance-from-the-row problem.
+- **Option G — not rejected but not chosen**: E minus the `⋮`. Same menu, zero new delegate
+  geometry, weakest discoverability. It remains the recorded fallback if the `⋮` hit zone proves
+  expensive — E degrades to G by removing the zone, with no other rework.
+
+### Deliberately not decided
+
+**Whether a per-item output template survives** (`REQ-011`'s *"for the current item"* reading).
+The menu keeps `Naming and folders…` and removes no capability, so this ruling moves an entrance
+and takes nothing by implication. Removing the capability later still requires the maintainer
+ruling `T-203` records as open.

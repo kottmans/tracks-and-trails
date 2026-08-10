@@ -5,12 +5,13 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09 — **Phase 3 exited.** Its exit review was approved at `ccdbd0f` after
-four passes; all six criteria are met and `P3EXIT-R1` through `P3EXIT-R3` are resolved. **Phase 4 is
-the current phase.** Its plan deliverables are decomposed under `## Proposed — Phase 4` and **none has
-been started**; the carried-in defects are a separate set and several are done.
-**`T-192`, `T-193`, `T-194`, `T-205` and `T-206` were approved 2026-08-09.** For what is awaiting
-a verdict now, read `## In Review` — this header does not duplicate it, for `T204-R2`'s reason.
+**Last updated:** 2026-08-09 — **the add-dialog chain's verdicts arrived.** `T-204`, `T-207` and
+`T-211` are Complete; `T-210` is corrected under a maintainer scope ruling and awaits re-review;
+**`T-203` is reshaped to option *E*** (`UX-011`) and sits `Ready`, its rebuild held on maintainer
+instruction. **Phase 4 is the current phase**, its plan deliverables decomposed under
+`## Proposed — Phase 4` and **none started**; the carried-in defects are a separate set.
+For what is awaiting a verdict now, read `## In Review` — this header does not duplicate it, for
+`T204-R2`'s reason.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -100,7 +101,6 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
@@ -118,166 +118,24 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
-### T-204 — A row that stops being committable keeps its panel and loses the way to close it
-
-**Status:** **In Review — fixed 2026-08-09.** An open row now always answers its disclosure, so it
-always offers the control that closes it. **Reproduced in a failing test first**, per criterion 1,
-and the mutation kills it. *(Maintainer-reported 2026-08-08: "Pretty sure I just clicked on one of
-the videos (near the checkmark). I think it removed the video from being downloaded, but it made
-everything inaccessible." And separately: "with multiple items in the queue, the playlist loses the
-arrow to collapse it again.")*
-
-**The second report is not reproduced, and is not claimed closed by reproduction.** A test drives
-the multi-row path and it passes **with the fix and without it** — a playlist row stays `READY`
-while a sibling resolves, so the committable gate never fires there. **More than one item does not
-by itself remove the arrow.** The likely explanation is that a re-probe is simply common once
-several rows exist, and a re-probing row is exactly what the first test reproduces; the test is
-kept as a **guard** on that path. **The exact gesture behind the second report remains unknown.**
-If it recurs, it is a second defect and gets its own entry, as this one said it should.
-**Owner:** Implementer
-**Priority:** **High.** The reported end state is an application the user cannot get out of without
-cancelling the dialog, and the work of choosing entries goes with it
-**Phase:** Phase 4 — polish. Filed against Phase 3 code; not a Phase 3 blocker.
-**Depends on:** nothing.
-**Relevant context:** `ui/add_dialog.py` §829–837 (the `EXPANDED_ROLE` handler), §1525–1548
-(`close_panel`), §1550–1576 (`remount_panel`), `ui/staging.py` §164–167 (`committable`),
-`ui/row_delegate.py` (the twisty painter), `T-140` (the three-valued role), `T108-R2`, `T107-R2`,
-`UX-005` §5
-**Affected surfaces:** `ui/add_dialog.py`, `ui/row_delegate.py`, `tests/ui/`
-**Risk:** Medium — the fix is small; **the geometry seam it sits in has needed a second review round
-every time it has been opened** (`T107-R2`, `T108-R2`)
-
-#### The mechanism, read from the code rather than guessed
-
-**`EXPANDED_ROLE` is three-valued and one of its values withdraws the control.**
-
-```python
-if entry_selection_of(row) is None or not row.committable:
-    return None
-return row is self._dialog.expanded_row
-```
-
-`None` means *not a playlist* — **the delegate draws no disclosure at all.** `False` means a
-playlist that is closed. `committable` is `state is RowState.READY` (`ui/staging.py` §167).
-
-**So a row that leaves `READY` while its panel is open stops drawing the triangle that closes it.**
-
-**Nothing else closes the panel.** `close_panel` is driven by `self._expanded`, and `remount_panel`
-closes the panel only when the row's **index is invalid** — a row that *went away*. A row that still
-exists but is no longer `READY` keeps `_expanded` set, keeps its mounted `setIndexWidget` panel, and
-has no drawn affordance. **The panel outlives the control that dismisses it.**
-
-**What is verified and what is not.** The code path above is read, not inferred. **Which user action
-takes the row out of `READY` is not yet confirmed** — the report says "near the checkmark", which is
-either the row's own include checkbox or an entry's. The reproduction is the first deliverable.
-
-**`T108-R2` is the same class and is worth reading first**: a structural reset left the panel
-pointing at a row it was no longer mounted on, *"the row stayed tall and blank"*, and reopening was
-refused because the stale state still said it was open. **That was found in review, after a fix
-aimed at a guess.** This entry exists so the same thing does not happen twice.
-
-#### The second report is probably the same bug
-
-*"With multiple items in the queue, the playlist loses the arrow to collapse it again"* has the same
-signature: the disclosure is absent where a playlist should draw one. **Whether the trigger is the
-same is unconfirmed** — treat them as one investigation and two tests, and if they turn out
-different, split this entry rather than fixing one and closing both.
-
-#### Acceptance criteria
-
-- **A failing test reproduces the stuck state first**, driving the surface the way the report
-  describes — not by setting `_expanded` directly, which would prove the fix and not the bug
-- **A row with an open panel always has a way to close it**, whatever its state. Either the
-  disclosure keeps being drawn while a panel is mounted, or the panel closes when the row stops
-  being committable — **and the choice is recorded**, because they behave differently for a row
-  that is merely re-probing and will return to `READY`
-- **Whatever was chosen in the panel survives** the close, whichever route closes it. `close_panel`
-  already distinguishes `keep`; the fix must not lose a 16-entry selection to a state flicker
-- **The missing-arrow report is covered by its own test**, with a queue holding more than one item
-- `EXPANDED_ROLE`'s three values still mean what `T-140` ruled — **absent must keep meaning "not a
-  playlist"**. If the fix makes a non-committable playlist answer `False` instead of `None`, the
-  comment at §829 is updated, since it currently states the collapsed reasoning as settled
-- The row's painted anatomy and the panel do not overlap in the fixed state — the maintainer's
-  third screenshot shows the row's own text drawn into the panel area, **which may be a second
-  defect**; if it is, it is filed separately rather than absorbed here
-
-#### Out of scope
-
-- `T-203`'s redesign of the row's controls. **This bug is present whatever the controls become**,
-  and fixing it must not wait on a ruling
-- `T-193`'s sizing, which is fixed and committed
-- Reworking `setIndexWidget` into a different expansion mechanism. That is a larger change than a
-  trapped user justifies, and `T-108` chose this one deliberately
-
----
-
-### T-207 — Reproduce T-204 through a reachable transition
-
-**Status:** **In Review — corrected 2026-08-09.** *(Was: Ready. The submitted regression killed the
-old role ordering, but it made a resolved row `PROBING` by assigning `row.state` directly.
-Production sets `PROBING` only from `WAITING`; a `READY` row receiving that status is made `FAILED`.
-The test therefore proved a useful invariant under an invented transition, not the
-maintainer-reported gesture it said it reproduced.)*
-
-**Every step of the replacement is a route a user can reach.** The picker opens through
-`open_playlist_picker`; an entry is unchecked with `Space`, the gesture the report describes; the
-row stops being committable because **its job left the queue** — `manager.job_changed` with a
-non-startable status, which `_on_job_changed` turns into `FAILED`, message *"this URL left the
-queue while the dialog was open"*; and the panel closes through `toggle_playlist`, the slot the
-delegate's disclosure signal is wired to. **The selection made in the picker is asserted to survive
-the close.** The old-order mutation fails it.
-
-**`T204-R2` is corrected with it**, and structurally: `## In Review`'s preface **no longer
-enumerates its contents**. It had been wrong three times — *"Empty"* over three tasks, *"three
-awaiting verdicts"* over none, and *"Empty"* again with `T-204` directly beneath it — the last
-immediately after I wrote that it was the line to re-read whenever the queues change. A description
-that lists its section is a second copy of it, and the copy is what rots.
-
-**The role comment is corrected too.** `T204-R1` noted it overstated the case: it reasoned from a
-`READY` row entering `PROBING`, which cannot happen, and said closing would discard the selection
-when `close_panel(keep=True)` and `_on_entries_chosen` both preserve it. **What closing costs is the
-interaction, not the data**, and it now says so.
-**Owner:** Implementer
-**Priority:** High — T-204's criterion 1 and its claim to close a trapped-user report depend on a
-reachable reproduction, not only a mutation of the suspected guard
-**Phase:** Phase 4 — focused correction to T-204
-**Depends on:** nothing
-**Relevant context:** `T-204`, `T204-R1`, `T204-R2`, `ui/add_dialog.py`
-(`_on_media_probed`, `_on_job_changed`, `EXPANDED_ROLE`, `toggle_playlist`),
-`tests/ui/test_add_dialog.py`
-**Affected surfaces:** `tests/ui/test_add_dialog.py`, `ai/TASKS.md`; `ui/add_dialog.py` only if a
-reachable reproduction shows that the current invariant fix is incomplete
-**Risk:** Medium — the production change is small and coherent, but the report may have a different
-trigger from the one the test assigns
-
-#### Acceptance criteria
-
-- Audit every production path that can take a playlist row out of `READY` while its panel is open,
-  and name the actual interaction or manager signal that reaches the stuck state
-- Reproduce that path through the real interaction/signal wiring, without assigning a post-probe
-  `row.state` directly; the regression fails at the pre-fix boundary and passes with the correction
-- After the transition, close through the real disclosure route and prove that a changed playlist
-  selection survives; asserting only that `EXPANDED_ROLE` is a `bool` is not the whole user outcome
-- If no reachable path exists, reclassify the code change truthfully as invariant hardening and do
-  not claim that it reproduces or closes the maintainer's first report; keep that report actionable
-  rather than waiting for it to recur
-- Correct the `## In Review` preface so it names T-204 instead of saying the section is empty and
-  nothing awaits a verdict
-- `ruff`, `ruff format`, both mypy gates, task placement and the affected UI suites are clean
-
-#### Out of scope
-
-- T-208's separate multi-row report
-- T-204's unobserved row/panel-overlap screenshot; geometry remains unchanged
-
----
-
 ### T-210 — An opened row can be taller than the list, putting its own Done button out of reach
 
-**Status:** **In Review — fixed 2026-08-09.** ***Filed as `T-209` and renumbered the same day:***
-***that id was already Codex's, filed to own `T204-R4`. I took it from a remembered maximum***
-***instead of reading the file, and two tasks briefly shared it. Commits `ce7f012` and***
-***`9222305` name the wrong one.***
+**Status:** **In Review — corrected 2026-08-09, awaiting re-review.** *(Was: In Review — fixed.
+`T210-R1` returned **Changes requested**: the panel keeps a 210px floor, so below roughly 600px it
+exceeds the viewport and puts *Done* under the fold, contrary to two of this task's own criteria.
+The committed regression opened at 700px and grew to 900px, so it never gated the size the entry
+already admitted was failing.)*
+
+**The correction is a scope ruling and an honest rewrite, not a layout change.** The maintainer
+ruled the sub-600px window out of scope (recorded below, with what it weighed); the criteria now
+state the bound where it actually holds, a regression asserts it **at 600px** rather than well
+inside it, and the below-600 behaviour is pinned rather than described. The two record defects
+`T210-R1` also named are corrected: the stale `T-209` citations in source, and the claim that the
+panel still reproduces the raw selector.
+
+***Filed as `T-209` and renumbered the same day:*** ***that id was already Codex's, filed to own***
+***`T204-R4`. I took it from a remembered maximum instead of reading the file, and two tasks***
+***briefly shared it. Commits `ce7f012` and `9222305` name the wrong one.***
 
 **This is a different defect from `T-209`'s**, and both are real: `T-209` is a mounted panel
 **collapsing to its minimum** after a value-only refresh; this is a panel **legitimately taller
@@ -310,16 +168,16 @@ this is a row whose disclosure is covered and whose replacement control is off-s
    evenly. The paste box takes about 290 px of a 711 px window to hold one line of URL, and the
    list gets what is left. That is what makes cause 1 reachable at ordinary window sizes.
 
-**A third cause was scoped out and turned out to be load-bearing.** The row's third line renders the
-raw selector — `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]` —
-and the panel reproduces it in a word-wrapping summary label. **Measured after the fix**: the entry
-table compresses to 70px, the picker to 121px, and the panel's floor is still **217px** — the
-difference is the summary. So the fix holds at the 700px window the report came from **and not below
-roughly 600px**, where the wrapped summary alone exceeds the viewport.
+**A third cause was scoped out, and the record of it was wrong** *(corrected 2026-08-09 for
+`T210-R1`)*. This entry said the panel *"reproduces the raw selector in a word-wrapping summary
+label"* and that the summary was therefore the floor. **It no longer does**: `row_summary` composes
+the headline and detail only, and drops the selector tail the control beside it already answers.
+The sentence survived the change that falsified it.
 
-That limit is recorded in the regression's docstring rather than hidden by choosing a comfortable
-window size. **Shortening the third line is the remaining work** and is left for its own entry,
-because it is a question about what a row should *say* and not about how tall a panel may be.
+**What is actually measured**, at the head Codex reviewed: the panel's floor is its
+`minimumSizeHint`, **210px**, and it holds there whatever the window does. Against real viewports —
+600px window → 213px viewport; 550px → 163px; 500px → 113px. **So the panel fits at 600px and
+above, and above 600px only.**
 
 **Maintainer-confirmed on screen, 2026-08-09:** *"Looks like the issue regarding the clipping/bleed
 through is fixed."* The working mechanism took three attempts, and the miss is worth keeping: the
@@ -353,12 +211,39 @@ Qt reports a usable `visualRect` immediately, so the headless suite cannot tell 
 apart. **The reported symptom is reproducible only on a real display**, which is `OPS-003`'s shape —
 verification here rests on the maintainer looking at it.
 
+#### The maintainer's scope ruling, 2026-08-09
+
+**The window below roughly 600px is out of scope, by maintainer ruling** — *"go with your
+suggestion for T210-R1"*, taken on 2026-08-09 in answer to `T210-R1`. The criteria below are the
+rewrite that ruling requires; **the ruling is the maintainer's and this entry records it rather
+than making it.**
+
+**What was put to him, so the ruling is judged on what it actually weighed.** Three paths were
+offered: rule the small window out of scope; engineer the panel down to roughly 110px so it fits a
+113px viewport; or split the small window into its own task. The recommendation was the first, and
+the reason was the constraint he stated — *"I dont want to mess up the readability we had
+before"*. **Fitting a 113px viewport costs the picker every visible entry**: the summary would
+elide to one line and the entry table would shrink to zero and scroll. That is *"you can barely see
+a playlist if its expanded out"*, the report this task exists to answer. At 500px there is no good
+outcome, and a panel taller than the viewport with a visible collapse control is the better of two
+bad ones.
+
+**One alternative was named and not taken:** a minimum height on the dialog would make the criteria
+true by construction, with no shrinking at all. It was not recommended, because this file is
+explicit that *narrow — and now short — has to keep working*, and it trades a readability
+constraint for a resizing one. **If that trade is preferable, it reopens as its own question.**
+
 #### Acceptance criteria
 
-- **A panel never exceeds the list's visible height**, asserted against a real viewport at a small
-  window size rather than against a constant
-- **`Done` is inside the visible area whenever a panel is open** — asserted on its position against
-  the viewport, which is the user-visible fact, not on the panel's `sizeHint`
+- **A panel never exceeds the list's visible height at a 600px window or taller**, asserted against
+  a real viewport **at 600px** — the bound itself, not a comfortable size well inside it. *(This
+  read "at a small window size" and was gated by a regression that opened at 700px and grew to
+  900px, so it never touched the size the entry admitted was failing — `T210-R1`.)*
+- **`Done` is inside the visible area whenever a panel is open at 600px or taller** — asserted on
+  its position against the viewport, which is the user-visible fact, not on the panel's `sizeHint`
+- **Below 600px the panel keeps its minimum and does not shrink further**, and **the collapse
+  control at the top of the panel stays inside the viewport** — it is the pointer route out at
+  those sizes, and the criterion is that it keeps working, not that *Done* is reachable
 - **The entries compress rather than the button disappearing.** `T-193`'s cap stays the *maximum*;
   what is shown is the lesser of that and what fits
 - **The list is given a height hint**, so the first paint favours the rows over the paste box. A
@@ -370,60 +255,72 @@ verification here rests on the maintainer looking at it.
 
 #### Out of scope
 
-- The verbose third line, above
+- **The window below roughly 600px**, per the ruling above. The gap is real, measured and named
+  here; it is not fixed and this entry does not claim it is
 - `T-203`'s control redesign, which changes what the row holds and not how tall the panel may be
-- The dialog's overall default size. `StagingList`'s hint is the lever this task uses
+- The dialog's overall default size, and a minimum height on it. `StagingList`'s hint is the lever
+  this task uses
 
-### T-211 — Destroying an editor trusted the row it was billed to, and crashed
-
-**Status:** **In Review — fixed 2026-08-09.** Maintainer-hit live, traceback from the konsole:
-two `QAbstractItemView::commitData called with an editor that does not belong to this view`
-warnings, then `RuntimeError: Internal C++ object (PySide6.QtWidgets.QComboBox) already deleted`
-from `commit_and_close_editor` via `StagingModel.refresh` → `commit_open_editor`.
-**Owner:** Implementer
-**Priority:** **High** — an uncaught exception in the resolve path; the dialog dies under the user
-**Phase:** Phase 4
-**Depends on:** nothing
-**Relevant context:** `T118-R14` (row numbers are not identity), `T108-R2` (the dead-editor class),
-`ui/row_delegate.py` (`destroyEditor`, `commit_and_close_editor`), `ui/add_dialog.py`
-(`StagingModel.refresh`)
-**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low — one comparison, and the rule it moves to is the one the file already states
-
-#### The mechanism
-
-`RowDelegate.destroyEditor` forgot the open editor only when `index.row()` equalled the remembered
-`_editing_row`. **But Qt destroys editors *during* a reset, after the rows have shifted** — so the
-row it names at teardown is exactly the number `T118-R14` established cannot be trusted. On a
-mismatch the guard skipped, `_editor` kept pointing at a widget whose C++ half was deleted, and the
-next `commit_open_editor` committed it: the two warnings, then the crash.
-
-**The fix is the file's own rule applied at teardown**: forget by *identity* — `editor is
-self._editor` — because the editor being destroyed is the thing to forget, and which row it was
-billed to is irrelevant.
-
-#### Acceptance criteria
-
-- `destroyEditor` with an index naming **a different row** still clears the delegate's editor
-  state, and a subsequent `commit_open_editor` is a no-op rather than a `RuntimeError` — asserted
-  after the deferred delete has actually run
-- The mutation back to the row comparison fails the regression
-- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog suite are clean
+## Ready
 
 ### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
 
-**Status:** **In Review — option *A* built, 2026-08-09.** The maintainer ruled the shape across six
-mockup rounds — *"implement option A"* — after the accessibility constraint (a painted control has
-no accessibility node) ruled out the icon shapes, `B` included.
+**Status:** **Ready — reshaped to option *E* by maintainer ruling, 2026-08-09; the build is the
+work ahead.** The shape has now been ruled **twice**, and the second ruling is the one that
+stands. Option *A* — the verb bar — was ruled, built, reviewed, and **rejected on sight** by the
+maintainer; that rejection and round 7's replacement candidates never reached this repository,
+which `T203-R2`'s reconciliation surfaced. Round 8 rendered *A* as built beside *E* and *G* at
+full and narrow widths, and the maintainer ruled: *"I'm leaning towards option E. I wasn't a fan
+of how A looked at all."* **`UX-011` records the ruling durably** and `docs/UX_SPEC.md` §§3, 4, 6,
+8 and 9.1 now carry *E* as ruled contract — a **Planner pass made under explicit maintainer
+instruction** (*"lets go ahead with your suggestion"*), the unlock `AGENTS.md` §4 names.
 
-**What is built.** The row's combo holds **presets, full stop** — every entry is a value that
-sticks, asserted exhaustively. The three per-row verbs are **real buttons in a verb bar** above the
-list, labelled *"For &lt;current row&gt;:"*, with the three guardrails ruled in: the label names the
-target; **a press scrolls the named row into view before opening**; with nothing current the bar
-says *"Select an item to adjust"* and is disabled — disabled, not hidden, so the keyboard chain is
-the same in every state. Enablement reads the model's own roles, so bar and model cannot disagree
-(a playlist's *formats* is disabled; its formats belong to its entries). Option *D*'s combo
-headers, built the same day to be looked at, went with the verbs.
+**What the rebuild removes and what it keeps.** The bar — label, three buttons, and the
+`T203-R1` announcement machinery — is superseded and comes out; a menu anchored to its row does
+not have the target-naming problem that machinery existed to solve. **Kept, already built and
+reviewed**: the presets-only combo, the `Naming and folders…` rename, and the footer's
+`Manage presets…`. *(Was: In Review — corrected, awaiting re-review, when the correction was
+still option *A*'s; and before that Blocked on a Planner for the records `T203-R2` named.)*
+
+- **`T203-R1` — High. Corrected 2026-08-09 on the bar; the correction retires with the bar.** The
+  bar drew `For <row>:` while `QAccessible` reported the label as *"Which item the adjust buttons
+  act on"* and the three buttons as acting on *"the current item"*. Because the buttons come
+  **before** the list in tab order, a screen-reader user was told a row would change and never
+  which one. The correction (announcements carrying the unelided headline, following the current
+  row, mutation-checked) shipped and holds while the bar exists; **under option *E* the finding's
+  lesson is structural** — a menu opened from a row cannot act on any other row — and the
+  machinery goes with the shape that needed it. The regression is replaced by one proving the
+  menu acts on the row it was opened from.
+- **`T203-R2` — Medium. Corrected 2026-08-09 by the Planner pass above — and the pass itself
+  caught the deeper version of the same defect.** The finding: the spec still described the
+  controls option *A* replaced, and this entry's own criteria required a column header that does
+  not exist, two icons, icon styling and Windows icon coverage. Reconciling the records surfaced
+  that **the design conversation had moved past the repository's last recorded ruling**: round 7
+  records *A* rejected on sight, and nothing in-repo said so. The correction: `UX-011` filed with
+  the full arc (icons → *A* built and rejected → *E* ruled); the spec regions amended to *E* as
+  ruled contract with the ruled-against history kept visible; the criteria below rewritten to
+  *E*. **The `REQ-011` per-item-template ruling is deliberately not taken by it** — the menu
+  keeps `Naming and folders…` and removes no capability, exactly as Codex ruled.
+
+**Codex was explicit that this is not an objection to the source.** *"This is not a source-code
+objection to Option A; it is the absence of a coherent durable ruling and acceptance contract for
+the source that exists."* **The `REQ-011` per-item-template ruling does not block it either** — the
+build keeps `Naming and folders…` and removes no template capability, so that ruling is still open
+and still not taken by implication.
+
+*(Was: In Review — option *A* built. The maintainer ruled the shape across six mockup rounds —
+*"implement option A"* — after the accessibility constraint, a painted control having no
+accessibility node, ruled out the icon shapes, `B` included.)*
+
+**What was built as option *A*** *(superseded — the bar comes out in the *E* rebuild; the combo
+half survives)*. The row's combo holds **presets, full stop** — every entry is a value that
+sticks, asserted exhaustively. The three per-row verbs were **real buttons in a verb bar** above
+the list, labelled *"For &lt;current row&gt;:"*, with the three guardrails ruled in: the label
+names the target; **a press scrolls the named row into view before opening**; with nothing current
+the bar says *"Select an item to adjust"* and is disabled — disabled, not hidden, so the keyboard
+chain is the same in every state. Enablement reads the model's own roles, so bar and model cannot
+disagree (a playlist's *formats* is disabled; its formats belong to its entries). Option *D*'s
+combo headers, built the same day to be looked at, went with the verbs.
 
 **The bar buttons initially made the dialog refuse to narrow past 571px** — caught by the
 narrowing contract's own test — and carry explicit small minimums so narrow keeps working.
@@ -435,8 +332,9 @@ Maintainer-raised 2026-08-08 from
 a review of the add dialog: *"the drop down should be where you select a preset (and this should be
 made clear)"*, and after seeing four alternatives, *"still feeling really cluttered"*.
 
-**What is built (option *D*, chosen 2026-08-09: *"Lets do D first just to see how it would look in
-practice"*).** The smallest change that answers *"make it clear"*, and it forecloses nothing:
+**What was built first (option *D*, chosen 2026-08-09: *"Lets do D first just to see how it would
+look in practice"* — and superseded the same day by option *A* above; the separator went with the
+verbs, the two renames survived it).** The smallest change that answered *"make it clear"*:
 
 - **A separator splits the combo.** Above the rule every entry is a value that sticks; below it
   every entry opens a window and puts the selection back. The rule does not make that untrue — it
@@ -459,23 +357,28 @@ practice"*).** The smallest change that answers *"make it clear"*, and it forecl
   state."* Hiding would make the declared keyboard order depend on composition's wiring, which is
   what `T-060` and `T016-R4` exist to prevent.
 
-**What is not built, and why.** The icon-button shapes (*G2*, and the maintainer's stated preference
-*B*) are **blocked on an accessibility ruling**: `setAccessibleName` appears exactly once in
-`ui/row_delegate.py`, on the `QComboBox` editor. Painted controls have no accessibility node, so
-moving the three verbs into painted icons would delete them from the tree that `NFR-005` requires
-and `T-200` audits. The options and their costs are recorded in the maintainer's design artifact;
-**this slice deliberately does not decide it.**
+**What is not built, and the ruling is now taken.** The icon-button shapes (*G2*, and the
+maintainer's stated preference *B*) were **rejected on the accessibility constraint, 2026-08-09**:
+`setAccessibleName` appears exactly once in `ui/row_delegate.py`, on the `QComboBox` editor.
+Painted controls have no accessibility node, so painted verbs would vanish from the tree that
+`NFR-005` requires and `T-200` audits. The maintainer accepted the constraint and chose the bar;
+`UX-011` records it. *(This paragraph said the shapes were "blocked on an accessibility ruling"
+and that this slice "deliberately does not decide it" — true when written, superseded by the
+option-A ruling the same day.)*
 
-**Still outstanding:** the `REQ-011` template ruling, and `docs/UX_SPEC.md` §8/§9.1 — which the
-Implementer may not write (`AGENTS.md` §4), so the amendment `UX-009` requires is somebody else's.
-**Owner:** Planner → Implementer. **The ruling comes first; this is not agreed work.**
+**Still outstanding:** the `REQ-011` template ruling — and only that. The `docs/UX_SPEC.md`
+amendment this line used to name was made 2026-08-09 (`UX-011`, under explicit maintainer
+instruction per `AGENTS.md` §4).
+**Owner:** Implementer. *(Was: Planner → Implementer, "the ruling comes first; this is not agreed
+work" — the shape ruling is taken and the work is built.)*
 **Priority:** Medium — no function is missing; the complaint is that the surface is unusable enough
 that a user does the wrong thing
 **Phase:** Phase 4 — polish. **Not a Phase 3 blocker.**
-**Depends on:** **`T-204`, which should land first** — this task adds two hit regions to the delegate
-geometry `T-204`'s defect is in, and fixing that geometry after adding to it is the harder order.
-Also a maintainer ruling on the one question below, and `T-146`/`T-195` for the settings that absorb
-what the row gives up. *(**Phase confirmed 2026-08-09:** the maintainer briefly ruled this into
+**Depends on:** nothing any longer. *(Was: `T-204` first — a dependency priced for the icon shape,
+which would have added two hit regions to the delegate geometry `T-204`'s defect was in. The bar
+is real widgets, one set, outside the delegate; and `T-204` landed first anyway, approved
+2026-08-09. The remaining `T-146`/`T-195` half gates only the ruling-gated template removal below,
+not this task.)* *(**Phase confirmed 2026-08-09:** the maintainer briefly ruled this into
 Phase 3 and reversed it the same day — *"since this is going to effect other tasks, lets just do it
 all in phase 4 as originally planned"*. Phase 3 exits on its existing six criteria.)*
 **Relevant context:** `REQ-007`, `REQ-011`, `REQ-023`, `docs/UX_SPEC.md` §8 and §9.1, `UX-004`,
@@ -485,11 +388,12 @@ all in phase 4 as originally planned"*. Phase 3 exits on its existing six criter
 `ui/preset_manager.py`
 **Affected surfaces:** `ui/row_delegate.py`, `ui/add_dialog.py`, `ui/preset_manager.py`,
 `docs/UX_SPEC.md`, possibly `ai/REQUIREMENTS.md`
-**Risk:** **Medium–High, and the reason changed on 2026-08-09.** It was filed as *"the code is
-contained; the risk is ruling away a capability"*. The capability half shrank — options survive and
-only the template is still in question — but reading the delegate showed the icons must be
-**painted and hit-tested**, which puts the work in the seam that produced `T107-R2`, `T108-R2` and
-`T-204`. The risk is geometry, not scope
+**Risk:** **Low now, and the history of the estimate is worth keeping.** Filed as *"the risk is
+ruling away a capability"*; re-priced Medium–High when the icon shape put the work in the
+delegate's paint-and-hit-test seam (`T107-R2`, `T108-R2`, `T-204`); and the bar avoided that seam
+entirely — real widgets, one set, no new hit regions. **The risk that actually arrived was neither:
+the bar shipped naming its target only in pixels** (`T203-R1`), which is the risk a *shared*
+control carries that per-row controls never did. Corrected, with a `QAccessible` regression.
 
 #### The defect, stated once
 
@@ -516,9 +420,17 @@ Three findings from reading it, all of which point the same way:
 it is building an anonymous, unnamed preset per row. **That is the clutter** — and it explains why
 the dropdown accumulated commands: they had nowhere else to live.
 
-#### The proposal — **the shape was chosen by the maintainer on 2026-08-09**
+#### The proposal — ***superseded 2026-08-09***: *"V2 + G2"* was chosen, then its icons fell to
+the accessibility constraint
 
-Five rounds of mockups were reviewed. The chosen shape is *"V2 + G2"* in that sequence:
+*(**Kept as history, not contract** — `T203-R2` found this section standing beside the option-A
+status as two live, mutually exclusive shapes. The bullets below describe the icon shape the
+maintainer first chose; the icons were then ruled out — painted controls have no accessibility
+node — and option *A* replaced them with the bar. What survived into the build: the presets-only
+combo, both per-item verbs staying per-item, the rename, the footer move, and the `REQ-023`
+root/template split. What did not: the two icon buttons and everything priced against them.)*
+
+Five rounds of mockups were reviewed. The chosen shape was *"V2 + G2"* in that sequence:
 
 - **The row picks a preset.** The combo lists presets only, the column reads *Preset*, and every
   entry in it is a value that sticks.
@@ -557,9 +469,10 @@ reading under which a single application-level template satisfies `REQ-011` and 
 not required. **It is a reading, not a fact**, and removing a shipped control on it is a maintainer
 call.
 
-**This ruling now gates the layout, not just the template.** If the per-item template survives, the
-row carries **three** icon buttons rather than two, and the matched-pair argument above has to
-accommodate a third glyph — for which there is even less convention than the list icon.
+*(**The layout half of this is moot under option A** — this said the ruling gates whether the row
+carries two icon buttons or three. The bar carries all three verbs as labelled buttons whatever
+the ruling says; what it still gates is only whether `Naming and folders…` is later removed, and
+removal additionally waits on `T-146`/`T-195` per the criteria below.)*
 
 *(**Two rulings that were open are now taken, both 2026-08-09.**
 **Per-item post-processing options survive** — nothing here folds `REQ-010`'s seven options into
@@ -567,7 +480,12 @@ presets, and `ui/options_dialog.py` keeps its per-row entry point.
 **`Manage presets…` moves to the footer** — `UX-009` accepts it, amends `docs/UX_SPEC.md` §8's `[T]`
 clause, and generalises the rule so the next library-wide action does not re-argue it.)*
 
-#### What the delegate already does, and what it costs this task
+#### What the delegate already does, and what it would have cost the icon shape
+
+*(**History.** This section priced the painted icons: two more hit regions in the delegate's
+paint-and-hit-test seam. Option *A*'s bar is real widgets outside the delegate, so the cost never
+arrived — the `NFR-001` finding stands and is why one shared bar beats one real widget set per
+row.)*
 
 **`NFR-001` is not a problem here, and it looked like one.** `UX-004` measured a real control on
 every row at **85.7 ms for 150 rows and 116.2 ms for 200**, against `NFR-001`'s ~100 ms budget, and
@@ -585,36 +503,56 @@ seam**. That seam produced `T107-R2` and `T108-R2`, and it currently holds `T-20
 **Two icons mean two new hit regions in the geometry that is already wrong.** This is the risk this
 task actually carries, and it is why `T-204` should land first.
 
-#### Acceptance criteria
+#### Acceptance criteria — **rewritten 2026-08-09 to option *E*, per `UX-011`**
 
-*(The **shape** is ruled; the two open rulings above still gate the template half.)*
+*(Rewritten twice in one day, and the second time is the honest one: first from the icon shape to
+the built bar for `T203-R2`, then to *E* when reconciling the records surfaced that the bar had
+been rejected on sight. The contract below describes the ruled shape, which is not yet built.)*
 
-- The row's combo contains **only selectable values**; no entry in it opens a window
-- The column header names what the control sets
-- **Each icon button carries an accessible name and role**, set explicitly in code.
-  **A tooltip does not satisfy this** — it is a hover affordance, not an accessible name, and
-  `NFR-005` requires screen-reader labels on all controls while `T-200`'s criterion is a name *and*
-  a role for every control in the tree
-- **`tests/ui/test_windows_accessibility.py` covers both new buttons.** This is the criterion most
-  likely to be missed, and it **fails on the Windows job alone** — `T-146` records exactly that
-  happening after the Linux suite passed and three commits had been pushed
-- **The two icon buttons are one matched pair**: same size, same border treatment, same weight.
-  A test asserting they are styled by the same role rather than individually, per the convention
-  `T-192` established and `test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces
-- **The icons read in both palettes.** `T-021` owns the glyph work and `T-202` owns colour, but an
-  icon that vanishes into the dark ground is this task's defect to not create
-- **The width reclaimed from the two labels goes to the preset combo**, not to whitespace — the
-  preset name is what must stay readable, and it is what elides first today
-- **Nothing is removed until its replacement exists.** If the per-item template goes, `T-195`'s
-  default template and `T-146`'s directory are in place first, and a test asserts a job with no
-  per-item template still writes where the user expects
-- **Existing presets keep working.** `Preset.output_template` is already populated; a migration or
-  a defaulting rule covers presets written before the change, and is tested
-- `docs/UX_SPEC.md` §8 and §9.1 are amended to describe what was built, with the ruling named — and
-  the amendment is made by whoever `AGENTS.md` §4 permits, since the Implementer may not write
-  `docs/UX_SPEC.md`
+- The row's combo contains **only selectable values**; no entry in it opens a window — asserted
+  exhaustively over the combo's contents *(already built and holding)*
+- **The three verbs are entries in the row's menu** — `Choose specific formats…`, `Options…`,
+  `Naming and folders…` under a *Just this item* heading, **above** the Retry/Remove entries the
+  menu already holds — and it is **one menu, not two lookalikes**: the `⋮` route and the
+  context-menu routes produce the same actions, asserted on the actions rather than on two menus
+  happening to agree
+- **The `⋮` zone is painted on the trailing edge of the row's format control** and hit-tested in
+  `editorEvent`, beside the twisty that is already handled there. This is the delegate seam
+  (`T107-R2`, `T108-R2`, `T-204`): the hit region's geometry gets its own regression, and a press
+  anywhere else on the control still opens the preset combo, asserted both ways
+- **The menu acts on the row it was opened from — including when that row is not the selected
+  one.** Open the menu on row 1 while row 0 is current; the verbs act on row 1. This is the
+  structural replacement for `T203-R1`'s announcement machinery, and it is the criterion that
+  proves the shape's whole argument
+- **The keyboard route is the context menu's, and it already exists**: Menu key and Shift+F10
+  reach the same menu (`NFR-005`, the route `_show_row_menu` answers today). The painted `⋮` is
+  an affordance with no accessibility node, acceptable on the disclosure triangle's precedent
+  **because** the sibling route exists — if that route ever narrows, this criterion fails
+- **The menu offers what the row can actually do**, reading the model's own roles the way the bar
+  did: a playlist's formats entry is not offered as actionable — its formats belong to its
+  entries (`T-110`) — following the existing menu's idiom for conditional entries (Retry appears
+  only on a failed row)
+- **The bar is removed whole**: `verbBarLabel`, the three buttons, their `focus_chain()` slots,
+  and `T203-R1`'s announcement machinery, with `focus_chain`'s declared order updated and its
+  test still green. The `T203-R1` regression is **replaced** by the row-anchored one above, not
+  deleted without successor
+- **Older tests keep their gesture**: `choose_in_editor`'s verb sentinels reroute through the
+  menu, so existing call sites still describe "open the formats for this row" by the route a user
+  now has
+- **Nothing else can clip.** The `⋮` is fixed-width; the narrowing contract's test stays green
+  with the bar gone
+- **`Manage presets…` sits in the dialog footer** per `UX-009`, disabled rather than hidden when
+  composition wires no manager *(already built and holding)*
+- **Nothing is removed until its replacement exists**: the ruling-gated removal of
+  `Naming and folders…`, if it ever happens, waits for `T-195`'s default template and `T-146`'s
+  directory, with a test that a job with no per-item template still writes where the user
+  expects — and for the `REQ-011` ruling itself
+- `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1 describe *E* as ruled contract (`UX-011`) — done
+  2026-08-09 by the Planner pass; **the `[T]` clauses are re-verified against the built widgets
+  at submission**, so the spec and the build converge in the same review
 - Keyboard reachability of every surviving control is re-verified — **or `T-200` runs after this
-  task**, which is the cheaper order and why `T-200` names this dependency
+  task**, which is the cheaper order and why `T-200` names this dependency. The menu's items are
+  real `QAction`s with names; the whole-dialog Windows sweep is `T-200`'s `OPS-004` split
 
 #### Out of scope
 
@@ -624,7 +562,7 @@ task actually carries, and it is why `T-204` should land first.
 - Multi-select in the add dialog. It would change the answer here, and nothing asks for it
 - yt-dlp's wider option surface — `T-183` and the escape hatch own that
 
-## Ready
+
 
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
@@ -2978,7 +2916,6 @@ under a stated precedence.
 
 
 ## Blocked
-
 ### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
 
 **Status:** **Blocked — prepared 2026-08-01, on *somebody at* `STARBASE`.**
@@ -3410,6 +3347,180 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+### T-204 — A row that stops being committable keeps its panel and loses the way to close it
+
+**Status:** **Complete — Approved with follow-ups 2026-08-09 at `9813f19`.** `T204-R1`, `T204-R4` and `T204-R2` are all **Resolved**; the third focused pass verified the close route through the panel's own *Done*, the restored panel geometry, and the swept coordination copies. **Two follow-ups stay open and are not closed by this approval**: `T204-R3`/`T-208` (the multi-row report, still unreproduced) and `T-209` (the broader both-panel, every-reset audit, still `Ready` and unexecuted).
+
+**The second report is not reproduced, and is not claimed closed by reproduction.** A test drives
+the multi-row path and it passes **with the fix and without it** — a playlist row stays `READY`
+while a sibling resolves, so the committable gate never fires there. **More than one item does not
+by itself remove the arrow.** The likely explanation is that a re-probe is simply common once
+several rows exist, and a re-probing row is exactly what the first test reproduces; the test is
+kept as a **guard** on that path. **The exact gesture behind the second report remains unknown.**
+If it recurs, it is a second defect and gets its own entry, as this one said it should.
+**Owner:** Implementer
+**Priority:** **High.** The reported end state is an application the user cannot get out of without
+cancelling the dialog, and the work of choosing entries goes with it
+**Phase:** Phase 4 — polish. Filed against Phase 3 code; not a Phase 3 blocker.
+**Depends on:** nothing.
+**Relevant context:** `ui/add_dialog.py` §829–837 (the `EXPANDED_ROLE` handler), §1525–1548
+(`close_panel`), §1550–1576 (`remount_panel`), `ui/staging.py` §164–167 (`committable`),
+`ui/row_delegate.py` (the twisty painter), `T-140` (the three-valued role), `T108-R2`, `T107-R2`,
+`UX-005` §5
+**Affected surfaces:** `ui/add_dialog.py`, `ui/row_delegate.py`, `tests/ui/`
+**Risk:** Medium — the fix is small; **the geometry seam it sits in has needed a second review round
+every time it has been opened** (`T107-R2`, `T108-R2`)
+
+#### The mechanism, read from the code rather than guessed
+
+**`EXPANDED_ROLE` is three-valued and one of its values withdraws the control.**
+
+```python
+if entry_selection_of(row) is None or not row.committable:
+    return None
+return row is self._dialog.expanded_row
+```
+
+`None` means *not a playlist* — **the delegate draws no disclosure at all.** `False` means a
+playlist that is closed. `committable` is `state is RowState.READY` (`ui/staging.py` §167).
+
+**So a row that leaves `READY` while its panel is open stops drawing the triangle that closes it.**
+
+**Nothing else closes the panel.** `close_panel` is driven by `self._expanded`, and `remount_panel`
+closes the panel only when the row's **index is invalid** — a row that *went away*. A row that still
+exists but is no longer `READY` keeps `_expanded` set, keeps its mounted `setIndexWidget` panel, and
+has no drawn affordance. **The panel outlives the control that dismisses it.**
+
+**What is verified and what is not.** The code path above is read, not inferred. **Which user action
+takes the row out of `READY` is not yet confirmed** — the report says "near the checkmark", which is
+either the row's own include checkbox or an entry's. The reproduction is the first deliverable.
+
+**`T108-R2` is the same class and is worth reading first**: a structural reset left the panel
+pointing at a row it was no longer mounted on, *"the row stayed tall and blank"*, and reopening was
+refused because the stale state still said it was open. **That was found in review, after a fix
+aimed at a guess.** This entry exists so the same thing does not happen twice.
+
+#### The second report is probably the same bug
+
+*"With multiple items in the queue, the playlist loses the arrow to collapse it again"* has the same
+signature: the disclosure is absent where a playlist should draw one. **Whether the trigger is the
+same is unconfirmed** — treat them as one investigation and two tests, and if they turn out
+different, split this entry rather than fixing one and closing both.
+
+#### Acceptance criteria
+
+- **A failing test reproduces the stuck state first**, driving the surface the way the report
+  describes — not by setting `_expanded` directly, which would prove the fix and not the bug
+- **A row with an open panel always has a way to close it**, whatever its state. Either the
+  disclosure keeps being drawn while a panel is mounted, or the panel closes when the row stops
+  being committable — **and the choice is recorded**, because they behave differently for a row
+  that is merely re-probing and will return to `READY`
+- **Whatever was chosen in the panel survives** the close, whichever route closes it. `close_panel`
+  already distinguishes `keep`; the fix must not lose a 16-entry selection to a state flicker
+- **The missing-arrow report is covered by its own test**, with a queue holding more than one item
+- `EXPANDED_ROLE`'s three values still mean what `T-140` ruled — **absent must keep meaning "not a
+  playlist"**. If the fix makes a non-committable playlist answer `False` instead of `None`, the
+  comment at §829 is updated, since it currently states the collapsed reasoning as settled
+- The row's painted anatomy and the panel do not overlap in the fixed state — the maintainer's
+  third screenshot shows the row's own text drawn into the panel area, **which may be a second
+  defect**; if it is, it is filed separately rather than absorbed here
+
+#### Out of scope
+
+- `T-203`'s redesign of the row's controls. **This bug is present whatever the controls become**,
+  and fixing it must not wait on a ruling
+- `T-193`'s sizing, which is fixed and committed
+- Reworking `setIndexWidget` into a different expansion mechanism. That is a larger change than a
+  trapped user justifies, and `T-108` chose this one deliberately
+
+---
+
+### T-207 — Reproduce T-204 through a reachable transition
+
+**Status:** **Complete — Approved with follow-up 2026-08-09 at `9813f19`.** The reproduction drives a transition production can reach and closes through a real control. `T207-R1` is a **Low, non-blocking** current-truth follow-up, corrected in this entry's sibling text below.
+
+**Every step of the replacement is a route a user can reach.** The picker opens through
+`open_playlist_picker`; an entry is unchecked with `Space`, the gesture the report describes; the
+row stops being committable because **its job left the queue** — `manager.job_changed` with a
+non-startable status, which `_on_job_changed` turns into `FAILED`, message *"this URL left the
+queue while the dialog was open"*; and the panel closes through **the panel's own *Done* button**.
+**The selection made in the picker is asserted to survive the close.** The old-order mutation fails
+it.
+
+*(**Corrected 2026-08-09 for `T207-R1`.** This said the panel closes through `toggle_playlist` —
+the direct-slot route `T204-R1` rejected precisely because calling the receiving slot proves the
+slot and not the route. The code and the test used *Done* by then; **the sentence describing the
+fix outlived the fix**, which is the defect class this file keeps recording about itself.)*
+
+**`T204-R2` is corrected with it**, and structurally: `## In Review`'s preface **no longer
+enumerates its contents**. It had been wrong three times — *"Empty"* over three tasks, *"three
+awaiting verdicts"* over none, and *"Empty"* again with `T-204` directly beneath it — the last
+immediately after I wrote that it was the line to re-read whenever the queues change. A description
+that lists its section is a second copy of it, and the copy is what rots.
+
+**The role comment is corrected too.** `T204-R1` noted it overstated the case: it reasoned from a
+`READY` row entering `PROBING`, which cannot happen, and said closing would discard the selection
+when `close_panel(keep=True)` and `_on_entries_chosen` both preserve it. **What closing costs is the
+interaction, not the data**, and it now says so.
+**Owner:** Implementer
+**Priority:** High — T-204's criterion 1 and its claim to close a trapped-user report depend on a
+reachable reproduction, not only a mutation of the suspected guard
+**Phase:** Phase 4 — focused correction to T-204
+**Depends on:** nothing
+**Relevant context:** `T-204`, `T204-R1`, `T204-R2`, `ui/add_dialog.py`
+(`_on_media_probed`, `_on_job_changed`, `EXPANDED_ROLE`, `toggle_playlist`),
+`tests/ui/test_add_dialog.py`
+**Affected surfaces:** `tests/ui/test_add_dialog.py`, `ai/TASKS.md`; `ui/add_dialog.py` only if a
+reachable reproduction shows that the current invariant fix is incomplete
+**Risk:** Medium — the production change is small and coherent, but the report may have a different
+trigger from the one the test assigns
+
+#### Acceptance criteria
+
+- Audit every production path that can take a playlist row out of `READY` while its panel is open,
+  and name the actual interaction or manager signal that reaches the stuck state
+- Reproduce that path through the real interaction/signal wiring, without assigning a post-probe
+  `row.state` directly; the regression fails at the pre-fix boundary and passes with the correction
+- After the transition, close through the real disclosure route and prove that a changed playlist
+  selection survives; asserting only that `EXPANDED_ROLE` is a `bool` is not the whole user outcome
+- If no reachable path exists, reclassify the code change truthfully as invariant hardening and do
+  not claim that it reproduces or closes the maintainer's first report; keep that report actionable
+  rather than waiting for it to recur
+- Correct the `## In Review` preface so it names T-204 instead of saying the section is empty and
+  nothing awaits a verdict
+- `ruff`, `ruff format`, both mypy gates, task placement and the affected UI suites are clean
+
+#### Out of scope
+
+- T-208's separate multi-row report
+- T-204's unobserved row/panel-overlap screenshot; geometry remains unchanged
+
+---
+
+### T-211 — Destroying an editor trusted the row it was billed to, and crashed
+
+**Status:** **Complete — Approved 2026-08-09 at `9813f19`.** Identity-based teardown clears the exact editor being destroyed whatever the row numbering has done, and the regression reaches the former crash site after the deferred delete. The old row-number comparison is the mutation the evidence fails on.
+
+#### The mechanism
+
+`RowDelegate.destroyEditor` forgot the open editor only when `index.row()` equalled the remembered
+`_editing_row`. **But Qt destroys editors *during* a reset, after the rows have shifted** — so the
+row it names at teardown is exactly the number `T118-R14` established cannot be trusted. On a
+mismatch the guard skipped, `_editor` kept pointing at a widget whose C++ half was deleted, and the
+next `commit_open_editor` committed it: the two warnings, then the crash.
+
+**The fix is the file's own rule applied at teardown**: forget by *identity* — `editor is
+self._editor` — because the editor being destroyed is the thing to forget, and which row it was
+billed to is irrelevant.
+
+#### Acceptance criteria
+
+- `destroyEditor` with an index naming **a different row** still clears the delegate's editor
+  state, and a subsequent `commit_open_editor` is a no-op rather than a `RuntimeError` — asserted
+  after the deferred delete has actually run
+- The mutation back to the row comparison fails the regression
+- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog suite are clean
+
 ### T-192 — The stopped-queue message hides at the right, against the ffmpeg summary
 
 **Status:** **Complete — Approved 2026-08-09 at `027dc7c`.** Found by the maintainer
