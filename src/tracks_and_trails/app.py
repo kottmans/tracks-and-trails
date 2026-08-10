@@ -368,6 +368,18 @@ def compose(
     # file — so a closure holding the settings as they were at startup would erase whatever the
     # other one had added. One current value, replaced on every write.
     held = _Held(settings_read.settings)
+
+    @dataclass
+    class _InForce:
+        """The ffmpeg resolution actually in effect, replaced only by an accepted choice.
+
+        A cell rather than a closure variable, for `_Held`'s reason one class up: the refusal path
+        must show what is **in force**, and a captured startup value would go stale the moment any
+        choice was accepted.
+        """
+
+        report: Any
+
     settings = settings_read.settings
 
     # **The user's stored location outranks `PATH`, and the explicit argument outranks both**
@@ -379,16 +391,32 @@ def compose(
     ffmpeg = find_ffmpeg(
         ffmpeg_override if ffmpeg_override is not None else settings.ffmpeg_location
     )
+    #: What ffmpeg resolved to, replaced whenever an accepted choice changes it. Held in a cell
+    #: for `_Held`'s reason: the refusal path has to show the resolution still **in force**, and a
+    #: closure capturing the startup value would show a stale one after any accepted change.
+    ffmpeg_problem: str | None = None
     if ffmpeg_override is None and settings.ffmpeg_location is not None and not ffmpeg.available:
-        # Stored, passed `load()`'s checks, and the platform still will not run it — so this
-        # session falls back to `PATH` and says why, the same ending `resolve_ffmpeg` gives a live
-        # choice. The file is **not** rewritten: an unplugged drive should not cost the user the
-        # setting they chose (`ARC-008` reports; it does not edit).
-        logging.getLogger("tracksandtrails.app").warning(
-            "the stored ffmpeg location cannot be run, falling back to PATH: %s",
-            settings.ffmpeg_location,
+        # Stored, passed `load()`'s checks, and the platform still will not run it — a mode bit on
+        # POSIX, a missing `PATHEXT` match on Windows. This session falls back to `PATH`, the same
+        # ending `resolve_ffmpeg` gives a live choice.
+        #
+        # **Reported, not only logged** (`T199-R3`). `ARC-008` says an existing setting that cannot
+        # be used *reports* rather than reverting silently, and a log line is not a report — the
+        # user never sees it. `load()` cannot raise this itself: whether a file can be executed is
+        # the platform's answer through `find_ffmpeg`, and `core/` may not ask. So composition,
+        # which can, contributes the problem here and it reaches the same dialog every other
+        # settings problem does.
+        #
+        # The file is **not** rewritten: an unplugged drive should not cost the user the setting
+        # they chose (`ARC-008` reports; it does not edit).
+        ffmpeg_problem = (
+            f"The ffmpeg location in your settings cannot be run, so ffmpeg was looked for on "
+            f"PATH instead.\n{settings.ffmpeg_location}"
         )
+        logging.getLogger("tracksandtrails.app").warning("settings: %s", ffmpeg_problem)
         ffmpeg = find_ffmpeg(None)
+
+    in_force = _InForce(ffmpeg)
 
     # **Where downloads land, decided here and nowhere else** (`REQ-023`, `T-146`). Three sources,
     # most specific first: the explicit argument (which is how every test redirects downloads away
@@ -538,15 +566,20 @@ def compose(
         one would offer exactly what the worker then refuses.
         """
         resolved, reason = resolve_ffmpeg(location)
-        window.report_environment(resolved.summary(), ffmpeg_available=resolved.available)
-        manager.set_ffmpeg_override(resolved.path)
         if reason is not None:
+            # **Nothing is applied, and that now includes the manager** (`T199-R3`). This reported
+            # and returned, but only *after* pushing the fallback resolution into the environment
+            # and into `set_ffmpeg_override` — so refusing a bad choice while a good custom
+            # override was in force switched future workers to `PATH` while the stored setting and
+            # the screen still named the custom binary. A refusal that changes what runs is not a
+            # refusal, and it recreated `T199-R2`'s UI/worker disagreement by the other door.
             logging.getLogger("tracksandtrails.app").warning("ffmpeg location: %s", reason)
             window.report_transiently(reason.splitlines()[0])
-            # Refused, so the stored setting is left exactly as it was; the screen is shown the
-            # resolution that is actually in force rather than the choice that failed.
-            window.show_ffmpeg_location(held.settings.ffmpeg_location, report=resolved)
+            window.show_ffmpeg_location(held.settings.ffmpeg_location, report=in_force.report)
             return
+        window.report_environment(resolved.summary(), ffmpeg_available=resolved.available)
+        manager.set_ffmpeg_override(resolved.path)
+        in_force.report = resolved
         chosen = app_settings.with_ffmpeg_location(held.settings, location)
         held.settings = chosen
         window.show_ffmpeg_location(location, report=resolved)
@@ -735,11 +768,24 @@ def compose(
     # `ARC-008`: after the window exists, because that is the earliest a modal can be shown, and
     # before it is interactive, because the reverted setting is what the user would otherwise
     # notice first and have no explanation for.
-    if settings_read.problem is not None:
-        logging.getLogger("tracksandtrails.app").warning(
-            "settings: %s (%s)", settings_read.problem.reason, settings_read.problem.path
+    # **One report, however many parts** — the same shape `load()` uses to join its own reasons.
+    # A settings file that is both unparseable and names an unrunnable ffmpeg is one problem the
+    # user reads once, not two dialogs racing each other (`ARC-008`, `T199-R3`).
+    settings_problem = settings_read.problem
+    if ffmpeg_problem is not None:
+        settings_problem = app_settings.SettingsProblem(
+            settings_problem.path
+            if settings_problem is not None
+            else (settings_file if settings_file is not None else app_settings.settings_path()),
+            f"{settings_problem.reason}\n\n{ffmpeg_problem}"
+            if settings_problem is not None
+            else ffmpeg_problem,
         )
-        window.report_settings_problem(settings_read.problem)
+    if settings_problem is not None:
+        logging.getLogger("tracksandtrails.app").warning(
+            "settings: %s (%s)", settings_problem.reason, settings_problem.path
+        )
+        window.report_settings_problem(settings_problem)
     # After the settings problem, so a user with both sees the one they cannot act on first and the
     # one they can act on second — an offer buried under a warning gets dismissed with it.
     if recovered:

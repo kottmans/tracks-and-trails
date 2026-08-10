@@ -14116,3 +14116,62 @@ Windows evidence rather than reproduce a deterministic known failure.
 
 The Reviewer changed `ai/REVIEWS.md` and T-199's status/findings in `ai/TASKS.md` only. No reviewed
 source or test file was modified, and no commit or push was made.
+
+## 2026-08-10 — T-199 focused correction re-review
+
+**Task:** T-199 — ffmpeg capability reporting and location override
+
+**Review boundary:** `3705840..c4668e8`
+
+**Correction commit:** `c4668e8`
+
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T199-R1** | **High** | **Yes** | **Resolved at `c4668e8`** | `core.presets.needs_ffmpeg()` is a GUI-safe predicate bound to the worker's definitive answer over every built-in preset, and `AddUrlDialog` filters its single preset catalogue before it feeds any selector. The composed proof reaches a real unavailable resolution and checks the complete offer in both directions. |
+| **T199-R2** | **High** | **Yes** | **Resolved at `c4668e8`** | `DownloadManager.set_ffmpeg_override()` updates the value future child sessions receive, and the composed regression observes that manager value after a valid live choice rather than only the status line. Source inspection confirms clearing also resolves `PATH`, updates the manager, and persists `None`. |
+| **T199-R3** | **High** | **Yes — explicit invalid-location criterion and ARC-008** | **Open** | The correction still has two incompatible state paths. First, a stored file that passes name/type checks but has become non-executable reaches `app.py:382-391`, which logs and falls back to `PATH`; it never contributes a `SettingsProblem`, and `app.py:738-742` therefore shows no ARC-008 dialog. Second, `choose_ffmpeg_location()` updates the environment and manager at `app.py:540-542` *before* testing `reason`. If a valid custom override is active, rejecting a bad new choice switches future workers to `PATH` while leaving the stored setting and displayed location on the custom binary. That contradicts the function's own “changes nothing” contract and recreates R2's UI/worker disagreement through the refusal route. The committed live regression starts from `PATH`, so fallback equals its captured `unchanged` value and the test cannot see this state. |
+| **T199-R4** | **Medium** | **Yes — required Windows gate** | **Resolved at `c4668e8`** | Both real-resolution tests now use the shared `an_executable_ffmpeg()` helper, with a `.bat` candidate on Windows and an executable script on POSIX. The platform branch uses `os.name`, and both mypy platform gates are clean. |
+
+T199-R3 is a direct continuation of the original High blocker, not a new unbounded finding. The
+fallback half now works, but the required user report is absent for the stored non-executable
+shape, and a rejected live choice can change the binary future workers receive while the Settings
+screen says it did not. Another focused correction and verification pass remains authorized under
+`AGENTS.md` §10 because the unresolved finding is High.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| `git diff --check 3705840..c4668e8` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 165 files** |
+| `mypy src` | **pass, 52 files** |
+| bare `mypy` | **pass, 127 files** |
+| `mypy --platform win32` | **pass, 127 files** |
+| Four correction regressions plus task-placement gate | **19 passed in 0.95 s** |
+| Settings, presets, manager-boundary, manager, composition, Add, Options, Settings, and preset-manager suites | **727 passed; 16 infrastructure failures in 308.22 s** — every failure shown was a local HTTP fixture being denied `socket()` by the review sandbox (`PermissionError: [Errno 1]`), not an assertion failure |
+| Stored non-executable composed probe | **failed the contract:** resolution fell back to `/usr/bin/ffmpeg`, but `load().problem` was `None` and no `settingsProblemDialog` existed |
+| Valid-custom-then-refused composed probe | **failed the contract:** manager override changed from the custom executable to `/usr/bin/ffmpeg`, while the persisted setting remained the custom executable |
+
+The implementer's **2535 passed, 17 skipped** run was not repeated wholesale. Its clean result is
+consistent with the committed tests; the two failing state combinations are not covered by them.
+The broader reviewer selection's sixteen failures are sandbox network restrictions and provide no
+contrary product evidence. An escalated rerun was then contaminated by a concurrent, uncommitted
+correction to `app.py` and `test_composition.py`: it reached **741 passed, 2 failed**, with both
+failures raising `NameError: in_force is not defined` from the interim source loaded by that
+already-running process. Those working-tree edits are outside `c4668e8` and are not part of this
+verdict; they need a finished commit and a fresh focused run.
+
+### Push disposition
+
+**Do not push `c4668e8` yet.** Native Windows evidence is no longer the blocker, but T199-R3 still
+misses an explicit acceptance criterion and leaves the active worker configuration inconsistent
+with the stored and displayed setting after a refusal.
+
+The Reviewer changed this review record and T-199's current status only. The concurrently present
+DAT-003/T-197 edits in `ai/DECISIONS.md` and `ai/TASKS.md` were not authored or altered by the
+Reviewer. No reviewed source or test file was modified, and no commit or push was made.

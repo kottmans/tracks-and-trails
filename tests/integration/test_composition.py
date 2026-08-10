@@ -2228,3 +2228,90 @@ def test_an_unusable_choice_is_refused_the_same_way_however_it_arrives(
         assert composition.manager._ffmpeg_override == unchanged, (
             f"{label} changed what workers receive despite being refused"
         )
+
+
+def test_a_stored_ffmpeg_that_cannot_be_run_is_reported_not_just_logged(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T199-R3`, first half.** `ARC-008` says *report*, and a log line is not a report.
+
+    A stored location that exists, is a file and is named for ffmpeg passes everything `load()`
+    can ask — whether it can actually be **run** is the platform's answer, through `find_ffmpeg`,
+    and `core/` may not ask it. So this shape reached the fallback with nothing shown to the user:
+    the resolution quietly became `PATH` and the settings dialog never appeared, which is
+    reverting silently by another name.
+
+    Composition contributes the problem, because composition is the layer that can. Asserted on the
+    dialog a user would actually see rather than on a log record.
+    """
+    unrunnable = tmp_path / "ffmpeg"
+    unrunnable.write_text("not executable\n", encoding="utf-8")
+    unrunnable.chmod(0o644)
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text(
+        f"[ffmpeg]\nlocation = {json.dumps(str(unrunnable))}\n", encoding="utf-8"
+    )
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    QApplication.processEvents()
+
+    assert composition.ffmpeg.path != unrunnable, "an unrunnable file was accepted as ffmpeg"
+    shown = composition.window.findChildren(QMessageBox, "settingsProblemDialog")
+    assert shown, (
+        "the stored ffmpeg cannot be run and nothing told the user: ARC-008 requires a report, "
+        "not a silent fallback"
+    )
+    try:
+        assert "cannot be run" in shown[0].text()
+        assert str(unrunnable) in shown[0].text(), "the report does not name the file it discarded"
+    finally:
+        for box in shown:
+            box.close()
+        QApplication.processEvents()
+
+
+def test_refusing_a_choice_leaves_a_working_override_exactly_where_it_was(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T199-R3`, second half — and the state my own regression could not see.**
+
+    The refusal path reported and returned, but only *after* pushing the fallback into the
+    environment and into `set_ffmpeg_override`. So with a good custom override in force, refusing a
+    bad new choice switched future workers to `PATH` while the stored setting and the screen went
+    on naming the custom binary — `T199-R2`'s UI/worker disagreement, recreated through the door
+    marked *nothing changes*.
+
+    **The earlier test started from `PATH`**, where the fallback and the previous value are the
+    same object, so its "unchanged" assertion was true for the wrong reason. This one starts from a
+    working custom override, which is the only state that can tell the two apart.
+    """
+    good_dir = tmp_path / "good"
+    good_dir.mkdir()
+    good = an_executable_ffmpeg(good_dir)
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.with_ffmpeg_location(core_settings.Settings(), good), settings_file
+        )
+        is None
+    )
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    assert composition.manager._ffmpeg_override == good, (
+        "the working custom override was not in force to begin with, so this proves nothing"
+    )
+
+    write_location = composition.window._on_ffmpeg_location_chosen
+    assert write_location is not None
+    write_location(tmp_path / "does-not-exist" / "ffmpeg")
+    QApplication.processEvents()
+
+    assert composition.manager._ffmpeg_override == good, (
+        f"a refused choice moved future workers to {composition.manager._ffmpeg_override}, away "
+        "from the override that is still stored and still displayed"
+    )
+    assert core_settings.load(settings_file).settings.ffmpeg_location == good, (
+        "a refused choice changed the stored setting"
+    )
