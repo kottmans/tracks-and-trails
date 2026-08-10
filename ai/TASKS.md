@@ -2378,6 +2378,15 @@ worse than one that admits there is none — it sends the user to try things. `T
 - **The extractor's own message is present and verbatim** wherever one exists (`NFR-006`,
   `DAT-003`), and a test asserts it is not truncated, reworded, or replaced by the class's text.
   The class's text accompanies the message; it does not stand in for it
+- *(Added 2026-08-09, ruled in from the maintainer-approved UI review.)* **The reason appears on
+  the failed row itself** — the class in plain words, then the extractor's message, on the row.
+  `UX-005` §2 bans a detail pane, so the row is the only place the *why* can live. Elided by width
+  when long, never rewritten. The review's screenshot is the failure mode this closes: a
+  members-only job whose row said `Failed` and nothing else while the full reason sat unread in
+  `error_message`
+- *(Added 2026-08-09, same review.)* **A terminal failure suppresses the byte line.** "0 B of
+  Unknown" on a job that never started is a confident statement about nothing, and it crowds the
+  line the reason needs
 - **Retry is offered only where retry can work.** `REQ-018` requires the job stay in a failed state
   and retry be offered; `DRM_PROTECTED` and `UNSUPPORTED_URL` are where offering it is a lie, and
   `UX-005` §5 says nothing is drawn that would be refused
