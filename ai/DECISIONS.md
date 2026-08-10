@@ -1107,6 +1107,66 @@ Added:
   `T-014`'s approved persistence code or the model.
 
 
+### Amended 2026-08-10 — cookie files land, and the path never enters the model (`T-197`)
+
+**Status:** **Accepted** (2026-08-10) — maintainer ruling, taken **before** cookie-file support
+lands, which is what the condition above requires. Asked as four explicit questions with the
+alternatives stated; the answers are recorded here as the maintainer's.
+**Amends:** the provenance table's first row, and the two reopening conditions this ruling takes.
+**Does not amend** the decision itself — verbatim storage, with `REQ-026` read as binding on values
+this application supplies. That is unchanged and is still what everything rests on.
+
+#### Why this was needed before any code
+
+`T-197`'s entry says re-opening this decision is out of its scope. **That line is wrong**, and
+`AGENTS.md` §5 is why: this file outranks `ai/TASKS.md`, and the condition above says the decision
+*"must be revisited **before** [cookie-file support] lands, not after"*. Two of `T-197`'s central
+criteria trip conditions — a cookie file path is row one acquiring its first member, and a
+validator on `cookies_from_browser` is the second trigger by name. The task entry is corrected
+rather than this one bent to fit it.
+
+#### The ruling
+
+1. **Cookie-file support lands in Phase 4**, as `T-197` is filed. `REQ-026` already promises *"a
+   browser profile or a cookies file"*, so deferring would leave an approved requirement half
+   built with nothing recording why.
+2. **The path is settings-only and never enters `DownloadRequest`.** It lives in `settings.toml`
+   and the adapter reads it when a session is spawned. The model does not carry it, so it cannot
+   reach the database through a job at all.
+3. **`cookies_from_browser` gains a validator** and must be a browser name.
+
+#### What row one now says, and how
+
+| Provenance | In the database? | How that is guaranteed |
+|---|---|---|
+| **A cookie file path this application holds** | **Never** | **Structural.** `DownloadRequest` has no field for it; a job cannot carry one. The value exists in `settings.toml` and in the arguments handed to a worker process, neither of which is the queue database |
+| **A browser name this application supplies** | Yes, as a name | **By construction now, not by intent** — the validator above closes the caveat `T-049` recorded. A path typed into that field is refused rather than travelling through a field the redaction reasoning assumes is a name |
+
+**Chosen against the two alternatives, both stated when the ruling was taken.** Letting the path
+into `DownloadRequest` and relying on the redaction gate would make row one a *filtered* promise
+rather than a structural one — the shape this entry twice records failing, at the cost of two
+recognisers, three credential escapes and one Critical. Holding it in the request and stripping it
+before storage would keep it out of the database while making the guarantee *"someone remembered to
+strip it"* at every persistence path, which is a field that must be forgotten.
+
+**What this costs, stated:** the adapter reads the cookie path from settings rather than from the
+request, so a worker's arguments are no longer derivable from the job row alone. That is a real
+loss of one property — a queued job no longer fully describes its own invocation — and it is
+accepted deliberately, because the alternative is the guarantee above stopping being structural.
+
+#### Reopening conditions, as they now stand
+
+The original three stand — sync, export, cloud backup, or a bug report attaching the database —
+and *"any other secret-bearing persisted field"* stands. Two are **taken** by this ruling and are
+no longer pending: cookie-file support, and constraining `cookies_from_browser`. Added:
+
+- **A cookie path reaching `DownloadRequest`, the job row, or any durable record**, by any route.
+  Row one is structural only while that stays true, and the moment it does not this decision is
+  back to being a filtered promise and must say so.
+- **Constraining `url`.** Still untaken, and still the remaining half of `T-049`'s caveat: a
+  credential the user typed into a URL is in the database today, deliberately.
+
+
 ---
 
 ## SEC-002 — A fixture commits values only for the fields the projection reads

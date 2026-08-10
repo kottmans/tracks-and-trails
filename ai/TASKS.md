@@ -120,11 +120,11 @@ this one returned four verdicts before approving.*
 
 ### T-199 — ffmpeg: say which features are gone, and let the user point at one
 
-**Status:** **In Review — corrected 2026-08-10, awaiting a focused re-review** (`T199-R1`,
-`T199-R2`, `T199-R3` High; `T199-R4` Medium). Built the same day on maintainer instruction,
-immediately after `T-146` unblocked it.
+**Status:** **In Review — focused re-review changes requested 2026-08-10.** `T199-R1`,
+`T199-R2`, and `T199-R4` are resolved at `c4668e8`; `T199-R3` remains **High and blocking**.
+Built the same day on maintainer instruction, immediately after `T-146` unblocked it.
 
-- **`T199-R1` — High. Corrected.** The agreement covered `OptionsDialog` and not *anywhere in the
+- **`T199-R1` — High. Resolved at `c4668e8`.** The agreement covered `OptionsDialog` and not *anywhere in the
   add dialog*: the preset catalogue was offered whole, so `Audio only (MP3)`, `Audio only
   (original)` and `Video with embedded subtitles` were all offered with ffmpeg absent and all
   three are refused by the worker's `_ffmpeg_gap` before a byte moves. `core.presets.needs_ffmpeg`
@@ -133,13 +133,13 @@ immediately after `T-146` unblocked it.
   what feeds the batch combo, the row selectors and every row's own picker. **A unit test binds
   the pure predicate to the definitive one over the whole built-in catalogue**, so the two cannot
   drift, and a composed test drives a **real** absent-ffmpeg resolution rather than the flag.
-- **`T199-R2` — High. Corrected.** `DownloadManager` captured `_ffmpeg_override` at construction
+- **`T199-R2` — High. Resolved at `c4668e8`.** `DownloadManager` captured `_ffmpeg_override` at construction
   and handed it to every child; nothing updated it, so after a live change the UI followed the new
   answer while workers received the old path — the dialog offering exactly what the worker would
   refuse. `set_ffmpeg_override` added, called from the chooser, and the regression asserts the
   **value the manager passes to children** rather than the status line, which would have passed
   against the defect.
-- **`T199-R3` — High. Corrected.** Validation was split three ways and disagreed: the stored value
+- **`T199-R3` — High. Remains open after focused re-review.** Validation was split three ways and disagreed: the stored value
   was checked at load, the live choice was checked nowhere and persisted regardless, and
   `find_ffmpeg` refused a bad override without falling back. `unusable_ffmpeg_reason` is now one
   public predicate both routes call, and composition's `resolve_ffmpeg` is the single
@@ -147,7 +147,16 @@ immediately after `T-146` unblocked it.
   both end on `PATH` with a reason. **A refused choice is not persisted**, so it cannot fail again
   at the next launch; a stored location that has since become unusable falls back for the session
   without rewriting the file, because an unplugged drive should not cost the user their setting.
-- **`T199-R4` — Medium. Corrected.** The new test wrote an extensionless `ffmpeg` with
+  The correction still does not give both routes that contract. A stored file that passes the
+  shape checks and later becomes non-executable falls back to `PATH` with a log warning only;
+  `settings_read.problem` remains empty, so no `ARC-008` dialog is shown. On the live route,
+  `manager.set_ffmpeg_override(resolved.path)` runs before the refusal branch: rejecting a bad
+  choice while a valid custom override is active silently switches future workers to `PATH`, while
+  the settings file and screen continue to name the custom binary. The committed regression starts
+  from `PATH`, where that mutation happens to equal the value it calls `unchanged`, and misses the
+  state combination. The stored non-executable case and the valid-custom-then-refusal case both
+  need composed evidence.
+- **`T199-R4` — Medium. Resolved at `c4668e8`.** The new test wrote an extensionless `ffmpeg` with
   `chmod 0755`, which `shutil.which` cannot match on Windows. **The proven cross-platform shape
   was already in the file, six tests up, with a comment explaining this exact trap** — and it was
   written the broken way anyway. It is now the `an_executable_ffmpeg` helper both tests call,
@@ -1571,7 +1580,13 @@ this task must not land a stored proxy without it.
 
 ### T-197 — Cookie source, and the redaction gate that has to prove it
 
-**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Status:** **Proposed — unblocked 2026-08-10 by the `DAT-003` ruling**, and not yet started. The
+ruling had to be taken first:
+reading this entry against the decision showed that its *Out of scope* line contradicted
+`DAT-003`'s own reopening conditions, and no code was written until the maintainer ruled. The
+shape is now settled — cookie files land this phase, the path is **settings-only and never in
+`DownloadRequest`**, and `cookies_from_browser` gains a validator. Filed 2026-08-09 from
+`IMPLEMENTATION_PLAN.md` §Phase 4.
 **Owner:** Implementer
 **Priority:** High — it is the phase's only deliverable whose failure mode is a leaked credential
 **Phase:** Phase 4
@@ -1628,7 +1643,14 @@ first time. That is precisely the material `REQ-026` says is never logged.
   have an account for. Nothing here defeats a paywall, a geo-restriction or an authentication check
 - `-u`/`-p` username and password options — **excluded by `SEC-003`**
 - `--netrc` and client certificates, which `SEC-003` ruled *in* but assigned to Phase 4.5's audit
-- Re-opening `DAT-003`. Its reopening condition is stated in the decision; this task works inside it
+- ~~Re-opening `DAT-003`~~ — **this line was wrong and is corrected** (2026-08-10). `DAT-003`'s own
+  conditions say the decision must be revisited **before** cookie-file support lands, and two of
+  this task's criteria trip them: holding a cookie file path, and constraining
+  `cookies_from_browser`. `AGENTS.md` §5 puts the decision above this entry, so the entry gave way.
+  **The ruling was taken before any code**, and `DAT-003`'s 2026-08-10 amendment records it: cookie
+  files land this phase; **the path is settings-only and never enters `DownloadRequest`**, which
+  keeps the never-in-the-database guarantee structural; and `cookies_from_browser` gains a
+  validator. This task now works inside *that*
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
