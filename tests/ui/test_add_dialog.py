@@ -4673,6 +4673,120 @@ def test_a_value_refresh_leaves_the_open_panel_over_its_row(
         dialog.close()
 
 
+def test_the_reachable_failed_path_keeps_the_panel_and_the_selection(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-209`, run as specified**: the real signal, a real keystroke, and the user's route out.
+
+    The neighbouring `T204-R4` test drives the slot directly and never touches the selection.
+    This one is the criterion verbatim: the selection is changed with `Space` **first**, the
+    failure arrives through `manager.job_changed` — the connection a user's session actually
+    exercises — and after the value refresh the panel must still be the row's index widget,
+    still cover the row, and still hand back the half-made choice through its own *Done*.
+    """
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(900, 700)
+    dialog.show()
+    qapp.processEvents()
+    _open_the_picker(dialog, row)
+    qapp.processEvents()
+    # Through the typed property rather than the helper's `Any`, so the index-widget identity
+    # assert below narrows to `PlaylistPanel` and not to bare `QWidget`.
+    panel = dialog.open_playlist_panel
+    assert panel is not None
+    listing = staging_list(dialog)
+
+    try:
+        QTest.keyClick(panel.picker.table, Qt.Key.Key_Space)
+        qapp.processEvents()
+        chosen = row.entry_selection
+        assert isinstance(chosen, PlaylistSelection) and len(chosen.checked) == 6
+
+        job_id = row.job_id
+        assert isinstance(job_id, str) and job_id
+        dialog._manager.job_changed.emit(job_id, JobStatus.CANCELLED.value)
+        qapp.processEvents()
+        assert row.state is RowState.FAILED, "the reachable path did not reach FAILED"
+
+        index = dialog._model.index(dialog.rows.index(row), 0)
+        assert listing.indexWidget(index) is panel, (
+            "after the value refresh the panel is no longer the row's index widget"
+        )
+        assert panel.geometry() == listing.visualRect(index), (
+            f"the panel sits at {panel.geometry()} while its row is at "
+            f"{listing.visualRect(index)} — the delegate's row paints through the difference"
+        )
+        viewport = listing.viewport()
+        done_bottom = panel.done_button.mapTo(viewport, panel.done_button.rect().bottomLeft()).y()
+        assert 0 <= done_bottom <= viewport.height(), "Done left the viewport with the refresh"
+
+        panel.done_button.click()
+        qapp.processEvents()
+        assert dialog.open_panel is None, "Done did not close the panel"
+        assert row.entry_selection == chosen, (
+            f"the failure refresh cost the user their half-made choice: "
+            f"{row.entry_selection} != {chosen}"
+        )
+    finally:
+        dialog.close()
+
+
+def test_a_value_refresh_leaves_the_open_format_table_over_its_row(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-209`'s audit, the other panel kind.** The correction is `relayout_panel`, which moves
+    whatever panel is open — but "it should generalise" is exactly the claim the audit exists to
+    replace with a measurement, because the geometry seam has needed two corrections already.
+
+    Same reachable path as the playlist case, on the **format table**: the row's job leaves the
+    queue, the value refresh re-measures the row, and the table must still cover it. Closed with
+    `Esc`, the format table's own discard route.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    dialog.resize(900, 700)
+    dialog.show()
+    qapp.processEvents()
+    row = dialog.rows[0]
+    dialog.open_format_table(row)
+    # Two turns, deliberately: `_open_panel` defers the mount (`T108-R2`'s ordering) and the
+    # geometry lands on the turn after the widget does — the audit's finding about *every* open,
+    # recorded in the entry as the one-turn transient.
+    qapp.processEvents()
+    qapp.processEvents()
+    panel = dialog.open_format_panel
+    assert panel is not None, "the row did not open into its format table"
+    listing = staging_list(dialog)
+    before = panel.size()
+    assert before.height() > 100, f"the table never opened to a usable size: {before}"
+
+    try:
+        job_id = row.job_id
+        assert isinstance(job_id, str) and job_id
+        dialog._manager.job_changed.emit(job_id, JobStatus.CANCELLED.value)
+        qapp.processEvents()
+        assert row.state is RowState.FAILED
+
+        index = dialog._model.index(dialog.rows.index(row), 0)
+        assert panel.size() == before, (
+            f"the value refresh shrank the format table from {before} to {panel.size()}"
+        )
+        assert panel.geometry() == listing.visualRect(index), (
+            "the format table no longer covers its row"
+        )
+
+        QTest.keyClick(panel, Qt.Key.Key_Escape)
+        qapp.processEvents()
+        assert dialog.open_panel is None, "Esc did not close the format table"
+    finally:
+        dialog.close()
+
+
 def _wheel_down(target: QWidget) -> QWheelEvent:
     """One notch of wheel-down, aimed at `target`'s centre."""
     centre = QPointF(target.rect().center())

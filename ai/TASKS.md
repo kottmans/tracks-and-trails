@@ -514,16 +514,37 @@ geometry path, and assuming which one is how T-204 reached review without reprod
 ---
 
 
-## Ready
-
 ### T-209 — Keep an open row panel laid out after a value refresh
 
-**Status:** **Ready — blocking `T204-R4`, found in T-204's focused re-review.** The corrected,
-reachable `job_changed` path changes the row to `FAILED` and calls the model's value-only
-`dataChanged` refresh. In a shown dialog Qt then shrinks the mounted `PlaylistPanel` from the row's
-485×407 visual rectangle to its 190×26 minimum, clipping the picker and Done button while the
-delegate-painted row shows through underneath. This is the overlap in T-204 criterion 6, now
-reproduced rather than hypothetical.
+**Status:** **In Review — criteria run as specified 2026-08-10, and the audit is a table.**
+The correction itself — `relayout_panel`'s deferred restore — had shipped with `T204-R4`; what
+this task still owned was **running the criteria as written**, which no test had done: the real
+`manager.job_changed` signal (not the slot), a real `Space` keystroke before the failure, the
+panel asserted as the row's **index widget** with geometry equal to `visualRect`, the close
+through the panel's own route, and the selection proved to survive it. Two regressions now do
+exactly that — `test_the_reachable_failed_path_keeps_the_panel_and_the_selection` (playlist,
+closed by *Done*, choice kept) and `test_a_value_refresh_leaves_the_open_format_table_over_its_row`
+(**the other panel kind**, closed by `Esc`).
+
+**Criterion 4 was proved on both of its halves.** Transplanted to a `6aded1a` worktree — with an
+import probe confirming the worktree's package was the one under test — both regressions
+**fail there**: the playlist panel shrinks to **190×26 inside an 852×407 row** (the criterion's
+own numbers at a wider window), and the format table never opens past its minimum at all.
+At HEAD, disabling `relayout_panel` fails **all three** value-refresh regressions, the
+`T204-R4` one included — weakening the correction makes them fail again.
+
+**The audit, by reset class:**
+
+| Reset class | Playlist panel | Format panel |
+|---|---|---|
+| Value-only refresh (reachable `FAILED` path) | held, gated | held, gated |
+| Structural remount (add / retype / remove) | `T108-R2`'s tests + `T-208`'s re-anchor | same mechanism, `remount_panel` is kind-blind |
+| **Every open** (mount ordering) | **one-turn transient**: the panel spends the turn between widget and geometry at its 190×26 minimum — the deliberate `T108-R2` deferral, which refuses stale rectangles. Permanent states are all correct; whether the turn is a visible flash on a real display is `OPS-003`-shaped and **awaits the maintainer's screen**. Left unchanged tonight rather than reordering the seam that produced `T107-R2`, `T108-R2` and `T-204` unsupervised. | same, observed on both kinds |
+
+*(Was: Ready — blocking `T204-R4`, found in T-204's focused re-review: the reachable
+`job_changed` path shrank the mounted `PlaylistPanel` from the row's 485×407 visual rectangle to
+its 190×26 minimum, clipping the picker and Done while the delegate-painted row showed through —
+T-204 criterion 6, reproduced rather than hypothetical.)*
 **Owner:** Implementer
 **Priority:** High — the row's body becomes inaccessible on the exact path T-204 is meant to make
 escapable, and the submitted role-only test never shows the dialog or checks geometry
@@ -539,23 +560,35 @@ refresh differs from both the initial mount and structural-reset paths those cor
 #### Acceptance criteria
 
 - In a shown dialog, open the playlist picker, change its selection with a real key/click, and
-  drive the reachable `manager.job_changed → _on_job_changed → FAILED` path
+  drive the reachable `manager.job_changed → _on_job_changed → FAILED` path *(met 2026-08-10:
+  `Space` on the picker's table, then the signal emitted on the manager — the connection a real
+  session exercises — not the slot)*
 - After that refresh, the panel remains the row's index widget and its geometry matches the row's
   visual rectangle; the picker body and Done button remain visible and usable, with no delegate row
-  anatomy painted through the panel
+  anatomy painted through the panel *(met: `indexWidget(index) is panel`, geometry equals
+  `visualRect`, *Done*'s bottom inside the viewport)*
 - Close through an actual user route—Done, Esc, or a disclosure event that the view really emits—
   rather than calling `toggle_playlist` directly, and prove the changed selection survives
+  *(met: *Done* on the playlist — the accept route, since `Esc` is the discard route by its own
+  test — and the six-of-seven selection compared equal after the close)*
 - The regression fails at `6aded1a`, where the panel is 190×26 inside a 485×407 row; weakening the
-  correction must make it fail again
+  correction must make it fail again *(met on both halves: transplanted to a `6aded1a` worktree
+  both regressions fail — 190×26 in 852×407 at this probe's window — and disabling
+  `relayout_panel` at HEAD fails all three value-refresh regressions)*
 - Audit value-only refreshes for both playlist and format panels, plus structural remounting, so the
-  correction does not fix one panel kind or reset class only
-- Run `ruff`, `ruff format`, both mypy gates and the affected UI suites
+  correction does not fix one panel kind or reset class only *(met: the table in the status —
+  including the one-turn mount transient it surfaced, recorded rather than reordered overnight)*
+- Run `ruff`, `ruff format`, both mypy gates and the affected UI suites *(run at submission; the
+  results are in the session's handoff and the commit)*
 
 #### Out of scope
 
 - T-208's separately unexplained multi-row report, unless this geometry path reproduces it
 
 ---
+
+
+## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
