@@ -5,16 +5,20 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
-**Last reviewed:** 2026-07-25
+**Last updated:** 2026-08-09 — the status note corrected; it had described the Phase 0 stub tree
+for two weeks after the tree was built
+**Last reviewed:** 2026-08-09
 **Update when:** A boundary, data model, major dependency, or approved cross-cutting pattern changes.
 **Does not contain:** Task status, review history, local setup commands, rationale (see `DECISIONS.md`).
 
-> **Status note:** This describes the *approved design*, not implemented reality. As of
-> 2026-07-25, of the 31 modules under `src/`, **26 are docstring-only stubs**; the five with
-> code are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py` and `ui/main_window.py`
-> — the entry point, the frozen-build probe, and the Phase 0 shell window. Nothing downloads,
-> probes, or persists a job. `ai/STATUS.md` is authoritative for what is actually built.
+> **Status note:** This describes the *approved design*, not implemented reality — but as of
+> 2026-08-09 the two have largely converged: Phases 0–3 are exited, and the boundaries, process
+> model, data ownership and layering rules described here are built and enforced by test.
+> *(This note said, from 2026-07-25 until 2026-08-09, that 26 of 31 modules were docstring-only
+> stubs and nothing downloaded, probed, or persisted — long-stale by the time it was corrected.)*
+> §4's project-structure listing still shows the planned shape; the built tree has grown modules
+> around it (`ui/` in particular) that the listing does not yet name. `ai/STATUS.md` is
+> authoritative for what is actually built.
 
 ---
 
