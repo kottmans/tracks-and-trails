@@ -408,6 +408,36 @@ def compose(
         """
         manager.retry(job_id)
 
+    def remember(chosen: AppSettings, what: str) -> None:
+        """Write the settings file, and **say so when it does not get written** (`T146-R2`).
+
+        `save()` has returned its failure rather than raising since `T109-R9`, and these three
+        callers dropped it — so a full disk or a read-only profile directory left the user with a
+        setting that had visibly taken effect and would be gone at the next launch. *"A chosen
+        directory survives a restart"* is `T-146`'s criterion, and a silent write failure is
+        precisely the case where it does not.
+
+        **Transient, not modal.** The change *did* apply — the theme is on screen, the folder is
+        what the next job uses — so this is not a refusal to be acknowledged; it is a warning that
+        this session is as far as it goes. `report_transiently` exists for exactly this, and says
+        so: *"composition performs the writes `ui/` is not allowed to, so it is also where their
+        failures surface"*. A modal per failed keystroke on a read-only profile would be
+        unusable, which is the shape `_report_transiently` was written against.
+
+        Logged as well as shown, because the status line is gone in thirty seconds and the reason
+        — the operating system's own words — is what a bug report needs.
+        """
+        failure = app_settings.save(chosen, settings_file)
+        if failure is None:
+            return
+        logging.getLogger("tracksandtrails.app").warning(
+            "could not save settings to %s: %s", settings_file, failure
+        )
+        window.report_transiently(
+            f"{what.capitalize()} changed for this session only — your settings could not be "
+            f"saved: {failure}"
+        )
+
     def choose_concurrency(limit: int) -> None:
         """Apply the user's chosen limit and remember it (`REQ-013`, `ARC-007`).
 
@@ -423,7 +453,7 @@ def compose(
         chosen = app_settings.with_concurrency(held.settings, limit)
         manager.set_concurrency(chosen.concurrency)
         held.settings = chosen
-        app_settings.save(chosen, settings_file)
+        remember(chosen, "the number of downloads at once")
         # **Both controls follow the value, from here** (`T-146`). The toolbar spinner and the
         # settings screen's edit one setting, so the window is told what was applied rather than
         # each control telling the other — one writer, two views, and no round trip between them.
@@ -445,8 +475,8 @@ def compose(
         resolved.mkdir(parents=True, exist_ok=True)
         chosen = app_settings.with_download_directory(held.settings, directory)
         held.settings = chosen
-        app_settings.save(chosen, settings_file)
         window.show_download_directory(resolved, is_default=directory is None)
+        remember(chosen, "the download folder")
 
     def choose_theme(name: str) -> None:
         """Wear a palette now, and at the next launch (`REQ-023`, `ARCHITECTURE.md` §8, `T-146`).
@@ -457,8 +487,8 @@ def compose(
         """
         chosen = app_settings.with_theme(held.settings, name)
         held.settings = chosen
-        app_settings.save(chosen, settings_file)
         ui_theme.apply(app, ui_theme.THEMES[chosen.theme])
+        remember(chosen, "the theme")
 
     def save_preset(preset: Preset) -> str | None:
         """Keep the options editor's answer under a name (`P-4`, `REQ-007`, `T109-R5`).

@@ -1270,3 +1270,56 @@ def test_with_theme_refuses_a_name_this_application_does_not_have() -> None:
     assert with_theme(Settings(), "dark").theme == "dark"
     assert with_theme(Settings(), "solarized").theme == THEME_DEFAULT
     assert set(THEME_NAMES) == {"light", "dark"}
+
+
+# --- T146-R1: load() never raises, including while expanding a path ---------------------------
+
+
+def test_a_download_folder_that_cannot_even_be_expanded_reports(tmp_path: Path) -> None:
+    """**`T146-R1`.** `load()` promises it never raises, and `~user` expansion can.
+
+    `Path("~someone-who-left/x").expanduser()` raises `RuntimeError` when the account has no home
+    directory to expand to, and that call sat *outside* the guard — so the error left `load()` and
+    **stopped the application starting** on a settings file `ARC-008` exists to report. Reproduced
+    against the real function before the guard was moved.
+
+    The reported text names the value **as written**: when the expansion is what failed, there is
+    no expanded path to show, and printing a half-expanded one would be worse than printing none.
+    """
+    target = write(tmp_path, '[downloads]\ndirectory = "~nosuchuser12345/downloads"\n')
+
+    read = load(target)
+
+    assert read.settings.download_directory is None
+    assert read.problem is not None, "an unexpandable folder was discarded silently (ARC-008)"
+    assert "could not be checked" in read.problem.reason
+    assert "~nosuchuser12345/downloads" in read.problem.reason, (
+        f"the report does not name the value the user wrote: {read.problem.reason!r}"
+    )
+
+
+def test_every_settings_file_shape_leaves_the_application_startable(tmp_path: Path) -> None:
+    """The contract itself, over every shape this module has ever had to survive.
+
+    `load()`'s docstring says *never raises*, and each entry below is a file that once could or
+    still could break it. Asserted as one sweep because the promise is about the function, not
+    about any single branch of it.
+    """
+    shapes = [
+        '[downloads]\ndirectory = "~nosuchuser12345/x"\n',
+        '[downloads]\ndirectory = "/tmp/nul\x00byte"\n',
+        "[downloads]\ndirectory = 7\n",
+        '[downloads]\ndirectory = ""\n',
+        "[downloads]\ndirectory = { nested = true }\n",
+        "downloads = 5\n",
+        '[appearance]\ntheme = "solarized"\n',
+        "[appearance]\ntheme = 3\n",
+        "appearance = 5\n",
+        "[queue]\nconcurrency = ",
+        "<<<not toml>>>",
+        "",
+    ]
+    for body in shapes:
+        target = write(tmp_path, body)
+        read = load(target)
+        assert isinstance(read.settings, Settings), f"{body!r} did not answer with settings"

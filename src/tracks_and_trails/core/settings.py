@@ -302,8 +302,14 @@ def _directory_from(raw: Any) -> tuple[Path | None, str | None]:
         # deleting the line, and `save()`'s header promises deleting it is safe.
         return None, None
 
-    candidate = Path(raw).expanduser()
     try:
+        # **Inside the guard, because expanding a `~` is itself a lookup that fails** (`T146-R1`).
+        # `~someone-who-left/downloads` raises `RuntimeError` when the account cannot be resolved
+        # — no home directory to expand to — and this call sat *above* the try, so the error left
+        # `load()`, broke its never-raises contract, and stopped the application starting on a
+        # settings file it was supposed to report. Exactly the shape `T102-R1` found in decoding,
+        # in the branch written to remember it.
+        candidate = Path(raw).expanduser()
         if not candidate.exists():
             return None, (
                 f"The download folder in your settings no longer exists, so downloads will go to "
@@ -319,14 +325,23 @@ def _directory_from(raw: Any) -> tuple[Path | None, str | None]:
                 f"The download folder in your settings cannot be written to, so downloads will "
                 f"go to the default folder instead.\n{candidate}"
             )
-    except OSError as error:
+    except (OSError, RuntimeError) as error:
         # **This function's never-raises contract, kept against the filesystem** — the same lesson
         # `T102-R1` taught about decoding: a check that can raise is a check that can stop the
         # application starting, which is the opposite of what `ARC-008` promises. A path on a
-        # disconnected network share raises here rather than answering False.
+        # disconnected network share raises `OSError` here rather than answering False.
+        #
+        # **`RuntimeError` is `expanduser`'s** answer for a `~user` it cannot resolve, which is
+        # `T146-R1` (`ValueError` was in this tuple for one draft, for a path holding a NUL byte —
+        # removed because it cannot happen *here*: `tomllib` rejects a raw NUL while parsing, so
+        # such a value is reported as a decode error and never reaches this function. A caught
+        # exception nobody can produce is a claim, not a guard.)
+        #
+        # The reported text names the value **as written** rather than the expansion, because when
+        # the expansion is what failed there is no expanded path to name.
         return None, (
             f"The download folder in your settings could not be checked, so downloads will go to "
-            f"the default folder instead.\n{candidate}\n{type(error).__name__}: {error}"
+            f"the default folder instead.\n{raw}\n{type(error).__name__}: {error}"
         )
     return candidate, None
 

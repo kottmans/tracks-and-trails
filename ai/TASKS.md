@@ -5,11 +5,10 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **the overnight session the maintainer directed**: `T-203`'s
-option-*E* rebuild is built and In Review, its hold lifted by the same instruction; `T-204`,
-`T-207`, `T-210` and `T-211` are Complete, T-210's sub-600px scope ruling approved at `de98190`.
-**Phase 4 is the current phase**, its plan deliverables decomposed under `## Proposed — Phase 4`
-and **none started**; the carried-in defects are a separate set.
+**Last updated:** 2026-08-10 — the combined review approved `T-215` at the combined implementation
+tree `b9caa40`; `T-146`, Phase 4's first built plan deliverable, remains In Review with two open
+blocking findings (`T146-R1`, `T146-R2`).
+**Phase 4 is the current phase**, its plan deliverables decomposed under `## Proposed — Phase 4`.
 For what is awaiting a verdict now, read `## In Review` — this header does not duplicate it, for
 `T204-R2`'s reason.
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
@@ -18,11 +17,11 @@ For what is awaiting a verdict now, read `## In Review` — this header does not
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here: the current phase is Phase 4.** No plan deliverable has been started; the work done
-so far is carried-in defects. Phase 3 exited 2026-08-09, Phase 2 on 2026-08-05, Phase 1 on
-2026-07-29 and Phase 0 on 2026-07-26; every exit review is in `ai/REVIEWS.md`. **Actionable work is
-`## Proposed — Phase 4` and `## Ready`; what awaits a verdict is `## In Review`.** None of the three
-says how many it holds, for `T204-R2`'s reason.
+**Start here: the current phase is Phase 4.** Its first plan deliverable, `T-146`, is built and
+awaiting a focused correction; carried-in defect `T-215` is approved. Phase 3 exited 2026-08-09,
+Phase 2 on 2026-08-05, Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26; every exit review is in
+`ai/REVIEWS.md`. **Actionable work is `## Proposed — Phase 4` and `## Ready`; work awaiting review
+or correction is `## In Review`.** None of the three says how many it holds, for `T204-R2`'s reason.
 
 *(**This line has now been wrong twice, and both times it was found by review rather than by
 reading it.** `P3EXIT-R1` found it saying Phase 2 three days after Phase 3 began; `P3EXIT-R4` found
@@ -119,105 +118,34 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
-### T-215 — An offline launch keeps a held queue held
-
-**Status:** **In Review — built 2026-08-10**, on maintainer instruction (*"Do T-215 and then
-T-146"*). **Observed live, not inferred**: the review launched the composed application offscreen
-with unreachable URLs, and every durably-queued row became `Failed` within a second — queue
-stopped, user touching nothing.
-
-**The chosen shape, which this entry's criteria require recording: the first of the two — defer
-the startup probes.** Composition hands the previous run's rows to `admit_when_started` instead
-of `admit`, and `start_queue()` admits them before it fills its slots, so held rows stay `Held`
-and pressing Start reads then downloads them — the order the add dialog already teaches.
-
-**The second shape was not taken, and a third was tried and rejected on evidence.** Returning a
-failed *startup* probe to `Held` would still fire every request unattended and would have to
-distinguish a startup probe inside the failure handler; deferring means the requests are never
-made. The rejected third was widening the stopped-queue gate to cover every durable probe, which
-reads well — *"reading the queue's own rows is the queue running"* — and is wrong: **the gate
-cannot tell an inherited probe from the one the add dialog runs when a user adds a playlist**, so
-it left freshly queued entries bare until Start, which is the report `T-143` exists to have
-fixed. It also failed five deliberate manager tests (`T080-R1`, `UX-003`, `T-143`) whose subject
-is that very exemption. Startup is the only moment at which nobody has asked for anything, so the
-caller that knows it is startup is the one that says so.
-**Owner:** Implementer
-**Priority:** Medium–High — the user's standing queue is data, and a bad network moment currently
-rewrites it into failures they must retry row by row
-**Phase:** Phase 4 — behaviour, not paint, but no more a plan deliverable than the rest of this set
-**Depends on:** nothing
-**Relevant context:** `app.py` §594–596 (startup admits `QUEUED` rows as probe sessions),
-`downloader/manager.py` (`admit`, the probe lane, which the stopped queue does not gate), `UX-006`
-(a queue is stopped until started; a waiting row reads `Held`), `UX-003`, `REQ-018` (only `NETWORK`
-auto-retries; everything else waits for the user), `T-115`, `T081-R4` (admission's history: nothing
-recovered starts unattended), `ARC-009`
-**Affected surfaces:** `app.py` and/or `downloader/manager.py`, `tests/integration/`
-**Risk:** Medium — the admission seam has needed care before (`T081-R4`), and the fix must not
-strand an unprobed row unstartable
-
-#### Scope
-
-**The mechanism, read from the code and then watched.** Startup admits durably-`QUEUED` rows as
-`PROBE` sessions; the probe lane is not gated by the stopped queue; a failed probe fails the job.
-So a laptop opened on a train shows a wall of `Failed` rows for work the user committed and this
-application never downloaded. A failure should mean a download — or an attended probe — was
-actually tried.
-
-**Two shapes answer it, and this task chooses and records one:**
-
-- **Defer startup probes until `start_queue()`.** Held rows stay `Held`; pressing Start probes and
-  then downloads, which is the order the add dialog already teaches.
-- **A failed *startup* probe returns the row to `Held`** rather than `FAILED`, carrying its message.
-
-#### Acceptance criteria
-
-- Launching with a durable queue and no usable network leaves **every held row `Held`** — proven by
-  a test driving composition's admission path with a failing prober through the `entry_point` seam,
-  asserting no row reaches `FAILED` without a download or a user-attended probe
-- **The chosen shape is recorded in this entry**, and `REQ-018`'s retry semantics are untouched for
-  real download failures
-- Once the queue starts, probing and downloading proceed as today — the fix must not leave an
-  unprobed row that can never start
-- A URL that is genuinely gone still fails **when the queue runs**, with its extractor message —
-  deferral is not suppression
-- A `Held` row that has never been checked does not claim knowledge it lacks; whatever the row says
-  stays honest about what has and has not been tried
-
-#### What was built, against those criteria
-
-- `DownloadManager.admit_when_started(job_id, kind)` holds an inherited row; `start_queue()`
-  drains the list through `admit` between opening the gate and filling slots, so held rows take
-  their turn in the same fill. The list empties on drain, so stop/start does not re-admit.
-- `app.py`'s startup loop calls it instead of `admit`. Nothing else moved: the stopped-queue gate,
-  its probe exemption and `ARC-009`'s probe-before-download are untouched.
-- **Held means held**: an inherited row is not in `active_job_ids()`, not `_waiting`, and leaves
-  `is_idle` true. The manager reports no work in flight because there is none.
-- Three regressions in `tests/integration/test_composition.py`, all driving composition:
-  `test_an_offline_launch_leaves_the_durable_queue_held` (the defect, with a positive control
-  proving Start still fails the row with the extractor's message — deferral is not suppression),
-  `test_a_held_row_still_probes_and_downloads_once_the_queue_starts` (the anti-stranding
-  criterion, proving the probe still precedes the download), and
-  `test_a_stopped_queue_still_reads_a_url_the_user_pastes`.
-- **That third test closes a gap this change found.** The probe exemption is justified by the add
-  dialog's need, and *nothing tested it through the add dialog's actual path*: every add-dialog
-  test builds its manager through a fixture that calls `start_queue()`, so the launch state was
-  covered nowhere. Measured: with the gate mutated to catch staged probes, `test_add_dialog.py`
-  passed 142 tests. The new test fails there.
-- **Four mutations fail their own regressions**: holding becomes an immediate `admit`; the held
-  list is never drained; the gate is widened to all probes; the gate is widened to staged probes.
-
-#### Out of scope
-
-- The add dialog's attended probes — the user is watching those, and a visible failure there is
-  correct (`UX-003`)
-- Retry *policy* — `REQ-018` and `T-196` own it
-- How the failure reads when it does surface — `T-201`
-
 ### T-146 — A Settings menu, and the screen behind it
 
-**Status:** **In Review — built 2026-08-10**, on maintainer instruction (*"Do T-215 and then
-T-146"*). **The first plan deliverable of Phase 4 to be built.** Filed against `REQ-023`, which
-already names every setting asked for. *(**The phase question below is closed:** Phase 3 exited and
+**Status:** **In Review — corrected 2026-08-10, awaiting focused re-review (`T146-R1` High,
+`T146-R2` Medium).** Built the same day on maintainer instruction (*"Do T-215 and then T-146"*);
+**the first plan deliverable of Phase 4 to be built.** Filed against `REQ-023`, which
+already names every setting asked for.
+
+- **`T146-R1` — High. Corrected 2026-08-10, awaiting re-review.** `Path(raw).expanduser()` sat
+  **outside** the guard in `_directory_from`, and it raises `RuntimeError` for a `~user` whose
+  account cannot be resolved — so the error left `load()`, broke its never-raises contract, and
+  **stopped the application starting** on a settings file `ARC-008` exists to report. Reproduced
+  against the real function first: a file naming `~nosuchuser12345/downloads` raised out of
+  `load()`. The expansion moved inside the `try`, which now also catches `RuntimeError`; the
+  report names the value **as written**, because when the expansion is what failed there is no
+  expanded path to name. Moving the call back out fails both new regressions. *(A `ValueError`
+  arm was in the first correction for a NUL-byte path and was removed on measurement: `tomllib`
+  rejects a raw NUL while parsing, so such a value is reported as a decode error and never
+  reaches this function. A caught exception nobody can produce is a claim, not a guard.)*
+- **`T146-R2` — Medium. Corrected 2026-08-10, awaiting re-review.** The three settings callbacks
+  dropped `save()`'s returned failure, which it has returned rather than raised since `T109-R9` —
+  so a full disk or a read-only profile directory left the user with a setting that visibly took
+  effect and would be gone at the next launch, against this task's own *survives a restart*
+  criterion. All three now route through one `remember` helper that reports through
+  `window.report_transiently` — the channel whose own docstring says composition is where its
+  writes' failures surface — and logs the reason, because the status line is gone in thirty
+  seconds. **Transient rather than modal on purpose**: the change *did* apply, so this is a
+  warning that it lasts one session, not a refusal to acknowledge; a modal per keystroke on a
+  read-only profile would be unusable. *(**The phase question below is closed:** Phase 3 exited and
 Phase 4 opened 2026-08-09, with this task named the owner of its settings-dialog deliverable. No
 re-phasing happened or is needed.)*
 
@@ -350,9 +278,16 @@ conclusion is unchanged and now rests on nothing but the plan, which is where it
 - **`docs/DEVELOPMENT.md` carries the coverage table** — three built, five owned by named tasks —
   and `SETTINGS_STILL_TO_COME` says the same thing **on the screen**, so it cannot read as
   complete. `docs/UX_SPEC.md` §2's *"there is no Settings menu"* is corrected.
-- **Four mutations fail their own evidence**: the stored folder never reaching a job; a deleted
+- **Six mutations fail their own evidence**: the stored folder never reaching a job; a deleted
   folder reverting silently; a cancelled picker treated as *use the default*; the mirrored
-  spinner echoing back into composition.
+  spinner echoing back into composition; and, from the correction pass, the `~` expansion moved
+  back outside its guard and the `save()` failure dropped again.
+- **The correction pass adds three regressions**: an unexpandable `~user` folder reported rather
+  than raised; a sweep asserting `load()` answers for every settings-file shape this module has
+  had to survive; and `test_a_setting_that_could_not_be_saved_says_so`, driven through the
+  toolbar spinner on the composed application — the one of the three callbacks with no global
+  side effect, so the shared `remember` helper is exercised without restyling the `QApplication`
+  the whole session shares.
 - **A fifth mutation passed, and the claim it disproved is corrected rather than left standing.**
   `save()`'s comment and a test docstring both said the new tables *had* to precede `[[preset]]`
   or they would be read as members of it. A TOML table header is an absolute path from the root,
@@ -3179,6 +3114,101 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-215 — An offline launch keeps a held queue held
+
+**Status:** **Complete — approved at `b9caa40` on 2026-08-10**, on maintainer instruction (*"Do
+T-215 and then T-146"*). **Observed live, not inferred**: the review launched the composed
+application offscreen with unreachable URLs, and every durably-queued row became `Failed` within a second — queue
+stopped, user touching nothing.
+
+**The chosen shape, which this entry's criteria require recording: the first of the two — defer
+the startup probes.** Composition hands the previous run's rows to `admit_when_started` instead
+of `admit`, and `start_queue()` admits them before it fills its slots, so held rows stay `Held`
+and pressing Start reads then downloads them — the order the add dialog already teaches.
+
+**The second shape was not taken, and a third was tried and rejected on evidence.** Returning a
+failed *startup* probe to `Held` would still fire every request unattended and would have to
+distinguish a startup probe inside the failure handler; deferring means the requests are never
+made. The rejected third was widening the stopped-queue gate to cover every durable probe, which
+reads well — *"reading the queue's own rows is the queue running"* — and is wrong: **the gate
+cannot tell an inherited probe from the one the add dialog runs when a user adds a playlist**, so
+it left freshly queued entries bare until Start, which is the report `T-143` exists to have
+fixed. It also failed five deliberate manager tests (`T080-R1`, `UX-003`, `T-143`) whose subject
+is that very exemption. Startup is the only moment at which nobody has asked for anything, so the
+caller that knows it is startup is the one that says so.
+**Owner:** Implementer
+**Priority:** Medium–High — the user's standing queue is data, and a bad network moment currently
+rewrites it into failures they must retry row by row
+**Phase:** Phase 4 — behaviour, not paint, but no more a plan deliverable than the rest of this set
+**Depends on:** nothing
+**Relevant context:** `app.py` §594–596 (startup admits `QUEUED` rows as probe sessions),
+`downloader/manager.py` (`admit`, the probe lane, which the stopped queue does not gate), `UX-006`
+(a queue is stopped until started; a waiting row reads `Held`), `UX-003`, `REQ-018` (only `NETWORK`
+auto-retries; everything else waits for the user), `T-115`, `T081-R4` (admission's history: nothing
+recovered starts unattended), `ARC-009`
+**Affected surfaces:** `app.py` and/or `downloader/manager.py`, `tests/integration/`
+**Risk:** Medium — the admission seam has needed care before (`T081-R4`), and the fix must not
+strand an unprobed row unstartable
+
+#### Scope
+
+**The mechanism, read from the code and then watched.** Startup admits durably-`QUEUED` rows as
+`PROBE` sessions; the probe lane is not gated by the stopped queue; a failed probe fails the job.
+So a laptop opened on a train shows a wall of `Failed` rows for work the user committed and this
+application never downloaded. A failure should mean a download — or an attended probe — was
+actually tried.
+
+**Two shapes answer it, and this task chooses and records one:**
+
+- **Defer startup probes until `start_queue()`.** Held rows stay `Held`; pressing Start probes and
+  then downloads, which is the order the add dialog already teaches.
+- **A failed *startup* probe returns the row to `Held`** rather than `FAILED`, carrying its message.
+
+#### Acceptance criteria
+
+- Launching with a durable queue and no usable network leaves **every held row `Held`** — proven by
+  a test driving composition's admission path with a failing prober through the `entry_point` seam,
+  asserting no row reaches `FAILED` without a download or a user-attended probe
+- **The chosen shape is recorded in this entry**, and `REQ-018`'s retry semantics are untouched for
+  real download failures
+- Once the queue starts, probing and downloading proceed as today — the fix must not leave an
+  unprobed row that can never start
+- A URL that is genuinely gone still fails **when the queue runs**, with its extractor message —
+  deferral is not suppression
+- A `Held` row that has never been checked does not claim knowledge it lacks; whatever the row says
+  stays honest about what has and has not been tried
+
+#### What was built, against those criteria
+
+- `DownloadManager.admit_when_started(job_id, kind)` holds an inherited row; `start_queue()`
+  drains the list through `admit` between opening the gate and filling slots, so held rows take
+  their turn in the same fill. The list empties on drain, so stop/start does not re-admit.
+- `app.py`'s startup loop calls it instead of `admit`. Nothing else moved: the stopped-queue gate,
+  its probe exemption and `ARC-009`'s probe-before-download are untouched.
+- **Held means held**: an inherited row is not in `active_job_ids()`, not `_waiting`, and leaves
+  `is_idle` true. The manager reports no work in flight because there is none.
+- Three regressions in `tests/integration/test_composition.py`, all driving composition:
+  `test_an_offline_launch_leaves_the_durable_queue_held` (the defect, with a positive control
+  proving Start still fails the row with the extractor's message — deferral is not suppression),
+  `test_a_held_row_still_probes_and_downloads_once_the_queue_starts` (the anti-stranding
+  criterion, proving the probe still precedes the download), and
+  `test_a_stopped_queue_still_reads_a_url_the_user_pastes`.
+- **That third test closes a gap this change found.** The probe exemption is justified by the add
+  dialog's need, and *nothing tested it through the add dialog's actual path*: every add-dialog
+  test builds its manager through a fixture that calls `start_queue()`, so the launch state was
+  covered nowhere. Measured: with the gate mutated to catch staged probes, `test_add_dialog.py`
+  passed 142 tests. The new test fails there.
+- **Four mutations fail their own regressions**: holding becomes an immediate `admit`; the held
+  list is never drained; the gate is widened to all probes; the gate is widened to staged probes.
+
+#### Out of scope
+
+- The add dialog's attended probes — the user is watching those, and a visible failure there is
+  correct (`UX-003`)
+- Retry *policy* — `REQ-018` and `T-196` own it
+- How the failure reads when it does surface — `T-201`
+
 
 ### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
 

@@ -491,6 +491,50 @@ def test_a_chosen_download_folder_survives_a_restart_and_is_where_a_job_goes(
         QApplication.processEvents()
 
 
+def test_a_setting_that_could_not_be_saved_says_so(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`T146-R2`.** A change that cannot be persisted must not look like one that was.
+
+    `save()` has returned its failure rather than raising since `T109-R9`, and `T-146`'s three
+    settings callbacks dropped it — so on a full disk or a read-only profile directory the user
+    got a setting that visibly took effect and was gone at the next launch. *"A chosen directory
+    survives a restart"* is the criterion, and a silent write failure is exactly where it does not.
+
+    **Driven through a real control on the composed application**: the toolbar spinner, whose
+    handler is composition's own `choose_concurrency`. All three callbacks route through the same
+    `remember` helper, so this exercises the shared mechanism rather than one caller's copy of it —
+    and concurrency is the one of the three with no global side effect, so it can be driven without
+    restyling the `QApplication` every other test in this session shares.
+
+    The write is made to fail by putting a **directory** where the settings file goes, after
+    composition has read it: `save()` writes beside the target and `replace`s it, and replacing a
+    directory fails. No permission bits, so this runs as root and on Windows alike.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    spinner = composition.window.concurrency_control
+    assert spinner is not None, "the composed window has no concurrency control to drive"
+
+    # After composition has read it, so startup is an ordinary one and only the *write* fails.
+    settings_file.unlink(missing_ok=True)
+    settings_file.mkdir()
+
+    spinner.setValue(spinner.value() + 1)
+    QApplication.processEvents()
+
+    assert composition.manager.concurrency == spinner.value(), (
+        "the change did not apply, so this proves nothing about reporting a failed save"
+    )
+    said = composition.window.statusBar().currentMessage()
+    assert "could not be saved" in said, (
+        f"the status bar says {said!r}. A setting that applied but could not be written is one "
+        "the user will lose at the next launch without ever being told"
+    )
+
+
 def test_the_theme_the_file_names_is_the_one_composition_reports(
     composed: Callable[..., application.Composition],
     tmp_path: Path,
