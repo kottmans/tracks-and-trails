@@ -2745,6 +2745,43 @@ audio, a film frame for video.
 - The application icon's small sizes — `T-021`
 - Fetching or generating artwork — the glyph marks absence; it does not fill it
 
+### T-218 — The add dialog's empty state: one instruction, inside the list
+
+**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** the In Review add-dialog chain (`T-203`, `T-204`'s corrections) receiving verdicts
+— same file, same reason `T-213` waits
+**Relevant context:** `ui/add_dialog.py` (the paste box placeholder, the "Paste one URL per line."
+label, the staging list), `UX-003` (nothing enters the queue unprobed — the fact the hint can
+teach), `T-060`/`T016-R4` (the focus chain is declared and stable), the `T-203` chain's narrowing
+contract
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+The dialog gives the same instruction twice — the paste box's placeholder and a separate label
+below the list — while the empty list, the largest thing on the screen, says nothing. One
+instruction, placed inside the space it explains, does both jobs and quietly teaches why the list
+exists.
+
+#### Acceptance criteria
+
+- The **empty staging list carries the hint inside itself** — paste URLs above; each line resolves
+  here with its title, channel and thumbnail before anything is queued — and it disappears with the
+  first row
+- The **duplicate label below the list is gone**; the paste box placeholder stays
+- The hint is **not a control**: the declared focus chain is unchanged (`T-060`), and the disabled
+  verb bar and retry button stay exactly as the chain rule put them
+- The dialog's **narrowing contract still holds** — the `T-203` chain's own test is the gate
+
+#### Out of scope
+
+- The verb bar and its disabled states — a documented keyboard-chain choice, not reopened here
+- Any change to when rows appear or how probing works (`UX-003`)
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
