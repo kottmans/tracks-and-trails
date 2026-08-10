@@ -572,6 +572,7 @@ def build_options(
     progress_hooks: Sequence[Any] = (),
     postprocessor_hooks: Sequence[Any] = (),
     ffmpeg_location: Path | None = None,
+    cookie_file: Path | None = None,
     overwrites: bool | None = None,
     logger: Any = None,
 ) -> dict[str, Any]:
@@ -621,6 +622,12 @@ def build_options(
         options["ratelimit"] = request.rate_limit_bytes
     if request.cookies_from_browser:
         options["cookiesfrombrowser"] = (request.cookies_from_browser,)
+    if cookie_file is not None:
+        # **A parameter, not a request field** (`REQ-026`, `T-197`, `DAT-003`). The browser name
+        # rides on the request because it is a per-download choice a preset can carry; the *file*
+        # is a settings value handed to this session, because a cookie path this application
+        # supplies may never reach the model and therefore the database.
+        options["cookiefile"] = str(cookie_file)
     if overwrites is not None:
         # `T-046`. Only ever `True`, and only from the download session, which has just claimed
         # this exact path with `O_CREAT | O_EXCL`. yt-dlp treats a file at the target as an

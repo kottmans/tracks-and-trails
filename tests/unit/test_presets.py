@@ -592,13 +592,20 @@ def test_narrowing_a_request_drops_every_field_that_is_not_about_the_format() ->
     credentials — the model refuses proxy userinfo outright — but they describe the user's network
     and disk rather than the download, and a narrowed choice is compared and stored where the whole
     request is not.
+
+    **This test used to put a cookies *path* in `cookies_from_browser`**, which is precisely the
+    gap `DAT-003`'s `T-049` amendment measured and called *"by intent, not by construction"* — the
+    field took any non-empty text, so a path travelled through the one field the redaction
+    reasoning treats as a name. `T-197` closed it with a validator, and this line is what the
+    closing looked like from the inside: the value is now a browser name, because a path is
+    refused.
     """
     request = DownloadRequest(
         url="https://example.invalid/watch?v=abc123",
         output_directory="/home/alice/Private Downloads",
         format_selector="bestaudio/best",
         output_template="%(title)s.%(ext)s",
-        cookies_from_browser="/home/alice/.mozilla/firefox/profile/cookies.sqlite",
+        cookies_from_browser="firefox:Private",
         proxy="http://proxy.internal.invalid:8080",
         rate_limit_bytes=1024,
     )

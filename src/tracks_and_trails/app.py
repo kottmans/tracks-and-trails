@@ -441,6 +441,12 @@ def compose(
         entry_point=entry_point if entry_point is not None else worker.spawn_session,
     )
 
+    # **The cookies file reaches workers, never the model** (`REQ-026`, `T-197`, `DAT-003`). Set on
+    # the manager exactly as the ffmpeg override is, because a session argument is one of the two
+    # sinks the decision authorises. `load()` has already discarded a file that is gone or is not a
+    # file, and said why.
+    manager.set_cookie_file(settings.cookie_file)
+
     def retry(job_id: str) -> None:
         """Hand a retry to the manager, which owns job transitions (`T036-R1`).
 
@@ -584,6 +590,32 @@ def compose(
         held.settings = chosen
         window.show_ffmpeg_location(location, report=resolved)
         remember(chosen, "the ffmpeg location")
+
+    def choose_cookie_file(path: Path | None) -> None:
+        """Use a cookies file for sites the user is signed in to, or none (`REQ-026`, `T-197`).
+
+        **Applied to the manager, not to any job.** The path may not reach `DownloadRequest`
+        (`DAT-003`), so it travels as a session argument — which is what makes it **late-bound**:
+        everything already queued and not yet started authenticates with this from now on. That
+        consequence is ruled deliberate and the screen says so, because it is a surprise otherwise.
+
+        Refused rather than stored when it cannot be used, on `choose_ffmpeg_location`'s contract:
+        downloading unauthenticated where the user asked for authentication is the quiet failure
+        `T-197` names, and `REQ-EXCL-002` is emphatic this feature exists for content they already
+        have access to.
+        """
+        if path is not None:
+            reason = app_settings.unusable_cookie_file_reason(path)
+            if reason is not None:
+                logging.getLogger("tracksandtrails.app").warning("cookies file: %s", reason)
+                window.report_transiently(reason.splitlines()[0])
+                window.show_cookie_file(held.settings.cookie_file)
+                return
+        manager.set_cookie_file(path)
+        chosen = app_settings.with_cookie_file(held.settings, path)
+        held.settings = chosen
+        window.show_cookie_file(path)
+        remember(chosen, "the cookies file")
 
     def choose_theme(name: str) -> None:
         """Wear a palette now, and at the next launch (`REQ-023`, `ARCHITECTURE.md` §8, `T-146`).
@@ -733,6 +765,8 @@ def compose(
         directory_is_default=directory_is_default,
         on_directory_chosen=choose_download_directory,
         on_theme_chosen=choose_theme,
+        cookie_file=settings.cookie_file,
+        on_cookie_file_chosen=choose_cookie_file,
         ffmpeg_location=settings.ffmpeg_location,
         ffmpeg_summary=ffmpeg.summary(),
         on_ffmpeg_location_chosen=choose_ffmpeg_location,

@@ -82,6 +82,44 @@ def _is_ytdlp_quality(value: str) -> bool:
     return value.isdigit()
 
 
+#: The browsers yt-dlp can read cookies from, lower-cased (`REQ-026`).
+#:
+#: **A closed list, because the point is to refuse a path.** Taken from yt-dlp's own
+#: `--cookies-from-browser` support; a name it does not know is refused here rather than reaching
+#: the library, which is the same *bound at the value* rule `REQ-013`'s limits follow.
+BROWSER_NAMES: Final = (
+    "brave",
+    "chrome",
+    "chromium",
+    "edge",
+    "firefox",
+    "opera",
+    "safari",
+    "vivaldi",
+    "whale",
+)
+
+
+def _require_browser_name(owner: str, name: str, value: object) -> None:
+    """Refuse anything that is not a browser this application can name (`T-197`, `DAT-003`).
+
+    yt-dlp accepts `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, so the browser is the part before
+    the first separator and the rest is the user's own profile selection. Only the browser is
+    checked: validating a profile name would be inventing a rule, while letting a *path* through
+    is the defect this exists to stop — and a path's first segment is never a browser name.
+    """
+    if value is None:
+        return
+    if not isinstance(value, str):  # pragma: no cover - `_require_optional_text` refuses first
+        return
+    browser = value.split("+", 1)[0].split(":", 1)[0].strip().lower()
+    if browser not in BROWSER_NAMES:
+        raise ValueError(
+            f"{owner}.{name} is {value!r}; it must name one of {', '.join(BROWSER_NAMES)}. "
+            "A cookies *file* is a settings value and never a field on this model (DAT-003)."
+        )
+
+
 def _require_optional_text(owner: str, name: str, value: object) -> None:
     if value is not None and not isinstance(value, str):
         _fail(owner, name, value, "a string or None")
@@ -680,6 +718,18 @@ class DownloadRequest:
     #: (`NFR-007`), which is why a proxy URL may safely live in the model.
     proxy: str | None = None
     rate_limit_bytes: int | None = None
+    #: Which browser's cookies to use — a **browser name**, and since `T-197` by construction
+    #: rather than by intent (`REQ-026`, `DAT-003`).
+    #:
+    #: **`DAT-003`'s `T-049` amendment measured the gap and this closes it.** The field required
+    #: only non-empty text, so `cookies_from_browser="/home/u/.mozilla/cookies.sqlite"` was
+    #: accepted — a *path* travelling through a field the redaction reasoning treats as a name,
+    #: into a model that is persisted. Nothing supplied one, so nothing leaked; *"none exist"*
+    #: described the callers rather than an invariant. Constraining it was itself a stated
+    #: reopening condition, and the 2026-08-10 amendment takes it.
+    #:
+    #: **A path for cookies goes in `settings.toml`, never here** — that is what keeps *"a cookie
+    #: path this application supplies is never in the database"* structural.
     cookies_from_browser: str | None = None
 
     def __post_init__(self) -> None:
@@ -716,6 +766,7 @@ class DownloadRequest:
         _require_optional_text("DownloadRequest", "proxy", self.proxy)
         _require_credential_free_proxy(self.proxy)
         _require_optional_text("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
+        _require_browser_name("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
         _require_optional_count("DownloadRequest", "rate_limit_bytes", self.rate_limit_bytes)
 
 

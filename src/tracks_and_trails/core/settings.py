@@ -102,6 +102,16 @@ _THEME_KEY: Final = "theme"
 _FFMPEG_TABLE: Final = "ffmpeg"
 _LOCATION_KEY: Final = "location"
 
+#: `T-197`'s key: a cookies file, for authenticated access to content the user already has
+#: (`REQ-026`). Its own table, like the others.
+#:
+#: **This is the only place a cookie path this application holds may live** (`DAT-003`, amended
+#: 2026-08-10). The path must never reach `DownloadRequest`, the `jobs` row, a stored diagnostic,
+#: or a log — the decision names the forbidden sinks in a table, and row one of its provenance
+#: table is structural *because* the model cannot carry the value.
+_COOKIES_TABLE: Final = "cookies"
+_COOKIE_FILE_KEY: Final = "file"
+
 #: What a chosen file's name must contain to be taken for ffmpeg (`T-199`).
 #:
 #: Substring rather than equality, so `ffmpeg-7`, `ffmpeg.exe` and `ffmpeg_static` are all accepted
@@ -206,6 +216,19 @@ class Settings:
     #: Which palette the window wears (`REQ-023`, `ARCHITECTURE.md` §8, `T-146`). One of
     #: `THEME_NAMES`; `load()` refuses anything else, so this is always a name `ui/theme.py` knows.
     theme: str = THEME_DEFAULT
+
+    #: A cookies file for authenticated access, or `None` (`REQ-026`, `T-197`).
+    #:
+    #: **Here and nowhere else.** `DAT-003`'s 2026-08-10 amendment makes `settings.toml` and a
+    #: worker's arguments the only two sinks this value may reach; anything else reopens the
+    #: decision. It is deliberately **not** a `DownloadRequest` field, which is what keeps *"a
+    #: cookie path this application supplies is never in the database"* structural rather than
+    #: filtered.
+    #:
+    #: **Late-bound, and that was ruled rather than fallen into**: a job already queued
+    #: authenticates with whatever file is set when its worker *starts*, because the job cannot
+    #: carry the value. The browser half binds at queue time; the two differ on purpose.
+    cookie_file: Path | None = None
 
     #: Where ffmpeg is, or `None` to search `PATH` (`REQ-023`, `REQ-024`, `T-199`).
     #:
@@ -446,6 +469,62 @@ def _ffmpeg_location_from(raw: Any) -> tuple[Path | None, str | None]:
     return Path(raw).expanduser(), None
 
 
+def unusable_cookie_file_reason(path: Path) -> str | None:
+    """Why `path` cannot be used as a cookies file, or `None` (`REQ-026`, `T-197`).
+
+    Public for `unusable_ffmpeg_reason`'s reason, and it is `T199-R3`'s lesson taken before the
+    finding rather than after: the stored value and a live choice must be judged by **one**
+    function, or the two routes answer differently and only one of them reports.
+    """
+    try:
+        candidate = Path(path).expanduser()
+        if not candidate.exists():
+            return (
+                f"The cookies file does not exist, so downloads will not be authenticated."
+                f"\n{candidate}"
+            )
+        if not candidate.is_file():
+            return (
+                f"The cookies file is not a file, so downloads will not be authenticated."
+                f"\n{candidate}"
+            )
+    except (OSError, RuntimeError) as error:
+        return (
+            f"The cookies file could not be checked, so downloads will not be authenticated."
+            f"\n{path}\n{type(error).__name__}: {error}"
+        )
+    return None
+
+
+def _cookie_file_from(raw: Any) -> tuple[Path | None, str | None]:
+    """Coerce a stored cookies file. **Never raises**, and reports what it discards (`T-197`).
+
+    The same three answers as the other paths: absent or empty is silent, and anything that cannot
+    be used **reports** under `ARC-008` and falls back to *no cookies*. Falling back matters more
+    here than elsewhere — downloading unauthenticated where the user asked for authentication
+    looks like a paywall failing quietly, which `T-197` names explicitly and `REQ-EXCL-002` is
+    emphatic this feature is not for.
+
+    **The reason names the file.** That is safe here and only here: this string reaches the user
+    through the settings dialog, and `RedactingFormatter` removes the path on its way to any log
+    (`T-038`, origin-agnostic since `T084-R1`). The value the *user* set is not a secret withheld
+    from the user.
+    """
+    if raw is None:
+        return None, None
+    if not isinstance(raw, str):
+        return None, (
+            f"{_COOKIES_TABLE}.{_COOKIE_FILE_KEY} is {raw!r}, which is not a path. No cookies "
+            "will be used."
+        )
+    if not raw.strip():
+        return None, None
+    reason = unusable_cookie_file_reason(Path(raw))
+    if reason is not None:
+        return None, reason
+    return Path(raw).expanduser(), None
+
+
 def _theme_from(raw: Any) -> tuple[str, str | None]:
     """Coerce a stored theme name. **Never raises.**
 
@@ -590,6 +669,8 @@ def load(path: Path | None = None) -> SettingsFile:
     directory, directory_reason = _directory_from(downloads_table.get(_DIRECTORY_KEY))
     appearance_table, appearance_reason = _section_of(document, _APPEARANCE_TABLE)
     theme, theme_reason = _theme_from(appearance_table.get(_THEME_KEY))
+    cookies_table, cookies_reason = _section_of(document, _COOKIES_TABLE)
+    cookie_file, cookie_reason = _cookie_file_from(cookies_table.get(_COOKIE_FILE_KEY))
     ffmpeg_table, ffmpeg_reason = _section_of(document, _FFMPEG_TABLE)
     ffmpeg_location, location_reason = _ffmpeg_location_from(ffmpeg_table.get(_LOCATION_KEY))
 
@@ -606,6 +687,8 @@ def load(path: Path | None = None) -> SettingsFile:
                 theme_reason,
                 ffmpeg_reason,
                 location_reason,
+                cookies_reason,
+                cookie_reason,
             )
             if part
         ]
@@ -616,6 +699,7 @@ def load(path: Path | None = None) -> SettingsFile:
             download_directory=directory,
             theme=theme,
             ffmpeg_location=ffmpeg_location,
+            cookie_file=cookie_file,
         )
         if not parts:
             return SettingsFile(settings)
@@ -1063,6 +1147,13 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             if settings.download_directory is not None
             else ""
         )
+        cookie_lines = (
+            f"\n\n[{_COOKIES_TABLE}]\n"
+            "# A cookies file, for sites you are signed in to. Delete the line to use none.\n"
+            f"{_COOKIE_FILE_KEY} = {_toml_string(str(settings.cookie_file))}\n"
+            if settings.cookie_file is not None
+            else ""
+        )
         ffmpeg_lines = (
             f"\n\n[{_FFMPEG_TABLE}]\n"
             "# Where ffmpeg is. Delete the line to look for it on PATH.\n"
@@ -1085,6 +1176,7 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             "# Each one is a separate worker process, so a higher number is not always faster.\n"
             f"{_CONCURRENCY_KEY} = {settings.concurrency}\n"
             f"{downloads_lines}"
+            f"{cookie_lines}"
             f"{ffmpeg_lines}"
             f"{appearance_lines}" + "".join(_preset_lines(preset) for preset in settings.presets),
             encoding="utf-8",
@@ -1114,6 +1206,11 @@ def with_download_directory(settings: Settings, directory: Path | None) -> Setti
     of `None` cannot be re-invented at each call site.
     """
     return replace(settings, download_directory=directory)
+
+
+def with_cookie_file(settings: Settings, path: Path | None) -> Settings:
+    """`settings` using `path` for cookies, or none at all (`REQ-026`, `T-197`)."""
+    return replace(settings, cookie_file=path)
 
 
 def with_ffmpeg_location(settings: Settings, location: Path | None) -> Settings:

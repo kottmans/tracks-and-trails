@@ -73,7 +73,7 @@ def test_the_screen_says_which_settings_it_does_not_cover(
 ) -> None:
     """**`T-146`'s honesty criterion**, on the screen rather than only in a document.
 
-    `REQ-023` names eight settings and this screen builds four of them since `T-199`. A settings
+    `REQ-023` names eight settings and this screen builds five of them since `T-197`. A settings
     screen showing only what it implements reads as complete, so the remaining absences are stated
     where the user is looking — and each of them is owned by a filed task.
     """
@@ -84,10 +84,11 @@ def test_the_screen_says_which_settings_it_does_not_cover(
     # `T-199` built the ffmpeg location, so it left this list — which is this test working, not a
     # weakening of it: the sentence must shrink as the screen grows, or it becomes the stale
     # coverage claim the criterion exists to prevent.
-    assert "ffmpeg" not in SETTINGS_STILL_TO_COME.lower(), (
-        "the screen still says ffmpeg is to come, but T-199 built it"
-    )
-    for absent in ("default preset", "output template", "network", "cookie"):
+    for built, by in (("ffmpeg", "T-199"), ("cookie", "T-197")):
+        assert built not in SETTINGS_STILL_TO_COME.lower(), (
+            f"the screen still says {built} is to come, but {by} built it"
+        )
+    for absent in ("default preset", "output template", "network"):
         assert absent in SETTINGS_STILL_TO_COME.lower(), (
             f"{absent!r} is not built and the screen does not say so: {SETTINGS_STILL_TO_COME!r}"
         )

@@ -56,8 +56,10 @@ from tracks_and_trails.core.settings import (
 )
 
 __all__ = [
+    "COOKIES_EXPLANATION",
     "DEFAULT_DIRECTORY_NOTE",
     "FFMPEG_ON_PATH_NOTE",
+    "NO_COOKIES_NOTE",
     "SETTINGS_STILL_TO_COME",
     "THEME_LABELS",
     "SettingsDialog",
@@ -72,6 +74,20 @@ THEME_LABELS: Final = {"light": "Light", "dark": "Dark"}
 #: "the default" is not an answer to *where did my file go*.
 DEFAULT_DIRECTORY_NOTE: Final = "Your usual downloads folder"
 
+#: What the cookies section says it is for, and what it is not for.
+#:
+#: **`REQ-EXCL-002` is quoted in spirit because a user should read it here.** This exists so
+#: someone reaches content they already have an account for; it is not a way past a paywall, and
+#: the sentence says so where the control is rather than only in a requirements file.
+COOKIES_EXPLANATION: Final = (
+    "Use cookies from a file to download things you are signed in to. This does not unlock "
+    "anything your account cannot already reach.\n"
+    "A cookies file applies to downloads already in the queue as well as new ones."
+)
+
+#: Shown where the path would be when none is set.
+NO_COOKIES_NOTE: Final = "No cookies file - downloads are not signed in"
+
 #: Shown where the path would be when none is set. Names the mechanism, because *"not set"* does
 #: not tell a user what the application is doing instead.
 FFMPEG_ON_PATH_NOTE: Final = "Looked for on PATH"
@@ -83,7 +99,7 @@ FFMPEG_ON_PATH_NOTE: Final = "Looked for on PATH"
 #: so the honest thing is to say so where the user is looking rather than only in a document they
 #: will not read.
 SETTINGS_STILL_TO_COME: Final = (
-    "Still to come: default preset, output template, network options, and cookie source."
+    "Still to come: default preset, output template, and network options."
 )
 
 
@@ -101,6 +117,8 @@ class SettingsDialog(QDialog):
         on_theme_chosen: Callable[[str], None],
         on_concurrency_chosen: Callable[[int], None],
         choose_directory: Callable[[Path], Path | None] | None = None,
+        cookie_file: Path | None = None,
+        on_cookie_file_chosen: Callable[[Path | None], None] | None = None,
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
@@ -117,6 +135,8 @@ class SettingsDialog(QDialog):
         # Held before the sections are built, because each one reads its own starting value.
         self._theme = theme
         self._initial_concurrency = concurrency
+        self._cookie_file = cookie_file
+        self._on_cookie_file_chosen = on_cookie_file_chosen
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
         self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
@@ -127,6 +147,7 @@ class SettingsDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_downloads_section())
+        layout.addWidget(self._build_cookies_section())
         layout.addWidget(self._build_ffmpeg_section())
         layout.addWidget(self._build_appearance_section())
         layout.addWidget(self._build_queue_section())
@@ -220,6 +241,67 @@ class SettingsDialog(QDialog):
         self._directory = directory
         self._directory_is_default = is_default
         self._show_directory()
+
+    # --- cookies ------------------------------------------------------------------------
+
+    def _build_cookies_section(self) -> QWidget:
+        """A cookies file for content the user is already signed in to (`REQ-026`, `T-197`)."""
+        box = QGroupBox("Cookies", self)
+        box.setObjectName("cookiesSection")
+        layout = QVBoxLayout(box)
+
+        explanation = QLabel(COOKIES_EXPLANATION, box)
+        explanation.setObjectName("cookiesExplanation")
+        explanation.setTextFormat(Qt.TextFormat.PlainText)
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+
+        self._cookie_value = QLabel(box)
+        self._cookie_value.setObjectName("cookieFileValue")
+        # The user's own path (`T016-R6`).
+        self._cookie_value.setTextFormat(Qt.TextFormat.PlainText)
+        self._cookie_value.setWordWrap(True)
+        self._cookie_value.setAccessibleName("Cookies file")
+        layout.addWidget(self._cookie_value)
+
+        row = QHBoxLayout()
+        choose = QPushButton("Choose cookies file...", box)
+        choose.setObjectName("chooseCookieFile")
+        choose.setAccessibleName("Choose a cookies file")
+        choose.clicked.connect(self._pick_a_cookie_file)
+        row.addWidget(choose)
+
+        self._clear_cookies = QPushButton("Use no cookies", box)
+        self._clear_cookies.setObjectName("clearCookieFile")
+        self._clear_cookies.setAccessibleName("Use no cookies")
+        self._clear_cookies.clicked.connect(lambda: self._remember_cookies(None))
+        row.addWidget(self._clear_cookies)
+        row.addStretch(1)
+        layout.addLayout(row)
+
+        self._show_cookie_file()
+        return box
+
+    def _show_cookie_file(self) -> None:
+        self._cookie_value.setText(
+            str(self._cookie_file) if self._cookie_file is not None else NO_COOKIES_NOTE
+        )
+        self._clear_cookies.setEnabled(self._cookie_file is not None)
+
+    def _pick_a_cookie_file(self) -> None:
+        chosen = self._choose_file(self._cookie_file)
+        if chosen is None:
+            return
+        self._remember_cookies(chosen)
+
+    def _remember_cookies(self, path: Path | None) -> None:
+        if self._on_cookie_file_chosen is not None:
+            self._on_cookie_file_chosen(path)
+
+    def show_cookie_file(self, path: Path | None) -> None:
+        """Show what composition settled on, accepted or refused (`T-197`)."""
+        self._cookie_file = path
+        self._show_cookie_file()
 
     # --- ffmpeg -------------------------------------------------------------------------
 

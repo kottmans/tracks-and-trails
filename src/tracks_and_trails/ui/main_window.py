@@ -336,6 +336,8 @@ class MainWindow(QMainWindow):
         directory_is_default: bool = True,
         on_directory_chosen: Callable[[Path | None], None] | None = None,
         on_theme_chosen: Callable[[str], None] | None = None,
+        cookie_file: Path | None = None,
+        on_cookie_file_chosen: Callable[[Path | None], None] | None = None,
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
@@ -353,6 +355,9 @@ class MainWindow(QMainWindow):
         self._settings_dialog: SettingsDialog | None = None
         #: `T-199`: where ffmpeg was told to be, what resolving it said, and the writer. Held so
         #: the Settings screen opens on the truth rather than on the stored string.
+        #: `T-197`: the cookies file in force, and the writer. `ui/` holds no settings writer.
+        self._cookie_file = cookie_file
+        self._on_cookie_file_chosen = on_cookie_file_chosen
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
         self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
@@ -1364,6 +1369,8 @@ class MainWindow(QMainWindow):
             ),
             on_directory_chosen=self._on_directory_chosen,
             on_theme_chosen=self._theme_chosen,
+            cookie_file=self._cookie_file,
+            on_cookie_file_chosen=self._on_cookie_file_chosen,
             ffmpeg_location=self._ffmpeg_location,
             ffmpeg_summary=self._ffmpeg_summary,
             on_ffmpeg_location_chosen=self._on_ffmpeg_location_chosen,
@@ -1396,6 +1403,12 @@ class MainWindow(QMainWindow):
         self._directory_is_default = is_default
         if self._settings_dialog is not None:
             self._settings_dialog.show_download_directory(directory, is_default=is_default)
+
+    def show_cookie_file(self, path: Path | None) -> None:
+        """Take the cookies file composition settled on, and tell the open screen (`T-197`)."""
+        self._cookie_file = path
+        if self._settings_dialog is not None:
+            self._settings_dialog.show_cookie_file(path)
 
     def show_ffmpeg_location(self, location: Path | None, *, report: object) -> None:
         """Take the resolution composition performed, and tell the open screen (`T-199`).

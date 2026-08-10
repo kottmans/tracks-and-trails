@@ -540,6 +540,10 @@ class DownloadManager(QObject):
         self._reap_seconds = reap_seconds
         self._user_ytdlp_directory = user_ytdlp_directory
         self._ffmpeg_override = ffmpeg_override
+        #: The cookies file handed to every child (`REQ-026`, `T-197`). Held here rather than on a
+        #: job for `DAT-003`'s reason: a cookie path this application supplies must not reach the
+        #: model, and therefore cannot reach the database.
+        self._cookie_file: Path | None = None
         #: Jobs that exist only in memory, for the add dialog's staging probes (`T118-R1`).
         #:
         #: **`UX-003` says nothing is persisted until Add**, and `T118-R1` is what happens when it
@@ -1063,6 +1067,19 @@ class DownloadManager(QObject):
         except KeyError as missing:
             self.start_rejected.emit(job_id, f"this job is not in the queue: {missing}")
 
+    def set_cookie_file(self, path: Path | None) -> None:
+        """Point later worker sessions at a cookies file, or at none (`REQ-026`, `T-197`).
+
+        `set_ffmpeg_override`'s shape, and for the same reason: composition owns the setting, this
+        owns what runs. **The value children receive**, so a change reaches the next session rather
+        than the next launch.
+
+        **This is why the cookie path is late-bound**, which `DAT-003`'s 2026-08-10 amendment rules
+        deliberate: the path may not live on `DownloadRequest`, so a queued job cannot carry it and
+        authenticates with whatever is set when its worker starts.
+        """
+        self._cookie_file = path
+
     def set_ffmpeg_override(self, path: Path | None) -> None:
         """Point later worker sessions at a different ffmpeg (`REQ-024`, `T199-R2`).
 
@@ -1468,6 +1485,10 @@ class DownloadManager(QObject):
                     "cancel": cancel,
                     "user_ytdlp_directory": self._user_ytdlp_directory,
                     "ffmpeg_override": self._ffmpeg_override,
+                    # `T-197`: a settings value, not a job field. It travels as a session
+                    # argument exactly as the ffmpeg override does, which is the one route
+                    # `DAT-003` authorises besides `settings.toml` itself.
+                    "cookie_file": self._cookie_file,
                     # `T-038`: the worker's diagnostics come back here as records and are
                     # rendered — and therefore redacted — by this process's handlers. The job id
                     # travels with them so each line reaches that job's own file (`T038-R2`).
