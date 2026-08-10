@@ -52,7 +52,10 @@ record, committed with the placement moves at `6c139e2`; the outcome by task:
   its regression stand. What remains is the task's own closing rule (`T208-R1`): **the maintainer
   must say whether remove-row-above was the gesture they observed**, direct the investigation to
   continue, or deliberately close the report on this bounded correction. No source change is
-  requested.
+  requested. **Answered in part later the same day**: asked directly, the maintainer could not
+  recall the gesture — *"I'm not sure what the missing arrow gesture was"* — so confirmation is
+  unavailable rather than pending, and the remaining choice narrows to closing on the verified
+  correction versus further probing with no recollection to match against.
 - **`T-203` — Changes requested (`T203-R3` High, `T203-R4` Medium), still `## In Review`.**
   `T203-R1` and `T203-R2` are Resolved — the bar is gone and the menu binds to the row it opened
   from. The new findings: **the declared Menu-key/Shift+F10 door opens no menu** — a keyboard

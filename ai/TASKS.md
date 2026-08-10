@@ -2740,12 +2740,17 @@ under a stated precedence.
 
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
-**Status:** **Blocked — correction verified 2026-08-10; awaiting the maintainer's disposition
-on `T208-R1`.** One multi-row route was reproduced and fixed: removing a row above an open
-playlist with content below stranded its collapse control above the viewport. Codex independently
-verified the correction and its mutation at `d21a243`; what remains is the task's explicit closing
-rule. The maintainer must say whether this was the reported gesture, say it was not and keep the
-investigation open, or deliberately close the report on this bounded correction.
+**Status:** **Blocked — correction verified 2026-08-10; the disposition narrowed the same day
+and one choice remains.** One multi-row route was reproduced and fixed: removing a row above an
+open playlist with content below stranded its collapse control above the viewport. Codex
+independently verified the correction and its mutation at `d21a243`. **Asked directly whether
+remove-row-above was the observed gesture, the maintainer answered 2026-08-10:** *"I'm not sure
+what the missing arrow gesture was."* **Confirmation is therefore unavailable, not merely
+pending** — the original gesture cannot be elicited from anyone — and the report stays
+known-unverified exactly as the criteria require. What remains of `T208-R1` is one deliberate
+choice, and it is still the maintainer's: **close the report on this bounded, verified
+correction, or direct further multi-row probing** — noting that with no recollection to match,
+further probing has no oracle and can only fix routes on their own merits.
 
 Probe scripts drove a shown dialog through six multi-row gestures against one question — *what
 escape does the expanded playlist offer right now?* An expanded row's twisty is deliberately
@@ -2794,7 +2799,8 @@ one is how T-204 reached review without reproducing it
 #### Acceptance criteria
 
 - Recover or elicit the exact multi-row gesture sequence and reproduce it through the built dialog
-  *(partially met: one route reproduced; the maintainer's own gesture remains unconfirmed)*
+  *(partially met, and the elicitation half is closed as impossible: one route reproduced; the
+  maintainer stated 2026-08-10 they cannot recall the gesture, so it is unrecoverable)*
 - Establish whether the missing arrow comes from role admission, structural remounting, row
   identity, or geometry; do not credit the current passing guard as reproduction evidence
   *(met for the reproduced route: geometry — scroll anchoring)*
