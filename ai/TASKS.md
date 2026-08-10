@@ -2677,6 +2677,41 @@ actually tried.
 - Retry *policy* — `REQ-018` and `T-196` own it
 - How the failure reads when it does surface — `T-201`
 
+### T-216 — The finished row: the chip owns the state, the bar retires
+
+**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing
+**Relevant context:** `docs/UX_SPEC.md` §2.2, `UX-005` §3 (row anatomy), `T-165` (solid-done beside
+solid-failed is the confusable pair), `T-143` (the detail line), `T-202` (words, never colour
+alone), `ui/queue_view.py` (`_detail`, `_chip`), `ui/row_delegate.py` (bar painting)
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `tests/ui/`
+**Risk:** Low
+
+#### Scope
+
+The completed row states its state three times — `Done` chip, `100%`, "— Completed" — under a
+full-width near-black bar that is the heaviest element on the row precisely when nothing is
+happening. A finished bar is furniture: the argument History used to drop its group bar
+(`T-145`'s decision, §2), applied to the one row whose work is over.
+
+#### Acceptance criteria
+
+- A `COMPLETED` row's detail line reads uploader · duration · final size — **no "100%", no
+  "X of X", no "Completed"** beside a chip that already says `Done`
+- **No progress bar is drawn on a `COMPLETED` row.** Failed and cancelled groups keep their
+  segmented bar — it still encodes *which part* failed, which is information
+- The state is still said in words (the chip), so `T-202` gains no new colour-only signal and
+  loses none
+- Tests assert the detail text and the absent bar; existing row tests are updated, not duplicated
+
+#### Out of scope
+
+- Failed-row presentation — `T-201`, including the byte-line suppression added to it 2026-08-09
+- The chip's own text — `UX-010` just ruled the group chip; the ordinary chips are settled
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
