@@ -5,10 +5,9 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **`T-215` Approved at `b9caa40` and Complete**; **`T-146` is
-Blocked on a maintainer decision**: `T146-R1`/`T146-R2` are Resolved at `8940353` and the
-re-review's new `T146-R3` is corrected at `2a9d9e1`, but the pass budget is spent and `AGENTS.md`
-§10 puts the next step with the maintainer. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
+**Last updated:** 2026-08-10 — **`T-215` Approved at `b9caa40` and Complete**; **`T-146` is In
+Review awaiting a maintainer-authorized focused pass**: `T146-R1`/`T146-R2` Resolved at `8940353`,
+`T146-R3` corrected at `2a9d9e1`. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
 and the screen behind it, holding three of `REQ-023`'s eight settings.
 **Last verified against repository:** 2026-08-10 **for the eight 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
@@ -53,12 +52,12 @@ should be, which `mkdir` refuses on both platforms; and a `/tmp` literal left th
 Confirmed **not** a Windows problem: `_toml_string` escapes backslashes (`T109-R9`), so a `C:\…`
 download folder round-trips.
 
-**`T-146` stays Blocked, and on the maintainer rather than on the code.** The ordinary pass budget
-is spent and `T146-R3` is Medium, so `AGENTS.md` §10 puts the choice with the maintainer —
-authorize one more focused pass, accept the documented risk, change scope, or carry it into a
-named follow-up. **The Implementer may not take that decision and has not.** Nothing is pushed;
-the reviewer would not push while a Windows gate is known to fail, and the correction has not been
-seen by CI.
+**The maintainer authorized one additional focused pass**, asked and answered explicitly, having
+been offered the alternatives `AGENTS.md` §10 names — accepting the documented risk, or carrying
+it into a named follow-up. `T-146` is therefore back under `## In Review` awaiting that pass, and
+the authorization is recorded in its entry as the maintainer's. Nothing is pushed: the reviewer
+would not push while a Windows gate was known to fail, and the correction has not been seen by
+CI.
 
 ## 2026-08-10 (verdicts and correction): T-215 Complete, T-146 corrected
 
