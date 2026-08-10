@@ -5,11 +5,11 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — the maintainer session after `T-203` closed: three live-use
-reports ruled. The options dialog's clipped container note is **`T-222`**; the row-menu reports
-are **`UX-012`** (the editor alias leaves the menu, Remove names its blast radius, the `⋮` is
-drawn as a button), built by **`T-223`**/**`T-224`**. `docs/UX_SPEC.md` §3 carries the amendment.
-**Last verified against repository:** 2026-08-10 **for the five 2026-08-10 blocks** — task
+**Last updated:** 2026-08-10 — **`T-215` and `T-146` are built and In Review**, one commit each
+(`c025dd6`, `b9caa40`), for one combined review pass on maintainer instruction. `T-146` is
+**Phase 4's first plan deliverable**: the `Settings` menu and the screen behind it, holding three
+of `REQ-023`'s eight settings.
+**Last verified against repository:** 2026-08-10 **for the six 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
 read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
 day; the Phase 3 block beneath
@@ -27,9 +27,37 @@ Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
 **Phase 4 is decomposed** — `ai/TASKS.md` §`## Proposed — Phase 4`, with every plan deliverable and
 exit criterion owned. `T-212` (filed 2026-08-09) closed the one gap: the recorded-checklist-run
 criterion the maintainer added that day had no owner. **The carried-in defect queue is nearly
-through**: the add-dialog chain, `T-209` and now `T-203` are Complete, `T-208` waits only on the
+through**: the add-dialog chain, `T-209` and `T-203` are Complete, `T-208` waits only on the
 maintainer's report disposition, `T-221` on the maintainer's display, and the same-file trio
-`T-213`/`T-218`/`T-219` is unblocked. No plan deliverable has been started.
+`T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
+screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
+were waiting on a screen to put their keys on.
+
+## 2026-08-10 (build session): T-215 and T-146, both In Review
+
+**Maintainer-directed** — *"Do T-215 and then T-146. We'll review them together"* — so both go to
+one review pass, in two commits.
+
+- **`T-215` at `c025dd6`.** An inherited `QUEUED` row is admitted as a *probe*, and the
+  stopped-queue gate exempts probes so the add dialog can read a paste — so every row a previous
+  run left was read the instant the window opened, and an offline launch failed all of them.
+  `admit_when_started` holds them; `start_queue()` drains the list through `admit` between opening
+  the gate and filling slots. **Widening the gate to all durable probes was built first and
+  rejected on evidence**: it cannot tell an inherited probe from the add dialog's playlist-entry
+  probe, so it left fresh entries bare until Start (`T-143`'s report) and failed five deliberate
+  manager tests. Three composition regressions; four mutations fail their own evidence.
+- **`T-146` at `b9caa40` — Phase 4's first plan deliverable built.** The `Settings` menu, the
+  screen behind it, and three of `REQ-023`'s eight settings: download folder, theme,
+  concurrency. Two new `settings.toml` tables with `ARC-008` validation. **Concurrency is kept in
+  both places**, recorded as this task's required choice — removing the toolbar copy is `T-220`'s
+  open ruling. The Windows menu equality tripped as its own docstring predicted and was updated
+  deliberately.
+
+**Two things worth the reviewer's attention, both self-reported.** `T-215`'s first design was
+wrong and is recorded as rejected rather than quietly replaced. And a `T-146` mutation **passed**,
+disproving a claim I had written in `save()` and a test docstring — that the new tables had to
+precede `[[preset]]` or be read as members of it. A TOML table header is absolute; both places now
+say the order is for the reader, and the test says what it does not prove.
 
 ## 2026-08-10 (maintainer session): three live-use reports, ruled and filed
 
