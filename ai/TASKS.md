@@ -1720,7 +1720,9 @@ beats designing it against an imagined one.
 ### T-146 — A Settings menu, and the screen behind it
 
 **Status:** Proposed — **requested by the maintainer, 2026-08-05.** Filed against `REQ-023`, which
-already names every setting asked for. **The phase is an open question — see below.**
+already names every setting asked for. *(**The phase question below is closed:** Phase 3 exited and
+Phase 4 opened 2026-08-09, with this task named the owner of its settings-dialog deliverable. No
+re-phasing happened or is needed.)*
 **Owner:** Implementer
 **Priority:** Medium — nothing is blocked by its absence, and two of its settings are the ones a
 user reaches for first
@@ -1941,16 +1943,25 @@ does not have is worse than no map.
 | No information is conveyed by colour alone | `T-202` |
 | Logs carry no cookies, cookie paths, proxy credentials or token-like parameters (`NFR-007`) | `T-197` |
 | Updating yt-dlp changes the reported version; reverting restores the baseline | `T-198` |
+| *(Added 2026-08-09 by maintainer ruling)* The built window matches the agreed flow — a recorded checklist run in `ai/evidence/` | `T-212` — filed 2026-08-09; it runs last |
 | Reviewed and signed off | the phase exit review, as in Phases 1–3 |
 
 **Polish carried into the phase rather than planned for it.** `T-191`, `T-192`, `T-193` and `T-194`
 are maintainer-found defects filed during Phase 3 and ruled Phase 4; `T-203` and `T-204` come from
 the 2026-08-08 review of the add dialog. They are not plan deliverables and **must not be counted as
 satisfying one** — that conflation is what `P3EXIT-R1` found in Phase 3's own records.
+*(**The set has grown since this was written, 2026-08-09.** `T-192`, `T-193` and `T-194` are
+approved and Complete, with their review's corrections `T-205` and `T-206`. `T-204`'s fix produced
+a correction chain — `T-207`, `T-209`, `T-210`, `T-211`, with `T-208` holding the still-unreproduced
+multi-row report. Every one of them is polish under this same rule: none satisfies a plan
+deliverable.)*
 
-**What this section does not settle.** `T-203` proposes removing a control that `REQ-011` and
-`UX_SPEC` §8/§9.1 currently describe. It is written as a **proposal with an open ruling**, not as
-agreed work, and it says so in its own entry.
+**What this section does not settle.** *(Narrowed 2026-08-09, the same day it was written.)*
+`T-203`'s **shape is ruled** — *"implement option A"*, after six mockup rounds — and built; the row's
+combo holds presets only and the three per-row verbs are a labelled bar above the list. **What stays
+open is the `REQ-011` per-item template ruling** — whether a per-item output template survives at
+all — **and the `docs/UX_SPEC.md` §8/§9.1 amendment `UX-009` requires**, which the Implementer may
+not write (`AGENTS.md` §4). Neither is agreed work until taken.
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
@@ -2264,8 +2275,8 @@ most likely to be discovered late, because every surface it covers was signed of
 **Phase:** Phase 4 — and it should start **late**, after `T-146` and `T-195`–`T-199` have added
 their controls. A pass run before the phase's new surfaces exist verifies the wrong application.
 **Depends on:** `T-146`, `T-195`, `T-196`, `T-197`, `T-198`, `T-199` — every task that adds a
-control. **Also `T-203`**, if it is ruled in: it changes the row's control set, and re-running this
-pass afterwards would be doing it twice.
+control. **Also `T-203`** — ruled in and built 2026-08-09 (option A): its verb bar and buttons are
+part of the control set this pass audits, so it lands first.
 **Relevant context:** `NFR-005`, `OPS-004`, `OPS-003`, `T-026`,
 `tests/ui/test_windows_accessibility.py`, and the per-surface keyboard work already done in
 `T-107`, `T-110`, `T-181`, `T-192`, `T105-R3`, `T118-R5`, `UX-007`'s `P-20` and `P-22`
@@ -2445,6 +2456,59 @@ it is not in the `ok`/`warn`/`stop` set.
 - Changing the palette. `ARCHITECTURE.md` §8 owns the brand colours; this task adds channels
   beside them
 - High-contrast or user-supplied themes — not requested, and each needs its own decision
+
+### T-212 — The recorded checklist run: the built window against the agreed flow
+
+**Status:** Proposed — filed 2026-08-09, owning the exit criterion the maintainer added the same
+day. The criterion had no owner in the map above, which is exactly the failure that map exists to
+surface.
+**Owner:** Implementer
+**Priority:** High — it is a phase exit criterion, and the phase cannot exit without the evidence
+**Phase:** Phase 4 — **last.** The plan's own criterion text says why: a run taken before the
+phase's surfaces land checks an application that is about to change.
+**Depends on:** `T-146`, `T-195`–`T-202`, and the add-dialog chain — `T-203`, `T-204`'s
+corrections (`T-207`, `T-209`, `T-210`, `T-211`) and whatever `T-208`'s investigation changes.
+**Relevant context:** `IMPLEMENTATION_PLAN.md` §Phase 4 exit criteria; Phase 2's criterion 8 —
+`ai/evidence/2026-08-05-criterion-8-checklist-run.md` and its two successor runs; `P2EXIT-R10`,
+`P2EXIT-R12`; `docs/UX_SPEC.md`
+**Affected surfaces:** `ai/evidence/` (the recorded run) and new task entries for what it finds
+**Risk:** Medium — not that the run is hard, but that it is treated as a formality. Phase 2's
+first run found **eleven defects against 2153 passing tests, none reported by any gate**, and
+needed two further runs to reach 40 of 40
+
+#### Scope
+
+The criterion reads: *"The built window matches the flow that was agreed — evidenced by a recorded
+checklist run against the running application, in `ai/evidence/`, the way Phase 2's criterion 8 was
+evidenced."* This task writes the checklist, runs it against the running application, records the
+run, and files what it finds. The checklist derives from `docs/UX_SPEC.md` — the agreed flow — plus
+the accepted criteria of the surfaces this phase adds: the settings screen and its panes, the
+reshaped add-dialog row, and the phase's queue and error-presentation changes.
+
+**A walked-through session is not evidence.** `P2EXIT-R12` was a checklist claiming a pass over its
+own recorded failures, and `P2EXIT-R10` was the same row claimed met and reset twice. The recorded
+run is the deliverable; the pass is only what it hopefully shows.
+
+#### Acceptance criteria
+
+- **The checklist is written before the run**, derived from `docs/UX_SPEC.md` and the phase's
+  accepted task criteria, and covers every surface Phase 4 added or reshaped
+- **The run is recorded in `ai/evidence/`**, item by item, pass or fail, at a named commit — the
+  format Phase 2's criterion-8 runs established
+- **A failed item becomes its own task entry**, filed rather than repaired inline and re-claimed
+  within the same run
+- **A re-run after corrections repeats the whole checklist**, not only the failed rows — Phase 2
+  needed three runs, and each was complete
+- **The evidence names the commit and states that every depended-on task above was integrated at
+  it** — a run over a tree still missing one of them is the "about to change" application the plan
+  warns against
+
+#### Out of scope
+
+- **Fixing what the run finds.** Each finding is its own filed task with its own review
+- **The Windows half.** `OPS-003`: there is no Windows machine, so the run is Linux; the
+  pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
+  screen-reader split names its Narrator gap
 
 ## Proposed — Phase 4.5
 

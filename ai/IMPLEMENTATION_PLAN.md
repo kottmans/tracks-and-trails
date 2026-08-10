@@ -5,7 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-07 — Phase 4.5 added (option coverage), and `T-181` added to Phase 3
+**Last updated:** 2026-08-09 — `T-212` filed to own the checklist-run exit criterion, and §Phase 4's
+`T-203` note narrowed to the rulings actually still open
 **Last reviewed:** 2026-08-01
 **Update when:** Phase scope, delivery order, dependencies, or exit criteria change.
 **Does not contain:** Individual coding tasks (`TASKS.md`), progress (`STATUS.md`).
@@ -704,13 +705,17 @@ work anybody had broken down."*
 
 **Every deliverable and every exit criterion above now names an owner**, and the mapping is in that
 section rather than here, so there is one place to correct when it is wrong. `T-195`–`T-202` are the
-new entries; `T-146` and `T-021` were already filed. **Two further entries, `T-203` and `T-204`, are
-maintainer-found and are *not* plan deliverables** — they must not be counted as satisfying one,
-which is the conflation `P3EXIT-R1` found in Phase 3's records.
+new entries; `T-146` and `T-021` were already filed, and **`T-212` (filed 2026-08-09) owns the
+recorded-checklist-run criterion**, which had no owner between the ruling that added it and that
+filing. **Further entries — `T-203`, `T-204` and `T-204`'s correction chain — are maintainer-found
+and are *not* plan deliverables** — they must not be counted as satisfying one, which is the
+conflation `P3EXIT-R1` found in Phase 3's records.
 
-**`T-203` carries an open ruling** and is written as a proposal: it would remove per-item controls
-that `REQ-011` and `docs/UX_SPEC.md` §8/§9.1 currently describe. **Nothing in it is agreed work
-until that ruling is taken.**
+**`T-203`'s shape is ruled and built** *(this paragraph narrowed 2026-08-09, the day it was
+written — it had said nothing in the task was agreed work)*: the maintainer chose option A after six
+mockup rounds, and the build is in review. **What stays open** is the `REQ-011` per-item template
+ruling and the `docs/UX_SPEC.md` §8/§9.1 amendment `UX-009` requires; neither is agreed work until
+taken.
 
 ### Exit criteria
 

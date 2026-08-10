@@ -5,7 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09 — Phase 3 exited
+**Last updated:** 2026-08-09 — the add-dialog chain built and awaiting review; `T-212` filed to
+complete the Phase 4 map
 **Last verified against repository:** 2026-08-09 **for the block immediately below** — the pushed
 range, the CI run and its five job results were read from `git log` and `gh run view` after the run
 completed, not from a run taken earlier. The Phase 3 block beneath it was verified 2026-08-06 — its task states,
@@ -21,8 +22,31 @@ statement of what is true now.
 approved at `ccdbd0f` after four exit-review passes; Phase 2 exited 2026-08-05 (commit `38504b3`),
 Phase 1 on 2026-07-29 and Phase 0 on 2026-07-26.
 
-**Phase 4 is decomposed** — `ai/TASKS.md` §`## Proposed — Phase 4`, ten entries, every plan
-deliverable and exit criterion owned. **Nothing is in progress**; the phase has not been started.
+**Phase 4 is decomposed** — `ai/TASKS.md` §`## Proposed — Phase 4`, with every plan deliverable and
+exit criterion owned. `T-212` (filed 2026-08-09) closed the one gap: the recorded-checklist-run
+criterion the maintainer added that day had no owner. **The phase has started**: the add-dialog
+polish chain is built and awaiting review.
+
+## 2026-08-09 (later session): the add-dialog chain is built and awaits Codex
+
+**`## In Review` holds five tasks, all built, none with a verdict.** `T-203` — the ruled option A:
+the row's combo holds presets only, and the three per-row verbs are a labelled bar above the list.
+`T-204` — an open row always offers the control that closes it, reproduced in a failing test first.
+Its correction chain: `T-207` (the reproduction now walks a transition production can reach),
+`T-210` (an open panel is bounded to the list, so its Done button stays reachable), and `T-211`
+(a destroyed editor is forgotten by identity, not row number). **Do not push while these await
+verdicts** — pushing wakes the reviewer.
+
+**`## Ready` holds `T-208` and `T-209`.** A correction for `T-209`'s subject — the panel collapsing
+after a value-only refresh — is committed at `0784bb6` as part of the `T-204` chain; **whether it
+satisfies `T-209`'s own criteria (both panel kinds, every reset class) has not been run**, so the
+task stays Ready rather than claimed. `T-208` — the multi-row missing-disclosure report — is
+**still unreproduced**, and its entry says closing it takes a maintainer disposition, not an
+inference that it was `T-204`.
+
+**Complete since the block below:** `T-192`, `T-193`, `T-194`, approved 2026-08-09, with their
+review's corrections `T-205` and `T-206`. None of this chain is a plan deliverable; the plan's
+deliverables (`T-146`, `T-195`–`T-202`, `T-212`) are all still Proposed.
 
 ## 2026-08-09: the session's work is pushed, CI is green, and Phase 4 is decomposed
 
