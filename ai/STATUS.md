@@ -5,11 +5,11 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **`T-215` and `T-146` are built and In Review**, one commit each
-(`c025dd6`, `b9caa40`), for one combined review pass on maintainer instruction. `T-146` is
-**Phase 4's first plan deliverable**: the `Settings` menu and the screen behind it, holding three
-of `REQ-023`'s eight settings.
-**Last verified against repository:** 2026-08-10 **for the six 2026-08-10 blocks** — task
+**Last updated:** 2026-08-10 — the combined verdicts: **`T-215` Approved at `b9caa40` and
+Complete**; **`T-146` Changes requested on two blockers, both corrected at `8940353`** and
+awaiting a focused re-review. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
+and the screen behind it, holding three of `REQ-023`'s eight settings.
+**Last verified against repository:** 2026-08-10 **for the seven 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
 read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
 day; the Phase 3 block beneath
@@ -32,6 +32,34 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-10 (verdicts and correction): T-215 Complete, T-146 corrected
+
+**Codex's combined review returned at `2cf8b63`.** `T-215` is **Approved at `b9caa40` and moved
+to `## Complete`** — the reviewer confirmed the chosen design and, explicitly, that the rejected
+one is recorded with the `T-143` regression it would restore rather than left as an unexplained
+abandoned shape. `T-146` came back **Changes requested** on two blockers, both corrected at
+`8940353` and awaiting a focused re-review:
+
+- **`T146-R1` (High)** — `expanduser()` sat outside `_directory_from`'s guard and raises
+  `RuntimeError` for a `~user` with no resolvable home, so a hand-edited settings file **stopped
+  the application starting** instead of being reported. Reproduced first: a file naming
+  `~nosuchuser12345/downloads` raised straight out of `load()`, whose contract is that it never
+  does. Path construction, expansion and all three probes now sit inside one guard.
+- **`T146-R2` (Medium)** — the three settings callbacks dropped `save()`'s returned failure, so a
+  change that could not be written looked exactly like one that was and vanished at the next
+  launch. All three now route through one `remember` helper reporting through
+  `report_transiently`, the channel whose own docstring says composition is where its writes'
+  failures surface.
+
+**A third thing, self-reported again**: the first correction caught `ValueError` too, for a
+NUL-byte path. Measured and removed — `tomllib` rejects a raw NUL while parsing, so such a value
+never reaches that function, and an `except` nobody can trigger is a claim rather than a guard.
+
+**Figures at `8940353`**: ruff, format (165 files) and all three mypy gates (52 / 127 / 127 under
+`--platform win32`) clean; the unit, settings-screen, main-window, accessibility and composition
+suites **1825 passed, 16 skipped**. Six mutations across `T-146` fail their own evidence, two of
+them from this pass. Nothing is pushed; CI has not run on any of it.
 
 ## 2026-08-10 (build session): T-215 and T-146, both In Review
 
