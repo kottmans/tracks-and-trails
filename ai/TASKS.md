@@ -120,15 +120,20 @@ this one returned four verdicts before approving.*
 
 ### T-203 — The row's controls: one preset picker, and the one verb that is genuinely per-item
 
-**Status:** **In Review — option *E* built 2026-08-10, awaiting verdict.** The hold on the
+**Status:** **In Review — Changes requested 2026-08-10 (`T203-R3` High, `T203-R4` Medium).**
+The pointer door and row-bound menu are correct, and `T203-R1`/`T203-R2` are Resolved. The
+declared Menu-key/Shift+F10 door is not: a keyboard context event supplies a point off every row,
+and `_show_row_menu` returns instead of falling back to the current index. The live Phase 4
+contracts for `T-200` and `T-218` also still require the removed option-A bar. The hold on the
 rebuild was lifted by the maintainer the same night — *"Please do T-203, T208 and T209
 overnight"* — which is the instruction this build acts under. What was built, in one paragraph:
 **the three verbs are `QAction`s in the row's own menu** under a *Just this item* heading, above
 the Read-again/Choose-a-format/Remove entries the menu already held; the menu opens from a
 **painted `⋮` zone carved from the trailing edge of the row's format control**
-(`_menu_zone_of`, one definition for paint and hit test) and from the context routes that
-already existed — right-click, the Menu key, Shift+F10 — **through one builder**, `row_menu`,
-so the doors cannot drift; **the bar is removed whole** — label, three buttons, and `T203-R1`'s
+(`_menu_zone_of`, one definition for paint and hit test) and from the context hook that already
+existed — right-click works; `T203-R3` owns the broken Menu-key/Shift+F10 half — **through one
+builder**, `row_menu`, so the working doors cannot drift; **the bar is removed whole** — label,
+three buttons, and `T203-R1`'s
 announcement machinery — with `focus_chain()` narrowed and its hand-transcribed test order
 updated. **Four mutations fail their own regressions**: the zone anchored at the wrong edge, the
 zone hit-test removed, the menu retargeted to the current row, and the `⋮` door unwired.
@@ -157,7 +162,8 @@ reviewed**: the presets-only combo, the `Naming and folders…` rename, and the 
 `Manage presets…`. *(Was: In Review — corrected, awaiting re-review, when the correction was
 still option *A*'s; and before that Blocked on a Planner for the records `T203-R2` named.)*
 
-- **`T203-R1` — High. Corrected 2026-08-09 on the bar; retired 2026-08-10 with the bar.** The
+- **`T203-R1` — High. Resolved 2026-08-10 at `3a8aaa9`.** Corrected 2026-08-09 on the bar;
+  retired 2026-08-10 with the bar. The
   bar drew `For <row>:` while `QAccessible` reported the label as *"Which item the adjust buttons
   act on"* and the three buttons as acting on *"the current item"*. Because the buttons came
   **before** the list in tab order, a screen-reader user was told a row would change and never
@@ -168,8 +174,9 @@ still option *A*'s; and before that Blocked on a Planner for the records `T203-R
   without successor**: `test_the_menu_acts_on_the_row_it_was_opened_from` opens row 1's menu
   while row 0 is current and proves the verb acts on row 1, and the retarget-to-current mutation
   fails it.
-- **`T203-R2` — Medium. Corrected 2026-08-09 by the Planner pass above — and the pass itself
-  caught the deeper version of the same defect.** The finding: the spec still described the
+- **`T203-R2` — Medium. Resolved 2026-08-10 at `3a8aaa9`.** Corrected 2026-08-09 by the
+  Planner pass above — and the pass itself caught the deeper version of the same defect. The
+  finding: the spec still described the
   controls option *A* replaced, and this entry's own criteria required a column header that does
   not exist, two icons, icon styling and Windows icon coverage. Reconciling the records surfaced
   that **the design conversation had moved past the repository's last recorded ruling**: round 7
@@ -178,6 +185,18 @@ still option *A*'s; and before that Blocked on a Planner for the records `T203-R
   ruled contract with the ruled-against history kept visible; the criteria below rewritten to
   *E*. **The `REQ-011` per-item-template ruling is deliberately not taken by it** — the menu
   keeps `Naming and folders…` and removes no capability, exactly as Codex ruled.
+- **`T203-R3` — High. Open, blocks approval.** The Menu-key/Shift+F10 route is dead. Qt's
+  keyboard context event is positioned off every row; `_show_row_menu` resolves only
+  `indexAt(position)` and returns, even with a valid current row. The committed two-door test
+  calls the handler with a row-centred point and therefore proves a second pointer-shaped route.
+  Fall back to the current index, use a valid popup anchor for that case, and drive Qt's shown
+  `CustomContextMenu` dispatch in the correction regression. The painted `⋮` deliberately has no
+  accessibility node, so the sibling route is load-bearing under `NFR-005`.
+- **`T203-R4` — Medium. Open, blocks approval.** Live Phase 4 consumers still instruct future
+  work against the rejected bar: the phase preface calls option A ruled and built, `T-200` says
+  its accessibility pass audits the bar's buttons, and `T-218` requires the disabled bar to stay.
+  Reconcile those task contracts and the stale test docstring with `UX-011`; keep the explicitly
+  historical descriptions of option A as history.
 
 **Codex was explicit that this is not an objection to the source.** *"This is not a source-code
 objection to Option A; it is the absence of a coherent durable ruling and acceptance contract for
@@ -439,153 +458,6 @@ shape; **built 2026-08-10** and submitted against it unchanged.)*
 - The playlist entry picker's sizing — fixed by `T-193`
 - Multi-select in the add dialog. It would change the answer here, and nothing asks for it
 - yt-dlp's wider option surface — `T-183` and the escape hatch own that
-
-
-### T-208 — Reproduce the multi-row missing-disclosure report
-
-**Status:** **In Review — one multi-row route reproduced and fixed 2026-08-10; whether it is the
-report is the maintainer's call.** Probe scripts drove a shown dialog through six multi-row
-gestures against one question — *what escape does the expanded playlist offer right now?* An
-expanded row's twisty is deliberately unpainted (`T-210`'s one-arrow rule), so "the arrow is
-lost" means exactly: role expanded, and the panel's collapse control absent or outside the
-viewport.
-
-| Gesture, picker open on the playlist | Result |
-|---|---|
-| A sibling re-probes (value refresh) | intact |
-| A sibling fails (value refresh) | intact |
-| A URL is added (structural remount) | intact |
-| **The row above is removed**, content below | **BROKEN — collapse at y=−63, permanent: 50 turns never recover it** |
-| A second playlist opened over the first | first closes; second mounts at its 190×26 minimum for **one turn**, healed by the deferred remount — handed to `T-209`'s audit |
-| The playlist row leaves `READY` | `T-204` §1, already fixed and guarded |
-
-**The break is scroll anchoring, and the negative findings matter as much**: not role admission
-(`EXPANDED_ROLE` answered `True` throughout), not row identity (the panel followed its row), not
-a stale mount (panel geometry equalled `visualRect` exactly). Removing a row above shrinks the
-scroll range and Qt keeps the *offset*, so the surviving row — panel and all — slides up until
-its top, **where the collapse control lives**, sits above the fold and stays there. Two rows
-alone heal by clamping; a third row below makes it permanent.
-
-**Fix**: `remount_panel` re-anchors the row's top into view (`PositionAtTop`) exactly when the
-remount finds it above the viewport — a reset that moved nothing does not move the view.
-**Regression**: `test_removing_a_row_above_keeps_the_open_panels_way_back_on_screen`, which also
-proves the close keeps a selection made before the removal; removing the re-anchor fails it.
-
-**What is not claimed:** that this is the gesture behind *"with multiple items … the playlist
-loses the arrow"*, or the only one. The route existed, is fixed, and cannot come back; **the
-disposition on the report itself stays with the maintainer**, exactly as the criteria require —
-the maintainer was away overnight, so "elicit the exact gesture" could not be run.
-*(Was: Ready — follow-up for non-blocking `T204-R3`: the T-204 multi-row guard passes with and
-without the role-order correction, so the report remained unexplained and got its own entry, as
-T-204's investigation rule required.)*
-**Owner:** Implementer
-**Priority:** Medium — the reported end state traps the user in the panel, but the trigger is not
-yet reproducible and a simple second-row reconcile is proven unaffected
-**Phase:** Phase 4 — follow-up to T-204
-**Depends on:** nothing; coordinate with T-207 if its reachable trigger also needs multiple rows
-**Relevant context:** `T-204`, `T204-R3`, `T108-R2`, `ui/add_dialog.py` (`remount_panel`,
-`EXPANDED_ROLE`), `tests/ui/test_add_dialog.py`
-**Affected surfaces:** `ui/add_dialog.py` (`remount_panel`), `tests/ui/test_add_dialog.py`
-*(was: investigation first — a route was reproduced, so the surfaces followed)*
-**Risk:** Medium — the report may be the same state gate, a remount/identity defect, or a distinct
-geometry path, and assuming which one is how T-204 reached review without reproducing it
-
-#### Acceptance criteria
-
-- Recover or elicit the exact multi-row gesture sequence and reproduce it through the built dialog
-  *(partially met 2026-08-10: one route reproduced through the built dialog; the maintainer's own
-  gesture could not be elicited overnight and remains unconfirmed)*
-- Establish whether the missing arrow comes from role admission, structural remounting, row
-  identity, or geometry; do not credit the current passing guard as reproduction evidence
-  *(met: geometry — scroll anchoring; role admission, identity and mount staleness each ruled out
-  by direct observation, recorded above)*
-- If the defect remains, add a regression that fails before its correction and proves the panel can
-  be closed without losing the playlist selection *(met: the regression above, mutation-checked)*
-- If it cannot be reproduced, record the attempts and keep the report explicitly known-unverified;
-  closing the task requires a maintainer disposition, not an agent inference that it was T-204
-  *(the disposition half still binds: the report stays known-unverified until the maintainer says
-  this route was, or was not, what they saw)*
-- Run the checks required by `ai/TESTING.md` §3 for whatever surfaces the investigation changes
-
-#### Out of scope
-
-- The separate row/panel-overlap screenshot unless the reproduced trigger proves they are one defect
-
----
-
-
-### T-209 — Keep an open row panel laid out after a value refresh
-
-**Status:** **In Review — criteria run as specified 2026-08-10, and the audit is a table.**
-The correction itself — `relayout_panel`'s deferred restore — had shipped with `T204-R4`; what
-this task still owned was **running the criteria as written**, which no test had done: the real
-`manager.job_changed` signal (not the slot), a real `Space` keystroke before the failure, the
-panel asserted as the row's **index widget** with geometry equal to `visualRect`, the close
-through the panel's own route, and the selection proved to survive it. Two regressions now do
-exactly that — `test_the_reachable_failed_path_keeps_the_panel_and_the_selection` (playlist,
-closed by *Done*, choice kept) and `test_a_value_refresh_leaves_the_open_format_table_over_its_row`
-(**the other panel kind**, closed by `Esc`).
-
-**Criterion 4 was proved on both of its halves.** Transplanted to a `6aded1a` worktree — with an
-import probe confirming the worktree's package was the one under test — both regressions
-**fail there**: the playlist panel shrinks to **190×26 inside an 852×407 row** (the criterion's
-own numbers at a wider window), and the format table never opens past its minimum at all.
-At HEAD, disabling `relayout_panel` fails **all three** value-refresh regressions, the
-`T204-R4` one included — weakening the correction makes them fail again.
-
-**The audit, by reset class:**
-
-| Reset class | Playlist panel | Format panel |
-|---|---|---|
-| Value-only refresh (reachable `FAILED` path) | held, gated | held, gated |
-| Structural remount (add / retype / remove) | `T108-R2`'s tests + `T-208`'s re-anchor | same mechanism, `remount_panel` is kind-blind |
-| **Every open** (mount ordering) | **one-turn transient**: the panel spends the turn between widget and geometry at its 190×26 minimum — the deliberate `T108-R2` deferral, which refuses stale rectangles. Permanent states are all correct; whether the turn is a visible flash on a real display is `OPS-003`-shaped and **awaits the maintainer's screen**. Left unchanged tonight rather than reordering the seam that produced `T107-R2`, `T108-R2` and `T-204` unsupervised. | same, observed on both kinds |
-
-*(Was: Ready — blocking `T204-R4`, found in T-204's focused re-review: the reachable
-`job_changed` path shrank the mounted `PlaylistPanel` from the row's 485×407 visual rectangle to
-its 190×26 minimum, clipping the picker and Done while the delegate-painted row showed through —
-T-204 criterion 6, reproduced rather than hypothetical.)*
-**Owner:** Implementer
-**Priority:** High — the row's body becomes inaccessible on the exact path T-204 is meant to make
-escapable, and the submitted role-only test never shows the dialog or checks geometry
-**Phase:** Phase 4 — blocking correction to T-204
-**Depends on:** T-207's reachable signal path, which supplies the reproduction
-**Relevant context:** `T-204`, `T204-R1`, `T204-R4`, `T107-R2`, `T108-R2`,
-`ui/add_dialog.py` (`StagingModel.refresh`, `_mount_panel`, `remount_panel`),
-`tests/ui/test_add_dialog.py`
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Medium-High — the panel geometry seam has already needed two corrections, and value-only
-refresh differs from both the initial mount and structural-reset paths those corrections cover
-
-#### Acceptance criteria
-
-- In a shown dialog, open the playlist picker, change its selection with a real key/click, and
-  drive the reachable `manager.job_changed → _on_job_changed → FAILED` path *(met 2026-08-10:
-  `Space` on the picker's table, then the signal emitted on the manager — the connection a real
-  session exercises — not the slot)*
-- After that refresh, the panel remains the row's index widget and its geometry matches the row's
-  visual rectangle; the picker body and Done button remain visible and usable, with no delegate row
-  anatomy painted through the panel *(met: `indexWidget(index) is panel`, geometry equals
-  `visualRect`, *Done*'s bottom inside the viewport)*
-- Close through an actual user route—Done, Esc, or a disclosure event that the view really emits—
-  rather than calling `toggle_playlist` directly, and prove the changed selection survives
-  *(met: *Done* on the playlist — the accept route, since `Esc` is the discard route by its own
-  test — and the six-of-seven selection compared equal after the close)*
-- The regression fails at `6aded1a`, where the panel is 190×26 inside a 485×407 row; weakening the
-  correction must make it fail again *(met on both halves: transplanted to a `6aded1a` worktree
-  both regressions fail — 190×26 in 852×407 at this probe's window — and disabling
-  `relayout_panel` at HEAD fails all three value-refresh regressions)*
-- Audit value-only refreshes for both playlist and format panels, plus structural remounting, so the
-  correction does not fix one panel kind or reset class only *(met: the table in the status —
-  including the one-turn mount transient it surfaced, recorded rather than reordered overnight)*
-- Run `ruff`, `ruff format`, both mypy gates and the affected UI suites *(run at submission; the
-  results are in the session's handoff and the commit)*
-
-#### Out of scope
-
-- T-208's separately unexplained multi-row report, unless this geometry path reproduces it
-
----
 
 
 ## Ready
@@ -2865,6 +2737,117 @@ under a stated precedence.
 
 
 ## Blocked
+
+### T-208 — Reproduce the multi-row missing-disclosure report
+
+**Status:** **Blocked — correction verified 2026-08-10; awaiting the maintainer's disposition
+on `T208-R1`.** One multi-row route was reproduced and fixed: removing a row above an open
+playlist with content below stranded its collapse control above the viewport. Codex independently
+verified the correction and its mutation at `d21a243`; what remains is the task's explicit closing
+rule. The maintainer must say whether this was the reported gesture, say it was not and keep the
+investigation open, or deliberately close the report on this bounded correction.
+
+Probe scripts drove a shown dialog through six multi-row gestures against one question — *what
+escape does the expanded playlist offer right now?* An expanded row's twisty is deliberately
+unpainted (`T-210`'s one-arrow rule), so "the arrow is lost" means exactly: role expanded, and the
+panel's collapse control absent or outside the viewport.
+
+| Gesture, picker open on the playlist | Result |
+|---|---|
+| A sibling re-probes (value refresh) | intact |
+| A sibling fails (value refresh) | intact |
+| A URL is added (structural remount) | intact |
+| **The row above is removed**, content below | **BROKEN — collapse at y=−63, permanent: 50 turns never recover it** |
+| A second playlist opened over the first | first closes; second mounts at its 190×26 minimum for **one turn**, healed by the deferred remount — now `T-221` |
+| The playlist row leaves `READY` | `T-204` §1, already fixed and guarded |
+
+**The break is scroll anchoring, and the negative findings matter as much**: not role admission
+(`EXPANDED_ROLE` answered `True` throughout), not row identity (the panel followed its row), not
+a stale mount (panel geometry equalled `visualRect` exactly). Removing a row above shrinks the
+scroll range and Qt keeps the *offset*, so the surviving row — panel and all — slides up until
+its top, **where the collapse control lives**, sits above the fold and stays there. Two rows
+alone heal by clamping; a third row below makes it permanent.
+
+**Fix**: `remount_panel` re-anchors the row's top into view (`PositionAtTop`) exactly when the
+remount finds it above the viewport — a reset that moved nothing does not move the view.
+**Regression**: `test_removing_a_row_above_keeps_the_open_panels_way_back_on_screen`, which also
+proves the close keeps a selection made before the removal. Codex independently removed the
+re-anchor and reproduced the collapse control at y=−63.
+
+**What is not claimed:** that this is the gesture behind *"with multiple items … the playlist
+loses the arrow"*, or the only one. The route existed, is fixed, and cannot come back; **the
+disposition on the report itself stays with the maintainer**, exactly as the criteria require.
+*(Was: In Review — one route reproduced and fixed; whether it was the report remained the
+maintainer's call. Before that: Ready — the original passing multi-row guard was not a
+reproduction.)*
+**Owner:** Implementer
+**Priority:** Medium — the reported end state traps the user in the panel, but the exact trigger
+remains unconfirmed
+**Phase:** Phase 4 — follow-up to T-204
+**Depends on:** maintainer disposition on `T208-R1`
+**Relevant context:** `T-204`, `T204-R3`, `T108-R2`, `ui/add_dialog.py` (`remount_panel`,
+`EXPANDED_ROLE`), `tests/ui/test_add_dialog.py`
+**Affected surfaces:** `ui/add_dialog.py` (`remount_panel`), `tests/ui/test_add_dialog.py`
+**Risk:** Medium — the report may be this geometry path or a distinct route, and assuming which
+one is how T-204 reached review without reproducing it
+
+#### Acceptance criteria
+
+- Recover or elicit the exact multi-row gesture sequence and reproduce it through the built dialog
+  *(partially met: one route reproduced; the maintainer's own gesture remains unconfirmed)*
+- Establish whether the missing arrow comes from role admission, structural remounting, row
+  identity, or geometry; do not credit the current passing guard as reproduction evidence
+  *(met for the reproduced route: geometry — scroll anchoring)*
+- If the defect remains, add a regression that fails before its correction and proves the panel can
+  be closed without losing the playlist selection *(met and independently mutation-checked)*
+- If it cannot be reproduced, record the attempts and keep the report explicitly known-unverified;
+  closing the task requires a maintainer disposition, not an agent inference that it was T-204
+  *(still binding as `T208-R1`)*
+- Run the checks required by `ai/TESTING.md` §3 for whatever surfaces the investigation changes
+  *(met at submission and review)*
+
+#### Out of scope
+
+- The separate row/panel-overlap screenshot unless the reproduced trigger proves they are one defect
+
+---
+
+
+### T-221 — Decide whether the deferred panel mount visibly flashes
+
+**Status:** **Blocked — needs the maintainer's real-display observation.** `T-209`'s audit proved
+every permanent state and surfaced one transient: both panel kinds spend the turn between index
+widget mount and deferred geometry at their 190×26 minimum. Offscreen tests can measure the turn
+but cannot establish whether a user sees a flash. `T209-R1` assigns the question here so T-209 can
+close without leaving an ownerless finding.
+**Owner:** Maintainer for observation → Implementer only if a correction is needed
+**Priority:** Low — the panel self-heals in one event-loop turn; no control or selection is lost
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** a real-display run of both panel openings
+**Relevant context:** `T-209`, `T108-R2`, `T107-R2`, `T-204`, `OPS-003`,
+`ui/add_dialog.py` (`_open_panel`, `_mount_panel`, `relayout_panel`)
+**Affected surfaces:** observation first; `ui/add_dialog.py` and its UI tests only if visible
+**Risk:** Medium if changed — the deferral prevents mounting an index widget while Qt is still
+closing the combo editor, the dead-editor ordering `T108-R2` established
+
+#### Acceptance criteria
+
+- On a real display, open both the playlist picker and the format table and record whether either
+  visibly flashes at 190×26 before filling the row
+- If no flash is visible, record the observation and close the task without source work
+- If it is visible, reproduce it with the strongest deterministic evidence available and correct
+  it without mounting under the live editor; both panel kinds, editor teardown and structural
+  reset survival remain green
+- Run the source gates and affected UI suites if source or tests change
+
+#### Out of scope
+
+- Reopening T-209's proved permanent value-refresh geometry
+- Reordering the `T108-R2` mount seam without a visible defect
+
+---
+
+
 ### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
 
 **Status:** **Blocked — prepared 2026-08-01, on *somebody at* `STARBASE`.**
@@ -3296,6 +3279,67 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-209 — Keep an open row panel laid out after a value refresh
+
+**Status:** **Complete — Approved with follow-up 2026-08-10 at `5652bf1`.** The correction
+itself — `relayout_panel`'s deferred restore — shipped with `T204-R4`; this task ran the criteria
+that had not been run: the real `manager.job_changed` signal after a real `Space`, panel/index
+identity and geometry, a usable close route, and the changed selection surviving it. The format
+panel now has the same value-refresh proof. Codex independently disabled `relayout_panel` and all
+three value-refresh regressions failed. `T209-R1` is non-blocking and owned by `T-221`: a
+real-display disposition of the one-turn minimum-size state during every open.
+
+Two regressions carry the result:
+`test_the_reachable_failed_path_keeps_the_panel_and_the_selection` (playlist, closed by *Done*,
+choice kept) and `test_a_value_refresh_leaves_the_open_format_table_over_its_row` (the other panel
+kind, closed by `Esc`). Transplanted to `6aded1a`, both fail: the playlist panel shrinks to
+190×26 inside an 852×407 row, and the format table never opens past its minimum. At the approved
+head, disabling `relayout_panel` fails these two plus `T204-R4`'s regression.
+
+**The audit, by reset class:**
+
+| Reset class | Playlist panel | Format panel |
+|---|---|---|
+| Value-only refresh (reachable `FAILED` path) | held, gated | held, gated |
+| Structural remount (add / retype / remove) | `T108-R2`'s tests + `T-208`'s re-anchor | same kind-blind `remount_panel` mechanism |
+| Every open (mount ordering) | one-turn 190×26 transient, permanent state correct — `T-221` | same — `T-221` |
+
+*(Was: In Review — criteria run as specified 2026-08-10. Before that: Ready — blocking
+`T204-R4`, found in T-204's focused re-review.)*
+**Owner:** Implementer
+**Priority:** High — the row's body became inaccessible on the exact path T-204 made escapable
+**Phase:** Phase 4 — blocking correction to T-204, now closed
+**Depends on:** T-207's reachable signal path, which supplied the reproduction
+**Relevant context:** `T-204`, `T204-R1`, `T204-R4`, `T107-R2`, `T108-R2`,
+`ui/add_dialog.py` (`StagingModel.refresh`, `_mount_panel`, `remount_panel`),
+`tests/ui/test_add_dialog.py`
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Medium-High — the panel geometry seam has already needed two corrections
+
+#### Acceptance criteria
+
+- In a shown dialog, open the playlist picker, change its selection with a real key/click, and
+  drive `manager.job_changed → _on_job_changed → FAILED` *(met: real `Space`, then the manager
+  signal)*
+- Keep the panel as the row's index widget with geometry equal to `visualRect`; keep its body and
+  *Done* usable, with no row painting through it *(met)*
+- Close through an actual user route and prove the changed selection survives *(met: *Done* and
+  six-of-seven selection retained)*
+- Fail at `6aded1a` and when the correction is weakened *(met on both panel kinds; independently
+  mutation-checked at review)*
+- Audit both panel kinds and structural remounting *(met; the non-blocking real-display question
+  is `T-221`)*
+- Run `ruff`, `ruff format`, both mypy gates and the affected UI suites *(met at submission and
+  review)*
+
+#### Out of scope
+
+- T-208's separately unexplained multi-row report
+
+---
+
+
 ### T-210 — An opened row can be taller than the list, putting its own Done button out of reach
 
 **Status:** **Complete — Approved 2026-08-10 at `de98190`.** `T210-R1` is Resolved under the maintainer's recorded sub-600px scope ruling. The exact-head archive passed 2822 tests; the 600px bound and the below-bound readable floor each kill their opposing mutation.
@@ -3437,7 +3481,12 @@ constraint for a resizing one. **If that trade is preferable, it reopens as its 
 
 ### T-204 — A row that stops being committable keeps its panel and loses the way to close it
 
-**Status:** **Complete — Approved with follow-ups 2026-08-09 at `9813f19`.** `T204-R1`, `T204-R4` and `T204-R2` are all **Resolved**; the third focused pass verified the close route through the panel's own *Done*, the restored panel geometry, and the swept coordination copies. **Two follow-ups stay open and are not closed by this approval**: `T204-R3`/`T-208` (the multi-row report, still unreproduced) and `T-209` (the broader both-panel, every-reset audit, still `Ready` and unexecuted).
+**Status:** **Complete — Approved with follow-ups 2026-08-09 at `9813f19`.** `T204-R1`,
+`T204-R4` and `T204-R2` are all **Resolved**; the third focused pass verified the close route
+through the panel's own *Done*, the restored panel geometry, and the swept coordination copies.
+The two follow-ups have since advanced without reopening this approval: `T204-R3`/`T-208`
+reproduced and fixed one route and is Blocked on the maintainer's report disposition; `T-209` is
+Approved with the non-blocking real-display follow-up `T-221`.
 
 **The second report is not reproduced, and is not claimed closed by reproduction.** A test drives
 the multi-row path and it passes **with the fix and without it** — a playlist row stays `READY`

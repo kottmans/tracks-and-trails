@@ -13720,3 +13720,94 @@ unchanged and was not reopened by this test-only/comment correction.
 No Open finding or follow-up task was created. The untracked handoff remained uncommitted. The
 Reviewer changed only `ai/REVIEWS.md` and T-210's status/placement in `ai/TASKS.md`; no source or
 test file was modified, and no commit or push was made.
+
+## 2026-08-10 — T-203 option-E review and T-208/T-209 review
+
+**Tasks:** T-203 — move the row's verbs into its own menu; T-208 — reproduce the multi-row
+missing-disclosure report; T-209 — prove panel layout after a value refresh
+
+**Task-specific implementation boundaries:**
+
+- T-203: `d59bf0d..3a8aaa9`
+- T-208: `3a8aaa9..d21a243`
+- T-209: `d21a243..5652bf1`
+- Combined review checkout: `f3791f5` (the later commit is coordination only)
+
+**Verdicts:**
+
+| Task | Verdict | Reason |
+|---|---|---|
+| **T-203** | **Changes requested** | The pointer door and common menu are correct, but the declared Menu-key/Shift+F10 sibling route opens no menu. Two current Phase 4 task contracts also still require the removed option-A bar. |
+| **T-208** | **Blocked** | The reproduced remove-above route and its correction are verified. The task's own closing rule still requires the maintainer to say whether this is the reported gesture or to direct the remaining investigation. |
+| **T-209** | **Approved with follow-up at `5652bf1`** | Both panel kinds now satisfy the value-refresh criteria and the regressions are load-bearing. T-221 owns the real-display disposition of the one-turn minimum-size state the audit surfaced. |
+
+The five held commits were pushed on the maintainer's explicit instruction during this review;
+`origin/main` reached `f3791f5`. CI and Prose runs `31397135268` and `31397135274` were queued at
+the time this record was written. A queued run is not reported as passing.
+
+### Findings and dispositions
+
+| ID | Severity | Blocks approval | Status | Finding or resolution |
+|---|---|---:|---|---|
+| **T203-R1** | **High** | **Yes** | **Resolved at `3a8aaa9`** | The shared bar and its target announcement are gone. `row_menu(row)` closes each action over the row supplied by the opening route; opening row 1's menu while row 0 remains current acts on row 1. Retargeting the builder to the current row fails the committed successor regression. |
+| **T203-R2** | **Medium** | **Yes** | **Resolved at `3a8aaa9`** | `UX-011`, `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1, and T-203's own live criteria consistently describe option E. The per-item-template ruling remains explicitly open and the build removes no capability. The separate stale downstream contracts are T203-R4 rather than a reason to keep this exact finding open. |
+| **T203-R3** | **High** | **Yes — NFR-005 and an explicit acceptance criterion** | **Open** | `src/tracks_and_trails/ui/add_dialog.py:2328-2347` resolves a request only with `indexAt(position)`. For a keyboard-reason context-menu event Qt supplies a position off every row; the handler returns at line 2344 even when the list has a valid current row. A shown-dialog reviewer probe sent the same `QContextMenuEvent(Keyboard, ...)` used by the queue's established regression and no `QMenu` opened. The committed “two doors” test calls `_show_row_menu(visualRect(index).center())` directly, so it proves a second pointer-shaped route and cannot see the keyboard failure. Fall back to `currentIndex()` when `indexAt` is invalid, choose an on-row/global popup anchor for that case, and add a shown `CustomContextMenu` dispatch regression. This is High because the painted `⋮` has no accessibility node by design: without the sibling keyboard door, the three per-row verbs are pointer-only for the users NFR-005 protects. |
+| **T203-R4** | **Medium** | **Yes — current truth and future acceptance contracts** | **Open** | Option E removed the bar, but current Phase 4 records still instruct later work against option A: `ai/TASKS.md:1849-1854` calls the bar the ruled shape, T-200 at lines 2167-2169 says its accessibility pass must audit the bar's buttons, and T-218 at lines 2665-2671 requires the disabled bar to remain in both its criterion and out-of-scope list. `tests/ui/test_add_dialog.py:4955-4957` also says the verbs “are the bar's now.” Reconcile those live consumers with `UX-011` and the built menu; historical descriptions of the rejected bar remain history and are not findings. |
+| **T208-R1** | **Medium** | **Yes — task's explicit disposition rule** | **Blocked on maintainer** | The submitted route is real and the correction is sound: removing the re-anchor independently reproduces the collapse control at `y=-63`, while HEAD keeps it visible and preserves the six-of-seven selection through close. The investigation nevertheless says the maintainer's reported gesture is unconfirmed, and T-208's criterion says closing requires the maintainer's disposition. The maintainer must state that remove-above was the observed route, state that it was not and keep the investigation open, or deliberately close the report on this bounded correction. No source correction is requested by this finding. |
+| **T209-R1** | **Low** | **No** | **Open follow-up — T-221** | The audit observed both panel kinds at their 190×26 minimum during the turn between mounting and deferred geometry. Every permanent state is correct, so this does not reopen the value-refresh defect; whether the transient is visible remains unverified on a real display. T-221 owns that observation and any narrowly justified correction. |
+
+### What the comprehensive pass accepted
+
+**T-203's pointer shape is correct.** `row_menu` is the single action builder, actions are ordered
+under the required section, capability admission reads the model roles, and the `⋮` rectangle is
+one trailing slice used by paint and hit testing. The popup lifetime is bounded with
+`WA_DeleteOnClose`. The focused geometry test drives both sides of the slice, and the affected
+suite confirms the presets-only combo, narrowing contract and focus order still hold. T203-R3 is
+about the distinct keyboard door, not the pointer menu or target binding.
+
+**T-208's fix is deliberately narrow.** `remount_panel` calls `PositionAtTop` only when the
+remounted row's visual rectangle has already crossed above the viewport. The existing reset path
+still remounts by row identity, and the correction neither changes admission roles nor rebuilds
+the panel. The reviewer mutation proves the new condition is what keeps the close control on
+screen.
+
+**T-209 proves the previously approved correction across both panel kinds.** The playlist case
+uses a real `Space`, the manager's signal, index-widget identity, geometry, visible `Done`, and the
+accept route; the format case drives the same value refresh and exits with its discard route.
+Removing the `relayout_panel` call makes the old playlist test and both T-209 tests fail: the
+playlist and format panels collapse to 190×26 while their rows remain 852×336. T-221 records the
+separate mount-time transient without turning a one-turn visual question into a permanent-layout
+failure.
+
+### Independent verification
+
+Python tools were invoked through `.venv/bin/python`. Qt tests used
+`QT_QPA_PLATFORM=offscreen`; mutation trees came from `git archive f3791f5` under `/tmp` with an
+explicit archive `PYTHONPATH` and `PYTHONDONTWRITEBYTECODE=1`.
+
+| Check | Real result |
+|---|---|
+| `git diff --check de98190..f3791f5` and worktree `git diff --check` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 163 files** |
+| `mypy src` | **pass, 51 files** |
+| bare `mypy` | **pass, 125 files** |
+| `mypy --platform win32` | **pass, 125 files** |
+| Add-dialog, row-delegate, playlist-picker and task-placement suites | **239 passed in 94.49 s** |
+| Keyboard-reason context-menu probe | **1 failed as finding evidence:** no visible row menu |
+| No-re-anchor mutation, T-208 regression | **1 failed as expected:** collapse control `y=-63` in a 344px viewport |
+| No-`relayout_panel` mutation, three value-refresh regressions | **3 failed as expected:** panels 190×26 against 852×336 rows |
+
+The focused suite emitted no product warnings. The probe and mutations logged the known sandbox
+warning that the per-job cache under `/home/sean/.cache` is read-only; it did not affect their
+assertions. Windows runtime and the real-display transient were not independently exercised.
+
+### Review readiness
+
+T-203 needs one focused correction pass for T203-R3 and T203-R4. Because T203-R3 is High,
+AGENTS.md §10 permits that verification even though this is the ordinary correction re-review.
+T-208 needs a maintainer decision rather than an implementation correction. T-209 is complete at
+its task-specific head with one non-blocking follow-up.
+
+The Reviewer changed `ai/REVIEWS.md` and `ai/TASKS.md` only. Temporary probes and mutation trees
+were not added to the repository; no reviewed source or test file was modified.
