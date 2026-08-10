@@ -5,8 +5,8 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09 — **the add-dialog chain's verdicts arrived.** `T-204`, `T-207` and
-`T-211` are Complete; `T-210` is corrected under a maintainer scope ruling and awaits re-review;
+**Last updated:** 2026-08-10 — **the add-dialog chain's verdicts arrived.** `T-204`, `T-207`,
+`T-210` and `T-211` are Complete; T-210's sub-600px scope ruling is approved at `de98190`;
 **`T-203` is reshaped to option *E*** (`UX-011`) and sits `Ready`, its rebuild held on maintainer
 instruction. **Phase 4 is the current phase**, its plan deliverables decomposed under
 `## Proposed — Phase 4` and **none started**; the carried-in defects are a separate set.
@@ -117,149 +117,6 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 **The exit review is complete**: approved at `ccdbd0f` on 2026-08-09, all six criteria met, after
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
-
-### T-210 — An opened row can be taller than the list, putting its own Done button out of reach
-
-**Status:** **In Review — corrected 2026-08-09, awaiting re-review.** *(Was: In Review — fixed.
-`T210-R1` returned **Changes requested**: the panel keeps a 210px floor, so below roughly 600px it
-exceeds the viewport and puts *Done* under the fold, contrary to two of this task's own criteria.
-The committed regression opened at 700px and grew to 900px, so it never gated the size the entry
-already admitted was failing.)*
-
-**The correction is a scope ruling and an honest rewrite, not a layout change.** The maintainer
-ruled the sub-600px window out of scope (recorded below, with what it weighed); the criteria now
-state the bound where it actually holds, a regression asserts it **at 600px** rather than well
-inside it, and the below-600 behaviour is pinned rather than described. The two record defects
-`T210-R1` also named are corrected: the stale `T-209` citations in source, and the claim that the
-panel still reproduces the raw selector.
-
-***Filed as `T-209` and renumbered the same day:*** ***that id was already Codex's, filed to own***
-***`T204-R4`. I took it from a remembered maximum instead of reading the file, and two tasks***
-***briefly shared it. Commits `ce7f012` and `9222305` name the wrong one.***
-
-**This is a different defect from `T-209`'s**, and both are real: `T-209` is a mounted panel
-**collapsing to its minimum** after a value-only refresh; this is a panel **legitimately taller
-than the viewport** because nothing bounded it. Maintainer-reported: *"This is still WAY too scrunched,
-you can barely see a playlist if its expanded out. You also can't re-collapse it."*
-**Owner:** Implementer
-**Priority:** **High** — the second half is a trap: a user who opens a playlist with the pointer has
-no pointer route back out
-**Phase:** Phase 4
-**Depends on:** nothing. **Not `T-204`** — that fixed a row that stopped *offering* its disclosure;
-this is a row whose disclosure is covered and whose replacement control is off-screen.
-**Relevant context:** `T-193` (`VISIBLE_ENTRIES`), `T-108`, `T-110`, `UX-007` (`P-1`, `P-19`),
-`ui/add_dialog.py` (`panel_height_for`, `RowPanel`, `StagingList`), `ui/playlist_picker.py`
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Medium — layout, and `T118-R15` is the record of a height promise that held at one font
-
-#### Scope
-
-**Two independent causes, and the second is why the panel cannot be closed.**
-
-1. **Nothing bounds the panel to the viewport.** `panel_height_for` returns
-   `self._panel.sizeHint().height()` outright. A playlist picker asks for its summary, its group
-   control, eight entry rows and a *Done* button; when that exceeds the list's visible height the
-   row is simply drawn taller than the list, and the bottom of it — **the `Done` button, which is
-   the only pointer route out** — is below the fold. `setIndexWidget` covers the row's painted
-   anatomy, so the disclosure triangle is not available either. `Esc` and `←` still work, which is
-   why no test caught it: **the keyboard route is fine and the pointer has none.**
-2. **The list is never given a height.** `StagingList` sets a *width* hint and records why —
-   *"the dialog set no size at all"* — but height was left to Qt, which splits the dialog roughly
-   evenly. The paste box takes about 290 px of a 711 px window to hold one line of URL, and the
-   list gets what is left. That is what makes cause 1 reachable at ordinary window sizes.
-
-**A third cause was scoped out, and the record of it was wrong** *(corrected 2026-08-09 for
-`T210-R1`)*. This entry said the panel *"reproduces the raw selector in a word-wrapping summary
-label"* and that the summary was therefore the floor. **It no longer does**: `row_summary` composes
-the headline and detail only, and drops the selector tail the control beside it already answers.
-The sentence survived the change that falsified it.
-
-**What is actually measured**, at the head Codex reviewed: the panel's floor is its
-`minimumSizeHint`, **210px**, and it holds there whatever the window does. Against real viewports —
-600px window → 213px viewport; 550px → 163px; 500px → 113px. **So the panel fits at 600px and
-above, and above 600px only.**
-
-**Maintainer-confirmed on screen, 2026-08-09:** *"Looks like the issue regarding the clipping/bleed
-through is fixed."* The working mechanism took three attempts, and the miss is worth keeping: the
-sheet rule and the `rowPanel` property existed one commit earlier and painted nothing, because **a
-plain `QWidget` subclass does not paint a stylesheet background without `WA_StyledBackground`** —
-and no offscreen probe can show the difference, since every headless render path fills the
-background that a real compositor does not. The screen was the only gate that worked.
-
-**One more usability item, same session — and the first correction fixed the wrong side.** The
-report: *"once the inner scroll bar reaches the bottom, it immediately jumps you to the bottom of
-the other."* I made `EntryTable` consume the wheel at its edges — severing the inner-to-outer
-handoff, **which the maintainer then said was fine and should stay**: *"the inner scroll bar was
-working fine, and should probably continue working the way it was."* That correction is reverted;
-the picker's wheel behaviour is stock again.
-
-**The jump was the outer list's, in two layers, and the regression measured both.** `QListView`
-scrolls per *item* — a catapult when one "item" is an opened playlist — and switching to per-pixel
-alone still jumped **166px of 166**, because `updateGeometries` resets the scrollbar's `singleStep`
-to the *first item's height* on every pass: the panel again, by another route. `StagingList` now
-scrolls per pixel **and** re-pins the step to a text line after Qt's reset. The regression asserts
-the symptom — one notch from the top must not land at the end — and both mutations (per-item mode
-back, step un-pinned) fail it independently.
-
-**A regression I introduced, and could not reproduce headlessly.** The first `T204-R4` fix restored
-the panel's geometry *inside* the `dataChanged` emit — before Qt re-measures the view — so
-`visualRect` answered a stale, sometimes empty, rectangle and **the panel vanished the moment it was
-opened**. It is now deferred by a turn and refuses an empty rectangle.
-
-**The deferral is principled and unproven.** Removing it again does **not** fail any test: offscreen
-Qt reports a usable `visualRect` immediately, so the headless suite cannot tell the two orderings
-apart. **The reported symptom is reproducible only on a real display**, which is `OPS-003`'s shape —
-verification here rests on the maintainer looking at it.
-
-#### The maintainer's scope ruling, 2026-08-09
-
-**The window below roughly 600px is out of scope, by maintainer ruling** — *"go with your
-suggestion for T210-R1"*, taken on 2026-08-09 in answer to `T210-R1`. The criteria below are the
-rewrite that ruling requires; **the ruling is the maintainer's and this entry records it rather
-than making it.**
-
-**What was put to him, so the ruling is judged on what it actually weighed.** Three paths were
-offered: rule the small window out of scope; engineer the panel down to roughly 110px so it fits a
-113px viewport; or split the small window into its own task. The recommendation was the first, and
-the reason was the constraint he stated — *"I dont want to mess up the readability we had
-before"*. **Fitting a 113px viewport costs the picker every visible entry**: the summary would
-elide to one line and the entry table would shrink to zero and scroll. That is *"you can barely see
-a playlist if its expanded out"*, the report this task exists to answer. At 500px there is no good
-outcome, and a panel taller than the viewport with a visible collapse control is the better of two
-bad ones.
-
-**One alternative was named and not taken:** a minimum height on the dialog would make the criteria
-true by construction, with no shrinking at all. It was not recommended, because this file is
-explicit that *narrow — and now short — has to keep working*, and it trades a readability
-constraint for a resizing one. **If that trade is preferable, it reopens as its own question.**
-
-#### Acceptance criteria
-
-- **A panel never exceeds the list's visible height at a 600px window or taller**, asserted against
-  a real viewport **at 600px** — the bound itself, not a comfortable size well inside it. *(This
-  read "at a small window size" and was gated by a regression that opened at 700px and grew to
-  900px, so it never touched the size the entry admitted was failing — `T210-R1`.)*
-- **`Done` is inside the visible area whenever a panel is open at 600px or taller** — asserted on
-  its position against the viewport, which is the user-visible fact, not on the panel's `sizeHint`
-- **Below 600px the panel keeps its minimum and does not shrink further**, and **the collapse
-  control at the top of the panel stays inside the viewport** — it is the pointer route out at
-  those sizes, and the criterion is that it keeps working, not that *Done* is reachable
-- **The entries compress rather than the button disappearing.** `T-193`'s cap stays the *maximum*;
-  what is shown is the lesser of that and what fits
-- **The list is given a height hint**, so the first paint favours the rows over the paste box. A
-  hint and not a minimum, for the reason `StagingList` already gives about width: narrow — and now
-  short — has to keep working
-- **The pointer can always close an open panel**, driven through the panel's own control rather
-  than through `close_panel`
-- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog and playlist-picker suites are clean
-
-#### Out of scope
-
-- **The window below roughly 600px**, per the ruling above. The gap is real, measured and named
-  here; it is not fixed and this entry does not claim it is
-- `T-203`'s control redesign, which changes what the row holds and not how tall the panel may be
-- The dialog's overall default size, and a minimum height on it. `StagingList`'s hint is the lever
-  this task uses
 
 ## Ready
 
@@ -3347,6 +3204,145 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+### T-210 — An opened row can be taller than the list, putting its own Done button out of reach
+
+**Status:** **Complete — Approved 2026-08-10 at `de98190`.** `T210-R1` is Resolved under the maintainer's recorded sub-600px scope ruling. The exact-head archive passed 2822 tests; the 600px bound and the below-bound readable floor each kill their opposing mutation.
+
+**The correction is a scope ruling and an honest rewrite, not a layout change.** The maintainer
+ruled the sub-600px window out of scope (recorded below, with what it weighed); the criteria now
+state the bound where it actually holds, a regression asserts it **at 600px** rather than well
+inside it, and the below-600 behaviour is pinned rather than described. The two record defects
+`T210-R1` also named are corrected: the stale `T-209` citations in source, and the claim that the
+panel still reproduces the raw selector.
+
+***Filed as `T-209` and renumbered the same day:*** ***that id was already Codex's, filed to own***
+***`T204-R4`. I took it from a remembered maximum instead of reading the file, and two tasks***
+***briefly shared it. Commits `ce7f012` and `9222305` name the wrong one.***
+
+**This is a different defect from `T-209`'s**, and both are real: `T-209` is a mounted panel
+**collapsing to its minimum** after a value-only refresh; this is a panel **legitimately taller
+than the viewport** because nothing bounded it. Maintainer-reported: *"This is still WAY too scrunched,
+you can barely see a playlist if its expanded out. You also can't re-collapse it."*
+**Owner:** Implementer
+**Priority:** **High** — the second half is a trap: a user who opens a playlist with the pointer has
+no pointer route back out
+**Phase:** Phase 4
+**Depends on:** nothing. **Not `T-204`** — that fixed a row that stopped *offering* its disclosure;
+this is a row whose disclosure is covered and whose replacement control is off-screen.
+**Relevant context:** `T-193` (`VISIBLE_ENTRIES`), `T-108`, `T-110`, `UX-007` (`P-1`, `P-19`),
+`ui/add_dialog.py` (`panel_height_for`, `RowPanel`, `StagingList`), `ui/playlist_picker.py`
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Medium — layout, and `T118-R15` is the record of a height promise that held at one font
+
+#### Scope
+
+**Two independent causes, and the second is why the panel cannot be closed.**
+
+1. **Nothing bounds the panel to the viewport.** `panel_height_for` returns
+   `self._panel.sizeHint().height()` outright. A playlist picker asks for its summary, its group
+   control, eight entry rows and a *Done* button; when that exceeds the list's visible height the
+   row is simply drawn taller than the list, and the bottom of it — **the `Done` button, which is
+   the only pointer route out** — is below the fold. `setIndexWidget` covers the row's painted
+   anatomy, so the disclosure triangle is not available either. `Esc` and `←` still work, which is
+   why no test caught it: **the keyboard route is fine and the pointer has none.**
+2. **The list is never given a height.** `StagingList` sets a *width* hint and records why —
+   *"the dialog set no size at all"* — but height was left to Qt, which splits the dialog roughly
+   evenly. The paste box takes about 290 px of a 711 px window to hold one line of URL, and the
+   list gets what is left. That is what makes cause 1 reachable at ordinary window sizes.
+
+**A third cause was scoped out, and the record of it was wrong** *(corrected 2026-08-09 for
+`T210-R1`)*. This entry said the panel *"reproduces the raw selector in a word-wrapping summary
+label"* and that the summary was therefore the floor. **It no longer does**: `row_summary` composes
+the headline and detail only, and drops the selector tail the control beside it already answers.
+The sentence survived the change that falsified it.
+
+**What is actually measured**, at the head Codex reviewed: the panel's floor is its
+`minimumSizeHint`, **210px**, and it holds there whatever the window does. Against real viewports —
+600px window → 213px viewport; 550px → 163px; 500px → 113px. **So the panel fits at 600px and
+above, and above 600px only.**
+
+**Maintainer-confirmed on screen, 2026-08-09:** *"Looks like the issue regarding the clipping/bleed
+through is fixed."* The working mechanism took three attempts, and the miss is worth keeping: the
+sheet rule and the `rowPanel` property existed one commit earlier and painted nothing, because **a
+plain `QWidget` subclass does not paint a stylesheet background without `WA_StyledBackground`** —
+and no offscreen probe can show the difference, since every headless render path fills the
+background that a real compositor does not. The screen was the only gate that worked.
+
+**One more usability item, same session — and the first correction fixed the wrong side.** The
+report: *"once the inner scroll bar reaches the bottom, it immediately jumps you to the bottom of
+the other."* I made `EntryTable` consume the wheel at its edges — severing the inner-to-outer
+handoff, **which the maintainer then said was fine and should stay**: *"the inner scroll bar was
+working fine, and should probably continue working the way it was."* That correction is reverted;
+the picker's wheel behaviour is stock again.
+
+**The jump was the outer list's, in two layers, and the regression measured both.** `QListView`
+scrolls per *item* — a catapult when one "item" is an opened playlist — and switching to per-pixel
+alone still jumped **166px of 166**, because `updateGeometries` resets the scrollbar's `singleStep`
+to the *first item's height* on every pass: the panel again, by another route. `StagingList` now
+scrolls per pixel **and** re-pins the step to a text line after Qt's reset. The regression asserts
+the symptom — one notch from the top must not land at the end — and both mutations (per-item mode
+back, step un-pinned) fail it independently.
+
+**A regression I introduced, and could not reproduce headlessly.** The first `T204-R4` fix restored
+the panel's geometry *inside* the `dataChanged` emit — before Qt re-measures the view — so
+`visualRect` answered a stale, sometimes empty, rectangle and **the panel vanished the moment it was
+opened**. It is now deferred by a turn and refuses an empty rectangle.
+
+**The deferral is principled and unproven.** Removing it again does **not** fail any test: offscreen
+Qt reports a usable `visualRect` immediately, so the headless suite cannot tell the two orderings
+apart. **The reported symptom is reproducible only on a real display**, which is `OPS-003`'s shape —
+verification here rests on the maintainer looking at it.
+
+#### The maintainer's scope ruling, 2026-08-09
+
+**The window below roughly 600px is out of scope, by maintainer ruling** — *"go with your
+suggestion for T210-R1"*, taken on 2026-08-09 in answer to `T210-R1`. The criteria below are the
+rewrite that ruling requires; **the ruling is the maintainer's and this entry records it rather
+than making it.**
+
+**What was put to him, so the ruling is judged on what it actually weighed.** Three paths were
+offered: rule the small window out of scope; engineer the panel down to roughly 110px so it fits a
+113px viewport; or split the small window into its own task. The recommendation was the first, and
+the reason was the constraint he stated — *"I dont want to mess up the readability we had
+before"*. **Fitting a 113px viewport costs the picker every visible entry**: the summary would
+elide to one line and the entry table would shrink to zero and scroll. That is *"you can barely see
+a playlist if its expanded out"*, the report this task exists to answer. At 500px there is no good
+outcome, and a panel taller than the viewport with a visible collapse control is the better of two
+bad ones.
+
+**One alternative was named and not taken:** a minimum height on the dialog would make the criteria
+true by construction, with no shrinking at all. It was not recommended, because this file is
+explicit that *narrow — and now short — has to keep working*, and it trades a readability
+constraint for a resizing one. **If that trade is preferable, it reopens as its own question.**
+
+#### Acceptance criteria
+
+- **A panel never exceeds the list's visible height at a 600px window or taller**, asserted against
+  a real viewport **at 600px** — the bound itself, not a comfortable size well inside it. *(This
+  read "at a small window size" and was gated by a regression that opened at 700px and grew to
+  900px, so it never touched the size the entry admitted was failing — `T210-R1`.)*
+- **`Done` is inside the visible area whenever a panel is open at 600px or taller** — asserted on
+  its position against the viewport, which is the user-visible fact, not on the panel's `sizeHint`
+- **Below 600px the panel keeps its minimum and does not shrink further**, and **the collapse
+  control at the top of the panel stays inside the viewport** — it is the pointer route out at
+  those sizes, and the criterion is that it keeps working, not that *Done* is reachable
+- **The entries compress rather than the button disappearing.** `T-193`'s cap stays the *maximum*;
+  what is shown is the lesser of that and what fits
+- **The list is given a height hint**, so the first paint favours the rows over the paste box. A
+  hint and not a minimum, for the reason `StagingList` already gives about width: narrow — and now
+  short — has to keep working
+- **The pointer can always close an open panel**, driven through the panel's own control rather
+  than through `close_panel`
+- `ruff`, `ruff format`, both `mypy` gates, and the add-dialog and playlist-picker suites are clean
+
+#### Out of scope
+
+- **The window below roughly 600px**, per the ruling above. The gap is real, measured and named
+  here; it is not fixed and this entry does not claim it is
+- `T-203`'s control redesign, which changes what the row holds and not how tall the panel may be
+- The dialog's overall default size, and a minimum height on it. `StagingList`'s hint is the lever
+  this task uses
+
 ### T-204 — A row that stops being committable keeps its panel and loses the way to close it
 
 **Status:** **Complete — Approved with follow-ups 2026-08-09 at `9813f19`.** `T204-R1`, `T204-R4` and `T204-R2` are all **Resolved**; the third focused pass verified the close route through the panel's own *Done*, the restored panel geometry, and the swept coordination copies. **Two follow-ups stay open and are not closed by this approval**: `T204-R3`/`T-208` (the multi-row report, still unreproduced) and `T-209` (the broader both-panel, every-reset audit, still `Ready` and unexecuted).

@@ -13651,3 +13651,72 @@ figure is substituted for that external result.
 
 The Reviewer modified only `ai/REVIEWS.md`. Temporary probes were removed. No source or test file
 remains changed, and no commit or push was made.
+
+## 2026-08-10 — T-210 focused correction re-review
+
+**Task:** T-210 — bound an opened row to the staging viewport
+
+**Previously reviewed head:** `9813f19`
+
+**Correction head reviewed:** `de98190`
+
+**Scope:** T210-R1 and its correction only. The co-travelling T-203 correction and subsequent
+uncommitted T-203 option-E work were not reviewed.
+
+**Verdict:** **Approved at `de98190`**
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Resolution |
+|---|---|---:|---|---|
+| **T210-R1** | **Medium** | **Yes** | **Resolved** | The maintainer selected the scope-ruling exit the finding offered after being given the alternatives and their costs. T-210 now promises the viewport and `Done` bounds at a 600px window or taller, pins the panel's readable minimum plus the top collapse route below that threshold, and explicitly records sub-600px `Done` reachability as out of scope rather than fixed. No higher requirement or accepted decision requires a different short-window trade-off; UX-007 P-1/P-19 require the shared expanding-row mechanism and remain satisfied. The regression exercises 600, 550 and 500px, while the stale T-209 source citations and false raw-selector explanation are corrected. |
+
+The ruling is legitimate. At 600px the measured viewport is 213px and the panel minimum is 210px;
+at 550px and 500px the viewports are 163px and 113px while the panel deliberately remains 210px.
+Shrinking it to the latter sizes removes every visible playlist entry, directly conflicting with
+the readability complaint T-210 exists to correct. The chosen compromise keeps the top collapse
+control visible and working while naming that `Done` is below the fold. A minimum dialog height was
+also considered and left for a separate ruling because it would replace the short-window contract
+rather than satisfy it.
+
+### Independent verification
+
+The shared checkout became unsuitable for exact-head evidence when unrelated T-203 implementation
+entered it during this review. Final gates therefore ran from a fresh `git archive de98190` with an
+explicit archive `PYTHONPATH`; the import probe resolved `tracks_and_trails` from that archive.
+Python tools were invoked as `.venv/bin/python3 -m <tool>` through the repository interpreter.
+
+| Check | Real result |
+|---|---|
+| `git diff --check 9813f19..de98190` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 163 files** |
+| `mypy src` | **pass, 51 files** |
+| bare `mypy` | **pass, 125 files** |
+| `mypy --platform win32` | **pass, 125 files** |
+| Corrected regression plus task placement | **15 passed in 0.78 s** |
+| Unbounded mutation (`return wanted`) | **1 failed at the 600px bound:** panel 390px, viewport 213px |
+| No-floor mutation (`return min(wanted, available)`) | **1 failed at the below-600 minimum:** panel 155px, minimum 210px |
+| Full default suite from the isolated archive | **2822 passed, 17 skipped, 2 deselected, 4 warnings in 386.71 s** |
+
+The four warnings are the existing `libpyside: Failed to disconnect` warnings at
+`ui/job_detail.py:463`, outside this correction.
+
+GitHub Actions run `31355528952` is for exact head `de98190`. Its Linux and Windows desktop jobs,
+both full suites, frozen Windows job and STARBASE coverage marker succeeded. Frozen Linux is marked
+failed because the self-hosted runner lost communication after checkout cleanup: build, extractor
+assertion, database creation, smoke test and evidence upload had all succeeded, while only the
+GitHub-owned `Complete job` step remained in progress. The workflow is honestly red, but supplies
+no product failure evidence for T-210.
+
+### Residual risks and merge readiness
+
+**T-210 is merge-ready at `de98190`.** Below 600px, `Done` remains under the fold by explicit
+maintainer ruling; the visible collapse control is the pointer workaround. The 600px result has
+only 3px of headroom and is font-dependent, so the boundary regression is the guard if metrics
+change. The pre-existing real-display-only uncertainty around deferred panel restoration is
+unchanged and was not reopened by this test-only/comment correction.
+
+No Open finding or follow-up task was created. The untracked handoff remained uncommitted. The
+Reviewer changed only `ai/REVIEWS.md` and T-210's status/placement in `ai/TASKS.md`; no source or
+test file was modified, and no commit or push was made.
