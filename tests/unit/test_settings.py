@@ -7,6 +7,7 @@ widget, and the file is hand-editable by design, so `concurrency = 0` must not r
 No Qt and no network, per `tests/` layout. This module is `core/`.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -43,6 +44,22 @@ def write(path: Path, body: str) -> Path:
     target = path / "settings.toml"
     target.write_text(body, encoding="utf-8")
     return target
+
+
+def toml_path(value: Path) -> str:
+    """`value` as a TOML basic string, escaped. **Not optional, and Windows is why.**
+
+    A test writing `directory = "{path}"` by interpolation produces `directory =
+    "C:\\Users\\..."` — unescaped backslashes, which `tomllib` refuses with *Unescaped '\\' in
+    a string*. The whole file is then a decode error, so every test doing it asserted the wrong
+    branch on Windows and passed on Linux. That is `T146-R3`'s defect class, and CI caught four
+    more instances of it after `T-146` was approved.
+
+    `json.dumps` rather than a hand-rolled escaper: TOML basic strings share JSON's escapes for
+    the characters a path can hold, and the production writer's own `_toml_string` is private to
+    the module under test — a test should not reach into it to build the input it feeds back.
+    """
+    return json.dumps(str(value))
 
 
 # --- what REQ-013 states ------------------------------------------------------------------
@@ -1118,7 +1135,7 @@ def test_a_stored_download_folder_is_used_as_written(tmp_path: Path) -> None:
     """The ordinary case: a folder that exists and can be written to is the answer."""
     folder = tmp_path / "Trail recordings"
     folder.mkdir()
-    target = write(tmp_path, f'[downloads]\ndirectory = "{folder}"\n')
+    target = write(tmp_path, f"[downloads]\ndirectory = {toml_path(folder)}\n")
 
     read = load(target)
 
@@ -1138,7 +1155,7 @@ def test_a_download_folder_that_is_gone_reports_and_falls_back(tmp_path: Path) -
     answer a question nobody asked and hide the likelier cause.
     """
     missing = tmp_path / "on-a-drive-that-is-not-mounted"
-    target = write(tmp_path, f'[downloads]\ndirectory = "{missing}"\n')
+    target = write(tmp_path, f"[downloads]\ndirectory = {toml_path(missing)}\n")
 
     read = load(target)
 
@@ -1151,7 +1168,7 @@ def test_a_download_folder_that_is_gone_reports_and_falls_back(tmp_path: Path) -
 def test_a_download_folder_that_is_a_file_reports_and_falls_back(tmp_path: Path) -> None:
     a_file = tmp_path / "not-a-folder.txt"
     a_file.write_text("", encoding="utf-8")
-    target = write(tmp_path, f'[downloads]\ndirectory = "{a_file}"\n')
+    target = write(tmp_path, f"[downloads]\ndirectory = {toml_path(a_file)}\n")
 
     read = load(target)
 
@@ -1174,7 +1191,7 @@ def test_a_download_folder_that_cannot_be_written_reports_and_falls_back(tmp_pat
         pytest.skip("root ignores the permission bits this asserts on")
     locked = tmp_path / "read-only"
     locked.mkdir(mode=0o500)
-    target = write(tmp_path, f'[downloads]\ndirectory = "{locked}"\n')
+    target = write(tmp_path, f"[downloads]\ndirectory = {toml_path(locked)}\n")
     try:
         read = load(target)
     finally:
@@ -1213,7 +1230,9 @@ def test_a_broken_theme_does_not_cost_the_user_their_download_folder(tmp_path: P
     folder = tmp_path / "kept"
     folder.mkdir()
     read = load(
-        write(tmp_path, f'[downloads]\ndirectory = "{folder}"\n\n[appearance]\ntheme = 3\n')
+        write(
+            tmp_path, f"[downloads]\ndirectory = {toml_path(folder)}\n\n[appearance]\ntheme = 3\n"
+        )
     )
 
     assert read.settings.download_directory == folder, (

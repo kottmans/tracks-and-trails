@@ -5,9 +5,10 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **`T-215` Approved at `b9caa40` and Complete**; **`T-146` is In
-Review awaiting a maintainer-authorized focused pass**: `T146-R1`/`T146-R2` Resolved at `8940353`,
-`T146-R3` corrected at `2a9d9e1`. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
+**Last updated:** 2026-08-10 — **`T-215` and `T-146` are Complete and pushed**; CI at `2d38abe`
+then **failed the Windows desktop job** on four of `T-146`'s own tests (`T146-R4`, test-only,
+corrected below). **`T-197` is blocked on a `DAT-003` ruling** that must happen before cookie-file
+support lands. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
 and the screen behind it, holding three of `REQ-023`'s eight settings.
 **Last verified against repository:** 2026-08-10 **for the eight 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
@@ -32,6 +33,27 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-10 (pushed, and CI found a fourth): T146-R4, and T-197 blocked on a ruling
+
+**All eleven commits are pushed; `origin/main` is at `2d38abe`.** Prose passed. **CI failed** —
+four of `T-146`'s own unit tests, on the **Windows desktop job only**, with *Unescaped `\` in a
+string*. They hand-wrote TOML by interpolating a path, and a Windows path's backslashes are escape
+characters inside a TOML basic string, so `tomllib` rejected the file and each test asserted a
+branch it never reached. **`T146-R4`, test-only**: `save()` escapes correctly through
+`_toml_string`, which is why the round-trip test passed on Windows while its hand-written
+neighbours did not. Reproduced on Linux with a `PureWindowsPath` — the exact CI message — and every
+interpolation now goes through one `toml_path()` helper. **This is `T146-R3`'s defect class a third
+time**, and the helper exists so there is no fourth.
+
+**`T-197` is blocked before any code was written.** `DAT-003`'s own reopening conditions say the
+decision *"must be revisited **before** [cookie-file support] lands, not after"*, and a second
+trigger covers giving `cookies_from_browser` a validator — which are `T-197`'s two central
+criteria. Its out-of-scope line says not to reopen `DAT-003`; `AGENTS.md` §5 puts the decision
+above the task entry, so the entry's line is the one that is wrong. **The ruling is the
+maintainer's** and a proposal is drafted for it. Verified while reading rather than assumed: the
+`settings.toml` error path — which `T-146` widened — **is** already redacted; a cookie path, a
+proxy credential and a token all come out `<redacted>`.
 
 ## 2026-08-10 (re-review): T-146's blockers resolved, T146-R3 corrected, Blocked on a decision
 

@@ -2923,7 +2923,13 @@ Assert, on `windows-latest`:
 
 ### T-146 — A Settings menu, and the screen behind it
 
-**Status:** **Complete — approved at `0adf9e3` on 2026-08-10.** `T146-R1` and `T146-R2`
+**Status:** **Complete — approved at `0adf9e3` on 2026-08-10, with one post-approval correction
+at the head below.** **`T146-R4` — found by CI on the pushed head, not by review** (see the
+findings list): four of this task's own tests hand-wrote TOML with an interpolated path, so on
+Windows the unescaped backslashes made `tomllib` reject the whole file and each test asserted a
+branch it never reached. **Test-only; no production defect** — `save()` escapes correctly through
+`_toml_string`, and the save/load round-trip test passed on Windows. It is `T146-R3`'s defect
+class a third time, which is recorded rather than smoothed over. `T146-R1` and `T146-R2`
 resolved at `8940353`; `T146-R3` resolved at `2a9d9e1` in the maintainer-authorized pass.
 Built the same day on maintainer instruction (*"Do T-215 and then T-146"*);
 **the first plan deliverable of Phase 4 to be built.** Filed against `REQ-023`, which
@@ -2983,6 +2989,18 @@ re-phasing happened or is needed.)*
   problem: `_toml_string` escapes backslashes (`T109-R9`), so a `C:\…` download folder
   round-trips.
 
+- **`T146-R4` — Medium. Found by CI at `2d38abe`, corrected at the head below.** The Windows
+  desktop job failed four `tests/unit/test_settings.py` cases with *Unescaped `\` in a string*.
+  Cause: `f'directory = "{folder}"'` writes `C:\actions-runner\...` into a TOML basic string,
+  where a backslash is an escape character — so the file was a decode error and the tests asserted
+  the missing-folder or usable-folder branch they never reached. **Reproduced on Linux** by
+  interpolating a `PureWindowsPath`, which reproduces the exact CI message, and the escaped form
+  then reaches the intended branch. Every interpolation now goes through one `toml_path()` helper
+  beside `write()`, so no future test hand-escapes a path; a sweep of the whole test tree found no
+  other instance. **Production was never wrong**, and the reason is worth keeping: `save()` escapes
+  through `_toml_string` (`T109-R9`), which is why
+  `test_the_folder_and_the_theme_survive_a_save_and_load` passed on Windows while its hand-written
+  neighbours did not.
 
 **What was built.** A `Settings` menu between `File` and `Help`, and `ui/settings_dialog.py`
 behind it holding three of `REQ-023`'s eight settings: the **download folder** (a picker, plus
