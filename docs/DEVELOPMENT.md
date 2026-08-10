@@ -283,9 +283,16 @@ packaging/        PyInstaller spec and the frozen smoke test (T-020)
 
 ## Which `REQ-023` settings the screen actually holds
 
-`REQ-023` names eight settings. **Settings → Settings… holds four** — three from `T-146` and the
-ffmpeg location from `T-199`; the rest are filed and not built, and the screen says so itself
-rather than reading as complete.
+`REQ-023` names eight settings. **Settings → Settings… holds five** — three from `T-146`, the
+ffmpeg location from `T-199`, and the cookie source from `T-197`; the rest are filed and not built,
+and the screen says so itself rather than reading as complete.
+
+**A cookie path is the one setting with a decision attached.** `DAT-003` (amended 2026-08-10) puts
+it in `settings.toml` and in a worker's arguments and **nowhere else** — never on
+`DownloadRequest`, so it cannot reach the queue database. That is why the file is *late-bound*: a
+queued job cannot carry it, so it authenticates with whatever is set when its worker starts.
+`cookies_from_browser` is the other half and binds when the job is queued, because it is a preset
+field.
 
 | Setting | Where it is | Stored as |
 |---|---|---|
@@ -296,7 +303,7 @@ rather than reading as complete.
 | Output template | not built — `T-195` | — |
 | ffmpeg location | Settings screen | `[ffmpeg] location` |
 | Network options (rate limit, proxy, retries) | not built — `T-196` | — |
-| Cookie source | not built — `T-197` | — |
+| Cookie source | Settings screen | `[cookies] file`, plus `cookies_from_browser` per preset |
 
 **The concurrency control is deliberately in both places** (`T-146`'s recorded choice). Its home is
 one value in `settings.toml` and both controls are views of it: composition applies and saves once,

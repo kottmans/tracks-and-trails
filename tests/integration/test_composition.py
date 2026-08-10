@@ -24,6 +24,7 @@ on what the application shows. `store.get()` is for asserting agreement afterwar
 so spinning on it returns instantly and proves nothing.
 """
 
+import dataclasses
 import json
 import os
 import shutil
@@ -2333,3 +2334,123 @@ def test_refusing_a_choice_leaves_a_working_override_exactly_where_it_was(
     finally:
         screen.close()
         QApplication.processEvents()
+
+
+def test_the_cookies_file_reaches_the_workers_and_never_the_job(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`REQ-026` and `DAT-003`'s structural row, from the composed application** (`T-197`).
+
+    Two assertions that have to hold together. The file **does** reach what runs — the manager
+    hands it to every child it starts, which is the whole point of the setting — and it **does
+    not** reach the job, because `DownloadRequest` has no field for it. The second is what makes
+    *"a cookie path this application supplies is never in the database"* structural rather than
+    something a filter has to keep catching.
+    """
+    jar = tmp_path / "cookies.txt"
+    jar.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.with_cookie_file(core_settings.Settings(), jar), settings_file
+        )
+        is None
+    )
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    assert composition.manager._cookie_file == jar, (
+        "the cookies file never reached the manager, so no worker would ever be signed in"
+    )
+    # The structural half, asked of the type rather than of an instance: `DownloadRequest` is a
+    # slotted frozen dataclass, so its fields are the whole of what a job can carry.
+    carried = {field.name for field in dataclasses.fields(DownloadRequest)}
+    assert not {name for name in carried if "cookie" in name and "browser" not in name}, (
+        f"a job can carry a cookie path — fields are {sorted(carried)}. DAT-003's first row is "
+        "structural only while the model cannot hold the value"
+    )
+
+
+def test_changing_the_cookies_file_reaches_jobs_already_queued(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**The late binding the maintainer ruled deliberate**, asserted rather than left implied.
+
+    A queued job cannot carry the path — that is the guarantee — so it authenticates with whatever
+    file is set when its worker *starts*. `DAT-003`'s 2026-08-10 amendment states the consequence
+    plainly because it is a surprise otherwise: changing or clearing the file changes
+    authentication for everything already queued and not yet started.
+
+    This is the assertion that would fail if someone later made the path per-job to "fix" the
+    surprise — which would put it back in the model and reopen the decision.
+    """
+    first = tmp_path / "first-cookies.txt"
+    first.write_text("# first\n", encoding="utf-8")
+    second = tmp_path / "second-cookies.txt"
+    second.write_text("# second\n", encoding="utf-8")
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.with_cookie_file(core_settings.Settings(), first), settings_file
+        )
+        is None
+    )
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    assert composition.manager._cookie_file == first
+
+    write_cookies = composition.window._on_cookie_file_chosen
+    assert write_cookies is not None, "composition wired no cookies writer"
+    write_cookies(second)
+    QApplication.processEvents()
+
+    assert composition.manager._cookie_file == second, (
+        "a job that starts from now on would still use the old cookies file"
+    )
+    assert core_settings.load(settings_file).settings.cookie_file == second
+
+    write_cookies(None)
+    QApplication.processEvents()
+    assert composition.manager._cookie_file is None, (
+        "clearing the file left workers signed in, which is the opposite of what was asked"
+    )
+
+
+def test_an_unusable_cookies_file_is_refused_and_changes_nothing(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """`ARC-008`, and `T-197`'s own criterion about the quiet failure.
+
+    A cookies file that is missing must **report** rather than downloading unauthenticated, which
+    looks like a paywall bypass failing silently — `REQ-EXCL-002` is emphatic that this feature is
+    for content the user already has access to, so failing to authenticate is a thing to say out
+    loud. Refused rather than stored, on the contract `T199-R3` settled for the ffmpeg location.
+    """
+    good = tmp_path / "cookies.txt"
+    good.write_text("# good\n", encoding="utf-8")
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.with_cookie_file(core_settings.Settings(), good), settings_file
+        )
+        is None
+    )
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    write_cookies = composition.window._on_cookie_file_chosen
+    assert write_cookies is not None
+    write_cookies(tmp_path / "gone" / "cookies.txt")
+    QApplication.processEvents()
+
+    assert composition.manager._cookie_file == good, (
+        "a refused cookies file changed what workers receive"
+    )
+    assert core_settings.load(settings_file).settings.cookie_file == good, (
+        "a refused cookies file was persisted"
+    )
+    assert "not be authenticated" in composition.window.statusBar().currentMessage(), (
+        "the refusal was silent, so the user would download unauthenticated without being told"
+    )

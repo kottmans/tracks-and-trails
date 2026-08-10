@@ -1445,3 +1445,34 @@ def test_a_playlist_takes_its_own_picture_from_the_thumbnails_list() -> None:
     assert adapter.project_media(bare).thumbnail_url is None, (
         "a playlist with no picture invented one"
     )
+
+
+@pytest.mark.parametrize("probe_only", [True, False])
+def test_both_cookie_sources_reach_yt_dlp(probe_only: bool) -> None:
+    """**`REQ-026`'s two sources, both arriving** (`T-197`), and by different routes on purpose.
+
+    The browser name rides on the request, because it is a per-download choice a preset can carry.
+    The **file** arrives as a session argument, because `DAT-003` forbids a cookie path this
+    application supplies from reaching the model — and therefore the database. Asserted together,
+    since the criterion is that *both* reach a real download rather than either one.
+
+    Both phases, because `T012-R5` is the finding that connection settings applied only after the
+    probe: a URL needing cookies failed while being read, before the download that would have used
+    them was ever attempted.
+    """
+    options = adapter.build_options(
+        request_for(cookies_from_browser="firefox"),
+        "o.%(ext)s",
+        probe_only=probe_only,
+        cookie_file=Path("/home/sean/.config/tracksandtrails/cookies.txt"),
+    )
+
+    assert options["cookiesfrombrowser"] == ("firefox",)
+    assert options["cookiefile"] == str(Path("/home/sean/.config/tracksandtrails/cookies.txt"))
+
+
+def test_no_cookie_file_means_no_cookiefile_option() -> None:
+    """Absent is absent: yt-dlp is not handed an empty or `None` cookie file to interpret."""
+    options = adapter.build_options(request_for(), "o.%(ext)s")
+
+    assert "cookiefile" not in options

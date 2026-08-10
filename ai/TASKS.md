@@ -118,6 +118,130 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
+### T-197 — Cookie source, and the redaction gate that has to prove it
+
+**Status:** **In Review — built 2026-08-10** on maintainer instruction, after the `DAT-003` ruling
+this task turned out to require *before* any code. Filed 2026-08-09 from
+`IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** High — it is the phase's only deliverable whose failure mode is a leaked credential
+**Phase:** Phase 4
+**Depends on:** `T-146` for the screen (Complete). **Not blocked by `T-196`**, but the redaction
+gate this task builds is what `T-196`'s stored proxy needs, so building this first is the cheaper
+order.
+**Relevant context:** `REQ-026`, `REQ-EXCL-002`, `NFR-007`, `DAT-003`, `DAT-004`, `SEC-003`,
+`T-038` (handler-level redaction), `T-014`, `core/logging.py` §18–20 and §183–205,
+`core/models.py` (`DownloadRequest.cookies_from_browser`), `ai/DECISIONS.md` §1064
+**Affected surfaces:** `core/models.py`, `core/settings.py`, `core/logging.py`, the settings dialog,
+`downloader/ytdlp_adapter.py`
+**Risk:** **High.** It adds a credential-bearing path to persisted state, and `DAT-003`/`DAT-004`
+are the boundary it crosses
+
+**What was built.** `[cookies] file` in `settings.toml`, validated under `ARC-008` by **one**
+predicate that the stored and live routes both call — `T199-R3`'s lesson applied before the
+finding rather than after. The path travels to a worker as a **session argument**, the same route
+the ffmpeg override takes and one of the two sinks `DAT-003` authorises; it never touches
+`DownloadRequest`. `cookies_from_browser` now refuses anything that is not a browser name. The
+screen gains a Cookies section that states what the feature is **not** for (`REQ-EXCL-002`) and
+that a change reaches downloads already queued.
+
+**Three things worth the reviewer's time.**
+
+- **The validator immediately caught a live instance of the defect `DAT-003` predicted.**
+  `tests/unit/test_presets.py` was constructing a request with
+  `cookies_from_browser="/home/alice/.mozilla/firefox/profile/cookies.sqlite"` — a *path* through
+  the one field the redaction reasoning treats as a name. The `T-049` amendment called that gap
+  *"by intent, not by construction"*; it was not hypothetical, it was in the suite.
+- **The redaction gate did not gate when first written, and that is recorded rather than
+  smoothed.** Mutating `redact` to return `<redacted>` for everything **passed all five tests** —
+  the exact *scrubs everything* failure `DAT-003` records twice. So did deleting the
+  bare-userinfo rule, because every proxy in the fixtures was a well-formed URL handled by a
+  different rule. The gate now asserts that legitimate content **survives** alongside asserting
+  secrets vanish, and covers a scheme-less proxy.
+- **One mutation passed for a good reason and is not a gap**: removing `_COOKIE_PATH` alone left
+  `_COOKIE_FILENAME` covering the same value. That is redundancy in production; removing both
+  fails the gate.
+
+#### Scope
+
+**`REQ-026` names two sources and only one is modelled.** `DownloadRequest.cookies_from_browser`
+exists and carries a browser *name*. **A cookies file has no field at all** — so "or a cookies file"
+is unbuilt, and building it is what puts a user-chosen *path* into this application's hands for the
+first time. That is precisely the material `REQ-026` says is never logged.
+
+**Two existing findings make the shape of this task.**
+
+- **`DAT-003` §1064 records that `cookies_from_browser` is a browser name *"by intent, not by
+  construction"*.** Nothing enforces it. A user who types a path into that field today produces a
+  request carrying a path through a field the redaction reasoning assumes is a name. **This task
+  either constrains it or stops relying on the assumption**, and the choice is recorded.
+- **`DAT-003` deliberately preserves a cookie path that yt-dlp itself names** inside a diagnostic,
+  because `NFR-006` requires messages verbatim. **The gate must distinguish supplied from
+  observed**, or it will either leak what this application supplied or corrupt a message it must
+  keep. A gate that cannot tell them apart is not a gate.
+
+#### Acceptance criteria
+
+- The screen sets a cookie source: **a browser profile, or a cookies file**, or neither. Both reach
+  a real download through the adapter's options
+- **An automated redaction test is the phase exit criterion**, and it is this task's deliverable.
+  It asserts that no log line, no stored diagnostic, no `ARC-008` settings report and no crash path
+  contains: cookie contents, a cookie file path this application supplied, proxy credentials, or a
+  token-like query parameter
+- **The supplied/observed distinction is tested in both directions**: a path this application
+  supplied is absent, and a path yt-dlp named inside its own message is **still present, verbatim**,
+  per `DAT-003`. One test proving each — the second is the one a redaction change will break
+- **`settings.toml` is covered.** A cookie path or proxy stored there does not reach a log through
+  the settings layer's own error path, which is a route `T-038`'s handler-level redaction was not
+  written against
+- `cookies_from_browser` **either rejects a value that is not a browser name, or the entry records
+  that it does not and what protects the path instead** — `DAT-003` §1064 stops being an assumption
+- A cookie file that is missing, unreadable, or not a cookies file **reports** rather than silently
+  downloading unauthenticated, which would look like a paywall bypass failing quietly
+
+#### What was built, against those criteria
+
+- **Both sources reach a real download**, asserted on the adapter's options in both phases
+  (`T012-R5`'s finding): the browser name from the request, the file from the session argument.
+- **The redaction gate is `tests/unit/test_redaction_gate.py`** — no supplied secret in a log, a
+  settings report or a crash path, and **both directions**, since a gate proving only that secrets
+  vanish is satisfied by scrubbing everything.
+- **The supplied/observed pair is tested both ways**: a path yt-dlp named survives verbatim in the
+  stored `error_message`, and the same text loses it on the way to a log. Storage and emission are
+  different sinks with different rules, and that asymmetry was a Critical when it was got wrong
+  (`T084-R1`).
+- **`settings.toml`'s own error path is covered** — the route `T-038` was not written against and
+  `T-146` widened. The dialog keeps the path the user set; the log does not.
+- **`cookies_from_browser` rejects a non-browser**, so `DAT-003` §1064 stops being an assumption.
+  The structural half is asserted on the *type*: `DownloadRequest` has no cookie-file field, which
+  is why row one of the provenance table is structural rather than filtered.
+- **Late binding is proved, not implied**: changing the file reaches jobs already queued, and
+  clearing it signs them out. That is the ruled consequence, and the test would fail if someone
+  later made the path per-job to soften the surprise — which would put it back in the model.
+- **Six mutations fail their own evidence**: the file never reaching the manager; a refused file
+  applied anyway; the adapter dropping it; the browser validator removed; redaction scrubbing
+  everything; the bare-userinfo rule removed.
+
+#### Out of scope
+
+- **Any bypass.** `REQ-EXCL-002` is explicit: this exists so a user reaches content they already
+  have an account for. Nothing here defeats a paywall, a geo-restriction or an authentication check
+- `-u`/`-p` username and password options — **excluded by `SEC-003`**
+- `--netrc` and client certificates, which `SEC-003` ruled *in* but assigned to Phase 4.5's audit
+- ~~Re-opening `DAT-003`~~ — **this line was wrong and is corrected** (2026-08-10). `DAT-003`'s own
+  conditions say the decision must be revisited **before** cookie-file support lands, and two of
+  this task's criteria trip them: holding a cookie file path, and constraining
+  `cookies_from_browser`. `AGENTS.md` §5 puts the decision above this entry, so the entry gave way.
+  **The ruling was taken before any code**, and `DAT-003`'s 2026-08-10 amendment records it: cookie
+  files land this phase; **the path is settings-only and never enters `DownloadRequest`**, which
+  keeps the never-in-the-database guarantee structural; `cookies_from_browser` gains a validator;
+  and **the two halves bind at different moments on purpose** — a browser profile when the job is
+  queued, a cookie file when the worker starts. This task now works inside *that*, and its own
+  criteria inherit two things from it: **a cookie file setting applies to jobs already queued**,
+  which the screen should not imply otherwise, and the forbidden sinks are named in the decision
+  rather than left as *any durable record*, since `settings.toml` is durable and is where the path
+  is meant to live
+
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -1398,85 +1522,6 @@ this task must not land a stored proxy without it.
   `T-203` is arguing per-row controls *down* rather than up
 - yt-dlp's wider network surface — `--socket-timeout`, `--source-address`, `--impersonate` and the
   rest belong to Phase 4.5's audit (`T-183`), and `SEC-003` already excluded `--impersonate`
-
-### T-197 — Cookie source, and the redaction gate that has to prove it
-
-**Status:** **Proposed — unblocked 2026-08-10 by the `DAT-003` ruling**, and not yet started. The
-ruling had to be taken first:
-reading this entry against the decision showed that its *Out of scope* line contradicted
-`DAT-003`'s own reopening conditions, and no code was written until the maintainer ruled. The
-shape is now settled — cookie files land this phase, the path is **settings-only and never in
-`DownloadRequest`**, and `cookies_from_browser` gains a validator. Filed 2026-08-09 from
-`IMPLEMENTATION_PLAN.md` §Phase 4.
-**Owner:** Implementer
-**Priority:** High — it is the phase's only deliverable whose failure mode is a leaked credential
-**Phase:** Phase 4
-**Depends on:** `T-146` for the screen. **Not blocked by `T-196`**, but the redaction gate this task
-builds is what `T-196`'s stored proxy needs, so building this first is the cheaper order.
-**Relevant context:** `REQ-026`, `REQ-EXCL-002`, `NFR-007`, `DAT-003`, `DAT-004`, `SEC-003`,
-`T-038` (handler-level redaction), `T-014`, `core/logging.py` §18–20 and §183–205,
-`core/models.py` (`DownloadRequest.cookies_from_browser`), `ai/DECISIONS.md` §1064
-**Affected surfaces:** `core/models.py`, `core/settings.py`, `core/logging.py`, the settings dialog,
-`downloader/ytdlp_adapter.py`
-**Risk:** **High.** It adds a credential-bearing path to persisted state, and `DAT-003`/`DAT-004`
-are the boundary it crosses
-
-#### Scope
-
-**`REQ-026` names two sources and only one is modelled.** `DownloadRequest.cookies_from_browser`
-exists and carries a browser *name*. **A cookies file has no field at all** — so "or a cookies file"
-is unbuilt, and building it is what puts a user-chosen *path* into this application's hands for the
-first time. That is precisely the material `REQ-026` says is never logged.
-
-**Two existing findings make the shape of this task.**
-
-- **`DAT-003` §1064 records that `cookies_from_browser` is a browser name *"by intent, not by
-  construction"*.** Nothing enforces it. A user who types a path into that field today produces a
-  request carrying a path through a field the redaction reasoning assumes is a name. **This task
-  either constrains it or stops relying on the assumption**, and the choice is recorded.
-- **`DAT-003` deliberately preserves a cookie path that yt-dlp itself names** inside a diagnostic,
-  because `NFR-006` requires messages verbatim. **The gate must distinguish supplied from
-  observed**, or it will either leak what this application supplied or corrupt a message it must
-  keep. A gate that cannot tell them apart is not a gate.
-
-#### Acceptance criteria
-
-- The screen sets a cookie source: **a browser profile, or a cookies file**, or neither. Both reach
-  a real download through the adapter's options
-- **An automated redaction test is the phase exit criterion**, and it is this task's deliverable.
-  It asserts that no log line, no stored diagnostic, no `ARC-008` settings report and no crash path
-  contains: cookie contents, a cookie file path this application supplied, proxy credentials, or a
-  token-like query parameter
-- **The supplied/observed distinction is tested in both directions**: a path this application
-  supplied is absent, and a path yt-dlp named inside its own message is **still present, verbatim**,
-  per `DAT-003`. One test proving each — the second is the one a redaction change will break
-- **`settings.toml` is covered.** A cookie path or proxy stored there does not reach a log through
-  the settings layer's own error path, which is a route `T-038`'s handler-level redaction was not
-  written against
-- `cookies_from_browser` **either rejects a value that is not a browser name, or the entry records
-  that it does not and what protects the path instead** — `DAT-003` §1064 stops being an assumption
-- A cookie file that is missing, unreadable, or not a cookies file **reports** rather than silently
-  downloading unauthenticated, which would look like a paywall bypass failing quietly
-
-#### Out of scope
-
-- **Any bypass.** `REQ-EXCL-002` is explicit: this exists so a user reaches content they already
-  have an account for. Nothing here defeats a paywall, a geo-restriction or an authentication check
-- `-u`/`-p` username and password options — **excluded by `SEC-003`**
-- `--netrc` and client certificates, which `SEC-003` ruled *in* but assigned to Phase 4.5's audit
-- ~~Re-opening `DAT-003`~~ — **this line was wrong and is corrected** (2026-08-10). `DAT-003`'s own
-  conditions say the decision must be revisited **before** cookie-file support lands, and two of
-  this task's criteria trip them: holding a cookie file path, and constraining
-  `cookies_from_browser`. `AGENTS.md` §5 puts the decision above this entry, so the entry gave way.
-  **The ruling was taken before any code**, and `DAT-003`'s 2026-08-10 amendment records it: cookie
-  files land this phase; **the path is settings-only and never enters `DownloadRequest`**, which
-  keeps the never-in-the-database guarantee structural; `cookies_from_browser` gains a validator;
-  and **the two halves bind at different moments on purpose** — a browser profile when the job is
-  queued, a cookie file when the worker starts. This task now works inside *that*, and its own
-  criteria inherit two things from it: **a cookie file setting applies to jobs already queued**,
-  which the screen should not imply otherwise, and the forbidden sinks are named in the decision
-  rather than left as *any durable record*, since `settings.toml` is durable and is where the path
-  is meant to live
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QRadioButton, Q
 from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.ui.settings_dialog import (
     DEFAULT_DIRECTORY_NOTE,
+    NO_COOKIES_NOTE,
     SETTINGS_STILL_TO_COME,
     SettingsDialog,
 )
@@ -232,3 +233,75 @@ def test_the_concurrency_control_mirrors_the_toolbars_without_echoing_it(
         f"following the toolbar reported back to composition: {reported}. Two controls that echo "
         "each other turn one user change into a round trip"
     )
+
+
+# --- T-197: the cookie source -----------------------------------------------------------------
+
+
+def test_the_cookies_section_says_what_it_is_for_and_what_it_is_not(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`REQ-EXCL-002`, where the user is standing** (`REQ-026`, `T-197`).
+
+    This exists so someone reaches content they already have an account for. Saying so beside the
+    control — rather than only in a requirements file — is what stops it reading as a way past a
+    paywall. The other sentence is `DAT-003`'s ruled consequence: the file is late-bound, so a
+    change reaches downloads already queued, and a screen that did not say so would be hiding a
+    surprise.
+    """
+    screen, _ = screens()
+    explanation = control(screen, QLabel, "cookiesExplanation")
+
+    assert "does not unlock anything your account cannot already reach" in explanation.text()
+    assert "already in the queue" in explanation.text(), (
+        "the screen does not say the setting applies to queued downloads, which DAT-003 rules it "
+        "does — a user changing it would be surprised by what happens next"
+    )
+
+
+def test_choosing_a_cookies_file_reports_it_and_shows_it(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    jar = tmp_path / "cookies.txt"
+    jar.write_text("", encoding="utf-8")
+    chosen: list[Path | None] = []
+    screen, _ = screens(on_cookie_file_chosen=chosen.append, choose_file=lambda _start: jar)
+
+    control(screen, QPushButton, "chooseCookieFile").click()
+
+    assert chosen == [jar]
+    screen.show_cookie_file(jar)
+    assert control(screen, QLabel, "cookieFileValue").text() == str(jar)
+
+
+def test_using_no_cookies_is_offered_only_when_a_file_is_set(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """Clearing is a request the screen makes once there is something to clear."""
+    none_set, _ = screens()
+    assert control(none_set, QLabel, "cookieFileValue").text() == NO_COOKIES_NOTE
+    assert not control(none_set, QPushButton, "clearCookieFile").isEnabled()
+
+    chosen: list[Path | None] = []
+    with_file, _ = screens(
+        cookie_file=tmp_path / "cookies.txt", on_cookie_file_chosen=chosen.append
+    )
+    clear = control(with_file, QPushButton, "clearCookieFile")
+    assert clear.isEnabled()
+    clear.click()
+
+    assert chosen == [None], f"clearing asked for {chosen}, not 'no cookies'"
+
+
+def test_a_cancelled_cookies_picker_asks_for_nothing(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """Cancelled is not *use no cookies* — that is the other button, and this one signs you out."""
+    chosen: list[Path | None] = []
+    screen, _ = screens(on_cookie_file_chosen=chosen.append, choose_file=lambda _start: None)
+
+    control(screen, QPushButton, "chooseCookieFile").click()
+
+    assert chosen == [], "a cancelled picker signed the user out of everything they had"
