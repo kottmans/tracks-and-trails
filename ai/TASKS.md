@@ -2327,6 +2327,96 @@ this entry's to assert.
 - Any other options-dialog layout change, and the dialog's spec-side description (`docs/UX_SPEC.md`)
   unless the correction genuinely moves what a user sees
 
+### T-223 — The row's menu: drop the editor alias, name the removal
+
+**Status:** Proposed — filed 2026-08-10 from `UX-012`, the maintainer's ruling on three live-use
+reports.
+**Owner:** Implementer
+**Priority:** Medium — the alias actively confuses on a playlist row, and Remove's label
+understates what it removes
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** `T-203` (Complete — the menu this edits is its build). **Same-file coordination:**
+`T-213`/`T-218`/`T-219` also touch `add_dialog.py`; serial order among the four is the
+implementer's to pick, one task per commit as always.
+**Relevant context:** `UX-012` (the ruling, with the maintainer's words), `UX-011` (the shape this
+does not change), `docs/UX_SPEC.md` §3's `UX-012` clause, `T118-R9` (why the alias existed),
+`ui/add_dialog.py` `row_menu`/`edit_row`, `tests/ui/test_add_dialog.py` (the menu-content and
+two-door tests, and `choose_in_editor`'s sentinel reroute — which drives `Choose specific
+formats…`, a different entry that stays)
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+Two menu edits ruled by `UX-012`. The `Choose a format for this URL…` entry — `T118-R9`'s
+discoverability alias for `edit_row` — leaves the menu: the combo is visibly on the row, and on a
+playlist row the alias reads as a no-op highlight. And `Remove this URL` on a playlist row
+becomes `Remove this playlist (N items)` with the row's real entry count, because removing the
+line removes the batch; a single item keeps `Remove this URL` (a row can be audio-only, so
+`video` would lie).
+
+#### Acceptance criteria
+
+- The alias entry appears in **no** row's menu — single item, playlist, failed row — asserted on
+  the built menus
+- **The keyboard route to the combo survives the removal and is asserted**: the edit key still
+  opens the row's format control through `edit_row`, proven independently of any menu entry
+- A playlist row's Remove reads `Remove this playlist (N items)` with `N` from the row's own
+  entries; a single item's reads `Remove this URL`; the action itself is unchanged either way
+- The label is built from the opened-from row — opening row 1's menu while row 0 is current names
+  row 1's count — extending the existing structural-target regression rather than adding
+  announcement machinery
+- The two-door test still proves both doors produce the same (now smaller) action set
+- `docs/UX_SPEC.md` §3's `UX-012` clause `[T]` re-verified against the built menu at submission
+
+#### Out of scope
+
+- The `⋮` zone's rendering — `T-224`
+- Any per-entry gesture on playlist rows — offered and not taken in `UX-012`; its own ruling
+- The entry picker, `remove_row`'s mechanics, and every other menu entry
+
+### T-224 — Draw the ⋮ zone as a button
+
+**Status:** Proposed — filed 2026-08-10 from `UX-012`.
+**Owner:** Implementer
+**Priority:** Low–Medium — discoverability is the zone's only job, and the maintainer reports it
+failing at it
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** `T-203` (Complete). Independent of `T-223` — different file, either order.
+**Relevant context:** `UX-012` (the ruling), `UX-011` (the zone's accessibility stance, unchanged,
+and option G as the recorded fallback), `ui/row_delegate.py` (`_menu_zone_of` — one definition for
+paint and hit test, `T-203`'s seam), `tests/ui/test_row_delegate.py`,
+`tests/ui/test_add_dialog.py` (the zone-geometry and both-sides tests)
+**Affected surfaces:** `ui/row_delegate.py`, its tests
+**Risk:** Low — paint-only if done right; the trap is hover state in a delegate
+
+#### Scope
+
+The `⋮` is painted as bare glyph punctuation and reads as decoration. `UX-012` rules it drawn as
+a visible button: a border, and a hover/pressed state, so it looks pressable before anyone
+right-clicks anything. Geometry does not move — `_menu_zone_of` stays the one definition both
+paint and hit testing read.
+
+#### Acceptance criteria
+
+- The zone draws a button affordance — bordered at rest, visibly responding under the pointer —
+  in both palettes, with nothing conveyed by colour alone (`NFR-005`, `T-202`'s rule)
+- **Hover state actually renders**: a delegate repaints on mouse move only if the view asks it
+  to, so the regression drives a real hover and asserts the painted difference rather than
+  trusting a style flag
+- `_menu_zone_of` remains the single geometry definition; `T-203`'s zone-geometry regression and
+  the both-sides test stay green unmodified in what they prove
+- A press anywhere else on the control still opens the preset combo — the existing both-ways
+  assertion holds
+- The narrowing contract stays green — the zone stays fixed-width
+- The zone still has no accessibility node, and the sibling menu routes are untouched — the
+  `UX-011` stance `UX-012` explicitly preserves
+
+#### Out of scope
+
+- Option G (removing the zone) — the recorded fallback, not this task
+- The menu's contents (`T-223`) and any change to zone geometry or hit-testing behaviour
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three

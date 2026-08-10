@@ -5,11 +5,11 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — the re-review verdict: **`T-203` Approved at `fe1d246` and moved
-to Complete**; `T203-R3` and `T203-R4` are Resolved, no open finding or follow-up remains, and
-`T-213`/`T-218`/`T-219` no longer wait on it. CI and Prose both completed green at `fe1d246`
-(runs `31404743641` and `31404743592`), read from the completed runs.
-**Last verified against repository:** 2026-08-10 **for the four 2026-08-10 blocks** — task
+**Last updated:** 2026-08-10 — the maintainer session after `T-203` closed: three live-use
+reports ruled. The options dialog's clipped container note is **`T-222`**; the row-menu reports
+are **`UX-012`** (the editor alias leaves the menu, Remove names its blast radius, the `⋮` is
+drawn as a button), built by **`T-223`**/**`T-224`**. `docs/UX_SPEC.md` §3 carries the amendment.
+**Last verified against repository:** 2026-08-10 **for the five 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
 read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
 day; the Phase 3 block beneath
@@ -30,6 +30,28 @@ criterion the maintainer added that day had no owner. **The carried-in defect qu
 through**: the add-dialog chain, `T-209` and now `T-203` are Complete, `T-208` waits only on the
 maintainer's report disposition, `T-221` on the maintainer's display, and the same-file trio
 `T-213`/`T-218`/`T-219` is unblocked. No plan deliverable has been started.
+
+## 2026-08-10 (maintainer session): three live-use reports, ruled and filed
+
+**The maintainer exercised the built dialogs on a real display and reported three things**; each
+is now owned:
+
+- **`T-222` filed** — the options dialog's Container note wraps and clips at the opened width on
+  the real display, while its three sibling wrapped labels display whole. The entry demands a
+  shown-dialog reproduction (`T-209`'s lesson) and leaves the mechanism to it.
+- **`UX-012` accepted** — the maintainer ruled the three row-menu reports, quoted verbatim in
+  `ai/DECISIONS.md`: the `Choose a format for this URL…` alias leaves the menu (it only focuses
+  the combo already visible on the row); a playlist row's Remove reads
+  `Remove this playlist (N items)`; the `⋮` zone is drawn as a visible button. Option G stays
+  the recorded fallback, the per-entry playlist gesture stays offered-not-taken, and the
+  `REQ-011` ruling stays open. `docs/UX_SPEC.md` §3 amended by Planner pass under the ruling.
+- **`T-223` and `T-224` filed** to build it — the menu edits and the zone affordance
+  respectively; `T-223` coordinates serially with the unblocked `T-213`/`T-218`/`T-219` in the
+  same file.
+
+**The Phase 4 defect/polish queue is now**: `T-208` and `T-221` on the maintainer,
+`T-213`–`T-224` open (`T-213`/`T-218`/`T-219` freshly unblocked, `T-222`–`T-224` freshly filed),
+plus `T-021`/`T-191`. The roadmap artifact is revised for this state at its same URL.
 
 ## 2026-08-10 (re-review verdict): T-203 approved at fe1d246, Complete
 
