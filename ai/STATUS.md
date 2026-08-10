@@ -5,8 +5,10 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **`T-215` and `T-146` are Complete and pushed, and CI is green at
-`bc7445f`** — all five jobs, the Windows desktop one included, which is what closes `T146-R4` and
+**Last updated:** 2026-08-10 — **`T-199` is Approved at `245676f` and Complete**, after four
+findings and two passes on `T199-R3`; the `DAT-003` amendment is corrected twice over its own
+contradictions and now names its forbidden sinks in a table. **`T-197` is unblocked** on the ruled
+shape. **`T-215` and `T-146` are Complete and pushed, and CI is green at `bc7445f`** — all five jobs, the Windows desktop one included, which is what closes `T146-R4` and
 `T146-R3` on Windows's own evidence rather than on my reasoning. **`T-199` is built and In Review**
 at `4fee30f`, held locally. **`T-197` is blocked on a `DAT-003` ruling** that must happen before
 cookie-file support lands. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu

@@ -118,185 +118,6 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
-### T-199 — ffmpeg: say which features are gone, and let the user point at one
-
-**Status:** **In Review — focused re-review changes requested 2026-08-10.** `T199-R1`,
-`T199-R2`, and `T199-R4` are resolved at `c4668e8`; `T199-R3` remains **High and blocking**.
-Built the same day on maintainer instruction, immediately after `T-146` unblocked it.
-
-- **`T199-R1` — High. Resolved at `c4668e8`.** The agreement covered `OptionsDialog` and not *anywhere in the
-  add dialog*: the preset catalogue was offered whole, so `Audio only (MP3)`, `Audio only
-  (original)` and `Video with embedded subtitles` were all offered with ffmpeg absent and all
-  three are refused by the worker's `_ffmpeg_gap` before a byte moves. `core.presets.needs_ffmpeg`
-  is now a pure predicate the GUI process can compute — `requires_ffmpeg` imports `yt_dlp` and is
-  barred from `ui/` — and `AddUrlDialog` filters `self._presets` at its single source, which is
-  what feeds the batch combo, the row selectors and every row's own picker. **A unit test binds
-  the pure predicate to the definitive one over the whole built-in catalogue**, so the two cannot
-  drift, and a composed test drives a **real** absent-ffmpeg resolution rather than the flag.
-- **`T199-R2` — High. Resolved at `c4668e8`.** `DownloadManager` captured `_ffmpeg_override` at construction
-  and handed it to every child; nothing updated it, so after a live change the UI followed the new
-  answer while workers received the old path — the dialog offering exactly what the worker would
-  refuse. `set_ffmpeg_override` added, called from the chooser, and the regression asserts the
-  **value the manager passes to children** rather than the status line, which would have passed
-  against the defect.
-- **`T199-R3` — High. Remains open after focused re-review.** Validation was split three ways and disagreed: the stored value
-  was checked at load, the live choice was checked nowhere and persisted regardless, and
-  `find_ffmpeg` refused a bad override without falling back. `unusable_ffmpeg_reason` is now one
-  public predicate both routes call, and composition's `resolve_ffmpeg` is the single
-  report-and-fall-back contract — what the predicate objects to and what `find_ffmpeg` cannot run
-  both end on `PATH` with a reason. **A refused choice is not persisted**, so it cannot fail again
-  at the next launch; a stored location that has since become unusable falls back for the session
-  without rewriting the file, because an unplugged drive should not cost the user their setting.
-  The correction still does not give both routes that contract. A stored file that passes the
-  shape checks and later becomes non-executable falls back to `PATH` with a log warning only;
-  `settings_read.problem` remains empty, so no `ARC-008` dialog is shown. On the live route,
-  `manager.set_ffmpeg_override(resolved.path)` runs before the refusal branch: rejecting a bad
-  choice while a valid custom override is active silently switches future workers to `PATH`, while
-  the settings file and screen continue to name the custom binary. The committed regression starts
-  from `PATH`, where that mutation happens to equal the value it calls `unchanged`, and misses the
-  state combination. The stored non-executable case and the valid-custom-then-refusal case both
-  need composed evidence.
-- **`T199-R4` — Medium. Resolved at `c4668e8`.** The new test wrote an extensionless `ffmpeg` with
-  `chmod 0755`, which `shutil.which` cannot match on Windows. **The proven cross-platform shape
-  was already in the file, six tests up, with a comment explaining this exact trap** — and it was
-  written the broken way anyway. It is now the `an_executable_ffmpeg` helper both tests call,
-  because a reader cannot forget a helper. **This is the platform-assumption class for the fourth
-  time** (`T146-R3`, `T146-R4`, and now this); the helper and `os.name` over `sys.platform` are
-  what is left behind rather than another resolution to be careful.
-
-**The defect the first criterion turned out to name.** `UX-005` §5 — *nothing is drawn that would
-be refused* — was **three quarters untrue**. The format table hid its merge mode without ffmpeg
-(`P-13`, since `T-107`), and the options dialog went on offering audio conversion, remuxing,
-recoding and all four embeds: three of the four features `FfmpegReport.summary()` was telling the
-user, on the same run, were unavailable. The enumeration and the offer did not merely risk
-drifting; they had already drifted, and nothing could notice because they shared no vocabulary.
-**Owner:** Implementer
-**Priority:** Medium — partly built already, and the unbuilt half is the one a user without ffmpeg
-on `PATH` needs
-**Phase:** Phase 4
-**Depends on:** `T-146` for the screen. `T-035` already resolves the environment.
-**Relevant context:** `REQ-024`, `REQ-023` (*ffmpeg location*), `OPS-003`, `T-035`, `T-189`,
-`T-192`, `core/errors.py` (`FFMPEG_MISSING`, `FFMPEG_ERROR`), `ui/main_window.py` (the gate label),
-`ui/format_selection.py`, `tests/capabilities.py`
-**Affected surfaces:** `core/settings.py`, the settings dialog, the environment resolution path,
-`ui/main_window.py`'s gate
-**Risk:** Low–Medium. The detection exists; the override adds a user-chosen path, and
-`T-109`/`T-113` are the record of what user-chosen paths cost here
-
-#### Scope
-
-**`REQ-024` is half built and the entry should say which half.** Detection at startup exists,
-`core/errors.py` carries `FFMPEG_MISSING` and `FFMPEG_ERROR` as taxonomy classes, `T-192` moved the
-gate summary to where it can be seen, and `T-189` made the CI cases that depend on ffmpeg fail
-rather than skip. **What is missing is the two things `REQ-024` and `REQ-023` name explicitly:**
-
-- **Capability reporting** — *"clearly report **which features are unavailable** without it, rather
-  than failing at merge time."* Today the application reports ffmpeg's *presence*. It does not
-  enumerate what stops working: merging separate video and audio, audio extraction to a named
-  codec, remux and recode, thumbnail embedding, chapters. **A user who is told "no ffmpeg" still
-  does not know what they have lost.**
-- **The override path** — `REQ-023` lists *ffmpeg location*. There is no setting, so a user with
-  ffmpeg somewhere other than `PATH` cannot say so.
-
-**The interesting constraint is `UX-005` §5** — *nothing is drawn that would be refused*.
-`ui/format_selection.py` already reasons about what a preset needs. Capability reporting is the
-same question asked from the other end, and the two must not disagree: a feature the settings screen
-says is unavailable must be one the add dialog does not offer.
-
-#### Acceptance criteria
-
-- The application **enumerates the features ffmpeg gates**, by name, and says which are unavailable
-  — asserted against a real absent-ffmpeg environment, not a mocked flag
-- **The enumeration and the offer agree.** A capability reported unavailable is not offered as a
-  choice anywhere in the add dialog (`UX-005` §5). One test asserts the agreement rather than each
-  side separately, because two lists that must match are two lists that will drift
-- The screen sets an **ffmpeg location**, it persists, and the resolution path **prefers it over
-  `PATH`** — asserted through a real resolution, not the stored value
-- A location that is missing, not executable, or **not ffmpeg** reports under `ARC-008` and the
-  application still starts on whatever it can find. `T-109`'s and `T-113`'s Criticals were both
-  about trusting a path this application did not choose; this is another one
-- Clearing the override returns to `PATH` resolution
-- The gate summary `T-192` fixed reflects an overridden ffmpeg, not just a `PATH` one
-
-#### Initial review findings — 2026-08-10 at `3705840`
-
-- **`T199-R1` — High, blocks approval.** The agreement stops at the options editor rather than
-  covering *anywhere in the add dialog* as the criterion says. `_build_preset_row()` still adds
-  every preset unconditionally when ffmpeg is absent, including `Audio only (MP3)`, `Audio only
-  (original)`, and `Video with embedded subtitles`; the worker's existing definitive gate refuses
-  those requests before downloading. The new agreement test constructs `OptionsDialog` directly
-  with `ffmpeg_available=False`, scans only that dialog, and therefore neither reaches a real
-  absent-ffmpeg resolution nor sees the preset chooser. Drive the composed absent environment and
-  assert the complete add-dialog offer against the capabilities it reports.
-- **`T199-R2` — High, blocks approval.** A valid location selected while the application is open
-  updates the settings value, status summary, and availability flag, but not
-  `DownloadManager._ffmpeg_override`, which was captured at construction and has no update path.
-  A newly opened add dialog can consequently offer ffmpeg features while the worker still receives
-  the old override and refuses them; the setting only reaches downloads after a restart. The live
-  choose and clear routes need to update the value used by future worker sessions, with composed
-  evidence that observes what the manager actually passes.
-- **`T199-R3` — High, blocks approval.** Invalid override handling is split into incompatible
-  answers and does not meet the task's report-and-fall-back criterion. A stored non-executable file
-  passes `_ffmpeg_location_from()` with no `SettingsProblem`; `find_ffmpeg()` then rejects the
-  explicit override without consulting an available `PATH` ffmpeg. The live chooser bypasses the
-  settings validator entirely: it persists missing/non-executable paths without an ARC-008 report,
-  and an executable named `ls` is accepted as ffmpeg because only the load path applies the name
-  check. One validation/resolution path must govern stored and newly chosen values, report every
-  discarded value, and fall back to `PATH` as the criterion states.
-- **`T199-R4` — Medium, blocks approval on the required Windows gate.** The new composition proof
-  creates an extensionless `ffmpeg` containing a POSIX shell line and marks it executable. On
-  Windows, `shutil.which()` checks `PATHEXT` candidates under its default `X_OK` mode and does not
-  direct-match that extensionless file, so `composition.ffmpeg.available` is false and the test is
-  deterministically red. The same file already has a cross-platform fake pattern (`ffmpeg.bat` on
-  Windows); use it or a shared helper so this resolution proof runs on both primary platforms.
-
-#### What was built, against those criteria
-
-- **`FfmpegFeature`**, an enum in `downloader/environment.py`, is the shared vocabulary the
-  criterion needed. `FFMPEG_DEPENDENT_FEATURES` is now derived from it rather than restated, so
-  the prose the user reads and the members the UI keys on cannot disagree. **The wording is
-  carried over exactly** — this task reports which features need ffmpeg and does not re-derive
-  them, which is `T-109`'s and `T-181`'s settled ground.
-- **The options dialog gates on ffmpeg**, by object name through `FFMPEG_FEATURE_CONTROLS`, with
-  one reason line that names the fix (*install ffmpeg, or set its location in Settings*). *Keep
-  the container it arrives in* deliberately stays live: it asks for no post-processing, and
-  disabling it would leave the group with no selectable member.
-- **The agreement is one test, and its first version was too weak.** It walked the enum and
-  checked each mapped control was disabled — which a mutation defeated by *emptying* a feature's
-  control tuple, making the assertion vacuous. It now also asserts the **screen**: with ffmpeg
-  absent, no interactive control is enabled except an explicit `STILL_LIVE_WITHOUT_FFMPEG`
-  allowlist. A control added to the dialog and never mapped now fails it, which is the drift the
-  criterion actually names.
-- **`[ffmpeg] location`** in `settings.toml`, validated under `ARC-008`: absent or empty is
-  silent, and missing, not-a-file or *not ffmpeg* reports and falls back to `PATH`. Composition
-  resolves it as *explicit argument → stored location → `PATH`*, and the resolution — not the
-  stored string — is what the composition test asserts.
-- **The *not ffmpeg* check is a name check and says so.** Neither this module nor `find_ffmpeg`
-  executes the file, deliberately, so the check cannot tell a renamed impostor from the real
-  thing; it catches the realistic mistake of picking the wrong file out of a dialog. A substring
-  rather than an equality, so `ffmpeg-7`, `ffmpeg.exe` and `ffmpeg_static` are accepted — and a
-  test asserts that direction too, because one proving only that wrong files are refused would
-  pass an implementation that refuses everything.
-- **The Settings screen gains an ffmpeg section** showing the resolution's own summary rather than
-  just the path, so `REQ-024`'s *which features are unavailable* is answered where a user goes to
-  fix it. Choosing one re-resolves immediately and updates the gate line (`T-192`, and this task's
-  last criterion).
-- **Four mutations fail their own evidence**: the gate removed; a feature's controls unmapped; the
-  stored location never reaching `find_ffmpeg`; the name check removed.
-- **Two existing guards fired and were updated deliberately, not silenced.**
-  `test_the_module_exposes_no_version_and_no_usability_verdict` refuses any new export from
-  `environment.py`; `FfmpegFeature` was transcribed into its reviewed list with the reason it is a
-  locate-side name. And `T-146`'s own honesty test caught *ffmpeg* still listed as *still to
-  come* — the sentence shrinking as the screen grows is that criterion working.
-
-#### Out of scope
-
-- **Installing or bundling ffmpeg.** `REQ-024` asks to detect and report; `OPS-003` and the
-  packaging phase own what ships
-- Updating ffmpeg — `T-198` updates yt-dlp only, and nothing asks for an ffmpeg updater
-- Changing which features need ffmpeg. That is `T-109`'s and `T-181`'s settled ground; this task
-  reports it and does not re-derive it
-
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -3059,6 +2880,190 @@ Assert, on `windows-latest`:
 
 ## Complete
 
+### T-199 — ffmpeg: say which features are gone, and let the user point at one
+
+**Status:** **Complete — approved 2026-08-10 at `245676f`.** All four findings closed; `T199-R1`,
+`T199-R2` and `T199-R4` at `c4668e8`, and `T199-R3` at `245676f` after two correction passes.
+Built the same day on maintainer instruction, immediately after `T-146` unblocked it.
+
+**One non-blocking review note, taken rather than argued.** The refusal regression claimed a
+displayed-state assertion in its handoff that it did not actually make; production passed the
+reviewer's direct probe, and the assertion is now in the test and mutation-checked. **That note is
+the same shape as every finding on this task** — a claim reaching further than its evidence — which
+is why it was fixed at the head rather than answered.
+
+- **`T199-R1` — High. Resolved at `c4668e8`.** The agreement covered `OptionsDialog` and not *anywhere in the
+  add dialog*: the preset catalogue was offered whole, so `Audio only (MP3)`, `Audio only
+  (original)` and `Video with embedded subtitles` were all offered with ffmpeg absent and all
+  three are refused by the worker's `_ffmpeg_gap` before a byte moves. `core.presets.needs_ffmpeg`
+  is now a pure predicate the GUI process can compute — `requires_ffmpeg` imports `yt_dlp` and is
+  barred from `ui/` — and `AddUrlDialog` filters `self._presets` at its single source, which is
+  what feeds the batch combo, the row selectors and every row's own picker. **A unit test binds
+  the pure predicate to the definitive one over the whole built-in catalogue**, so the two cannot
+  drift, and a composed test drives a **real** absent-ffmpeg resolution rather than the flag.
+- **`T199-R2` — High. Resolved at `c4668e8`.** `DownloadManager` captured `_ffmpeg_override` at construction
+  and handed it to every child; nothing updated it, so after a live change the UI followed the new
+  answer while workers received the old path — the dialog offering exactly what the worker would
+  refuse. `set_ffmpeg_override` added, called from the chooser, and the regression asserts the
+  **value the manager passes to children** rather than the status line, which would have passed
+  against the defect.
+- **`T199-R3` — High. Remains open after focused re-review.** Validation was split three ways and disagreed: the stored value
+  was checked at load, the live choice was checked nowhere and persisted regardless, and
+  `find_ffmpeg` refused a bad override without falling back. `unusable_ffmpeg_reason` is now one
+  public predicate both routes call, and composition's `resolve_ffmpeg` is the single
+  report-and-fall-back contract — what the predicate objects to and what `find_ffmpeg` cannot run
+  both end on `PATH` with a reason. **A refused choice is not persisted**, so it cannot fail again
+  at the next launch; a stored location that has since become unusable falls back for the session
+  without rewriting the file, because an unplugged drive should not cost the user their setting.
+  The correction still does not give both routes that contract. A stored file that passes the
+  shape checks and later becomes non-executable falls back to `PATH` with a log warning only;
+  `settings_read.problem` remains empty, so no `ARC-008` dialog is shown. On the live route,
+  `manager.set_ffmpeg_override(resolved.path)` runs before the refusal branch: rejecting a bad
+  choice while a valid custom override is active silently switches future workers to `PATH`, while
+  the settings file and screen continue to name the custom binary. The committed regression starts
+  from `PATH`, where that mutation happens to equal the value it calls `unchanged`, and misses the
+  state combination. The stored non-executable case and the valid-custom-then-refusal case both
+  need composed evidence.
+- **`T199-R4` — Medium. Resolved at `c4668e8`.** The new test wrote an extensionless `ffmpeg` with
+  `chmod 0755`, which `shutil.which` cannot match on Windows. **The proven cross-platform shape
+  was already in the file, six tests up, with a comment explaining this exact trap** — and it was
+  written the broken way anyway. It is now the `an_executable_ffmpeg` helper both tests call,
+  because a reader cannot forget a helper. **This is the platform-assumption class for the fourth
+  time** (`T146-R3`, `T146-R4`, and now this); the helper and `os.name` over `sys.platform` are
+  what is left behind rather than another resolution to be careful.
+
+**The defect the first criterion turned out to name.** `UX-005` §5 — *nothing is drawn that would
+be refused* — was **three quarters untrue**. The format table hid its merge mode without ffmpeg
+(`P-13`, since `T-107`), and the options dialog went on offering audio conversion, remuxing,
+recoding and all four embeds: three of the four features `FfmpegReport.summary()` was telling the
+user, on the same run, were unavailable. The enumeration and the offer did not merely risk
+drifting; they had already drifted, and nothing could notice because they shared no vocabulary.
+**Owner:** Implementer
+**Priority:** Medium — partly built already, and the unbuilt half is the one a user without ffmpeg
+on `PATH` needs
+**Phase:** Phase 4
+**Depends on:** `T-146` for the screen. `T-035` already resolves the environment.
+**Relevant context:** `REQ-024`, `REQ-023` (*ffmpeg location*), `OPS-003`, `T-035`, `T-189`,
+`T-192`, `core/errors.py` (`FFMPEG_MISSING`, `FFMPEG_ERROR`), `ui/main_window.py` (the gate label),
+`ui/format_selection.py`, `tests/capabilities.py`
+**Affected surfaces:** `core/settings.py`, the settings dialog, the environment resolution path,
+`ui/main_window.py`'s gate
+**Risk:** Low–Medium. The detection exists; the override adds a user-chosen path, and
+`T-109`/`T-113` are the record of what user-chosen paths cost here
+
+#### Scope
+
+**`REQ-024` is half built and the entry should say which half.** Detection at startup exists,
+`core/errors.py` carries `FFMPEG_MISSING` and `FFMPEG_ERROR` as taxonomy classes, `T-192` moved the
+gate summary to where it can be seen, and `T-189` made the CI cases that depend on ffmpeg fail
+rather than skip. **What is missing is the two things `REQ-024` and `REQ-023` name explicitly:**
+
+- **Capability reporting** — *"clearly report **which features are unavailable** without it, rather
+  than failing at merge time."* Today the application reports ffmpeg's *presence*. It does not
+  enumerate what stops working: merging separate video and audio, audio extraction to a named
+  codec, remux and recode, thumbnail embedding, chapters. **A user who is told "no ffmpeg" still
+  does not know what they have lost.**
+- **The override path** — `REQ-023` lists *ffmpeg location*. There is no setting, so a user with
+  ffmpeg somewhere other than `PATH` cannot say so.
+
+**The interesting constraint is `UX-005` §5** — *nothing is drawn that would be refused*.
+`ui/format_selection.py` already reasons about what a preset needs. Capability reporting is the
+same question asked from the other end, and the two must not disagree: a feature the settings screen
+says is unavailable must be one the add dialog does not offer.
+
+#### Acceptance criteria
+
+- The application **enumerates the features ffmpeg gates**, by name, and says which are unavailable
+  — asserted against a real absent-ffmpeg environment, not a mocked flag
+- **The enumeration and the offer agree.** A capability reported unavailable is not offered as a
+  choice anywhere in the add dialog (`UX-005` §5). One test asserts the agreement rather than each
+  side separately, because two lists that must match are two lists that will drift
+- The screen sets an **ffmpeg location**, it persists, and the resolution path **prefers it over
+  `PATH`** — asserted through a real resolution, not the stored value
+- A location that is missing, not executable, or **not ffmpeg** reports under `ARC-008` and the
+  application still starts on whatever it can find. `T-109`'s and `T-113`'s Criticals were both
+  about trusting a path this application did not choose; this is another one
+- Clearing the override returns to `PATH` resolution
+- The gate summary `T-192` fixed reflects an overridden ffmpeg, not just a `PATH` one
+
+#### Initial review findings — 2026-08-10 at `3705840`
+
+- **`T199-R1` — High, blocks approval.** The agreement stops at the options editor rather than
+  covering *anywhere in the add dialog* as the criterion says. `_build_preset_row()` still adds
+  every preset unconditionally when ffmpeg is absent, including `Audio only (MP3)`, `Audio only
+  (original)`, and `Video with embedded subtitles`; the worker's existing definitive gate refuses
+  those requests before downloading. The new agreement test constructs `OptionsDialog` directly
+  with `ffmpeg_available=False`, scans only that dialog, and therefore neither reaches a real
+  absent-ffmpeg resolution nor sees the preset chooser. Drive the composed absent environment and
+  assert the complete add-dialog offer against the capabilities it reports.
+- **`T199-R2` — High, blocks approval.** A valid location selected while the application is open
+  updates the settings value, status summary, and availability flag, but not
+  `DownloadManager._ffmpeg_override`, which was captured at construction and has no update path.
+  A newly opened add dialog can consequently offer ffmpeg features while the worker still receives
+  the old override and refuses them; the setting only reaches downloads after a restart. The live
+  choose and clear routes need to update the value used by future worker sessions, with composed
+  evidence that observes what the manager actually passes.
+- **`T199-R3` — High, blocks approval.** Invalid override handling is split into incompatible
+  answers and does not meet the task's report-and-fall-back criterion. A stored non-executable file
+  passes `_ffmpeg_location_from()` with no `SettingsProblem`; `find_ffmpeg()` then rejects the
+  explicit override without consulting an available `PATH` ffmpeg. The live chooser bypasses the
+  settings validator entirely: it persists missing/non-executable paths without an ARC-008 report,
+  and an executable named `ls` is accepted as ffmpeg because only the load path applies the name
+  check. One validation/resolution path must govern stored and newly chosen values, report every
+  discarded value, and fall back to `PATH` as the criterion states.
+- **`T199-R4` — Medium, blocks approval on the required Windows gate.** The new composition proof
+  creates an extensionless `ffmpeg` containing a POSIX shell line and marks it executable. On
+  Windows, `shutil.which()` checks `PATHEXT` candidates under its default `X_OK` mode and does not
+  direct-match that extensionless file, so `composition.ffmpeg.available` is false and the test is
+  deterministically red. The same file already has a cross-platform fake pattern (`ffmpeg.bat` on
+  Windows); use it or a shared helper so this resolution proof runs on both primary platforms.
+
+#### What was built, against those criteria
+
+- **`FfmpegFeature`**, an enum in `downloader/environment.py`, is the shared vocabulary the
+  criterion needed. `FFMPEG_DEPENDENT_FEATURES` is now derived from it rather than restated, so
+  the prose the user reads and the members the UI keys on cannot disagree. **The wording is
+  carried over exactly** — this task reports which features need ffmpeg and does not re-derive
+  them, which is `T-109`'s and `T-181`'s settled ground.
+- **The options dialog gates on ffmpeg**, by object name through `FFMPEG_FEATURE_CONTROLS`, with
+  one reason line that names the fix (*install ffmpeg, or set its location in Settings*). *Keep
+  the container it arrives in* deliberately stays live: it asks for no post-processing, and
+  disabling it would leave the group with no selectable member.
+- **The agreement is one test, and its first version was too weak.** It walked the enum and
+  checked each mapped control was disabled — which a mutation defeated by *emptying* a feature's
+  control tuple, making the assertion vacuous. It now also asserts the **screen**: with ffmpeg
+  absent, no interactive control is enabled except an explicit `STILL_LIVE_WITHOUT_FFMPEG`
+  allowlist. A control added to the dialog and never mapped now fails it, which is the drift the
+  criterion actually names.
+- **`[ffmpeg] location`** in `settings.toml`, validated under `ARC-008`: absent or empty is
+  silent, and missing, not-a-file or *not ffmpeg* reports and falls back to `PATH`. Composition
+  resolves it as *explicit argument → stored location → `PATH`*, and the resolution — not the
+  stored string — is what the composition test asserts.
+- **The *not ffmpeg* check is a name check and says so.** Neither this module nor `find_ffmpeg`
+  executes the file, deliberately, so the check cannot tell a renamed impostor from the real
+  thing; it catches the realistic mistake of picking the wrong file out of a dialog. A substring
+  rather than an equality, so `ffmpeg-7`, `ffmpeg.exe` and `ffmpeg_static` are accepted — and a
+  test asserts that direction too, because one proving only that wrong files are refused would
+  pass an implementation that refuses everything.
+- **The Settings screen gains an ffmpeg section** showing the resolution's own summary rather than
+  just the path, so `REQ-024`'s *which features are unavailable* is answered where a user goes to
+  fix it. Choosing one re-resolves immediately and updates the gate line (`T-192`, and this task's
+  last criterion).
+- **Four mutations fail their own evidence**: the gate removed; a feature's controls unmapped; the
+  stored location never reaching `find_ffmpeg`; the name check removed.
+- **Two existing guards fired and were updated deliberately, not silenced.**
+  `test_the_module_exposes_no_version_and_no_usability_verdict` refuses any new export from
+  `environment.py`; `FfmpegFeature` was transcribed into its reviewed list with the reason it is a
+  locate-side name. And `T-146`'s own honesty test caught *ffmpeg* still listed as *still to
+  come* — the sentence shrinking as the screen grows is that criterion working.
+
+#### Out of scope
+
+- **Installing or bundling ffmpeg.** `REQ-024` asks to detect and report; `OPS-003` and the
+  packaging phase own what ships
+- Updating ffmpeg — `T-198` updates yt-dlp only, and nothing asks for an ffmpeg updater
+- Changing which features need ffmpeg. That is `T-109`'s and `T-181`'s settled ground; this task
+  reports it and does not re-derive it
 ### T-146 — A Settings menu, and the screen behind it
 
 **Status:** **Complete — approved at `0adf9e3` on 2026-08-10, with one post-approval correction

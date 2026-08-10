@@ -14175,3 +14175,78 @@ with the stored and displayed setting after a refusal.
 The Reviewer changed this review record and T-199's current status only. The concurrently present
 DAT-003/T-197 edits in `ai/DECISIONS.md` and `ai/TASKS.md` were not authored or altered by the
 Reviewer. No reviewed source or test file was modified, and no commit or push was made.
+
+## 2026-08-10 — T-199 second focused correction re-review
+
+**Task:** T-199 — ffmpeg capability reporting and location override
+
+**Implementation review boundary:** `c4668e8..245676f`
+
+**Implementation head approved:** `245676f`
+
+**DAT-003 clarification inspected separately:** `25333b6..6a7537a`
+
+**T-199 verdict:** **Approved**
+
+### T199-R3 disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T199-R3** | **High** | **Yes — explicit invalid-location criterion and ARC-008** | **Resolved at `245676f`** | Composition now contributes a `SettingsProblem` when a stored, correctly named file passes `load()` but the platform will not execute it; it joins any load-time problem and reaches one settings dialog. The live refusal path checks `reason` before updating the environment or manager, and `_InForce` follows each accepted resolution so a later refusal shows the report actually in effect. A composed probe confirmed that a live accepted custom override followed by a refusal preserves the manager override, displayed path, and usable summary. |
+
+The correction closes both remaining product failures. A stored non-executable value falls back to
+`PATH`, reports to the user, and is not erased from the file. A bad live choice changes neither the
+manager nor the stored/displayed answer. `T199-R1`, `T199-R2`, and `T199-R4` remain resolved at
+`c4668e8`; the implementation at `245676f` has no open blocking finding.
+
+### Non-blocking evidence note
+
+The handoff says the new refusal regression asserts the manager, stored setting, **and displayed
+location**. The committed test at `test_composition.py:2274-2317` asserts only the first two, and it
+starts with the custom override present at startup rather than accepting one live. It therefore
+does not independently prove that `_InForce` advances after an accepted live change. This is a
+**Low, non-blocking test-strength note** because the production behavior is correct by inspection
+and by the reviewer's composed live-accept-then-refuse probe; the manager assertion still detects
+the shipped R3 regression and both claimed correction mutations.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edit | **clean; `main` ahead of `origin/main` by 6 commits** |
+| `git diff --check c4668e8..245676f` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 165 files** |
+| `mypy src` | **pass, 52 files** |
+| bare `mypy` | **pass, 127 files** |
+| `mypy --platform win32` | **pass, 127 files** |
+| Complete composition suite plus task-placement gate | **55 passed in 11.45 s** |
+| Stored non-executable plus another invalid setting probe | **one settings dialog; both reasons present** |
+| Live accepted custom override followed by refused missing path | **manager and displayed path remained custom; summary remained “ffmpeg found”** |
+
+The implementer's broader **2537 passed, 17 skipped** result was not repeated wholesale. The
+focused suite covers the entire changed test module and both new state transitions; the static
+platform gates independently cover the platform-guarded test shape.
+
+### DAT-003 clarification audit
+
+The retroactivity question is resolved at `6a7537a`: the decision now states that a browser
+profile binds when queued, a cookie file binds when the worker starts, and changing the file affects
+already-queued work that has not started. Both alternatives and the visible consequence are stated.
+
+The sink clarification still contains one literal conflict and therefore does **not** yet unblock
+T-197 as written:
+
+| ID | Severity | Blocks T-197 | Status | Finding |
+|---|---|---:|---|---|
+| **DAT003-R1** | **Medium** | **Yes — security-boundary reopening condition** | **Open** | The condition opens with “A cookie path reaching a sink other than `settings.toml`,” which includes worker-process arguments. Its next sentence names those arguments as an authorized sink. The condition therefore still triggers on one of the two routes the ruling authorizes. Name both exclusions in the condition — `settings.toml` **and worker-process arguments** — or define it as reaching any sink outside the explicit authorized set/table. |
+
+### Push disposition
+
+**T-199 itself is ready to push and for native CI at implementation head `245676f`.** The current
+branch also contains the DAT-003 records, so do not push the whole local stack as one settled tree
+or start T-197 until DAT003-R1's one remaining contradiction is corrected. That is a documentation
+correction to the decision boundary, not another T-199 implementation pass.
+
+The Reviewer changed `ai/REVIEWS.md` only. No source, test, decision, task, commit, or remote state
+was changed.

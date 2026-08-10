@@ -1187,11 +1187,13 @@ The original three stand — sync, export, cloud backup, or a bug report attachi
 and *"any other secret-bearing persisted field"* stands. Two are **taken** by this ruling and are
 no longer pending: cookie-file support, and constraining `cookies_from_browser`. Added:
 
-- **A cookie path reaching a sink other than `settings.toml`.** Named precisely, because the
-  first drafting of this clause said *"any durable record"* and **contradicted the ruling in the
-  same breath**: `settings.toml` is durable, and is exactly where this ruling puts the path, so
-  the condition fired the moment it was written. The authorised sink is that file and the
-  arguments handed to a worker process. The forbidden ones, by name:
+- **A cookie path reaching any sink in the table below.** The condition is the table, not a
+  property — twice now a property has contradicted the ruling it was written beside. The first
+  drafting said *"any durable record"*, and `settings.toml` is durable and is where the path is
+  meant to live. The second said *"a sink other than `settings.toml`"*, which still forbade the
+  worker arguments the very next sentence authorises. **There are two authorised sinks — that file
+  and the arguments handed to a worker process — and everything else is named here rather than
+  implied:**
 
   | Sink | Why it is forbidden |
   |---|---|

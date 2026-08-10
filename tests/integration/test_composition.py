@@ -35,7 +35,7 @@ from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QMetaMethod, QObject
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from tracks_and_trails import app as application
 from tracks_and_trails.core import presets
@@ -2315,3 +2315,21 @@ def test_refusing_a_choice_leaves_a_working_override_exactly_where_it_was(
     assert core_settings.load(settings_file).settings.ffmpeg_location == good, (
         "a refused choice changed the stored setting"
     )
+    # **The displayed state too, because the handoff claimed it and this did not assert it.**
+    # Non-blocking review note, fixed rather than argued: production passed a direct probe, but a
+    # claim the test does not make is the recurring shape of every finding on this task.
+    assert composition.window._ffmpeg_location == good, (
+        f"the window now shows {composition.window._ffmpeg_location} after a refusal, so the "
+        "screen and the stored setting disagree"
+    )
+    screen = composition.window.open_settings()
+    assert screen is not None
+    try:
+        shown = screen.findChild(QLabel, "ffmpegLocationValue")
+        assert shown is not None and shown.text() == str(good), (
+            f"the settings screen reads {shown.text() if shown else None!r} after a refused "
+            f"choice, not the override still in force"
+        )
+    finally:
+        screen.close()
+        QApplication.processEvents()
