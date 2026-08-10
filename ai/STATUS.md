@@ -5,11 +5,12 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — the combined verdicts: **`T-215` Approved at `b9caa40` and
-Complete**; **`T-146` Changes requested on two blockers, both corrected at `8940353`** and
-awaiting a focused re-review. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
+**Last updated:** 2026-08-10 — **`T-215` Approved at `b9caa40` and Complete**; **`T-146` is
+Blocked on a maintainer decision**: `T146-R1`/`T146-R2` are Resolved at `8940353` and the
+re-review's new `T146-R3` is corrected at `2a9d9e1`, but the pass budget is spent and `AGENTS.md`
+§10 puts the next step with the maintainer. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
 and the screen behind it, holding three of `REQ-023`'s eight settings.
-**Last verified against repository:** 2026-08-10 **for the seven 2026-08-10 blocks** — task
+**Last verified against repository:** 2026-08-10 **for the eight 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
 read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
 day; the Phase 3 block beneath
@@ -32,6 +33,32 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-10 (re-review): T-146's blockers resolved, T146-R3 corrected, Blocked on a decision
+
+**The focused re-review resolved `T146-R1` and `T146-R2` at `8940353`** and raised one new
+finding. **`T146-R3` (Medium)**: my R1 regression asserted the POSIX `~other-user` branch, and
+Windows guesses a sibling profile and reaches the ordinary missing-folder branch — so the
+production fallback works and the *test* fails, on a gate only the Windows job runs. **No
+production code was wrong.** Corrected at `2a9d9e1`: the portable test asserts the contract that
+holds on either branch, verified by driving `_directory_from` with both a `~user` value and a
+Windows-shaped absent path; the `RuntimeError` branch keeps its own test, skipped off POSIX with
+the reason stated, because forcing it there would mean mocking `core/` (`ai/TESTING.md` §6) or
+trusting CPython behaviour I cannot run — the very class of claim this finding is.
+
+**The class was swept, not just the instance.** Every test `T-146` added was audited for
+platform-dependent constructs. Two more were corrected: the `T146-R2` regression rested on
+`os.replace` refusing a directory and now blocks the write with a file where the parent folder
+should be, which `mkdir` refuses on both platforms; and a `/tmp` literal left the shape sweep.
+Confirmed **not** a Windows problem: `_toml_string` escapes backslashes (`T109-R9`), so a `C:\…`
+download folder round-trips.
+
+**`T-146` stays Blocked, and on the maintainer rather than on the code.** The ordinary pass budget
+is spent and `T146-R3` is Medium, so `AGENTS.md` §10 puts the choice with the maintainer —
+authorize one more focused pass, accept the documented risk, change scope, or carry it into a
+named follow-up. **The Implementer may not take that decision and has not.** Nothing is pushed;
+the reviewer would not push while a Windows gate is known to fail, and the correction has not been
+seen by CI.
 
 ## 2026-08-10 (verdicts and correction): T-215 Complete, T-146 corrected
 
