@@ -7,8 +7,8 @@
 **Status:** Active
 **Last updated:** 2026-08-10 — the re-review verdict: **`T-203` Approved at `fe1d246` and moved
 to Complete**; `T203-R3` and `T203-R4` are Resolved, no open finding or follow-up remains, and
-`T-213`/`T-218`/`T-219` no longer wait on it. Prose is green at `fe1d246`; CI was still queued
-when this was written and is not reported as passing.
+`T-213`/`T-218`/`T-219` no longer wait on it. CI and Prose both completed green at `fe1d246`
+(runs `31404743641` and `31404743592`), read from the completed runs.
 **Last verified against repository:** 2026-08-10 **for the four 2026-08-10 blocks** — task
 states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
 read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
@@ -42,10 +42,10 @@ follow-up remains; `T-203` is moved to `## Complete`**, and the placement gate p
 moved entry.
 
 **Unblocked by this verdict: `T-213`/`T-218`/`T-219`** — the same-file hold is over; `T-218`
-builds against its reconciled contract. **Prose run `31404743592` completed green at `fe1d246`;
-CI run `31404743641` was still queued when this block was written** — its verdict belongs to
-whoever reads the completed run, not to this record. The returned handoff is deleted per
-`AGENTS.md` §6, and the roadmap artifact is revised for this state at its same URL.
+builds against its reconciled contract. **CI run `31404743641` and Prose run `31404743592` both
+completed green at `fe1d246`** *(the CI verdict was recorded after its run completed — this block
+first reported it queued)*. The returned handoff is deleted per `AGENTS.md` §6, and the roadmap
+artifact is revised for this state at its same URL.
 
 ## 2026-08-10 (correction pass): T-203's keyboard door opened, its stale contracts reconciled
 
