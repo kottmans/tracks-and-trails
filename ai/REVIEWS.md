@@ -13945,6 +13945,66 @@ T-218, and T-219 no longer wait on its review. The Reviewer changed `ai/REVIEWS.
 status/placement in `ai/TASKS.md` only. No reviewed source or test file was modified, and no
 commit or push was made.
 
+## 2026-08-10 — T-146 maintainer-authorized T146-R3 re-review
+
+**Task:** T-146 — a Settings menu, and the screen behind it
+
+**Correction boundary:** `8940353..2a9d9e1`
+
+**Record-only heads inspected:** `bfad079`, `0adf9e3`
+
+**Scope:** T146-R3 and its portability-class correction only, under the maintainer-authorized
+additional focused pass recorded in T-146.
+
+**Verdict:** **Approved at `0adf9e3`**
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Resolution |
+|---|---|---:|---|---|
+| **T146-R3** | **Medium** | **Yes — required Windows test gate** | **Resolved at `2a9d9e1`** | The cross-platform test now asserts only the contract both branches satisfy: the unusable folder falls back, reports under ARC-008, and identifies `nosuchuser12345`. The `RuntimeError` wording and literal unexpanded value are asserted separately only on POSIX, where an unknown `~user` reaches that branch. A reviewer probe fed Python 3.14's Windows expansion result (`C:\\Users\\nosuchuser12345/downloads`) into the real `_directory_from()` and confirmed the portable fallback/report assertions. The required Windows suite no longer contains the deterministic POSIX-message assumption. |
+
+### Correction-diff audit
+
+The sibling portability changes are sound. The failed-save composition regression now places a
+file where the settings directory must be, making `mkdir(parents=True)` fail through the same
+`OSError` return path on either platform; it does not depend on replacement-over-directory
+semantics. Removing `/tmp` from the raw-NUL TOML shape correctly states that parsing rejects the
+input before path handling. Neither change weakens T146-R1 or T146-R2: their exact regressions pass,
+and all three setting callbacks still share the reviewed `remember()` implementation.
+
+No production code changed in this pass. Skipping the POSIX-only exception-message branch on
+Windows is honest scope, not missing product coverage: the portable test covers Windows's
+observable contract, while only a platform that produces `RuntimeError` can prove that internal
+branch without mocking `core/`.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| `git diff --check 8940353..0adf9e3` and worktree `git diff --check` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 165 files** |
+| `mypy src` | **pass, 52 files** |
+| bare `mypy` | **pass, 127 files** |
+| `mypy --platform win32` | **pass, 127 files** |
+| Exact corrected tests plus task placement | **18 passed in 0.51 s** |
+| Settings unit suite, composition suite, and task placement | **165 passed in 19.35 s** |
+| Windows-shaped `_directory_from()` probe | **pass:** fallback `None`, missing-folder report, and `nosuchuser12345` identified |
+
+The implementer's broader **1826 passed, 16 skipped** run was not repeated wholesale. Native
+Windows execution remains pending the first push by construction; it is appropriate CI evidence
+after approval rather than a reason to retain a known-red test. The previous full suite remains
+2854 passed at the original implementation tree.
+
+### Final disposition
+
+T146-R1, T146-R2, and T146-R3 are all Resolved. T-146 is Complete at `0adf9e3`; no open finding or
+follow-up remains. T-195 through T-199 are unblocked by this verdict.
+
+The Reviewer changed `ai/REVIEWS.md` and `ai/TASKS.md` only. No reviewed source or test file was
+modified, and no commit or push was made.
+
 ## 2026-08-10 — T-146 focused correction re-review
 
 **Task:** T-146 — a Settings menu, and the screen behind it
