@@ -171,18 +171,32 @@ resolved.
 - **[T]** *(ruled 2026-08-09, `UX-011`; `T-203` builds it — option E, round 8)* **The three
   per-row verbs live in the row's menu**: `Choose specific formats…`, `Options…` and
   `Naming and folders…`, under a *Just this item* heading, above the Retry/Remove entries that
-  menu already holds. The menu opens **two ways**: from a narrow `⋮` zone drawn on the trailing
+  menu already holds. The menu opens **two ways**: from a `⋮` zone drawn on the trailing
   edge of the row's format control, and by the routes the row's context menu already answers —
   right-click, the Menu key, Shift+F10. One menu, not two lookalikes.
+- **[T]** *(ruled 2026-08-10, `UX-012`; `T-223` builds it)* **The menu holds nothing that only
+  focuses a visible control.** The `Choose a format for this URL…` entry — `T118-R9`'s
+  discoverability alias for the keyboard editor route — is gone: the combo is visibly on the row,
+  and the keyboard reaches it through the edit key, not through a menu entry. **And Remove names
+  what it removes**: a playlist row's entry reads `Remove this playlist (N items)` with the row's
+  real entry count, because removing the line removes the batch and the label owes the user that
+  blast radius; a single item keeps `Remove this URL`. The label is the opened-from row's own
+  content — no current-row announcement returns.
 - **[D]** *(`UX-011`)* **The menu is anchored to the row it acts on, so the target is structural.**
   A shared control acting on "the current row" must *say* which row that is — that obligation is
   what `T203-R1` was. A menu opened from a row cannot act on any other row, so no target label or
   announcement machinery exists to drift.
-- **[T]** *(`UX-011`)* **The painted `⋮` is an affordance, not the only door.** The delegate paints
-  it, so it has no accessibility node — the same fact that rejected the icon shapes — and that is
-  acceptable here for the reason the painted disclosure triangle already is: the function it
-  exposes has a fully accessible sibling route (the Menu key / Shift+F10 menu), and the menu's
-  items are real widgets a screen reader announces.
+- **[T]** *(`UX-011`; amended 2026-08-10 by `UX-012`, `T-224` builds it)* **The painted `⋮` is an
+  affordance, not the only door — and it is drawn as a button, not bare punctuation.** The
+  maintainer's live-use report — *"not a very pronounced button, people might even miss that they
+  are there"* — is the zone failing at discoverability, which is its only job, so it gains a drawn
+  border and a hover/pressed state while keeping its one-definition geometry for paint and hit
+  test. The delegate still paints it, so it has no accessibility node — the same fact that
+  rejected the icon shapes — and that stays acceptable for the reason the painted disclosure
+  triangle already is: the function it exposes has a fully accessible sibling route (the Menu
+  key / Shift+F10 menu), and the menu's items are real widgets a screen reader announces.
+  *`UX-011`'s option G — dropping the zone — remains the recorded fallback if the strengthened
+  zone still fails.*
 - **[T]** `UX-004`, *route shared since `UX-011`*: Retry and Remove are a context menu, reachable
   by the Menu key and Shift+F10 as well as by pointer — the same menu the `⋮` opens, so the row
   has one "more" place rather than two.

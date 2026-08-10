@@ -4940,3 +4940,56 @@ verbs live in the row's menu** (*option E, "one menu, two doors"*):
 The menu keeps `Naming and folders…` and removes no capability, so this ruling moves an entrance
 and takes nothing by implication. Removing the capability later still requires the maintainer
 ruling `T-203` records as open.
+
+## UX-012 — The row's menu says what it removes, and the ⋮ reads as a button
+
+**Status:** **Accepted** (2026-08-10) — maintainer ruling on three reports from live use of the
+built option *E*, each quoted below with its decision.
+**Date:** 2026-08-10
+**Amends:** `UX-011`'s menu contents and the `⋮` zone's rendering, and `docs/UX_SPEC.md` §3's
+menu clauses. **Does not amend** `UX-011`'s shape — one menu, two doors, the structural target —
+or its accessibility stance: the `⋮` stays painted with no accessibility node, and the
+context-menu routes stay the accessible sibling. The open `REQ-011` per-item-template ruling is
+untouched.
+
+### Context
+
+The maintainer used the built menu on a real playlist row (screenshots, 2026-08-10) and reported
+three things. `Choose a format for this URL…` *"seems pointless. The dropdown for the preset only
+gets highlighted"* — the entry is `T118-R9`'s discoverability alias for the keyboard editor
+route, added when the format control materialized only on demand; under option *E* the combo is
+visibly on the row, so the entry focuses a control the user can already see, and on a playlist
+row the highlight reads as a no-op. `Remove this URL` on a playlist row removes the whole
+playlist — semantically right, the staging list stages pasted lines — but *"a user might assume
+they are removing an individual video from the playlist."* And the `⋮`: *"The 3 dots are also not
+a very pronounced button, people might even miss that they are there."*
+
+### Decision
+
+- **The editor alias leaves the menu** — *"Remove the 'choose a format for this url' option
+  entirely. It doesn't really add anything here."* The keyboard route to the combo is separate
+  machinery (`EditKeyPressed` through `edit_row`) and survives; `T118-R9`'s discoverability duty
+  is discharged by the control being visibly on the row. `T-223` builds it.
+- **Remove names the row's kind and blast radius** — *"Go with your recommendation."* On a
+  playlist row the entry reads `Remove this playlist (19 items)`, with the row's real entry
+  count; a single item keeps `Remove this URL`. The label is built from the row the menu opened
+  from — per-row content, not a current-row announcement, so `T203-R1`'s problem class stays
+  structurally absent. `T-223` builds it.
+- **The `⋮` zone is drawn as a visible button** — *"Make the ⋮ more visable as a button."* The
+  zone gains a drawn affordance (a border, and a hover/pressed state), keeping its one-definition
+  geometry for paint and hit test. It remains a painted affordance with no accessibility node;
+  the menu routes remain the accessible sibling, exactly as `UX-011` ruled. `T-224` builds it.
+
+### Rejected
+
+- **Option G — removing the `⋮` zone** — `UX-011`'s recorded fallback was on the table for the
+  duplication report; the maintainer chose to strengthen the zone rather than remove it. G
+  remains the recorded fallback if the strengthened zone still fails discoverability.
+- **Renaming a single item's Remove to `Remove this video`** — a single row can be audio-only,
+  so the honest generic stays `Remove this URL`.
+
+### Deliberately not decided
+
+**A per-entry gesture on playlist rows** (*"Choose which entries download…"* pointing at the
+`T-110` picker) was offered alongside the rename and not taken. Adding one later is its own
+ruling; nothing here forecloses it.
