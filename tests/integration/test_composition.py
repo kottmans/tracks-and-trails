@@ -24,6 +24,7 @@ on what the application shows. `store.get()` is for asserting agreement afterwar
 so spinning on it returns instantly and proves nothing.
 """
 
+import shutil
 import sqlite3
 import sys
 import time
@@ -509,18 +510,21 @@ def test_a_setting_that_could_not_be_saved_says_so(
     and concurrency is the one of the three with no global side effect, so it can be driven without
     restyling the `QApplication` every other test in this session shares.
 
-    The write is made to fail by putting a **directory** where the settings file goes, after
-    composition has read it: `save()` writes beside the target and `replace`s it, and replacing a
-    directory fails. No permission bits, so this runs as root and on Windows alike.
+    The write is made to fail by putting a **file where the settings file's parent folder should
+    be**, after composition has read it: `save()`'s first act is to `mkdir` that parent, and a
+    `mkdir` blocked by a file raises on every platform. *(This used a directory in the target's own
+    place and relied on `os.replace` refusing it — true, but Windows behaviour I cannot run here,
+    which is the class of claim `T146-R3` was. `mkdir` against a file is bedrock on both.)* No
+    permission bits either, so it runs as root as well.
     """
-    settings_file = tmp_path / "settings.toml"
+    settings_file = tmp_path / "config" / "settings.toml"
     composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
     spinner = composition.window.concurrency_control
     assert spinner is not None, "the composed window has no concurrency control to drive"
 
-    # After composition has read it, so startup is an ordinary one and only the *write* fails.
-    settings_file.unlink(missing_ok=True)
-    settings_file.mkdir()
+    # After composition has read it, so startup is ordinary and only the *write* fails.
+    shutil.rmtree(settings_file.parent, ignore_errors=True)
+    settings_file.parent.write_text("a file where the folder should be", encoding="utf-8")
 
     spinner.setValue(spinner.value() + 1)
     QApplication.processEvents()

@@ -1275,13 +1275,59 @@ def test_with_theme_refuses_a_name_this_application_does_not_have() -> None:
 # --- T146-R1: load() never raises, including while expanding a path ---------------------------
 
 
-def test_a_download_folder_that_cannot_even_be_expanded_reports(tmp_path: Path) -> None:
-    """**`T146-R1`.** `load()` promises it never raises, and `~user` expansion can.
+def test_a_download_folder_naming_another_users_home_reports_and_falls_back(
+    tmp_path: Path,
+) -> None:
+    """**`T146-R1`, asserted as the contract rather than as one platform's branch** (`T146-R3`).
 
-    `Path("~someone-who-left/x").expanduser()` raises `RuntimeError` when the account has no home
-    directory to expand to, and that call sat *outside* the guard — so the error left `load()` and
-    **stopped the application starting** on a settings file `ARC-008` exists to report. Reproduced
-    against the real function before the guard was moved.
+    A settings file naming `~someone-who-left/downloads` must leave the application startable, on
+    a folder it can use, having said what it discarded. **Which branch produces that differs by
+    platform, and the first version of this test asserted the POSIX one**: there,
+    `Path.expanduser()` raises `RuntimeError` because no `pwd` entry exists, so the guard reports
+    *could not be checked*. On Windows `ntpath.expanduser` guesses a sibling of `%USERPROFILE%`
+    instead, the path resolves to something that simply is not there, and the *missing folder*
+    branch reports — so the old assertion failed the Windows job, which runs the whole suite
+    (`T146-R3`; `AGENTS.md` §8's asymmetry, caught in review rather than by me).
+
+    So this asserts what is true either way: fell back, reported, and the report identifies the
+    folder. The user name is what both messages carry — verbatim in one, inside the guessed path
+    in the other — so it is the portable way to ask "does this name what it discarded?".
+    """
+    target = write(tmp_path, '[downloads]\ndirectory = "~nosuchuser12345/downloads"\n')
+
+    read = load(target)
+
+    assert read.settings.download_directory is None, (
+        "an unusable folder was accepted, so downloads would go somewhere unwritable"
+    )
+    assert read.problem is not None, "an unusable folder was discarded silently (ARC-008)"
+    assert "nosuchuser12345" in read.problem.reason, (
+        f"the report does not identify the folder it discarded: {read.problem.reason!r}"
+    )
+
+
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason=(
+        "the RuntimeError branch needs an expansion that cannot resolve a home, which is POSIX's "
+        "answer for an unknown ~user; Windows guesses a path instead and reaches the missing-"
+        "folder branch, which the portable test above covers"
+    ),
+)
+def test_an_expansion_that_cannot_resolve_a_home_is_caught_rather_than_raised(
+    tmp_path: Path,
+) -> None:
+    """**`T146-R1`'s own branch**, where it can be reached without asserting a guess.
+
+    `Path("~nosuchuser/x").expanduser()` raises `RuntimeError` on POSIX, and that call sat
+    *outside* the guard — so it left `load()`, broke the never-raises contract, and **stopped the
+    application starting** on a file `ARC-008` exists to report. Reproduced against the real
+    function before the guard was moved; moving it back out fails this.
+
+    **Skipped rather than forced on Windows.** Reaching this branch there would mean deleting
+    `%USERPROFILE%` and `%HOMEPATH%` so the expansion gives up — behaviour I reasoned from
+    CPython's source and cannot run here, which is exactly the kind of claim `T146-R3` was. The
+    guard itself is platform-independent code; what Windows proves is the outcome, above.
 
     The reported text names the value **as written**: when the expansion is what failed, there is
     no expanded path to show, and printing a half-expanded one would be worse than printing none.
@@ -1290,9 +1336,10 @@ def test_a_download_folder_that_cannot_even_be_expanded_reports(tmp_path: Path) 
 
     read = load(target)
 
-    assert read.settings.download_directory is None
-    assert read.problem is not None, "an unexpandable folder was discarded silently (ARC-008)"
-    assert "could not be checked" in read.problem.reason
+    assert read.problem is not None
+    assert "could not be checked" in read.problem.reason, (
+        f"the expansion failure took a different branch than expected: {read.problem.reason!r}"
+    )
     assert "~nosuchuser12345/downloads" in read.problem.reason, (
         f"the report does not name the value the user wrote: {read.problem.reason!r}"
     )
@@ -1307,7 +1354,9 @@ def test_every_settings_file_shape_leaves_the_application_startable(tmp_path: Pa
     """
     shapes = [
         '[downloads]\ndirectory = "~nosuchuser12345/x"\n',
-        '[downloads]\ndirectory = "/tmp/nul\x00byte"\n',
+        # A raw NUL: `tomllib` refuses it while parsing on every platform, so it never
+        # reaches the path code. Written without a platform-shaped prefix to say so.
+        '[downloads]\ndirectory = "nul\x00byte"\n',
         "[downloads]\ndirectory = 7\n",
         '[downloads]\ndirectory = ""\n',
         "[downloads]\ndirectory = { nested = true }\n",

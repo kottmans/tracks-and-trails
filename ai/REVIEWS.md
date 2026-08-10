@@ -13944,3 +13944,60 @@ No open finding or follow-up remains for T-203. The task is Complete at `fe1d246
 T-218, and T-219 no longer wait on its review. The Reviewer changed `ai/REVIEWS.md` and T-203's
 status/placement in `ai/TASKS.md` only. No reviewed source or test file was modified, and no
 commit or push was made.
+
+## 2026-08-10 — T-146 focused correction re-review
+
+**Task:** T-146 — a Settings menu, and the screen behind it
+
+**Original reviewed tree:** `b9caa40`
+
+**Correction boundary:** `2c42095..8940353`
+
+**Later coordination-only head inspected:** `3a5c42a`
+
+**Verdict:** **Blocked pending maintainer direction on one new Medium correction-regression
+finding.** T146-R1 and T146-R2 are Resolved at `8940353`; T146-R3 is Open.
+
+### Finding resolution and correction-diff finding
+
+| ID | Severity | Blocks approval | Status | Resolution or finding |
+|---|---|---:|---|---|
+| **T146-R1** | **High** | **Yes — ARC-008 and T-146's startup criterion** | **Resolved at `8940353`** | Path construction, `expanduser()`, existence/type checks and writability now share one guard; `RuntimeError` joins `OSError`, and the failure report uses the stored text because an expansion that failed produced no expanded value. The exact POSIX regression and the broader load-shape sweep pass. The removed `ValueError` arm is justified: the proposed raw-NUL input is rejected by TOML decoding before `_directory_from()`. No sibling path operation remains outside the guard. |
+| **T146-R2** | **Medium** | **Yes — observable correctness and NFR-006** | **Resolved at `8940353`** | All three setting callbacks apply the session value and then use one `remember()` helper. A returned save failure is logged and shown through `report_transiently()` as a session-only change, while success remains silent. The composed regression drives the real toolbar spinner after replacing the target file with a directory and observes both the live limit and the warning. Keeping the applied value is deliberate and consistent across concurrency, directory and theme. |
+| **T146-R3** | **Medium** | **Yes — required Windows test gate** | **Open — correction regression** | `tests/unit/test_settings.py:1278-1298` assumes POSIX `~other-user` behavior on every platform. On Windows, Python's `ntpath.expanduser()` does not consult an account database or raise `RuntimeError`; with the normal `USERPROFILE`/`USERNAME` pair it guesses a sibling profile such as `C:\\Users\\nosuchuser12345`, after which `_directory_from()` correctly takes the ordinary missing-directory branch. The test then fails because it requires `"could not be checked"` and the literal unexpanded `~nosuchuser12345/downloads`. Both the hosted Windows check and `windows desktop` run the full suite, so this committed correction makes a required gate deterministically red even though production fallback is correct. Make the RuntimeError branch deterministic—e.g. inject/patch expansion for that test—or scope the platform-specific proof honestly while retaining a cross-platform fallback assertion. |
+
+T146-R3 is Medium because the shipped settings behavior is correct and the defect is confined to
+the new regression, but it blocks on a required platform gate. This is the ordinary focused
+re-review after the initial comprehensive pass; under `AGENTS.md` §10, another pass for a new
+Medium-or-lower blocker needs explicit maintainer authorization, acceptance of the documented
+risk, a scope change, or a named follow-up.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| `git diff --check 2c42095..3a5c42a` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 165 files** |
+| `mypy src` | **pass, 52 files** |
+| bare `mypy` | **pass, 127 files** |
+| `mypy --platform win32` | **pass, 127 files** |
+| Three exact correction regressions | **3 passed in 0.47 s** |
+| Settings unit suite, composition suite, and task-placement gate | **164 passed in 19.96 s** |
+| Windows-expansion semantic probe | **The committed R1 test failed:** Windows-style expansion reached the missing-directory report, not the RuntimeError report |
+
+The Windows result was established from Python 3.14's `ntpath.expanduser()` implementation and a
+deterministic branch probe: `~nosuchuser12345/downloads` becomes
+`C:\\Users\\nosuchuser12345/downloads` for a normal `C:\\Users\\reviewer` profile. Substituting
+that result into the real `_directory_from()` path makes the committed test fail at its
+`"could not be checked"` assertion. No network or native Qt behavior is involved.
+
+The implementer's 1825-test correction suite and the earlier 2854-test full-suite result were not
+repeated wholesale. The focused 164-test selection covers both corrected modules plus placement;
+the full suite is not needed to establish the deterministic Windows test failure.
+
+### Final disposition
+
+The two original blockers are corrected. T-146 is not approved only because T146-R3 makes the
+required Windows suite fail. The Reviewer changed `ai/REVIEWS.md` and `ai/TASKS.md` only; no
+reviewed source or test file was modified, and no commit or push was made.
