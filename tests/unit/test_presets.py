@@ -613,3 +613,33 @@ def test_narrowing_a_request_drops_every_field_that_is_not_about_the_format() ->
     assert presets.format_choice_of(request).format_selector == "bestaudio/best", (
         "the narrowing dropped the format itself, which is the one thing it exists to keep"
     )
+
+
+def test_the_pure_ffmpeg_predicate_agrees_with_the_definitive_one() -> None:
+    """**`T199-R1`'s anti-drift binding**, over the whole built-in catalogue.
+
+    `core.presets.needs_ffmpeg` reads a preset's fields; `ytdlp_adapter.requires_ffmpeg` asks
+    yt-dlp which postprocessors it would build and whether they subclass `FFmpegPostProcessor`.
+    The second is definitive and unavailable to `ui/` — it imports `yt_dlp`, which
+    `ARCHITECTURE.md` §6 permits in two modules only. So the offer computes the first, and this
+    asserts the two never disagree.
+
+    **Every built-in, compared as a whole** rather than a spot check: `T199-R1` was three presets
+    offered with ffmpeg absent that the worker refuses before a byte moves, and a test naming the
+    three it happened to know about would not have caught the fourth.
+    """
+    from tracks_and_trails.downloader.ytdlp_adapter import requires_ffmpeg
+
+    disagreements = []
+    for preset in presets.BUILT_IN_PRESETS:
+        request = request_for(preset)
+        pure = presets.needs_ffmpeg(preset)
+        definitive = requires_ffmpeg(request)
+        if pure != definitive:
+            disagreements.append(f"{preset.name}: pure={pure} definitive={definitive}")
+
+    assert not disagreements, (
+        "the predicate the add dialog uses disagrees with the one the worker enforces: "
+        + "; ".join(disagreements)
+        + ". A preset offered but refused is UX-005 §5's own failure"
+    )

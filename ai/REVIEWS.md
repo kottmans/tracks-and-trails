@@ -14061,3 +14061,58 @@ the full suite is not needed to establish the deterministic Windows test failure
 The two original blockers are corrected. T-146 is not approved only because T146-R3 makes the
 required Windows suite fail. The Reviewer changed `ai/REVIEWS.md` and `ai/TASKS.md` only; no
 reviewed source or test file was modified, and no commit or push was made.
+
+## 2026-08-10 — T-199 initial review
+
+**Task:** T-199 — ffmpeg capability reporting and location override
+
+**Review boundary:** `bc7445f..3705840`
+
+**Product commit:** `4fee30f`
+
+**Record-only commit:** `3705840`
+
+**Verdict:** **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Status | Finding |
+|---|---|---:|---|---|
+| **T199-R1** | **High** | **Yes — REQ-024, UX-005 §5, and an explicit acceptance criterion** | **Open** | The claimed agreement covers only `OptionsDialog`, not *anywhere in the add dialog*. `AddUrlDialog._build_preset_row()` unconditionally adds the complete preset catalogue even with ffmpeg absent. That includes `Audio only (MP3)`, `Audio only (original)`, and `Video with embedded subtitles`; the worker's definitive `_ffmpeg_gap()` refuses those requests. The new test supplies `ffmpeg_available=False` directly to `OptionsDialog`, so it also does not satisfy the criterion requiring a real absent-ffmpeg resolution. Drive the composed absent environment and assert the whole add-dialog offer against the reported capabilities. |
+| **T199-R2** | **High** | **Yes — the location setting does not reach the current session's downloads** | **Open** | `choose_ffmpeg_location()` replaces held settings, re-resolves, updates the status/Settings UI and saves, but never updates `DownloadManager._ffmpeg_override`. The manager captures that value in `__init__` and passes it to every later child from `_begin_reserved()`; no setter exists. After a valid live change, newly opened add dialogs follow the new availability flag while workers still receive the old path, so the UI can offer exactly what the worker then refuses. Choosing and clearing must update the value future sessions actually receive, and the regression must observe that manager-to-child value rather than only the window summary. |
+| **T199-R3** | **High** | **Yes — the invalid-location acceptance criterion and ARC-008 are unmet** | **Open** | Validation is split and disagrees by route. `_ffmpeg_location_from()` accepts a stored non-executable file without a problem; `find_ffmpeg()` then rejects that explicit override and deliberately does not fall back to an available PATH binary. The live chooser bypasses `_ffmpeg_location_from()` entirely: missing and non-executable paths are persisted without an ARC-008 problem, while an executable with the wrong name is reported as available because the name check exists only during load. A reviewer probe produced all three facts against the real functions. Stored and newly chosen values need one report-and-fallback contract. |
+| **T199-R4** | **Medium** | **Yes — required Windows full-suite gate** | **Open** | `test_a_stored_ffmpeg_location_is_what_the_application_resolves` creates an extensionless file named `ffmpeg`, writes a POSIX shell line, and relies on `chmod(0755)`. On Windows, Python's `shutil.which()` default `X_OK` branch constructs `PATHEXT` candidates and does not direct-match that extensionless file, so the composed report is unavailable and the new test fails. This file already contains the proven cross-platform shape (`ffmpeg.bat` on Windows, an executable script on POSIX); reuse it or a helper. Production resolution is not the defect, so this is Medium, but CI is a required gate. |
+
+T199-R1 is not merely a weak-test finding: the worker already proves the offered presets are
+refused. T199-R2 and T199-R3 are user-visible setting failures on the exact override workflow this
+task exists to deliver. T199-R4 is test-only but deterministic on a primary platform.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| `git diff --check bc7445f..3705840` and worktree `git diff --check` | **pass before reviewer record edits** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 165 files** |
+| `mypy src` | **pass, 52 files** |
+| bare `mypy` | **pass, 127 files** |
+| `mypy --platform win32` | **pass, 127 files** |
+| Changed settings/environment/options/settings-screen/composition suites | **268 passed in 19.98 s** |
+| Stored non-executable override probe | **failed the contract:** `load().problem is None`; an executable PATH fallback existed; resolution returned `explicit override, not usable` with no path |
+| Live wrong-name probe | **failed the contract:** the real resolver accepted `/usr/bin/ls` after `with_ffmpeg_location()` because the live route never applied the name check |
+| Windows fake audit against Python 3.14 `shutil.which()` | **deterministic gate failure:** an extensionless `ffmpeg` is not among the Windows `PATHEXT` candidates under default `X_OK` mode |
+
+The implementer's broader **2531 passed, 17 skipped** run was not repeated wholesale. The focused
+268-test selection is green, which confirms these are coverage and composition gaps rather than
+incidental failures on Linux. No native Windows run was started because the branch remains local;
+the Windows test failure is established from the exact standard-library branch the test invokes.
+
+### Push disposition
+
+**Do not push `4fee30f` and `3705840` for CI in their current state.** The push would knowingly make
+the Windows suite red on T199-R4, while three product blockers already require correction. Push the
+focused correction only after re-review finds no blocking issue; CI can then provide the native
+Windows evidence rather than reproduce a deterministic known failure.
+
+The Reviewer changed `ai/REVIEWS.md` and T-199's status/findings in `ai/TASKS.md` only. No reviewed
+source or test file was modified, and no commit or push was made.

@@ -512,3 +512,37 @@ def to_request(
         embed_chapters=preset.embed_chapters,
     )
     return replace(request, **overrides) if overrides else request
+
+
+def needs_ffmpeg(preset: Preset) -> bool:
+    """Whether this preset asks for post-processing ffmpeg performs (`REQ-024`, `T199-R1`).
+
+    **A pure reading of the preset's own fields, and it exists because `ui/` cannot ask the real
+    question.** The definitive answer is `ytdlp_adapter.requires_ffmpeg`, which walks the
+    postprocessors yt-dlp would build and asks whether each subclasses `FFmpegPostProcessor` — and
+    that imports `yt_dlp`, which `ARCHITECTURE.md` §6 permits in two modules and the layering test
+    enforces. So the offer needs an answer it can compute in the GUI process.
+
+    **Two answers to one question is drift, so a test binds them**:
+    `tests/unit/test_presets.py::test_the_pure_ffmpeg_predicate_agrees_with_the_definitive_one`
+    compares this against `requires_ffmpeg` over **every** built-in preset. A field added to
+    `build_postprocessors` and forgotten here fails there rather than becoming a preset the add
+    dialog offers and the worker refuses — which is exactly what `T199-R1` found: `Audio only
+    (MP3)`, `Audio only (original)` and `Video with embedded subtitles` were all offered with
+    ffmpeg absent, and all three are refused by `_ffmpeg_gap` before a byte moves.
+
+    The conditions mirror `build_postprocessors`' own, in the same order, so the two read as the
+    same list.
+    """
+    if preset.media_kind is MediaKind.AUDIO:
+        return True
+    if preset.remux_container is not None or preset.recode_container is not None:
+        return True
+    if preset.subtitle_languages and preset.embed_subtitles:
+        return True
+    if preset.embed_metadata or preset.embed_chapters or preset.embed_thumbnail:
+        return True
+    # `post_processors` is a free list of yt-dlp keys; anything in it may be an ffmpeg one, and
+    # this module cannot ask which. Treated as needing ffmpeg, which errs towards withdrawing an
+    # offer rather than making one that would be refused (`UX-005` §5).
+    return bool(preset.post_processors)

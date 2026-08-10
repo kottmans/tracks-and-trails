@@ -379,6 +379,16 @@ def compose(
     ffmpeg = find_ffmpeg(
         ffmpeg_override if ffmpeg_override is not None else settings.ffmpeg_location
     )
+    if ffmpeg_override is None and settings.ffmpeg_location is not None and not ffmpeg.available:
+        # Stored, passed `load()`'s checks, and the platform still will not run it — so this
+        # session falls back to `PATH` and says why, the same ending `resolve_ffmpeg` gives a live
+        # choice. The file is **not** rewritten: an unplugged drive should not cost the user the
+        # setting they chose (`ARC-008` reports; it does not edit).
+        logging.getLogger("tracksandtrails.app").warning(
+            "the stored ffmpeg location cannot be run, falling back to PATH: %s",
+            settings.ffmpeg_location,
+        )
+        ffmpeg = find_ffmpeg(None)
 
     # **Where downloads land, decided here and nowhere else** (`REQ-023`, `T-146`). Three sources,
     # most specific first: the explicit argument (which is how every test redirects downloads away
@@ -487,19 +497,58 @@ def compose(
         window.show_download_directory(resolved, is_default=directory is None)
         remember(chosen, "the download folder")
 
+    def resolve_ffmpeg(location: Path | None) -> tuple[Any, str | None]:
+        """The one contract both routes obey: validate, resolve, and fall back saying why.
+
+        **`T199-R3`.** Validation was split three ways and disagreed with itself — the stored
+        value was checked at load, the live choice was checked nowhere, and `find_ffmpeg` refused
+        a bad override without falling back, so the same unusable path produced a different
+        outcome depending on how it arrived. This is the single answer: what
+        `unusable_ffmpeg_reason` objects to, and what `find_ffmpeg` cannot run, both end the same
+        way — **on `PATH`, with a reason** — which is `REQ-024`'s *report and still start on
+        whatever it can find* and `ARC-008`'s report-rather-than-revert-silently in one place.
+        """
+        if location is None:
+            return find_ffmpeg(None), None
+        reason = app_settings.unusable_ffmpeg_reason(location)
+        if reason is None:
+            report = find_ffmpeg(location)
+            if report.available:
+                return report, None
+            # It exists, is a file and is named for ffmpeg, and the platform still will not run
+            # it — a mode bit on POSIX, a missing `PATHEXT` match on Windows. `find_ffmpeg` is the
+            # authority on that and is deliberately not second-guessed here.
+            reason = (
+                f"The ffmpeg location cannot be run, so ffmpeg will be looked for on PATH "
+                f"instead.\n{location}"
+            )
+        return find_ffmpeg(None), reason
+
     def choose_ffmpeg_location(location: Path | None) -> None:
         """Point at an ffmpeg, or go back to `PATH` (`REQ-023`, `REQ-024`, `T-199`).
 
-        **Resolved immediately rather than at the next launch**, so the screen can say what the
-        choice actually bought — `find_ffmpeg` is what decides whether a file is a usable ffmpeg,
-        and asking it now is the difference between reporting a resolution and reporting a stored
-        string. The window's gate summary follows, which is `T-192`'s line and `T-199`'s criterion
-        that it reflects an overridden ffmpeg rather than only a `PATH` one.
+        **A location is stored only if it resolves**, which is the contract `T199-R3` asked for:
+        a choice that cannot be used is refused with a reason and changes nothing, rather than
+        being persisted to fail again at the next launch. Clearing is always accepted — it is a
+        request, not a value to validate.
+
+        Both halves in this order, for `choose_download_directory`'s reason: what runs is updated
+        before what is stored, and **the manager is told too** (`T199-R2`) — it hands the override
+        to every child it starts, so a UI following the new answer while workers received the old
+        one would offer exactly what the worker then refuses.
         """
+        resolved, reason = resolve_ffmpeg(location)
+        window.report_environment(resolved.summary(), ffmpeg_available=resolved.available)
+        manager.set_ffmpeg_override(resolved.path)
+        if reason is not None:
+            logging.getLogger("tracksandtrails.app").warning("ffmpeg location: %s", reason)
+            window.report_transiently(reason.splitlines()[0])
+            # Refused, so the stored setting is left exactly as it was; the screen is shown the
+            # resolution that is actually in force rather than the choice that failed.
+            window.show_ffmpeg_location(held.settings.ffmpeg_location, report=resolved)
+            return
         chosen = app_settings.with_ffmpeg_location(held.settings, location)
         held.settings = chosen
-        resolved = find_ffmpeg(location)
-        window.report_environment(resolved.summary(), ffmpeg_available=resolved.available)
         window.show_ffmpeg_location(location, report=resolved)
         remember(chosen, "the ffmpeg location")
 

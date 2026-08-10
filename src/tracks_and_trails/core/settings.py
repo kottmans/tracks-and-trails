@@ -366,6 +366,55 @@ def _directory_from(raw: Any) -> tuple[Path | None, str | None]:
     return candidate, None
 
 
+def unusable_ffmpeg_reason(location: Path) -> str | None:
+    """Why `location` cannot be used as ffmpeg, or `None` if nothing here objects (`T199-R3`).
+
+    **Public, because two routes must give the same answer.** Validation was split: `load()`
+    checked a *stored* value while the Settings screen's picker checked nothing at all, so a live
+    choice of a missing file was persisted with no `ARC-008` report, and a live choice of an
+    executable with the wrong name was accepted as ffmpeg because the name check existed only on
+    the load path. One function, called by both, is the only shape in which they cannot disagree.
+
+    **This does not decide whether the file can be executed** — `find_ffmpeg` does, by applying
+    the platform's own discovery rules, and a second opinion here would be a third behaviour to
+    keep in step. What is left is what a path can be asked without running it: does it exist, is
+    it a file, and is it plausibly ffmpeg at all.
+
+    Never raises: expansion and the filesystem both can, and `load()` promises it does not
+    (`T146-R1`).
+    """
+    try:
+        candidate = Path(location).expanduser()
+        if not candidate.exists():
+            return (
+                f"The ffmpeg location does not exist, so ffmpeg will be looked for on PATH "
+                f"instead.\n{candidate}"
+            )
+        if not candidate.is_file():
+            return (
+                f"The ffmpeg location is not a file, so ffmpeg will be looked for on PATH "
+                f"instead.\n{candidate}"
+            )
+        if FFMPEG_NAME not in candidate.name.lower():
+            # **A name check, and it does not pretend to be more** (`T-199`). Nothing here runs
+            # the file to ask what it is: this module never executes anything, and `find_ffmpeg`
+            # gives the same reason — running an unknown binary is a larger surface than the
+            # question needs. So this catches the realistic mistake, which is picking the wrong
+            # file out of a dialog, and not a renamed impostor. `ffmpeg-7`, `ffmpeg.exe` and
+            # `ffmpeg_static` all pass, because refusing a legitimately-named build would cost a
+            # real user more than the check is worth.
+            return (
+                f"The ffmpeg location does not look like ffmpeg, so ffmpeg will be looked for on "
+                f"PATH instead.\n{candidate}"
+            )
+    except (OSError, RuntimeError) as error:
+        return (
+            f"The ffmpeg location could not be checked, so ffmpeg will be looked for on PATH "
+            f"instead.\n{location}\n{type(error).__name__}: {error}"
+        )
+    return None
+
+
 def _ffmpeg_location_from(raw: Any) -> tuple[Path | None, str | None]:
     """Coerce a stored ffmpeg location. **Never raises**, and reports what it discards.
 
@@ -391,38 +440,10 @@ def _ffmpeg_location_from(raw: Any) -> tuple[Path | None, str | None]:
     if not raw.strip():
         return None, None
 
-    try:
-        candidate = Path(raw).expanduser()
-        if not candidate.exists():
-            return None, (
-                f"The ffmpeg location in your settings does not exist, so ffmpeg will be looked "
-                f"for on PATH instead.\n{candidate}"
-            )
-        if not candidate.is_file():
-            return None, (
-                f"The ffmpeg location in your settings is not a file, so ffmpeg will be looked "
-                f"for on PATH instead.\n{candidate}"
-            )
-        if FFMPEG_NAME not in candidate.name.lower():
-            # **A name check, and it does not pretend to be more** (`T-199`). Nothing here runs
-            # the file to ask what it is: this module never executes anything, and `find_ffmpeg`
-            # gives the same reason — running an unknown binary is a larger surface than the
-            # question needs. So this catches the realistic mistake, which is picking the wrong
-            # file out of a dialog, and not a renamed impostor. `ffmpeg-7`, `ffmpeg.exe` and
-            # `ffmpeg_static` all pass, because rejecting a legitimately-named build would cost a
-            # real user more than the check is worth.
-            return None, (
-                f"The ffmpeg location in your settings does not look like ffmpeg, so ffmpeg will "
-                f"be looked for on PATH instead.\n{candidate}"
-            )
-    except (OSError, RuntimeError) as error:
-        # `T146-R1`'s lesson, applied where the same shapes arrive: expansion and the filesystem
-        # both raise, and `load()` promises it never does.
-        return None, (
-            f"The ffmpeg location in your settings could not be checked, so ffmpeg will be looked "
-            f"for on PATH instead.\n{raw}\n{type(error).__name__}: {error}"
-        )
-    return candidate, None
+    reason = unusable_ffmpeg_reason(Path(raw))
+    if reason is not None:
+        return None, reason
+    return Path(raw).expanduser(), None
 
 
 def _theme_from(raw: Any) -> tuple[str, str | None]:

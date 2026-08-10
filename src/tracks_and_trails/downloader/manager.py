@@ -1063,6 +1063,21 @@ class DownloadManager(QObject):
         except KeyError as missing:
             self.start_rejected.emit(job_id, f"this job is not in the queue: {missing}")
 
+    def set_ffmpeg_override(self, path: Path | None) -> None:
+        """Point later worker sessions at a different ffmpeg (`REQ-024`, `T199-R2`).
+
+        **The value children receive, not a copy of it.** `_ffmpeg_override` is captured at
+        construction and passed to every child from `_begin_reserved`; nothing could change it, so
+        a user who set an ffmpeg location mid-session got a UI that followed the new answer while
+        every worker still received the old one — the dialog offering exactly what the worker would
+        then refuse. `set_concurrency`'s shape: composition owns the setting, this owns what runs.
+
+        **Sessions already started keep the value they were given.** A running child has its own
+        process and its own arguments, and reaching into one would be a different and much larger
+        promise; the next session is the first that can honour the change.
+        """
+        self._ffmpeg_override = path
+
     def admit_when_started(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Admit `job_id` **the first time the queue is started**, and not before (`T-215`).
 

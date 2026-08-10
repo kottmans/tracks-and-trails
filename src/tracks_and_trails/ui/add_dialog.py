@@ -1187,7 +1187,30 @@ class AddUrlDialog(QDialog):
         #: means the first entry, which is what the control did before there was a default at all.
         self._default_preset = default_preset
         self._output_directory = output_directory
-        self._presets = tuple(presets)
+        #: **The catalogue, minus what this installation cannot perform** (`REQ-024`, `T199-R1`,
+        #: `UX-005` §5). Filtered here rather than at each control because this one tuple feeds
+        #: every offer in the dialog — the batch combo, the row selectors, and each row's own
+        #: picker through `presets` — so filtering it is what makes *anywhere in the add dialog*
+        #: true rather than one surface at a time.
+        #:
+        #: The review found `Audio only (MP3)`, `Audio only (original)` and `Video with embedded
+        #: subtitles` all offered with ffmpeg absent, every one of them refused by the worker's
+        #: `_ffmpeg_gap` before a byte moves.
+        #:
+        #: **`needs_ffmpeg` rather than the definitive `requires_ffmpeg`**, which imports `yt_dlp`
+        #: and is barred from `ui/` (`ARCHITECTURE.md` §6). A unit test binds the two over the
+        #: whole built-in catalogue so they cannot drift.
+        offerable = tuple(presets)
+        if not ffmpeg_available:
+            without_ffmpeg = tuple(
+                preset for preset in offerable if not preset_registry.needs_ffmpeg(preset)
+            )
+            # **Unless that leaves nothing to offer.** A picker with no entries is a dialog that
+            # cannot be used at all, which is worse than an offer the worker refuses with a
+            # message naming ffmpeg. The built-in catalogue always keeps at least one video preset,
+            # so this is a guard against a user catalogue rather than the ordinary path.
+            offerable = without_ffmpeg or offerable
+        self._presets = offerable
         #: Whether a merge is possible at all on this installation (`REQ-024`, `P-13`).
         #:
         #: **Passed in rather than looked up here.** `find_ffmpeg` lives in `downloader/` and

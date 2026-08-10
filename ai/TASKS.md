@@ -120,8 +120,40 @@ this one returned four verdicts before approving.*
 
 ### T-199 — ffmpeg: say which features are gone, and let the user point at one
 
-**Status:** **In Review — built 2026-08-10**, on maintainer instruction, immediately after
-`T-146` unblocked it. Filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Status:** **In Review — corrected 2026-08-10, awaiting a focused re-review** (`T199-R1`,
+`T199-R2`, `T199-R3` High; `T199-R4` Medium). Built the same day on maintainer instruction,
+immediately after `T-146` unblocked it.
+
+- **`T199-R1` — High. Corrected.** The agreement covered `OptionsDialog` and not *anywhere in the
+  add dialog*: the preset catalogue was offered whole, so `Audio only (MP3)`, `Audio only
+  (original)` and `Video with embedded subtitles` were all offered with ffmpeg absent and all
+  three are refused by the worker's `_ffmpeg_gap` before a byte moves. `core.presets.needs_ffmpeg`
+  is now a pure predicate the GUI process can compute — `requires_ffmpeg` imports `yt_dlp` and is
+  barred from `ui/` — and `AddUrlDialog` filters `self._presets` at its single source, which is
+  what feeds the batch combo, the row selectors and every row's own picker. **A unit test binds
+  the pure predicate to the definitive one over the whole built-in catalogue**, so the two cannot
+  drift, and a composed test drives a **real** absent-ffmpeg resolution rather than the flag.
+- **`T199-R2` — High. Corrected.** `DownloadManager` captured `_ffmpeg_override` at construction
+  and handed it to every child; nothing updated it, so after a live change the UI followed the new
+  answer while workers received the old path — the dialog offering exactly what the worker would
+  refuse. `set_ffmpeg_override` added, called from the chooser, and the regression asserts the
+  **value the manager passes to children** rather than the status line, which would have passed
+  against the defect.
+- **`T199-R3` — High. Corrected.** Validation was split three ways and disagreed: the stored value
+  was checked at load, the live choice was checked nowhere and persisted regardless, and
+  `find_ffmpeg` refused a bad override without falling back. `unusable_ffmpeg_reason` is now one
+  public predicate both routes call, and composition's `resolve_ffmpeg` is the single
+  report-and-fall-back contract — what the predicate objects to and what `find_ffmpeg` cannot run
+  both end on `PATH` with a reason. **A refused choice is not persisted**, so it cannot fail again
+  at the next launch; a stored location that has since become unusable falls back for the session
+  without rewriting the file, because an unplugged drive should not cost the user their setting.
+- **`T199-R4` — Medium. Corrected.** The new test wrote an extensionless `ffmpeg` with
+  `chmod 0755`, which `shutil.which` cannot match on Windows. **The proven cross-platform shape
+  was already in the file, six tests up, with a comment explaining this exact trap** — and it was
+  written the broken way anyway. It is now the `an_executable_ffmpeg` helper both tests call,
+  because a reader cannot forget a helper. **This is the platform-assumption class for the fourth
+  time** (`T146-R3`, `T146-R4`, and now this); the helper and `os.name` over `sys.platform` are
+  what is left behind rather than another resolution to be careful.
 
 **The defect the first criterion turned out to name.** `UX-005` §5 — *nothing is drawn that would
 be refused* — was **three quarters untrue**. The format table hid its merge mode without ffmpeg
@@ -176,6 +208,38 @@ says is unavailable must be one the add dialog does not offer.
   about trusting a path this application did not choose; this is another one
 - Clearing the override returns to `PATH` resolution
 - The gate summary `T-192` fixed reflects an overridden ffmpeg, not just a `PATH` one
+
+#### Initial review findings — 2026-08-10 at `3705840`
+
+- **`T199-R1` — High, blocks approval.** The agreement stops at the options editor rather than
+  covering *anywhere in the add dialog* as the criterion says. `_build_preset_row()` still adds
+  every preset unconditionally when ffmpeg is absent, including `Audio only (MP3)`, `Audio only
+  (original)`, and `Video with embedded subtitles`; the worker's existing definitive gate refuses
+  those requests before downloading. The new agreement test constructs `OptionsDialog` directly
+  with `ffmpeg_available=False`, scans only that dialog, and therefore neither reaches a real
+  absent-ffmpeg resolution nor sees the preset chooser. Drive the composed absent environment and
+  assert the complete add-dialog offer against the capabilities it reports.
+- **`T199-R2` — High, blocks approval.** A valid location selected while the application is open
+  updates the settings value, status summary, and availability flag, but not
+  `DownloadManager._ffmpeg_override`, which was captured at construction and has no update path.
+  A newly opened add dialog can consequently offer ffmpeg features while the worker still receives
+  the old override and refuses them; the setting only reaches downloads after a restart. The live
+  choose and clear routes need to update the value used by future worker sessions, with composed
+  evidence that observes what the manager actually passes.
+- **`T199-R3` — High, blocks approval.** Invalid override handling is split into incompatible
+  answers and does not meet the task's report-and-fall-back criterion. A stored non-executable file
+  passes `_ffmpeg_location_from()` with no `SettingsProblem`; `find_ffmpeg()` then rejects the
+  explicit override without consulting an available `PATH` ffmpeg. The live chooser bypasses the
+  settings validator entirely: it persists missing/non-executable paths without an ARC-008 report,
+  and an executable named `ls` is accepted as ffmpeg because only the load path applies the name
+  check. One validation/resolution path must govern stored and newly chosen values, report every
+  discarded value, and fall back to `PATH` as the criterion states.
+- **`T199-R4` — Medium, blocks approval on the required Windows gate.** The new composition proof
+  creates an extensionless `ffmpeg` containing a POSIX shell line and marks it executable. On
+  Windows, `shutil.which()` checks `PATHEXT` candidates under its default `X_OK` mode and does not
+  direct-match that extensionless file, so `composition.ffmpeg.available` is false and the test is
+  deterministically red. The same file already has a cross-platform fake pattern (`ffmpeg.bat` on
+  Windows); use it or a shared helper so this resolution proof runs on both primary platforms.
 
 #### What was built, against those criteria
 

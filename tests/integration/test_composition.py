@@ -25,9 +25,9 @@ so spinning on it returns instantly and proves nothing.
 """
 
 import json
+import os
 import shutil
 import sqlite3
-import sys
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -39,6 +39,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from tracks_and_trails import app as application
 from tracks_and_trails.core import presets
+from tracks_and_trails.core import presets as core_presets
 from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
@@ -843,6 +844,31 @@ def test_startup_states_what_this_installation_cannot_do(
     )
 
 
+def an_executable_ffmpeg(directory: Path, name: str = "ffmpeg") -> Path:
+    """A file the platform's own rules call executable (`T-062`, `T199-R4`).
+
+    **What "executable" means is the platform's answer, not a mode bit.** A `#!/bin/sh` script with
+    `chmod 0755` is executable on POSIX and invisible to `shutil.which` on Windows, which decides
+    by `PATHEXT` — so a test writing one fails there and only there. `find_ffmpeg` uses
+    `shutil.which` precisely so the platform's rule applies (`T035-R2`), and a test exercising it
+    has to honour the same rule.
+
+    **A helper because writing it out twice is what went wrong.** The comment above lived inside
+    one test; `T-199` added another three tests below it and wrote the POSIX-only shape anyway,
+    which `T199-R4` caught as a deterministic Windows failure. A reader cannot forget a helper.
+    """
+    # `os.name`, not `sys.platform`: mypy narrows the latter under `--platform win32` until
+    # everything after it is unreachable, which is a gate failure rather than a portability one.
+    if os.name == "nt":
+        fake = directory / f"{name}.bat"
+        fake.write_text("@echo off\r\nexit /b 0\r\n")
+        return fake
+    fake = directory / name
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    return fake
+
+
 def test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager(
     composed: Callable[..., application.Composition],
     tmp_path: Path,
@@ -853,18 +879,7 @@ def test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager(
     located and never passed to the library. Locating it here and dropping it would look correct
     and produce no error.
     """
-    # **What "executable" means is the platform's answer, not a mode bit** (`T-062`). This wrote
-    # a `#!/bin/sh` script and `chmod 0755`; Windows decides by `PATHEXT`, so `shutil.which`
-    # correctly returned `None` and this test failed there and only there. `find_ffmpeg` uses
-    # `shutil.which` precisely so the platform's own rule applies (`T035-R2`) — the test has to
-    # honour the same rule it is exercising.
-    if sys.platform == "win32":
-        fake = tmp_path / "ffmpeg.bat"
-        fake.write_text("@echo off\r\nexit /b 0\r\n")
-    else:
-        fake = tmp_path / "ffmpeg"
-        fake.write_text("#!/bin/sh\nexit 0\n")
-        fake.chmod(0o755)
+    fake = an_executable_ffmpeg(tmp_path)
     composition = composed(ffmpeg_override=fake)
 
     assert composition.ffmpeg.available
@@ -2043,10 +2058,9 @@ def test_a_stored_ffmpeg_location_is_what_the_application_resolves(
     applies the platform's own executable-discovery rules and a mock would assert nothing about
     them.
     """
-    chosen = tmp_path / "somewhere-else" / "ffmpeg"
-    chosen.parent.mkdir()
-    chosen.write_text("#!/bin/sh\n", encoding="utf-8")
-    chosen.chmod(0o755)
+    elsewhere = tmp_path / "somewhere-else"
+    elsewhere.mkdir()
+    chosen = an_executable_ffmpeg(elsewhere)
     settings_file = tmp_path / "settings.toml"
     assert (
         core_settings.save(
@@ -2088,3 +2102,129 @@ def test_an_unusable_stored_ffmpeg_location_still_starts_the_application(
     read = core_settings.load(settings_file)
     assert read.settings.ffmpeg_location is None
     assert read.problem is not None and "does not exist" in read.problem.reason
+
+
+def test_no_preset_the_worker_would_refuse_is_offered_when_ffmpeg_is_absent(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T199-R1`.** `UX-005` §5, over the whole add dialog rather than one screen of it.
+
+    The first version of this task gated `OptionsDialog` and left the preset catalogue alone, so
+    `Audio only (MP3)`, `Audio only (original)` and `Video with embedded subtitles` were still
+    offered with ffmpeg absent — and the worker's `_ffmpeg_gap` refuses every one of them before a
+    byte moves. Offering what will be refused is precisely what that rule forbids.
+
+    **A real absent-ffmpeg resolution, not a mocked flag**, which the criterion asks for: the
+    override names a file that does not exist, so `find_ffmpeg` reports unavailable through its own
+    logic and composition carries that answer into the dialog the way it always does.
+
+    Asserted against `needs_ffmpeg` rather than a list of names, so a preset added to the catalogue
+    is covered without this test being edited — the enumeration and the offer, compared.
+    """
+    composition = composed(
+        ffmpeg_override=tmp_path / "no-ffmpeg-here", entry_point=child_probing_then_waiting
+    )
+    assert not composition.ffmpeg.available, "this environment has ffmpeg, so it proves nothing"
+
+    dialog = composition.window.open_add_dialog()
+    assert dialog is not None
+    try:
+        offered = dialog.presets
+        assert offered, "the dialog offers no presets at all, which is not a usable dialog"
+        refused = [preset.name for preset in offered if core_presets.needs_ffmpeg(preset)]
+        assert not refused, (
+            f"{refused} are offered with ffmpeg absent, and the worker refuses each of them "
+            "before downloading. UX-005 §5: nothing is drawn that would be refused"
+        )
+        # The other direction, so the gate cannot pass by offering nothing: what does not need
+        # ffmpeg is still there.
+        assert any(not core_presets.needs_ffmpeg(preset) for preset in offered)
+    finally:
+        dialog.close()
+        QApplication.processEvents()
+
+
+def test_choosing_an_ffmpeg_reaches_the_workers_that_start_afterwards(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T199-R2`.** The setting has to change what runs, not only what the window says.
+
+    `DownloadManager` captures the override at construction and hands it to every child it starts.
+    Nothing updated it, so after a live change the UI followed the new answer while workers still
+    received the old path — the dialog offering exactly what the worker would then refuse.
+
+    Asserted on the value the manager passes to children, which is the thing that was wrong;
+    asserting the status line would have passed against the defect.
+    """
+    composition = composed(
+        ffmpeg_override=tmp_path / "absent", entry_point=child_probing_then_waiting
+    )
+    assert composition.manager._ffmpeg_override is None
+
+    chosen = an_executable_ffmpeg(tmp_path)
+    screen = composition.window.open_settings()
+    assert screen is not None, "the composed window offers no settings screen"
+    try:
+        write_location = composition.window._on_ffmpeg_location_chosen
+        assert write_location is not None, "composition wired no ffmpeg writer"
+        write_location(chosen)  # the route the screen's button takes
+        QApplication.processEvents()
+
+        assert composition.manager._ffmpeg_override == chosen, (
+            f"workers would still be handed {composition.manager._ffmpeg_override}, not the "
+            "ffmpeg the user just chose"
+        )
+    finally:
+        screen.close()
+        QApplication.processEvents()
+
+
+def test_an_unusable_choice_is_refused_the_same_way_however_it_arrives(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T199-R3`.** One report-and-fallback contract, not three that disagree.
+
+    Validation was split and answered differently by route: a *stored* value was checked at load,
+    a *live* choice was checked nowhere and persisted regardless, and `find_ffmpeg` refused a bad
+    override without falling back — so the same unusable path produced a different outcome
+    depending on how it arrived, and an executable named `ls` was accepted as ffmpeg live because
+    the name check existed only on the load path.
+
+    Driven through the live route, which is the one that had no checks at all, over the three
+    shapes the criterion names. Each must end the same way: **the choice is refused, the setting is
+    unchanged, and the application is still resolving ffmpeg some other way.**
+    """
+    composition = composed(entry_point=child_probing_then_waiting)
+    unchanged = composition.manager._ffmpeg_override
+
+    not_ffmpeg = tmp_path / "ls"
+    not_ffmpeg.write_text("#!/bin/sh\nexit 0\n")
+    not_ffmpeg.chmod(0o755)
+    a_folder = tmp_path / "a-folder"
+    a_folder.mkdir()
+
+    write_location = composition.window._on_ffmpeg_location_chosen
+    assert write_location is not None, "composition wired no ffmpeg writer"
+    for label, candidate in (
+        ("missing", tmp_path / "not-here" / "ffmpeg"),
+        ("a folder", a_folder),
+        ("executable but not ffmpeg", not_ffmpeg),
+    ):
+        write_location(candidate)
+        QApplication.processEvents()
+
+        assert composition.store is not None
+        read = core_settings.load(composition.settings_path)
+        assert read.settings.ffmpeg_location is None, (
+            f"{label} was persisted as the ffmpeg location, so it would fail again next launch"
+        )
+        said = composition.window.statusBar().currentMessage()
+        assert "PATH" in said, (
+            f"{label} was refused without saying so: the status bar reads {said!r}"
+        )
+        assert composition.manager._ffmpeg_override == unchanged, (
+            f"{label} changed what workers receive despite being refused"
+        )
