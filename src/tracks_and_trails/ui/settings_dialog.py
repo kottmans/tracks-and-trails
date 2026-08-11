@@ -36,6 +36,7 @@ from typing import Final
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -49,6 +50,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.core.models import BROWSER_NAMES
 from tracks_and_trails.core.settings import (
     CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
@@ -118,7 +120,9 @@ class SettingsDialog(QDialog):
         on_concurrency_chosen: Callable[[int], None],
         choose_directory: Callable[[Path], Path | None] | None = None,
         cookie_file: Path | None = None,
+        cookie_browser: str | None = None,
         on_cookie_file_chosen: Callable[[Path | None], None] | None = None,
+        on_cookie_browser_chosen: Callable[[str | None], None] | None = None,
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
@@ -136,7 +140,9 @@ class SettingsDialog(QDialog):
         self._theme = theme
         self._initial_concurrency = concurrency
         self._cookie_file = cookie_file
+        self._cookie_browser = cookie_browser
         self._on_cookie_file_chosen = on_cookie_file_chosen
+        self._on_cookie_browser_chosen = on_cookie_browser_chosen
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
         self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
@@ -256,6 +262,29 @@ class SettingsDialog(QDialog):
         explanation.setWordWrap(True)
         layout.addWidget(explanation)
 
+        #: **Three exclusive sources**, because `REQ-026` says *a browser profile **or** a cookies
+        #: file*, and two set at once is a credential chosen by accident (`T197-R4`).
+        self._cookie_sources: dict[str, QRadioButton] = {}
+        for key, label in (
+            ("none", "No cookies"),
+            ("browser", "From a browser"),
+            ("file", "From a cookies file"),
+        ):
+            button = QRadioButton(label, box)
+            button.setObjectName(f"cookieSource{key.capitalize()}")
+            button.setAccessibleName(label)
+            button.toggled.connect(partial(self._cookie_source_picked, key))
+            layout.addWidget(button)
+            self._cookie_sources[key] = button
+
+        self._cookie_browser_choice = QComboBox(box)
+        self._cookie_browser_choice.setObjectName("cookieBrowserChoice")
+        self._cookie_browser_choice.setAccessibleName("Browser to read cookies from")
+        for browser in BROWSER_NAMES:
+            self._cookie_browser_choice.addItem(browser)
+        self._cookie_browser_choice.currentTextChanged.connect(self._cookie_browser_picked)
+        layout.addWidget(self._cookie_browser_choice)
+
         self._cookie_value = QLabel(box)
         self._cookie_value.setObjectName("cookieFileValue")
         # The user's own path (`T016-R6`).
@@ -287,6 +316,54 @@ class SettingsDialog(QDialog):
             str(self._cookie_file) if self._cookie_file is not None else NO_COOKIES_NOTE
         )
         self._clear_cookies.setEnabled(self._cookie_file is not None)
+        current = (
+            "file"
+            if self._cookie_file is not None
+            else "browser"
+            if self._cookie_browser is not None
+            else "none"
+        )
+        for key, button in self._cookie_sources.items():
+            blocked = button.blockSignals(True)
+            try:
+                button.setChecked(key == current)
+            finally:
+                button.blockSignals(blocked)
+        self._cookie_browser_choice.setEnabled(current == "browser")
+        if self._cookie_browser:
+            blocked = self._cookie_browser_choice.blockSignals(True)
+            try:
+                self._cookie_browser_choice.setCurrentText(
+                    self._cookie_browser.split(":", 1)[0].split("+", 1)[0]
+                )
+            finally:
+                self._cookie_browser_choice.blockSignals(blocked)
+
+    def _cookie_source_picked(self, key: str, checked: bool) -> None:
+        """One source at a time. Choosing *browser* asks for the one the combo shows."""
+        if not checked:
+            return
+        if key == "none":
+            self._remember_cookies(None)
+        elif key == "browser":
+            self._remember_browser(self._cookie_browser_choice.currentText())
+        elif key == "file":
+            self._pick_a_cookie_file()
+
+    def _cookie_browser_picked(self, browser: str) -> None:
+        if self._cookie_sources["browser"].isChecked():
+            self._remember_browser(browser)
+
+    def _remember_browser(self, browser: str | None) -> None:
+        if self._on_cookie_browser_chosen is not None:
+            self._on_cookie_browser_chosen(browser)
+
+    def show_cookie_browser(self, browser: str | None) -> None:
+        """Show the browser source composition settled on (`T197-R4`)."""
+        self._cookie_browser = browser
+        if browser is not None:
+            self._cookie_file = None
+        self._show_cookie_file()
 
     def _pick_a_cookie_file(self) -> None:
         chosen = self._choose_file(self._cookie_file)
@@ -301,6 +378,8 @@ class SettingsDialog(QDialog):
     def show_cookie_file(self, path: Path | None) -> None:
         """Show what composition settled on, accepted or refused (`T-197`)."""
         self._cookie_file = path
+        if path is not None:
+            self._cookie_browser = None
         self._show_cookie_file()
 
     # --- ffmpeg -------------------------------------------------------------------------

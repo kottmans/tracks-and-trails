@@ -27,6 +27,7 @@ durable records belong with their schema, not in this module — is why it is wo
 (`T-176`).
 """
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -100,24 +101,93 @@ BROWSER_NAMES: Final = (
 )
 
 
-def _require_browser_name(owner: str, name: str, value: object) -> None:
-    """Refuse anything that is not a browser this application can name (`T-197`, `DAT-003`).
+#: The keyrings yt-dlp can read a browser's cookie encryption key from.
+KEYRING_NAMES: Final = ("basictext", "gnomekeyring", "kwallet", "kwallet5", "kwallet6")
 
-    yt-dlp accepts `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, so the browser is the part before
-    the first separator and the rest is the user's own profile selection. Only the browser is
-    checked: validating a profile name would be inventing a rule, while letting a *path* through
-    is the defect this exists to stop — and a path's first segment is never a browser name.
+#: yt-dlp's own `--cookies-from-browser` grammar: `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`.
+#:
+#: Transcribed rather than imported, because `core/**` may not import `yt_dlp`
+#: (`ARCHITECTURE.md` §6). `tests/unit/test_models.py` binds `BROWSER_NAMES` and `KEYRING_NAMES`
+#: to yt-dlp's own `SUPPORTED_BROWSERS` and `SUPPORTED_KEYRINGS`, in the layer that may import
+#: both — the same device `THEME_NAMES` uses, and the only thing that stops two lists drifting.
+_BROWSER_SPEC: Final = re.compile(
+    r"^(?P<name>[^+:\s]+)"
+    r"(?:\s*\+\s*(?P<keyring>[^:\s]+))?"
+    r"(?:\s*:\s*(?!:)(?P<profile>[^:]+?))?"
+    r"(?:\s*::\s*(?P<container>.+))?$"
+)
+
+
+def parse_browser_specification(value: str) -> tuple[str, str | None, str | None, str | None]:
+    """Split `BROWSER[+KEYRING][:PROFILE][::CONTAINER]` into what yt-dlp wants (`T-197`).
+
+    Returns `(browser, profile, keyring, container)` — **yt-dlp's own argument order**, so the
+    adapter can hand the tuple over without reordering it at the boundary where a mistake is
+    invisible.
+
+    **Raises `ValueError` for anything this application will not carry**, which is the whole
+    reason it exists rather than the string being passed through: `T197-R2` found that
+    `firefox:/home/alice/.mozilla/cookies.sqlite` was accepted, so a **path** reached the model
+    and the job JSON through the profile portion — the exact leak the browser check was added to
+    close, one component to the right. yt-dlp itself accepts a profile *path*; this application
+    does not, because `DAT-003` forbids a cookie path in the model and a narrower capability is
+    the price of that guarantee being structural.
+    """
+    match = _BROWSER_SPEC.match(value.strip())
+    if match is None:
+        raise ValueError(f"{value!r} is not BROWSER[+KEYRING][:PROFILE][::CONTAINER]")
+    browser = (match.group("name") or "").strip().lower()
+    if browser not in BROWSER_NAMES:
+        raise ValueError(f"{browser!r} is not one of {', '.join(BROWSER_NAMES)}")
+    keyring = match.group("keyring")
+    if keyring is not None and keyring.strip().lower() not in KEYRING_NAMES:
+        raise ValueError(f"{keyring!r} is not one of {', '.join(KEYRING_NAMES)}")
+    profile = match.group("profile")
+    if profile is not None:
+        profile = profile.strip()
+        if _looks_like_a_path(profile):
+            raise ValueError(
+                f"the profile {profile!r} is a path. A cookie path is a settings value and never "
+                "a field on this model (DAT-003); name the profile instead"
+            )
+    container = match.group("container")
+    return (
+        browser,
+        profile or None,
+        keyring.strip().upper() if keyring else None,
+        container.strip() if container else None,
+    )
+
+
+def _looks_like_a_path(value: str) -> bool:
+    """Whether `value` names a location rather than a profile.
+
+    Deliberately generous — a separator of either kind, a `~`, or a drive letter — because the
+    consequence of a false negative is a credential path in the database and the consequence of a
+    false positive is a profile the user renames. `T197-R2` is why the bar sits there.
+    """
+    return (
+        "/" in value
+        or "\\" in value
+        or value.startswith("~")
+        or (len(value) > 1 and value[1] == ":")
+    )
+
+
+def _require_browser_name(owner: str, name: str, value: object) -> None:
+    """Refuse anything that is not a browser specification this application can carry.
+
+    `T-197`, `DAT-003`. The check is the full grammar rather than the first component, because
+    `T197-R2` proved the first component alone lets a path through the second.
     """
     if value is None:
         return
     if not isinstance(value, str):  # pragma: no cover - `_require_optional_text` refuses first
         return
-    browser = value.split("+", 1)[0].split(":", 1)[0].strip().lower()
-    if browser not in BROWSER_NAMES:
-        raise ValueError(
-            f"{owner}.{name} is {value!r}; it must name one of {', '.join(BROWSER_NAMES)}. "
-            "A cookies *file* is a settings value and never a field on this model (DAT-003)."
-        )
+    try:
+        parse_browser_specification(value)
+    except ValueError as refusal:
+        raise ValueError(f"{owner}.{name} is {value!r}: {refusal}") from refusal
 
 
 def _require_optional_text(owner: str, name: str, value: object) -> None:

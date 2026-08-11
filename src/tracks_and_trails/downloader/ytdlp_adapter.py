@@ -47,6 +47,7 @@ from tracks_and_trails.core.models import (
     MediaInfo,
     MediaKind,
     PlaylistEntry,
+    parse_browser_specification,
 )
 
 
@@ -573,6 +574,7 @@ def build_options(
     postprocessor_hooks: Sequence[Any] = (),
     ffmpeg_location: Path | None = None,
     cookie_file: Path | None = None,
+    cookie_browser: str | None = None,
     overwrites: bool | None = None,
     logger: Any = None,
 ) -> dict[str, Any]:
@@ -621,7 +623,17 @@ def build_options(
     if request.rate_limit_bytes:
         options["ratelimit"] = request.rate_limit_bytes
     if request.cookies_from_browser:
-        options["cookiesfrombrowser"] = (request.cookies_from_browser,)
+        # **The four-tuple yt-dlp parses, not the string the user typed** (`T197-R2`). Its
+        # `_parse_browser_specification(browser_name, profile, keyring, container)` refuses an
+        # unsupported browser — and `("firefox:Private",)` makes the *whole string* the browser
+        # name, so every profile-bearing specification was rejected by the library after passing
+        # everything here. Split in `core/`, which owns the grammar and the refusal of a profile
+        # that is a path.
+        options["cookiesfrombrowser"] = parse_browser_specification(request.cookies_from_browser)
+    elif cookie_browser:
+        # **The preset's choice wins where a job has one** (`T197-R4`). A browser named on the
+        # request binds when the job is queued; this is the global default, which binds now.
+        options["cookiesfrombrowser"] = parse_browser_specification(cookie_browser)
     if cookie_file is not None:
         # **A parameter, not a request field** (`REQ-026`, `T-197`, `DAT-003`). The browser name
         # rides on the request because it is a per-download choice a preset can carry; the *file*

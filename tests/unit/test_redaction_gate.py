@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pytest
 
+from tracks_and_trails.core import logging as logging_module
 from tracks_and_trails.core import settings as app_settings
 from tracks_and_trails.core.logging import LOG_FORMAT, RedactingFormatter, redact
 from tracks_and_trails.core.models import DownloadRequest, Job
@@ -79,6 +80,34 @@ def emitted(*lines: str) -> str:
     for line in lines:
         log.warning("%s", line)
     return stream.getvalue()
+
+
+def test_a_cookie_path_of_any_name_is_redacted_once_it_is_registered() -> None:
+    """**`T197-R1`, a Critical, and the fixture choice that hid it.**
+
+    `redact`'s shape rules recognise a path that *looks* like a cookie jar — `cookies.sqlite`,
+    `.../cookies.txt`. A user may point at `~/session.txt`, and the review reproduced exactly that
+    surviving the real formatter. **Every fixture in the first version of this gate was named
+    `cookies.*`**, so the gate agreed with the rule instead of testing it.
+
+    Guessing harder is the enumeration failure `DAT-003` records twice. **Knowing** is
+    `remember_a_secret`, which exists for *"a literal this application is holding and knows is
+    sensitive"* — composition registers the path when it takes it.
+    """
+    innocuous = "/home/alice/session.txt"
+    logging_module.forget_the_secrets()
+    try:
+        assert innocuous in emitted(f"using cookies from {innocuous}"), (
+            "this path is already redacted by shape, so it cannot show what registering buys"
+        )
+
+        logging_module.remember_a_secret(innocuous)
+        written = emitted(f"using cookies from {innocuous}")
+
+        assert innocuous not in written, f"a registered cookie path reached a log line:\n{written}"
+        assert "using cookies from" in written, "the line was scrubbed rather than the path"
+    finally:
+        logging_module.forget_the_secrets()
 
 
 def test_no_supplied_secret_survives_into_a_log() -> None:
@@ -166,14 +195,18 @@ def test_a_cookie_path_cannot_be_carried_by_a_job_at_all() -> None:
         "the decision must be revisited before this lands"
     )
 
-    with pytest.raises(ValueError, match="must name one of"):
-        DownloadRequest(
-            url="https://example.invalid/v",
-            output_directory=str(Path.home()),
-            format_selector="best",
-            output_template="%(title)s.%(ext)s",
-            cookies_from_browser=A_COOKIE_PATH,
-        )
+    # **Both shapes**, because the first version of the validator only checked the component
+    # before the colon and `firefox:/home/alice/cookies.sqlite` sailed through it into the job
+    # JSON — `T197-R2`, a Critical. A path is refused wherever in the specification it appears.
+    for shape in (A_COOKIE_PATH, f"firefox:{A_BROWSER_JAR}", "firefox:~/jar"):
+        with pytest.raises(ValueError):
+            DownloadRequest(
+                url="https://example.invalid/v",
+                output_directory=str(Path.home()),
+                format_selector="best",
+                output_template="%(title)s.%(ext)s",
+                cookies_from_browser=shape,
+            )
 
 
 def test_a_path_yt_dlp_named_is_kept_verbatim_where_it_is_stored() -> None:
@@ -218,3 +251,68 @@ def test_a_path_yt_dlp_named_is_kept_verbatim_where_it_is_stored() -> None:
         "the extractor's reason was scrubbed along with the path, so the emitted line no longer "
         "says why anything failed — NFR-006's whole complaint about paraphrased errors"
     )
+
+
+def test_the_worker_hands_cookies_to_the_probe_as_well_as_the_download() -> None:
+    """**`T197-R3`.** A URL that needs signing in is *read* before it is downloaded.
+
+    `T012-R5` is the same finding one option to the left: connection settings were added only
+    after the probe's early return, so a URL needing the configured proxy failed while being read,
+    before the download that would have used it was attempted. The cookies file repeated it —
+    passed to the download's `_extract` and to neither probe.
+
+    Driven at the worker's own boundary with stubs for the adapter and the resolved library,
+    because what is under test is **which arguments `_extract` forwards**, and a real yt-dlp would
+    answer a different question.
+    """
+    from tracks_and_trails.downloader import worker
+
+    seen: dict[str, object] = {}
+
+    class _Adapter:
+        @staticmethod
+        def build_options(_request: object, _template: str, **options: object) -> dict[str, object]:
+            seen.update(options)
+            return {}
+
+    class _Ydl:
+        def __init__(self, _options: object) -> None: ...
+        def __enter__(self) -> _Ydl:
+            return self
+
+        def __exit__(self, *_: object) -> None: ...
+        def extract_info(self, *_: object, **__: object) -> dict[str, object]:
+            return {}
+
+    class _Resolved:
+        module = type("_Module", (), {"YoutubeDL": _Ydl})
+
+    class _Reporter:
+        def progress_hook(self, *_: object) -> None: ...
+        def postprocessor_hook(self, *_: object) -> None: ...
+
+    request = DownloadRequest(
+        url="https://example.invalid/v",
+        output_directory=str(Path.home()),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+    jar = Path("/home/alice/session.txt")
+
+    # Stubs rather than the real collaborators: what is under test is which arguments `_extract`
+    # forwards, and a real yt-dlp would answer a different question. The ignore is the price of
+    # substituting for two concrete types at a boundary that has no protocol.
+    worker._extract(
+        _Adapter(),
+        request,
+        _Resolved(),  # type: ignore[arg-type]
+        _Reporter(),  # type: ignore[arg-type]
+        probe_only=True,
+        cookie_file=jar,
+    )  # fmt: skip
+
+    assert seen.get("cookie_file") == jar, (
+        f"the probe was built with cookie_file={seen.get('cookie_file')!r}. An authenticated URL "
+        "would fail while being read, before the download that would have used cookies"
+    )
+    assert seen.get("probe_only") is True, "sanity: this is the probe call"

@@ -881,7 +881,10 @@ def test_connection_settings_apply_to_both_phases(probe_only: bool) -> None:
         probe_only=probe_only,
     )
     assert options["proxy"] == "socks5://127.0.0.1:9050"
-    assert options["cookiesfrombrowser"] == ("firefox",)
+    # **The four-tuple yt-dlp's own `_parse_browser_specification` takes** (`T197-R2`). This was
+    # `("firefox",)`, which happens to work for a bare browser name and rejects every profile-
+    # bearing specification at the library boundary — the string becomes the browser name.
+    assert options["cookiesfrombrowser"] == ("firefox", None, None, None)
     assert options["ratelimit"] == 1024
 
 
@@ -1467,7 +1470,10 @@ def test_both_cookie_sources_reach_yt_dlp(probe_only: bool) -> None:
         cookie_file=Path("/home/sean/.config/tracksandtrails/cookies.txt"),
     )
 
-    assert options["cookiesfrombrowser"] == ("firefox",)
+    # **The four-tuple yt-dlp's own `_parse_browser_specification` takes** (`T197-R2`). This was
+    # `("firefox",)`, which happens to work for a bare browser name and rejects every profile-
+    # bearing specification at the library boundary — the string becomes the browser name.
+    assert options["cookiesfrombrowser"] == ("firefox", None, None, None)
     assert options["cookiefile"] == str(Path("/home/sean/.config/tracksandtrails/cookies.txt"))
 
 

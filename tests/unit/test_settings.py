@@ -32,10 +32,14 @@ from tracks_and_trails.core.settings import (
     preset_named,
     remove_preset,
     save,
+    set_cookie_source,
     set_default_preset,
     settings_path,
+    unusable_cookie_file_reason,
     update_preset,
     with_concurrency,
+    with_cookie_browser,
+    with_cookie_file,
     with_download_directory,
     with_ffmpeg_location,
     with_theme,
@@ -1480,3 +1484,95 @@ def test_the_ffmpeg_location_survives_a_save_and_load(tmp_path: Path) -> None:
 
     assert read.problem is None
     assert read.settings.ffmpeg_location == binary
+
+
+# --- T-197: the cookie source ----------------------------------------------------------------
+
+
+def a_cookies_jar(directory: Path, name: str = "cookies.txt") -> Path:
+    jar = directory / name
+    jar.write_text("# Netscape HTTP Cookie File\n.x\tTRUE\t/\tFALSE\t0\ta\tb\n", encoding="utf-8")
+    return jar
+
+
+def test_a_stored_cookies_file_is_used_as_written(tmp_path: Path) -> None:
+    jar = a_cookies_jar(tmp_path)
+    read = load(write(tmp_path, f"[cookies]\nfile = {toml_path(jar)}\n"))
+
+    assert read.settings.cookie_file == jar
+    assert read.problem is None
+
+
+@pytest.mark.parametrize(
+    ("name", "make", "expected"),
+    [
+        ("missing", lambda base: base / "gone" / "cookies.txt", "does not exist"),
+        ("a directory", lambda base: base, "not a file"),
+        ("not a cookies file at all", lambda base: base / "notes.txt", "Netscape format"),
+    ],
+)
+def test_an_unusable_cookies_file_reports_and_uses_none(
+    name: str, make: Callable[[Path], Path], expected: str, tmp_path: Path
+) -> None:
+    """**`ARC-008`, and `T197-R5`.** Existence and file-type were the whole check.
+
+    A text file that is not a cookies jar was accepted and persisted, and the failure showed up as
+    a download quietly coming back unauthenticated — which reads as a paywall defeating the
+    application rather than a setting being wrong. The header is `MozillaCookieJar`'s own
+    requirement, so accepting what it refuses only moves the failure and misattributes it.
+    """
+    target = make(tmp_path)
+    if name == "not a cookies file at all":
+        target.write_text("just some notes\n", encoding="utf-8")
+    read = load(write(tmp_path, f"[cookies]\nfile = {toml_path(target)}\n"))
+
+    assert read.settings.cookie_file is None, f"{name} was accepted as a cookies jar"
+    assert read.problem is not None, f"{name} was discarded silently, against ARC-008"
+    assert expected in read.problem.reason
+
+
+def test_both_netscape_headers_are_accepted(tmp_path: Path) -> None:
+    """Exporters emit both spellings and `MozillaCookieJar` takes both."""
+    for header in ("# Netscape HTTP Cookie File", "# HTTP Cookie File"):
+        jar = tmp_path / "jar.txt"
+        jar.write_text(f"{header}\n", encoding="utf-8")
+        assert unusable_cookie_file_reason(jar) is None, f"{header!r} was refused"
+
+
+def test_a_stored_cookie_browser_is_read_and_a_bad_one_reported(tmp_path: Path) -> None:
+    """`T197-R4`: the browser source, held to the same grammar the model is."""
+    assert load(write(tmp_path, '[cookies]\nbrowser = "firefox"\n')).settings.cookie_browser == (
+        "firefox"
+    )
+
+    read = load(write(tmp_path, '[cookies]\nbrowser = "firefox:/home/alice/jar.sqlite"\n'))
+    assert read.settings.cookie_browser is None, "a profile path was accepted as a browser source"
+    assert read.problem is not None and "cannot be used" in read.problem.reason
+
+
+def test_a_cookie_source_is_a_file_or_a_browser_and_never_both(tmp_path: Path) -> None:
+    """**`REQ-026` offers one source**, and two set at once is a credential chosen by accident."""
+    jar = a_cookies_jar(tmp_path)
+    with_file = with_cookie_file(Settings(), jar)
+    assert with_file.cookie_file == jar and with_file.cookie_browser is None
+
+    with_browser = with_cookie_browser(with_file, "firefox")
+    assert with_browser.cookie_browser == "firefox"
+    assert with_browser.cookie_file is None, "choosing a browser left the file in force as well"
+
+    with pytest.raises(ValueError, match="never both"):
+        set_cookie_source(Settings(), file=jar, browser="firefox")
+
+
+def test_the_cookie_source_survives_a_save_and_load(tmp_path: Path) -> None:
+    jar = a_cookies_jar(tmp_path)
+    target = tmp_path / "settings.toml"
+
+    assert save(with_cookie_file(Settings(), jar), target) is None
+    assert load(target).settings.cookie_file == jar
+
+    assert save(with_cookie_browser(Settings(), "firefox:Work"), target) is None
+    read = load(target)
+    assert read.settings.cookie_browser == "firefox:Work"
+    assert read.settings.cookie_file is None
+    assert read.problem is None

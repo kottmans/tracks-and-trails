@@ -2387,9 +2387,9 @@ def test_changing_the_cookies_file_reaches_jobs_already_queued(
     surprise — which would put it back in the model and reopen the decision.
     """
     first = tmp_path / "first-cookies.txt"
-    first.write_text("# first\n", encoding="utf-8")
+    first.write_text("# Netscape HTTP Cookie File\n# first\n", encoding="utf-8")
     second = tmp_path / "second-cookies.txt"
-    second.write_text("# second\n", encoding="utf-8")
+    second.write_text("# Netscape HTTP Cookie File\n# second\n", encoding="utf-8")
     settings_file = tmp_path / "settings.toml"
     assert (
         core_settings.save(
@@ -2430,7 +2430,7 @@ def test_an_unusable_cookies_file_is_refused_and_changes_nothing(
     loud. Refused rather than stored, on the contract `T199-R3` settled for the ffmpeg location.
     """
     good = tmp_path / "cookies.txt"
-    good.write_text("# good\n", encoding="utf-8")
+    good.write_text("# Netscape HTTP Cookie File\n# good\n", encoding="utf-8")
     settings_file = tmp_path / "settings.toml"
     assert (
         core_settings.save(

@@ -120,22 +120,39 @@ this one returned four verdicts before approving.*
 
 ### T-197 — Cookie source, and the redaction gate that has to prove it
 
-**Status:** **In Review — built 2026-08-10** on maintainer instruction, after the `DAT-003` ruling
-this task turned out to require *before* any code. Filed 2026-08-09 from
-`IMPLEMENTATION_PLAN.md` §Phase 4.
-**Owner:** Implementer
-**Priority:** High — it is the phase's only deliverable whose failure mode is a leaked credential
-**Phase:** Phase 4
-**Depends on:** `T-146` for the screen (Complete). **Not blocked by `T-196`**, but the redaction
-gate this task builds is what `T-196`'s stored proxy needs, so building this first is the cheaper
-order.
-**Relevant context:** `REQ-026`, `REQ-EXCL-002`, `NFR-007`, `DAT-003`, `DAT-004`, `SEC-003`,
-`T-038` (handler-level redaction), `T-014`, `core/logging.py` §18–20 and §183–205,
-`core/models.py` (`DownloadRequest.cookies_from_browser`), `ai/DECISIONS.md` §1064
-**Affected surfaces:** `core/models.py`, `core/settings.py`, `core/logging.py`, the settings dialog,
-`downloader/ytdlp_adapter.py`
-**Risk:** **High.** It adds a credential-bearing path to persisted state, and `DAT-003`/`DAT-004`
-are the boundary it crosses
+**Status:** **In Review — corrected 2026-08-10** (`T197-R1`, `T197-R2` Critical; `T197-R3`,
+`T197-R4`, `T197-R5` High). Built the same day on maintainer instruction, after the `DAT-003`
+ruling this task required *before* any code.
+
+- **`T197-R1` — Critical. Corrected.** Cookie paths were redacted **only when the filename looked
+  like a cookie jar**; `/home/alice/session.txt` survived the real formatter. Composition now
+  registers the supplied path through `remember_a_secret` — which exists for *"a literal this
+  application is holding and knows is sensitive"* and had **no caller** until now. Guessing harder
+  is the enumeration failure `DAT-003` records twice; knowing is not guessing. **My gate could not
+  see this because every fixture in it was named `cookies.*`** — it agreed with the rule instead
+  of testing it.
+- **`T197-R2` — Critical. Corrected.** `firefox:/home/alice/.mozilla/cookies.sqlite` passed the
+  validator and was persisted in the job JSON: the browser check read only the component before
+  the colon, so a **path** reached the model one component to the right — the very leak the check
+  was added to close. The whole grammar is parsed now
+  (`BROWSER[+KEYRING][:PROFILE][::CONTAINER]`), a profile that is a path is refused, and the
+  adapter hands yt-dlp the **four-tuple** its `_parse_browser_specification` takes rather than a
+  one-element tuple that made the entire string the browser name.
+- **`T197-R3` — High. Corrected.** The cookies file reached the download's `_extract` and neither
+  probe, so an authenticated URL failed while being *read* — `T012-R5` exactly, one option to the
+  left. Both probe call sites carry it, asserted at the worker boundary rather than by reading.
+- **`T197-R4` — High. Corrected.** The screen offered file-or-none and no browser source, which
+  `REQ-026` names and the criterion requires. Three exclusive sources now, backed by a
+  `[cookies] browser` setting; `set_cookie_source` refuses both at once, because two sources set
+  together is a credential chosen by accident.
+- **`T197-R5` — High. Corrected.** Validation checked existence and file type only, so an
+  unreadable file or a text file that is not a jar was accepted and persisted — surfacing later as
+  a download quietly unauthenticated, which reads as a paywall defeating the application rather
+  than a setting being wrong. The Netscape header is `MozillaCookieJar`'s own requirement, so
+  accepting what it refuses only moved the failure and misattributed it.
+
+**Five mutations fail their own evidence**, one per finding.
+
 
 **What was built.** `[cookies] file` in `settings.toml`, validated under `ARC-008` by **one**
 predicate that the stored and live routes both call — `T199-R3`'s lesson applied before the
@@ -221,6 +238,32 @@ first time. That is precisely the material `REQ-026` says is never logged.
 - **Six mutations fail their own evidence**: the file never reaching the manager; a refused file
   applied anyway; the adapter dropping it; the browser validator removed; redaction scrubbing
   everything; the bare-userinfo rule removed.
+
+#### Initial review findings — 2026-08-10
+
+The initial review of `55a267a..c5cbb94` returned **Changes requested**. Full evidence and exact
+reproductions are recorded in `ai/REVIEWS.md`; all five findings block approval:
+
+- **T197-R1 (Critical):** a supplied cookie path whose filename does not contain `cookie` survives
+  the real log formatter. The live refusal route logs that path verbatim, and no production caller
+  registers the chosen path with the exact-secret mechanism. The phase-exit gate covers only
+  `cookies.txt`/`cookies.sqlite`, so it passes while `/home/alice/session.txt` leaks.
+- **T197-R2 (Critical):** the browser validator checks only the prefix. A value such as
+  `firefox:/home/alice/.mozilla/firefox/private/cookies.sqlite` is accepted and serialized into
+  the job row,
+  contradicting `DAT-003`'s ruled browser-*name* invariant. The same raw CLI-shaped string is
+  handed to yt-dlp as a one-element tuple, so even `firefox:Private` is rejected by the library as
+  an unsupported browser rather than selecting that profile.
+- **T197-R3 (High):** both worker probe calls omit the cookie-file session argument. Authenticated
+  URLs therefore fail before the full extraction that does receive it. The claimed both-phases
+  test calls `build_options()` directly and arranges the argument the real probe drops.
+- **T197-R4 (High):** the Settings screen offers a cookies file or no cookies, but no browser
+  profile/source choice. The explicit screen criterion and `REQ-EXCL-003`'s user action are unmet,
+  while the screen's still-to-come sentence says cookie source is complete.
+- **T197-R5 (High):** cookie-file validation checks only existence and `is_file()`. It neither
+  tests readability nor verifies the Netscape cookie-file format. An arbitrary text file is
+  accepted and persisted, then rejected by yt-dlp; the new tests themselves use files that are not
+  valid cookie jars.
 
 #### Out of scope
 

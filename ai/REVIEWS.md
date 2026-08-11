@@ -14250,3 +14250,62 @@ correction to the decision boundary, not another T-199 implementation pass.
 
 The Reviewer changed `ai/REVIEWS.md` only. No source, test, decision, task, commit, or remote state
 was changed.
+
+## 2026-08-10 — T-197 initial review
+
+**Task:** T-197 — cookie source, and the redaction gate that has to prove it
+
+**Implementation review boundary:** `55a267a..c5cbb94`
+
+**Record-only head inspected:** `44fc283`
+
+**Verdict:** **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Status | Finding |
+|---|---|---:|---|---|
+| **T197-R1** | **Critical** | **Yes — REQ-026, NFR-007, DAT-003, and the Phase 4 exit gate** | **Open** | The redaction guarantee depends on the filename looking like a cookie file. `redact()` removes `cookies.txt` and `cookies.sqlite`, but leaves `/home/alice/session.txt`, `/home/alice/auth.jar`, and `C:\\Users\\Alice\\profile.dat` verbatim. Those are all legal chooser results. `choose_cookie_file()` logs `unusable_cookie_file_reason()` including the exact path on refusal, and startup logs a settings problem containing the path; no production caller uses `remember_a_secret()` for the selected value. Every gate fixture contains `cookie` in its filename, so the phase-exit test passes while an application-supplied cookie path reaches a log. This is the privacy boundary the task exists to make non-leaking, not merely missing test coverage. |
+| **T197-R2** | **Critical** | **Yes — DAT-003's structural database boundary and REQ-026** | **Open** | `_require_browser_name()` validates only the substring before `+` or `:`. The real model accepts `firefox:/home/alice/.mozilla/firefox/private/cookies.sqlite`, and `_serialize_request()` writes that cookie path verbatim into the persisted job JSON, despite the accepted ruling requiring this field to be a browser **name** by construction. The adapter also passes the entire raw value as `(request.cookies_from_browser,)`; yt-dlp's library contract is `(browser, profile, keyring, container)`, so `firefox:Private` and `chrome+GNOMEKEYRING:Default` are both rejected as unsupported browser names. The test suite currently treats `firefox:Private` as valid without exercising the library boundary. Enforce the ruled model vocabulary and bind it to the actual library tuple rather than accepting unparsed CLI syntax. |
+| **T197-R3** | **High** | **Yes — explicit both-sources/both-phases criterion** | **Open** | `worker._run()` passes `cookie_file` only to the final download extraction. Its pure probe and the mandatory pre-download probe both call `_extract(..., probe_only=True)` without the session argument. A URL requiring the selected cookie file therefore fails while metadata is read and never reaches the extraction that would authenticate it. `test_both_cookie_sources_reach_yt_dlp` calls `adapter.build_options()` directly with `cookie_file` already supplied, so it proves the adapter branch but not the worker plumbing it claims. |
+| **T197-R4** | **High** | **Yes — explicit screen criterion, REQ-023, and REQ-EXCL-003** | **Open** | The Settings Cookies section offers only **Choose cookies file** and **Use no cookies**. There is no browser or browser-profile control anywhere in `ui/`, yet the task requires the screen to set a browser profile, cookies file, or neither, and the screen's honesty text removes `cookie` from the settings still to come. Consequently the existing request/preset browser source has no explicit user action naming it on this screen. The shared file picker also opens with the caption “Choose where ffmpeg is” when invoked by the cookies button, another consequence of treating two settings as one picker callback. |
+| **T197-R5** | **High** | **Yes — explicit unusable-file acceptance criterion** | **Open** | `unusable_cookie_file_reason()` checks only `exists()` and `is_file()`. It does not test readability and does not establish that the file is a Netscape-format cookie jar. A reviewer probe wrote ordinary prose to `session.txt`: the application validator returned `None`, while yt-dlp's real `YoutubeDLCookieJar.load()` raised `LoadError` because it was not a Netscape cookies file. The live route therefore accepts and persists a value the worker cannot use. The committed “good” composition files (`# good`, `# first`, `# second`) and the empty UI file are themselves not valid jars, so the claimed refusal evidence never exercises this criterion. |
+
+T197-R1 and T197-R2 are Critical because they defeat the accepted privacy boundary: one emits a
+cookie-file path to a log and the other puts a profile path into the queue database through the
+field the decision says is name-only. T197-R3 through R5 independently leave core task behavior or
+explicit acceptance criteria unbuilt. They are not consequences of the two Critical findings and
+all need correction in the same focused batch.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Clean worktree and boundary before reviewer record edits | **clean; `main` ahead of `origin/main` by three commits** |
+| `git diff --check 55a267a..44fc283` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass, 166 files** |
+| `.venv/bin/mypy src` | **pass, 52 files** |
+| bare `.venv/bin/mypy` | **pass, 128 files** |
+| `.venv/bin/mypy --platform win32` | **pass, 128 files** |
+| Changed redaction, adapter, preset, Settings UI, composition, worker, and manager-boundary suites | **488 passed; one infrastructure failure in 32.97 s** — the sole failure was the pre-existing loopback HTTP test being denied `socket()` by the review sandbox (`PermissionError: [Errno 1]`) |
+| Arbitrary-name formatter probe | `/home/alice/session.txt`, `/home/alice/auth.jar`, and `C:\\Users\\Alice\\profile.dat` survived; `/home/alice/cookies.txt` was redacted |
+| Model/persistence probe | `firefox:/home/alice/.mozilla/firefox/private/cookies.sqlite` constructed successfully and appeared verbatim in `_serialize_request()` |
+| Real yt-dlp browser-spec probe | `('firefox',)` parsed; `('firefox:Private',)` and `('chrome+GNOMEKEYRING:Default',)` each raised unsupported-browser `ValueError` |
+| Real worker probe-boundary probe | `_run(SessionKind.PROBE, ..., cookie_file=Path('/private/session.txt'))` called `_extract` with only `{'probe_only': True}` |
+| Real cookie-jar probe | the application returned no unusable reason for an ordinary text file; yt-dlp raised `LoadError` because it was not Netscape format |
+
+The implementer's broader **2552 passed, 17 skipped** result was not repeated wholesale. The
+focused green tests are consistent with the submission because each serious defect sits outside
+the arranged happy-path evidence. The sandbox-only loopback failure is unrelated to T-197 and does
+not affect the verdict.
+
+### Push disposition
+
+**Do not push `01c0de8`, `c5cbb94`, or `44fc283` in their current state.** Native CI cannot close
+credential-boundary and composition defects already reproduced against the real model, formatter,
+worker, and pinned yt-dlp library. Correct all five blockers, sweep arbitrary cookie filenames and
+all worker phases/routes, and return one focused correction boundary for re-review.
+
+The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+source, test, decision, status snapshot, commit, or remote state was changed.

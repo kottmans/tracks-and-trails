@@ -307,6 +307,8 @@ def compose(
     *assembled* application is exactly what `T-036` has to prove, and proving it against a real
     extractor would make the proof depend on a site staying up.
     """
+    from tracks_and_trails.core import logging as app_logging
+    from tracks_and_trails.core import models as core_models
     from tracks_and_trails.core import paths
     from tracks_and_trails.core import settings as app_settings
     from tracks_and_trails.core.instance_lock import InstanceLock
@@ -446,6 +448,12 @@ def compose(
     # sinks the decision authorises. `load()` has already discarded a file that is gone or is not a
     # file, and said why.
     manager.set_cookie_file(settings.cookie_file)
+    manager.set_cookie_browser(settings.cookie_browser)
+
+    # **Registered as soon as it is known** (`T197-R1`), so a path already in force at launch is
+    # redacted from the first line this process writes, not from the first change.
+    if settings.cookie_file is not None:
+        app_logging.remember_a_secret(str(settings.cookie_file))
 
     def retry(job_id: str) -> None:
         """Hand a retry to the manager, which owns job transitions (`T036-R1`).
@@ -591,6 +599,23 @@ def compose(
         window.show_ffmpeg_location(location, report=resolved)
         remember(chosen, "the ffmpeg location")
 
+    def remember_cookie_path(path: Path | None) -> None:
+        """Register a supplied cookie path so it never survives into a log (`T197-R1`).
+
+        **Shape rules cannot cover this and must not try.** `redact`'s `_COOKIE_PATH` and
+        `_COOKIE_FILENAME` recognise a path that *looks* like a cookie jar — `cookies.sqlite`,
+        `.../cookies.txt`. A user may point at `~/session.txt`, and the review reproduced exactly
+        that surviving the real formatter. Guessing harder is the enumeration failure `DAT-003`
+        records twice; **knowing** is `remember_a_secret`, which exists for *"a literal this
+        application is holding and knows is sensitive"* and had no caller until now.
+
+        Registered rather than replaced-and-forgotten: `forget_the_secrets()` clears every
+        registered literal, and a stale entry only over-redacts its own exact string, which is the
+        harmless direction.
+        """
+        if path is not None:
+            app_logging.remember_a_secret(str(path))
+
     def choose_cookie_file(path: Path | None) -> None:
         """Use a cookies file for sites the user is signed in to, or none (`REQ-026`, `T-197`).
 
@@ -612,10 +637,33 @@ def compose(
                 window.show_cookie_file(held.settings.cookie_file)
                 return
         manager.set_cookie_file(path)
+        manager.set_cookie_browser(None)
+        remember_cookie_path(path)
         chosen = app_settings.with_cookie_file(held.settings, path)
         held.settings = chosen
         window.show_cookie_file(path)
         remember(chosen, "the cookies file")
+
+    def choose_cookie_browser(browser: str | None) -> None:
+        """Read cookies from a browser instead of a file, or from neither (`REQ-026`, `T197-R4`).
+
+        Exclusive with the file by construction — `set_cookie_source` refuses both — so choosing a
+        browser clears any file and the manager is told about both halves.
+        """
+        if browser is not None:
+            try:
+                core_models.parse_browser_specification(browser)
+            except ValueError as refusal:
+                logging.getLogger("tracksandtrails.app").warning("cookie browser: %s", refusal)
+                window.report_transiently(f"That browser cannot be used: {refusal}")
+                window.show_cookie_browser(held.settings.cookie_browser)
+                return
+        chosen = app_settings.with_cookie_browser(held.settings, browser)
+        held.settings = chosen
+        manager.set_cookie_browser(browser)
+        manager.set_cookie_file(None)
+        window.show_cookie_browser(browser)
+        remember(chosen, "the cookie source")
 
     def choose_theme(name: str) -> None:
         """Wear a palette now, and at the next launch (`REQ-023`, `ARCHITECTURE.md` §8, `T-146`).
@@ -766,7 +814,9 @@ def compose(
         on_directory_chosen=choose_download_directory,
         on_theme_chosen=choose_theme,
         cookie_file=settings.cookie_file,
+        cookie_browser=settings.cookie_browser,
         on_cookie_file_chosen=choose_cookie_file,
+        on_cookie_browser_chosen=choose_cookie_browser,
         ffmpeg_location=settings.ffmpeg_location,
         ffmpeg_summary=ffmpeg.summary(),
         on_ffmpeg_location_chosen=choose_ffmpeg_location,

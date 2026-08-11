@@ -56,7 +56,12 @@ from typing import Any, Final
 
 from platformdirs import user_config_dir
 
-from tracks_and_trails.core.models import AudioCodec, MediaKind, Preset
+from tracks_and_trails.core.models import (
+    AudioCodec,
+    MediaKind,
+    Preset,
+    parse_browser_specification,
+)
 
 #: Duplicated from `downloader/environment.py` and `ui/main_window.py`, which each define their own.
 #: Hoisting it into one place would touch two approved modules for no behavioural gain, so this
@@ -111,6 +116,14 @@ _LOCATION_KEY: Final = "location"
 #: table is structural *because* the model cannot carry the value.
 _COOKIES_TABLE: Final = "cookies"
 _COOKIE_FILE_KEY: Final = "file"
+_COOKIE_BROWSER_KEY: Final = "browser"
+
+#: The first line every cookies jar this application can use carries (`T197-R5`).
+#:
+#: Both spellings, because exporters emit both and `MozillaCookieJar` accepts both. Checked rather
+#: than assumed: a file that fails this is one yt-dlp will refuse, so accepting it here would only
+#: move the failure to the first download.
+NETSCAPE_HEADERS: Final = ("# Netscape HTTP Cookie File", "# HTTP Cookie File")
 
 #: What a chosen file's name must contain to be taken for ffmpeg (`T-199`).
 #:
@@ -229,6 +242,18 @@ class Settings:
     #: authenticates with whatever file is set when its worker *starts*, because the job cannot
     #: carry the value. The browser half binds at queue time; the two differ on purpose.
     cookie_file: Path | None = None
+
+    #: A browser to read cookies from, as `BROWSER[+KEYRING][:PROFILE][::CONTAINER]` (`REQ-026`,
+    #: `T197-R4`). The **screen's** source, offered beside the file because `REQ-026` names both
+    #: and the criterion says the screen sets either.
+    #:
+    #: **Exclusive with `cookie_file`** — `set_cookie_source` is what keeps that true, because two
+    #: sources set at once is a question yt-dlp answers by preferring one silently.
+    #:
+    #: Distinct from `DownloadRequest.cookies_from_browser`, which a *preset* carries and which
+    #: binds when a job is queued. This one is the global default and binds when a worker starts,
+    #: which is the split `DAT-003`'s amendment ruled.
+    cookie_browser: str | None = None
 
     #: Where ffmpeg is, or `None` to search `PATH` (`REQ-023`, `REQ-024`, `T-199`).
     #:
@@ -488,12 +513,55 @@ def unusable_cookie_file_reason(path: Path) -> str | None:
                 f"The cookies file is not a file, so downloads will not be authenticated."
                 f"\n{candidate}"
             )
+        # **Readable, and a cookies file** (`T197-R5`). Existence and type were the whole check,
+        # so an unreadable jar or a text file that is not one at all was accepted, persisted, and
+        # discovered only when a download quietly came back unauthenticated — the failure
+        # `T-197` names, because it looks like a paywall bypass failing rather than a setting
+        # being wrong.
+        #
+        # **The header is the library's own requirement, not a guess this module invented.**
+        # yt-dlp loads a jar through `MozillaCookieJar`, which refuses a file whose first line is
+        # not the Netscape magic. Accepting what it will refuse would move the failure to the
+        # first download and blame the site for it.
+        with candidate.open("r", encoding="utf-8", errors="replace") as handle:
+            first = handle.readline().strip()
+        if not first.startswith(NETSCAPE_HEADERS):
+            return (
+                f"The cookies file is not in the Netscape format downloaders read, so downloads "
+                f"will not be authenticated. Export cookies again in that format."
+                f"\n{candidate}"
+            )
     except (OSError, RuntimeError) as error:
         return (
             f"The cookies file could not be checked, so downloads will not be authenticated."
             f"\n{path}\n{type(error).__name__}: {error}"
         )
     return None
+
+
+def _cookie_browser_from(raw: Any) -> tuple[str | None, str | None]:
+    """Coerce a stored browser source. **Never raises** (`T197-R4`).
+
+    Validated by `parse_browser_specification`, the same grammar `DownloadRequest` is held to, so
+    a profile that is a path is refused here exactly as it is there — one rule, two callers.
+    """
+    if raw is None:
+        return None, None
+    if not isinstance(raw, str):
+        return None, (
+            f"{_COOKIES_TABLE}.{_COOKIE_BROWSER_KEY} is {raw!r}, which is not a browser. No "
+            "browser cookies will be used."
+        )
+    if not raw.strip():
+        return None, None
+    try:
+        parse_browser_specification(raw)
+    except ValueError as refusal:
+        return None, (
+            f"The browser in your settings cannot be used, so no browser cookies will be used."
+            f"\n{raw}\n{refusal}"
+        )
+    return raw.strip(), None
 
 
 def _cookie_file_from(raw: Any) -> tuple[Path | None, str | None]:
@@ -671,6 +739,7 @@ def load(path: Path | None = None) -> SettingsFile:
     theme, theme_reason = _theme_from(appearance_table.get(_THEME_KEY))
     cookies_table, cookies_reason = _section_of(document, _COOKIES_TABLE)
     cookie_file, cookie_reason = _cookie_file_from(cookies_table.get(_COOKIE_FILE_KEY))
+    cookie_browser, browser_reason = _cookie_browser_from(cookies_table.get(_COOKIE_BROWSER_KEY))
     ffmpeg_table, ffmpeg_reason = _section_of(document, _FFMPEG_TABLE)
     ffmpeg_location, location_reason = _ffmpeg_location_from(ffmpeg_table.get(_LOCATION_KEY))
 
@@ -689,6 +758,7 @@ def load(path: Path | None = None) -> SettingsFile:
                 location_reason,
                 cookies_reason,
                 cookie_reason,
+                browser_reason,
             )
             if part
         ]
@@ -700,6 +770,7 @@ def load(path: Path | None = None) -> SettingsFile:
             theme=theme,
             ffmpeg_location=ffmpeg_location,
             cookie_file=cookie_file,
+            cookie_browser=cookie_browser,
         )
         if not parts:
             return SettingsFile(settings)
@@ -1152,6 +1223,10 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             "# A cookies file, for sites you are signed in to. Delete the line to use none.\n"
             f"{_COOKIE_FILE_KEY} = {_toml_string(str(settings.cookie_file))}\n"
             if settings.cookie_file is not None
+            else f"\n\n[{_COOKIES_TABLE}]\n"
+            "# A browser to read cookies from, for sites you are signed in to.\n"
+            f"{_COOKIE_BROWSER_KEY} = {_toml_string(settings.cookie_browser)}\n"
+            if settings.cookie_browser is not None
             else ""
         )
         ffmpeg_lines = (
@@ -1208,9 +1283,32 @@ def with_download_directory(settings: Settings, directory: Path | None) -> Setti
     return replace(settings, download_directory=directory)
 
 
+def set_cookie_source(
+    settings: Settings, *, file: Path | None = None, browser: str | None = None
+) -> Settings:
+    """The one cookie source in force: a file, a browser, or neither (`REQ-026`, `T197-R4`).
+
+    **One function, because they are exclusive.** `REQ-026` offers *"a browser profile or a
+    cookies file"*, and setting both leaves yt-dlp to prefer one silently — a credential chosen by
+    accident. Passing neither clears the source, which is how *use no cookies* is expressed.
+    """
+    if file is not None and browser is not None:
+        raise ValueError("a cookie source is a file or a browser, never both")
+    return replace(settings, cookie_file=file, cookie_browser=browser)
+
+
 def with_cookie_file(settings: Settings, path: Path | None) -> Settings:
-    """`settings` using `path` for cookies, or none at all (`REQ-026`, `T-197`)."""
-    return replace(settings, cookie_file=path)
+    """`settings` using `path` for cookies, or none at all (`REQ-026`, `T-197`).
+
+    Kept as the narrow spelling of `set_cookie_source(file=...)`, and it clears the browser for
+    the same reason that one refuses both: the source is singular.
+    """
+    return set_cookie_source(settings, file=path)
+
+
+def with_cookie_browser(settings: Settings, browser: str | None) -> Settings:
+    """`settings` reading cookies from `browser`, clearing any file (`REQ-026`, `T197-R4`)."""
+    return set_cookie_source(settings, browser=browser)
 
 
 def with_ffmpeg_location(settings: Settings, location: Path | None) -> Settings:
