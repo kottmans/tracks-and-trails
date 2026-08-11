@@ -140,6 +140,7 @@ from tracks_and_trails.ui.row_delegate import (
     INHERITED_TEXT,
     JOB_ID_ROLE,
     MANAGE_PRESETS_DATA,
+    MEDIA_KIND_ROLE,
     OPTIONS_AVAILABLE_ROLE,
     OPTIONS_DATA,
     OPTIONS_TEXT,
@@ -920,6 +921,12 @@ class StagingModel(QAbstractListModel):
             return selector_text(row, effective)
         if role == HUE_ROLE:
             return placeholder_hue(row.url)
+        if role == MEDIA_KIND_ROLE:
+            # The *effective* preset, which is what this row would actually be committed as — the
+            # dialog's own resolution of a per-row choice against the default (`T-217`). It is
+            # always a preset here; `preset_for` falls back to the default rather than answering
+            # `None`, which is why this does not guard.
+            return effective.media_kind
         if role == THUMBNAIL_URL_ROLE:
             media = row.media
             return media.thumbnail_url if isinstance(media, MediaInfo) else None

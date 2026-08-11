@@ -47,6 +47,7 @@ from PySide6.QtCore import (
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtGui import (
     QColor,
+    QFont,
     QFontMetrics,
     QMouseEvent,
     QPainter,
@@ -66,6 +67,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.core.models import MediaKind
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.row_verbs import LABELS, MORE_LABEL, Verb
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE, ThumbnailStore
@@ -108,6 +110,20 @@ THUMBNAIL_URL_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 4
 
 #: The hue of the derived tile drawn until a picture arrives (`staging.placeholder_hue`).
 HUE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 5
+
+#: What this row will be downloaded **as** — a `MediaKind`, or `None` where nothing single is true
+#: (`T-217`).
+#:
+#: Only the placeholder tile reads it, to mark the absence of artwork as *audio* or *video* rather
+#: than as a bare colour block. **Asked of the model rather than derived here**, on the rule
+#: `STATE_CHIP_ROLE` and `T-186` set: a model that never sets it gets the unmarked tile without the
+#: role exists — which is what keeps the two other models in this tree, and any test model, working
+#: unchanged.
+#:
+#: **`None` is a real answer, not a missing one.** A playlist group whose members are being fetched
+#: as different kinds has no single kind, and inventing one would put a music note on a row that is
+#: half video.
+MEDIA_KIND_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 23
 
 #: Completion as a fraction from 0 to 1, or `None` when there is nothing honest to draw. `None` is
 #: not zero: an unknown total is not "0%", which is a confident lie `Job.progress` already refuses.
@@ -313,6 +329,35 @@ ROW_PRESET_NAME: Final = "rowPresetChoice"
 
 #: Space around the row's contents.
 PADDING: Final = 6
+
+#: What the derived tile is marked with when there is no artwork yet (`T-217`).
+#:
+#: A music note for audio and a film frame for video — the two `MediaKind` values, and `None` for a
+#: row whose kind is not one thing, which draws the plain block as before.
+#:
+#: **Text glyphs rather than drawn paths or bundled icons.** Both are in the fonts every target
+#: platform ships (`ARCHITECTURE.md` §8's stance on the `⋮`), they scale with the tile without a
+#: second asset per size, and `T-021`'s icon work is explicitly not this task.
+#: **Keyed by `str`, and the annotation is load-bearing.** `MediaKind` is a `StrEnum`, and a value
+#: handed back through `QAbstractItemModel.data` arrives as a plain `str` — PySide flattens it
+#: crossing the `QVariant` boundary. The first draft of this guarded with
+#: `isinstance(kind, MediaKind)` and drew nothing at all, on every row, silently. A `StrEnum` member
+#: hashes and compares as its own value, so `MediaKind.AUDIO` and `"audio"` are the same key here.
+PLACEHOLDER_GLYPHS: Final[dict[str, str]] = {
+    MediaKind.AUDIO: "\u266b",
+    MediaKind.VIDEO: "\u25b6",
+}
+
+#: How opaque the glyph is over its hue block, out of 255 (`T-217`).
+#:
+#: **Faint enough to be a texture rather than content, opaque enough to survive both grounds.** The
+#: block is drawn at HSV value 110 and the glyph at 235, so the glyph is always the lighter of the
+#: two and the contrast does not invert between the light and dark palettes — the hue block is this
+#: delegate's own ink either way, not the window's.
+PLACEHOLDER_GLYPH_ALPHA: Final = 90
+
+#: The glyph's height as a fraction of the tile's, so a child row's smaller slot scales with it.
+PLACEHOLDER_GLYPH_SCALE: Final = 0.5
 
 #: The gap between the thumbnail and the text.
 GAP: Final = 10
@@ -1469,6 +1514,51 @@ class RowDelegate(QStyledItemDelegate):
         painter.fillRect(tile, QColor.fromHsv(hue, 90, 110))
         painter.setPen(QColor.fromHsv(hue, 60, 190))
         painter.drawRect(tile.adjusted(0, 0, -1, -1))
+        self._paint_placeholder_glyph(painter, tile, index, hue)
+
+    def _paint_placeholder_glyph(
+        self,
+        painter: QPainter,
+        tile: QRect,
+        index: QModelIndex | _PersistentIndex,
+        hue: int,
+    ) -> None:
+        """A faint mark over the hue block, so the absence reads as chosen (`T-217`).
+
+        **The colour block on its own reads as a broken image**, which is the opposite of what the
+        derived tile is for — `_paint_tile`'s *"never an empty box"* was solving the same problem
+        one step earlier, and stopped short of saying what the box is standing in for.
+
+        **Low opacity, over the block rather than instead of it.** The hue is what makes one row
+        distinguishable from the next while a queue is still loading; a glyph that covered it would
+        trade a working signal for a new one. `PLACEHOLDER_GLYPH_ALPHA` is measured against both
+        grounds — see its comment for what "reads in both palettes" was checked to mean here.
+
+        **Decorative, with no accessible name** (`T-217`, and `T-203`'s stance on the `⋮`). The row
+        already says what it is in words: the headline, the detail line and the format selector are
+        all in the accessibility tree, and `MediaKind` is visible there as the preset's name. A
+        second announcement of *audio* would be noise on every row of a queue.
+        """
+        kind = index.data(MEDIA_KIND_ROLE)
+        # `str`, not `MediaKind` — see `PLACEHOLDER_GLYPHS` for why, and for what narrowing on the
+        # enum cost. Anything else, including `None`, leaves the plain block.
+        glyph = PLACEHOLDER_GLYPHS.get(kind) if isinstance(kind, str) else None
+        if glyph is None:
+            return
+
+        painter.save()
+        try:
+            ink = QColor.fromHsv(hue, 40, 235)
+            ink.setAlpha(PLACEHOLDER_GLYPH_ALPHA)
+            painter.setPen(ink)
+            font = QFont(painter.font())
+            # Sized off the tile rather than off the row's text, because the child rows draw the
+            # same glyph in a smaller slot (`CHILD_THUMBNAIL`) and a fixed point size would fill it.
+            font.setPixelSize(max(8, int(tile.height() * PLACEHOLDER_GLYPH_SCALE)))
+            painter.setFont(font)
+            painter.drawText(tile, Qt.AlignmentFlag.AlignCenter, glyph)
+        finally:
+            painter.restore()
 
     def _paint_text(
         self,

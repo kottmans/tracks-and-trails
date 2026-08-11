@@ -118,6 +118,7 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     JOB_ID_ROLE,
+    MEDIA_KIND_ROLE,
     PRESET_CHOICES_ROLE,
     PRESET_PLACEHOLDER_ROLE,
     PRESET_ROLE,
@@ -625,6 +626,11 @@ class QueueModel(QAbstractTableModel):
             return self._detail(row)
         if role == HUE_ROLE:
             return placeholder_hue(row.job.url)
+        if role == MEDIA_KIND_ROLE:
+            # **The request's, not the source's** (`T-217`). What the tile stands in for is the file
+            # this row will produce — an audio-only preset over a music video is an audio row, and
+            # `DownloadRequest.media_kind` is the field the adapter itself branches on.
+            return row.job.request.media_kind
         if role == THUMBNAIL_URL_ROLE:
             return row.job.thumbnail_url
         if role == PROGRESS_ROLE:
@@ -1066,6 +1072,14 @@ class QueueModel(QAbstractTableModel):
             return f"Mixed — {len(texts)} formats" if len(texts) > 1 else None
         if role == HUE_ROLE:
             return placeholder_hue(group.members[0].job.url if group.members else group.title)
+        if role == MEDIA_KIND_ROLE:
+            # **Only where the members agree** (`T-217`). A part-retargeted playlist can hold audio
+            # and video at once — the same split `PRESET_PLACEHOLDER_ROLE` answers *"Mixed"* for —
+            # and a group marked with one of them would be asserting something false about the
+            # other half. `None` draws the plain block, which says nothing rather than the wrong
+            # thing.
+            kinds = {row.job.request.media_kind for row in group.members}
+            return next(iter(kinds)) if len(kinds) == 1 else None
         if role == THUMBNAIL_URL_ROLE:
             return next(
                 (row.job.thumbnail_url for row in group.members if row.job.thumbnail_url), None

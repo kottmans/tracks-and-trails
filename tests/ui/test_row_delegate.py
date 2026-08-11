@@ -40,6 +40,7 @@ from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QMouseEvent, QPainter, QPalette
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
+from tracks_and_trails.core.models import MediaKind
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
 from tracks_and_trails.ui import row_delegate
 from tracks_and_trails.ui.row_delegate import (
@@ -54,6 +55,7 @@ from tracks_and_trails.ui.row_delegate import (
     HUE_ROLE,
     INDENT,
     JOB_ID_ROLE,
+    MEDIA_KIND_ROLE,
     MENU_ZONE_INSET,
     MERGED_BLOCKS,
     MIN_BLOCK_WIDTH,
@@ -2307,3 +2309,173 @@ def test_a_hover_elsewhere_on_the_row_leaves_the_zone_at_rest(qapp: QApplication
     assert _zone_pixels(paint_rows(model, delegate, 0), zone) == at_rest, (
         "the zone lit up for a pointer that was never over it"
     )
+
+
+# --- T-217: a placeholder tile says what it is standing in for --------------------------------
+
+
+def _tile_ink(image: QImage, *, inset: int = 0) -> set[int]:
+    """Every distinct colour in the first row's thumbnail slot.
+
+    `inset` skips that many pixels of border. The tile draws its own outline a shade lighter than
+    its fill, which is enough on its own to satisfy *"something here is lighter than the block"* —
+    so the test that asks whether the glyph is visible insets past it. That is not hypothetical:
+    the first draft of that test passed while the glyph was not being drawn at all.
+    """
+    width, height = THUMBNAIL_SIZE
+    return {
+        image.pixel(x, y)
+        for y in range(PADDING + inset, min(PADDING + height - inset, image.height()))
+        for x in range(PADDING + inset, min(PADDING + width - inset, image.width()))
+    }
+
+
+def _placeholder_image(kind: MediaKind | None, hue: int = 120) -> QImage:
+    """One row with no artwork, painted. No `ThumbnailStore`, so the derived tile is what draws."""
+    extra: dict[int, Any] = {HUE_ROLE: hue}
+    if kind is not None:
+        extra[MEDIA_KIND_ROLE] = kind
+    model = RowsModel([a_row(0, extra=extra)])
+    return paint_rows(model, RowDelegate(), 0)
+
+
+def test_a_row_without_artwork_is_marked_rather_than_left_a_colour_block(
+    qapp: QApplication,
+) -> None:
+    """**`T-217`.** A flat rectangle reads as a broken image, which is the opposite of the point.
+
+    `_paint_tile`'s existing rule is *"never an empty box"* — a column of empty wells reads as a
+    broken application. The derived tile answered that with a colour and stopped there, so it said
+    *something is missing here* without saying what. Asserted as strictly more distinct colours in
+    the tile than the two the bare block has (its fill and its border).
+    """
+    bare = _tile_ink(_placeholder_image(None))
+    marked = _tile_ink(_placeholder_image(MediaKind.AUDIO))
+
+    assert len(marked) > len(bare), (
+        f"the marked tile has no more ink than the plain one ({len(marked)} colours against "
+        f"{len(bare)}), so the glyph is not being drawn"
+    )
+
+
+def test_audio_and_video_placeholders_can_be_told_apart(qapp: QApplication) -> None:
+    """The criterion's second half, and the one a single glyph would pass without meeting.
+
+    A fix that drew the same mark for both would satisfy *"reads as intentional"* and still leave
+    the two kinds indistinguishable — which is the thing worth knowing at a glance while a queue
+    is still resolving.
+    """
+    audio = _tile_ink(_placeholder_image(MediaKind.AUDIO))
+    video = _tile_ink(_placeholder_image(MediaKind.VIDEO))
+
+    assert audio != video, "audio and video draw the same placeholder"
+
+
+def test_the_glyph_does_not_cover_the_hue_that_tells_rows_apart(qapp: QApplication) -> None:
+    """*Over* the block, not instead of it — the hue is a working signal already.
+
+    `placeholder_hue` derives a per-URL colour so a loading queue is not a column of identical
+    tiles. A glyph painted opaquely across the tile would trade that for a mark that is the same on
+    every row.
+
+    **Asserted as the fill still being the tile's majority colour, not merely as it surviving
+    somewhere.** A mutation that drew the mark opaque at three times the size left the fill in the
+    corners, so a "is the fill still present" check passed a tile the glyph had effectively taken
+    over.
+    """
+    hue = 200
+    plain = _placeholder_image(None, hue=hue)
+    fill = plain.pixel(PADDING + 4, PADDING + 4)
+
+    marked = _placeholder_image(MediaKind.VIDEO, hue=hue)
+    width, height = THUMBNAIL_SIZE
+    pixels = [
+        marked.pixel(x, y)
+        for y in range(PADDING + 2, min(PADDING + height - 2, marked.height()))
+        for x in range(PADDING + 2, min(PADDING + width - 2, marked.width()))
+    ]
+    share = pixels.count(fill) / len(pixels)
+    assert share > 0.5, (
+        f"the tile's own hue is only {share:.0%} of its interior, so the glyph has taken the tile "
+        "over rather than marking it"
+    )
+
+
+@pytest.mark.parametrize("kind", [MediaKind.AUDIO, MediaKind.VIDEO])
+def test_the_glyph_reads_against_the_tile_it_is_drawn_on(
+    qapp: QApplication, kind: MediaKind
+) -> None:
+    """*"An icon that vanishes into the ground is this task's defect to not create."*
+
+    `T-203`'s phrasing, reused by this task's entry on purpose. The check is not that the glyph
+    exists but that it is **lighter than the block it sits on** — the tile is drawn at HSV value
+    110 and the ink at 235, so this holds in either palette, because the ground here is this
+    delegate's own fill rather than the window's. A glyph tinted down until it matched the block
+    would pass the *"more colours"* test above and fail this one.
+    """
+    hue = 200
+    image = _placeholder_image(kind, hue=hue)
+    block = QColor(image.pixel(PADDING + 4, PADDING + 4))
+
+    lighter = [
+        QColor(pixel)
+        for pixel in _tile_ink(image, inset=2)
+        if QColor(pixel).value() > block.value() + 10 and QColor(pixel).alpha() > 0
+    ]
+    assert lighter, (
+        f"nothing in the tile is lighter than its own block (value {block.value()}), so the glyph "
+        "has vanished into the ground"
+    )
+
+
+def test_a_row_whose_kind_is_not_one_thing_keeps_the_plain_block(qapp: QApplication) -> None:
+    """**`None` is an answer, not a gap** — the mixed playlist group.
+
+    A part-retargeted playlist holds audio and video at once, which is the same split
+    `PRESET_PLACEHOLDER_ROLE` answers *"Mixed"* for. Marking such a group with either glyph would
+    assert something false about half its members, so it is left unmarked.
+
+    This also pins the compatibility property the role's comment claims: a model that has never
+    heard of `MEDIA_KIND_ROLE` returns `None` for it and gets exactly the tile it drew before.
+    """
+    assert _tile_ink(_placeholder_image(None)) == _tile_ink(_placeholder_image(None, hue=120))
+    unmarked = _tile_ink(_placeholder_image(None))
+    assert len(unmarked) <= 3, (
+        f"the unmarked tile has {len(unmarked)} colours, so something is being drawn on a row "
+        "whose kind is not one thing"
+    )
+
+
+def test_real_artwork_replaces_the_glyph_entirely(
+    qapp: QApplication, stores: Callable[..., ThumbnailStore]
+) -> None:
+    """A picture is not a picture with a music note printed on it.
+
+    The glyph marks *absence*; the moment there is artwork the placeholder path is not taken at
+    all, so nothing of the derived tile can survive into the drawn thumbnail. Asserted against the
+    **unmarked** placeholder rather than against the marked one, because a fix that drew the glyph
+    over real artwork would still differ from the marked placeholder and pass a looser check.
+    """
+    store = stores(loader=FakeLoader(IMAGE_SOURCE.read_bytes()))
+    delegate = RowDelegate(thumbnails=store)
+    marked = {HUE_ROLE: 120, MEDIA_KIND_ROLE: MediaKind.AUDIO}
+    model = RowsModel([a_row(0, thumbnail="https://pics.invalid/0.jpg", extra=marked)])
+
+    url = "https://pics.invalid/0.jpg"
+    paint_rows(model, delegate, 0)
+    assert spin_until(qapp, holds(store, url)), "the picture never arrived"
+
+    with_glyph_role = _tile_ink(paint_rows(model, delegate, 0))
+    assert with_glyph_role != _tile_ink(_placeholder_image(None, hue=120)), (
+        "the artwork is not being drawn at all"
+    )
+
+    # **The same artwork with the role absent.** If the placeholder path leaks into the drawn
+    # thumbnail, these two differ; if artwork replaces it entirely, they are identical. Comparing
+    # against the *placeholder's* glyph colours instead does not work and is not hypothetical — a
+    # mutation that drew the mark over real artwork passed that version of this test, because the
+    # mark blends with the picture underneath and so lands on different colours than it does over
+    # a flat block.
+    plain_model = RowsModel([a_row(0, thumbnail=url, extra={HUE_ROLE: 120})])
+    without = _tile_ink(paint_rows(plain_model, delegate, 0))
+    assert with_glyph_role == without, "the placeholder glyph is still drawn over real artwork"

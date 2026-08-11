@@ -431,63 +431,70 @@ this entry's to assert.
 - Any other options-dialog layout change, and the dialog's spec-side description (`docs/UX_SPEC.md`)
   unless the correction genuinely moves what a user sees
 
-## Ready
+### T-217 — Placeholder thumbnails read as intentional, not broken
 
-### T-225 — Two UI test files pass apart and fail together
+**Status:** **In Review — built 2026-08-11**, unattended on maintainer instruction.
 
-**Status:** Proposed — filed 2026-08-11, found while building `T-224` and **verified pre-existing**
-by stashing that task's diff and reproducing it on the clean tree.
+**What was built.** A row with no artwork draws a faint glyph over its hue block — a music note for
+audio, a play triangle for video — at alpha 90 out of 255, sized as half the tile so a child row's
+smaller slot scales with it. The kind comes from a new `MEDIA_KIND_ROLE` the three models answer;
+the delegate derives nothing.
+
+**`None` is a real answer, and one model gives it.** A playlist group whose members are being
+fetched as different kinds — the same split `PRESET_PLACEHOLDER_ROLE` already says *"Mixed"* for —
+has no single kind, and a group marked with one glyph would be asserting something false about half
+its members. It draws the plain block. That is also what keeps every model that has never heard of
+the role, including the test models, painting exactly what they painted before.
+
+**One trap, recorded because it cost a silent no-op.** `MediaKind` is a `StrEnum`, and a value
+handed back through `QAbstractItemModel.data` arrives as a **plain `str`** — PySide flattens it
+crossing the `QVariant` boundary. The first build guarded with `isinstance(kind, MediaKind)`, so it
+drew nothing at all on every row, and passed `mypy`, `ruff` and the whole existing suite while doing
+it. The glyph table is keyed by `str` now, with the reason written where the next reader meets it.
+
+**Five mutations, each failing at least one of the six new tests**: the glyph never drawn; both
+kinds drawing the same mark; the mark drawn opaque and oversized; the ink tinted down to the block's
+own value; and the mark drawn over real artwork too.
+
+**Two of those mutations found weak tests before they found anything else**, which is worth stating
+plainly. *"Is the tile's fill still present?"* passed a tile the glyph had covered except for its
+corners — it now asserts the fill is the interior's **majority** colour. And the artwork test
+compared against the glyph's colours over a flat block, which the mark does not produce when it
+blends with a picture — it now paints the same artwork row with the role absent and requires the two
+to be pixel-identical. A third test passed while nothing was drawn at all, because it was sampling
+the tile's own border, which is lighter than its fill by design.
+
 **Owner:** Implementer
-**Priority:** Medium — the suite is currently green by an accident of alphabetical collection, and
-the accident is one file rename away from ending
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Priority:** Low — cosmetic
+**Phase:** Phase 4 — polish, not a plan deliverable
 **Depends on:** nothing
-**Relevant context:** `tests/ui/test_row_delegate.py`, `tests/ui/test_add_dialog.py`
-(`test_an_open_playlist_shows_entries_and_a_way_back`,
-`test_the_menu_key_reaches_the_current_rows_menu`), `tests/ui/conftest.py` (the `qapp` fixture —
-one `QApplication` for the session, which is the only correct way to run Qt under pytest and also
-the reason state can travel between files), `ai/TESTING.md`
-**Affected surfaces:** `tests/ui/` — test-side unless the reproduction finds otherwise
-**Risk:** Low, with one caveat: if the shared state turns out to be in `ui/` rather than in the
-tests, the fix is a source change and this entry's scope grows
+**Relevant context:** `ui/row_delegate.py` (thumbnail painting, `placeholder_hue`),
+`ui/thumbnails.py`, `T-021` (the small-size glyph work, adjacent but separate), `T-202`,
+`ARCHITECTURE.md` §8
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/`
+**Risk:** Low
 
 #### Scope
 
-Running `tests/ui/test_row_delegate.py` **before** `tests/ui/test_add_dialog.py` in the same
-process fails two add-dialog tests that pass when either file runs alone or in the other order:
-
-```
-pytest tests/ui/test_row_delegate.py tests/ui/test_add_dialog.py
-  FAILED test_an_open_playlist_shows_entries_and_a_way_back
-  FAILED test_the_menu_key_reaches_the_current_rows_menu
-```
-
-CI does not see it **only because pytest collects alphabetically and `add_dialog` sorts before
-`row_delegate`**. Nothing about that is a property the suite asserts, so a file rename, a
-`-p randomly`, an `-n auto` shard boundary, or someone running one file to save time turns it into
-a red build with no code change behind it. A test that passes for a reason nobody chose is a test
-whose green is not evidence.
-
-**The mechanism is unestablished and this entry deliberately does not guess it.** The delegate
-holds module- or instance-level hover state and the `qapp` fixture is session-scoped, so leaked
-widget or focus state is the obvious suspect — obvious enough to be worth distrusting, given how
-often the last several tasks' "obvious" mechanism was the wrong one.
+A row with no artwork draws a flat colored rectangle, which reads as a broken image rather than a
+placeholder. A faint glyph over the same hue block makes the absence look chosen: a note for
+audio, a film frame for video.
 
 #### Acceptance criteria
 
-- **The mechanism is identified and stated**, not worked around: which object holds state across
-  the file boundary, and how it reaches the two failing assertions
-- The two tests pass in **both** orders, and the fix is at the source of the leak rather than a
-  reset bolted onto the tests that happen to fail today
-- **The ordering property is asserted rather than inherited from the alphabet** — the suite gains
-  something that fails if this regresses, so the next instance is not found by accident
-- No test is deleted, skipped or weakened to reach green
+- A row with no artwork draws a **low-opacity glyph over its hue block**, and audio and video are
+  distinguishable
+- The glyph is **decorative**: no accessible name is added and the accessibility tree is unchanged
+- It **reads in both palettes**, checked against both grounds — an icon that vanishes into the dark
+  ground is this task's defect to not create (`T-203`'s phrasing, reused on purpose)
+- Real artwork replaces it with no layout shift, and the existing thumbnail tests still pass
 
 #### Out of scope
 
-- Making the whole suite order-independent — that is a larger sweep, and this entry is the one
-  reproducible instance
-- Introducing test-ordering plugins as a substitute for finding the cause
+- The application icon's small sizes — `T-021`
+- Fetching or generating artwork — the glyph marks absence; it does not fill it
+
+## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
@@ -1589,6 +1596,62 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-225 — Two UI test files pass apart and fail together
+
+**Status:** Proposed — filed 2026-08-11, found while building `T-224` and **verified pre-existing**
+by stashing that task's diff and reproducing it on the clean tree.
+**Owner:** Implementer
+**Priority:** Medium — the suite is currently green by an accident of alphabetical collection, and
+the accident is one file rename away from ending
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `tests/ui/test_row_delegate.py`, `tests/ui/test_add_dialog.py`
+(`test_an_open_playlist_shows_entries_and_a_way_back`,
+`test_the_menu_key_reaches_the_current_rows_menu`), `tests/ui/conftest.py` (the `qapp` fixture —
+one `QApplication` for the session, which is the only correct way to run Qt under pytest and also
+the reason state can travel between files), `ai/TESTING.md`
+**Affected surfaces:** `tests/ui/` — test-side unless the reproduction finds otherwise
+**Risk:** Low, with one caveat: if the shared state turns out to be in `ui/` rather than in the
+tests, the fix is a source change and this entry's scope grows
+
+#### Scope
+
+Running `tests/ui/test_row_delegate.py` **before** `tests/ui/test_add_dialog.py` in the same
+process fails two add-dialog tests that pass when either file runs alone or in the other order:
+
+```
+pytest tests/ui/test_row_delegate.py tests/ui/test_add_dialog.py
+  FAILED test_an_open_playlist_shows_entries_and_a_way_back
+  FAILED test_the_menu_key_reaches_the_current_rows_menu
+```
+
+CI does not see it **only because pytest collects alphabetically and `add_dialog` sorts before
+`row_delegate`**. Nothing about that is a property the suite asserts, so a file rename, a
+`-p randomly`, an `-n auto` shard boundary, or someone running one file to save time turns it into
+a red build with no code change behind it. A test that passes for a reason nobody chose is a test
+whose green is not evidence.
+
+**The mechanism is unestablished and this entry deliberately does not guess it.** The delegate
+holds module- or instance-level hover state and the `qapp` fixture is session-scoped, so leaked
+widget or focus state is the obvious suspect — obvious enough to be worth distrusting, given how
+often the last several tasks' "obvious" mechanism was the wrong one.
+
+#### Acceptance criteria
+
+- **The mechanism is identified and stated**, not worked around: which object holds state across
+  the file boundary, and how it reaches the two failing assertions
+- The two tests pass in **both** orders, and the fix is at the source of the leak rather than a
+  reset bolted onto the tests that happen to fail today
+- **The ordering property is asserted rather than inherited from the alphabet** — the suite gains
+  something that fails if this regresses, so the next instance is not found by accident
+- No test is deleted, skipped or weakened to reach green
+
+#### Out of scope
+
+- Making the whole suite order-independent — that is a larger sweep, and this entry is the one
+  reproducible instance
+- Introducing test-ordering plugins as a substitute for finding the cause
+
 *(**Section added 2026-08-09**, on maintainer direction, after Phase 3's work was pushed. **Phase 4
 had no section of its own.** `T-146` sat under `## Proposed — Phase 3` stating `Phase: Phase 4`, and
 **seven of the plan's eight deliverables had no entry anywhere.** That is the condition
@@ -2218,39 +2281,6 @@ happening. A finished bar is furniture: the argument History used to drop its gr
 
 - Failed-row presentation — `T-201`, including the byte-line suppression added to it 2026-08-09
 - The chip's own text — `UX-010` just ruled the group chip; the ordinary chips are settled
-
-### T-217 — Placeholder thumbnails read as intentional, not broken
-
-**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review.
-**Owner:** Implementer
-**Priority:** Low — cosmetic
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** nothing
-**Relevant context:** `ui/row_delegate.py` (thumbnail painting, `placeholder_hue`),
-`ui/thumbnails.py`, `T-021` (the small-size glyph work, adjacent but separate), `T-202`,
-`ARCHITECTURE.md` §8
-**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/`
-**Risk:** Low
-
-#### Scope
-
-A row with no artwork draws a flat colored rectangle, which reads as a broken image rather than a
-placeholder. A faint glyph over the same hue block makes the absence look chosen: a note for
-audio, a film frame for video.
-
-#### Acceptance criteria
-
-- A row with no artwork draws a **low-opacity glyph over its hue block**, and audio and video are
-  distinguishable
-- The glyph is **decorative**: no accessible name is added and the accessibility tree is unchanged
-- It **reads in both palettes**, checked against both grounds — an icon that vanishes into the dark
-  ground is this task's defect to not create (`T-203`'s phrasing, reused on purpose)
-- Real artwork replaces it with no layout shift, and the existing thumbnail tests still pass
-
-#### Out of scope
-
-- The application icon's small sizes — `T-021`
-- Fetching or generating artwork — the glyph marks absence; it does not fill it
 
 ### T-218 — The add dialog's empty state: one instruction, inside the list
 
