@@ -292,6 +292,67 @@ reproductions are recorded in `ai/REVIEWS.md`; all five findings block approval:
   rather than left as *any durable record*, since `settings.toml` is durable and is where the path
   is meant to live
 
+### T-224 — Draw the ⋮ zone as a button
+
+**Status:** **In Review — built 2026-08-11**, unattended on maintainer instruction.
+
+**What was built.** The `⋮` zone draws a bordered button face with a hover fill and a pressed
+fill, from the palette so both themes follow (`ARCHITECTURE.md` §8, `T130-R1`'s contrast work).
+Geometry is untouched: `_menu_zone_of` remains the one definition paint and hit test share.
+
+**Two things the build turned up.**
+
+- **`PE_PanelButtonTool` cannot carry this, and that was measured rather than assumed.** A probe
+  drew the primitive at rest, raised, hovered and sunken under a view item's palette and got
+  **pixel-identical output every time** — so a hover delegated to the style would have been a
+  state nobody could see. The three looks are drawn here instead, from palette roles.
+- **`option.state`'s `State_MouseOver` is set for the whole row**, so a zone painted from it
+  lights up whenever the pointer is anywhere on the row, including over the combo the zone is
+  carved out of. The delegate resolves the zone itself in `_hover_at`, through `_menu_zone_of`,
+  so the lit rectangle and the answering rectangle are the same one.
+
+**The border carries the affordance in every state**, and hover and press change only the fill —
+so nothing is said by colour alone (`NFR-005`, `T-202`'s rule).
+
+**Owner:** Implementer
+**Priority:** Low–Medium — discoverability is the zone's only job, and the maintainer reports it
+failing at it
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** `T-203` (Complete). Independent of `T-223` — different file, either order.
+**Relevant context:** `UX-012` (the ruling), `UX-011` (the zone's accessibility stance, unchanged,
+and option G as the recorded fallback), `ui/row_delegate.py` (`_menu_zone_of` — one definition for
+paint and hit test, `T-203`'s seam), `tests/ui/test_row_delegate.py`,
+`tests/ui/test_add_dialog.py` (the zone-geometry and both-sides tests)
+**Affected surfaces:** `ui/row_delegate.py`, its tests
+**Risk:** Low — paint-only if done right; the trap is hover state in a delegate
+
+#### Scope
+
+The `⋮` is painted as bare glyph punctuation and reads as decoration. `UX-012` rules it drawn as
+a visible button: a border, and a hover/pressed state, so it looks pressable before anyone
+right-clicks anything. Geometry does not move — `_menu_zone_of` stays the one definition both
+paint and hit testing read.
+
+#### Acceptance criteria
+
+- The zone draws a button affordance — bordered at rest, visibly responding under the pointer —
+  in both palettes, with nothing conveyed by colour alone (`NFR-005`, `T-202`'s rule)
+- **Hover state actually renders**: a delegate repaints on mouse move only if the view asks it
+  to, so the regression drives a real hover and asserts the painted difference rather than
+  trusting a style flag
+- `_menu_zone_of` remains the single geometry definition; `T-203`'s zone-geometry regression and
+  the both-sides test stay green unmodified in what they prove
+- A press anywhere else on the control still opens the preset combo — the existing both-ways
+  assertion holds
+- The narrowing contract stays green — the zone stays fixed-width
+- The zone still has no accessibility node, and the sibling menu routes are untouched — the
+  `UX-011` stance `UX-012` explicitly preserves
+
+#### Out of scope
+
+- Option G (removing the zone) — the recorded fallback, not this task
+- The menu's contents (`T-223`) and any change to zone geometry or hit-testing behaviour
+
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -2262,48 +2323,6 @@ line removes the batch; a single item keeps `Remove this URL` (a row can be audi
 - The `⋮` zone's rendering — `T-224`
 - Any per-entry gesture on playlist rows — offered and not taken in `UX-012`; its own ruling
 - The entry picker, `remove_row`'s mechanics, and every other menu entry
-
-### T-224 — Draw the ⋮ zone as a button
-
-**Status:** Proposed — filed 2026-08-10 from `UX-012`.
-**Owner:** Implementer
-**Priority:** Low–Medium — discoverability is the zone's only job, and the maintainer reports it
-failing at it
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** `T-203` (Complete). Independent of `T-223` — different file, either order.
-**Relevant context:** `UX-012` (the ruling), `UX-011` (the zone's accessibility stance, unchanged,
-and option G as the recorded fallback), `ui/row_delegate.py` (`_menu_zone_of` — one definition for
-paint and hit test, `T-203`'s seam), `tests/ui/test_row_delegate.py`,
-`tests/ui/test_add_dialog.py` (the zone-geometry and both-sides tests)
-**Affected surfaces:** `ui/row_delegate.py`, its tests
-**Risk:** Low — paint-only if done right; the trap is hover state in a delegate
-
-#### Scope
-
-The `⋮` is painted as bare glyph punctuation and reads as decoration. `UX-012` rules it drawn as
-a visible button: a border, and a hover/pressed state, so it looks pressable before anyone
-right-clicks anything. Geometry does not move — `_menu_zone_of` stays the one definition both
-paint and hit testing read.
-
-#### Acceptance criteria
-
-- The zone draws a button affordance — bordered at rest, visibly responding under the pointer —
-  in both palettes, with nothing conveyed by colour alone (`NFR-005`, `T-202`'s rule)
-- **Hover state actually renders**: a delegate repaints on mouse move only if the view asks it
-  to, so the regression drives a real hover and asserts the painted difference rather than
-  trusting a style flag
-- `_menu_zone_of` remains the single geometry definition; `T-203`'s zone-geometry regression and
-  the both-sides test stay green unmodified in what they prove
-- A press anywhere else on the control still opens the preset combo — the existing both-ways
-  assertion holds
-- The narrowing contract stays green — the zone stays fixed-width
-- The zone still has no accessibility node, and the sibling menu routes are untouched — the
-  `UX-011` stance `UX-012` explicitly preserves
-
-#### Out of scope
-
-- Option G (removing the zone) — the recorded fallback, not this task
-- The menu's contents (`T-223`) and any change to zone geometry or hit-testing behaviour
 
 ## Proposed — Phase 4.5
 

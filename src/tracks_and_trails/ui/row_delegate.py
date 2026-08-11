@@ -466,6 +466,13 @@ MENU_ZONE_WIDTH: Final = 16
 #: that one *is* a button with actions of its own, this one is a door to the row's menu.
 MENU_ZONE_GLYPH: Final = "⋮"
 
+#: How far the button face is inset from the control's full height, and its corner radius
+#: (`T-224`). Inset so the door reads as a control *on* the row rather than as a second frame
+#: butted against the combo's; a radius so it matches the platform's own button corners rather
+#: than being the one square thing on the row.
+MENU_ZONE_INSET: Final = 3
+MENU_ZONE_RADIUS: Final = 2
+
 #: **The declared keyboard route to a row's editor** (`T118-R9`).
 #:
 #: Stated here rather than left to `QAbstractItemView`'s default, because "the row controls are
@@ -656,6 +663,16 @@ class RowDelegate(QStyledItemDelegate):
         #: move and discarded on a reset; it never has to survive anything. The staging list has no
         #: job ids at all, and the verbs are drawn there too.
         self._hovered: tuple[int, Verb | None] | None = None
+        #: Which row's `⋮` zone is held down, or `None` (`T-224`). Cleared when the press is
+        #: released or leaves, so a menu opened by the press does not leave the zone stuck sunken.
+        self._pressed_zone: int | None = None
+        #: Which row's `⋮` zone the pointer is over, or `None` (`T-224`, `UX-012`).
+        #:
+        #: **Separate from `_hovered`**, which is keyed by `Verb` and belongs to the queue's verb
+        #: buttons. The zone is not a verb — it has no `Verb` member and lives on the *staging*
+        #: row's format control — so folding it into that tuple would mean inventing a sentinel
+        #: member for something that is not one.
+        self._hovered_zone: int | None = None
         #: What each row's last paint could **not** fit, by job id (`T-135`). The `⋯` menu's
         #: contents; see `overflowing` for why this is a record rather than a recomputation.
         self._dropped: dict[str, tuple[Verb, ...]] = {}
@@ -1101,6 +1118,8 @@ class RowDelegate(QStyledItemDelegate):
         """
         self._dropped.clear()
         self._hovered = None
+        self._hovered_zone = None
+        self._pressed_zone = None
 
     def _twisty_rect(self, option: QStyleOptionViewItem) -> QRect:
         """Where the disclosure is, for the paint and the click alike (`T-140`).
@@ -1367,11 +1386,43 @@ class RowDelegate(QStyledItemDelegate):
         # `CE_ComboBoxLabel` draws the text inside whatever room they left.
         style.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, box, painter, widget)
 
-        # **The menu's painted door** (`UX-011`): an affordance with no accessibility node,
-        # acceptable on the disclosure triangle's precedent because the same menu is reachable by
-        # right-click, the Menu key and Shift+F10 — real actions a screen reader announces.
+        # **The menu's painted door, drawn as a door** (`UX-011`, `UX-012`, `T-224`). Still an
+        # affordance with no accessibility node — acceptable on the disclosure triangle's
+        # precedent, because the same menu is reachable by right-click, the Menu key and
+        # Shift+F10, which are real actions a screen reader announces.
+        #
+        # **A button, not punctuation.** The maintainer's report was that the glyph alone is *"not
+        # a very pronounced button, people might even miss that they are there"*, and
+        # discoverability is the zone's only job.
+        #
+        # **Drawn here rather than through `PE_PanelButtonTool`, and that was measured.** The
+        # style primitive paints the same colours in every state under a view item's palette — a
+        # probe found rest, hover, raised and sunken producing pixel-identical output — so a hover
+        # delegated to it would be a state nobody could see. These three looks come from the
+        # palette, so they follow both themes (`ARCHITECTURE.md` §8) and `T130-R1`'s contrast work.
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         palette = option.palette
+        hovered = self._hovered_zone == index.row()
+        pressed = self._pressed_zone == index.row()
+
+        face = zone.adjusted(1, MENU_ZONE_INSET, -1, -MENU_ZONE_INSET)
+        painter.save()
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            if pressed:
+                painter.setBrush(palette.dark())
+            elif hovered:
+                painter.setBrush(palette.midlight())
+            else:
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+            # **The border is what says "pressable", in every state** — so the affordance is not
+            # carried by colour alone (`NFR-005`, `T-202`'s rule). Hover and press change the
+            # *fill*; the outline is always there, which is what "bordered at rest" means.
+            painter.setPen(palette.mid().color() if not pressed else palette.shadow().color())
+            painter.drawRoundedRect(face, MENU_ZONE_RADIUS, MENU_ZONE_RADIUS)
+        finally:
+            painter.restore()
+
         painter.setPen(palette.highlightedText().color() if selected else palette.text().color())
         painter.drawText(zone, Qt.AlignmentFlag.AlignCenter, MENU_ZONE_GLYPH)
 
@@ -1643,10 +1694,12 @@ class RowDelegate(QStyledItemDelegate):
         return bool(super().eventFilter(watched, event))
 
     def forget_hover(self) -> None:
-        """Clear the hovered verb and repaint if that changed anything (`T-134`)."""
-        if self._hovered is None:
+        """Clear the hovered verb and zone, repainting if that changed anything (`T-134`)."""
+        if self._hovered is None and self._hovered_zone is None and self._pressed_zone is None:
             return
         self._hovered = None
+        self._hovered_zone = None
+        self._pressed_zone = None
         self._repaint()
 
     def _hover_at(
@@ -1655,18 +1708,23 @@ class RowDelegate(QStyledItemDelegate):
         index: QModelIndex | _PersistentIndex,
         where: QPoint,
     ) -> None:
-        """Record which verb the pointer is over, repainting only when the answer changes."""
+        """Record what the pointer is over, repainting only when the answer changes."""
         body, text_area = self._verb_area(option, index)
         found: tuple[int, Verb | None] | None = None
         for verb, rect in self._verb_rects(QFontMetrics(option.font), text_area, body, index):
             if rect.contains(where):
                 found = (index.row(), verb)
                 break
-        if found == self._hovered:
+        # The `⋮` zone, resolved through `_menu_zone_of` — the same one definition the paint and
+        # the hit test read, so a hover cannot light a rectangle the click does not answer
+        # (`T-203`'s seam, `T-224`).
+        zone_row = index.row() if self._menu_zone_of(option, index).contains(where) else None
+        if found == self._hovered and zone_row == self._hovered_zone:
             # **Moving within one button repaints nothing.** A repaint per mouse move over a list
             # of rows is the cost `T118-R10` spent a finding on in the other direction.
             return
         self._hovered = found
+        self._hovered_zone = zone_row
         self._repaint()
 
     def _repaint(self) -> None:
@@ -1737,6 +1795,13 @@ class RowDelegate(QStyledItemDelegate):
         # the control's rect — carved from it, in `_menu_zone_of` — so the order here is what
         # makes the two targets two, and the geometry regression asserts both sides of the line.
         if self._menu_zone_of(option, index).contains(where):
+            # **Sunken while the press is held, and cleared before the menu opens** (`T-224`).
+            # The menu is modal-ish and takes the pointer, so a zone left sunken would stay drawn
+            # pressed behind it until the next mouse move — a button stuck down is worse than one
+            # that never moved.
+            self._pressed_zone = index.row()
+            self._repaint()
+            self._pressed_zone = None
             self.menu_requested.emit(where)
             return True
         if not self._control_of(option, index).contains(where):

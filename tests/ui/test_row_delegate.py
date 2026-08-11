@@ -27,9 +27,17 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QRect, QRunnable, Qt
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QEvent,
+    QModelIndex,
+    QPointF,
+    QRect,
+    QRunnable,
+    Qt,
+)
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter, QPalette
+from PySide6.QtGui import QColor, QFontMetrics, QImage, QMouseEvent, QPainter, QPalette
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
@@ -46,6 +54,7 @@ from tracks_and_trails.ui.row_delegate import (
     HUE_ROLE,
     INDENT,
     JOB_ID_ROLE,
+    MENU_ZONE_INSET,
     MERGED_BLOCKS,
     MIN_BLOCK_WIDTH,
     MIN_CONTROL_WIDTH,
@@ -2150,4 +2159,151 @@ def test_every_role_has_its_own_number() -> None:
     assert not collisions, (
         f"roles sharing a number: {collisions}. Whichever branch of `data()` is tested first wins, "
         "so the loser silently returns the other's value"
+    )
+
+
+# --- T-224: the `⋮` zone is drawn as a button ------------------------------------------------
+
+
+def _zone_pixels(image: QImage, zone: QRect) -> list[int]:
+    """Every pixel inside `zone`, so two paints can be compared where the change should be."""
+    return [
+        image.pixel(x, y)
+        for y in range(zone.top(), min(zone.bottom() + 1, image.height()))
+        for x in range(zone.left(), min(zone.right() + 1, image.width()))
+    ]
+
+
+def _selectable_row_option(width: int = RENDER_WIDTH) -> QStyleOptionViewItem:
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, width, ROW_HEIGHT)
+    option.fontMetrics = QFontMetrics(option.font)
+    return option
+
+
+def _row_with_a_control() -> RowsModel:
+    """A row the delegate will actually draw a control on.
+
+    `_editable` gates the whole control paint on `PRESET_CHOICES_ROLE`, so a row without choices
+    draws no combo and therefore no `⋮` zone — and a zone test on such a row asserts against an
+    empty rectangle. The first draft of these tests did exactly that and one of them passed on ink
+    belonging to the row behind.
+    """
+    return RowsModel(
+        [
+            {
+                HEADLINE_ROLE: "A video",
+                DETAIL_ROLE: "",
+                STATE_ROLE: "",
+                HUE_ROLE: 0,
+                PRESET_CHOICES_ROLE: ("Best video available", "Audio only (MP3)"),
+                PRESET_ROLE: "Best video available",
+            }
+        ]
+    )
+
+
+def test_the_menu_zone_is_drawn_as_a_button_not_bare_punctuation(qapp: QApplication) -> None:
+    """**`UX-012`, `T-224`.** Discoverability is the zone's only job.
+
+    The maintainer's report on the built option *E* was that the glyph alone is *"not a very
+    pronounced button, people might even miss that they are there"* — and a door nobody finds is a
+    door that is not there, since the `⋮` has no accessibility node by design and exists purely to
+    be *seen*.
+
+    Asserted as ink inside the zone beyond the glyph itself: a bordered button paints its frame
+    across the zone's edges, where bare punctuation leaves them empty. The columns sampled are the
+    zone's own left and right edges, which the glyph never reaches.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    zone = delegate._menu_zone_of(option, index)
+
+    image = paint_rows(model, delegate, 0)
+
+    # The face's own outline, sampled against the pixel just above it — which is inside the zone
+    # and outside the button. A border makes those differ; bare punctuation leaves the whole
+    # zone the same colour, and the first draft of this test passed on the combo frame's ink
+    # until a mutation removing the border failed to fail it.
+    face_top = zone.top() + MENU_ZONE_INSET
+    above = zone.top() + 1
+    x = zone.center().x()
+    assert image.pixel(x, face_top) != image.pixel(x, above), (
+        "the zone paints one flat colour, so it is still punctuation rather than a button: "
+        f"outline {QColor(image.pixel(x, face_top)).name()} against "
+        f"{QColor(image.pixel(x, above)).name()} above it"
+    )
+
+
+def test_the_zone_repaints_under_the_pointer(qapp: QApplication) -> None:
+    """**The criterion that a style flag cannot satisfy** (`T-224`).
+
+    *"A delegate repaints on mouse move only if the view asks it to, so the regression drives a
+    real hover and asserts the painted difference rather than trusting a style flag."* So this
+    sends a real `MouseMove` through `editorEvent` and compares the zone's pixels before and
+    after — if the hover is recorded but never reaches the paint, the two images are identical and
+    this fails.
+
+    **`option.state`'s `State_MouseOver` cannot be used for this**, which is why the delegate
+    tracks the zone itself: Qt sets that flag for the whole *row*, so a zone painted from it would
+    light up whenever the pointer was anywhere on the row — including over the combo it is carved
+    out of.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    zone = delegate._menu_zone_of(option, index)
+
+    at_rest = _zone_pixels(paint_rows(model, delegate, 0), zone)
+
+    move = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(zone.center()),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    delegate.editorEvent(move, model, option, index)
+    hovered = _zone_pixels(paint_rows(model, delegate, 0), zone)
+
+    assert hovered != at_rest, (
+        "the zone paints identically with the pointer over it, so the hover state is recorded "
+        "and never drawn"
+    )
+
+
+def test_a_hover_elsewhere_on_the_row_leaves_the_zone_at_rest(qapp: QApplication) -> None:
+    """The other direction, and the one `State_MouseOver` would fail.
+
+    A pointer on the row but outside the zone must leave the zone unlit — otherwise every row the
+    pointer crosses lights its own button, which is worse than no feedback because it stops
+    meaning anything.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    zone = delegate._menu_zone_of(option, index)
+
+    at_rest = _zone_pixels(paint_rows(model, delegate, 0), zone)
+
+    elsewhere = QPointF(float(zone.left() - 40), float(zone.center().y()))
+    delegate.editorEvent(
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            elsewhere,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+        model,
+        option,
+        index,
+    )
+
+    assert _zone_pixels(paint_rows(model, delegate, 0), zone) == at_rest, (
+        "the zone lit up for a pointer that was never over it"
     )
