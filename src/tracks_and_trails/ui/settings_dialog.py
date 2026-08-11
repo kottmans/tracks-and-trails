@@ -375,6 +375,35 @@ class SettingsDialog(QDialog):
             return self._refuse_template(template)
         return unsupported_refusal(template)
 
+    def show_preset_names(self, names: Sequence[str], default: str) -> None:
+        """Re-offer the catalogue, keeping the stored default selected (`T195-R5`).
+
+        **An open screen has to follow a live ffmpeg change.** Accepting an ffmpeg location makes
+        presets performable that were not a moment ago, and a combo built when the screen opened
+        went on offering the smaller list — so the user saw one preset while the add dialog offered
+        four, with restart the only way out and nothing saying so.
+
+        Rebuilt wholesale rather than diffed: the list is five entries, and a patch would be a
+        second opinion about what the catalogue is.
+        """
+        self._preset_names = tuple(names)
+        blocked = self._preset_choice.blockSignals(True)
+        try:
+            self._preset_choice.clear()
+            for name in self._preset_names:
+                self._preset_choice.addItem(name, name)
+            found = self._preset_choice.findData(default)
+            if found >= 0:
+                self._preset_choice.setCurrentIndex(found)
+        finally:
+            self._preset_choice.blockSignals(blocked)
+        self._preset_choice.setEnabled(
+            bool(self._preset_names) and self._on_default_preset_chosen is not None
+        )
+        self._preset_note.setText(
+            "" if self._preset_choice.isEnabled() else "No presets are available to choose between."
+        )
+
     def show_default_preset(self, name: str) -> None:
         """Reflect the stored default, so the screen never disagrees with the file."""
         found = self._preset_choice.findData(name)

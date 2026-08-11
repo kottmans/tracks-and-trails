@@ -35,11 +35,19 @@ import time
 from collections.abc import Callable, Iterator
 from io import StringIO
 from pathlib import Path
+from shutil import which
 from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QMetaMethod, QObject
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QRadioButton
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QRadioButton,
+)
 
 from tracks_and_trails import app as application
 from tracks_and_trails.core import logging as app_logging
@@ -65,6 +73,12 @@ from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN, SIZE_COLUMN
 from tracks_and_trails.ui.row_delegate import PRESET_ROLE
 from tracks_and_trails.ui.row_verbs import Verb
+from tracks_and_trails.ui.settings_dialog import (
+    DEFAULT_PRESET_NAME,
+    OUTPUT_TEMPLATE_NAME,
+    OUTPUT_TEMPLATE_NOTE_NAME,
+    SettingsDialog,
+)
 from tracks_and_trails.ui.staging import RowState
 
 # --- children the composed application spawns -------------------------------------------------
@@ -2434,40 +2448,83 @@ def test_a_short_cookie_path_chosen_at_runtime_is_redacted_too(
         app_logging.forget_the_secrets()
 
 
+def _settings_screen(composition: application.Composition) -> SettingsDialog:
+    """The Settings screen, opened the way a user opens it (`T195-R4`).
+
+    The previous round drove `composition.window._on_output_template_chosen` directly, which is
+    composition's end of the wire. Removing the screen's half — the `on_*_chosen` arguments, or
+    `refuse_template` — left those tests green, because nothing they touched went through
+    `open_settings`. So the screen is opened, and the controls on it are what the tests operate.
+    """
+    screen = composition.window.open_settings()
+    assert screen is not None, "composition wired no settings writers, so there is no screen"
+    return screen
+
+
 def test_choosing_a_template_on_the_screen_reaches_the_file_and_the_next_paste(
     composed: Callable[..., application.Composition],
     tmp_path: Path,
 ) -> None:
-    """**`REQ-023`, `T-195`, corrected at `T195-R4`.**
+    """**`REQ-023`, `T-195`, corrected twice — at `T195-R4` and again after it.**
 
-    The first version of this test composed an application and then **bypassed both surfaces**,
-    calling `set_output_template` and `save` itself. It stayed green with the production wiring
-    entirely absent — which it was: neither new callback advanced `held.settings`, so the setting
-    was not live and a second edit erased the first (`T195-R1`).
+    The first version bypassed both surfaces, calling `set_output_template` and `save` itself. The
+    second called composition's callback directly, which still skipped `open_settings`. This types
+    into the screen's own field.
 
-    So this drives the real route: the screen's callback, the file it writes, **and the value the
-    next add dialog is actually built from**. That last one is the half a file assertion cannot
-    reach, and the half that was broken.
+    Three things have to hold together and only the last was ever really in doubt: the file gets it,
+    **the next add dialog is built with it**, and the route from the control to composition exists
+    at all.
     """
     settings_file = tmp_path / "settings.toml"
     composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
     chosen = "%(uploader)s/%(title)s.%(ext)s"
 
-    write = composition.window._on_output_template_chosen
-    assert write is not None, "composition wired no template writer"
-    write(chosen)
+    screen = _settings_screen(composition)
+    try:
+        field = screen.findChild(QLineEdit, OUTPUT_TEMPLATE_NAME)
+        assert field is not None, "the screen has no output-template field"
+        field.setText(chosen)
+    finally:
+        screen.close()
 
     assert core_settings.load(settings_file).settings.output_template == chosen, (
-        "the chosen template never reached the file"
+        "typing into the screen's field never reached the file"
     )
     dialog = composition.window.open_add_dialog()
     try:
         assert dialog._default_output_template == chosen, (
-            "the next add dialog was built with the old template, so the setting is not live "
-            "until a restart"
+            "the next add dialog was built with the old template, so the setting is not live"
         )
     finally:
         dialog.close()
+
+
+def test_a_refused_template_typed_into_the_screen_is_not_stored(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """`P-23` at the control rather than at the callback (`T195-R2`, `T195-R4`).
+
+    A screen that shows the reason and stores the value anyway satisfies the visible half and
+    leaves every future download named by a template that does not render.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    screen = _settings_screen(composition)
+    try:
+        field = screen.findChild(QLineEdit, OUTPUT_TEMPLATE_NAME)
+        note = screen.findChild(QLabel, OUTPUT_TEMPLATE_NOTE_NAME)
+        assert field is not None and note is not None
+        field.setText("../%(title)s.%(ext)s")
+
+        assert note.text(), "no reason was shown for a template that escapes the folder"
+    finally:
+        screen.close()
+
+    assert core_settings.load(settings_file).settings.output_template == "", (
+        "a refused template was written to the file anyway"
+    )
 
 
 def test_two_settings_edits_in_a_row_do_not_erase_one_another(
@@ -2477,21 +2534,21 @@ def test_two_settings_edits_in_a_row_do_not_erase_one_another(
     """**`T195-R1`.** Each callback built new settings from `held.settings` and never advanced it.
 
     So the second edit was derived from the settings as they were at startup and wrote them back
-    over the first. A reviewer's probe changed the default preset and then the template, and the
-    file came back with `default_preset` empty.
-
-    Two different keys, written one after the other through the composed callbacks, both expected
-    to survive. This is what a single-key test cannot see.
+    over the first. Driven through the screen's two controls, in one sitting, because that is how a
+    user would meet it.
     """
     settings_file = tmp_path / "settings.toml"
     composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
 
-    preset = composition.window._on_default_preset_chosen
-    template = composition.window._on_output_template_chosen
-    assert preset is not None and template is not None
-
-    preset(presets.AUDIO_MP3.name)
-    template("%(uploader)s/%(title)s.%(ext)s")
+    screen = _settings_screen(composition)
+    try:
+        combo = screen.findChild(QComboBox, DEFAULT_PRESET_NAME)
+        field = screen.findChild(QLineEdit, OUTPUT_TEMPLATE_NAME)
+        assert combo is not None and field is not None
+        combo.setCurrentIndex(combo.findData(presets.AUDIO_MP3.name))
+        field.setText("%(uploader)s/%(title)s.%(ext)s")
+    finally:
+        screen.close()
 
     stored = core_settings.load(settings_file).settings
     assert stored.default_preset == presets.AUDIO_MP3.name, (
@@ -2500,25 +2557,34 @@ def test_two_settings_edits_in_a_row_do_not_erase_one_another(
     assert stored.output_template == "%(uploader)s/%(title)s.%(ext)s"
 
 
-def test_the_default_preset_chosen_on_the_screen_is_what_the_next_paste_inherits(
+def test_the_default_chosen_on_the_screen_is_what_a_staged_row_inherits(
     composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
     tmp_path: Path,
 ) -> None:
     """The criterion in the entry's own words: *a new paste actually inherits it*.
 
-    Read from the add dialog rather than from the file, because the file was never the thing in
-    doubt — `T195-R1` left the file correct and the session stale.
+    Asserted against a **staged row**, not against the dialog's stored default — the entry asks for
+    the row, and a row is what carries the choice into a request.
     """
     settings_file = tmp_path / "settings.toml"
     composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
 
-    write = composition.window._on_default_preset_chosen
-    assert write is not None
-    write(presets.AUDIO_MP3.name)
+    screen = _settings_screen(composition)
+    try:
+        combo = screen.findChild(QComboBox, DEFAULT_PRESET_NAME)
+        assert combo is not None
+        combo.setCurrentIndex(combo.findData(presets.AUDIO_MP3.name))
+    finally:
+        screen.close()
 
     dialog = composition.window.open_add_dialog()
     try:
-        assert dialog._default_preset == presets.AUDIO_MP3.name
+        type_urls(dialog, "https://composed.invalid/inherits")
+        assert spin(lambda: bool(dialog.rows), timeout=60), "the pasted URL never staged"
+        assert dialog.preset_for(dialog.rows[0]).name == presets.AUDIO_MP3.name, (
+            "the staged row did not inherit the default chosen on the settings screen"
+        )
     finally:
         dialog.close()
 
@@ -2548,6 +2614,7 @@ def test_a_template_the_editor_would_refuse_is_refused_by_the_screen_too(
 
 def test_an_unusable_stored_template_is_reported_and_the_application_still_starts(
     composed: Callable[..., application.Composition],
+    caplog: pytest.LogCaptureFixture,
     tmp_path: Path,
 ) -> None:
     """**`ARC-008` and `T195-R2`, from disk rather than from the screen.**
@@ -2560,7 +2627,20 @@ def test_an_unusable_stored_template_is_reported_and_the_application_still_start
     settings_file = tmp_path / "settings.toml"
     settings_file.write_text('output_template = "%(title"\n', encoding="utf-8")
 
-    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    # **The report, which this test claimed and did not check** (`T195-R4`). `ARC-008`'s rule is
+    # that a discarded setting is *reported*, not silently corrected — asserting only the fallback
+    # would pass an implementation that reverted in silence, which is the whole defect.
+    #
+    # Read from the log rather than from the modal: composition logs the same reason it shows,
+    # deliberately — *"the status line is gone in thirty seconds and the reason is what a bug
+    # report needs"* — and a test that drove the message box would need a nested event loop.
+    with caplog.at_level(logging.WARNING, logger="tracksandtrails.app"):
+        composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    said = "\n".join(record.getMessage() for record in caplog.records)
+    assert "output_template" in said, (
+        f"the refused stored template was discarded without a word:\n{said}"
+    )
 
     dialog = composition.window.open_add_dialog()
     try:
@@ -2609,6 +2689,68 @@ def test_the_settings_screen_offers_only_presets_this_installation_can_perform(
         )
     finally:
         dialog.close()
+
+
+def test_installing_ffmpeg_widens_the_settings_catalogue_without_a_restart(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T195-R5`.** The catalogue closed over the *startup* ffmpeg report.
+
+    `choose_ffmpeg_location` accepts a new location and updates the report in force, so after
+    pointing Settings at a real ffmpeg the add dialog offered four presets — and Settings went on
+    offering one, **including after being closed and reopened**, because the lambda behind it read
+    the value captured when the application composed. Restart was the only way out, and nothing on
+    screen said so.
+
+    Two halves, and the second is the one a naive fix misses: the catalogue has to be right for a
+    screen opened *afterwards*, and for one that is **already open** when the location is accepted.
+    """
+    real_ffmpeg = which("ffmpeg")
+    if real_ffmpeg is None:
+        pytest.skip("this machine has no ffmpeg to point at, so there is nothing to widen to")
+
+    composition = composed(
+        settings_file=tmp_path / "settings.toml",
+        ffmpeg_override=tmp_path / "no-ffmpeg-here",
+        entry_point=child_probing_then_waiting,
+    )
+    assert not composition.ffmpeg.available, "this environment started with ffmpeg"
+
+    open_screen = _settings_screen(composition)
+    try:
+        narrow = open_screen.findChild(QComboBox, DEFAULT_PRESET_NAME)
+        assert narrow is not None
+        before = narrow.count()
+
+        accept = composition.window._on_ffmpeg_location_chosen
+        assert accept is not None
+        accept(Path(real_ffmpeg))
+
+        assert narrow.count() > before, (
+            "the open Settings screen still offers the catalogue it was built with, so a user who "
+            "just installed ffmpeg cannot select the presets it unlocked"
+        )
+    finally:
+        open_screen.close()
+
+    reopened = _settings_screen(composition)
+    try:
+        combo = reopened.findChild(QComboBox, DEFAULT_PRESET_NAME)
+        assert combo is not None
+        offered = {combo.itemData(i) for i in range(combo.count())}
+        assert presets.AUDIO_MP3.name in offered, (
+            "reopening Settings still shows the startup catalogue"
+        )
+        dialog = composition.window.open_add_dialog()
+        try:
+            assert offered == {preset.name for preset in dialog.presets}, (
+                "Settings and the add dialog disagree about the catalogue after a live change"
+            )
+        finally:
+            dialog.close()
+    finally:
+        reopened.close()
 
 
 def test_the_cookies_file_reaches_the_workers_and_never_the_job(

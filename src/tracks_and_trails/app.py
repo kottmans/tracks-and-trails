@@ -922,7 +922,12 @@ def compose(
             for preset in app_settings.all_presets(held.settings)
             # `needs_ffmpeg` and not `manager.requires_ffmpeg`: the add dialog filters with the
             # former, and 'one answer' has to mean the same call, not two that a test says agree.
-            if ffmpeg.available or not needs_ffmpeg(preset)
+            # **`in_force.report`, not the `ffmpeg` this function closed over** (`T195-R5`). The
+            # startup report is a snapshot: `choose_ffmpeg_location` accepts a new one and updates
+            # `in_force.report`, so a lambda reading the captured value went on offering one preset
+            # after ffmpeg became available while the add dialog offered four. Restart was the only
+            # way to make the new defaults selectable, and nothing on screen said so.
+            if in_force.report.available or not needs_ffmpeg(preset)
         ),
         output_template=lambda: held.settings.output_template,
         shipped_template=DEFAULT_OUTPUT_TEMPLATE,

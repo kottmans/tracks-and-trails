@@ -14890,3 +14890,45 @@ default-preset surface can choose a preset the add dialog silently removes.
 **Do not push `e399545`.** Correct all four findings in the current task and return the focused
 boundary. The Reviewer changed only `ai/REVIEWS.md` and `ai/TASKS.md`; no reviewed source, test,
 status snapshot, commit, or remote state was changed.
+
+## 2026-08-11 — T-195 focused correction re-review
+
+**Review boundary:** `e399545..a152017`
+
+**Verdict:** **Blocked.** The two High production defects are resolved, and validating a stored
+template in composition is the accepted layering answer. One original Medium evidence finding
+remains, and the ffmpeg catalogue correction introduces a live-state disagreement. The ordinary
+initial-plus-focused review budget is exhausted; another correction pass requires the maintainer's
+explicit authorization under `AGENTS.md` §10.
+
+### Findings
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T195-R1** | **High** | **Resolved** | Both accepted callbacks now advance `held.settings` before persistence. An independent composed real-screen probe changed the default preset and template in sequence, found both in the file, and found both live values in the next add dialog. |
+| **T195-R2** | **High** | **Resolved** | The composed Settings screen and startup route now reach `DownloadManager.preview_output_path`, so syntax, supported fields, rendering, and containment share the row editor's authority. Independent probes refused an escaping live edit and showed one ARC-008 dialog for malformed stored input while the application fell back and started. `load()` may retain its field-name-only check: `core/` cannot reach the yt-dlp-backed authority, and composition performs the full check before interactive use. |
+| **T195-R3** | **Medium** | **Resolved for the original case** | At startup with ffmpeg absent, the screen and add dialog now filter with the same `needs_ffmpeg` predicate and the submitted equality check passes. Live capability changes are the separate correction regression below. |
+| **T195-R4** | **Medium** | **Yes — the required composed-screen evidence still is not present** | The retarget regression now starts from a distinguishing custom template and is resolved. The two settings integrations, however, call `composition.window._on_default_preset_chosen` and `_on_output_template_chosen` directly; neither opens the Settings screen. Removing the callback or `refuse_template` wiring in `MainWindow.open_settings` therefore leaves the committed composition tests green. The stored-invalid test asserts fallback only, not the ARC-008 report named in its title and docstring. The task criteria also still lack the requested staged-row default and real written-path proof, and the surviving “one writer” test manually applies the core setter instead of crossing preset-manager ↔ Settings surfaces. |
+| **T195-R5** | **Medium** | **Yes — Settings and Add diverge after ffmpeg becomes available live** | `preset_names` closes over the initial `ffmpeg.available`, while `choose_ffmpeg_location` updates `in_force.report` and `MainWindow._ffmpeg_available`. A real composed probe started without ffmpeg, accepted an executable location, reopened Settings, and compared its combo with the next add dialog: Settings still offered only `Best video up to 1080p (MP4)`, while Add also offered MP3, original audio, and embedded subtitles. Restart is the only current way to make the new defaults selectable. Make the catalogue follow the accepted live resolution and refresh the already-open Settings screen. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree before reviewer records | **clean; `main` ahead of `origin/main` by two commits** |
+| `git diff --check e399545..a152017` | **pass** |
+| `ruff check .` / `ruff format --check .` | **pass; 166 files formatted** |
+| `mypy src` | **pass; 52 files** |
+| bare `mypy` / bare `mypy --platform win32` | **pass; 128 files each** |
+| Focused core selection | **429 passed, 1 skipped in 1.56 s** |
+| Settings/MainWindow UI selection | **79 passed in 0.88 s** |
+| Submitted T-195 composition selection | **7 passed, 48 deselected in 0.99 s** |
+| Reviewer real-screen live-settings and stored-report probes | **2 passed in 1.11 s** |
+| Reviewer live-ffmpeg catalogue probe | **failed deterministically:** Settings one preset; Add four presets |
+| Full suites | **not rerun by the Reviewer; submitted 2709 passed / 18 skipped and 399 integration passed are not disputed** |
+
+### Push disposition
+
+**Do not push `a152017`.** The correction stack remains held. The Reviewer changed only the
+append-only review record and current task disposition; no reviewed source, test, status snapshot,
+commit, or remote state was changed.

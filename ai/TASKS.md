@@ -120,23 +120,52 @@ this one returned four verdicts before approving.*
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
-**Status:** **In Review — changes requested 2026-08-11.** The model/resolver decision is accepted;
-four blocking findings remain at `e399545`.
+**Status:** **In Review — third correction pass 2026-08-11, on the maintainer's §10
+authorization.** The two High findings were resolved at `a152017`; `T195-R4` and `T195-R5` are
+corrected here.
 
-- **`T195-R1` — High, Open.** The two new composition callbacks save derived settings without
-  advancing `held.settings`. A single edit is not live until restart; a second edit is derived from
-  the stale object and can erase the first from disk. Drive both real screen routes through the
-  current session and next add dialog rather than calling the helper and writer in the test.
-- **`T195-R2` — High, Open.** `unsupported_refusal` is only the supported-field subcheck, not the
-  template editor's full validator. Malformed syntax and output-directory escapes are accepted and
-  persisted live, and load returns them without the ARC-008 problem/fallback this task promises.
-- **`T195-R3` — Medium, Open.** Settings offers every preset as a default even when ffmpeg is
-  absent, while the add dialog filters the unusable ones. Choosing MP3 is accepted and stored, then
-  the next paste silently inherits Best video up to 1080p instead.
+**`T195-R5` — the catalogue was a startup snapshot.** `preset_names` closed over the `ffmpeg`
+report composition was built with, while `choose_ffmpeg_location` updates `in_force.report`. So a
+user who pointed Settings at a real ffmpeg saw the add dialog offer four presets and Settings offer
+one — **including after closing and reopening Settings**, because the lambda behind it still read
+the captured value. Restart was the only way out and nothing said so. The catalogue reads
+`in_force.report` now, and an **already-open** screen is re-offered the list when a location is
+accepted, which is the half a reopen-only fix would miss.
+
+**`T195-R4` — the evidence still did not cross the screen.** The previous round drove
+`composition.window._on_*_chosen`, which is composition's end of the wire: removing the screen's
+half — the `on_*_chosen` arguments, or `refuse_template` — left those tests green. They open the
+Settings screen through `open_settings` now and operate its **combo and line edit**. The
+stored-template test asserts the `ARC-008` report its own title promised and did not check, read
+from the log composition writes beside the modal. And *a new paste actually inherits it* is asserted
+against a **staged row**, which is what the criterion asked for.
+
+**Five mutations, all failing**: the catalogue back on the startup snapshot; the open screen no
+longer refreshed; the screen built without the authoritative validator; the screen built with no
+writers at all; and the stored template cleared with no report. **`R4b` is the one that matters** —
+removing the screen's wiring entirely, which the previous round's tests could not see.
+
+- **`T195-R1` — High, Resolved at `a152017`.** Both callbacks advance `held.settings`; a composed
+  real-screen probe changed the two keys in sequence, preserved both on disk, and the next add
+  dialog read both live values.
+- **`T195-R2` — High, Resolved at `a152017`.** The composed screen and stored-value startup route
+  both ask `DownloadManager.preview_output_path`; malformed and escaping templates are refused,
+  the stored value falls back before use, and one ARC-008 dialog reports it. Keeping the
+  field-name-only check in `load()` is accepted: the authoritative parser cannot cross the layer,
+  and composition validates before the value becomes interactive.
+- **`T195-R3` — Medium, Resolved for the submitted startup case at `a152017`.** With ffmpeg absent
+  at startup, Settings and Add now filter through `needs_ffmpeg` and offer the same catalogue.
 - **`T195-R4` — Medium, Open.** The three central regressions do not traverse or distinguish the
-  changed production routes: the settings tests reconstruct through helpers after composing, and
-  the retarget test starts with the same shipped template the broken fallback would produce. Use a
-  custom old template and the real retarget boundary, and exercise the composed settings screens.
+  changed production routes. The retarget half now distinguishes a custom template, but the two
+  settings tests call `window._on_*` directly rather than opening the composed Settings screen;
+  removing the screen callback/validator wiring still leaves them green. The stored-template test
+  also does not assert the ARC-008 report its name and docstring claim. Exercise the real controls,
+  the cross-surface default, a staged row/written template effect, and the report boundary.
+- **`T195-R5` — Medium, Open.** The correction's Settings catalogue closes over the startup
+  `ffmpeg.available`, while the add dialog follows the window's live value. Starting without
+  ffmpeg and accepting a usable location makes Add offer MP3/original/embedded-subtitle presets,
+  but Settings remains on the one no-ffmpeg preset even after it is reopened. Keep the catalogue
+  live when an accepted ffmpeg choice changes capability, including the already-open screen.
 
 **The entry's premise did not hold, and the maintainer ruled on the fork.** This entry says the
 task supplies *"the application default that a preset with no opinion falls back to"* — and no
@@ -234,6 +263,14 @@ from** — that last is the half a file assertion cannot reach and the half that
 **Five mutations, all failing**, each restoring the reviewed behaviour: neither callback advancing
 `held.settings`; the screen back on the field-name subcheck; the stored template no longer
 re-checked; the whole catalogue offered again; and retarget no longer carrying the row's template.
+
+**Focused re-review 2026-08-11.** `T195-R1` and `T195-R2` are independently resolved, and the
+composition-time full validator is the accepted layering answer to the open `load()` question.
+`T195-R3` is resolved for startup state, but its correction captured that state: after ffmpeg
+becomes available live, Settings and Add disagree (`T195-R5`). `T195-R4` remains open because the
+committed settings regressions still bypass the composed screen and do not prove the staged/written
+effects or ARC-008 report they claim. The ordinary initial-plus-focused review budget is exhausted;
+the task is blocked pending the maintainer's choice under `AGENTS.md` §10.
 
 **Owner:** Implementer
 **Priority:** Medium — the default preset is the one a user meets on every paste, and today it

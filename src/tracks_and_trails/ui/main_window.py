@@ -1518,6 +1518,14 @@ class MainWindow(QMainWindow):
         self._ffmpeg_summary = summary() if callable(summary) else str(report)
         if self._settings_dialog is not None:
             self._settings_dialog.show_ffmpeg_location(location, self._ffmpeg_summary)
+            # **The catalogue too** (`T195-R5`). A new ffmpeg makes presets performable that were
+            # not, and the combo was built when the screen opened. Asked again rather than
+            # recomputed here: composition owns which presets this installation can do.
+            if self._preset_names is not None:
+                self._settings_dialog.show_preset_names(
+                    self._preset_names(),
+                    self._default_preset() if self._default_preset is not None else "",
+                )
 
     def show_concurrency(self, limit: int) -> None:
         """Follow a limit changed elsewhere, on both controls that show it (`T-146`).
