@@ -380,7 +380,21 @@ jobs:
   # `ai/DECISIONS.md`.
   starbase-coverage:
     name: STARBASE coverage
-    runs-on: ubuntu-latest
+    # **On the maintainer's Linux machine, not a hosted image** (maintainer ruling, 2026-08-11:
+    # *STARBASE and local machines exclusively*). This was the last job in the file on hosted
+    # compute.
+    #
+    # **What the ruling costs, stated where the trade is made.** This job exists to announce that
+    # self-hosted work did *not* happen, and a reporter that runs on a self-hosted machine is
+    # silent in the case it was written for. That cost is smaller than it looks, and the reason is
+    # that `STARBASE` is Windows and `LINUX_RUNNER` is a **different** machine: the case `OPS-009`
+    # and `OPS-010` were actually written for — `STARBASE` unreachable while the work merges — is
+    # still reported, because Fedora is up and running this job.
+    #
+    # **The residual is both machines down at once.** Then this job queues instead of reporting.
+    # That failure is loud in a different way — the run sits pending with nothing green — where the
+    # one `OPS-009` was written about was silent and green. Not equivalent, and not hidden.
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
     if: always()
     timeout-minutes: 5
     steps:
@@ -404,10 +418,10 @@ jobs:
             fi
           fi
 
-          # **This job stays hosted deliberately** (`OPS-012`), and it is now the only one that is.
-          # It reports when self-hosted work did not happen; running it on a self-hosted machine
-          # would mean the report disappears in exactly the case it exists to announce. It costs
-          # seconds, and one billed minute is the price of the guarantee.
+          # **This job used to stay hosted deliberately** (`OPS-012`) — it was the only one that
+          # did. The maintainer ruled on 2026-08-11 that STARBASE and local machines are used
+          # exclusively, so it runs on `LINUX_RUNNER` now. See the comment on `runs-on` for what
+          # that gives up and why the important half of the guarantee survives.
           if [ -n "${{ vars.LINUX_RUNNER }}" ]; then
             echo "::notice::LINUX_RUNNER is set, so Linux ran on the maintainer's machines, not on"
             echo "::notice::a hosted image. Ubuntu is not covered by this run and the frozen Linux"
