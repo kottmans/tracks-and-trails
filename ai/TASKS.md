@@ -2701,6 +2701,34 @@ disposition on the report itself stays with the maintainer**, exactly as the cri
 *(Was: In Review — one route reproduced and fixed; whether it was the report remained the
 maintainer's call. Before that: Ready — the original passing multi-row guard was not a
 reproduction.)*
+**`T197-R7` corrected 2026-08-11, on the maintainer's §10 authorisation** (the budget was spent and
+only a blocking Medium remained, so this pass was theirs to grant).
+
+**The separator exemption is gone.** It waived the byte floor for any value containing `/` or `\`,
+on the reasoning that such a string is not a bare word and cannot collide with prose. The
+counter-example is one character long: `[cookies] file = "/"` is a syntactically valid setting, it
+is refused as a directory — **and it is registered before it is refused**, after which every slash
+in every later line is replaced and paths, URLs and prose like `audio/video` stop being readable.
+
+**It was also load-bearing for nothing**, which is what makes this a deletion rather than a trade.
+It was added to cover a short *relative* cookie path; `core/settings.py` registers the **absolute**
+spelling, which clears the floor by itself, so `密` arrives as `/…/密` and is protected either way.
+The `T197-R1` evidence passes unchanged with the exemption removed — confirmed by mutation: taking
+the floor out instead still fails `test_a_short_cookie_path_is_protected_and_short_prose_is_not_eaten`,
+so that protection is real and exercised rather than incidental.
+
+**A value that is nothing but separators is refused before the floor is consulted.** Belt and
+braces for `/` and `C:\`, which are already under four bytes — but a four-separator value would
+clear a length test and still be a filesystem root, and what makes a root unregisterable is that it
+names nothing, not that it is short.
+
+**The test that argued for the exemption is gone with it.** `T197-R7` was right that a direct `a/b`
+case proved a generic mechanism the task does not need rather than a cookie-path outcome. Three
+tests replace it: a bare separator must not eat the log, a separators-only value must register
+nothing, and a short relative path must still be covered by its absolute form — asserted rather
+than assumed, since that is now the only thing covering it. Three mutations fail, including the
+reviewed behaviour restored.
+
 **Owner:** Implementer
 **Priority:** Medium — the reported end state traps the user in the panel, but the exact trigger
 remains unconfirmed

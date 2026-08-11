@@ -158,6 +158,13 @@ _COOKIE_FILENAME: Final = re.compile(
 _secrets: set[str] = set()
 
 
+#: How many UTF-8 bytes a registered literal must have before it is replaced on sight (`T197-R1`).
+#:
+#: Bytes rather than characters, so a two-character CJK path clears it and `abc` does not. Four is
+#: where an ASCII token stops colliding with ordinary English prose often enough to matter.
+SECRET_FLOOR_BYTES: Final = 4
+
+
 def remember_a_secret(value: str | None) -> None:
     """Redact `value` wherever it later appears in a log line.
 
@@ -175,24 +182,35 @@ def remember_a_secret(value: str | None) -> None:
     nothing in an English-language log, while `abc` is three and stays ignored, so every ASCII
     behaviour is unchanged.
 
-    **A value carrying a path separator has no floor at all**, and that is the whole of what the
-    floor was ever protecting against. The floor exists because a short *bare word* — `ok`, `密` —
-    collides with prose. A string containing `/` or `\\` is not a bare word: `税/密` cannot appear
-    in an English sentence by accident, so replacing it costs nothing and refusing to costs a
-    credential. This is `T197-R1`'s *"path-specific handling that protects short cookie paths
-    without globally replacing short prose"*, and it is why `密` on its own is still ignored while
-    every path form of it is not.
+    **There is no separator exemption, and there was one for one round** (`T197-R7`). A previous
+    version waived the floor for any value containing `/` or `\\`, reasoning that such a string is
+    not a bare word and so cannot collide with prose. The counter-example is one character long:
+    the syntactically valid setting `[cookies] file = "/"` is refused as a directory — **after**
+    this function has already registered `/`, at which point every slash in every later line is
+    replaced and paths, URLs and ordinary prose like `audio/video` become unreadable.
 
-    **The residual, stated rather than hidden**: a bare token under four bytes and carrying no
-    separator is not registered. Callers holding a path avoid it by registering the **absolute**
-    form — `core/settings.py` does, so a relative `密` is registered as `/…/密` and is covered by
-    the separator rule above. What remains is a caller that registers a short bare literal that is
-    not a path, which is the case the floor exists for.
+    **The exemption was also unnecessary**, which is the part worth keeping. It was added to cover
+    a short relative cookie path, and `core/settings.py` registers the **absolute** spelling — so
+    `密` arrives here as `/…/密`, clears the floor on its own, and the cookie-path evidence passes
+    with the exemption gone. A rule that is load-bearing for nothing and can eat a whole log is not
+    a trade.
+
+    **A value that is nothing but separators names no secret** and is refused before the floor is
+    consulted. `/` and `C:\\` are already under four bytes, so this is belt and braces — but the
+    floor is a length test and the reason to refuse a filesystem root is not its length.
+
+    **The residual, stated rather than hidden**: a bare token under four bytes is not registered.
+    A caller holding a path avoids it by registering the absolute form, which every caller in this
+    tree does. What remains is a caller registering a short literal that is not a path, which is
+    the case the floor exists for.
     """
     if not value:
         return
-    if "/" in value or "\\" in value or len(value.encode("utf-8")) >= 4:
-        _secrets.add(value)
+    if not value.strip("/\\"):
+        return
+    if len(value.encode("utf-8")) < SECRET_FLOOR_BYTES:
+        return
+    _secrets.add(value)
 
 
 def forget_the_secrets() -> None:

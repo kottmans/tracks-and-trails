@@ -187,22 +187,61 @@ def test_a_short_registered_value_is_ignored(tmp_path: Path) -> None:
     assert "the token was ok" in written
 
 
-def test_a_short_value_carrying_a_separator_is_registered_anyway(tmp_path: Path) -> None:
-    """**The floor protects prose from short *bare words*, and a path is not one** (`T197-R1`).
+def test_a_bare_separator_does_not_redact_every_slash_in_the_log(tmp_path: Path) -> None:
+    """**`T197-R7`.** The separator exemption could take the whole log with it.
 
-    `a/b` is three bytes — under the floor — and cannot appear in an English sentence by accident,
-    so refusing to register it costs a credential and registering it costs nothing. This is the
-    rule that lets a caller hand over a short *relative* path directly; the cookie path also
-    registers its absolute form, which is long, so the two protections overlap deliberately.
+    A previous round waived the byte floor for any value containing `/` or `\\`, reasoning that
+    such a string is not a bare word and cannot collide with prose. The counter-example is one
+    character long: `[cookies] file = "/"` is a syntactically valid setting. It is refused as a
+    directory — **after** `remember_a_secret` has already been handed `/`, at which point every
+    slash in every later line is replaced and paths, URLs and ordinary prose stop being readable.
 
-    Asserted here rather than through the settings layer because that layer's absolute-form
-    registration would cover the same cases and this rule would never be exercised.
+    Two things are asserted, because either alone is satisfiable by the wrong fix: the slash must
+    still be *there*, and the line must still be *whole*.
     """
-    app_logging.remember_a_secret("a/b")
+    app_logging.remember_a_secret("/")
 
-    written = emitted(tmp_path, lambda log: log.info("reading a/b for this download"))
+    written = emitted(
+        tmp_path, lambda log: log.info("read /home/alice/file and audio/video from the source")
+    )
 
-    assert "a/b" not in written, f"a three-byte path was dropped by the bare-word floor:\n{written}"
+    assert "audio/video" in written, f"a stored bare separator ate the log:\n{written}"
+    assert "/home/alice/file" in written
+    assert app_logging.REDACTED not in written, (
+        f"something was redacted that is not a secret:\n{written}"
+    )
+
+
+@pytest.mark.parametrize("root", ["/", "//", "\\", "C:\\", "///"])
+def test_a_value_that_is_only_separators_names_no_secret(root: str) -> None:
+    """A filesystem root is not a credential, and refusing it is not a length judgement.
+
+    The byte floor happens to reject most of these, which is why the guard is separate: `///` is
+    three bytes and `C:\\` is three, but a four-separator value would clear the floor and still be
+    a root. What makes them unregisterable is that they name nothing, not that they are short.
+    """
+    app_logging.forget_the_secrets()
+    app_logging.remember_a_secret(root)
+
+    assert app_logging.redact(f"reading {root} now") == f"reading {root} now"
+
+
+def test_a_short_relative_path_is_still_covered_by_its_absolute_form(tmp_path: Path) -> None:
+    """What the separator exemption was added for, and what actually covers it (`T197-R7`).
+
+    The exemption existed so a short *relative* cookie path could be registered directly. It was
+    never load-bearing: `core/settings.py` registers the **absolute** spelling, which clears the
+    floor on its own — so the protection the exemption was standing in for was already there, and
+    removing it costs nothing. That is asserted here at the same layer rather than taken on trust.
+    """
+    app_logging.forget_the_secrets()
+    short = "密"
+    absolute = str((tmp_path / short).absolute())
+    app_logging.remember_a_secret(absolute)
+
+    written = emitted(tmp_path, lambda log: log.info("reading %s for this download", absolute))
+
+    assert absolute not in written, f"the absolute form of a short path leaked:\n{written}"
     assert "for this download" in written, "the line was scrubbed rather than the path"
 
 
