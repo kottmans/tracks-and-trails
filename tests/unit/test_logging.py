@@ -187,6 +187,25 @@ def test_a_short_registered_value_is_ignored(tmp_path: Path) -> None:
     assert "the token was ok" in written
 
 
+def test_a_short_value_carrying_a_separator_is_registered_anyway(tmp_path: Path) -> None:
+    """**The floor protects prose from short *bare words*, and a path is not one** (`T197-R1`).
+
+    `a/b` is three bytes — under the floor — and cannot appear in an English sentence by accident,
+    so refusing to register it costs a credential and registering it costs nothing. This is the
+    rule that lets a caller hand over a short *relative* path directly; the cookie path also
+    registers its absolute form, which is long, so the two protections overlap deliberately.
+
+    Asserted here rather than through the settings layer because that layer's absolute-form
+    registration would cover the same cases and this rule would never be exercised.
+    """
+    app_logging.remember_a_secret("a/b")
+
+    written = emitted(tmp_path, lambda log: log.info("reading a/b for this download"))
+
+    assert "a/b" not in written, f"a three-byte path was dropped by the bare-word floor:\n{written}"
+    assert "for this download" in written, "the line was scrubbed rather than the path"
+
+
 @pytest.mark.parametrize(
     ("line", "marker"),
     [

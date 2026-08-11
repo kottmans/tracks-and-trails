@@ -14575,3 +14575,63 @@ R2 and the R4 evidence correction are approved at this boundary.
 
 The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
+
+## 2026-08-11 — T-197 fifth focused correction re-review
+
+**Task:** T-197 — cookie source, and the redaction gate that has to prove it
+
+**Correction review boundary:** `6db20b8..4fc1c97`
+
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T197-R1** | **Critical** | **Yes — settings-log privacy boundary and Phase 4 exit gate** | **Open** | Measuring the generic substring-secret floor in UTF-8 bytes fixes the reviewed `秘密` and `税/密` examples while preserving all existing ASCII behavior. The correction explicitly retains the same leak below four bytes. A real `[cookies] file = "密"` load returns `secrets == ("密",)`; `remember_a_secret()` discards the three-byte value, and the production registration loop plus formatter emits `密` unchanged in the ARC-008 reason. REQ-026/NFR-007 contain no byte-length exception. Describing the residual in a docstring is honest evidence, but it is not a maintainer decision amending the privacy boundary. |
+| **T197-R2** | **Critical** | **Yes — DAT-003 structural database boundary** | **Remains resolved at `6db20b8`** | The correction does not change the complete browser grammar validation. |
+| **T197-R3** | **High** | **Yes — both-sources/both-phases criterion** | **Remains resolved at `857fdbc`** | No affected production path changed. |
+| **T197-R4** | **High** | **Yes — screen correctness and queued-time binding** | **Remains resolved at `788fd3d`; evidence note remains resolved at `6db20b8`** | No affected production or evidence path changed. |
+| **T197-R5** | **High** | **Yes — unusable-file criterion** | **Remains resolved at `84027bd`** | Shared file validation remains intact. |
+| **T197-R6** | **Medium** | **Yes — T-197's two-way redaction acceptance criterion** | **Resolved at `4fc1c97`** | `_sensitive_literals()` no longer registers accepted browser names unconditionally. Valid stored `edge` and `firefox:Work` sources return `secrets == ()`, and real formatter probes preserve both names and surrounding prose. Rejected values with path-shaped content still register the complete specification and its path fragments. |
+
+R6 is corrected in both directions: ordinary names survive, while rejected path material remains
+protected. R1 is narrower but not resolved. The generic secret API's over-redaction floor can remain
+a legitimate policy for arbitrary strings; the cookie-path boundary needs a path-specific treatment
+that does not rely on that floor. The alternative is an explicit maintainer ruling recorded in the
+decision/requirement chain. A correction author cannot create a Critical privacy exception by
+documenting it locally.
+
+Another focused R1 correction remains authorized under `AGENTS.md` §10. If the maintainer instead
+chooses to accept the under-four-byte residual, that choice must be explicit and recorded before a
+reviewer can approve against the amended boundary.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edits | **clean; `main` ahead of `origin/main` by eight commits** |
+| `git diff --check 6db20b8..4fc1c97` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass, 166 files** |
+| `.venv/bin/mypy src` | **pass, 52 files** |
+| bare `.venv/bin/mypy` | **pass, 128 files** |
+| `.venv/bin/mypy --platform win32` | **pass, 128 files** |
+| `python -m py_compile` on the two changed production modules | **pass** |
+| Models, settings, logging/redaction, presets, adapter, Settings/Add/Main Window UI, composition, and manager-boundary suites | **921 passed, 1 skipped, 1 deselected in 134.10 s** — the deselected case is the pre-existing loopback HTTP test denied by the review sandbox |
+| Three-byte cookie-path formatter probe | `密` was present in `SettingsFile.secrets` but survived the production formatter unchanged |
+| Valid-browser formatter probes | `edge` and `Work` produced no registered secrets and survived ordinary prose unchanged |
+| Reviewed multibyte probes | `秘密` and `税/密` are now registered and redacted as intended |
+
+The implementer's broader **2599 passed, 17 skipped** result was not repeated wholesale. The focused
+suite remains green because its shortest new path is six UTF-8 bytes; it does not exercise the
+documented under-four-byte residual.
+
+### Push disposition
+
+**Do not push `4fc1c97`.** Close the known short-cookie-path emission route without weakening the
+generic over-redaction guard, or obtain an explicit maintainer decision amending the absolute
+boundary. R6 is approved at this boundary.
+
+The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+source, test, decision, status snapshot, commit, or remote state was changed.

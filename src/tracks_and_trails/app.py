@@ -621,6 +621,10 @@ def compose(
             # expansion, and `redact` replaces exact literals (`T197-R1`).
             with suppress(OSError, RuntimeError):
                 app_logging.remember_a_secret(str(Path(path).expanduser()))
+            with suppress(OSError, RuntimeError):
+                # The absolute form, which is what a refusal prints and what carries a separator
+                # for a short relative name (`T197-R1`).
+                app_logging.remember_a_secret(str(Path(path).expanduser().absolute()))
 
     def choose_cookie_file(path: Path | None) -> None:
         """Use a cookies file for sites the user is signed in to, or none (`REQ-026`, `T-197`).

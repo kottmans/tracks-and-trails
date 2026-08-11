@@ -176,12 +176,23 @@ def remember_a_secret(value: str | None) -> None:
     nothing in an English-language log, while `abc` is three and stays ignored, so every ASCII
     behaviour is unchanged.
 
-    **The floor's residual is stated rather than hidden**: a value under four bytes — a single
-    CJK character, or up to three ASCII ones — is still not registered, because replacing it
-    would shred more prose than it protects. A user whose cookie path is one character wide keeps
-    that path out of their own local log only by the shape rules.
+    **A value carrying a path separator has no floor at all**, and that is the whole of what the
+    floor was ever protecting against. The floor exists because a short *bare word* — `ok`, `密` —
+    collides with prose. A string containing `/` or `\\` is not a bare word: `税/密` cannot appear
+    in an English sentence by accident, so replacing it costs nothing and refusing to costs a
+    credential. This is `T197-R1`'s *"path-specific handling that protects short cookie paths
+    without globally replacing short prose"*, and it is why `密` on its own is still ignored while
+    every path form of it is not.
+
+    **The residual, stated rather than hidden**: a bare token under four bytes and carrying no
+    separator is not registered. Callers holding a path avoid it by registering the **absolute**
+    form — `core/settings.py` does, so a relative `密` is registered as `/…/密` and is covered by
+    the separator rule above. What remains is a caller that registers a short bare literal that is
+    not a path, which is the case the floor exists for.
     """
-    if value and len(value.encode("utf-8")) >= 4:
+    if not value:
+        return
+    if "/" in value or "\\" in value or len(value.encode("utf-8")) >= 4:
         _secrets.add(value)
 
 

@@ -120,29 +120,35 @@ this one returned four verdicts before approving.*
 
 ### T-197 — Cookie source, and the redaction gate that has to prove it
 
-**Status:** **In Review — corrected 2026-08-11.** `T197-R2` through `T197-R5` and the evidence
-note are Resolved; `T197-R1` (Critical, fifth correction) and `T197-R6` (Medium, new) are
-corrected at the head below.
+**Status:** **In Review — corrected 2026-08-11 (round six).** `T197-R2` … `T197-R6` and the
+evidence note are Resolved; `T197-R1` (Critical) is corrected at the head below for the sixth time.
 
-- **`T197-R1` — Critical, corrected a fifth time — and this one was in the sink, not the
-  registration.** The literals were finally all offered, and `remember_a_secret` dropped two of
-  them: its over-redaction floor measured **characters**, so `秘密` — a real two-character cookie
-  path, handed to the one function that exists for known-sensitive literals — was silently
-  ignored and survived the formatter. **The floor now measures UTF-8 bytes**, which is the honest
-  measure of how specific a substring is: `秘密` is six bytes and collides with nothing in an
-  English-language log, `abc` is three and stays ignored, and every ASCII behaviour is unchanged.
-  **The residual is stated, not hidden**: a value under four bytes — one CJK character, up to
-  three ASCII — is still not registered, because substring-replacing it would shred more prose
-  than it protects. The gate's outcome test gains both of the review's examples.
-- **`T197-R6` — Medium, new, and it was the mirror image of R1.** `_sensitive_literals`
-  registered the raw browser value unconditionally, so a perfectly valid `browser = "edge"` made
-  the word *edge* a secret and corrupted every later log line containing it — the gate's own
-  legitimate-content rule, broken by the machinery meant to serve it. A browser value now
-  registers **only when something in it is a path**; the file key stays always-registered, and
-  the asymmetry is deliberate — a file value is a path by definition, a browser value is a name.
+- **`T197-R1` — Critical, sixth correction, and the residual is now a stated property rather than
+  a gap.** `file = "密"` is three UTF-8 bytes with no separator, so the byte floor dropped it and
+  it survived the formatter. The review named the two ways out — path-specific handling, or a
+  maintainer ruling amending `REQ-026`/`NFR-007` — and **the ruling was not available**, so this
+  takes the first, which is the one an implementer may take alone.
 
-**Two mutations fail their own evidence**: the floor measured in characters again, and the raw
-browser value registered unconditionally again.
+  **Two halves, and each is separately tested.** A cookie path is reported and registered in its
+  **absolute** form (`absolute()`, not `resolve()` — it prepends the working directory and leaves
+  an absolute path byte-for-byte alone, where resolving would follow symlinks and name a path the
+  user never typed), so a bare relative name never stands alone in a reason: `密` is reported as
+  `/…/密`. And `remember_a_secret` **drops its floor for any value carrying a path separator**,
+  because the floor only ever protected prose from short *bare words* and `a/b` cannot appear in
+  an English sentence by accident.
+
+  **The two overlap deliberately, and the mutation record says so honestly**: removing the
+  separator rule alone does not break the cookie cases, because the absolute form is long enough
+  to clear the floor regardless. So the separator rule is tested directly, at the layer where it
+  is the only thing acting — a three-byte `a/b` handed straight to `remember_a_secret`.
+
+  **What is left, stated**: a short bare token that is not a path and cannot be made absolute is
+  still not registered. That is the case the floor exists for, and `test_a_short_registered_value_
+  is_ignored` continues to assert it — a fix that protected `密` by also eating the word `ok`
+  would satisfy this finding and break the gate's other rule.
+
+**Three mutations fail their own evidence**: the separator rule removed; the absolute spelling
+unregistered; the floor dropped entirely.
 
 
 **The browser/keyring drift test now exists.** The previous handoff said it did; it did not. That

@@ -110,6 +110,61 @@ def test_a_cookie_path_of_any_name_is_redacted_once_it_is_registered() -> None:
         logging_module.forget_the_secrets()
 
 
+def test_a_short_cookie_path_is_protected_and_short_prose_is_not_eaten() -> None:
+    """**`T197-R1`, round six — the residual the floor left, and the shape of the answer.**
+
+    `file = "密"` is three UTF-8 bytes and carries no separator, so the byte floor dropped it and
+    it survived the formatter. The reviewer named the two ways out: path-specific handling, or a
+    maintainer ruling amending `REQ-026`/`NFR-007`. This is the first, because it is the one an
+    implementer may take.
+
+    **Two halves, and each is needed.** A cookie path is reported and registered in its
+    **absolute** form, so a bare relative name never stands alone in a reason — `密` becomes
+    `/…/密`, which carries separators. And `remember_a_secret` drops its floor for any value
+    containing a separator, because the floor only ever protected prose from short *bare words*
+    and `税/密` cannot appear in an English sentence by accident.
+
+    Asserted with the prose direction alongside, because a fix that protects `密` by also
+    redacting the word `ok` would satisfy the first half and break the gate's other rule.
+    """
+    import tempfile
+
+    for bare in ("密", "ab", "税/密"):
+        target = Path(tempfile.mkdtemp()) / "settings.toml"
+        target.write_text(f'[cookies]\nfile = "{bare}"\n', encoding="utf-8")
+        read = app_settings.load(target)
+        assert read.problem is not None
+
+        logging_module.forget_the_secrets()
+        try:
+            for literal in read.secrets:
+                logging_module.remember_a_secret(literal)
+            written = emitted(f"settings: {read.problem.reason}")
+            for spelling in {
+                bare,
+                str(Path(bare).expanduser()),
+                str(Path(bare).expanduser().absolute()),
+            }:
+                assert spelling not in written, (
+                    f"{spelling!r} survived into the log for a {len(bare.encode())}-byte path:"
+                    f"\n{written}"
+                )
+        finally:
+            logging_module.forget_the_secrets()
+
+    # The other direction: the floor still does its job for a short bare non-path.
+    logging_module.forget_the_secrets()
+    try:
+        logging_module.remember_a_secret("ok")
+        prose = emitted("the download is ok and the queue is ok")
+        assert "the download is ok" in prose, (
+            "a short bare word was registered anyway, which is the over-redaction the floor "
+            f"exists to prevent:\n{prose}"
+        )
+    finally:
+        logging_module.forget_the_secrets()
+
+
 def test_a_valid_browser_name_is_not_a_secret() -> None:
     """**`T197-R6`.** The machinery meant to serve the gate broke the gate's own rule.
 
@@ -394,6 +449,18 @@ def test_the_worker_hands_cookies_to_the_probe_as_well_as_the_download() -> None
             "a three-character CJK path with a separator",
             '[cookies]\nfile = "税/密"\n',
             ("税/密",),
+        ),
+        # Round six: three UTF-8 bytes and no separator — under the floor in every measure, and
+        # the case that made the floor itself the defect rather than the registration.
+        (
+            "a single CJK character, bare",
+            '[cookies]\nfile = "密"\n',
+            ("密",),
+        ),
+        (
+            "two ASCII characters, bare",
+            '[cookies]\nfile = "ab"\n',
+            ("ab",),
         ),
     ],
 )

@@ -503,7 +503,13 @@ def unusable_cookie_file_reason(path: Path) -> str | None:
     function, or the two routes answer differently and only one of them reports.
     """
     try:
-        candidate = Path(path).expanduser()
+        # **Absolute, not resolved** (`T197-R1`). `absolute()` prepends the working directory to a
+        # relative name and leaves an absolute one byte-for-byte alone — where `resolve()` would
+        # follow symlinks and report a path the user never typed. What it buys: a relative cookie
+        # file called `密` is reported as `/…/密` rather than as a bare three-byte token, so the
+        # value in the reason carries separators and is registrable. A user also gets told which
+        # file the application actually looked for, which is the more useful answer.
+        candidate = Path(path).expanduser().absolute()
         if not candidate.exists():
             return (
                 f"The cookies file does not exist, so downloads will not be authenticated."
@@ -540,6 +546,16 @@ def unusable_cookie_file_reason(path: Path) -> str | None:
     return None
 
 
+def _spellings_of(raw: str) -> tuple[str, ...]:
+    """Every form of `raw` a reason might print. **Never raises** (`T146-R1`, `T197-R1`)."""
+    spellings: list[str] = []
+    with suppress(OSError, RuntimeError, ValueError):
+        spellings.append(str(Path(raw).expanduser()))
+    with suppress(OSError, RuntimeError, ValueError):
+        spellings.append(str(Path(raw).expanduser().absolute()))
+    return tuple(spellings)
+
+
 def _sensitive_literals(cookies_table: dict[str, Any]) -> tuple[str, ...]:
     """Every literal the cookie keys held that a reason might quote, valid or not (`T197-R1`).
 
@@ -563,12 +579,10 @@ def _sensitive_literals(cookies_table: dict[str, Any]) -> tuple[str, ...]:
     raw_file = cookies_table.get(_COOKIE_FILE_KEY)
     if isinstance(raw_file, str) and raw_file.strip():
         literals.append(raw_file)
-        try:
-            expanded = str(Path(raw_file).expanduser())
-        except OSError, RuntimeError:
-            expanded = raw_file
-        if expanded != raw_file:
-            literals.append(expanded)
+        # Every spelling a reason can print: as written, expanded, and made absolute. The last is
+        # what carries a separator for a bare relative name, which is what `remember_a_secret`'s
+        # separator rule needs in order to protect a short one (`T197-R1`).
+        literals.extend(rendered for rendered in _spellings_of(raw_file) if rendered != raw_file)
     raw_browser = cookies_table.get(_COOKIE_BROWSER_KEY)
     if isinstance(raw_browser, str) and raw_browser.strip():
         fragments = [
@@ -641,7 +655,7 @@ def _cookie_file_from(raw: Any) -> tuple[Path | None, str | None]:
     reason = unusable_cookie_file_reason(Path(raw))
     if reason is not None:
         return None, reason
-    return Path(raw).expanduser(), None
+    return Path(raw).expanduser().absolute(), None
 
 
 def _theme_from(raw: Any) -> tuple[str, str | None]:
