@@ -23,7 +23,7 @@ import pytest
 
 from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core.models import DownloadRequest
-from tracks_and_trails.downloader.environment import APP_SLUG
+from tracks_and_trails.core.paths import APP_SLUG
 
 #: One recognisable string per leak shape. Each appears in exactly one test input, so a failure
 #: names which route let it out. Not credentials — invented markers, shaped like the real thing
@@ -726,8 +726,9 @@ def test_the_log_listener_is_not_left_reading_a_closed_queue(tmp_path: Path) -> 
 #: this one did.
 TWO_LIFECYCLES = """
 import logging, sys, time
+from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.logging import (
-    APP_SLUG, stop_listening_for_worker_logs, worker_log_queue,
+    stop_listening_for_worker_logs, worker_log_queue,
 )
 
 class SlowFile(logging.Handler):
@@ -763,8 +764,9 @@ sys.exit(0)
 #: registration covered for a wrong wait. One lifecycle removes that cover.
 ONE_LIFECYCLE = """
 import logging, sys, time
+from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.logging import (
-    APP_SLUG, stop_listening_for_worker_logs, worker_log_queue,
+    stop_listening_for_worker_logs, worker_log_queue,
 )
 
 class SlowFile(logging.Handler):

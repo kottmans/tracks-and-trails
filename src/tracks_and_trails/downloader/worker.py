@@ -57,6 +57,7 @@ from typing import Any, Final, Protocol
 from tracks_and_trails.core.errors import ErrorKind, FailureDetail
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.paths import (
+    APP_SLUG,
     UnsafePathError,
     contained_output_path,
     derived_component,
@@ -66,7 +67,6 @@ from tracks_and_trails.core.paths import (
 from tracks_and_trails.core.presets import selector_merges
 from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader.environment import (
-    APP_SLUG,
     FfmpegReport,
     YtdlpCandidate,
     find_ffmpeg,

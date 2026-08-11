@@ -29,7 +29,19 @@ from typing import Final
 
 from platformdirs import user_cache_dir
 
-from tracks_and_trails.downloader.environment import APP_SLUG
+#: The application's identity, as it appears in every platform directory it owns
+#: (`ARCHITECTURE.md` §5, and `ui/main_window.py`'s window slug).
+#:
+#: **Defined here, at the bottom layer, because everything above needs it and nothing below does**
+#: (`T-214`). It lived in `downloader/environment.py`, which made `core/logging.py`,
+#: `core/paths.py` and `persistence/db.py` import *upward* from `downloader/` for a string
+#: constant — three violations of `ARCHITECTURE.md` §4's *"dependencies point downward only"*, all
+#: for the name of the application. `core/settings.py` had simply declared a second copy of the
+#: literal rather than importing across the boundary, which is what a rule nobody enforces costs.
+#:
+#: `downloader/environment.py` re-exports it, so every existing importer keeps working and the
+#: move is not a rename.
+APP_SLUG: Final = "tracksandtrails"
 
 #: Characters NTFS forbids outright, plus the path separators of both platforms.
 #:

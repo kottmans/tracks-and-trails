@@ -43,8 +43,7 @@ from typing import Final
 
 from platformdirs import user_data_dir
 
-#: Matches `ARCHITECTURE.md` §5's paths and `ui/main_window.py`'s slug.
-APP_SLUG: Final = "tracksandtrails"
+from tracks_and_trails.core.paths import APP_SLUG
 
 
 class FfmpegFeature(Enum):

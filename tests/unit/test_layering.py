@@ -22,6 +22,7 @@ import ast
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -267,3 +268,234 @@ def test_the_analyzer_detects_synthetic_violations(
 def test_the_analyzer_permits_what_the_architecture_allows(rel_path: str, source: str) -> None:
     """False positives damage as much as false negatives: a rule nobody can satisfy gets deleted."""
     assert not check(rel_path, source)
+
+
+# ---------------------------------------------------------------------------
+# T-214: the two gaps the four rules above never covered.
+#
+# Everything before this point enforces *external* dependencies — Qt and yt-dlp. Nothing in it
+# fails if `core/` imports `ui/`, and nothing in it holds a module to a Qt-freedom its own
+# docstring promises. Both gaps were real rather than theoretical: `core/logging.py`,
+# `core/paths.py` and `persistence/db.py` all imported upward from `downloader/` for one string
+# constant, and the audit that filed this task recorded the tree as clean in every internal
+# direction. It was not. That is what an unenforced rule looks like from the outside.
+# ---------------------------------------------------------------------------
+
+#: `ARCHITECTURE.md` §4's diagram, transcribed: which subpackage may import which.
+#:
+#: *"Dependencies point downward only"*, over the four layers the diagram draws — `ui/` on top,
+#: `downloader/` and `persistence/` beside each other, `core/` at the bottom. A layer may import
+#: anything below it and nothing at its own level or above.
+#:
+#: **`downloader/` and `persistence/` are siblings, so neither may import the other.** The diagram
+#: puts them on one line; `persistence/db.py` crossed that line for `APP_SLUG` until `T-214` moved
+#: the constant down to where every layer can reach it.
+MAY_IMPORT: Final = {
+    "core": frozenset(),
+    "persistence": frozenset({"core"}),
+    "downloader": frozenset({"core"}),
+    "ui": frozenset({"core", "downloader", "persistence"}),
+}
+
+#: §4's diagram again, transcribed a **second** time and differently — as each layer's height on
+#: it, rather than as a map of who may import whom.
+#:
+#: **The two statements share no constant, and that is the whole point** (`T005-R1`, applied here
+#: for the reason it was applied above). `test_each_forbidden_direction_is_actually_caught` derives
+#: its cases from `MAY_IMPORT`, so widening `MAY_IMPORT` does not fail it — it just deletes a case.
+#: Both of the obvious wrong edits (*let `core/` see `downloader/`*, *let the two siblings see each
+#: other*) were tried against an earlier version of this file and passed, which is why this exists.
+#:
+#: `downloader/` and `persistence/` share a height because the diagram draws them on one line.
+ARCH_LAYER_HEIGHT: Final = {"core": 0, "persistence": 1, "downloader": 1, "ui": 2}
+
+
+def architecture_allows(layer: str) -> frozenset[str]:
+    """What §4's *"downward only"* permits `layer` to import, from the diagram's heights alone."""
+    return frozenset(
+        other for other, height in ARCH_LAYER_HEIGHT.items() if height < ARCH_LAYER_HEIGHT[layer]
+    )
+
+
+@pytest.mark.parametrize("layer", sorted(MAY_IMPORT))
+def test_the_direction_map_matches_the_architecture(layer: str) -> None:
+    """`MAY_IMPORT` may not quietly widen, in either direction.
+
+    Exactly the guarantee `test_the_owner_allowlist_matches_the_architecture` gives `YTDLP_OWNERS`.
+    Loosening a layer is an architecture change and needs a Planner decision, not a test edit —
+    and tightening one silently is how a rule starts rejecting legitimate code and gets deleted by
+    whoever it blocks.
+    """
+    assert MAY_IMPORT[layer] == architecture_allows(layer), (
+        f"MAY_IMPORT and ARCHITECTURE.md §4 disagree about what {layer}/ may import: the map says "
+        f"{sorted(MAY_IMPORT[layer])}, the diagram's heights say "
+        f"{sorted(architecture_allows(layer))}."
+    )
+
+
+#: Modules at the package root — `app.py`, `__main__.py`, `_freeze_probe.py`. `ARCHITECTURE.md` §4
+#: calls these wiring rather than a layer, and wiring is allowed to see everything it wires.
+ROOT = "(root)"
+
+
+def layer_of(rel_path: str) -> str:
+    """Which layer a file belongs to, from its path alone."""
+    head = rel_path.split("/")[0]
+    return head if head in MAY_IMPORT else ROOT
+
+
+def internal_targets(source: str, filename: str) -> set[str]:
+    """The layers this file imports from, by name.
+
+    `imported_roots` cannot answer this: every intra-project import has the same top-level root,
+    `tracks_and_trails`, so the four rules above see `from tracks_and_trails.ui import theme` and
+    `from tracks_and_trails.core import models` as the same import. This reads the second
+    component instead.
+    """
+    targets: set[str] = set()
+    for node in ast.walk(ast.parse(source, filename=filename)):
+        modules: list[str] = []
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules = [node.module]
+        for module in modules:
+            parts = module.split(".")
+            if parts[0] == "tracks_and_trails" and len(parts) > 1:
+                targets.add(parts[1] if parts[1] in MAY_IMPORT else ROOT)
+    return targets
+
+
+def upward_imports(rel_path: str, source: str) -> list[str]:
+    """Every import this file makes that `ARCHITECTURE.md` §4 does not allow from its layer."""
+    layer = layer_of(rel_path)
+    if layer == ROOT:
+        return []
+    allowed = MAY_IMPORT[layer]
+    return sorted(
+        f"{rel_path} imports {target}/ — {layer}/ may import "
+        f"{sorted(allowed) or 'nothing inside the package'} "
+        "(ARCHITECTURE.md §4: dependencies point downward only)"
+        for target in internal_targets(source, rel_path)
+        if target != layer and target not in allowed
+    )
+
+
+@pytest.mark.parametrize("path", source_files(), ids=rel)
+def test_no_module_imports_upward_or_sideways(path: Path) -> None:
+    """`ARCHITECTURE.md` §4's *"dependencies point downward only"*, enforced rather than stated.
+
+    This is the rule the file's own header called *"the project's central architectural bet"* and
+    then did not check. Three modules were breaking it when this test was written.
+    """
+    violations = upward_imports(rel(path), path.read_text(encoding="utf-8"))
+    assert not violations, "\n".join(violations)
+
+
+@pytest.mark.parametrize(
+    ("importer", "target"),
+    [
+        (importer, target)
+        for importer in MAY_IMPORT
+        for target in MAY_IMPORT
+        if target != importer and target not in MAY_IMPORT[importer]
+    ],
+    ids=lambda value: value,
+)
+def test_each_forbidden_direction_is_actually_caught(importer: str, target: str) -> None:
+    """**The rule is mutation-checked, not only the tree** — this task's first criterion.
+
+    A tree that happens to be clean says nothing about whether the guard works; the guard passing
+    on a synthetic violation of *every* forbidden direction does. Seven directions are forbidden
+    by `MAY_IMPORT`, and each gets its own case, so narrowing the rule to catch six of them fails
+    here rather than silently reducing what is defended.
+    """
+    source = f"from tracks_and_trails.{target} import something"
+    assert upward_imports(f"{importer}/probe.py", source), (
+        f"{importer}/ importing {target}/ is forbidden by ARCHITECTURE.md §4 and the guard does "
+        "not catch it"
+    )
+
+
+def test_a_downward_import_is_not_caught() -> None:
+    """The other direction, so the guard cannot pass by rejecting everything.
+
+    A rule that flagged every internal import would satisfy every case above and would be deleted
+    within a week by whoever it blocked — which is the failure mode
+    `test_every_module_is_guarded_no_more_than_the_architecture_requires` exists to prevent for the
+    external rules.
+    """
+    assert not upward_imports("ui/probe.py", "from tracks_and_trails.core import models")
+    assert not upward_imports("downloader/probe.py", "from tracks_and_trails.core import models")
+    assert not upward_imports("persistence/probe.py", "from tracks_and_trails.core import models")
+    assert not upward_imports("app.py", "from tracks_and_trails.ui import main_window")
+
+
+#: The `ui/` modules that are **deliberately Qt-free**, each one's docstring says so, and until
+#: `T-214` nothing held them to it (`ARCHITECTURE.md` §4).
+#:
+#: Roughly 1,700 lines between them. `ui/staging.py` is the type the add dialog's whole commit path
+#: is built on and `ui/reveal.py` launches OS processes with no Qt at all — either could grow a
+#: `PySide6` import tomorrow, and every existing test would still pass.
+#:
+#: **The list is here rather than in a docstring somewhere** because this is where its next author
+#: meets it: adding a module to `ui/` and finding this list is how the intent survives the person
+#: who had it. Removing a name from this list is a decision about the module, not a test edit —
+#: `test_the_qt_free_list_names_only_modules_that_exist` makes deleting one on the way past fail.
+QT_FREE_UI: Final = frozenset(
+    {
+        "ui/staging.py",
+        "ui/reveal.py",
+        "ui/format_selection.py",
+        "ui/format_text.py",
+        "ui/row_verbs.py",
+        "ui/playlist_selection.py",
+        "ui/grouping.py",
+    }
+)
+
+
+@pytest.mark.parametrize("rel_path", sorted(QT_FREE_UI))
+def test_the_deliberately_qt_free_ui_modules_stay_qt_free(rel_path: str) -> None:
+    """Seven modules promise this in their own docstrings; now something checks.
+
+    They are not merely Qt-free by accident — being Qt-free is what makes them unit-testable
+    headless and what would make moving them into `core/` a straightforward change if the Planner
+    ever rules on it (this task's out-of-scope note). A `PySide6` import in any of them takes that
+    away silently.
+    """
+    source = (SRC / rel_path).read_text(encoding="utf-8")
+    roots = imported_roots(source, rel_path)
+    assert not roots & QT, (
+        f"{rel_path} imports {sorted(roots & QT)}. Its docstring says it is Qt-free, and seven "
+        "modules in ui/ depend on that being true rather than aspirational. If the import is "
+        "genuinely needed, remove the module from QT_FREE_UI and say why — do not weaken this."
+    )
+
+
+def test_the_qt_free_list_names_only_modules_that_exist() -> None:
+    """A stale name is a rule that silently stops covering anything (`T005-R1`'s shape).
+
+    If `ui/grouping.py` is renamed and this list is not, the parametrised test above would fail on
+    a missing file — but if someone *deletes* a name to make a failure go away, nothing would
+    notice. This does.
+    """
+    missing = sorted(name for name in QT_FREE_UI if not (SRC / name).exists())
+    assert not missing, f"QT_FREE_UI names modules that no longer exist: {missing}"
+
+    # Empty `__init__.py` files import nothing at all, which is not the same claim: they are
+    # Qt-free because there is nothing in them, not because someone decided to keep logic out of
+    # Qt's reach. Holding them to this would make the list mean two different things.
+    actually_free = {
+        rel(path)
+        for path in source_files()
+        if rel(path).startswith("ui/")
+        and path.name != "__init__.py"
+        and not imported_roots(path.read_text(encoding="utf-8"), rel(path)) & QT
+    }
+    dropped = actually_free - QT_FREE_UI
+    assert not dropped, (
+        f"these ui/ modules import no Qt but are not held to it: {sorted(dropped)}. Either add "
+        "them to QT_FREE_UI, or — if being Qt-free is incidental rather than intended — say so in "
+        "the module's own docstring and add it to the exceptions here."
+    )

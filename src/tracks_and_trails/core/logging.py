@@ -63,8 +63,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from platformdirs import user_cache_dir
 
-from tracks_and_trails.core.paths import sanitize_component
-from tracks_and_trails.downloader.environment import APP_SLUG
+from tracks_and_trails.core.paths import APP_SLUG, sanitize_component
 
 __all__ = [
     "MAX_JOB_LOG_BYTES",

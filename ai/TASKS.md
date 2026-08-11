@@ -562,6 +562,78 @@ happening. A finished bar is furniture: the argument History used to drop its gr
 - Failed-row presentation — `T-201`, including the byte-line suppression added to it 2026-08-09
 - The chip's own text — `UX-010` just ruled the group chip; the ordinary chips are settled
 
+### T-214 — The layering test proves less than the tree actually promises
+
+**Status:** **In Review — built 2026-08-11**, unattended on maintainer instruction.
+**This entry's premise was wrong and the build is larger than test-only because of it.**
+
+**The tree was not clean.** This entry says the forbidden internal directions were *"verified by
+the audit"* to be unviolated and that *"the guard is missing, not the discipline"*. Writing the
+guard found **three real violations**: `core/logging.py`, `core/paths.py` and `persistence/db.py`
+all imported *upward* from `downloader/` — for `APP_SLUG`, a string constant naming the
+application. `core/settings.py` and `ui/main_window.py` had each declared their **own copy** of the
+literal rather than importing across the boundary, so the constant existed three times.
+
+**`APP_SLUG` moved down to `core/paths.py`**, where every layer can reach it, and the five call
+sites now read one definition. That is a source change beyond this entry's stated
+`tests/unit/test_layering.py` surface, and it is here rather than filed separately because the
+guard cannot be added without it: the alternative was a rule with an exemption for the only
+violations it had, which proves nothing.
+
+**Both gaps are now closed.** Internal direction is enforced per file, and the seven Qt-free `ui/`
+modules are held by name — with a companion test that fails if a name is *deleted* from the list to
+make a failure go away, and one that fails if a Qt-free `ui/` module is added without being listed.
+
+**The first version of the direction guard was mutation-transparent, which is the finding worth
+keeping.** `MAY_IMPORT` was the only statement of the rule, and the parametrised
+forbidden-direction test derived its cases *from* `MAY_IMPORT` — so widening the map to let `core/`
+import `downloader/` simply deleted a case and passed. That is `T005-R1`'s defect exactly, in a
+file that already solved it once for the external rules. Fixed the same way: §4's diagram is
+transcribed a second time as each layer's **height**, sharing no constant with the map, and the two
+must agree.
+
+**Six mutations, all failing**: `core/` allowed to import `downloader/`; the two siblings allowed
+to see each other; the heights flattened; a name dropped from the Qt-free list; a real upward
+import added to `core/errors.py`; a real `PySide6` import added to `ui/staging.py`.
+
+**Owner:** Implementer
+**Priority:** Medium — the defended invariants are real, and the gaps are exactly where the next
+violation enters unnoticed
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `tests/unit/test_layering.py` §52–76, `ARCHITECTURE.md` §4, and the seven
+deliberately Qt-free `ui/` modules: `ui/staging.py`, `ui/reveal.py`, `ui/format_selection.py`,
+`ui/format_text.py`, `ui/row_verbs.py`, `ui/playlist_selection.py`, `ui/grouping.py`
+**Affected surfaces:** `tests/unit/test_layering.py`
+**Risk:** Low — test-only
+
+#### Scope
+
+`test_layering.py` enforces the four *external* rules — no Qt in `core/` or `worker.py`, no yt-dlp
+outside the two adapter modules, no yt-dlp in `ui/` — and nothing about **internal direction**:
+no test fails today if `core/` imports `ui/`, `persistence/` imports `downloader/`, or
+`downloader/` imports `ui/`. The tree is currently clean in every one of those directions
+(verified by the audit); **the guard is missing, not the discipline.**
+
+Second gap: **seven `ui/` modules totalling ~1,700 lines are Qt-free on purpose** — their
+docstrings say so — and no test holds them to it. `ui/staging.py` is the type the add dialog's
+commit path is built on, and `ui/reveal.py` is OS process launching with no Qt at all. Any of
+them can grow a `PySide6` import tomorrow and nothing fails.
+
+#### Acceptance criteria
+
+- A rule maps each layer to the internal subpackages it may import, and a deliberate violation of
+  each forbidden direction makes it fail — mutation-check the rule, not only the tree
+- The seven Qt-free `ui/` modules are held Qt-free **by name**, with the list stated where the
+  next module's author will meet it
+- The existing four rules pass unchanged
+
+#### Out of scope
+
+- **Moving the seven modules into `core/`.** A real option the audit raised, but that is a
+  structure change for the Planner to rule on and `ARCHITECTURE.md` §4 to record — not something
+  a test change smuggles in
+
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -2273,47 +2345,6 @@ do.
 - The deliberate test-only invariant anchors — `SCHEMA_SNAPSHOT`, `CANCEL_BUDGET_SECONDS`,
   `ui/theme.py`'s contrast metrics, `allowed_from`, `stage_of`. Documented as anchors; keep
 - Any behaviour change
-
-### T-214 — The layering test proves less than the tree actually promises
-
-**Status:** Proposed — filed 2026-08-09 from the same audit.
-**Owner:** Implementer
-**Priority:** Medium — the defended invariants are real, and the gaps are exactly where the next
-violation enters unnoticed
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing
-**Relevant context:** `tests/unit/test_layering.py` §52–76, `ARCHITECTURE.md` §4, and the seven
-deliberately Qt-free `ui/` modules: `ui/staging.py`, `ui/reveal.py`, `ui/format_selection.py`,
-`ui/format_text.py`, `ui/row_verbs.py`, `ui/playlist_selection.py`, `ui/grouping.py`
-**Affected surfaces:** `tests/unit/test_layering.py`
-**Risk:** Low — test-only
-
-#### Scope
-
-`test_layering.py` enforces the four *external* rules — no Qt in `core/` or `worker.py`, no yt-dlp
-outside the two adapter modules, no yt-dlp in `ui/` — and nothing about **internal direction**:
-no test fails today if `core/` imports `ui/`, `persistence/` imports `downloader/`, or
-`downloader/` imports `ui/`. The tree is currently clean in every one of those directions
-(verified by the audit); **the guard is missing, not the discipline.**
-
-Second gap: **seven `ui/` modules totalling ~1,700 lines are Qt-free on purpose** — their
-docstrings say so — and no test holds them to it. `ui/staging.py` is the type the add dialog's
-commit path is built on, and `ui/reveal.py` is OS process launching with no Qt at all. Any of
-them can grow a `PySide6` import tomorrow and nothing fails.
-
-#### Acceptance criteria
-
-- A rule maps each layer to the internal subpackages it may import, and a deliberate violation of
-  each forbidden direction makes it fail — mutation-check the rule, not only the tree
-- The seven Qt-free `ui/` modules are held Qt-free **by name**, with the list stated where the
-  next module's author will meet it
-- The existing four rules pass unchanged
-
-#### Out of scope
-
-- **Moving the seven modules into `core/`.** A real option the audit raised, but that is a
-  structure change for the Planner to rule on and `ARCHITECTURE.md` §4 to record — not something
-  a test change smuggles in
 
 ### T-218 — The add dialog's empty state: one instruction, inside the list
 

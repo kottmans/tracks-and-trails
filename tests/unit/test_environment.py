@@ -23,6 +23,7 @@ from types import ModuleType
 
 import pytest
 
+from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.downloader import environment
 from tracks_and_trails.downloader.environment import (
     FFMPEG_DEPENDENT_FEATURES,
@@ -98,8 +99,8 @@ def test_the_default_user_directory_is_not_doubled() -> None:
     """
     path = user_ytdlp_directory()
     assert path.name == "ytdlp"
-    assert path.parent.name == environment.APP_SLUG
-    assert path.parent.parent.name != environment.APP_SLUG
+    assert path.parent.name == APP_SLUG
+    assert path.parent.parent.name != APP_SLUG
 
 
 # --- the ownership boundary (ARCHITECTURE.md §6) ---------------------------------------------
@@ -111,7 +112,6 @@ def test_the_default_user_directory_is_not_doubled() -> None:
 #: and then checking that against itself proves nothing.
 REVIEWED_PUBLIC_API = frozenset(
     {
-        "APP_SLUG",
         "BASELINE_YTDLP_VERSION",
         "FFMPEG_DEPENDENT_FEATURES",
         # `T-199`. **Transcribed deliberately, and it is a locate-side name.** The guard below

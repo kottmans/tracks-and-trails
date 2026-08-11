@@ -79,9 +79,8 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition, is_terminal
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, Preset
 from tracks_and_trails.core.output_template import OutputPreview
-from tracks_and_trails.core.paths import UnsafePathError, contained_output_path
+from tracks_and_trails.core.paths import APP_SLUG, UnsafePathError, contained_output_path
 from tracks_and_trails.downloader import process_tree, worker
-from tracks_and_trails.downloader.environment import APP_SLUG
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Probed,

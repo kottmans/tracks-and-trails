@@ -28,7 +28,7 @@ from typing import Final
 
 from platformdirs import user_data_dir
 
-from tracks_and_trails.downloader.environment import APP_SLUG
+from tracks_and_trails.core.paths import APP_SLUG
 
 #: Where migrations live. One `.sql` file per version, named `NNNN_description.sql`.
 MIGRATIONS_DIRECTORY: Final = Path(__file__).parent / "migrations"

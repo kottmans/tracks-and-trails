@@ -63,11 +63,7 @@ from tracks_and_trails.core.models import (
     looks_like_a_path,
     parse_browser_specification,
 )
-
-#: Duplicated from `downloader/environment.py` and `ui/main_window.py`, which each define their own.
-#: Hoisting it into one place would touch two approved modules for no behavioural gain, so this
-#: follows the existing precedent rather than starting a refactor inside `T-078`.
-APP_SLUG: Final = "tracksandtrails"
+from tracks_and_trails.core.paths import APP_SLUG
 
 #: `REQ-013`: *"a bounded, user-configurable number of downloads concurrently (default 3,
 #: minimum 1)"*.

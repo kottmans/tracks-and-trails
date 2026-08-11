@@ -24,13 +24,13 @@ from PySide6.QtWidgets import (
 from tracks_and_trails import __version__
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.main_window import (
     _MAX_COORD,
     ACTIONABLE_STATUS_PROPERTY,
     APP_NAME,
-    APP_SLUG,
     DEFAULT_SIZE,
     MainWindow,
     app_icon,

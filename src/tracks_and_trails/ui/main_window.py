@@ -50,6 +50,7 @@ from tracks_and_trails import __version__
 from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import REORDERABLE
 from tracks_and_trails.core.models import Preset
+from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
@@ -63,7 +64,6 @@ from tracks_and_trails.ui.settings_dialog import SettingsDialog
 APP_NAME: Final = "Tracks & Trails"
 
 #: platformdirs slug, matching the paths in `ARCHITECTURE.md` §5.
-APP_SLUG: Final = "tracksandtrails"
 
 #: The tab names `UX-005` named. The count is appended at runtime, so these are the stems rather
 #: than what is displayed — a test asserting on the visible text must expect "Queue (3)".
