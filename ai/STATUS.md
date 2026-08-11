@@ -5,25 +5,25 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-11 — **an unattended overnight run: six commits, none pushed.** The
-`T197-R1` correction landed at `59d3c87`, and then **five tasks were built end to end and held**:
-`T-224` (`73c6679`), `T-222` (`9d5e26e`), `T-217` (`deca19c`), `T-216` (`d3f7b50`) and `T-214`
-(`007e10e`). `T-225` was filed (`1ebe52f`) for a pre-existing cross-file test-ordering defect found
-while building `T-224`. **All six are In Review and unpushed**, per the standing instruction; a
-handoff for each is ready untracked in `ai/handoffs/`.
+**Last updated:** 2026-08-11 (second entry) — **the covering review came back and its findings are
+corrected.** `T-216` **Approved**; `T-225`'s filing **verified as a real open defect**. Six blocking
+findings across `T-224`, `T-222`, `T-217` and `T-214` are fixed at **`28012ad`**, and `T197-R7` at
+**`4c48273`** on the maintainer's §10 authorisation. **Eighteen commits are held; nothing is
+pushed.**
 
-**Two of the five did not turn out to be what their entries said.** `T-222`'s clipped note was not
-a bug in one group's height — the dialog was opening at its own reported minimum with the text
-already cut, and two fixes that raised the floor measured worse than scrolling. `T-214`'s entry
-recorded the tree as clean in every internal direction; it was not, and writing the guard found
-three modules importing upward from `downloader/` for one string constant that existed in three
-copies.
-**Last verified against repository:** 2026-08-11 for the 2026-08-11 block — every commit hash was
-read from `git log`, the task states from `ai/TASKS.md` after the placement gate ran, and the test
-figures from the runs quoted. The 2026-08-10 blocks were verified that day; the three 2026-08-09
-blocks that day; the Phase 3 block beneath them 2026-08-06. The Phase 1 and Phase 2 narrative from
-`## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a statement of
-what is true now.
+**Two of the six were features that did not exist.** `T-224`'s pressed state could never be
+painted — the value was set and cleared inside one synchronous block — and `T-214`'s Qt-free guard
+read only direct roots, so a listed module could reach Qt through one hop and pass. `T-222` was a
+regression I introduced and did not measure for: the scroller shrank the dialog's opening size.
+**`T222-R2` ruled the scroll-region clause `[P]`, not `[D]`** — correctly; it is now `P-26` in
+`docs/UX_SPEC.md` §10, built ahead of ratification on the reviewer's explicit instruction, with
+§1's bar recorded as suspended for that one clause.
+**Last verified against repository:** 2026-08-11 for both 2026-08-11 blocks — commit hashes read
+from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures from
+the runs quoted. The 2026-08-10 blocks were verified that day; the three 2026-08-09 blocks that
+day; the Phase 3 block beneath them 2026-08-06. The Phase 1 and Phase 2 narrative from `## Next`
+onward was last swept 2026-08-04 and is kept for its reasoning, not as a statement of what is true
+now.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -41,6 +41,46 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-11 (second): the review came back, and six findings were real
+
+**`T-216` Approved** — no open finding. **`T-225`** verified: the reviewer reproduced the reversed
+file order and got exactly the two failures filed. **`T-222`'s scroll-region clause is `[P]`**, and
+a fully completed playlist group keeps its segments, which was the other ruling asked for.
+
+**`T224-R1` — the pressed state never existed.** `editorEvent` ignored `MouseButtonPress`
+altogether, set `_pressed_zone` on *release*, asked for an asynchronous repaint and cleared the
+value on the next line. The three tests I wrote covered the border and the hover, so nothing
+failed. Press is handled now and consumed only for the zone; release clears the face
+unconditionally, which also stops a press-in/release-out leaving it stuck down.
+
+**`T217-R1` — a play triangle where the scope says film frame.** Corrected, and **not** with
+`U+1F39E`: `inFont` says that codepoint is not in the base font and renders here only through a
+fallback, which is the platform assumption three prior tasks were corrected for. The frame is
+drawn. The new regression pins the *shape* — hollow, and left-right symmetric — because "audio ≠
+video" would pass with a triangle again.
+
+**`T222-R1` — my fix regressed the opening size**, 302 by 680 down to 302 by 501. `show()` sizes a
+window with `adjustSize()`, which **clamps to two thirds of the screen**, so the old 680 was
+`minimumSizeHint` overriding that clamp rather than a considered default. The scroll area reports
+its content's preferred height now and the dialog asks for it, bounded by the available screen.
+**The previous round resized every case explicitly, so none of its tests could have caught this.**
+
+**`T214-R1`/`R2` — one lesson twice: a guard proved against one spelling is a guard against one
+spelling.** Relative imports bypassed the direction rule entirely; the proof now runs over five
+grammars. The Qt-free guard read only direct roots; it walks transitively now and reports the
+route. The correction itself contained a third defect — resolving `from X import y` as both names
+made `from tracks_and_trails import __version__` look like an upward import — which the corrected
+guard caught immediately.
+
+**`T197-R7` — the separator exemption is deleted**, on the maintainer's §10 authorisation. It
+waived the byte floor for any value containing `/`, so a stored `file = "/"` registered `/` itself
+and every slash in every later log line was replaced. **It protected nothing the absolute-spelling
+registration does not already cover**, confirmed by mutation.
+
+**Figures at `4c48273`:** `ruff check`, `ruff format`, `mypy` (128 files), `mypy --platform win32
+src` all clean; `tests/unit` and `tests/ui` **2695 passed, 18 skipped**. Integration and frozen
+suites not run here; the reviewer ran integration green (391 passed) at the previous head.
 
 ## 2026-08-11: an overnight run — five tasks built, six commits held
 
