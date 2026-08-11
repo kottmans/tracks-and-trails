@@ -5,24 +5,21 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-11 (third entry) — **`T-224`, `T-217` and `T-214` are Approved at
-`28012ad`.** Two findings remained and both are corrected: **`T197-R1`, reopened as Critical**
-(`6a6ce27`, on §10's standing authorisation for Criticals) and **`T-222`'s two Mediums** (`4d03937`,
-on the maintainer's §10 authorisation). **Twenty-two commits are held; nothing is pushed.**
+**Last updated:** 2026-08-11 (fourth entry) — **all six tasks from the unattended run are Approved
+and Complete**: `T-197`, `T-214`, `T-216`, `T-217`, `T-222`, `T-224`. `## In Review` is empty.
+**The reviewer has cleared the 22-commit stack to push; it has not been pushed** — that is the
+maintainer's instruction to give, and `AGENTS.md` §7 does not let it be inferred from a clearance.
 
-**The Critical was my own correction's doing.** Round seven removed an unsafe separator exemption
-and leaned on the generic byte floor, assuming a path's absolute spelling is always long enough to
-clear it — `/a` is a legal cookie path, two bytes, already absolute, and reached the real formatter
-unredacted. Supplied paths now have their own registration contract with no floor, and roots that
-name nothing are still refused. **The first version of that fix was not bound to composition**: the
-unit gate called the new function itself, so reverting the real wiring left it green, and only a
-mutation caught it. Both routes — startup and runtime — are asserted through `compose` now.
-**Last verified against repository:** 2026-08-11 for all three 2026-08-11 blocks — commit hashes
-read from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures
-from the runs quoted. The 2026-08-10 blocks were verified that day; the three 2026-08-09 blocks
-that day; the Phase 3 block beneath them 2026-08-06. The Phase 1 and Phase 2 narrative from
-`## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a statement of
-what is true now.
+**`T-197` closes the phase's redaction exit criterion** — *logs carry no cookies, cookie paths,
+proxy credentials or tokens* — after seven findings across seven rounds, two of them Critical
+credential leaks and one of them created by the correction to the other. **Windows remains the only
+unverified gate**, and only a push produces it.
+**Last verified against repository:** 2026-08-11 for all four 2026-08-11 blocks — commit hashes read
+from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures from
+the runs quoted or from the reviewer's recorded independent run. The 2026-08-10 blocks were verified
+that day; the three 2026-08-09 blocks that day; the Phase 3 block beneath them 2026-08-06. The Phase
+1 and Phase 2 narrative from `## Next` onward was last swept 2026-08-04 and is kept for its
+reasoning, not as a statement of what is true now.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -40,6 +37,26 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-11 (fourth): all six approved; the stack is cleared but not pushed
+
+**Complete:** `T-197` at `6a6ce27`, `T-222` at `4d03937`, and `T-214` / `T-216` / `T-217` /
+`T-224` from the earlier rounds. **`## In Review` is empty for the first time since 2026-08-09.**
+
+**The reviewer's independent run** at `d2d2160`: ruff and every mypy gate including bare
+`--platform win32`, unit and UI **2700 passed / 18 skipped**, integration **393 passed**, the scaled
+options-dialog suite **50 passed with no skips**, placement **14 passed**, plus direct redaction and
+frame-containment probes.
+
+**`T-197` carries an exit criterion**, and it is the one that took the longest to earn: *logs carry
+no cookies, cookie paths, proxy credentials or tokens*. Seven findings over seven rounds — two
+Critical credential leaks, and the second of those **created by the correction to the first**, which
+is worth remembering as the shape of this particular risk rather than as an incident.
+
+**The stack is cleared to push and has not been pushed.** The reviewer states the 22 commits *may*
+be pushed so CI can supply the native-Windows evidence; a clearance is not the maintainer's
+instruction, and `AGENTS.md` §7 requires that instruction explicitly. **Windows is the only gate no
+local run substitutes for**, and it has caught what Linux could not twice in this phase.
 
 ## 2026-08-11 (third): three approvals, and the two findings left
 

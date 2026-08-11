@@ -14782,3 +14782,59 @@ scope, or carry the work into a named follow-up.
 
 The Reviewer changed `ai/REVIEWS.md` and current task dispositions only. No reviewed source, test,
 UX specification, status snapshot, commit, or remote state was changed.
+
+## 2026-08-11 — T-197 / T-222 third-round focused re-review
+
+**Correction boundary:** `8ae3cd1..4d03937`
+
+**Record-only head:** `d2d2160`
+
+### Verdicts
+
+| Task | Verdict |
+|---|---|
+| **T-197** | **Approved** — reopened Critical T197-R1 resolved at `6a6ce27`; T197-R7 remains resolved |
+| **T-222** | **Approved** — T222-R1 and T222-R2 resolved at `4d03937` on the maintainer-authorised extra pass |
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T197-R1** | **Critical** | **Yes — REQ-026, NFR-007, DAT-003, and the Phase 4 exit gate** | **Resolved at `6a6ce27`** | `remember_a_path` makes the caller's supplied-filesystem-path knowledge explicit and applies no generic length floor. `/a` is redacted through the real formatter; roots and separator-only values register nothing; short bare prose retains the generic floor. Both the settings-at-startup route and the runtime chooser are bound through the assembled application, so reverting either production call fails its own composition regression. |
+| **T197-R7** | **Medium** | **Yes — legitimate log content survives** | **Remains Resolved at `4c48273`** | The path-specific API does not restore the generic separator exemption. Independent probes leave `/`, `//`, `C:\\`, URLs, and `audio/video` readable while redacting `/a`. |
+| **T222-R1** | **Medium** | **Yes — opening geometry and reachable controls** | **Resolved at `4d03937`** | The post-show clamp subtracts the measured decoration and bounds the client so the complete outer frame fits. On the review display the former 800-client/804-frame result is now 796-client/800-frame, fully contained in the 800px available geometry. Under a 1600px logical screen the frame is contained and the options scroller has maximum zero. The regression now asserts `frameGeometry`, not client height. |
+| **T222-R2** | **Medium** | **Yes — authoritative product-choice record** | **Resolved at `4d03937`** | The open scroll-region question is P-29. Independent enumeration confirms P-1 through P-28 are occupied; P-26 remains UX-007's ratified duplicate-warning ruling in §9.3 and §10, and every new scroll reference uses P-29. |
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edits | **clean; `main` ahead of `origin/main` by 22 commits** |
+| `git diff --check 8ae3cd1..d2d2160` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 166 files** |
+| `mypy src` | **pass, 52 files** |
+| bare `mypy` | **pass, 128 files** |
+| bare `mypy --platform win32` | **pass, 128 files** |
+| Focused correction selection | **8 passed, 1 legitimate short-display skip in 0.32 s** |
+| `QT_SCALE_FACTOR=0.5 tests/ui/test_options_dialog.py` | **50 passed, no skip in 0.47 s** |
+| Full `tests/unit tests/ui` | **2700 passed, 18 skipped in 206.78 s** |
+| Full `tests/integration` | **393 tests, exit 0** |
+| T-197 direct boundary probe | `/a` redacted; `/`, `//`, `C:\\`, `C:/`, `a`, and `ok` preserved |
+| T-222 800px geometry probe | available frame 800; client 796; frame 800; `availableGeometry.contains(frameGeometry)` true |
+| T-222 1600px logical-screen probe | frame contained; vertical scrollbar maximum zero |
+| P-ID enumeration | **P-1 through P-28 occupied; P-29 unique to the open scroll question; P-26 unchanged** |
+
+### Residual verification boundary
+
+The Windows-native runtime remains unexecuted locally. That does not block approval: the correction
+uses Qt's measured `frameGeometry` rather than a platform decoration constant, and both bare mypy
+platforms are clean. Push the approved stack so CI exercises the native Windows job before treating
+the combined stack as release evidence.
+
+### Push disposition
+
+**The reviewed 22-commit stack may be pushed.** Both remaining blockers are resolved at the exact
+implementation heads above. The Reviewer changed only the append-only review record and current
+task dispositions; no reviewed source, test, specification, status snapshot, commit, or remote
+state was changed.

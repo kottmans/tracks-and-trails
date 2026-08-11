@@ -118,245 +118,6 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
-### T-197 — Cookie source, and the redaction gate that has to prove it
-
-**Status:** **In Review — the reopened Critical is corrected, 2026-08-11.** `T197-R7` is
-Resolved at `4c48273`; `T197-R2` … `T197-R6` remain Resolved. `T197-R1` was reopened as Critical by
-that correction and is corrected here, on §10's standing authorisation for Critical findings.
-
-- **`T197-R1` — Critical, Reopened at `4c48273`; corrected 2026-08-11.** Removing the unsafe
-  separator exemption restores the generic four-byte floor, but an absolute cookie path need not be
-  long: `[cookies] file = "/a"` produces only the registered spelling `/a`, which the floor drops
-  and the real ARC-008 formatter emits unchanged. Protect supplied cookie paths through a
-  path-specific registration contract without registering `/` or arbitrary short prose.
-
-  **Corrected with `remember_a_path`, a second entry point rather than a change to the first.** The
-  distinction is which side makes the claim. `remember_a_secret` keeps its floor because it is
-  handed arbitrary literals and substring replacement would eat prose. A caller of
-  `remember_a_path` is asserting something stronger — *this is a filesystem path the user
-  configured and I am about to name it in a refusal* — and there is no length at which that stops
-  being sensitive. **This is not `T197-R7`'s exemption re-added**: that waived the floor inside the
-  generic function for anything separator-shaped, so a bare `/` registered and every slash in the
-  log went with it. Here a value that names nothing but a filesystem root — `/`, `//`, `C:\`,
-  `C:/` — is refused before anything is registered, and a value carrying no separator at all falls
-  back to the floor, so a one-letter `a` is still not registered as a literal.
-
-  **The cost is stated rather than hidden:** a user whose cookie file really is at `/a` gets `/a`
-  replaced wherever it appears in their log, including inside longer paths. That is over-redaction
-  of one string the user themselves configured, against a credential path leaking; it is the right
-  way round.
-
-  **Both routes are bound to composition, and the first attempt was not.** A cookie file arrives
-  two ways — read from `settings.toml` at startup, and chosen while the application runs — through
-  different code. The unit gate called `remember_a_path` itself, so reverting composition to the
-  floored call left it green: **the test agreed with the intended wiring instead of reading the
-  real one**, which is this project's most-recorded defect against the implementer and was caught
-  here only by mutation. Two regressions in `tests/integration/test_composition.py` now build the
-  real application and ask the redaction sink what `compose` actually registered. Four mutations
-  fail: either route reverted to the floored call, a floor re-added to the path contract, the
-  names-nothing guard removed, and a bare name registered without the floor.
-- **`T197-R7` — Medium, Resolved at `4c48273`.** The generic separator exemption is gone; a bare
-  slash no longer eats paths, URLs, and prose. The correction must preserve that outcome while
-  closing reopened R1.
-
-**`T197-R7` corrected 2026-08-11, on the maintainer's §10 authorisation** (the budget was spent and
-only a blocking Medium remained, so this pass was theirs to grant).
-
-**The separator exemption is gone.** It waived the byte floor for any value containing `/` or `\`,
-on the reasoning that such a string is not a bare word and cannot collide with prose. The
-counter-example is one character long: `[cookies] file = "/"` is a syntactically valid setting, it
-is refused as a directory — **and it is registered before it is refused**, after which every slash
-in every later line is replaced and paths, URLs and prose like `audio/video` stop being readable.
-
-**It was also load-bearing for nothing**, which is what makes this a deletion rather than a trade.
-It was added to cover a short *relative* cookie path; `core/settings.py` registers the **absolute**
-spelling, which clears the floor by itself, so `密` arrives as `/…/密` and is protected either way.
-The `T197-R1` evidence passes unchanged with the exemption removed — confirmed by mutation: taking
-the floor out instead still fails `test_a_short_cookie_path_is_protected_and_short_prose_is_not_eaten`,
-so that protection is real and exercised rather than incidental.
-
-**A value that is nothing but separators is refused before the floor is consulted.** Belt and
-braces for `/` and `C:\`, which are already under four bytes — but a four-separator value would
-clear a length test and still be a filesystem root, and what makes a root unregisterable is that it
-names nothing, not that it is short.
-
-**The test that argued for the exemption is gone with it.** `T197-R7` was right that a direct `a/b`
-case proved a generic mechanism the task does not need rather than a cookie-path outcome. Three
-tests replace it: a bare separator must not eat the log, a separators-only value must register
-nothing, and a short relative path must still be covered by its absolute form — asserted rather
-than assumed, since that is now the only thing covering it. Three mutations fail, including the
-reviewed behaviour restored.
-
-- **`T197-R1` — Critical, sixth correction, and the residual is now a stated property rather than
-  a gap.** `file = "密"` is three UTF-8 bytes with no separator, so the byte floor dropped it and
-  it survived the formatter. The review named the two ways out — path-specific handling, or a
-  maintainer ruling amending `REQ-026`/`NFR-007` — and **the ruling was not available**, so this
-  takes the first, which is the one an implementer may take alone.
-
-  **Two halves, and each is separately tested.** A cookie path is reported and registered in its
-  **absolute** form (`absolute()`, not `resolve()` — it prepends the working directory and leaves
-  an absolute path byte-for-byte alone, where resolving would follow symlinks and name a path the
-  user never typed), so a bare relative name never stands alone in a reason: `密` is reported as
-  `/…/密`. And `remember_a_secret` **drops its floor for any value carrying a path separator**,
-  because the floor only ever protected prose from short *bare words* and `a/b` cannot appear in
-  an English sentence by accident.
-
-  **The two overlap deliberately, and the mutation record says so honestly**: removing the
-  separator rule alone does not break the cookie cases, because the absolute form is long enough
-  to clear the floor regardless. So the separator rule is tested directly, at the layer where it
-  is the only thing acting — a three-byte `a/b` handed straight to `remember_a_secret`.
-
-  **What is left, stated**: a short bare token that is not a path and cannot be made absolute is
-  still not registered. That is the case the floor exists for, and `test_a_short_registered_value_
-  is_ignored` continues to assert it — a fix that protected `密` by also eating the word `ok`
-  would satisfy this finding and break the gate's other rule.
-
-**Three mutations fail their own evidence**: the separator rule removed; the absolute spelling
-unregistered; the floor dropped entirely.
-
-
-**The browser/keyring drift test now exists.** The previous handoff said it did; it did not. That
-claim is why it is written, and it asserts `BROWSER_NAMES`/`KEYRING_NAMES` against yt-dlp's own
-`SUPPORTED_BROWSERS`/`SUPPORTED_KEYRINGS` in a module that may import both.
-
-**Seven mutations fail their own evidence**, one per finding plus the two blind tests above.
-
-
-**Five mutations fail their own evidence**, one per finding.
-
-
-**What was built.** `[cookies] file` in `settings.toml`, validated under `ARC-008` by **one**
-predicate that the stored and live routes both call — `T199-R3`'s lesson applied before the
-finding rather than after. The path travels to a worker as a **session argument**, the same route
-the ffmpeg override takes and one of the two sinks `DAT-003` authorises; it never touches
-`DownloadRequest`. `cookies_from_browser` now refuses anything that is not a browser name. The
-screen gains a Cookies section that states what the feature is **not** for (`REQ-EXCL-002`) and
-that a change reaches downloads already queued.
-
-**Three things worth the reviewer's time.**
-
-- **The validator immediately caught a live instance of the defect `DAT-003` predicted.**
-  `tests/unit/test_presets.py` was constructing a request with
-  `cookies_from_browser="/home/alice/.mozilla/firefox/profile/cookies.sqlite"` — a *path* through
-  the one field the redaction reasoning treats as a name. The `T-049` amendment called that gap
-  *"by intent, not by construction"*; it was not hypothetical, it was in the suite.
-- **The redaction gate did not gate when first written, and that is recorded rather than
-  smoothed.** Mutating `redact` to return `<redacted>` for everything **passed all five tests** —
-  the exact *scrubs everything* failure `DAT-003` records twice. So did deleting the
-  bare-userinfo rule, because every proxy in the fixtures was a well-formed URL handled by a
-  different rule. The gate now asserts that legitimate content **survives** alongside asserting
-  secrets vanish, and covers a scheme-less proxy.
-- **One mutation passed for a good reason and is not a gap**: removing `_COOKIE_PATH` alone left
-  `_COOKIE_FILENAME` covering the same value. That is redundancy in production; removing both
-  fails the gate.
-
-#### Scope
-
-**`REQ-026` names two sources and only one is modelled.** `DownloadRequest.cookies_from_browser`
-exists and carries a browser *name*. **A cookies file has no field at all** — so "or a cookies file"
-is unbuilt, and building it is what puts a user-chosen *path* into this application's hands for the
-first time. That is precisely the material `REQ-026` says is never logged.
-
-**Two existing findings make the shape of this task.**
-
-- **`DAT-003` §1064 records that `cookies_from_browser` is a browser name *"by intent, not by
-  construction"*.** Nothing enforces it. A user who types a path into that field today produces a
-  request carrying a path through a field the redaction reasoning assumes is a name. **This task
-  either constrains it or stops relying on the assumption**, and the choice is recorded.
-- **`DAT-003` deliberately preserves a cookie path that yt-dlp itself names** inside a diagnostic,
-  because `NFR-006` requires messages verbatim. **The gate must distinguish supplied from
-  observed**, or it will either leak what this application supplied or corrupt a message it must
-  keep. A gate that cannot tell them apart is not a gate.
-
-#### Acceptance criteria
-
-- The screen sets a cookie source: **a browser profile, or a cookies file**, or neither. Both reach
-  a real download through the adapter's options
-- **An automated redaction test is the phase exit criterion**, and it is this task's deliverable.
-  It asserts that no log line, no stored diagnostic, no `ARC-008` settings report and no crash path
-  contains: cookie contents, a cookie file path this application supplied, proxy credentials, or a
-  token-like query parameter
-- **The supplied/observed distinction is tested in both directions**: a path this application
-  supplied is absent, and a path yt-dlp named inside its own message is **still present, verbatim**,
-  per `DAT-003`. One test proving each — the second is the one a redaction change will break
-- **`settings.toml` is covered.** A cookie path or proxy stored there does not reach a log through
-  the settings layer's own error path, which is a route `T-038`'s handler-level redaction was not
-  written against
-- `cookies_from_browser` **either rejects a value that is not a browser name, or the entry records
-  that it does not and what protects the path instead** — `DAT-003` §1064 stops being an assumption
-- A cookie file that is missing, unreadable, or not a cookies file **reports** rather than silently
-  downloading unauthenticated, which would look like a paywall bypass failing quietly
-
-#### What was built, against those criteria
-
-- **Both sources reach a real download**, asserted on the adapter's options in both phases
-  (`T012-R5`'s finding): the browser name from the request, the file from the session argument.
-- **The redaction gate is `tests/unit/test_redaction_gate.py`** — no supplied secret in a log, a
-  settings report or a crash path, and **both directions**, since a gate proving only that secrets
-  vanish is satisfied by scrubbing everything.
-- **The supplied/observed pair is tested both ways**: a path yt-dlp named survives verbatim in the
-  stored `error_message`, and the same text loses it on the way to a log. Storage and emission are
-  different sinks with different rules, and that asymmetry was a Critical when it was got wrong
-  (`T084-R1`).
-- **`settings.toml`'s own error path is covered** — the route `T-038` was not written against and
-  `T-146` widened. The dialog keeps the path the user set; the log does not.
-- **`cookies_from_browser` rejects a non-browser**, so `DAT-003` §1064 stops being an assumption.
-  The structural half is asserted on the *type*: `DownloadRequest` has no cookie-file field, which
-  is why row one of the provenance table is structural rather than filtered.
-- **Late binding is proved, not implied**: changing the file reaches jobs already queued, and
-  clearing it signs them out. That is the ruled consequence, and the test would fail if someone
-  later made the path per-job to soften the surprise — which would put it back in the model.
-- **Six mutations fail their own evidence**: the file never reaching the manager; a refused file
-  applied anyway; the adapter dropping it; the browser validator removed; redaction scrubbing
-  everything; the bare-userinfo rule removed.
-
-#### Initial review findings — 2026-08-10
-
-The initial review of `55a267a..c5cbb94` returned **Changes requested**. Full evidence and exact
-reproductions are recorded in `ai/REVIEWS.md`; all five findings block approval:
-
-- **T197-R1 (Critical):** a supplied cookie path whose filename does not contain `cookie` survives
-  the real log formatter. The live refusal route logs that path verbatim, and no production caller
-  registers the chosen path with the exact-secret mechanism. The phase-exit gate covers only
-  `cookies.txt`/`cookies.sqlite`, so it passes while `/home/alice/session.txt` leaks.
-- **T197-R2 (Critical):** the browser validator checks only the prefix. A value such as
-  `firefox:/home/alice/.mozilla/firefox/private/cookies.sqlite` is accepted and serialized into
-  the job row,
-  contradicting `DAT-003`'s ruled browser-*name* invariant. The same raw CLI-shaped string is
-  handed to yt-dlp as a one-element tuple, so even `firefox:Private` is rejected by the library as
-  an unsupported browser rather than selecting that profile.
-- **T197-R3 (High):** both worker probe calls omit the cookie-file session argument. Authenticated
-  URLs therefore fail before the full extraction that does receive it. The claimed both-phases
-  test calls `build_options()` directly and arranges the argument the real probe drops.
-- **T197-R4 (High):** the Settings screen offers a cookies file or no cookies, but no browser
-  profile/source choice. The explicit screen criterion and `REQ-EXCL-003`'s user action are unmet,
-  while the screen's still-to-come sentence says cookie source is complete.
-- **T197-R5 (High):** cookie-file validation checks only existence and `is_file()`. It neither
-  tests readability nor verifies the Netscape cookie-file format. An arbitrary text file is
-  accepted and persisted, then rejected by yt-dlp; the new tests themselves use files that are not
-  valid cookie jars.
-
-#### Out of scope
-
-- **Any bypass.** `REQ-EXCL-002` is explicit: this exists so a user reaches content they already
-  have an account for. Nothing here defeats a paywall, a geo-restriction or an authentication check
-- `-u`/`-p` username and password options — **excluded by `SEC-003`**
-- `--netrc` and client certificates, which `SEC-003` ruled *in* but assigned to Phase 4.5's audit
-- ~~Re-opening `DAT-003`~~ — **this line was wrong and is corrected** (2026-08-10). `DAT-003`'s own
-  conditions say the decision must be revisited **before** cookie-file support lands, and two of
-  this task's criteria trip them: holding a cookie file path, and constraining
-  `cookies_from_browser`. `AGENTS.md` §5 puts the decision above this entry, so the entry gave way.
-  **The ruling was taken before any code**, and `DAT-003`'s 2026-08-10 amendment records it: cookie
-  files land this phase; **the path is settings-only and never enters `DownloadRequest`**, which
-  keeps the never-in-the-database guarantee structural; `cookies_from_browser` gains a validator;
-  and **the two halves bind at different moments on purpose** — a browser profile when the job is
-  queued, a cookie file when the worker starts. This task now works inside *that*, and its own
-  criteria inherit two things from it: **a cookie file setting applies to jobs already queued**,
-  which the screen should not imply otherwise, and the forbidden sinks are named in the decision
-  rather than left as *any durable record*, since `settings.toml` is durable and is where the path
-  is meant to live
-
-
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -2350,136 +2111,6 @@ under a stated precedence.
 
 ## Blocked
 
-### T-222 — The options dialog clips the container note
-
-**Status:** **Blocked — focused re-review 2026-08-11.** The initial correction pass is
-spent and only blocking Medium findings remain; another pass requires the maintainer's §10 choice.
-
-- **`T222-R1` — Medium, Open, narrowed.** The content hint fixes the 501px opening and the tall-
-  display no-scrollbar case is proved. The short-screen bound compares screen height with client
-  height, so an 800px screen receives an 800px client and an 804px outer frame; native title-bar
-  margins can put fixed controls below the available geometry. Bound the outer frame instead.
-- **`T222-R2` — Medium, Open, narrowed.** The clause is correctly `[P]`, but its new `P-26`
-  identifier collides with the existing ratified P-26 duplicate-warning ruling. Assign the scroll
-  question the next unused identifier and update only the new references.
-
-**Reproduced first, and the reproduction moved the task.** This entry guessed the defect was *"in
-how **this** group's height accounts for its wrapped note"*. It is not. Measured in a shown dialog:
-the four groups want ~760px, and **the dialog opened at 302 by 680 — its own `minimumSizeHint` —
-with the note already cut.** So the reported minimum was a claim the layout could not honour, and
-the size in the screenshot was not one the maintainer had dragged it down to.
-
-**The mechanism.** A word-wrapping `QLabel` reports a **one-line** `minimumSizeHint`, so Qt is free
-to squeeze an explanation to its first line to make the arithmetic come out — silently, with no
-scrollbar and no ellipsis. The Container note is simply the first casualty, being the one whose
-group has the least slack; the entry's *"the defect is in this group, not in wrapped labels
-generally"* was reading a symptom's distribution.
-
-**Two fixes on the raise-the-floor route were built and rejected on measurement**, both recorded
-because each looked right until it was run:
-
-| Candidate | Result |
-| --- | --- |
-| `Minimum` vertical policy on the wrapping labels | floor rises to 748, **still cuts the note by 6px** at narrow widths — the group is still squeezed under its own minimum |
-| `minimumSizeHint` overridden to report `heightForWidth` | nothing is cut, but the floor becomes **901px** — taller than the dialog's own natural 853 and than a 768px display, trading clipped text for an unreachable *OK* |
-
-**What was built.** The four groups sit in a `QScrollArea`; the save line and the button box stay
-outside it. The floor drops to 161px, nothing is cut at any size probed down to 200 by 300, and
-*OK* is reachable at every one of them.
-
-**Spec.** `docs/UX_SPEC.md` §6 gains a **[D]** clause with the derivation shown, since this changes
-what a user sees. **It is marked [D] rather than [P] on the argument that the height has to come
-from somewhere and the other two places were measured worse — and the clause says in its own text
-that this is the thing to reject if scrolling reads as a product choice.** The defect it answers is
-not in dispute either way.
-
-**Correction pass 2026-08-11 — both findings narrowed, not yet resolved.**
-
-**R1 was a regression I introduced and did not measure for.** The scroller fixed the clipping and
-moved the opening size from 302 by 680 to 302 by 501, hiding *more* of the options at the default
-size than the defect had. The cause is that `show()` sizes a window with `adjustSize()`, which
-**clamps to two thirds of the screen** — so the old 680 was never a considered default either, it
-was `minimumSizeHint` overriding the clamp, and dropping the minimum to 161 removed that accidental
-floor and left the clamp showing. Two changes: the scroll area reports its content's preferred
-height as its `sizeHint` (`minimumSizeHint` deliberately untouched — that is what still allows
-161px), and the dialog asks for that height explicitly, bounded by the screen actually available.
-Neither half is a fixed size. **The previous round's tests resized every case explicitly, so none of
-them could have caught this**; two new ones pin the opening geometry against the screen.
-
-**R2: the clause is `[P]`.** The reviewer is right and the argument I made for `[D]` is the exact
-shape `T145-R1` and `T144-R1` are recorded as costing. Demoted, opened as `P-26` in `docs/UX_SPEC.md`
-§10, and §1's *"no task may build a `[P]` clause until it is ratified"* is recorded as suspended for
-this one clause on the reviewer's explicit instruction — because it **is** built, and leaving that
-undocumented would be the second defect.
-**Second correction pass 2026-08-11, on the maintainer's §10 authorisation** — both findings were
-Medium and the ordinary budget was spent, so this pass was theirs to grant.
-
-**`T222-R1` — the bound was on the wrong rectangle.** `resize()` sets the **client** area, and a
-window is its client area *plus its frame*. Bounding the client to the available height therefore
-puts the frame past the bottom of the screen: 800 client / 804 frame against 800 of available
-height on the review machine, and a real title bar costs far more than four pixels. What goes off
-the bottom is the button box — the exact harm the scroll area was added to prevent, reached from
-the other direction. **The regression compared `dialog.height()` with the screen height, so it
-encoded the same mistake it was guarding.** It compares `frameGeometry` now. The bound moved to
-`showEvent`, because a frame has no size until the window has been shown.
-
-**A once-only flag was written and then deleted.** It guarded the re-clamp on the reasoning that a
-user who resizes the dialog and reopens it should keep the size they left. That does not survive
-being written down: the clamp only ever shrinks, so the one case the flag changes is a window left
-*taller than the screen* — which is the defect, not a preference. **A mutation removing it changed
-no test**, which is what prompted looking; the flag went rather than a test being written to
-defend it.
-
-**`T222-R2` — the identifier collided.** The clause was opened as `P-26`, which `UX-007` had
-already ratified as the duplicate-warning question in §9.3 — two questions and two dispositions
-under one stable ID, in the file whose whole job is being the stable reference. It is **`P-29`**
-now, chosen by enumerating `P-1`…`P-28` rather than by assuming the next number, and every
-reference this task added moved with it. `UX-007`'s `P-26` is untouched.
-
-**Owner:** Implementer
-**Priority:** Medium — explanatory text a user is meant to read is unreadable at the size the
-dialog actually opened at, on the maintainer's real display
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** nothing — `ui/options_dialog.py` is not in any open review's boundary
-**Relevant context:** `REQ-010` (the options this dialog offers), `ui/options_dialog.py`
-`_build_container` (the note: a `setWordWrap(True)` `QLabel` in the group's `QVBoxLayout`), the
-dialog's three sibling wrapped labels (`_audio_reason`, `_subtitle_reason`, `_save_result`),
-`T-209` (a geometry defect that only a **shown** widget exhibits — the lesson that shapes the
-reproduction), `tests/ui/test_options_dialog.py`
-**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-In the maintainer's 2026-08-10 screenshot (a roughly 355px-wide dialog on a real display), the
-Container group's explanation — *"Remuxing keeps the streams and is quick; recoding re-encodes
-them and is not."* — wraps to two lines and both are vertically clipped at the group's bottom
-edge. The same screenshot shows the audio group's two-line wrapped reason and the subtitles
-group's note displaying whole, so the defect is in how **this** group's height accounts for its
-wrapped note, not in wrapped labels generally. **The mechanism is unverified**: the note is a
-word-wrapping label in a plain `QVBoxLayout`, and a wrapped label's height-for-width is the
-classic thing a size hint under-reports — but the cause is the reproduction's to establish, not
-this entry's to assert.
-
-#### Acceptance criteria
-
-- **Reproduced first, in a shown dialog** at a width that wraps the note — `T-209`'s lesson:
-  this class of geometry defect does not exist in an unshown widget — with the clip demonstrated
-  failing before the correction and the same probe passing after it
-- **The note is fully visible at wrapping widths**: its rendered height accommodates its wrapped
-  line count (`heightForWidth` at its actual width), and no part of it is cut by the group's or
-  the dialog's bounds
-- **The three sibling wrapped labels are audited under the same probe** — they display correctly
-  in the screenshot, and the regression proves that rather than trusting it
-- The dialog's existing open-and-resize behaviour is otherwise unchanged — no fixed size is
-  introduced to make the numbers come out
-
-#### Out of scope
-
-- Rewording the note — its length is not the defect
-- Any other options-dialog layout change, and the dialog's spec-side description (`docs/UX_SPEC.md`)
-  unless the correction genuinely moves what a user sees
-
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
 **Status:** **Blocked — correction verified 2026-08-10; the disposition narrowed the same day
@@ -3028,6 +2659,370 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-197 — Cookie source, and the redaction gate that has to prove it
+
+**Status:** **Complete — approved 2026-08-11 at `6a6ce27`.** `T197-R1` and `T197-R7` are
+Resolved; `T197-R2` … `T197-R6` remain Resolved.
+
+- **`T197-R1` — Critical, Resolved at `6a6ce27`.** `remember_a_path` gives a supplied filesystem
+  path its own no-floor contract, so `/a` is protected through both composed routes. Filesystem
+  roots register nothing, bare names retain the generic floor, and `T197-R7` stays closed.
+
+  **Corrected with `remember_a_path`, a second entry point rather than a change to the first.** The
+  distinction is which side makes the claim. `remember_a_secret` keeps its floor because it is
+  handed arbitrary literals and substring replacement would eat prose. A caller of
+  `remember_a_path` is asserting something stronger — *this is a filesystem path the user
+  configured and I am about to name it in a refusal* — and there is no length at which that stops
+  being sensitive. **This is not `T197-R7`'s exemption re-added**: that waived the floor inside the
+  generic function for anything separator-shaped, so a bare `/` registered and every slash in the
+  log went with it. Here a value that names nothing but a filesystem root — `/`, `//`, `C:\`,
+  `C:/` — is refused before anything is registered, and a value carrying no separator at all falls
+  back to the floor, so a one-letter `a` is still not registered as a literal.
+
+  **The cost is stated rather than hidden:** a user whose cookie file really is at `/a` gets `/a`
+  replaced wherever it appears in their log, including inside longer paths. That is over-redaction
+  of one string the user themselves configured, against a credential path leaking; it is the right
+  way round.
+
+  **Both routes are bound to composition, and the first attempt was not.** A cookie file arrives
+  two ways — read from `settings.toml` at startup, and chosen while the application runs — through
+  different code. The unit gate called `remember_a_path` itself, so reverting composition to the
+  floored call left it green: **the test agreed with the intended wiring instead of reading the
+  real one**, which is this project's most-recorded defect against the implementer and was caught
+  here only by mutation. Two regressions in `tests/integration/test_composition.py` now build the
+  real application and ask the redaction sink what `compose` actually registered. Four mutations
+  fail: either route reverted to the floored call, a floor re-added to the path contract, the
+  names-nothing guard removed, and a bare name registered without the floor.
+- **`T197-R7` — Medium, Resolved at `4c48273`.** The generic separator exemption is gone; a bare
+  slash no longer eats paths, URLs, and prose. The correction must preserve that outcome while
+  closing reopened R1.
+
+**`T197-R7` corrected 2026-08-11, on the maintainer's §10 authorisation** (the budget was spent and
+only a blocking Medium remained, so this pass was theirs to grant).
+
+**The separator exemption is gone.** It waived the byte floor for any value containing `/` or `\`,
+on the reasoning that such a string is not a bare word and cannot collide with prose. The
+counter-example is one character long: `[cookies] file = "/"` is a syntactically valid setting, it
+is refused as a directory — **and it is registered before it is refused**, after which every slash
+in every later line is replaced and paths, URLs and prose like `audio/video` stop being readable.
+
+**It was also load-bearing for nothing**, which is what makes this a deletion rather than a trade.
+It was added to cover a short *relative* cookie path; `core/settings.py` registers the **absolute**
+spelling, which clears the floor by itself, so `密` arrives as `/…/密` and is protected either way.
+The `T197-R1` evidence passes unchanged with the exemption removed — confirmed by mutation: taking
+the floor out instead still fails `test_a_short_cookie_path_is_protected_and_short_prose_is_not_eaten`,
+so that protection is real and exercised rather than incidental.
+
+**A value that is nothing but separators is refused before the floor is consulted.** Belt and
+braces for `/` and `C:\`, which are already under four bytes — but a four-separator value would
+clear a length test and still be a filesystem root, and what makes a root unregisterable is that it
+names nothing, not that it is short.
+
+**The test that argued for the exemption is gone with it.** `T197-R7` was right that a direct `a/b`
+case proved a generic mechanism the task does not need rather than a cookie-path outcome. Three
+tests replace it: a bare separator must not eat the log, a separators-only value must register
+nothing, and a short relative path must still be covered by its absolute form — asserted rather
+than assumed, since that is now the only thing covering it. Three mutations fail, including the
+reviewed behaviour restored.
+
+- **`T197-R1` — Critical, sixth correction, and the residual is now a stated property rather than
+  a gap.** `file = "密"` is three UTF-8 bytes with no separator, so the byte floor dropped it and
+  it survived the formatter. The review named the two ways out — path-specific handling, or a
+  maintainer ruling amending `REQ-026`/`NFR-007` — and **the ruling was not available**, so this
+  takes the first, which is the one an implementer may take alone.
+
+  **Two halves, and each is separately tested.** A cookie path is reported and registered in its
+  **absolute** form (`absolute()`, not `resolve()` — it prepends the working directory and leaves
+  an absolute path byte-for-byte alone, where resolving would follow symlinks and name a path the
+  user never typed), so a bare relative name never stands alone in a reason: `密` is reported as
+  `/…/密`. And `remember_a_secret` **drops its floor for any value carrying a path separator**,
+  because the floor only ever protected prose from short *bare words* and `a/b` cannot appear in
+  an English sentence by accident.
+
+  **The two overlap deliberately, and the mutation record says so honestly**: removing the
+  separator rule alone does not break the cookie cases, because the absolute form is long enough
+  to clear the floor regardless. So the separator rule is tested directly, at the layer where it
+  is the only thing acting — a three-byte `a/b` handed straight to `remember_a_secret`.
+
+  **What is left, stated**: a short bare token that is not a path and cannot be made absolute is
+  still not registered. That is the case the floor exists for, and `test_a_short_registered_value_
+  is_ignored` continues to assert it — a fix that protected `密` by also eating the word `ok`
+  would satisfy this finding and break the gate's other rule.
+
+**Three mutations fail their own evidence**: the separator rule removed; the absolute spelling
+unregistered; the floor dropped entirely.
+
+
+**The browser/keyring drift test now exists.** The previous handoff said it did; it did not. That
+claim is why it is written, and it asserts `BROWSER_NAMES`/`KEYRING_NAMES` against yt-dlp's own
+`SUPPORTED_BROWSERS`/`SUPPORTED_KEYRINGS` in a module that may import both.
+
+**Seven mutations fail their own evidence**, one per finding plus the two blind tests above.
+
+
+**Five mutations fail their own evidence**, one per finding.
+
+
+**What was built.** `[cookies] file` in `settings.toml`, validated under `ARC-008` by **one**
+predicate that the stored and live routes both call — `T199-R3`'s lesson applied before the
+finding rather than after. The path travels to a worker as a **session argument**, the same route
+the ffmpeg override takes and one of the two sinks `DAT-003` authorises; it never touches
+`DownloadRequest`. `cookies_from_browser` now refuses anything that is not a browser name. The
+screen gains a Cookies section that states what the feature is **not** for (`REQ-EXCL-002`) and
+that a change reaches downloads already queued.
+
+**Three things worth the reviewer's time.**
+
+- **The validator immediately caught a live instance of the defect `DAT-003` predicted.**
+  `tests/unit/test_presets.py` was constructing a request with
+  `cookies_from_browser="/home/alice/.mozilla/firefox/profile/cookies.sqlite"` — a *path* through
+  the one field the redaction reasoning treats as a name. The `T-049` amendment called that gap
+  *"by intent, not by construction"*; it was not hypothetical, it was in the suite.
+- **The redaction gate did not gate when first written, and that is recorded rather than
+  smoothed.** Mutating `redact` to return `<redacted>` for everything **passed all five tests** —
+  the exact *scrubs everything* failure `DAT-003` records twice. So did deleting the
+  bare-userinfo rule, because every proxy in the fixtures was a well-formed URL handled by a
+  different rule. The gate now asserts that legitimate content **survives** alongside asserting
+  secrets vanish, and covers a scheme-less proxy.
+- **One mutation passed for a good reason and is not a gap**: removing `_COOKIE_PATH` alone left
+  `_COOKIE_FILENAME` covering the same value. That is redundancy in production; removing both
+  fails the gate.
+
+#### Scope
+
+**`REQ-026` names two sources and only one is modelled.** `DownloadRequest.cookies_from_browser`
+exists and carries a browser *name*. **A cookies file has no field at all** — so "or a cookies file"
+is unbuilt, and building it is what puts a user-chosen *path* into this application's hands for the
+first time. That is precisely the material `REQ-026` says is never logged.
+
+**Two existing findings make the shape of this task.**
+
+- **`DAT-003` §1064 records that `cookies_from_browser` is a browser name *"by intent, not by
+  construction"*.** Nothing enforces it. A user who types a path into that field today produces a
+  request carrying a path through a field the redaction reasoning assumes is a name. **This task
+  either constrains it or stops relying on the assumption**, and the choice is recorded.
+- **`DAT-003` deliberately preserves a cookie path that yt-dlp itself names** inside a diagnostic,
+  because `NFR-006` requires messages verbatim. **The gate must distinguish supplied from
+  observed**, or it will either leak what this application supplied or corrupt a message it must
+  keep. A gate that cannot tell them apart is not a gate.
+
+#### Acceptance criteria
+
+- The screen sets a cookie source: **a browser profile, or a cookies file**, or neither. Both reach
+  a real download through the adapter's options
+- **An automated redaction test is the phase exit criterion**, and it is this task's deliverable.
+  It asserts that no log line, no stored diagnostic, no `ARC-008` settings report and no crash path
+  contains: cookie contents, a cookie file path this application supplied, proxy credentials, or a
+  token-like query parameter
+- **The supplied/observed distinction is tested in both directions**: a path this application
+  supplied is absent, and a path yt-dlp named inside its own message is **still present, verbatim**,
+  per `DAT-003`. One test proving each — the second is the one a redaction change will break
+- **`settings.toml` is covered.** A cookie path or proxy stored there does not reach a log through
+  the settings layer's own error path, which is a route `T-038`'s handler-level redaction was not
+  written against
+- `cookies_from_browser` **either rejects a value that is not a browser name, or the entry records
+  that it does not and what protects the path instead** — `DAT-003` §1064 stops being an assumption
+- A cookie file that is missing, unreadable, or not a cookies file **reports** rather than silently
+  downloading unauthenticated, which would look like a paywall bypass failing quietly
+
+#### What was built, against those criteria
+
+- **Both sources reach a real download**, asserted on the adapter's options in both phases
+  (`T012-R5`'s finding): the browser name from the request, the file from the session argument.
+- **The redaction gate is `tests/unit/test_redaction_gate.py`** — no supplied secret in a log, a
+  settings report or a crash path, and **both directions**, since a gate proving only that secrets
+  vanish is satisfied by scrubbing everything.
+- **The supplied/observed pair is tested both ways**: a path yt-dlp named survives verbatim in the
+  stored `error_message`, and the same text loses it on the way to a log. Storage and emission are
+  different sinks with different rules, and that asymmetry was a Critical when it was got wrong
+  (`T084-R1`).
+- **`settings.toml`'s own error path is covered** — the route `T-038` was not written against and
+  `T-146` widened. The dialog keeps the path the user set; the log does not.
+- **`cookies_from_browser` rejects a non-browser**, so `DAT-003` §1064 stops being an assumption.
+  The structural half is asserted on the *type*: `DownloadRequest` has no cookie-file field, which
+  is why row one of the provenance table is structural rather than filtered.
+- **Late binding is proved, not implied**: changing the file reaches jobs already queued, and
+  clearing it signs them out. That is the ruled consequence, and the test would fail if someone
+  later made the path per-job to soften the surprise — which would put it back in the model.
+- **Six mutations fail their own evidence**: the file never reaching the manager; a refused file
+  applied anyway; the adapter dropping it; the browser validator removed; redaction scrubbing
+  everything; the bare-userinfo rule removed.
+
+#### Initial review findings — 2026-08-10
+
+The initial review of `55a267a..c5cbb94` returned **Changes requested**. Full evidence and exact
+reproductions are recorded in `ai/REVIEWS.md`; all five findings block approval:
+
+- **T197-R1 (Critical):** a supplied cookie path whose filename does not contain `cookie` survives
+  the real log formatter. The live refusal route logs that path verbatim, and no production caller
+  registers the chosen path with the exact-secret mechanism. The phase-exit gate covers only
+  `cookies.txt`/`cookies.sqlite`, so it passes while `/home/alice/session.txt` leaks.
+- **T197-R2 (Critical):** the browser validator checks only the prefix. A value such as
+  `firefox:/home/alice/.mozilla/firefox/private/cookies.sqlite` is accepted and serialized into
+  the job row,
+  contradicting `DAT-003`'s ruled browser-*name* invariant. The same raw CLI-shaped string is
+  handed to yt-dlp as a one-element tuple, so even `firefox:Private` is rejected by the library as
+  an unsupported browser rather than selecting that profile.
+- **T197-R3 (High):** both worker probe calls omit the cookie-file session argument. Authenticated
+  URLs therefore fail before the full extraction that does receive it. The claimed both-phases
+  test calls `build_options()` directly and arranges the argument the real probe drops.
+- **T197-R4 (High):** the Settings screen offers a cookies file or no cookies, but no browser
+  profile/source choice. The explicit screen criterion and `REQ-EXCL-003`'s user action are unmet,
+  while the screen's still-to-come sentence says cookie source is complete.
+- **T197-R5 (High):** cookie-file validation checks only existence and `is_file()`. It neither
+  tests readability nor verifies the Netscape cookie-file format. An arbitrary text file is
+  accepted and persisted, then rejected by yt-dlp; the new tests themselves use files that are not
+  valid cookie jars.
+
+#### Out of scope
+
+- **Any bypass.** `REQ-EXCL-002` is explicit: this exists so a user reaches content they already
+  have an account for. Nothing here defeats a paywall, a geo-restriction or an authentication check
+- `-u`/`-p` username and password options — **excluded by `SEC-003`**
+- `--netrc` and client certificates, which `SEC-003` ruled *in* but assigned to Phase 4.5's audit
+- ~~Re-opening `DAT-003`~~ — **this line was wrong and is corrected** (2026-08-10). `DAT-003`'s own
+  conditions say the decision must be revisited **before** cookie-file support lands, and two of
+  this task's criteria trip them: holding a cookie file path, and constraining
+  `cookies_from_browser`. `AGENTS.md` §5 puts the decision above this entry, so the entry gave way.
+  **The ruling was taken before any code**, and `DAT-003`'s 2026-08-10 amendment records it: cookie
+  files land this phase; **the path is settings-only and never enters `DownloadRequest`**, which
+  keeps the never-in-the-database guarantee structural; `cookies_from_browser` gains a validator;
+  and **the two halves bind at different moments on purpose** — a browser profile when the job is
+  queued, a cookie file when the worker starts. This task now works inside *that*, and its own
+  criteria inherit two things from it: **a cookie file setting applies to jobs already queued**,
+  which the screen should not imply otherwise, and the forbidden sinks are named in the decision
+  rather than left as *any durable record*, since `settings.toml` is durable and is where the path
+  is meant to live
+
+
+### T-222 — The options dialog clips the container note
+
+**Status:** **Complete — approved 2026-08-11 at `4d03937`.** The maintainer-authorised extra
+pass resolves T222-R1 and T222-R2.
+
+- **`T222-R1` — Medium, Resolved at `4d03937`.** The post-show clamp subtracts the measured frame
+  decoration, so the outer frame fits a short display while a tall display still opens with no
+  scrollbar. The regression asserts `frameGeometry`, not client height.
+- **`T222-R2` — Medium, Resolved at `4d03937`.** The open scroll question is `P-29`; `P-1` through
+  `P-28` are occupied, and the ratified `P-26` duplicate-warning ruling is unchanged.
+
+**Reproduced first, and the reproduction moved the task.** This entry guessed the defect was *"in
+how **this** group's height accounts for its wrapped note"*. It is not. Measured in a shown dialog:
+the four groups want ~760px, and **the dialog opened at 302 by 680 — its own `minimumSizeHint` —
+with the note already cut.** So the reported minimum was a claim the layout could not honour, and
+the size in the screenshot was not one the maintainer had dragged it down to.
+
+**The mechanism.** A word-wrapping `QLabel` reports a **one-line** `minimumSizeHint`, so Qt is free
+to squeeze an explanation to its first line to make the arithmetic come out — silently, with no
+scrollbar and no ellipsis. The Container note is simply the first casualty, being the one whose
+group has the least slack; the entry's *"the defect is in this group, not in wrapped labels
+generally"* was reading a symptom's distribution.
+
+**Two fixes on the raise-the-floor route were built and rejected on measurement**, both recorded
+because each looked right until it was run:
+
+| Candidate | Result |
+| --- | --- |
+| `Minimum` vertical policy on the wrapping labels | floor rises to 748, **still cuts the note by 6px** at narrow widths — the group is still squeezed under its own minimum |
+| `minimumSizeHint` overridden to report `heightForWidth` | nothing is cut, but the floor becomes **901px** — taller than the dialog's own natural 853 and than a 768px display, trading clipped text for an unreachable *OK* |
+
+**What was built.** The four groups sit in a `QScrollArea`; the save line and the button box stay
+outside it. The floor drops to 161px, nothing is cut at any size probed down to 200 by 300, and
+*OK* is reachable at every one of them.
+
+**Spec.** `docs/UX_SPEC.md` §6 gains a **[D]** clause with the derivation shown, since this changes
+what a user sees. **It is marked [D] rather than [P] on the argument that the height has to come
+from somewhere and the other two places were measured worse — and the clause says in its own text
+that this is the thing to reject if scrolling reads as a product choice.** The defect it answers is
+not in dispute either way.
+
+**Correction pass 2026-08-11 — both findings narrowed, not yet resolved.**
+
+**R1 was a regression I introduced and did not measure for.** The scroller fixed the clipping and
+moved the opening size from 302 by 680 to 302 by 501, hiding *more* of the options at the default
+size than the defect had. The cause is that `show()` sizes a window with `adjustSize()`, which
+**clamps to two thirds of the screen** — so the old 680 was never a considered default either, it
+was `minimumSizeHint` overriding the clamp, and dropping the minimum to 161 removed that accidental
+floor and left the clamp showing. Two changes: the scroll area reports its content's preferred
+height as its `sizeHint` (`minimumSizeHint` deliberately untouched — that is what still allows
+161px), and the dialog asks for that height explicitly, bounded by the screen actually available.
+Neither half is a fixed size. **The previous round's tests resized every case explicitly, so none of
+them could have caught this**; two new ones pin the opening geometry against the screen.
+
+**R2: the clause is `[P]`.** The reviewer is right and the argument I made for `[D]` is the exact
+shape `T145-R1` and `T144-R1` are recorded as costing. Demoted, opened as `P-26` in `docs/UX_SPEC.md`
+§10, and §1's *"no task may build a `[P]` clause until it is ratified"* is recorded as suspended for
+this one clause on the reviewer's explicit instruction — because it **is** built, and leaving that
+undocumented would be the second defect.
+**Second correction pass 2026-08-11, on the maintainer's §10 authorisation** — both findings were
+Medium and the ordinary budget was spent, so this pass was theirs to grant.
+
+**`T222-R1` — the bound was on the wrong rectangle.** `resize()` sets the **client** area, and a
+window is its client area *plus its frame*. Bounding the client to the available height therefore
+puts the frame past the bottom of the screen: 800 client / 804 frame against 800 of available
+height on the review machine, and a real title bar costs far more than four pixels. What goes off
+the bottom is the button box — the exact harm the scroll area was added to prevent, reached from
+the other direction. **The regression compared `dialog.height()` with the screen height, so it
+encoded the same mistake it was guarding.** It compares `frameGeometry` now. The bound moved to
+`showEvent`, because a frame has no size until the window has been shown.
+
+**A once-only flag was written and then deleted.** It guarded the re-clamp on the reasoning that a
+user who resizes the dialog and reopens it should keep the size they left. That does not survive
+being written down: the clamp only ever shrinks, so the one case the flag changes is a window left
+*taller than the screen* — which is the defect, not a preference. **A mutation removing it changed
+no test**, which is what prompted looking; the flag went rather than a test being written to
+defend it.
+
+**`T222-R2` — the identifier collided.** The clause was opened as `P-26`, which `UX-007` had
+already ratified as the duplicate-warning question in §9.3 — two questions and two dispositions
+under one stable ID, in the file whose whole job is being the stable reference. It is **`P-29`**
+now, chosen by enumerating `P-1`…`P-28` rather than by assuming the next number, and every
+reference this task added moved with it. `UX-007`'s `P-26` is untouched.
+
+**Owner:** Implementer
+**Priority:** Medium — explanatory text a user is meant to read is unreadable at the size the
+dialog actually opened at, on the maintainer's real display
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing — `ui/options_dialog.py` is not in any open review's boundary
+**Relevant context:** `REQ-010` (the options this dialog offers), `ui/options_dialog.py`
+`_build_container` (the note: a `setWordWrap(True)` `QLabel` in the group's `QVBoxLayout`), the
+dialog's three sibling wrapped labels (`_audio_reason`, `_subtitle_reason`, `_save_result`),
+`T-209` (a geometry defect that only a **shown** widget exhibits — the lesson that shapes the
+reproduction), `tests/ui/test_options_dialog.py`
+**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+In the maintainer's 2026-08-10 screenshot (a roughly 355px-wide dialog on a real display), the
+Container group's explanation — *"Remuxing keeps the streams and is quick; recoding re-encodes
+them and is not."* — wraps to two lines and both are vertically clipped at the group's bottom
+edge. The same screenshot shows the audio group's two-line wrapped reason and the subtitles
+group's note displaying whole, so the defect is in how **this** group's height accounts for its
+wrapped note, not in wrapped labels generally. **The mechanism is unverified**: the note is a
+word-wrapping label in a plain `QVBoxLayout`, and a wrapped label's height-for-width is the
+classic thing a size hint under-reports — but the cause is the reproduction's to establish, not
+this entry's to assert.
+
+#### Acceptance criteria
+
+- **Reproduced first, in a shown dialog** at a width that wraps the note — `T-209`'s lesson:
+  this class of geometry defect does not exist in an unshown widget — with the clip demonstrated
+  failing before the correction and the same probe passing after it
+- **The note is fully visible at wrapping widths**: its rendered height accommodates its wrapped
+  line count (`heightForWidth` at its actual width), and no part of it is cut by the group's or
+  the dialog's bounds
+- **The three sibling wrapped labels are audited under the same probe** — they display correctly
+  in the screenshot, and the regression proves that rather than trusting it
+- The dialog's existing open-and-resize behaviour is otherwise unchanged — no fixed size is
+  introduced to make the numbers come out
+
+#### Out of scope
+
+- Rewording the note — its length is not the defect
+- Any other options-dialog layout change, and the dialog's spec-side description (`docs/UX_SPEC.md`)
+  unless the correction genuinely moves what a user sees
 
 ### T-214 — The layering test proves less than the tree actually promises
 
