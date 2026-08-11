@@ -26,11 +26,14 @@ so spinning on it returns instantly and proves nothing.
 
 import dataclasses
 import json
+import logging
 import os
 import shutil
 import sqlite3
+import tempfile
 import time
 from collections.abc import Callable, Iterator
+from io import StringIO
 from pathlib import Path
 from typing import Any, Final
 
@@ -39,6 +42,7 @@ from PySide6.QtCore import QMetaMethod, QObject
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from tracks_and_trails import app as application
+from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core import presets
 from tracks_and_trails.core import presets as core_presets
 from tracks_and_trails.core import settings as core_settings
@@ -2454,3 +2458,62 @@ def test_an_unusable_cookies_file_is_refused_and_changes_nothing(
     assert "not be authenticated" in composition.window.statusBar().currentMessage(), (
         "the refusal was silent, so the user would download unauthenticated without being told"
     )
+
+
+def test_an_unusable_cookie_path_does_not_reach_the_log_that_reports_it(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T197-R1`, the half that leaked after the first correction.**
+
+    Registering the *accepted* path protected the ordinary case and missed the reported one: an
+    unusable value is discarded from the settings, its text goes into `problem.reason`, and
+    composition **logs that reason**. So the path most certain to be written was the one nothing
+    had registered — and the review reproduced `/home/alice/session.txt` arriving in the log by
+    that exact route.
+
+    `load()` now carries every literal it read as data, valid or not, and composition registers
+    them before it writes anything. Asserted by capturing what this application's own handlers
+    emit for the reason, rather than by reading the ordering.
+    """
+    # **Outside `tmp_path`, and that is not fussiness.** pytest names its temp directory after the
+    # test, so a jar under it sat at `.../test_an_unusable_cookie_path_d0/session.txt` — the word
+    # *cookie* in the directory, put there by the test's own name, matched the shape rule and
+    # redacted the path for the wrong reason. The first version of this test passed with the
+    # registration deleted. That is the `cookies.*` fixture mistake again, one level up.
+    neutral = Path(tempfile.mkdtemp())
+    named_like_nothing = neutral / "session.txt"
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text(
+        f"[cookies]\nfile = {json.dumps(str(named_like_nothing))}\n", encoding="utf-8"
+    )
+
+    # Proved to be invisible to the shape rules *before* composing, so what is measured below is
+    # the registration and nothing else.
+    app_logging.forget_the_secrets()
+    assert str(named_like_nothing) in app_logging.redact(f"see {named_like_nothing}"), (
+        "this path is already redacted by shape, so it cannot show what registering buys"
+    )
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    assert composition.window is not None
+
+    read = core_settings.load(settings_file)
+    assert read.settings.cookie_file is None, "an absent jar was accepted"
+    assert read.problem is not None
+    assert str(named_like_nothing) in read.problem.reason, (
+        "the dialog must name the file the user set — it is their value, shown to them"
+    )
+
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(app_logging.RedactingFormatter(app_logging.LOG_FORMAT))
+    log = logging.getLogger("tracksandtrails.cookie-leak-probe")
+    log.handlers = [handler]
+    log.propagate = False
+    log.warning("settings: %s", read.problem.reason)
+
+    assert str(named_like_nothing) not in stream.getvalue(), (
+        f"the cookie path reached a log through the ARC-008 report:\n{stream.getvalue()}"
+    )
+    assert "does not exist" in stream.getvalue(), "the report was scrubbed rather than the path"

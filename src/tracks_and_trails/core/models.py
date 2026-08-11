@@ -27,6 +27,7 @@ durable records belong with their schema, not in this module — is why it is wo
 (`T-176`).
 """
 
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -110,6 +111,9 @@ KEYRING_NAMES: Final = ("basictext", "gnomekeyring", "kwallet", "kwallet5", "kwa
 #: (`ARCHITECTURE.md` §6). `tests/unit/test_models.py` binds `BROWSER_NAMES` and `KEYRING_NAMES`
 #: to yt-dlp's own `SUPPORTED_BROWSERS` and `SUPPORTED_KEYRINGS`, in the layer that may import
 #: both — the same device `THEME_NAMES` uses, and the only thing that stops two lists drifting.
+#: `%NAME%`, the Windows environment-variable form `expandvars` expands.
+_WINDOWS_VARIABLE: Final = re.compile(r"%[^%]+%")
+
 _BROWSER_SPEC: Final = re.compile(
     r"^(?P<name>[^+:\s]+)"
     r"(?:\s*\+\s*(?P<keyring>[^:\s]+))?"
@@ -160,18 +164,32 @@ def parse_browser_specification(value: str) -> tuple[str, str | None, str | None
 
 
 def _looks_like_a_path(value: str) -> bool:
-    """Whether `value` names a location rather than a profile.
+    """Whether `value` names a location rather than a profile (`T197-R2`).
 
-    Deliberately generous — a separator of either kind, a `~`, or a drive letter — because the
-    consequence of a false negative is a credential path in the database and the consequence of a
-    false positive is a profile the user renames. `T197-R2` is why the bar sits there.
+    **Two questions, and the second is asked the way yt-dlp asks it.** A separator or a drive
+    letter is a path outright. And yt-dlp runs a profile through `expand_path`, which is
+    `expandvars(expanduser(...))` — so `firefox:$HOME` passes any check on the *written* characters
+    and becomes `/home/sean` inside the library. The review reproduced exactly that.
+
+    **So expansion is performed here, with the standard library yt-dlp itself uses, and a profile
+    that changes under it is refused.** That is not a denylist of `$`, `%` and `~` — it is the same
+    transformation, asked whether it does anything. A denylist is the enumeration failure
+    `DAT-003` records twice; this cannot miss a spelling because it is not matching spellings.
     """
-    return (
-        "/" in value
-        or "\\" in value
-        or value.startswith("~")
-        or (len(value) > 1 and value[1] == ":")
-    )
+    if "/" in value or "\\" in value or (len(value) > 1 and value[1] == ":"):
+        return True
+    # **The expansion *syntax*, refused structurally**, because performing the expansion is not
+    # enough on its own: `~x` expands only where a user `x` exists, and `%USERPROFILE%` only on
+    # Windows — so the check below answers differently on different machines, which is the
+    # platform-dependent class that has already cost this project three findings. These three
+    # forms are the whole of what `expanduser` and `expandvars` implement; the list is closed
+    # because it describes a syntax, not a set of secrets.
+    if value.startswith("~") or "$" in value or _WINDOWS_VARIABLE.search(value):
+        return True
+    # `os.path`, not `Path`, and the linter's suggestion is wrong here: `Path.expanduser()`
+    # normalises separators and drops a trailing slash, so it would answer *changed* for strings
+    # that expand to themselves. This has to be the exact pair yt-dlp applies.
+    return os.path.expandvars(os.path.expanduser(value)) != value  # noqa: PTH111
 
 
 def _require_browser_name(owner: str, name: str, value: object) -> None:

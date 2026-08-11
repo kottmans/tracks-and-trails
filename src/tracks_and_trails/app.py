@@ -369,6 +369,13 @@ def compose(
     # *Save as preset…* each change one part of `settings.toml`, and `save()` writes the whole
     # file — so a closure holding the settings as they were at startup would erase whatever the
     # other one had added. One current value, replaced on every write.
+    # **Before anything is logged, and before the window exists** (`T197-R1`). `load()` reports an
+    # unusable cookie path by naming it, and that reason is logged — so the literal most certain to
+    # be written was the one nothing had registered. Registering from `secrets` covers the rejected
+    # value as well as the accepted one, which is the half that leaked.
+    for literal in settings_read.secrets:
+        app_logging.remember_a_secret(literal)
+
     held = _Held(settings_read.settings)
 
     @dataclass
@@ -448,12 +455,6 @@ def compose(
     # sinks the decision authorises. `load()` has already discarded a file that is gone or is not a
     # file, and said why.
     manager.set_cookie_file(settings.cookie_file)
-    manager.set_cookie_browser(settings.cookie_browser)
-
-    # **Registered as soon as it is known** (`T197-R1`), so a path already in force at launch is
-    # redacted from the first line this process writes, not from the first change.
-    if settings.cookie_file is not None:
-        app_logging.remember_a_secret(str(settings.cookie_file))
 
     def retry(job_id: str) -> None:
         """Hand a retry to the manager, which owns job transitions (`T036-R1`).
@@ -630,6 +631,9 @@ def compose(
         have access to.
         """
         if path is not None:
+            # Registered **before** the refusal is composed, for the same reason the stored one is:
+            # the reason names the path, and the reason is logged (`T197-R1`).
+            remember_cookie_path(path)
             reason = app_settings.unusable_cookie_file_reason(path)
             if reason is not None:
                 logging.getLogger("tracksandtrails.app").warning("cookies file: %s", reason)
@@ -637,7 +641,6 @@ def compose(
                 window.show_cookie_file(held.settings.cookie_file)
                 return
         manager.set_cookie_file(path)
-        manager.set_cookie_browser(None)
         remember_cookie_path(path)
         chosen = app_settings.with_cookie_file(held.settings, path)
         held.settings = chosen
@@ -660,7 +663,10 @@ def compose(
                 return
         chosen = app_settings.with_cookie_browser(held.settings, browser)
         held.settings = chosen
-        manager.set_cookie_browser(browser)
+        # **Not handed to the manager** (`T197-R4`). `DAT-003` rules that a browser profile binds
+        # when the job is *queued* — it is a `DownloadRequest` field a preset can carry — so the
+        # default is read where a request is built, not where a worker starts. Only the *file* is
+        # late-bound, because only the file may not live on the model.
         manager.set_cookie_file(None)
         window.show_cookie_browser(browser)
         remember(chosen, "the cookie source")
@@ -815,6 +821,9 @@ def compose(
         on_theme_chosen=choose_theme,
         cookie_file=settings.cookie_file,
         cookie_browser=settings.cookie_browser,
+        # Read through a callable rather than passed by value, for `presets`' reason: a browser
+        # chosen in Settings has to reach the *next* add dialog, which a snapshot cannot do.
+        default_cookie_browser=lambda: held.settings.cookie_browser,
         on_cookie_file_chosen=choose_cookie_file,
         on_cookie_browser_chosen=choose_cookie_browser,
         ffmpeg_location=settings.ffmpeg_location,

@@ -16,6 +16,8 @@ from tracks_and_trails.core import models
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import IllegalTransitionError, JobStatus
 from tracks_and_trails.core.models import (
+    BROWSER_NAMES,
+    KEYRING_NAMES,
     DownloadRequest,
     FormatInfo,
     Job,
@@ -23,6 +25,7 @@ from tracks_and_trails.core.models import (
     MediaKind,
     PlaylistEntry,
     Preset,
+    parse_browser_specification,
 )
 
 
@@ -735,3 +738,62 @@ def test_a_job_carrying_timestamps_still_pickles(request_: DownloadRequest) -> N
         created_at=datetime(2026, 7, 26, 12, 0, tzinfo=UTC),
     )
     assert pickle.loads(pickle.dumps(job)) == job
+
+
+def test_the_browser_and_keyring_names_agree_with_yt_dlp() -> None:
+    """**The drift test I said existed and had not written** (`T-197`'s re-review).
+
+    `core/models.py` transcribes yt-dlp's `SUPPORTED_BROWSERS` and `SUPPORTED_KEYRINGS` because
+    `core/**` may not import `yt_dlp` (`ARCHITECTURE.md` §6). Two lists of the same names is two
+    places to drift — a browser yt-dlp adds would be refused here, and one it drops would be
+    accepted here and rejected by the library at download time.
+
+    Asserted in a module that may import both, which is the same device `THEME_NAMES` uses. The
+    handoff claimed this existed before it did; that claim is the reason it is written now.
+    """
+    from yt_dlp.cookies import SUPPORTED_BROWSERS, SUPPORTED_KEYRINGS
+
+    assert set(BROWSER_NAMES) == set(SUPPORTED_BROWSERS), (
+        f"this application accepts {sorted(BROWSER_NAMES)} and yt-dlp supports "
+        f"{sorted(SUPPORTED_BROWSERS)}"
+    )
+    assert {name.upper() for name in KEYRING_NAMES} == set(SUPPORTED_KEYRINGS), (
+        f"this application accepts {sorted(KEYRING_NAMES)} and yt-dlp supports "
+        f"{sorted(SUPPORTED_KEYRINGS)}"
+    )
+
+
+@pytest.mark.parametrize(
+    "refused",
+    [
+        "firefox:$HOME",
+        "firefox:${HOME}",
+        "firefox:~",
+        "firefox:~someone",
+        "firefox:%USERPROFILE%",
+        "firefox:/home/alice/.mozilla",
+        "firefox:C:\\Users\\alice",
+        "notabrowser",
+        "firefox+nosuchkeyring",
+    ],
+)
+def test_a_profile_that_could_become_a_path_is_refused(refused: str) -> None:
+    """**`T197-R2`, both rounds.** A path must not reach the model, however it is spelled.
+
+    The first correction checked the written characters, and `firefox:$HOME` passed it — yt-dlp
+    runs a profile through `expand_path` and turned that into `/home/sean`. Expansion is performed
+    here now *and* its three syntactic forms are refused outright, because performing it alone
+    answers differently on different machines: `~x` expands only where that user exists, and
+    `%VAR%` only on Windows. That environment-dependence is the class that has cost this project
+    three findings already.
+    """
+    with pytest.raises(ValueError):
+        parse_browser_specification(refused)
+
+
+@pytest.mark.parametrize(
+    "accepted", ["firefox", "firefox:Private", "chrome:Default", "firefox:Profile 1", "brave"]
+)
+def test_a_real_profile_name_is_still_accepted(accepted: str) -> None:
+    """The other direction: a check that refuses everything protects nothing anyone can use."""
+    assert parse_browser_specification(accepted)[0] in BROWSER_NAMES

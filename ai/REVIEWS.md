@@ -14309,3 +14309,71 @@ all worker phases/routes, and return one focused correction boundary for re-revi
 
 The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
+
+## 2026-08-10 — T-197 focused correction re-review
+
+**Task:** T-197 — cookie source, and the redaction gate that has to prove it
+
+**Correction review boundary:** `44fc283..84027bd`
+
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T197-R1** | **Critical** | **Yes — REQ-026, NFR-007, DAT-003, and the Phase 4 exit gate** | **Open** | Exact registration protects an accepted path after startup or a successful live choice, but both refusal paths still emit before registration. A live invalid choice logs `reason` and returns before `remember_cookie_path(path)`. On startup, `_cookie_file_from()` discards an invalid stored path, so `settings.cookie_file` is `None` and composition registers nothing before logging the `SettingsProblem`. A real settings file naming missing `/home/alice/session.txt` produced that exact path in `redact(problem.reason)`. The new gate test calls `remember_a_secret()` itself; it does not drive either production route that still leaks. |
+| **T197-R2** | **Critical** | **Yes — DAT-003's structural boundary and its ruled browser-name invariant** | **Open** | The new path heuristic misses values that become paths only after expansion. `DownloadRequest(cookies_from_browser="firefox:$HOME")` constructs and serializes successfully; the pinned yt-dlp `_parse_browser_specification(*parse_browser_specification(...))` expands its profile to `/home/sean`. `${HOME}` behaves the same. The model therefore still carries a path expression through the field whose accepted invariant is that paths are unrepresentable. This is the exact false-negative class the correction handoff asked to attack. |
+| **T197-R3** | **High** | **Yes — explicit both-sources/both-phases criterion** | **Open** | The original cookie-file omission is corrected at both probe call sites. The R4 correction adds `cookie_browser` as a second session-supplied source, but both probes forward only `cookie_file`; `cookie_browser` reaches only the final extraction. A real `_run(SessionKind.PROBE, ..., cookie_browser="firefox")` boundary probe captured `{'probe_only': True, 'cookie_file': None}`. The new worker test calls `_extract()` directly with a file and cannot see either `_run()` call site or the newly omitted browser argument. |
+| **T197-R4** | **High** | **Yes — explicit screen criterion, REQ-023, and accepted DAT-003 binding semantics** | **Open** | The controls now exist, but the source is neither exclusive nor truthful across real routes. `load()` parses `file` and `browser` independently and constructs `Settings` directly; a real TOML file with both loaded both with no problem, after which the manager passes both to a worker. The browser default is stored on the manager and read at spawn, so changing it alters already-queued jobs, contrary to DAT-003's explicit ruling that browser profiles live in `DownloadRequest`/`Preset` and bind when queued. Finally, choosing **No cookies** from an active browser invokes `show_cookie_file(None)`, which does not clear the cached browser and redraws Browser as selected; canceling the file picker leaves File selected while Browser remains active. Both state failures were reproduced through the real Qt controls. |
+| **T197-R5** | **High** | **Yes — explicit unusable-file acceptance criterion** | **Resolved at `84027bd`** | `unusable_cookie_file_reason()` now opens the file inside its existing guard and requires one of the two Netscape headers. Missing, non-file, unreadable, and wrong-format routes report and refuse. Both accepted headers loaded successfully through the pinned yt-dlp `YoutubeDLCookieJar`, and ordinary text was refused by the application. The stored and live routes continue to share this predicate. |
+
+R1 and R2 are direct continuations of the original Critical privacy/safety boundary failures. R3
+and R4 are direct continuations of the original High acceptance failures: the correction added a
+second late-bound worker source but repeated the probe omission and contradicted the binding ruling
+that was taken specifically before this task. Under `AGENTS.md` §10, another focused correction and
+verification pass remains authorized without a separate maintainer decision while these
+Critical/High findings are open.
+
+### Non-blocking evidence note
+
+The correction handoff says `tests/unit/test_models.py` binds `BROWSER_NAMES` and `KEYRING_NAMES`
+to yt-dlp's `SUPPORTED_BROWSERS` and `SUPPORTED_KEYRINGS`. That file is unchanged in the correction
+boundary, and the suite contains no reference to any of those four names. The current lists do
+match the pinned library by inspection, so this is a Low evidence-strength discrepancy rather than
+another blocker; the claimed drift guard simply does not exist yet.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edits | **clean; `main` ahead of `origin/main` by four commits** |
+| `git diff --check 44fc283..84027bd` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass, 166 files** |
+| `.venv/bin/mypy src` | **pass, 52 files** |
+| bare `.venv/bin/mypy` | **pass, 128 files** |
+| `.venv/bin/mypy --platform win32` | **pass, 128 files** |
+| Models, settings, redaction gate, adapter, Settings UI, composition, and manager-boundary suites | **473 passed, 1 skipped, 1 deselected in 22.72 s** — the deselected case is the pre-existing loopback HTTP test that the review sandbox denies permission to open |
+| Rejected stored arbitrary-name path | load discarded `/home/alice/session.txt`; with no registered value, the complete path survived `redact(problem.reason)` |
+| Expansion-aware profile probe | `firefox:$HOME` and `firefox:${HOME}` constructed, serialized, and were expanded by pinned yt-dlp to `/home/sean` |
+| Worker browser-probe boundary | pure probe captured only `{'probe_only': True, 'cookie_file': None}` despite `cookie_browser="firefox"` |
+| Stored exclusivity probe | a valid file plus `browser = "firefox"` loaded both values with `problem is None` |
+| Real Qt source-state probes | Browser → No cookies redrew Browser; Browser → File → cancel left File selected while the internal active source remained Browser |
+| Real yt-dlp cookie-jar probe | both accepted Netscape header spellings loaded; ordinary text was refused by the application |
+
+The implementer's broader **2562 passed, 17 skipped** result was not repeated wholesale. The
+focused suites are green because the correction tests arrange registration directly, exercise only
+the file half at `_extract()`, and test exclusivity only through the helper rather than load or the
+Qt/composition state transitions.
+
+### Push disposition
+
+**Do not push `84027bd`.** R5 is corrected, but both Critical boundary leaks and both High source
+composition failures remain reproducible. Correct the refusal routes at their actual emission
+boundary, make path recognition expansion-aware (or choose a non-heuristic ruled vocabulary), and
+make the browser choice bind into each request at queue time while preserving per-preset override.
+Exercise both probes and every three-way UI/load transition in the focused evidence.
+
+The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+source, test, decision, status snapshot, commit, or remote state was changed.

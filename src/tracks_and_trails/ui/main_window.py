@@ -338,6 +338,7 @@ class MainWindow(QMainWindow):
         on_theme_chosen: Callable[[str], None] | None = None,
         cookie_file: Path | None = None,
         cookie_browser: str | None = None,
+        default_cookie_browser: Callable[[], str | None] | None = None,
         on_cookie_file_chosen: Callable[[Path | None], None] | None = None,
         on_cookie_browser_chosen: Callable[[str | None], None] | None = None,
         ffmpeg_location: Path | None = None,
@@ -360,6 +361,9 @@ class MainWindow(QMainWindow):
         #: `T-197`: the cookies file in force, and the writer. `ui/` holds no settings writer.
         self._cookie_file = cookie_file
         self._cookie_browser = cookie_browser
+        #: `T197-R4`: the browser a new request inherits when its preset names none. Read through
+        #: a callable so a change in Settings reaches the *next* add dialog.
+        self._default_cookie_browser = default_cookie_browser
         self._on_cookie_file_chosen = on_cookie_file_chosen
         self._on_cookie_browser_chosen = on_cookie_browser_chosen
         self._ffmpeg_location = ffmpeg_location
@@ -799,6 +803,7 @@ class MainWindow(QMainWindow):
             manager=self._manager,
             jobs=self._jobs,
             output_directory=self._output_directory,
+            default_cookie_browser=self._default_cookie_browser,
             # `P-13`: the merge mode is drawn only where a merge could actually run (`REQ-024`).
             ffmpeg_available=self._ffmpeg_available,
             # `REQ-022`, `T-114`: what the queue holds now, read from the rows the table already

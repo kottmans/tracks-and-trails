@@ -1576,3 +1576,22 @@ def test_the_cookie_source_survives_a_save_and_load(tmp_path: Path) -> None:
     assert read.settings.cookie_browser == "firefox:Work"
     assert read.settings.cookie_file is None
     assert read.problem is None
+
+
+def test_a_hand_edited_file_naming_both_sources_reports_and_prefers_the_file(
+    tmp_path: Path,
+) -> None:
+    """**`T197-R4`.** `save()` never writes both and `set_cookie_source` refuses both — and this
+    is a hand-editable format by design, so a file can still hold both.
+
+    Reported, and **the file wins**: it is the more explicit artefact, and silently preferring one
+    without saying so is the accident the exclusivity exists to prevent.
+    """
+    jar = a_cookies_jar(tmp_path)
+    read = load(write(tmp_path, f'[cookies]\nfile = {toml_path(jar)}\nbrowser = "firefox"\n'))
+
+    assert read.settings.cookie_file == jar
+    assert read.settings.cookie_browser is None, "both sources survived into one settings object"
+    assert read.problem is not None and "both" in read.problem.reason.lower(), (
+        "two sources were resolved to one without telling the user which"
+    )

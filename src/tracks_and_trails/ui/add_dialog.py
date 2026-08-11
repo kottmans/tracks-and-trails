@@ -76,6 +76,7 @@ row anatomy for this dialog and the queue both (`T-119`). The per-row format con
 
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
@@ -1153,6 +1154,7 @@ class AddUrlDialog(QDialog):
         cache_root: Path | None = None,
         resolve_delay_ms: int = DEFAULT_RESOLVE_DELAY_MS,
         ffmpeg_available: bool = True,
+        default_cookie_browser: Callable[[], str | None] | None = None,
         queued_urls: QueuedUrls | None = None,
         save_preset: PresetSink | None = None,
         manage_presets: Callable[[], None] | None = None,
@@ -1218,6 +1220,13 @@ class AddUrlDialog(QDialog):
         #: would be a second answer to one question, and the two could differ — `ARC-007`'s reason
         #: for the manager receiving a value rather than reading settings.
         self._ffmpeg_available = ffmpeg_available
+        #: The browser a request inherits when its preset names none (`REQ-026`, `T197-R4`).
+        #:
+        #: **Stamped here, at request construction, which is queue time** — `DAT-003` rules that a
+        #: browser profile binds when the job is queued, because it is a field the job carries.
+        #: The cookies *file* is the opposite and binds when a worker starts, because it may not
+        #: live on the model at all.
+        self._default_cookie_browser = default_cookie_browser
         #: The one row that is open, by identity (`T-108`, `T-110`). At most one, and at most one
         #: panel on it: two open tables would be two answers to *"which formats are we looking
         #: at"*, and the list would spend most of its height on them. The playlist picker shares
@@ -2726,9 +2735,24 @@ class AddUrlDialog(QDialog):
         two code paths — which is the shape the preset defect had. `UX-004` made that choice
         per row: a row with its own preset uses it, and a row without follows the batch.
         """
-        return preset_registry.to_request(
+        request = preset_registry.to_request(
             self.preset_for(row), url=row.url, output_directory=str(self._output_directory)
         )
+        return self._with_default_cookie_browser(request)
+
+    def _with_default_cookie_browser(self, request: DownloadRequest) -> DownloadRequest:
+        """Fill in the Settings browser where the preset named none (`REQ-026`, `T197-R4`).
+
+        **The preset wins**, because a preset naming a browser is a deliberate per-download
+        choice and this is only a default. Applied at construction so the value is *in the job*,
+        which is what binding at queue time means.
+        """
+        if request.cookies_from_browser or self._default_cookie_browser is None:
+            return request
+        default = self._default_cookie_browser()
+        if not default:
+            return request
+        return replace(request, cookies_from_browser=default)
 
     def preset_for(self, row: Row) -> Preset:
         """`row`'s **effective** preset: its own if it has one, the batch's otherwise (`UX-004`).

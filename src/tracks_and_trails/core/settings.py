@@ -660,6 +660,19 @@ class SettingsFile:
     settings: Settings
     problem: SettingsProblem | None = None
 
+    #: Literals read out of the file that must never reach a log, **valid or not** (`T197-R1`).
+    #:
+    #: **The invalid ones are the point.** A cookie path that fails validation is discarded from
+    #: `settings`, and its text goes straight into `problem.reason` — which composition logs. So
+    #: the value most certain to be reported was the one nothing could register as a secret, and
+    #: `/home/alice/session.txt` reached the log through the `ARC-008` route while the *accepted*
+    #: path was protected.
+    #:
+    #: Carried as data for `SettingsProblem`'s reason: `core/**` may not decide logging policy, so
+    #: it says which strings are sensitive and composition registers them before it writes
+    #: anything. `T-196`'s stored proxy will arrive through the same field.
+    secrets: tuple[str, ...] = ()
+
 
 def load(path: Path | None = None) -> SettingsFile:
     """Read settings from `path`. **Never raises**; unreadable or invalid means defaults.
@@ -740,8 +753,27 @@ def load(path: Path | None = None) -> SettingsFile:
     cookies_table, cookies_reason = _section_of(document, _COOKIES_TABLE)
     cookie_file, cookie_reason = _cookie_file_from(cookies_table.get(_COOKIE_FILE_KEY))
     cookie_browser, browser_reason = _cookie_browser_from(cookies_table.get(_COOKIE_BROWSER_KEY))
+    both_reason: str | None = None
+    if cookie_file is not None and cookie_browser is not None:
+        # **A file and a browser cannot both be the source** (`REQ-026`, `T197-R4`). `save()` never
+        # writes both and `set_cookie_source` refuses both, but a hand-edited file can hold them —
+        # and this is a hand-editable format by design. Reported, and **the file wins**: it is the
+        # more explicit artefact, and silently preferring one without saying so is the accident
+        # the exclusivity exists to prevent.
+        both_reason = (
+            f"Your settings name both a cookies file and a browser. The file is being used; "
+            f"remove one of them to choose.\n{cookie_file}"
+        )
+        cookie_browser = None
     ffmpeg_table, ffmpeg_reason = _section_of(document, _FFMPEG_TABLE)
     ffmpeg_location, location_reason = _ffmpeg_location_from(ffmpeg_table.get(_LOCATION_KEY))
+
+    #: Everything read from a cookie or credential key, whether or not it survived validation.
+    sensitive = tuple(
+        str(raw)
+        for raw in (cookies_table.get(_COOKIE_FILE_KEY),)
+        if isinstance(raw, str) and raw.strip()
+    )
 
     def answer(concurrency: int, reason: str | None = None) -> SettingsFile:
         parts = [
@@ -759,6 +791,7 @@ def load(path: Path | None = None) -> SettingsFile:
                 cookies_reason,
                 cookie_reason,
                 browser_reason,
+                both_reason,
             )
             if part
         ]
@@ -773,8 +806,8 @@ def load(path: Path | None = None) -> SettingsFile:
             cookie_browser=cookie_browser,
         )
         if not parts:
-            return SettingsFile(settings)
-        return SettingsFile(settings, SettingsProblem(target, "\n\n".join(parts)))
+            return SettingsFile(settings, secrets=sensitive)
+        return SettingsFile(settings, SettingsProblem(target, "\n\n".join(parts)), sensitive)
 
     table = document.get(_TABLE)
     if table is None:

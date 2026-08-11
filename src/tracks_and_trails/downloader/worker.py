@@ -349,7 +349,6 @@ def run_session(
     user_ytdlp_directory: Path | None = None,
     ffmpeg_override: Path | None = None,
     cookie_file: Path | None = None,
-    cookie_browser: str | None = None,
 ) -> int:
     """Run one probe or one download and return the process exit code.
 
@@ -373,9 +372,7 @@ def run_session(
                 rejected=resolved.rejected,
             )
         )
-        outcome = _run(
-            kind, job_id, request, reporter, resolved, ffmpeg_override, cookie_file, cookie_browser
-        )
+        outcome = _run(kind, job_id, request, reporter, resolved, ffmpeg_override, cookie_file)
         reporter.send(outcome)
         exit_code = 0 if not isinstance(outcome, Failed) else 1
     except SessionCancelledError as error:
@@ -433,7 +430,6 @@ def _run(
     resolved: ResolvedYtdlp,
     ffmpeg_override: Path | None,
     cookie_file: Path | None,
-    cookie_browser: str | None,
 ) -> Probed | Succeeded | Failed:
     """The session body. Returns the outcome rather than sending it, so there is one send."""
     from tracks_and_trails.downloader import ytdlp_adapter as adapter
@@ -522,7 +518,6 @@ def _run(
             # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
             ffmpeg_location=ffmpeg.path,
             cookie_file=cookie_file,
-            cookie_browser=cookie_browser,
             # Safe **because the directory is this job's alone**. Nothing of the user's is in
             # it, so an overwrite can only ever replace this job's own intermediate files —
             # which is what the flag is for, and is no longer a claim about the output folder.
@@ -759,7 +754,6 @@ def spawn_session(
     user_ytdlp_directory: Path | None = None,
     ffmpeg_override: Path | None = None,
     cookie_file: Path | None = None,
-    cookie_browser: str | None = None,
     log_queue: Any | None = None,
     log_job_id: str | None = None,
 ) -> None:
@@ -798,7 +792,6 @@ def spawn_session(
             user_ytdlp_directory=user_ytdlp_directory,
             ffmpeg_override=ffmpeg_override,
             cookie_file=cookie_file,
-            cookie_browser=cookie_browser,
         )
     )
 
@@ -1526,7 +1519,6 @@ def _extract(
     output_template: str | None = None,
     ffmpeg_location: Path | None = None,
     cookie_file: Path | None = None,
-    cookie_browser: str | None = None,
     overwrites: bool | None = None,
 ) -> dict[str, Any]:
     from tracks_and_trails.core.logging import YtdlpLog, ytdlp_logger
@@ -1539,7 +1531,6 @@ def _extract(
         postprocessor_hooks=[reporter.postprocessor_hook],
         ffmpeg_location=ffmpeg_location,
         cookie_file=cookie_file,
-        cookie_browser=cookie_browser,
         overwrites=overwrites,
         # `REQ-019`. Built here rather than passed in from `spawn_session` because both the probe
         # and the download go through this function, and `REQ-019` wants *the* diagnostic output

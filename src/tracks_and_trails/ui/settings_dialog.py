@@ -330,6 +330,7 @@ class SettingsDialog(QDialog):
             finally:
                 button.blockSignals(blocked)
         self._cookie_browser_choice.setEnabled(current == "browser")
+        self._clear_cookies.setEnabled(self._cookie_file is not None)
         if self._cookie_browser:
             blocked = self._cookie_browser_choice.blockSignals(True)
             try:
@@ -368,6 +369,11 @@ class SettingsDialog(QDialog):
     def _pick_a_cookie_file(self) -> None:
         chosen = self._choose_file(self._cookie_file)
         if chosen is None:
+            # **Cancelled leaves nothing behind, including the radio** (`T197-R4`). Selecting
+            # *From a cookies file* moves the button before the dialog opens, so dismissing it left
+            # the screen claiming a source that was never set — and *No cookies* still selected
+            # underneath in the settings. Redrawn from the state actually in force.
+            self._show_cookie_file()
             return
         self._remember_cookies(chosen)
 

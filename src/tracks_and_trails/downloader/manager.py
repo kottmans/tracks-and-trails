@@ -544,9 +544,6 @@ class DownloadManager(QObject):
         #: job for `DAT-003`'s reason: a cookie path this application supplies must not reach the
         #: model, and therefore cannot reach the database.
         self._cookie_file: Path | None = None
-        #: The global browser source (`T197-R4`), late-bound beside the file. A *preset's*
-        #: `cookies_from_browser` still wins where a job has one — that half binds at queue time.
-        self._cookie_browser: str | None = None
         #: Jobs that exist only in memory, for the add dialog's staging probes (`T118-R1`).
         #:
         #: **`UX-003` says nothing is persisted until Add**, and `T118-R1` is what happens when it
@@ -1070,10 +1067,6 @@ class DownloadManager(QObject):
         except KeyError as missing:
             self.start_rejected.emit(job_id, f"this job is not in the queue: {missing}")
 
-    def set_cookie_browser(self, browser: str | None) -> None:
-        """Point later sessions at a browser's cookies, or at none (`REQ-026`, `T197-R4`)."""
-        self._cookie_browser = browser
-
     def set_cookie_file(self, path: Path | None) -> None:
         """Point later worker sessions at a cookies file, or at none (`REQ-026`, `T-197`).
 
@@ -1496,7 +1489,6 @@ class DownloadManager(QObject):
                     # argument exactly as the ffmpeg override does, which is the one route
                     # `DAT-003` authorises besides `settings.toml` itself.
                     "cookie_file": self._cookie_file,
-                    "cookie_browser": self._cookie_browser,
                     # `T-038`: the worker's diagnostics come back here as records and are
                     # rendered — and therefore redacted — by this process's handlers. The job id
                     # travels with them so each line reaches that job's own file (`T038-R2`).

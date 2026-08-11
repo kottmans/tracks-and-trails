@@ -574,7 +574,6 @@ def build_options(
     postprocessor_hooks: Sequence[Any] = (),
     ffmpeg_location: Path | None = None,
     cookie_file: Path | None = None,
-    cookie_browser: str | None = None,
     overwrites: bool | None = None,
     logger: Any = None,
 ) -> dict[str, Any]:
@@ -630,10 +629,6 @@ def build_options(
         # everything here. Split in `core/`, which owns the grammar and the refusal of a profile
         # that is a path.
         options["cookiesfrombrowser"] = parse_browser_specification(request.cookies_from_browser)
-    elif cookie_browser:
-        # **The preset's choice wins where a job has one** (`T197-R4`). A browser named on the
-        # request binds when the job is queued; this is the global default, which binds now.
-        options["cookiesfrombrowser"] = parse_browser_specification(cookie_browser)
     if cookie_file is not None:
         # **A parameter, not a request field** (`REQ-026`, `T-197`, `DAT-003`). The browser name
         # rides on the request because it is a per-download choice a preset can carry; the *file*

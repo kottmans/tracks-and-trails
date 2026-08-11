@@ -120,36 +120,45 @@ this one returned four verdicts before approving.*
 
 ### T-197 — Cookie source, and the redaction gate that has to prove it
 
-**Status:** **In Review — corrected 2026-08-10** (`T197-R1`, `T197-R2` Critical; `T197-R3`,
-`T197-R4`, `T197-R5` High). Built the same day on maintainer instruction, after the `DAT-003`
-ruling this task required *before* any code.
+**Status:** **In Review — corrected again 2026-08-10.** `T197-R5` was Resolved at `84027bd`;
+`T197-R1` and `T197-R2` (Critical) and `T197-R3`/`T197-R4` (High) survived that pass and are
+corrected at the head below.
 
-- **`T197-R1` — Critical. Corrected.** Cookie paths were redacted **only when the filename looked
-  like a cookie jar**; `/home/alice/session.txt` survived the real formatter. Composition now
-  registers the supplied path through `remember_a_secret` — which exists for *"a literal this
-  application is holding and knows is sensitive"* and had **no caller** until now. Guessing harder
-  is the enumeration failure `DAT-003` records twice; knowing is not guessing. **My gate could not
-  see this because every fixture in it was named `cookies.*`** — it agreed with the rule instead
-  of testing it.
-- **`T197-R2` — Critical. Corrected.** `firefox:/home/alice/.mozilla/cookies.sqlite` passed the
-  validator and was persisted in the job JSON: the browser check read only the component before
-  the colon, so a **path** reached the model one component to the right — the very leak the check
-  was added to close. The whole grammar is parsed now
-  (`BROWSER[+KEYRING][:PROFILE][::CONTAINER]`), a profile that is a path is refused, and the
-  adapter hands yt-dlp the **four-tuple** its `_parse_browser_specification` takes rather than a
-  one-element tuple that made the entire string the browser name.
-- **`T197-R3` — High. Corrected.** The cookies file reached the download's `_extract` and neither
-  probe, so an authenticated URL failed while being *read* — `T012-R5` exactly, one option to the
-  left. Both probe call sites carry it, asserted at the worker boundary rather than by reading.
-- **`T197-R4` — High. Corrected.** The screen offered file-or-none and no browser source, which
-  `REQ-026` names and the criterion requires. Three exclusive sources now, backed by a
-  `[cookies] browser` setting; `set_cookie_source` refuses both at once, because two sources set
-  together is a credential chosen by accident.
-- **`T197-R5` — High. Corrected.** Validation checked existence and file type only, so an
-  unreadable file or a text file that is not a jar was accepted and persisted — surfacing later as
-  a download quietly unauthenticated, which reads as a paywall defeating the application rather
-  than a setting being wrong. The Netscape header is `MozillaCookieJar`'s own requirement, so
-  accepting what it refuses only moved the failure and misattributed it.
+- **`T197-R1` — Critical. Corrected twice; the first pass protected the wrong half.** Registering
+  the *accepted* path covered the ordinary case and missed the reported one: an unusable value is
+  discarded from the settings and its text goes into `problem.reason`, which composition **logs**
+  — so the literal most certain to be written was the one nothing had registered. `SettingsFile`
+  now carries `secrets`, every literal read whether or not it survived validation, and composition
+  registers them before it writes anything. `T-196`'s stored proxy will arrive through the same
+  field. **My regression could not see this either**, and for a familiar reason: pytest names its
+  temp directory after the test, so the jar sat under `.../test_an_unusable_cookie_path_d0/` and
+  the word *cookie* in the path — put there by the test's own name — matched the shape rule. The
+  test now places the jar outside `tmp_path` and proves the path is invisible to the shape rules
+  *before* composing.
+- **`T197-R2` — Critical. Corrected twice.** `firefox:$HOME` passed the character check and yt-dlp
+  expanded it to `/home/sean`. Expansion is now **performed** with the same `expandvars(expanduser
+  (…))` pair yt-dlp applies, **and** its three syntactic forms are refused structurally — because
+  performing it alone answers differently on different machines (`~x` expands only where that user
+  exists, `%VAR%` only on Windows), which is the platform-dependent class that has already cost
+  this project three findings.
+- **`T197-R3` — High. Corrected by removing the thing rather than threading it.** The browser
+  default did not reach the probes — and under `T197-R4` it should not reach a worker at all, so
+  the session argument is gone.
+- **`T197-R4` — High. Corrected.** The browser default was **late-bound, contradicting
+  `DAT-003`**, which rules that a browser profile binds when the job is queued because the job
+  carries it. It is now stamped onto the request at construction, in the add dialog, where a
+  preset that names its own browser still wins. `load()` refuses a hand-edited file naming both
+  sources — reported, with the file preferred as the more explicit artefact — and a cancelled file
+  picker redraws the radio from the source actually in force instead of leaving it claiming one
+  that was never set.
+- **`T197-R5` — Resolved at `84027bd`**, confirmed against the pinned jar loader.
+
+**The browser/keyring drift test now exists.** The previous handoff said it did; it did not. That
+claim is why it is written, and it asserts `BROWSER_NAMES`/`KEYRING_NAMES` against yt-dlp's own
+`SUPPORTED_BROWSERS`/`SUPPORTED_KEYRINGS` in a module that may import both.
+
+**Seven mutations fail their own evidence**, one per finding plus the two blind tests above.
+
 
 **Five mutations fail their own evidence**, one per finding.
 
