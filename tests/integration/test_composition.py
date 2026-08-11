@@ -1949,7 +1949,10 @@ def test_choosing_a_format_on_a_queued_row_changes_the_durable_request(
         lambda: (
             (job := composition.store.get("job-1")) is not None
             and job.request.format_selector == chosen.format_selector
-            and job.request.output_template == chosen.output_template
+            # **The naming the row already had, not the preset's** (`T-195`). A shipped preset
+            # states no template; retargeting changes the format and must leave the filename
+            # alone, or choosing a different format would silently rename the download.
+            and job.request.output_template == before.request.output_template
         ),
         timeout=60,
     ), (
@@ -2411,6 +2414,66 @@ def test_a_short_cookie_path_chosen_at_runtime_is_redacted_too(
         )
     finally:
         app_logging.forget_the_secrets()
+
+
+def test_a_stored_output_template_names_the_job_the_assembled_application_queues(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`REQ-023`, `T-195`, and the criterion that says *not the stored string*.**
+
+    A setting that round-trips through a file proves persistence, not effect. What matters is that
+    a job the application actually queues carries the template — which means the shipped presets
+    have to defer, `to_request` has to resolve, and composition has to pass the resolved value in.
+    Any one of those missing leaves the setting looking like it works.
+    """
+    chosen = "%(uploader)s/%(title)s.%(ext)s"
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.set_output_template(core_settings.Settings(), chosen), settings_file
+        )
+        is None
+    )
+
+    composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    # Read back the way every reader does, then build the request the way composition does.
+    stored = core_settings.load(settings_file).settings
+    request = presets.to_request(
+        core_settings.default_preset_of(stored),
+        url="https://example.invalid/watch?v=abc123",
+        output_directory=str(tmp_path),
+        default_output_template=core_settings.output_template_of(stored),
+    )
+
+    assert request.output_template == chosen, (
+        "the assembled application's default preset does not carry the stored template, so a "
+        "queued job would be named the shipped way"
+    )
+
+
+def test_the_default_preset_has_one_writer_across_both_surfaces(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**The one-writer criterion, proved from the file rather than from a screen** (`T-195`).
+
+    The preset manager's *Set as default* and the settings screen's control both change the same
+    key. Asserted by writing through `settings.set_default_preset` — the function both call — and
+    reading it back through `default_preset_of`, which is what every reader uses. If a second
+    surface ever stored its own copy, the two would answer differently here.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    chosen = presets.AUDIO_MP3.name
+    written = core_settings.set_default_preset(core_settings.load(settings_file).settings, chosen)
+    assert core_settings.save(written, settings_file) is None
+
+    reread = core_settings.load(settings_file).settings
+    assert core_settings.default_preset_of(reread).name == chosen
+    assert reread.default_preset == chosen, "the name was resolved away instead of being stored"
 
 
 def test_the_cookies_file_reaches_the_workers_and_never_the_job(

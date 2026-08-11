@@ -29,7 +29,7 @@ main setting is untestable is a screen whose main setting is untested. The same 
 reasoning, as the manager's `entry_point`.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Final
@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QRadioButton,
     QSpinBox,
@@ -51,6 +52,7 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails.core.models import BROWSER_NAMES
+from tracks_and_trails.core.output_template import unsupported_refusal
 from tracks_and_trails.core.settings import (
     CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
@@ -71,6 +73,11 @@ __all__ = [
 #: words a user reads, and keeping them apart is what lets the file stay stable if the wording
 #: changes.
 THEME_LABELS: Final = {"light": "Light", "dark": "Dark"}
+
+#: Object names, so tests and composition reach a control without walking the layout (`T-195`).
+DEFAULT_PRESET_NAME: Final = "settingsDefaultPreset"
+OUTPUT_TEMPLATE_NAME: Final = "settingsOutputTemplate"
+OUTPUT_TEMPLATE_NOTE_NAME: Final = "settingsOutputTemplateNote"
 
 #: Shown under the folder when no folder has been chosen. **It names the actual path**, because
 #: "the default" is not an answer to *where did my file go*.
@@ -100,9 +107,7 @@ FFMPEG_ON_PATH_NOTE: Final = "Looked for on PATH"
 #: what it implements reads as complete, and the five absences are each owned by a filed task —
 #: so the honest thing is to say so where the user is looking rather than only in a document they
 #: will not read.
-SETTINGS_STILL_TO_COME: Final = (
-    "Still to come: default preset, output template, and network options."
-)
+SETTINGS_STILL_TO_COME: Final = "Still to come: network options."
 
 
 class SettingsDialog(QDialog):
@@ -127,6 +132,12 @@ class SettingsDialog(QDialog):
         ffmpeg_summary: str = "",
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
         choose_file: Callable[[Path | None], Path | None] | None = None,
+        preset_names: Sequence[str] = (),
+        default_preset: str = "",
+        output_template: str = "",
+        shipped_template: str = "",
+        on_default_preset_chosen: Callable[[str], None] | None = None,
+        on_output_template_chosen: Callable[[str], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -147,12 +158,21 @@ class SettingsDialog(QDialog):
         self._ffmpeg_summary = ffmpeg_summary
         self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
         self._choose_file = choose_file or self._ask_for_a_file
+        self._preset_names = tuple(preset_names)
+        self._default_preset = default_preset
+        self._output_template = output_template
+        #: What an empty template resolves to, shown as the field's placeholder so *empty* reads as
+        #: a choice with a visible consequence rather than as a blank (`T-195`).
+        self._shipped_template = shipped_template
+        self._on_default_preset_chosen = on_default_preset_chosen
+        self._on_output_template_chosen = on_output_template_chosen
 
         self.setObjectName("settingsDialog")
         self.setWindowTitle("Settings")
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_downloads_section())
+        layout.addWidget(self._build_naming_section())
         layout.addWidget(self._build_cookies_section())
         layout.addWidget(self._build_ffmpeg_section())
         layout.addWidget(self._build_appearance_section())
@@ -249,6 +269,107 @@ class SettingsDialog(QDialog):
         self._show_directory()
 
     # --- cookies ------------------------------------------------------------------------
+
+    def _build_naming_section(self) -> QWidget:
+        """What a new paste starts with, and how its file is named (`REQ-023`, `T-195`)."""
+        box = QGroupBox("New downloads", self)
+        box.setObjectName("namingSection")
+        layout = QVBoxLayout(box)
+
+        preset_label = QLabel("Preset a newly pasted URL starts with", box)
+        preset_label.setWordWrap(True)
+        layout.addWidget(preset_label)
+
+        self._preset_choice = QComboBox(box)
+        self._preset_choice.setObjectName(DEFAULT_PRESET_NAME)
+        self._preset_choice.setAccessibleName("Default preset")
+        for name in self._preset_names:
+            self._preset_choice.addItem(name, name)
+        if self._default_preset:
+            found = self._preset_choice.findData(self._default_preset)
+            if found >= 0:
+                self._preset_choice.setCurrentIndex(found)
+        # **Disabled with the reason beside it, never drawn dead** (`UX-005` §5, `P-13`). A caller
+        # that supplies no names and no writer has nothing to choose between.
+        self._preset_choice.setEnabled(
+            bool(self._preset_names) and self._on_default_preset_chosen is not None
+        )
+        self._preset_choice.currentIndexChanged.connect(self._on_preset_index)
+        layout.addWidget(self._preset_choice)
+
+        self._preset_note = QLabel(box)
+        self._preset_note.setObjectName("defaultPresetNote")
+        self._preset_note.setWordWrap(True)
+        self._preset_note.setText(
+            "" if self._preset_choice.isEnabled() else "No presets are available to choose between."
+        )
+        layout.addWidget(self._preset_note)
+
+        template_label = QLabel(
+            "How downloads are named, when a preset does not say otherwise", box
+        )
+        template_label.setWordWrap(True)
+        layout.addWidget(template_label)
+
+        self._template_field = QLineEdit(box)
+        self._template_field.setObjectName(OUTPUT_TEMPLATE_NAME)
+        self._template_field.setAccessibleName("Default output template")
+        self._template_field.setText(self._output_template)
+        self._template_field.setPlaceholderText(self._shipped_template)
+        self._template_field.setEnabled(self._on_output_template_chosen is not None)
+        # **Checked as it is typed, written only when it is usable** (`P-23`, `T-195`). `T-112`
+        # made the same call for the per-row editor: showing the error and storing the value
+        # anyway satisfies the visible half of the criterion and queues a broken download.
+        self._template_field.textChanged.connect(self._on_template_text)
+        layout.addWidget(self._template_field)
+
+        self._template_note = QLabel(box)
+        self._template_note.setObjectName(OUTPUT_TEMPLATE_NOTE_NAME)
+        # The refusal quotes the template, which is the user's own text (`T016-R6`).
+        self._template_note.setTextFormat(Qt.TextFormat.PlainText)
+        self._template_note.setWordWrap(True)
+        layout.addWidget(self._template_note)
+
+        return box
+
+    def _on_preset_index(self, index: int) -> None:
+        if self._on_default_preset_chosen is None or index < 0:
+            return
+        chosen = self._preset_choice.itemData(index)
+        if isinstance(chosen, str) and chosen:
+            self._on_default_preset_chosen(chosen)
+
+    def _on_template_text(self, text: str) -> None:
+        """Refuse at edit time, with the reason, and do not store what was refused.
+
+        **The same check the per-row editor makes**, reached through
+        `core.output_template.unsupported_refusal` — which is what `manager.preview_output_path`
+        calls, so the editor and this screen cannot come to disagree about what a usable template
+        is. A second implementation of the rule is the defect `ARC-002` reasons about.
+        """
+        if self._on_output_template_chosen is None:
+            return
+        refusal = unsupported_refusal(text) if text else None
+        self._template_note.setText(refusal or "")
+        if refusal is None:
+            self._on_output_template_chosen(text)
+
+    def show_default_preset(self, name: str) -> None:
+        """Reflect the stored default, so the screen never disagrees with the file."""
+        found = self._preset_choice.findData(name)
+        if found >= 0 and found != self._preset_choice.currentIndex():
+            blocked = self._preset_choice.blockSignals(True)
+            self._preset_choice.setCurrentIndex(found)
+            self._preset_choice.blockSignals(blocked)
+
+    def show_output_template(self, template: str) -> None:
+        """Reflect the stored template, without echoing it back through the writer."""
+        if template == self._template_field.text():
+            return
+        blocked = self._template_field.blockSignals(True)
+        self._template_field.setText(template)
+        self._template_field.blockSignals(blocked)
+        self._template_note.setText("")
 
     def _build_cookies_section(self) -> QWidget:
         """A cookies file for content the user is already signed in to (`REQ-026`, `T-197`)."""

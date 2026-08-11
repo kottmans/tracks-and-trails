@@ -344,6 +344,16 @@ class MainWindow(QMainWindow):
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
+        preset_names: Callable[[], Sequence[str]] | None = None,
+        #: **The stored template, not the resolved one**, and the difference is the point
+        #: (`T-195`): the screen shows empty when the user has chosen nothing, with the shipped
+        #: template as the placeholder, so *empty* reads as a choice. The add dialog needs the
+        #: opposite — see `default_output_template`.
+        output_template: Callable[[], str] | None = None,
+        default_output_template: Callable[[], str] | None = None,
+        shipped_template: str = "",
+        on_default_preset_chosen: Callable[[str], None] | None = None,
+        on_output_template_chosen: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -369,6 +379,15 @@ class MainWindow(QMainWindow):
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
         self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
+        #: Asked afresh each time the screen opens, for `presets`' reason in the add dialog: a
+        #: preset created or made default in the manager has to be the one this screen shows next
+        #: (`T-195`).
+        self._preset_names = preset_names
+        self._output_template = output_template
+        self._default_output_template = default_output_template
+        self._shipped_template = shipped_template
+        self._on_default_preset_chosen = on_default_preset_chosen
+        self._on_output_template_chosen = on_output_template_chosen
         #: The cache root both thumbnail stores write under (`T-180`). Composition derives it from
         #: the database so two permitted instances stop sweeping each other's pictures; this window
         #: only carries it to the two widgets that fetch, and never learns what a database is.
@@ -648,6 +667,13 @@ class MainWindow(QMainWindow):
                     preset,
                     url=job.request.url,
                     output_directory=job.request.output_directory,
+                    # **The new format, the old *naming*** — the same argument as the connection
+                    # below, one field over (`T-195`). Retargeting changes what is downloaded, not
+                    # what the file is called, and a shipped preset states no template, so without
+                    # this the row would silently fall back to the template this application ships:
+                    # discarding both the user's Settings default and any naming they set on the
+                    # row itself.
+                    default_output_template=job.request.output_template,
                 ),
                 job.request,
             ),
@@ -829,6 +855,11 @@ class MainWindow(QMainWindow):
             # leaves the dialog's own `BUILT_IN_PRESETS` default in place.
             presets=self._presets() if self._presets is not None else presets.BUILT_IN_PRESETS,
             default_preset=self._default_preset() if self._default_preset is not None else "",
+            default_output_template=(
+                self._default_output_template()
+                if self._default_output_template is not None
+                else presets.DEFAULT_OUTPUT_TEMPLATE
+            ),
             # `T-180`: the same root the queue's store uses. `cache_generation` is keyed by
             # directory precisely so a picture this dialog publishes is one the queue's sweep can
             # still see (`T118-R16`), and two roots would put that count back out of reach.
@@ -1392,6 +1423,16 @@ class MainWindow(QMainWindow):
             ffmpeg_summary=self._ffmpeg_summary,
             on_ffmpeg_location_chosen=self._on_ffmpeg_location_chosen,
             on_concurrency_chosen=self._concurrency_chosen,
+            # **Read when the screen opens, not cached at startup** (`T-195`). *Set as default* in
+            # the preset manager writes the same key this screen does, so a snapshot taken earlier
+            # would let the two disagree — which is `P3EXIT-R1`'s defect, and the one this task's
+            # criteria name.
+            preset_names=tuple(self._preset_names()) if self._preset_names else (),
+            default_preset=self._default_preset() if self._default_preset is not None else "",
+            output_template=self._output_template() if self._output_template else "",
+            shipped_template=self._shipped_template,
+            on_default_preset_chosen=self._on_default_preset_chosen,
+            on_output_template_chosen=self._on_output_template_chosen,
             parent=self,
         )
         self._settings_dialog = dialog

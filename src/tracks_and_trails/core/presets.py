@@ -59,6 +59,18 @@ from tracks_and_trails.core.models import (
 #: default cannot drift between presets.
 DEFAULT_OUTPUT_TEMPLATE: Final = "%(title)s.%(ext)s"
 
+#: What a **shipped** preset states about naming: nothing (`REQ-023`, `T-195`).
+#:
+#: **A built-in preset has an opinion about format, not about filenames.** Stating
+#: `DEFAULT_OUTPUT_TEMPLATE` here would freeze today's shipped template into every preset, so a user
+#: who set a default template in Settings would find it ignored by every preset they had not
+#: personally edited — a setting that appears to work and does nothing. Empty defers to
+#: `settings.output_template_of`, resolved once in `to_request`.
+#:
+#: A preset that *has* been given a template — through the editor, or `with_output_template` — keeps
+#: it, and the setting does not reach past it. That is the opt-out.
+BUILT_IN_TEMPLATE: Final = ""
+
 #: yt-dlp's `preferredquality` for the MP3 preset: 192 kbps, a bitrate rather than a VBR level.
 #:
 #: Chosen over VBR `0` ("best") because a preset named for a codec should be predictable in
@@ -114,7 +126,7 @@ BEST_VIDEO_1080P: Final = Preset(
     format_selector=(
         "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]"
     ),
-    output_template=DEFAULT_OUTPUT_TEMPLATE,
+    output_template=BUILT_IN_TEMPLATE,
     built_in=True,
 )
 
@@ -122,7 +134,7 @@ BEST_VIDEO: Final = Preset(
     name="Best video available",
     media_kind=MediaKind.VIDEO,
     format_selector="bestvideo+bestaudio/best",
-    output_template=DEFAULT_OUTPUT_TEMPLATE,
+    output_template=BUILT_IN_TEMPLATE,
     built_in=True,
 )
 
@@ -130,7 +142,7 @@ AUDIO_MP3: Final = Preset(
     name="Audio only (MP3)",
     media_kind=MediaKind.AUDIO,
     format_selector="bestaudio/best",
-    output_template=DEFAULT_OUTPUT_TEMPLATE,
+    output_template=BUILT_IN_TEMPLATE,
     # The codec is what makes this preset differ from the one below. `T012-R5`: with it
     # omitted, yt-dlp keeps the source codec and the MP3 preset converts nothing.
     audio_codec=AudioCodec.MP3,
@@ -142,7 +154,7 @@ AUDIO_ORIGINAL: Final = Preset(
     name="Audio only (original)",
     media_kind=MediaKind.AUDIO,
     format_selector="bestaudio/best",
-    output_template=DEFAULT_OUTPUT_TEMPLATE,
+    output_template=BUILT_IN_TEMPLATE,
     # `AudioCodec.ORIGINAL` carries yt-dlp's `best`, which means "no conversion" rather than
     # "the highest-quality codec". This preset extracts the audio stream as the site served it.
     audio_codec=AudioCodec.ORIGINAL,
@@ -153,7 +165,7 @@ VIDEO_WITH_SUBTITLES: Final = Preset(
     name="Video with embedded subtitles",
     media_kind=MediaKind.VIDEO,
     format_selector="bestvideo+bestaudio/best",
-    output_template=DEFAULT_OUTPUT_TEMPLATE,
+    output_template=BUILT_IN_TEMPLATE,
     subtitle_languages=SUBTITLE_LANGUAGES,
     embed_subtitles=True,
     built_in=True,
@@ -380,7 +392,7 @@ def custom_preset(selector: str, *, name: str = "Custom selector") -> Preset:
         name=name,
         media_kind=MediaKind.VIDEO,
         format_selector=selector,
-        output_template=DEFAULT_OUTPUT_TEMPLATE,
+        output_template=BUILT_IN_TEMPLATE,
         built_in=False,
     )
 
@@ -467,6 +479,7 @@ def to_request(
     *,
     url: str,
     output_directory: str,
+    default_output_template: str = DEFAULT_OUTPUT_TEMPLATE,
     **overrides: Any,
 ) -> DownloadRequest:
     """Build the `DownloadRequest` this preset means, for `url` (`REQ-006`).
@@ -498,7 +511,14 @@ def to_request(
         url=url,
         output_directory=output_directory,
         format_selector=preset.format_selector,
-        output_template=preset.output_template,
+        # **Where an empty preset template becomes a real one** (`T-195`). `Preset` may state no
+        # template, meaning *use the application default*; `DownloadRequest` may not, so this is
+        # the single point of resolution and everything downstream of it sees a real string.
+        #
+        # A keyword rather than one of `overrides`, because `output_template` is a preset-owned
+        # field and the guard above rejects overriding those by design — the caller is supplying a
+        # *fallback*, not overruling the preset.
+        output_template=preset.output_template or default_output_template,
         media_kind=preset.media_kind,
         post_processors=preset.post_processors,
         subtitle_languages=preset.subtitle_languages,

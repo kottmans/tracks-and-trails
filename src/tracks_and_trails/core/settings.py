@@ -169,6 +169,7 @@ _PRESET_FIELDS: Final = tuple(field.name for field in fields(Preset) if field.na
 #: contains — the bug `REQ-009` exists to prevent. A name that resolves to nothing is handled by
 #: `default_preset_of`, which is total.
 _DEFAULT_PRESET_KEY: Final = "default_preset"
+_OUTPUT_TEMPLATE_KEY: Final = "output_template"
 
 
 def settings_path() -> Path:
@@ -212,6 +213,14 @@ class Settings:
     #: May name a built-in or one of `presets`. Nothing here checks that it names anything: a file
     #: is hand-editable, a preset can be deleted, and the resolver answers in every case.
     default_preset: str = ""
+
+    #: How downloads are named when a preset states no template of its own (`REQ-023`, `T-195`).
+    #:
+    #: **Empty means `presets.DEFAULT_OUTPUT_TEMPLATE`**, for `default_preset`'s reason one field
+    #: up: storing today's shipped template would freeze it into every settings file ever written,
+    #: so a user who never chose one would keep the template this application happened to ship on
+    #: the day they first launched it. `output_template_of` turns the preference into an answer.
+    output_template: str = ""
 
     #: Where downloads are written, or `None` for the platform's own downloads directory
     #: (`REQ-023`, `T-146`). `app.default_output_directory` is what `None` resolves to, and its
@@ -271,6 +280,11 @@ class Settings:
             raise ValueError(
                 f"Settings.concurrency is {self.concurrency}; REQ-013's minimum is "
                 f"{CONCURRENCY_MINIMUM}. A pool of zero starts nothing, which looks like a hang."
+            )
+        if not isinstance(self.output_template, str):
+            raise TypeError(
+                "Settings.output_template must be a template string, not a "
+                f"{type(self.output_template).__name__}"
             )
         if not isinstance(self.default_preset, str):
             raise TypeError(
@@ -804,6 +818,7 @@ def load(path: Path | None = None) -> SettingsFile:
     # what the file's worst part was.
     presets, preset_reason = _presets_from(document)
     default, default_reason = _default_preset_from(document, presets)
+    template, template_reason = _output_template_from(document)
 
     # `T-146`'s two, read the same independent way and for the same reason: a theme name nobody
     # recognises must not cost the user their download folder.
@@ -838,6 +853,7 @@ def load(path: Path | None = None) -> SettingsFile:
                 reason,
                 preset_reason,
                 default_reason,
+                template_reason,
                 downloads_reason,
                 directory_reason,
                 appearance_reason,
@@ -855,6 +871,7 @@ def load(path: Path | None = None) -> SettingsFile:
             concurrency=concurrency,
             presets=presets,
             default_preset=default,
+            output_template=template,
             download_directory=directory,
             theme=theme,
             ffmpeg_location=ffmpeg_location,
@@ -975,6 +992,36 @@ def _presets_from(document: dict[str, Any]) -> tuple[tuple[Preset, ...], str | N
         f"{len(refused)} saved preset(s) could not be read and were left out:\n"
         + "\n".join(refused)
     )
+
+
+def _output_template_from(document: dict[str, Any]) -> tuple[str, str | None]:
+    """The stored default template, and what had to be discarded to get it (`ARC-008`, `T-195`).
+
+    **Validated by the same function the editor uses**, not by a second implementation of the same
+    rule. `output_template.unsupported_refusal` is what `ui/template_editor.py` refuses with, so a
+    template the editor would reject cannot arrive through the file and be silently honoured — and
+    a template it would accept cannot be refused here. Two checks that must agree are two checks
+    that will drift (`ARC-002`'s reasoning, `T-059`'s shape).
+
+    A refused template falls back to empty, which `output_template_of` answers for — so the
+    application starts and downloads are named the shipped way, with the discard reported.
+    """
+    raw = document.get(_OUTPUT_TEMPLATE_KEY)
+    if raw is None:
+        return "", None
+    if not isinstance(raw, str):
+        return "", f"{_OUTPUT_TEMPLATE_KEY} is {raw!r}, which is not a template string."
+    if not raw:
+        # An explicitly empty template is the same request as omitting the key: use the shipped
+        # default. Nothing was discarded, so nothing is reported.
+        return "", None
+    # The editor's own validator, imported here so there is one definition of "usable template".
+    from tracks_and_trails.core.output_template import unsupported_refusal
+
+    refusal = unsupported_refusal(raw)
+    if refusal is not None:
+        return "", f"{_OUTPUT_TEMPLATE_KEY} was not used: {refusal}"
+    return raw, None
 
 
 def _default_preset_from(
@@ -1143,6 +1190,30 @@ def default_preset_of(settings: Settings) -> Preset:
     return chosen if chosen is not None else BUILT_IN_PRESETS[0]
 
 
+def output_template_of(settings: Settings) -> str:
+    """The template a preset that states none should use. **Total** (`REQ-023`, `T-195`).
+
+    `default_preset_of`'s shape, one field over: the stored value is a preference, empty means
+    *whatever this application ships*, and this is the function that answers. Nothing downstream
+    ever sees an empty template, which is why `DownloadRequest` can go on requiring a real one.
+    """
+    # Imported here rather than at module scope, as every other reference to the registry in this
+    # file is: `presets` imports `settings`, and the cycle is real.
+    from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE
+
+    return settings.output_template or DEFAULT_OUTPUT_TEMPLATE
+
+
+def set_output_template(settings: Settings, template: str) -> Settings:
+    """Choose the default template, or clear it back to the application's own.
+
+    **Clearing is offered here and not for the default preset**, and the difference is real:
+    `P-7` requires exactly one default preset because the add dialog needs something to inherit,
+    while an empty template has an obvious total answer that does not depend on a registry.
+    """
+    return replace(settings, output_template=template)
+
+
 def set_default_preset(settings: Settings, name: str) -> Settings:
     """`settings` with `name` as the preset a new paste inherits (`REQ-007`'s fifth verb).
 
@@ -1290,6 +1361,16 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             if settings.default_preset
             else ""
         )
+        # **Omitted when unset, like every other preference here** — a deleted line is not a broken
+        # file, and an absent key means *the template this application ships* (`T-195`). Written
+        # beside `default_preset` because the two are the same kind of thing: what a new paste gets
+        # when nobody has said otherwise.
+        template_line = (
+            f"# How downloads are named when a preset states no template of its own.\n"
+            f"{_OUTPUT_TEMPLATE_KEY} = {_toml_string(settings.output_template)}\n\n"
+            if settings.output_template
+            else ""
+        )
         # **Written after `[queue]` and before the presets, for the reader's sake only** (`T-146`).
         # A TOML table header is an absolute path from the root, so `[downloads]` after a
         # `[[preset]]` would still be a top-level table and would still round-trip — measured, by
@@ -1334,6 +1415,7 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             "# Tracks & Trails settings.\n"
             "# Safe to delete: every value falls back to its default.\n"
             f"{default_line}"
+            f"{template_line}"
             f"[{_TABLE}]\n"
             f"# How many downloads run at once. Minimum {CONCURRENCY_MINIMUM}, "
             f"maximum {CONCURRENCY_MAXIMUM}, default {CONCURRENCY_DEFAULT}.\n"

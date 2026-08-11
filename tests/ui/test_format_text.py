@@ -22,6 +22,7 @@ from tracks_and_trails.core.presets import (
     AUDIO_MP3,
     BUILT_IN_PRESETS,
     MP3_QUALITY,
+    PRESET_OWNED_FIELDS,
     format_choice_of,
     to_request,
     with_audio_quality,
@@ -173,3 +174,42 @@ def test_a_custom_selector_is_named_by_its_own_syntax() -> None:
     custom = replace(described, format_selector="bestvideo[height<=480]+bestaudio")
 
     assert format_name(custom) == "bestvideo[height<=480]+bestaudio"
+
+
+def test_only_naming_is_excluded_from_preset_identity() -> None:
+    """**`T-195`.** The exclusion must stay exactly one field wide.
+
+    `preset_name_for` recognises a built-in by every field it owns *except* the one that says how
+    a file is named. That exclusion is necessary — a shipped preset states no template, so
+    comparing it would mean no built-in ever matched a real request — and it is also the kind of
+    narrowing that quietly grows. A second field dropped in here would make two genuinely different
+    presets look like one, which is the defect the wide comparison exists to prevent.
+
+    Named against `PRESET_OWNED_FIELDS` rather than a written list, so a field added to `Preset`
+    joins the comparison the day it appears.
+    """
+    from tracks_and_trails.ui.format_text import IDENTIFYING_FIELDS, NOT_IDENTIFYING
+
+    assert {"output_template"} == NOT_IDENTIFYING
+    assert PRESET_OWNED_FIELDS - {"output_template"} == IDENTIFYING_FIELDS
+    assert "format_selector" in IDENTIFYING_FIELDS
+    assert "audio_quality" in IDENTIFYING_FIELDS, (
+        "a bitrate that no built-in offers must still fail to match one"
+    )
+
+
+def test_a_row_named_by_a_built_in_still_is_after_the_template_defers(tmp_path: Path) -> None:
+    """The behaviour the exclusion exists for, asserted through the real request path.
+
+    A shipped preset states no template; `to_request` resolves one. If identity compared naming,
+    the request would match no built-in and every queue row would fall back to printing its raw
+    selector — which is `T140-R3`, the defect this module was written to stop happening again.
+    """
+    request = to_request(
+        BUILT_IN_PRESETS[0],
+        url="https://example.invalid/watch?v=abc123",
+        output_directory=str(tmp_path),
+        default_output_template="%(uploader)s/%(title)s.%(ext)s",
+    )
+
+    assert preset_name_for(format_choice_of(request)) == BUILT_IN_PRESETS[0].name

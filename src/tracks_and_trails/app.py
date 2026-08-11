@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Any
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core.models import Preset
+from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE
 from tracks_and_trails.core.settings import Settings as AppSettings
 
 if TYPE_CHECKING:
@@ -632,6 +633,25 @@ def compose(
                 # for a bare relative name so the floor does not drop it (`T197-R1`).
                 app_logging.remember_a_path(str(Path(path).expanduser().absolute()))
 
+    def choose_default_preset(name: str) -> None:
+        """Set the preset a new paste inherits, from the settings screen (`REQ-023`, `T-195`).
+
+        **The same function the preset manager's *Set as default* calls**, so there is one writer
+        for one key and the two surfaces cannot disagree. `P3EXIT-R1` is this project's record of
+        what two records of one value costs; the answer here is that there are not two.
+        """
+        chosen = app_settings.set_default_preset(held.settings, name)
+        remember(chosen, "the default preset")
+
+    def choose_output_template(template: str) -> None:
+        """Set how downloads are named when a preset states none (`REQ-023`, `T-195`).
+
+        The screen refuses an unusable template before calling this, through the same validator
+        the per-row editor uses — so what arrives here is a template that renders.
+        """
+        chosen = app_settings.set_output_template(held.settings, template)
+        remember(chosen, "the output template")
+
     def choose_cookie_file(path: Path | None) -> None:
         """Use a cookies file for sites the user is signed in to, or none (`REQ-026`, `T-197`).
 
@@ -857,6 +877,19 @@ def compose(
         manage_presets=manage_presets,
         presets=lambda: app_settings.all_presets(held.settings),
         default_preset=lambda: app_settings.default_preset_of(held.settings).name,
+        # **The resolved template, asked afresh** (`T-195`). A shipped preset states no template,
+        # so without this the dialog's editor would open empty and a request would carry nothing.
+        default_output_template=lambda: app_settings.output_template_of(held.settings),
+        # The catalogue and the *stored* template, for the settings screen. Stored rather than
+        # resolved on purpose: an empty box with the shipped template as its placeholder is how the
+        # screen says "you have not chosen one", which a resolved value could not express.
+        preset_names=lambda: tuple(
+            preset.name for preset in app_settings.all_presets(held.settings)
+        ),
+        output_template=lambda: held.settings.output_template,
+        shipped_template=DEFAULT_OUTPUT_TEMPLATE,
+        on_default_preset_chosen=choose_default_preset,
+        on_output_template_chosen=choose_output_template,
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.

@@ -118,6 +118,132 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
+### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
+
+**Status:** **In Review — built 2026-08-11.**
+
+**The entry's premise did not hold, and the maintainer ruled on the fork.** This entry says the
+task supplies *"the application default that a preset with no opinion falls back to"* — and no
+preset could have no opinion: `Preset.output_template` was a required, non-empty field, every
+built-in hardcoded `DEFAULT_OUTPUT_TEMPLATE`, and `to_request` copied it straight through. The
+criterion built on it was unsatisfiable as written. **Ruled 2026-08-11: make "no opinion"
+representable.**
+
+**Both design questions this entry names are answered, and recorded here.**
+
+- **The default preset gets a control on the screen, and there is one writer.** Both surfaces call
+  `settings.set_default_preset`; neither stores a copy. The screen reads the catalogue and the
+  current default *when it opens* rather than caching at startup, so a preset made default in the
+  manager is what the screen shows next. Proved from the file, not from either screen's state.
+- **An empty `Preset.output_template` means *use the application default*.** `Settings.output_template`
+  stores the preference, `output_template_of` is the total resolver, and **`to_request` is the one
+  place it is resolved** — so `DownloadRequest` still requires a real template and nothing
+  downstream ever asks what empty means.
+
+**The shipped presets now state no template**, which is what gives the setting any effect at all. A
+built-in has an opinion about *format*, not about filenames; leaving `DEFAULT_OUTPUT_TEMPLATE` on
+them would have made a default set in Settings apply to nothing the user had not personally edited
+— a setting that appears to work and does nothing. A preset given a template through the editor
+keeps it, and that is the opt-out.
+
+**Three consequences worth the reviewer's attention, because each is a design statement rather than
+a mechanical edit.**
+
+1. **`output_template` is no longer an identifying field** (`ui/format_text.py`). Preset
+   recognition compares every preset-owned field; with built-ins deferring and requests resolved,
+   nothing matched, and **every queue row fell back to printing its raw selector** — `T140-R3`'s
+   defect returning. The field says how a file is *named*, not what is *downloaded*, so it is
+   excluded by a named constant with a test that fails if a second field joins it. **The
+   alternative was threading the resolved default through nine call sites**, which is the change I
+   did not make and the one to argue for if this reading is wrong.
+2. **`Preset` validation relaxed**, `DownloadRequest`'s did not. The type is still checked — a
+   `None` is a mistake, not a preference — through a helper declared over `object`, because an
+   inline `isinstance` against a `str` field is statically unreachable and `mypy` says so.
+3. **The drift test now names its exception.** `to_request` copies every shared field except this
+   one, which it resolves; the exclusion is a constant with a test asserting it stays one field
+   wide, rather than a skip inside the loop.
+
+**An unusable stored template is reported under `ARC-008` and the application starts**, falling
+back to the shipped default. **Validated by `output_template.unsupported_refusal`** — the function
+`manager.preview_output_path` calls, so the editor and the settings screen cannot come to disagree
+about what a usable template is. The screen refuses at edit time with the reason and **does not
+write what it refused**, which is `T-112`'s rule on the per-row editor applied here.
+
+**`SETTINGS_STILL_TO_COME` is trued**: the screen said default preset and output template were still
+to come while building them, which is this task's last criterion and `T-146`'s honesty rule.
+
+**Retargeting keeps the row's naming.** `main_window._retarget_job` rebuilt the request from the
+preset alone, so choosing a different format discarded both the Settings default and any template
+set on that row — the same defect `with_connection_of` exists to prevent one field over, and it
+predates this task for a per-row template. The old request's template is carried across now.
+
+**Five mutations.** `to_request` no longer resolving; the shipped presets stating a template again;
+the resolver ignoring the stored value; a refused template written anyway; a second field joining
+the identity exclusion.
+
+**Owner:** Implementer
+**Priority:** Medium — the default preset is the one a user meets on every paste, and today it
+cannot be changed from the settings screen because there is no settings screen
+**Phase:** Phase 4
+**Depends on:** `T-146`. There is nothing to add a key *to* until the screen exists.
+**Relevant context:** `REQ-023`, `REQ-011`, `ARC-007`, `ARC-008`, `UX-007`, `docs/UX_SPEC.md` §8
+and §9.1, `core/settings.py`, `core/models.py` (`Preset.output_template`),
+`ui/template_editor.py`, `ui/preset_manager.py`
+**Affected surfaces:** `core/settings.py`, the settings dialog `T-146` builds, `app.py`
+**Risk:** Medium — **two writers for one value** is the substantive hazard, not the storage
+
+#### Scope
+
+`REQ-023` names eight settings. `T-146` builds the screen and three of them — download directory,
+theme, and the concurrency key `ARC-007` already landed — and lists the remaining five under
+*Out of scope* with *"each has its own Phase 3 or Phase 4 owner"*. **Two of the five are this
+task**: default preset and output template. The other three are `T-196`, `T-197` and `T-199`.
+
+**The default preset already has ruled behaviour, and this task must not re-decide it.**
+`docs/UX_SPEC.md` §8 says: *"The default preset is what a new paste inherits. One default, always
+set; clearing it is not offered, because the dialog needs something to inherit."* `T-111` built
+*set as default* as a button in the preset manager's list. **So the behaviour and one writing
+surface both exist** — what this task adds is a second surface, and that is exactly where it can go
+wrong.
+
+**The design question is whether there should be a second surface at all.** Two controls writing one
+key is how the two records in `P3EXIT-R1` came to disagree. Either the settings screen shows the
+default preset as a *control* and both write one value through one path, or it shows it as *text
+with a link to the preset manager* and there is one writer. **This task must choose and record the
+choice**; `T-146`'s equivalent question about the concurrency control — "moved here or deliberately
+kept in both places, with the choice recorded" — is the precedent.
+
+**The output template already exists on `Preset`.** `core/models.py` carries `output_template` on
+both `Preset` and `DownloadRequest`, and `ui/template_editor.py` is a built editor with live preview
+and edit-time validation (`UX-007`'s `P-23`). This task supplies the **application default** that a
+preset with no opinion falls back to — not a second template implementation.
+
+#### Acceptance criteria
+
+- The screen sets the **default preset**, and a **new paste actually inherits it** — asserted
+  against a real staged row, not against the stored value
+- **One writer.** Setting the default in the preset manager and in the settings screen cannot
+  produce disagreeing state. Either they write one value through one path — proved by a test that
+  sets it in one surface and reads it in the other — or the second surface is not built, and the
+  entry records which was chosen and why
+- The screen sets the **default output template**, and a job whose preset states no template writes
+  to the path that template renders — asserted against a real written path, not the stored string
+- An invalid template is **refused at edit time with the reason**, through the same validator
+  `ui/template_editor.py` already uses. A second implementation of the check is a defect, not a
+  convenience (`ARC-002`'s reasoning, and `T-059`'s shape)
+- A stored value that is not usable **reports under `ARC-008`** rather than reverting in silence,
+  and the application still starts
+- The record of which `REQ-023` settings are implemented — `T-146`'s last criterion — is **updated
+  by this task**, so the screen never claims coverage it does not have
+
+#### Out of scope
+
+- Network options, cookie source and ffmpeg location — `T-196`, `T-197`, `T-199`
+- **Whether a per-item output template survives at all.** That is `T-203`'s open question, and this
+  task builds the application default either way — the default is needed *more*, not less, if the
+  per-item control goes
+- Following the OS theme, and window geometry — both excluded by `T-146` and still excluded
+
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -1330,72 +1456,6 @@ own menu, one menu behind the `⋮` zone and the context-menu routes. The spec a
 paragraph once held open is **written** — `UX-011` amends `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1.
 **What stays open is the `REQ-011` per-item template ruling** — whether a per-item output template
 survives at all. It is not agreed work until taken.
-
-### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
-
-**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
-**Owner:** Implementer
-**Priority:** Medium — the default preset is the one a user meets on every paste, and today it
-cannot be changed from the settings screen because there is no settings screen
-**Phase:** Phase 4
-**Depends on:** `T-146`. There is nothing to add a key *to* until the screen exists.
-**Relevant context:** `REQ-023`, `REQ-011`, `ARC-007`, `ARC-008`, `UX-007`, `docs/UX_SPEC.md` §8
-and §9.1, `core/settings.py`, `core/models.py` (`Preset.output_template`),
-`ui/template_editor.py`, `ui/preset_manager.py`
-**Affected surfaces:** `core/settings.py`, the settings dialog `T-146` builds, `app.py`
-**Risk:** Medium — **two writers for one value** is the substantive hazard, not the storage
-
-#### Scope
-
-`REQ-023` names eight settings. `T-146` builds the screen and three of them — download directory,
-theme, and the concurrency key `ARC-007` already landed — and lists the remaining five under
-*Out of scope* with *"each has its own Phase 3 or Phase 4 owner"*. **Two of the five are this
-task**: default preset and output template. The other three are `T-196`, `T-197` and `T-199`.
-
-**The default preset already has ruled behaviour, and this task must not re-decide it.**
-`docs/UX_SPEC.md` §8 says: *"The default preset is what a new paste inherits. One default, always
-set; clearing it is not offered, because the dialog needs something to inherit."* `T-111` built
-*set as default* as a button in the preset manager's list. **So the behaviour and one writing
-surface both exist** — what this task adds is a second surface, and that is exactly where it can go
-wrong.
-
-**The design question is whether there should be a second surface at all.** Two controls writing one
-key is how the two records in `P3EXIT-R1` came to disagree. Either the settings screen shows the
-default preset as a *control* and both write one value through one path, or it shows it as *text
-with a link to the preset manager* and there is one writer. **This task must choose and record the
-choice**; `T-146`'s equivalent question about the concurrency control — "moved here or deliberately
-kept in both places, with the choice recorded" — is the precedent.
-
-**The output template already exists on `Preset`.** `core/models.py` carries `output_template` on
-both `Preset` and `DownloadRequest`, and `ui/template_editor.py` is a built editor with live preview
-and edit-time validation (`UX-007`'s `P-23`). This task supplies the **application default** that a
-preset with no opinion falls back to — not a second template implementation.
-
-#### Acceptance criteria
-
-- The screen sets the **default preset**, and a **new paste actually inherits it** — asserted
-  against a real staged row, not against the stored value
-- **One writer.** Setting the default in the preset manager and in the settings screen cannot
-  produce disagreeing state. Either they write one value through one path — proved by a test that
-  sets it in one surface and reads it in the other — or the second surface is not built, and the
-  entry records which was chosen and why
-- The screen sets the **default output template**, and a job whose preset states no template writes
-  to the path that template renders — asserted against a real written path, not the stored string
-- An invalid template is **refused at edit time with the reason**, through the same validator
-  `ui/template_editor.py` already uses. A second implementation of the check is a defect, not a
-  convenience (`ARC-002`'s reasoning, and `T-059`'s shape)
-- A stored value that is not usable **reports under `ARC-008`** rather than reverting in silence,
-  and the application still starts
-- The record of which `REQ-023` settings are implemented — `T-146`'s last criterion — is **updated
-  by this task**, so the screen never claims coverage it does not have
-
-#### Out of scope
-
-- Network options, cookie source and ffmpeg location — `T-196`, `T-197`, `T-199`
-- **Whether a per-item output template survives at all.** That is `T-203`'s open question, and this
-  task builds the application default either way — the default is needed *more*, not less, if the
-  per-item control goes
-- Following the OS theme, and window geometry — both excluded by `T-146` and still excluded
 
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
 

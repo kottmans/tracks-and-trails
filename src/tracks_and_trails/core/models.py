@@ -61,6 +61,18 @@ def _fail(owner: str, name: str, value: object, expected: str) -> None:
     raise TypeError(f"{owner}.{name} must be {expected}, not {type(value).__name__}")
 
 
+def _require_string(owner: str, name: str, value: object) -> None:
+    """A string, empty allowed.
+
+    For a field where empty is a *preference* rather than a mistake — `Preset.output_template`
+    means *use the application default* when it is empty (`T-195`). Takes `object` for
+    `_require_text`'s reason: an `isinstance` written inline against a `str`-annotated field is
+    statically unreachable, and `mypy` says so.
+    """
+    if not isinstance(value, str):
+        _fail(owner, name, value, "a string")
+
+
 def _require_text(owner: str, name: str, value: object, reason: str = "") -> None:
     """A non-empty string.
 
@@ -888,6 +900,20 @@ class Preset:
     name: str
     media_kind: MediaKind
     format_selector: str
+
+    #: How this preset names its files, or **empty for "whatever the application default is"**
+    #: (`REQ-023`, `T-195`).
+    #:
+    #: **Empty is a real value here and not a missing one**, the shape `Settings.default_preset` and
+    #: `Settings.download_directory` already use: a stored *preference*, with a total resolver that
+    #: turns it into an answer. `presets.to_request` is that resolver's one call site, so a preset
+    #: that states no template gets the user's default at the moment a request is built rather than
+    #: at the moment the preset is written — which is what lets changing the setting affect presets
+    #: that already exist.
+    #:
+    #: **`DownloadRequest.output_template` stays non-empty**, deliberately. Resolution happens
+    #: before a request exists, so nothing downstream of it ever has to ask what an empty template
+    #: means, and the worker's contract is unchanged.
     output_template: str
     post_processors: tuple[str, ...] = ()
 
@@ -924,7 +950,9 @@ class Preset:
         _require_text("Preset", "name", self.name, "it is what the user selects it by")
         _require_text("Preset", "format_selector", self.format_selector)
         _require_enum("Preset", "media_kind", self.media_kind, MediaKind)
-        _require_text("Preset", "output_template", self.output_template)
+        # **Not `_require_text`**: empty means *use the application default* (`T-195`). The type
+        # is still checked, because a `None` here is a mistake rather than a preference.
+        _require_string("Preset", "output_template", self.output_template)
         for name in ("post_processors", "subtitle_languages"):
             object.__setattr__(self, name, _as_tuple_of("Preset", name, getattr(self, name), str))
         _require_enum("Preset", "audio_codec", self.audio_codec, AudioCodec)

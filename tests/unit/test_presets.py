@@ -228,19 +228,96 @@ def test_the_two_models_actually_share_fields() -> None:
     assert len(SHARED_FIELDS) >= 6, SHARED_FIELDS
 
 
+#: The one shared field `to_request` **resolves** instead of copying (`T-195`).
+#:
+#: `Preset.output_template` may be empty, meaning *use the application default*, and
+#: `DownloadRequest.output_template` may not be — so for this field a copy would carry an empty
+#: string into a request that requires a real one. **Named here rather than skipped inside the
+#: test**, so a second field cannot join the exception by being quietly non-equal:
+#: `test_only_the_named_field_is_resolved_rather_than_copied` fails if one does.
+RESOLVED_NOT_COPIED = frozenset({"output_template"})
+
+
+def test_only_the_named_field_is_resolved_rather_than_copied() -> None:
+    """The exception above must stay exactly one field wide.
+
+    Every other shared field is a straight copy. If a future field starts being derived in
+    `to_request`, the parametrised test below stops covering it — and this is what says so, rather
+    than the coverage disappearing silently.
+    """
+    a_preset = presets.BUILT_IN_PRESETS[0]
+    request = request_for(a_preset)
+    differing = {
+        name for name in SHARED_FIELDS if getattr(request, name) != getattr(a_preset, name)
+    }
+    assert differing == RESOLVED_NOT_COPIED, (
+        f"the fields `to_request` does not copy are {sorted(differing)}, but only "
+        f"{sorted(RESOLVED_NOT_COPIED)} is accounted for"
+    )
+
+
 @pytest.mark.parametrize("preset", presets.BUILT_IN_PRESETS, ids=lambda p: p.name)
-@pytest.mark.parametrize("field_name", SHARED_FIELDS)
+@pytest.mark.parametrize("field_name", sorted(set(SHARED_FIELDS) - RESOLVED_NOT_COPIED))
 def test_every_shared_field_reaches_the_request(preset: Preset, field_name: str) -> None:
     """Translation is a copy, and this is what makes that claim checkable.
 
     Derived from the dataclasses, so adding `Preset.container_format` without adding it to
     `to_request` fails here — rather than at the first download that quietly ignores it.
+
+    `output_template` is excluded and accounted for above: it is *resolved*, not copied.
     """
     request = request_for(preset)
     assert getattr(request, field_name) == getattr(preset, field_name), (
         f"{preset.name!r} sets {field_name}={getattr(preset, field_name)!r}, but the request it "
         f"produced carries {getattr(request, field_name)!r}"
     )
+
+
+@pytest.mark.parametrize("preset", presets.BUILT_IN_PRESETS, ids=lambda p: p.name)
+def test_a_shipped_preset_states_no_template_and_the_request_gets_a_real_one(
+    preset: Preset,
+) -> None:
+    """**`T-195`.** A built-in has an opinion about format, not about filenames.
+
+    Stating the shipped template on every preset would make a default template set in Settings
+    apply to nothing the user had not personally edited — a setting that appears to work and does
+    nothing. So the shipped presets defer, and `to_request` is where the deferral is resolved.
+
+    `DownloadRequest` still requires a real template, which is the half that keeps everything
+    downstream of this unchanged.
+    """
+    assert preset.output_template == "", (
+        f"{preset.name!r} states a template of its own, so a default set in Settings would not "
+        "reach it"
+    )
+    chosen = "%(uploader)s/%(title)s.%(ext)s"
+    request = presets.to_request(
+        preset,
+        url="https://example.invalid/v",
+        output_directory=".",
+        default_output_template=chosen,
+    )
+    assert request.output_template == chosen
+
+
+def test_a_preset_with_its_own_template_is_not_overridden_by_the_default() -> None:
+    """The opt-out, and the direction that makes the deferral safe to have.
+
+    A user who sets a template on a preset has said something specific; the application default is
+    what applies when nobody has. Without this the setting would silently overwrite deliberate
+    choices, which is the failure mode that made "resolve at paste time by guessing" the wrong
+    design.
+    """
+    mine = presets.with_output_template(presets.BUILT_IN_PRESETS[0], "%(title)s [%(ext)s].%(ext)s")
+
+    request = presets.to_request(
+        mine,
+        url="https://example.invalid/v",
+        output_directory=".",
+        default_output_template="%(uploader)s/%(title)s.%(ext)s",
+    )
+
+    assert request.output_template == "%(title)s [%(ext)s].%(ext)s"
 
 
 def test_the_url_and_directory_are_the_two_things_a_preset_cannot_know() -> None:

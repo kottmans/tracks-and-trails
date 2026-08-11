@@ -15,12 +15,24 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QRadioButton, QSpinBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QSpinBox,
+)
 
+from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.ui.settings_dialog import (
     DEFAULT_DIRECTORY_NOTE,
+    DEFAULT_PRESET_NAME,
     NO_COOKIES_NOTE,
+    OUTPUT_TEMPLATE_NAME,
+    OUTPUT_TEMPLATE_NOTE_NAME,
     SETTINGS_STILL_TO_COME,
     SettingsDialog,
 )
@@ -45,6 +57,15 @@ def screens(
         sink = overrides.pop("concurrency_sink")
         overrides.setdefault(
             "on_concurrency_chosen", sink or (lambda value: asked.update(concurrency=value))
+        )
+        # Recorded here rather than by each test, so a test never has to close over the `asked`
+        # dict it is about to be handed — which reads as a forward reference and `mypy` refuses it.
+        # Pass `None` explicitly for a screen that is meant to have nothing behind the control.
+        overrides.setdefault(
+            "on_default_preset_chosen", lambda value: asked.update(default_preset=value)
+        )
+        overrides.setdefault(
+            "on_output_template_chosen", lambda value: asked.update(template=value)
         )
         screen = SettingsDialog(**overrides)
         built.append(screen)
@@ -74,7 +95,7 @@ def test_the_screen_says_which_settings_it_does_not_cover(
 ) -> None:
     """**`T-146`'s honesty criterion**, on the screen rather than only in a document.
 
-    `REQ-023` names eight settings and this screen builds five of them since `T-197`. A settings
+    `REQ-023` names eight settings and this screen builds seven of them since `T-195`. A settings
     screen showing only what it implements reads as complete, so the remaining absences are stated
     where the user is looking — and each of them is owned by a filed task.
     """
@@ -85,11 +106,16 @@ def test_the_screen_says_which_settings_it_does_not_cover(
     # `T-199` built the ffmpeg location, so it left this list — which is this test working, not a
     # weakening of it: the sentence must shrink as the screen grows, or it becomes the stale
     # coverage claim the criterion exists to prevent.
-    for built, by in (("ffmpeg", "T-199"), ("cookie", "T-197")):
+    for built, by in (
+        ("ffmpeg", "T-199"),
+        ("cookie", "T-197"),
+        ("default preset", "T-195"),
+        ("output template", "T-195"),
+    ):
         assert built not in SETTINGS_STILL_TO_COME.lower(), (
             f"the screen still says {built} is to come, but {by} built it"
         )
-    for absent in ("default preset", "output template", "network"):
+    for absent in ("network",):
         assert absent in SETTINGS_STILL_TO_COME.lower(), (
             f"{absent!r} is not built and the screen does not say so: {SETTINGS_STILL_TO_COME!r}"
         )
@@ -348,3 +374,120 @@ def test_a_cancelled_file_picker_leaves_the_source_where_it_was(
     assert control(screen, QRadioButton, "cookieSourceBrowser").isChecked(), (
         "the screen claims a cookies file after the picker was dismissed"
     )
+
+
+# --- T-195: the preset a paste starts with, and how downloads are named ------------------------
+
+
+def test_the_screen_offers_the_catalogue_and_starts_on_the_stored_default(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`REQ-023`, `T-195`.** The default preset is what every paste inherits.
+
+    Until now it could only be changed from the preset manager, which is a screen a user reaches
+    to *edit presets* — not where they would look to change what a new download starts as.
+    """
+    screen, asked = screens(
+        preset_names=("Best video available", "Audio only (MP3)"),
+        default_preset="Audio only (MP3)",
+    )
+
+    choice = control(screen, QComboBox, DEFAULT_PRESET_NAME)
+    assert [choice.itemData(i) for i in range(choice.count())] == [
+        "Best video available",
+        "Audio only (MP3)",
+    ]
+    assert choice.currentData() == "Audio only (MP3)", "the screen opened on something else"
+
+    choice.setCurrentIndex(choice.findData("Best video available"))
+    assert asked["default_preset"] == "Best video available"
+
+
+def test_the_default_preset_has_one_writer(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """**The criterion this task exists to not fail** (`T-195`, `P3EXIT-R1`).
+
+    Two controls writing one key is how two records of one value came to disagree. So the screen
+    does not store a default of its own: what it hands composition goes through
+    `settings.set_default_preset`, which is the same function the preset manager's *Set as
+    default* calls.
+
+    Asserted by writing through the screen's callback and reading the value back the way the
+    **preset manager** reads it — one path, proved from both ends, rather than by inspecting the
+    screen's own state.
+    """
+    stored = core_settings.Settings()
+    screen, _ = screens(
+        preset_names=tuple(preset.name for preset in preset_registry.BUILT_IN_PRESETS),
+        default_preset=core_settings.default_preset_of(stored).name,
+    )
+    choice = control(screen, QComboBox, DEFAULT_PRESET_NAME)
+    chosen = preset_registry.AUDIO_MP3.name
+
+    written = core_settings.set_default_preset(stored, chosen)
+
+    assert core_settings.default_preset_of(written).name == chosen
+    # And the screen reflects it without a second store of its own.
+    screen.show_default_preset(chosen)
+    assert choice.currentData() == chosen
+
+
+def test_an_unusable_template_is_refused_at_edit_time_and_never_written(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`P-23`'s rule, on this screen** (`T-195`).
+
+    `T-112` made the same call for the per-row editor and recorded why: a screen that shows the
+    error and stores the value anyway satisfies the visible half of the criterion and leaves a
+    broken template behind for every future download.
+
+    Refused through `core.output_template.unsupported_refusal` — the function
+    `manager.preview_output_path` calls, so the editor and this screen cannot come to disagree
+    about what a usable template is.
+    """
+    screen, asked = screens(
+        output_template="",
+        shipped_template=preset_registry.DEFAULT_OUTPUT_TEMPLATE,
+    )
+    field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
+    note = control(screen, QLabel, OUTPUT_TEMPLATE_NOTE_NAME)
+
+    field.setText("%(nonsense)s.%(ext)s")
+
+    assert "nonsense" in note.text(), f"no reason was shown: {note.text()!r}"
+    assert "template" not in asked, "a refused template was written anyway"
+
+    field.setText("%(uploader)s/%(title)s.%(ext)s")
+    assert note.text() == "", "the reason outlived the problem"
+    assert asked["template"] == "%(uploader)s/%(title)s.%(ext)s"
+
+
+def test_the_shipped_template_is_the_placeholder_so_empty_reads_as_a_choice(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """Empty means *use the application default*, which an empty box alone does not say.
+
+    Without the placeholder the field would look unset rather than deliberately deferred, and a
+    user could not tell what their downloads would be named.
+    """
+    screen, _ = screens(
+        output_template="",
+        shipped_template=preset_registry.DEFAULT_OUTPUT_TEMPLATE,
+    )
+
+    field = control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME)
+    assert field.text() == ""
+    assert field.placeholderText() == preset_registry.DEFAULT_OUTPUT_TEMPLATE
+
+
+def test_a_screen_with_nothing_behind_a_control_says_so_rather_than_drawing_it_dead(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """`UX-005` §5 and `P-13`: a control that cannot act keeps its reason beside it."""
+    screen, _ = screens(on_default_preset_chosen=None, on_output_template_chosen=None)
+
+    assert not control(screen, QComboBox, DEFAULT_PRESET_NAME).isEnabled()
+    assert control(screen, QLabel, "defaultPresetNote").text()
+    assert not control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME).isEnabled()

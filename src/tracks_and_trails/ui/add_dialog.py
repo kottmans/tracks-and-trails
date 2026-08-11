@@ -1166,6 +1166,7 @@ class AddUrlDialog(QDialog):
         save_preset: PresetSink | None = None,
         manage_presets: Callable[[], None] | None = None,
         default_preset: str = "",
+        default_output_template: str = preset_registry.DEFAULT_OUTPUT_TEMPLATE,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -1195,6 +1196,14 @@ class AddUrlDialog(QDialog):
         #: the catalogue and what to start on, and does not learn where either is stored. Empty
         #: means the first entry, which is what the control did before there was a default at all.
         self._default_preset = default_preset
+        #: How a row is named when its preset states no template of its own (`REQ-023`, `T-195`).
+        #:
+        #: A resolved *template* rather than a `Settings`, for `_default_preset`'s reason: this
+        #: dialog is handed what to use and does not learn where it is stored. The shipped presets
+        #: state no template at all, so without this the editor would open empty and a request
+        #: would carry nothing — which is why it is resolved here rather than left to `to_request`'s
+        #: own fallback.
+        self._default_output_template = default_output_template
         self._output_directory = output_directory
         #: **The catalogue, minus what this installation cannot perform** (`REQ-024`, `T199-R1`,
         #: `UX-005` §5). Filtered here rather than at each control because this one tuple feeds
@@ -1614,7 +1623,10 @@ class AddUrlDialog(QDialog):
         it tells them anything, and the interesting case — *what does the template I already have
         produce?* — is the one they arrived with.
         """
-        template = self.preset_for(row).output_template
+        # A preset that states none shows the application default, because that is what the
+        # row would actually be named (`T-195`). An empty box would say the row has no
+        # template, which is not what an empty `output_template` means.
+        template = self.preset_for(row).output_template or self._default_output_template
 
         panel_holder: list[TemplatePanel] = []
 
@@ -1669,6 +1681,7 @@ class AddUrlDialog(QDialog):
                 preset_registry.with_output_template(self.preset_for(row), template or " "),
                 url=row.url,
                 output_directory=str(self._output_directory),
+                default_output_template=self._default_output_template,
             )
         )
         return self._manager.preview_output_path(request, described)
@@ -2689,7 +2702,10 @@ class AddUrlDialog(QDialog):
                 # one of them unauthenticated — the case a user most often has cookies *for*.
                 request=self._with_default_cookie_browser(
                     preset_registry.to_request(
-                        self.preset_for(row), url=entry.url, output_directory=str(directory)
+                        self.preset_for(row),
+                        url=entry.url,
+                        output_directory=str(directory),
+                        default_output_template=self._default_output_template,
                     )
                 ),
                 # **Queued, not ready.** `UX-003` makes a pasted URL a probed one; a flat entry is
@@ -2750,7 +2766,10 @@ class AddUrlDialog(QDialog):
         per row: a row with its own preset uses it, and a row without follows the batch.
         """
         request = preset_registry.to_request(
-            self.preset_for(row), url=row.url, output_directory=str(self._output_directory)
+            self.preset_for(row),
+            url=row.url,
+            output_directory=str(self._output_directory),
+            default_output_template=self._default_output_template,
         )
         return self._with_default_cookie_browser(request)
 

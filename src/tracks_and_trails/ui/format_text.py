@@ -81,20 +81,37 @@ UNADJUSTED: Final[dict[str, object]] = {
 }
 
 
+#: Preset-owned fields that do **not** identify a preset (`T-195`).
+#:
+#: **`output_template` says how a file is named, not what is downloaded**, and since `T-195` a
+#: shipped preset states none at all — it defers to the application default. Comparing it would
+#: mean no built-in ever matched a real request, because the request carries the *resolved*
+#: template and the preset carries nothing, so every row would fall back to its raw selector.
+#:
+#: Named here rather than skipped inside the loop, so the exclusion is one line to find and
+#: `test_only_naming_is_excluded_from_preset_identity` fails if a second field joins it. Everything
+#: else `PRESET_OWNED_FIELDS` contains is still compared, which is what stops two presets sharing a
+#: selector from being confused for one another.
+NOT_IDENTIFYING: Final[frozenset[str]] = frozenset({"output_template"})
+
+#: The fields a preset is actually recognised by.
+IDENTIFYING_FIELDS: Final[frozenset[str]] = PRESET_OWNED_FIELDS - NOT_IDENTIFYING
+
+
 def preset_name_for(choice: FormatChoice) -> str | None:
     """Which built-in preset describes this choice, if any.
 
-    Matched on **every field a preset owns**, not on the format selector alone: two presets can
-    share a selector and differ in the container or the output template, and naming the wrong one
-    would tell the user their download is something it is not. `PRESET_OWNED_FIELDS` is derived
-    from the two dataclasses, so a field added to `Preset` is compared the day it appears
-    (`T015-R1`).
+    Matched on **every identifying field a preset owns**, not on the format selector alone: two
+    presets can share a selector and differ in the container or the codec, and naming the wrong one
+    would tell the user their download is something it is not. `IDENTIFYING_FIELDS` is derived from
+    the two dataclasses, so a field added to `Preset` is compared the day it appears (`T015-R1`) —
+    less the one field that describes naming rather than content, which `NOT_IDENTIFYING` states.
 
     `None` for a choice no built-in describes — a custom selector (`REQ-009`), or an MP3 download
     converted at a bitrate other than the preset's default, since `audio_quality` is preset-owned.
     """
     for preset in BUILT_IN_PRESETS:
-        if all(getattr(preset, field) == getattr(choice, field) for field in PRESET_OWNED_FIELDS):
+        if all(getattr(preset, field) == getattr(choice, field) for field in IDENTIFYING_FIELDS):
             return preset.name
     return None
 
@@ -222,7 +239,10 @@ def _converting_preset_for(choice: FormatChoice) -> str | None:
     """
     if choice.audio_codec is not AudioCodec.MP3:
         return None
-    apart_from_bitrate = PRESET_OWNED_FIELDS - {"audio_quality"}
+    # `IDENTIFYING_FIELDS`, not `PRESET_OWNED_FIELDS`: naming is excluded here for the same
+    # reason it is excluded from `preset_name_for` (`T-195`), and a converting preset that
+    # compared it would never match either.
+    apart_from_bitrate = IDENTIFYING_FIELDS - {"audio_quality"}
     for preset in BUILT_IN_PRESETS:
         if preset.audio_codec is not AudioCodec.MP3:
             continue

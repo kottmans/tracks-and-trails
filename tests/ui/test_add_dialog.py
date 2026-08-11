@@ -3937,7 +3937,13 @@ def test_an_invalid_template_is_refused_at_edit_time_and_never_reaches_the_reque
     """
     dialog, row = _staged(dialogs, managers, spin)
     panel = _open_the_template_editor(dialog)
+    # **Two different values, and they stopped being the same at `T-195`.** `good` is what the
+    # preset *stores* — nothing, for a shipped preset, meaning *use the application default* — and
+    # `shown` is what the row would actually be named, which is what the editor opens on and what
+    # the request has to carry. Comparing the request against the stored value asserted that a
+    # resolved template had not been resolved.
     good = dialog.preset_for(row).output_template
+    shown = panel.editor.template
 
     panel.editor.input_field.clear()
     QTest.keyClicks(panel.editor.input_field, "%(title)")
@@ -3953,7 +3959,7 @@ def test_an_invalid_template_is_refused_at_edit_time_and_never_reaches_the_reque
     dialog.close_panel(keep=True)
     dialog.add_to_queue()
     assert spin(lambda: bool(sink.submissions))
-    assert sink.submissions[0][0].request.output_template == good
+    assert sink.submissions[0][0].request.output_template == shown
 
 
 def test_a_template_that_leaves_the_download_folder_is_refused(
