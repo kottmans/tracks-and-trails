@@ -149,21 +149,34 @@ def parse_browser_specification(value: str) -> tuple[str, str | None, str | None
     profile = match.group("profile")
     if profile is not None:
         profile = profile.strip()
-        if _looks_like_a_path(profile):
+        if looks_like_a_path(profile):
             raise ValueError(
                 f"the profile {profile!r} is a path. A cookie path is a settings value and never "
                 "a field on this model (DAT-003); name the profile instead"
             )
     container = match.group("container")
+    if container is not None:
+        container = container.strip()
+        # **The fourth and last component, checked like the second and third** (`T197-R2`,
+        # reopened). The profile was path-checked and the container was not, so
+        # `firefox::/home/alice/session.txt` rode the unchecked slot into the job JSON — the
+        # third time a path slipped one component right of the check. The grammar has exactly
+        # four components: browser and keyring are closed lists, and profile and container now
+        # share one predicate. There is no fifth slot for this finding to move to.
+        if looks_like_a_path(container):
+            raise ValueError(
+                f"the container {container!r} is a path. A cookie path is a settings value and "
+                "never a field on this model (DAT-003); name the container instead"
+            )
     return (
         browser,
         profile or None,
         keyring.strip().upper() if keyring else None,
-        container.strip() if container else None,
+        container or None,
     )
 
 
-def _looks_like_a_path(value: str) -> bool:
+def looks_like_a_path(value: str) -> bool:
     """Whether `value` names a location rather than a profile (`T197-R2`).
 
     **Two questions, and the second is asked the way yt-dlp asks it.** A separator or a drive

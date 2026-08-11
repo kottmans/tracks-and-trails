@@ -775,6 +775,12 @@ def test_the_browser_and_keyring_names_agree_with_yt_dlp() -> None:
         "firefox:C:\\Users\\alice",
         "notabrowser",
         "firefox+nosuchkeyring",
+        # `T197-R2`, reopened: the container was the fourth and last unchecked slot. One case per
+        # syntax it shares with the profile, so the predicate provably applies there too.
+        "firefox::/home/alice/session.txt",
+        "firefox::C:\\Users\\alice",
+        "firefox::~jar",
+        "firefox:Prof::$HOME",
     ],
 )
 def test_a_profile_that_could_become_a_path_is_refused(refused: str) -> None:
@@ -792,7 +798,16 @@ def test_a_profile_that_could_become_a_path_is_refused(refused: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "accepted", ["firefox", "firefox:Private", "chrome:Default", "firefox:Profile 1", "brave"]
+    "accepted",
+    [
+        "firefox",
+        "firefox:Private",
+        "chrome:Default",
+        "firefox:Profile 1",
+        "brave",
+        "firefox::Personal",
+        "firefox+kwallet:Work::Banking",
+    ],
 )
 def test_a_real_profile_name_is_still_accepted(accepted: str) -> None:
     """The other direction: a check that refuses everything protects nothing anyone can use."""

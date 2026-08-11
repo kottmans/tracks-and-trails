@@ -316,3 +316,66 @@ def test_the_worker_hands_cookies_to_the_probe_as_well_as_the_download() -> None
         "would fail while being read, before the download that would have used cookies"
     )
     assert seen.get("probe_only") is True, "sanity: this is the probe call"
+
+
+@pytest.mark.parametrize(
+    ("label", "body", "leaks"),
+    [
+        (
+            "a ~ file, whose reason prints the expansion",
+            '[cookies]\nfile = "~/session.txt"\n',
+            ("~/session.txt", "EXPANDED"),
+        ),
+        (
+            "a path in the keyring slot, quoted back by the refusal",
+            '[cookies]\nbrowser = "firefox+/home/alice/kr.txt:Prof"\n',
+            ("/home/alice/kr.txt",),
+        ),
+        (
+            "a path in the container slot",
+            '[cookies]\nbrowser = "firefox::/home/alice/ct.txt"\n',
+            ("/home/alice/ct.txt",),
+        ),
+        (
+            "a path in the profile slot",
+            '[cookies]\nbrowser = "firefox:/home/alice/pf.txt"\n',
+            ("/home/alice/pf.txt",),
+        ),
+    ],
+)
+def test_no_rejected_cookie_fragment_survives_the_reported_reason(
+    label: str, body: str, leaks: tuple[str, ...], tmp_path: Path
+) -> None:
+    """**`T197-R1`, asserted as the outcome rather than the mechanism — because the mechanism has
+    been wrong three times, each time one component to the right of the last fix.**
+
+    First the accepted path was registered and not the rejected one; then the file key and not the
+    browser key; then the profile fragment and not the keyring — and the expanded form of a `~`
+    path, which validation *prints* while only the written form was registered. Every miss was a
+    correct fix to the instance in front of it.
+
+    So this test does not ask which literals were registered. It parametrises **every slot the
+    grammar has**, registers whatever `load()` offered, pushes the real reason through the real
+    formatter, and asserts nothing path-shaped survived. A future leak through a slot nobody
+    thought of fails here without this file being edited — provided the slot is in the
+    parametrisation, which is why there is one case per grammar component plus the file key.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text(body, encoding="utf-8")
+    read = app_settings.load(settings_file)
+    assert read.problem is not None, f"{label}: nothing was rejected, so nothing is asserted"
+
+    logging_module.forget_the_secrets()
+    try:
+        for literal in read.secrets:
+            logging_module.remember_a_secret(literal)
+        written = emitted(f"settings: {read.problem.reason}")
+
+        for leak in leaks:
+            resolved_leak = str(Path("~/session.txt").expanduser()) if leak == "EXPANDED" else leak
+            assert resolved_leak not in written, (
+                f"{label}: {resolved_leak!r} survived into the log:\n{written}"
+            )
+        assert "settings:" in written, f"{label}: the report was scrubbed rather than the secret"
+    finally:
+        logging_module.forget_the_secrets()

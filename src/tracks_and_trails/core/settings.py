@@ -60,6 +60,7 @@ from tracks_and_trails.core.models import (
     AudioCodec,
     MediaKind,
     Preset,
+    looks_like_a_path,
     parse_browser_specification,
 )
 
@@ -540,31 +541,44 @@ def unusable_cookie_file_reason(path: Path) -> str | None:
 
 
 def _sensitive_literals(cookies_table: dict[str, Any]) -> tuple[str, ...]:
-    """Every literal the cookie keys held, valid or not, for composition to register (`T197-R1`).
+    """Every literal the cookie keys held that a reason might quote, valid or not (`T197-R1`).
 
-    **Both keys, and the profile inside the browser one.** The first version covered the file key
-    only, so `browser = "firefox:/home/alice/session.txt"` was refused — correctly — and then
-    named in the `ARC-008` reason twice over: once as the whole specification, and once as the
-    extracted profile, because the refusal quotes the component it objected to. Neither was
-    registered, so both reached the log.
+    **This function has been wrong three times, each time by predicting which string a refusal
+    would quote**: first the accepted path and not the rejected one; then the file key and not the
+    browser key; then the profile component and not the keyring — and the *expanded* form of a
+    `~` path, which validation prints while only the written form was registered. Prediction is
+    the defect, so it stops here:
 
-    Exact literals, because that is what `remember_a_secret` replaces. The specification and its
-    profile are registered separately: the reason contains each of them on its own, and replacing
-    the longer one does not remove the shorter.
+    - **The file key registers both spellings** — as written, and as `expanduser` renders it,
+      because `unusable_cookie_file_reason` prints the expansion and `redact` replaces exact
+      literals. Expansion is guarded, since it can raise (`T146-R1`) and `load()` may not.
+    - **The browser key registers every separator-split fragment that looks like a path**, using
+      the same public predicate validation refuses them with — so whichever component a refusal
+      quotes back, the quoted string was registered by construction rather than by having been
+      thought of. Fragments that do not look like paths (browser names, profile names) are
+      deliberately not registered: `remember_a_secret` replaces substrings, and registering
+      `Work` would corrupt the word `Worker` in every later log line.
     """
     literals: list[str] = []
     raw_file = cookies_table.get(_COOKIE_FILE_KEY)
     if isinstance(raw_file, str) and raw_file.strip():
         literals.append(raw_file)
+        try:
+            expanded = str(Path(raw_file).expanduser())
+        except OSError, RuntimeError:
+            expanded = raw_file
+        if expanded != raw_file:
+            literals.append(expanded)
     raw_browser = cookies_table.get(_COOKIE_BROWSER_KEY)
     if isinstance(raw_browser, str) and raw_browser.strip():
         literals.append(raw_browser)
-        # The component a refusal quotes back. Split rather than parsed, because the value that
-        # needs registering is precisely the one `parse_browser_specification` refuses.
-        _, _, after = raw_browser.partition(":")
-        if after.strip():
-            literals.append(after.strip())
-    return tuple(literals)
+        for outer in raw_browser.split("::"):
+            for middle in outer.split(":"):
+                for fragment in middle.split("+"):
+                    fragment = fragment.strip()
+                    if fragment and looks_like_a_path(fragment):
+                        literals.append(fragment)
+    return tuple(dict.fromkeys(literals))
 
 
 def _cookie_browser_from(raw: Any) -> tuple[str | None, str | None]:

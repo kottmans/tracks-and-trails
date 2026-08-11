@@ -42,6 +42,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -616,6 +617,10 @@ def compose(
         """
         if path is not None:
             app_logging.remember_a_secret(str(path))
+            # Both spellings, for `_sensitive_literals`' reason: the refusal prints the
+            # expansion, and `redact` replaces exact literals (`T197-R1`).
+            with suppress(OSError, RuntimeError):
+                app_logging.remember_a_secret(str(Path(path).expanduser()))
 
     def choose_cookie_file(path: Path | None) -> None:
         """Use a cookies file for sites the user is signed in to, or none (`REQ-026`, `T-197`).

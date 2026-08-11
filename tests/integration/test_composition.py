@@ -39,7 +39,7 @@ from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QMetaMethod, QObject
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QRadioButton
 
 from tracks_and_trails import app as application
 from tracks_and_trails.core import logging as app_logging
@@ -2517,3 +2517,87 @@ def test_an_unusable_cookie_path_does_not_reach_the_log_that_reports_it(
         f"the cookie path reached a log through the ARC-008 report:\n{stream.getvalue()}"
     )
     assert "does not exist" in stream.getvalue(), "the report was scrubbed rather than the path"
+
+
+def test_choosing_no_cookies_on_the_real_screen_clears_the_browser_everywhere(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**The review's evidence note, taken**: the widget-level test stops at the dialog's own
+    methods and would stay green with the composition wiring gone. This drives the real loop —
+    screen radio → composition → settings file → window → screen — on the composed application.
+    """
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.with_cookie_browser(core_settings.Settings(), "firefox:Work"),
+            settings_file,
+        )
+        is None
+    )
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    screen = composition.window.open_settings()
+    assert screen is not None
+    try:
+        browser_radio = screen.findChild(QRadioButton, "cookieSourceBrowser")
+        none_radio = screen.findChild(QRadioButton, "cookieSourceNone")
+        assert browser_radio is not None and none_radio is not None
+        assert browser_radio.isChecked(), "the stored browser source never reached the screen"
+
+        none_radio.click()
+        QApplication.processEvents()
+
+        read = core_settings.load(settings_file)
+        assert read.settings.cookie_browser is None, "No cookies did not clear the stored browser"
+        assert read.settings.cookie_file is None
+        assert none_radio.isChecked() and not browser_radio.isChecked(), (
+            "the screen still claims a cookie source after the user chose none"
+        )
+        assert composition.window._cookie_browser is None, (
+            "the window still holds the browser, so the next screen would reopen showing it"
+        )
+    finally:
+        screen.close()
+        QApplication.processEvents()
+
+
+def test_retargeting_through_the_window_keeps_the_jobs_cookie_binding(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**The evidence note's other half**: `with_connection_of` was proven in isolation, and
+    nothing proved `_retarget_job` actually calls it. This retargets a real queued job through the
+    window's own handler and reads the store back.
+    """
+    database = tmp_path / "retarget.sqlite3"
+    connection = db.connect(database)
+    repository = JobRepository(connection)
+    bound = DownloadRequest(
+        url="https://example.invalid/bound",
+        output_directory=str(tmp_path / "downloads"),
+        format_selector="bestvideo+bestaudio/best",
+        output_template="%(title)s.%(ext)s",
+        cookies_from_browser="firefox:Work",
+    )
+    repository.append([Job(id="bound-1", url=bound.url, request=bound, queue_position=0)])
+    connection.close()
+
+    composition = composed(database=database, entry_point=child_probing_then_waiting)
+    assert spin(lambda: shown_status(composition, "bound-1") is not None, timeout=30)
+
+    composition.window._retarget_job("bound-1", "Audio only (MP3)")
+    assert spin(
+        lambda: (
+            (job := composition.store.get("bound-1")) is not None
+            and job.request.media_kind is not bound.media_kind
+        ),
+        timeout=60,
+    ), "the retarget never landed, so this proves nothing about what it preserved"
+
+    after = composition.store.get("bound-1")
+    assert after is not None
+    assert after.request.cookies_from_browser == "firefox:Work", (
+        "retargeting through the window dropped the browser the job was bound to at queue time"
+    )

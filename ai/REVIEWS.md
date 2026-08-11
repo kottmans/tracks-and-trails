@@ -14435,3 +14435,81 @@ redrawing. Return the narrow correction for another focused verification pass.
 
 The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
+
+## 2026-08-10 — T-197 third focused correction re-review
+
+**Task:** T-197 — cookie source, and the redaction gate that has to prove it
+
+**Correction review boundary:** `857fdbc..788fd3d`
+
+**Verdict:** **Changes requested**
+
+The maintainer explicitly invited an adversarial pass over T-197's evidence after repeated cases
+where a test input agreed with the implementation. That pass stayed on the two open findings and
+their sibling grammar/emission shapes. It reproduced two more Critical instances of the same
+privacy-boundary classes; the three R4 production corrections themselves are sound.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T197-R1** | **Critical** | **Yes — settings-log privacy boundary and Phase 4 exit gate** | **Open** | `_sensitive_literals()` closes the exact rejected-profile instance from the prior review, but still protects inputs rather than every path the diagnostic emits. For `[cookies] file = "~/session.txt"`, `secrets` contains only `~/session.txt`; `unusable_cookie_file_reason()` expands it and the ARC-008 reason names `/home/sean/session.txt`, which survives the real registration loop and `redact()`. A rejected `browser = "firefox+/home/alice/session.txt"` likewise registers only the complete specification while the refusal quotes `/home/alice/session.txt` separately as the bad keyring; that standalone path also survives. The new test checks tuple membership for one absolute profile spelling and never exercises registration plus the formatter, so it cannot establish the claimed emission boundary. |
+| **T197-R2** | **Critical** | **Yes — DAT-003 structural database boundary** | **Reopened at `788fd3d`** | The grammar has four components, but path validation is applied only to `PROFILE`. `parse_browser_specification("firefox::/home/alice/session.txt")` returns the path as `CONTAINER`; the Windows-shaped `firefox::C:\\Users\\Alice\\session.txt` is also accepted. Both construct `DownloadRequest`, and the POSIX value was independently observed verbatim in `_serialize_request()`'s job JSON. The committed gate says a path is refused wherever it appears but exercises only the whole value and profile component. This is new deterministic evidence in the exact structural class R2 was meant to close, not a second opinion on settled behavior. |
+| **T197-R3** | **High** | **Yes — both-sources/both-phases criterion** | **Remains resolved at `857fdbc`** | The correction does not recreate a browser session argument; browser authentication remains request-bound and cookie files remain session-bound across both probe phases. |
+| **T197-R4** | **High** | **Yes — screen correctness and queued-time binding** | **Resolved at `788fd3d`** | `show_cookie_source()` now carries both halves through composition, expanded playlist children are stamped through `_with_default_cookie_browser()`, and MainWindow retargeting calls `with_connection_of()` to retain the queued browser, proxy, and rate limit. Inspection and the focused suite confirmed all three production routes. |
+| **T197-R5** | **High** | **Yes — unusable-file criterion** | **Remains resolved at `84027bd`** | Shared Netscape/readability validation remains intact. |
+
+R1 is a direct continuation of the original Critical startup-log leak: the correction enumerated
+one newly seen component but still did not derive every transformed or separately repeated path
+that the reason writes. R2 is the same structural browser-specification boundary with the fourth
+grammar field omitted from the validator and its test. Critical findings remain automatically
+eligible for another focused correction under `AGENTS.md` §10, but the repeated class now warrants
+fixing the invariant at one grammar/diagnostic boundary rather than adding the next observed
+spelling.
+
+### Adversarial evidence result
+
+The playlist regression is discriminating: it inspects the durable child jobs and fails if their
+requests lose the browser. Two other new R4 tests are weaker than their prose claims, although the
+production behavior is correct:
+
+- the No-cookies regression calls `SettingsDialog.show_cookie_source(None, None)` directly, so
+  reverting composition to the old one-sided `show_cookie_file(None)` call would leave it green;
+- the retarget regression tests `with_connection_of()` directly, so removing its use from
+  `MainWindow._retarget_job()` would leave it green.
+
+That is **Low, non-blocking test strength** because the associated behavior is currently correct.
+Strengthen those two tests through the real callback/MainWindow routes during the next correction;
+do not count helper mutations as proof of the wiring whose omission caused R4.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edits | **clean; `main` ahead of `origin/main` by six commits** |
+| `git diff --check 857fdbc..788fd3d` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass, 166 files** |
+| `.venv/bin/mypy src` | **pass, 52 files** |
+| bare `.venv/bin/mypy` | **pass, 128 files** |
+| `.venv/bin/mypy --platform win32` | **pass, 128 files** |
+| Models, settings, both redaction suites, presets, adapter, Settings/Add/Main Window UI, composition, and manager-boundary suites | **855 passed, 1 skipped, 1 deselected in 193.39 s** — the deselected case is the pre-existing loopback HTTP test denied by the review sandbox |
+| Expanded stored-file formatter probe | `secrets == ("~/session.txt",)`; the emitted absolute home path survived `redact()` |
+| Rejected keyring formatter probe | the complete browser specification was redacted; the separately quoted path component survived |
+| Container model/persistence probe | POSIX and Windows-shaped container paths constructed; the POSIX path appeared verbatim in serialized request JSON |
+| R4 request/wiring audit | paired UI update, playlist child stamping, and retarget preservation are present at their real production call sites |
+
+The implementer's broader **2584 passed, 17 skipped** result was not repeated wholesale. The
+focused selection is green because its new R1/R2 cases cover only an absolute profile and its new
+R4 wiring evidence stops at helper boundaries.
+
+### Push disposition
+
+**Do not push `788fd3d`.** Protect the actual values an ARC-008 cookie diagnostic can emit after
+expansion/parsing, and make the model's path-free invariant cover every free-form browser grammar
+component, including `CONTAINER`. Return those two Critical corrections with formatter-level and
+all-component structural evidence. R4 is resolved; its two Low wiring-test gaps should be hardened
+in the same pass but do not independently block approval.
+
+The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+source, test, decision, status snapshot, commit, or remote state was changed.

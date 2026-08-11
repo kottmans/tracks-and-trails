@@ -120,29 +120,36 @@ this one returned four verdicts before approving.*
 
 ### T-197 — Cookie source, and the redaction gate that has to prove it
 
-**Status:** **In Review — corrected 2026-08-10 under a maintainer-authorized pass.** `T197-R2`,
-`T197-R3` and `T197-R5` are Resolved; `T197-R1` (Critical) and `T197-R4` (High) survived the
-previous pass and are corrected at the head below.
+**Status:** **In Review — corrected 2026-08-11 under the second maintainer-authorized pass.**
+`T197-R3`, `T197-R4` and `T197-R5` are Resolved; `T197-R1` (Critical, fourth correction) and
+`T197-R2` (Critical, reopened through the container slot) are corrected at the head below.
 
-- **`T197-R1` — Critical. Corrected on the third attempt, and each miss was narrower than the
-  last.** First the accepted path was registered and not the rejected one; then the *file* key was
-  covered and not the *browser* key. A rejected `browser = "firefox:/home/alice/session.txt"` is
-  named in the `ARC-008` reason **twice** — once whole, once as the profile the refusal quotes
-  back — and registering the specification does not remove the profile, because `redact` replaces
-  exact literals and the shorter string appears on its own. `_sensitive_literals` now yields both
-  keys and the profile component.
-- **`T197-R4` — High. Corrected, in three places, because it was three defects.**
-  *Selecting “No cookies” left the previous browser on screen*: telling the screen only the file
-  half is not the same statement as *no cookies*, so `show_cookie_source` carries **both** halves
-  and there is no way to tell it half a change. *Playlist children bypassed the stamp*: the
-  default was applied in `_request_for` and a playlist's entries are built somewhere else
-  entirely, so every child went out unauthenticated — the case a user most often has cookies for,
-  and the one where the parent row still looks right. *Retargeting dropped the binding*:
-  rebuilding a request from a preset produced one with no browser, so an unrelated format change
-  silently unbound a job `DAT-003` says was bound at queue time. `with_connection_of` carries the
-  fields `format_choice_of` already treats as not about the format.
+- **`T197-R1` — Critical. Corrected on the fourth attempt, and the mechanism-level fixes are over.**
+  Three misses, each one component to the right of the last: the accepted path, then the browser
+  key, then the keyring fragment — plus the **expanded** form of a `~` path, which validation
+  prints while only the written form was registered. The registration now stops predicting:
+  the file key registers **both spellings** (as written and as `expanduser` renders it, guarded
+  per `T146-R1`), and the browser key registers **every separator-split fragment that satisfies
+  the same public `looks_like_a_path` predicate validation refuses them with** — so whichever
+  component a refusal quotes, the quoted string was registered by construction. Non-path
+  fragments are deliberately not registered: `remember_a_secret` replaces substrings, and
+  registering `Work` would corrupt `Worker` in every later line.
+  **The regression asserts the outcome, not the mechanism**: one case per grammar slot plus the
+  file key, each pushing the real reason through the real formatter and asserting nothing
+  path-shaped survived.
+- **`T197-R2` — Critical, reopened and closed at the last slot.** The profile was path-checked
+  and the container was not, so `firefox::/home/alice/session.txt` rode the unchecked slot into
+  the job JSON — the third time a path slipped one component right of a check. The grammar has
+  exactly four components: browser and keyring are closed lists, and profile and container now
+  share one predicate. **There is no fifth slot for this finding to move to**, and the models
+  parametrisation carries one refusal case per syntax per slot.
+- **The evidence note (Low) is taken rather than argued.** The no-cookies and retarget tests
+  stopped at helpers, exactly as reported, and would have stayed green with the composition
+  wiring deleted — measured, then fixed: both are now driven on the composed application, one
+  through the real screen's radio and one through `_retarget_job` with the store read back, and
+  the wiring-removal mutations fail them.
 
-**Four mutations fail their own evidence**, one per defect.
+**Five mutations fail their own evidence.**
 
 
 **The browser/keyring drift test now exists.** The previous handoff said it did; it did not. That
