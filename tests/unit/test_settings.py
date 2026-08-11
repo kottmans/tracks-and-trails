@@ -1595,3 +1595,22 @@ def test_a_hand_edited_file_naming_both_sources_reports_and_prefers_the_file(
     assert read.problem is not None and "both" in read.problem.reason.lower(), (
         "two sources were resolved to one without telling the user which"
     )
+
+
+def test_a_rejected_browser_source_is_registered_as_a_secret_too(tmp_path: Path) -> None:
+    """**`T197-R1`, the half the first two corrections missed.**
+
+    A rejected `[cookies] browser` is named in the `ARC-008` reason **twice** — as the whole
+    specification, and as the profile the refusal quotes back — and neither was registered, so both
+    reached the log. Registering the specification alone does not remove the profile: `redact`
+    replaces exact literals, and the shorter string appears on its own.
+    """
+    spec = "firefox:/home/alice/session.txt"
+    read = load(write(tmp_path, f'[cookies]\nbrowser = "{spec}"\n'))
+
+    assert read.settings.cookie_browser is None
+    assert read.problem is not None
+    assert spec in read.secrets, "the specification was not offered for registration"
+    assert "/home/alice/session.txt" in read.secrets, (
+        f"the profile the refusal quotes back was not offered: {read.secrets}"
+    )

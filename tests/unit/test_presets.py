@@ -650,3 +650,28 @@ def test_the_pure_ffmpeg_predicate_agrees_with_the_definitive_one() -> None:
         + "; ".join(disagreements)
         + ". A preset offered but refused is UX-005 §5's own failure"
     )
+
+
+def test_retargeting_keeps_the_connection_the_job_was_queued_with() -> None:
+    """**`T197-R4`.** A preset describes a format, not a network.
+
+    Rebuilding a request from a preset — which is what retargeting a queued job does — produced one
+    with no `cookies_from_browser`, so a job bound to a browser when it was queued lost that
+    binding on an unrelated format change. `DAT-003` makes that half a *binding*, so dropping it
+    silently is the same breach by another route.
+    """
+    queued = request_for(
+        presets.BEST_VIDEO, cookies_from_browser="firefox:Work", rate_limit_bytes=2048
+    )
+    rebuilt = presets.to_request(
+        presets.AUDIO_MP3, url=queued.url, output_directory=queued.output_directory
+    )
+    assert rebuilt.cookies_from_browser is None, "sanity: a fresh request carries no connection"
+
+    kept = presets.with_connection_of(rebuilt, queued)
+
+    assert kept.cookies_from_browser == "firefox:Work"
+    assert kept.rate_limit_bytes == 2048
+    # And the format really did change, so this is not asserting that nothing happened.
+    assert kept.media_kind is presets.AUDIO_MP3.media_kind
+    assert kept.media_kind is not queued.media_kind

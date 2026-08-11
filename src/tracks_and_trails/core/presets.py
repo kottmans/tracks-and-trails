@@ -546,3 +546,23 @@ def needs_ffmpeg(preset: Preset) -> bool:
     # this module cannot ask which. Treated as needing ffmpeg, which errs towards withdrawing an
     # offer rather than making one that would be refused (`UX-005` §5).
     return bool(preset.post_processors)
+
+
+def with_connection_of(request: DownloadRequest, source: DownloadRequest) -> DownloadRequest:
+    """`request`, keeping `source`'s connection settings (`REQ-026`, `T197-R4`).
+
+    **A preset describes a format, not a network.** Rebuilding a request from one — which is what
+    retargeting a queued job does — produced a request with no `cookies_from_browser`, so a job
+    bound to a browser at queue time lost it the moment its format was changed. `DAT-003` rules
+    that half binds when the job is queued; silently unbinding it on an unrelated edit is the same
+    breach by another route.
+
+    The fields carried are the ones `format_choice_of` already treats as *not about the format*:
+    they describe the user's network rather than the download.
+    """
+    return replace(
+        request,
+        cookies_from_browser=source.cookies_from_browser,
+        proxy=source.proxy,
+        rate_limit_bytes=source.rate_limit_bytes,
+    )

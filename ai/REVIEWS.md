@@ -14377,3 +14377,61 @@ Exercise both probes and every three-way UI/load transition in the focused evide
 
 The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
+
+## 2026-08-10 — T-197 second focused correction re-review
+
+**Task:** T-197 — cookie source, and the redaction gate that has to prove it
+
+**Correction review boundary:** `84027bd..857fdbc`
+
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T197-R1** | **Critical** | **Yes — settings-log privacy boundary and the Phase 4 exit gate** | **Open** | `SettingsFile.secrets` closes the rejected-file route, and live file choices register before validation. It does not carry the other cookie-source key. A real `[cookies] browser = "firefox:/home/alice/session.txt"` load returned `secrets == ()`, discarded the browser, and composed a problem containing both `firefox:/home/alice/session.txt` and the extracted `/home/alice/session.txt`; both survived the same registration loop and `redact()` unchanged. The correction's composition regression covers only `[cookies].file`, despite the carrier's claim that it holds every credential literal read. The startup ARC-008 route therefore still emits an application-supplied cookie/profile path. |
+| **T197-R2** | **Critical** | **Yes — DAT-003 structural boundary** | **Resolved at `857fdbc`** | Path recognition now refuses the three expansion syntaxes structurally (`~`, `$`/`${}`, and Windows `%NAME%`) and also compares the result of the same `expandvars(expanduser(...))` transformation yt-dlp uses. The model tests cover all forms plus direct POSIX/Windows paths and preserve ordinary profile names. The browser/keyring lists are now actually bound to the pinned yt-dlp sets. Reviewer probes confirmed `$HOME` and `${HOME}` are refused before a request can be constructed or serialized. |
+| **T197-R3** | **High** | **Yes — both-sources/both-phases criterion** | **Resolved at `857fdbc`** | The incorrect late-bound browser session argument is removed end to end from manager, worker, and adapter. Browser authentication now rides only on `DownloadRequest.cookies_from_browser`, so the existing adapter both-phase path applies automatically; cookie files remain forwarded to both probes from the prior correction. There is no second browser argument left for a probe call to omit. |
+| **T197-R4** | **High** | **Yes — screen source correctness and queued-time browser binding** | **Open** | The correction fixes stored dual-source resolution, cancel rollback, and the architecture of ordinary-row stamping, but two core routes still disagree. First, Browser → **No cookies** calls `show_cookie_file(None)`; both `MainWindow` and `SettingsDialog` clear `_cookie_browser` only when the file is non-`None`, so the real controls immediately redraw Browser as selected while held settings, the manager, and future requests use none. Second, `_durable_jobs()` builds expanded playlist-entry requests with `preset_registry.to_request()` directly rather than `_request_for()`/`_with_default_cookie_browser()`. The staging playlist probe therefore carries the default browser, but every expanded queued entry loses it and can fail authentication. `_retarget_job()` likewise rebuilds a queued request from a format preset without preserving its already-bound browser. No correction test references `default_cookie_browser`, which is why all three paths remain green. |
+| **T197-R5** | **High** | **Yes — unusable-file criterion** | **Remains resolved at `84027bd`** | The correction does not regress shared Netscape/readability validation. |
+
+R1 is a direct continuation of the Critical settings-log leak, now through the browser half of the
+same `[cookies]` table. R4 is a direct continuation of the High three-way source criterion and the
+queued-time binding correction: ordinary rows are fixed, but a playlist's durable children are a
+second request-construction path, and No cookies is still not truthfully represented. Another
+focused correction remains authorized under `AGENTS.md` §10 while Critical/High findings remain.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edits | **clean; `main` ahead of `origin/main` by five commits** |
+| `git diff --check 84027bd..857fdbc` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass, 166 files** |
+| `.venv/bin/mypy src` | **pass, 52 files** |
+| bare `.venv/bin/mypy` | **pass, 128 files** |
+| `.venv/bin/mypy --platform win32` | **pass, 128 files** |
+| Models, settings, redaction, adapter, Settings/Add/Main Window UI, composition, and manager-boundary suites | **693 passed, 1 skipped, 1 deselected in 192.42 s** — the deselected case is the pre-existing loopback HTTP test denied by the review sandbox |
+| Rejected stored browser-path probe | `secrets == ()`; the raw browser specification and extracted profile path both survived the formatter |
+| Expansion/path grammar probes | `$HOME`, `${HOME}`, `~`, `~user`, `%USERPROFILE%`, POSIX absolute, and Windows drive paths were refused; ordinary named profiles remained accepted |
+| Browser/keyring drift guard | the committed test exists and matches both application lists to pinned yt-dlp's supported sets |
+| Real Qt No-cookies transition | Browser remained selected and `_cookie_browser == "firefox"` after clicking No cookies |
+| Request-construction audit | ordinary staging/durable rows call `_request_for()`; expanded playlist children and queue retargeting call `to_request()` directly without the bound browser |
+
+The implementer's broader **2579 passed, 17 skipped** result was not repeated wholesale. The
+focused selection includes every changed production surface and remains green because the new
+evidence covers rejected file literals and helper-level stamping, not rejected browser literals or
+the final playlist/retarget/No-cookies paths.
+
+### Push disposition
+
+**Do not push `857fdbc`.** Register every sensitive cookie-source literal (including rejected
+browser specifications and any extracted path repeated in the reason) before startup emission.
+Make one request-construction boundary stamp or preserve the queued browser across every durable
+playlist and retarget path, and make the No-cookies response clear both cached UI halves before
+redrawing. Return the narrow correction for another focused verification pass.
+
+The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+source, test, decision, status snapshot, commit, or remote state was changed.

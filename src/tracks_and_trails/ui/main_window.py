@@ -640,10 +640,16 @@ class MainWindow(QMainWindow):
             return
         self._manager.retarget(
             job_id,
-            presets.to_request(
-                preset,
-                url=job.request.url,
-                output_directory=job.request.output_directory,
+            # **The new format, the old connection** (`T197-R4`). A preset describes a format; a
+            # request rebuilt from one alone drops the browser the job was bound to when it was
+            # queued, which `DAT-003` makes a binding rather than a preference.
+            presets.with_connection_of(
+                presets.to_request(
+                    preset,
+                    url=job.request.url,
+                    output_directory=job.request.output_directory,
+                ),
+                job.request,
             ),
             then=self.refresh_queue,
             otherwise=self._report_transiently,
@@ -1415,21 +1421,12 @@ class MainWindow(QMainWindow):
         if self._settings_dialog is not None:
             self._settings_dialog.show_download_directory(directory, is_default=is_default)
 
-    def show_cookie_file(self, path: Path | None) -> None:
-        """Take the cookies file composition settled on, and tell the open screen (`T-197`)."""
-        self._cookie_file = path
-        if path is not None:
-            self._cookie_browser = None
-        if self._settings_dialog is not None:
-            self._settings_dialog.show_cookie_file(path)
-
-    def show_cookie_browser(self, browser: str | None) -> None:
-        """The browser source composition settled on (`T197-R4`)."""
+    def show_cookie_source(self, file: Path | None, browser: str | None) -> None:
+        """The cookie source in force, both halves (`REQ-026`, `T197-R4`)."""
+        self._cookie_file = file
         self._cookie_browser = browser
-        if browser is not None:
-            self._cookie_file = None
         if self._settings_dialog is not None:
-            self._settings_dialog.show_cookie_browser(browser)
+            self._settings_dialog.show_cookie_source(file, browser)
 
     def show_ffmpeg_location(self, location: Path | None, *, report: object) -> None:
         """Take the resolution composition performed, and tell the open screen (`T-199`).

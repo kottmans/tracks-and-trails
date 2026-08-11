@@ -5279,3 +5279,34 @@ def test_the_manager_opens_a_turn_after_the_button_is_pressed(
 
     QApplication.processEvents()
     assert opened == [True], "the deferred manager never opened at all"
+
+
+def test_every_playlist_entry_inherits_the_default_cookie_browser(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T197-R4`.** A playlist expands into children, and each one is a request of its own.
+
+    The default was stamped in `_request_for` — the pasted line's builder — and playlist entries
+    are built somewhere else entirely, so every child went out unauthenticated. That is the case a
+    user most often *has* cookies for, and the one where the omission is least visible: the parent
+    row looks right.
+
+    Asserted on the jobs the dialog would commit, which is what actually reaches the queue.
+    """
+    dialog, _ = resolved(
+        dialogs, managers, spin, PLAYLIST, default_cookie_browser=lambda: "firefox:Work"
+    )
+    row = dialog.rows[0]
+
+    jobs = dialog._durable_jobs(row)
+
+    assert len(jobs) > 1, (
+        f"{len(jobs)} job(s) — this playlist did not expand, so nothing is asserted"
+    )
+    missing = [job.url for job in jobs if job.request.cookies_from_browser != "firefox:Work"]
+    assert not missing, (
+        f"{len(missing)} playlist entries were queued without the default cookie browser: "
+        f"{missing[:3]}"
+    )

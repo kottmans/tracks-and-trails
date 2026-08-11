@@ -381,12 +381,21 @@ class SettingsDialog(QDialog):
         if self._on_cookie_file_chosen is not None:
             self._on_cookie_file_chosen(path)
 
-    def show_cookie_file(self, path: Path | None) -> None:
-        """Show what composition settled on, accepted or refused (`T-197`)."""
-        self._cookie_file = path
-        if path is not None:
-            self._cookie_browser = None
+    def show_cookie_source(self, file: Path | None, browser: str | None) -> None:
+        """Show the source actually in force — **both halves, always** (`T197-R4`).
+
+        `show_cookie_file(None)` used to mean *no file*, which is not the same as *no cookies*: it
+        left a previously chosen browser on screen after the user asked for neither. One method
+        taking the pair removes the class rather than the instance — there is no way to tell the
+        screen half of a change.
+        """
+        self._cookie_file = file
+        self._cookie_browser = browser
         self._show_cookie_file()
+
+    def show_cookie_file(self, path: Path | None) -> None:
+        """The file half, kept for callers that only have one (`T-197`)."""
+        self.show_cookie_source(path, None if path is not None else self._cookie_browser)
 
     # --- ffmpeg -------------------------------------------------------------------------
 

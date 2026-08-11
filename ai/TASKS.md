@@ -120,38 +120,30 @@ this one returned four verdicts before approving.*
 
 ### T-197 — Cookie source, and the redaction gate that has to prove it
 
-**Status:** **In Review — corrected again 2026-08-10.** `T197-R5` was Resolved at `84027bd`;
-`T197-R1` and `T197-R2` (Critical) and `T197-R3`/`T197-R4` (High) survived that pass and are
-corrected at the head below.
+**Status:** **In Review — corrected 2026-08-10 under a maintainer-authorized pass.** `T197-R2`,
+`T197-R3` and `T197-R5` are Resolved; `T197-R1` (Critical) and `T197-R4` (High) survived the
+previous pass and are corrected at the head below.
 
-- **`T197-R1` — Critical. Corrected twice; the first pass protected the wrong half.** Registering
-  the *accepted* path covered the ordinary case and missed the reported one: an unusable value is
-  discarded from the settings and its text goes into `problem.reason`, which composition **logs**
-  — so the literal most certain to be written was the one nothing had registered. `SettingsFile`
-  now carries `secrets`, every literal read whether or not it survived validation, and composition
-  registers them before it writes anything. `T-196`'s stored proxy will arrive through the same
-  field. **My regression could not see this either**, and for a familiar reason: pytest names its
-  temp directory after the test, so the jar sat under `.../test_an_unusable_cookie_path_d0/` and
-  the word *cookie* in the path — put there by the test's own name — matched the shape rule. The
-  test now places the jar outside `tmp_path` and proves the path is invisible to the shape rules
-  *before* composing.
-- **`T197-R2` — Critical. Corrected twice.** `firefox:$HOME` passed the character check and yt-dlp
-  expanded it to `/home/sean`. Expansion is now **performed** with the same `expandvars(expanduser
-  (…))` pair yt-dlp applies, **and** its three syntactic forms are refused structurally — because
-  performing it alone answers differently on different machines (`~x` expands only where that user
-  exists, `%VAR%` only on Windows), which is the platform-dependent class that has already cost
-  this project three findings.
-- **`T197-R3` — High. Corrected by removing the thing rather than threading it.** The browser
-  default did not reach the probes — and under `T197-R4` it should not reach a worker at all, so
-  the session argument is gone.
-- **`T197-R4` — High. Corrected.** The browser default was **late-bound, contradicting
-  `DAT-003`**, which rules that a browser profile binds when the job is queued because the job
-  carries it. It is now stamped onto the request at construction, in the add dialog, where a
-  preset that names its own browser still wins. `load()` refuses a hand-edited file naming both
-  sources — reported, with the file preferred as the more explicit artefact — and a cancelled file
-  picker redraws the radio from the source actually in force instead of leaving it claiming one
-  that was never set.
-- **`T197-R5` — Resolved at `84027bd`**, confirmed against the pinned jar loader.
+- **`T197-R1` — Critical. Corrected on the third attempt, and each miss was narrower than the
+  last.** First the accepted path was registered and not the rejected one; then the *file* key was
+  covered and not the *browser* key. A rejected `browser = "firefox:/home/alice/session.txt"` is
+  named in the `ARC-008` reason **twice** — once whole, once as the profile the refusal quotes
+  back — and registering the specification does not remove the profile, because `redact` replaces
+  exact literals and the shorter string appears on its own. `_sensitive_literals` now yields both
+  keys and the profile component.
+- **`T197-R4` — High. Corrected, in three places, because it was three defects.**
+  *Selecting “No cookies” left the previous browser on screen*: telling the screen only the file
+  half is not the same statement as *no cookies*, so `show_cookie_source` carries **both** halves
+  and there is no way to tell it half a change. *Playlist children bypassed the stamp*: the
+  default was applied in `_request_for` and a playlist's entries are built somewhere else
+  entirely, so every child went out unauthenticated — the case a user most often has cookies for,
+  and the one where the parent row still looks right. *Retargeting dropped the binding*:
+  rebuilding a request from a preset produced one with no browser, so an unrelated format change
+  silently unbound a job `DAT-003` says was bound at queue time. `with_connection_of` carries the
+  fields `format_choice_of` already treats as not about the format.
+
+**Four mutations fail their own evidence**, one per defect.
+
 
 **The browser/keyring drift test now exists.** The previous handoff said it did; it did not. That
 claim is why it is written, and it asserts `BROWSER_NAMES`/`KEYRING_NAMES` against yt-dlp's own

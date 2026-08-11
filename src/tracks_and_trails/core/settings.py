@@ -539,6 +539,34 @@ def unusable_cookie_file_reason(path: Path) -> str | None:
     return None
 
 
+def _sensitive_literals(cookies_table: dict[str, Any]) -> tuple[str, ...]:
+    """Every literal the cookie keys held, valid or not, for composition to register (`T197-R1`).
+
+    **Both keys, and the profile inside the browser one.** The first version covered the file key
+    only, so `browser = "firefox:/home/alice/session.txt"` was refused — correctly — and then
+    named in the `ARC-008` reason twice over: once as the whole specification, and once as the
+    extracted profile, because the refusal quotes the component it objected to. Neither was
+    registered, so both reached the log.
+
+    Exact literals, because that is what `remember_a_secret` replaces. The specification and its
+    profile are registered separately: the reason contains each of them on its own, and replacing
+    the longer one does not remove the shorter.
+    """
+    literals: list[str] = []
+    raw_file = cookies_table.get(_COOKIE_FILE_KEY)
+    if isinstance(raw_file, str) and raw_file.strip():
+        literals.append(raw_file)
+    raw_browser = cookies_table.get(_COOKIE_BROWSER_KEY)
+    if isinstance(raw_browser, str) and raw_browser.strip():
+        literals.append(raw_browser)
+        # The component a refusal quotes back. Split rather than parsed, because the value that
+        # needs registering is precisely the one `parse_browser_specification` refuses.
+        _, _, after = raw_browser.partition(":")
+        if after.strip():
+            literals.append(after.strip())
+    return tuple(literals)
+
+
 def _cookie_browser_from(raw: Any) -> tuple[str | None, str | None]:
     """Coerce a stored browser source. **Never raises** (`T197-R4`).
 
@@ -768,12 +796,7 @@ def load(path: Path | None = None) -> SettingsFile:
     ffmpeg_table, ffmpeg_reason = _section_of(document, _FFMPEG_TABLE)
     ffmpeg_location, location_reason = _ffmpeg_location_from(ffmpeg_table.get(_LOCATION_KEY))
 
-    #: Everything read from a cookie or credential key, whether or not it survived validation.
-    sensitive = tuple(
-        str(raw)
-        for raw in (cookies_table.get(_COOKIE_FILE_KEY),)
-        if isinstance(raw, str) and raw.strip()
-    )
+    sensitive = _sensitive_literals(cookies_table)
 
     def answer(concurrency: int, reason: str | None = None) -> SettingsFile:
         parts = [

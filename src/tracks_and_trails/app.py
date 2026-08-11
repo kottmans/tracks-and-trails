@@ -638,13 +638,13 @@ def compose(
             if reason is not None:
                 logging.getLogger("tracksandtrails.app").warning("cookies file: %s", reason)
                 window.report_transiently(reason.splitlines()[0])
-                window.show_cookie_file(held.settings.cookie_file)
+                window.show_cookie_source(held.settings.cookie_file, held.settings.cookie_browser)
                 return
         manager.set_cookie_file(path)
         remember_cookie_path(path)
         chosen = app_settings.with_cookie_file(held.settings, path)
         held.settings = chosen
-        window.show_cookie_file(path)
+        window.show_cookie_source(chosen.cookie_file, chosen.cookie_browser)
         remember(chosen, "the cookies file")
 
     def choose_cookie_browser(browser: str | None) -> None:
@@ -659,7 +659,7 @@ def compose(
             except ValueError as refusal:
                 logging.getLogger("tracksandtrails.app").warning("cookie browser: %s", refusal)
                 window.report_transiently(f"That browser cannot be used: {refusal}")
-                window.show_cookie_browser(held.settings.cookie_browser)
+                window.show_cookie_source(held.settings.cookie_file, held.settings.cookie_browser)
                 return
         chosen = app_settings.with_cookie_browser(held.settings, browser)
         held.settings = chosen
@@ -668,7 +668,7 @@ def compose(
         # default is read where a request is built, not where a worker starts. Only the *file* is
         # late-bound, because only the file may not live on the model.
         manager.set_cookie_file(None)
-        window.show_cookie_browser(browser)
+        window.show_cookie_source(chosen.cookie_file, chosen.cookie_browser)
         remember(chosen, "the cookie source")
 
     def choose_theme(name: str) -> None:

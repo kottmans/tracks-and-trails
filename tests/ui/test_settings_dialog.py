@@ -305,3 +305,46 @@ def test_a_cancelled_cookies_picker_asks_for_nothing(
     control(screen, QPushButton, "chooseCookieFile").click()
 
     assert chosen == [], "a cancelled picker signed the user out of everything they had"
+
+
+def test_choosing_no_cookies_clears_a_browser_from_the_screen_too(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`T197-R4`.** *No file* and *no cookies* are not the same statement.
+
+    Telling the screen only the file half left a previously chosen browser on display after the
+    user asked for neither — a screen saying the downloads are signed in when they are not.
+    `show_cookie_source` carries both halves, so there is no way to tell it half of a change.
+    """
+    screen, _ = screens(cookie_browser="firefox")
+    assert control(screen, QRadioButton, "cookieSourceBrowser").isChecked()
+
+    screen.show_cookie_source(None, None)
+
+    assert control(screen, QRadioButton, "cookieSourceNone").isChecked(), (
+        "the screen still shows a cookie source after the user chose none"
+    )
+    assert not control(screen, QRadioButton, "cookieSourceBrowser").isChecked()
+
+
+def test_a_cancelled_file_picker_leaves_the_source_where_it_was(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """Selecting *From a cookies file* moves the radio before the dialog opens (`T197-R4`).
+
+    Dismissing the picker therefore left the screen claiming a source that was never set, while
+    the setting underneath was still the browser. The radio is redrawn from what is in force.
+    """
+    asked: list[object] = []
+    screen, _ = screens(
+        cookie_browser="firefox",
+        choose_file=lambda _start: None,
+        on_cookie_file_chosen=asked.append,
+    )
+
+    control(screen, QRadioButton, "cookieSourceFile").click()
+
+    assert asked == [], "a cancelled picker asked composition for something"
+    assert control(screen, QRadioButton, "cookieSourceBrowser").isChecked(), (
+        "the screen claims a cookies file after the picker was dismissed"
+    )

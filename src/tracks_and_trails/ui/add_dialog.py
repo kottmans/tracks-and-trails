@@ -1657,10 +1657,12 @@ class AddUrlDialog(QDialog):
             if isinstance(media, MediaInfo)
             else MediaInfo(url=row.url, title=row.url, is_playlist=False)
         )
-        request = preset_registry.to_request(
-            preset_registry.with_output_template(self.preset_for(row), template or " "),
-            url=row.url,
-            output_directory=str(self._output_directory),
+        request = self._with_default_cookie_browser(
+            preset_registry.to_request(
+                preset_registry.with_output_template(self.preset_for(row), template or " "),
+                url=row.url,
+                output_directory=str(self._output_directory),
+            )
         )
         return self._manager.preview_output_path(request, described)
 
@@ -2675,8 +2677,13 @@ class AddUrlDialog(QDialog):
             Job(
                 id=str(uuid.uuid4()),
                 url=entry.url,
-                request=preset_registry.to_request(
-                    self.preset_for(row), url=entry.url, output_directory=str(directory)
+                # **Every entry, not only the pasted line** (`T197-R4`). A playlist expands into
+                # children built here, and stamping the default in `_request_for` alone left every
+                # one of them unauthenticated — the case a user most often has cookies *for*.
+                request=self._with_default_cookie_browser(
+                    preset_registry.to_request(
+                        self.preset_for(row), url=entry.url, output_directory=str(directory)
+                    )
                 ),
                 # **Queued, not ready.** `UX-003` makes a pasted URL a probed one; a flat entry is
                 # named but not extracted, so calling it `READY` would claim a probe nobody ran.
