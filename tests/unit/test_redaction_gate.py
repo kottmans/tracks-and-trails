@@ -110,6 +110,47 @@ def test_a_cookie_path_of_any_name_is_redacted_once_it_is_registered() -> None:
         logging_module.forget_the_secrets()
 
 
+def test_a_valid_browser_name_is_not_a_secret() -> None:
+    """**`T197-R6`.** The machinery meant to serve the gate broke the gate's own rule.
+
+    `_sensitive_literals` registered the raw browser value unconditionally, so a perfectly valid
+    `browser = "edge"` made the word *edge* a secret — and `remember_a_secret` replaces
+    substrings, so every later log line containing *edge* was corrupted. Legitimate content
+    surviving is half of what this gate asserts, and the registration itself violated it.
+
+    The rule now: a browser value registers only when something in it is a path. The file key
+    stays always-registered, deliberately — a file value is a path by definition, a browser value
+    is a name by definition.
+    """
+    for body, must_survive in (
+        ('[cookies]\nbrowser = "edge"\n', "edge"),
+        ('[cookies]\nbrowser = "firefox:Work"\n', "Work"),
+    ):
+        import tempfile
+
+        target = Path(tempfile.mkdtemp()) / "settings.toml"
+        target.write_text(body, encoding="utf-8")
+        read = app_settings.load(target)
+        assert read.problem is None, f"{body!r} was rejected, so this asserts nothing"
+        assert read.secrets == (), (
+            f"a valid browser value offered {read.secrets} for registration; a name is not a "
+            "secret and registering it corrupts prose"
+        )
+
+        logging_module.forget_the_secrets()
+        try:
+            # Nothing is registered here, and that is the point: `secrets` was just proven
+            # empty. The prose assertion below is what fails if something name-shaped is ever
+            # offered again — the emptiness assert above catches it first, and this comment is
+            # why no registration loop follows it.
+            prose = emitted(f"scrolled to the {must_survive} of the table")
+            assert must_survive in prose, (
+                f"{must_survive!r} was corrupted in ordinary prose:\n{prose}"
+            )
+        finally:
+            logging_module.forget_the_secrets()
+
+
 def test_no_supplied_secret_survives_into_a_log() -> None:
     """The first direction: nothing this application holds reaches a line it writes."""
     written = emitted(
@@ -340,6 +381,19 @@ def test_the_worker_hands_cookies_to_the_probe_as_well_as_the_download() -> None
             "a path in the profile slot",
             '[cookies]\nbrowser = "firefox:/home/alice/pf.txt"\n',
             ("/home/alice/pf.txt",),
+        ),
+        # `T197-R1`, round five: `remember_a_secret`'s floor measured characters, so these two —
+        # real paths, offered to it as sensitive — were silently dropped and survived the
+        # formatter. The floor now measures UTF-8 bytes, which changes no ASCII behaviour.
+        (
+            "a two-character CJK file",
+            '[cookies]\nfile = "秘密"\n',
+            ("秘密",),
+        ),
+        (
+            "a three-character CJK path with a separator",
+            '[cookies]\nfile = "税/密"\n',
+            ("税/密",),
         ),
     ],
 )

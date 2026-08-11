@@ -120,36 +120,29 @@ this one returned four verdicts before approving.*
 
 ### T-197 — Cookie source, and the redaction gate that has to prove it
 
-**Status:** **In Review — corrected 2026-08-11 under the second maintainer-authorized pass.**
-`T197-R3`, `T197-R4` and `T197-R5` are Resolved; `T197-R1` (Critical, fourth correction) and
-`T197-R2` (Critical, reopened through the container slot) are corrected at the head below.
+**Status:** **In Review — corrected 2026-08-11.** `T197-R2` through `T197-R5` and the evidence
+note are Resolved; `T197-R1` (Critical, fifth correction) and `T197-R6` (Medium, new) are
+corrected at the head below.
 
-- **`T197-R1` — Critical. Corrected on the fourth attempt, and the mechanism-level fixes are over.**
-  Three misses, each one component to the right of the last: the accepted path, then the browser
-  key, then the keyring fragment — plus the **expanded** form of a `~` path, which validation
-  prints while only the written form was registered. The registration now stops predicting:
-  the file key registers **both spellings** (as written and as `expanduser` renders it, guarded
-  per `T146-R1`), and the browser key registers **every separator-split fragment that satisfies
-  the same public `looks_like_a_path` predicate validation refuses them with** — so whichever
-  component a refusal quotes, the quoted string was registered by construction. Non-path
-  fragments are deliberately not registered: `remember_a_secret` replaces substrings, and
-  registering `Work` would corrupt `Worker` in every later line.
-  **The regression asserts the outcome, not the mechanism**: one case per grammar slot plus the
-  file key, each pushing the real reason through the real formatter and asserting nothing
-  path-shaped survived.
-- **`T197-R2` — Critical, reopened and closed at the last slot.** The profile was path-checked
-  and the container was not, so `firefox::/home/alice/session.txt` rode the unchecked slot into
-  the job JSON — the third time a path slipped one component right of a check. The grammar has
-  exactly four components: browser and keyring are closed lists, and profile and container now
-  share one predicate. **There is no fifth slot for this finding to move to**, and the models
-  parametrisation carries one refusal case per syntax per slot.
-- **The evidence note (Low) is taken rather than argued.** The no-cookies and retarget tests
-  stopped at helpers, exactly as reported, and would have stayed green with the composition
-  wiring deleted — measured, then fixed: both are now driven on the composed application, one
-  through the real screen's radio and one through `_retarget_job` with the store read back, and
-  the wiring-removal mutations fail them.
+- **`T197-R1` — Critical, corrected a fifth time — and this one was in the sink, not the
+  registration.** The literals were finally all offered, and `remember_a_secret` dropped two of
+  them: its over-redaction floor measured **characters**, so `秘密` — a real two-character cookie
+  path, handed to the one function that exists for known-sensitive literals — was silently
+  ignored and survived the formatter. **The floor now measures UTF-8 bytes**, which is the honest
+  measure of how specific a substring is: `秘密` is six bytes and collides with nothing in an
+  English-language log, `abc` is three and stays ignored, and every ASCII behaviour is unchanged.
+  **The residual is stated, not hidden**: a value under four bytes — one CJK character, up to
+  three ASCII — is still not registered, because substring-replacing it would shred more prose
+  than it protects. The gate's outcome test gains both of the review's examples.
+- **`T197-R6` — Medium, new, and it was the mirror image of R1.** `_sensitive_literals`
+  registered the raw browser value unconditionally, so a perfectly valid `browser = "edge"` made
+  the word *edge* a secret and corrupted every later log line containing it — the gate's own
+  legitimate-content rule, broken by the machinery meant to serve it. A browser value now
+  registers **only when something in it is a path**; the file key stays always-registered, and
+  the asymmetry is deliberate — a file value is a path by definition, a browser value is a name.
 
-**Five mutations fail their own evidence.**
+**Two mutations fail their own evidence**: the floor measured in characters again, and the raw
+browser value registered unconditionally again.
 
 
 **The browser/keyring drift test now exists.** The previous handoff said it did; it did not. That

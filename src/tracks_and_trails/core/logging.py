@@ -167,10 +167,21 @@ def remember_a_secret(value: str | None) -> None:
     to be wrong about — the alternative is a rule that guesses, and this project has four review
     rounds on record about how that ends.
 
-    Short values are ignored. A one- or two-character "secret" would redact its way through
-    ordinary prose, and the failure mode of over-redaction is a log nobody can read.
+    **Short values are ignored, and short is measured in UTF-8 bytes** (`T197-R1`). The floor
+    exists because replacement is substring-based: a one- or two-character secret would redact its
+    way through ordinary prose, and over-redaction is a log nobody can read. Measured in
+    *characters*, the floor also dropped `秘密` — a perfectly real two-character cookie path that
+    this function was explicitly handed as sensitive, and that then survived into a log. Bytes are
+    the honest measure of how specific a substring is: `秘密` is six bytes and collides with
+    nothing in an English-language log, while `abc` is three and stays ignored, so every ASCII
+    behaviour is unchanged.
+
+    **The floor's residual is stated rather than hidden**: a value under four bytes — a single
+    CJK character, or up to three ASCII ones — is still not registered, because replacing it
+    would shred more prose than it protects. A user whose cookie path is one character wide keeps
+    that path out of their own local log only by the shape rules.
     """
-    if value and len(value) >= 4:
+    if value and len(value.encode("utf-8")) >= 4:
         _secrets.add(value)
 
 

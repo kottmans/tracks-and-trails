@@ -571,13 +571,22 @@ def _sensitive_literals(cookies_table: dict[str, Any]) -> tuple[str, ...]:
             literals.append(expanded)
     raw_browser = cookies_table.get(_COOKIE_BROWSER_KEY)
     if isinstance(raw_browser, str) and raw_browser.strip():
-        literals.append(raw_browser)
-        for outer in raw_browser.split("::"):
-            for middle in outer.split(":"):
-                for fragment in middle.split("+"):
-                    fragment = fragment.strip()
-                    if fragment and looks_like_a_path(fragment):
-                        literals.append(fragment)
+        fragments = [
+            fragment.strip()
+            for outer in raw_browser.split("::")
+            for middle in outer.split(":")
+            for fragment in middle.split("+")
+            if fragment.strip() and looks_like_a_path(fragment.strip())
+        ]
+        # **The whole value is registered only when something in it is a path** (`T197-R6`). This
+        # registered it unconditionally, so a perfectly valid `browser = "edge"` made the word
+        # *edge* a secret and corrupted every later log line containing it — the gate's own
+        # legitimate-content rule, broken by the machinery meant to serve it. The asymmetry with
+        # the file key is deliberate: a file value is a path by definition and always registers;
+        # a browser value is a *name* by definition, and only path-shaped content in it is secret.
+        if fragments or looks_like_a_path(raw_browser):
+            literals.append(raw_browser)
+            literals.extend(fragments)
     return tuple(dict.fromkeys(literals))
 
 

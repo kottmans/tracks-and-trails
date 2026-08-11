@@ -14513,3 +14513,65 @@ in the same pass but do not independently block approval.
 
 The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
+
+## 2026-08-11 — T-197 fourth focused correction re-review
+
+**Task:** T-197 — cookie source, and the redaction gate that has to prove it
+
+**Correction review boundary:** `788fd3d..6db20b8`
+
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T197-R1** | **Critical** | **Yes — settings-log privacy boundary and Phase 4 exit gate** | **Open** | The correction correctly derives expanded file spellings and path-shaped fragments from every free-form browser grammar slot. The downstream registration contract still defeats that result: `remember_a_secret()` ignores values shorter than four characters. Real `[cookies] file = "秘密"` and `browser = "firefox:税/密"` loads returned those short paths in `SettingsFile.secrets`, but the production registration loop discarded them and the paths survived `redact(problem.reason)` unchanged. The outcome regression uses only path literals of four or more characters. REQ-026/NFR-007 have no length or ASCII exception, so an application-supplied cookie filename can still reach a log. |
+| **T197-R2** | **Critical** | **Yes — DAT-003 structural database boundary** | **Resolved at `6db20b8`** | `parse_browser_specification()` now applies the shared public path predicate to both free-form fields, `PROFILE` and `CONTAINER`; browser and keyring remain closed lists. Direct POSIX/Windows paths and expansion syntax are refused in the container slot, while ordinary named containers still parse. Reviewer probes confirmed the prior `firefox::/home/alice/session.txt` value can no longer construct a request. |
+| **T197-R3** | **High** | **Yes — both-sources/both-phases criterion** | **Remains resolved at `857fdbc`** | No browser session argument was reintroduced, and the correction does not disturb either probe route. |
+| **T197-R4** | **High** | **Yes — screen correctness and queued-time binding** | **Remains resolved at `788fd3d`; evidence note resolved at `6db20b8`** | The No-cookies regression now drives the real composed screen, callback, settings write, window state, and redraw. The retarget regression invokes MainWindow's handler and reads the persisted request back. Both tests now cross the wiring whose removal previously survived. |
+| **T197-R5** | **High** | **Yes — unusable-file criterion** | **Remains resolved at `84027bd`** | Shared Netscape/readability validation remains intact. |
+| **T197-R6** | **Medium** | **Yes — T-197's two-way redaction acceptance criterion** | **Open** | `_sensitive_literals()` says non-path fragments are deliberately not registered, but unconditionally appends the complete browser string. With the valid stored source `browser = "edge"`, startup registers `edge` as a secret; ordinary `edge cases at the leading edge` becomes `<redacted> cases at the leading <redacted>`. A browser name is neither a credential nor a cookie path. This is observable over-redaction, not merely weak evidence, and directly repeats the gate's required “legitimate content survives” direction. |
+
+R1 remains the same Critical finding at the next real boundary: the carrier is now complete for the
+tested grammar, but the formatter's registration API silently refuses some of what it carries. The
+short Unicode examples are concrete private filenames/path fragments, not an invented fifth grammar
+slot. R6 is the inverse failure in the same correction: accepted browser names are registered even
+though the code and task record explicitly say they are not.
+
+Another focused R1 correction remains authorized under `AGENTS.md` §10. R6 is Medium and ordinarily
+would be subject to the exhausted-pass maintainer choice, but it is inside the same registration
+helper and should be corrected and verified alongside the still-authorized Critical pass. If it is
+not, approval will require the maintainer's explicit disposition once R1 closes.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edits | **clean; `main` ahead of `origin/main` by seven commits** |
+| `git diff --check 788fd3d..6db20b8` | **pass** |
+| `.venv/bin/ruff check .` | **pass** |
+| `.venv/bin/ruff format --check .` | **pass, 166 files** |
+| `.venv/bin/mypy src` | **pass, 52 files** |
+| bare `.venv/bin/mypy` | **pass, 128 files** |
+| `.venv/bin/mypy --platform win32` | **pass, 128 files** |
+| `python -m py_compile` on the three changed production modules | **pass** |
+| Models, settings, both redaction suites, presets, adapter, Settings/Add/Main Window UI, composition, and manager-boundary suites | **867 passed, 1 skipped, 1 deselected in 192.67 s** — the deselected case is the pre-existing loopback HTTP test denied by the review sandbox |
+| Short supplied-path formatter probes | `秘密` and `税/密` were carried in `secrets` but survived the real formatter because both have length three or less |
+| Valid-browser over-redaction probe | stored `edge` had no settings problem, but ordinary prose containing `edge` was redacted twice |
+| Container grammar probe | prior POSIX/Windows path shapes are refused; legitimate `Personal` and `Banking` containers remain accepted |
+| R4 evidence audit | both regressions now drive the real composed/window routes rather than the corrected helpers alone |
+
+The implementer's broader **2596 passed, 17 skipped** result was not repeated wholesale. The focused
+suite remains green because all new redaction fixtures exceed `remember_a_secret()`'s minimum and
+none starts from an accepted plain browser name.
+
+### Push disposition
+
+**Do not push `6db20b8`.** Make the path-registration boundary protect short supplied paths
+without globally scrubbing arbitrary short prose, and stop registering accepted non-path browser
+names. Exercise both directions through the production load → registration → formatter route.
+R2 and the R4 evidence correction are approved at this boundary.
+
+The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
+source, test, decision, status snapshot, commit, or remote state was changed.
