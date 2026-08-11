@@ -5,25 +5,24 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-11 (second entry) — **the covering review came back and its findings are
-corrected.** `T-216` **Approved**; `T-225`'s filing **verified as a real open defect**. Six blocking
-findings across `T-224`, `T-222`, `T-217` and `T-214` are fixed at **`28012ad`**, and `T197-R7` at
-**`4c48273`** on the maintainer's §10 authorisation. **Eighteen commits are held; nothing is
-pushed.**
+**Last updated:** 2026-08-11 (third entry) — **`T-224`, `T-217` and `T-214` are Approved at
+`28012ad`.** Two findings remained and both are corrected: **`T197-R1`, reopened as Critical**
+(`6a6ce27`, on §10's standing authorisation for Criticals) and **`T-222`'s two Mediums** (`4d03937`,
+on the maintainer's §10 authorisation). **Twenty-two commits are held; nothing is pushed.**
 
-**Two of the six were features that did not exist.** `T-224`'s pressed state could never be
-painted — the value was set and cleared inside one synchronous block — and `T-214`'s Qt-free guard
-read only direct roots, so a listed module could reach Qt through one hop and pass. `T-222` was a
-regression I introduced and did not measure for: the scroller shrank the dialog's opening size.
-**`T222-R2` ruled the scroll-region clause `[P]`, not `[D]`** — correctly; it is now `P-26` in
-`docs/UX_SPEC.md` §10, built ahead of ratification on the reviewer's explicit instruction, with
-§1's bar recorded as suspended for that one clause.
-**Last verified against repository:** 2026-08-11 for both 2026-08-11 blocks — commit hashes read
-from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures from
-the runs quoted. The 2026-08-10 blocks were verified that day; the three 2026-08-09 blocks that
-day; the Phase 3 block beneath them 2026-08-06. The Phase 1 and Phase 2 narrative from `## Next`
-onward was last swept 2026-08-04 and is kept for its reasoning, not as a statement of what is true
-now.
+**The Critical was my own correction's doing.** Round seven removed an unsafe separator exemption
+and leaned on the generic byte floor, assuming a path's absolute spelling is always long enough to
+clear it — `/a` is a legal cookie path, two bytes, already absolute, and reached the real formatter
+unredacted. Supplied paths now have their own registration contract with no floor, and roots that
+name nothing are still refused. **The first version of that fix was not bound to composition**: the
+unit gate called the new function itself, so reverting the real wiring left it green, and only a
+mutation caught it. Both routes — startup and runtime — are asserted through `compose` now.
+**Last verified against repository:** 2026-08-11 for all three 2026-08-11 blocks — commit hashes
+read from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures
+from the runs quoted. The 2026-08-10 blocks were verified that day; the three 2026-08-09 blocks
+that day; the Phase 3 block beneath them 2026-08-06. The Phase 1 and Phase 2 narrative from
+`## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a statement of
+what is true now.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -41,6 +40,42 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-11 (third): three approvals, and the two findings left
+
+**Approved at `28012ad`:** `T-224`, `T-217`, `T-214`. `T-216` was approved in the previous round.
+The reviewer's independent run: ruff and all three mypy configurations, unit **1897 passed, 15
+skipped**, integration **391 passed** including eight frozen probes, focused UI **123 passed**, and
+the skipped tall-screen assertion forced to run under scaling and passing.
+
+**`T197-R1`, reopened as Critical (`6a6ce27`).** Round seven's correction assumed an absolute
+spelling is necessarily long enough to clear the four-byte floor. `[cookies] file = "/a"` disproves
+it in two characters — already absolute, nothing longer to fall back on, and the real `ARC-008`
+refusal named it unredacted. **`remember_a_path` is a second entry point rather than a change to
+the first**: the caller declares the value a filesystem path it supplied, and there is no length at
+which that stops being sensitive. It is not `T197-R7`'s exemption returning — a value naming
+nothing but a root is refused, and a value with no separator falls back to the floor.
+
+**And the first version of that fix was not bound to composition.** The unit gate called
+`remember_a_path` itself, so reverting the real wiring to the floored call left it green. Two
+regressions in `tests/integration/test_composition.py` now build the application and ask the
+redaction sink what `compose` actually registered — one for the startup route, one for the runtime
+choice, because a mutation reverting only the second left everything else passing.
+
+**`T-222`'s two Mediums (`4d03937`), on the maintainer's §10 authorisation.** The short-screen bound
+was on the **client** rectangle, so the frame went past the bottom of the screen — 800 client / 804
+frame against 800 available — putting the button box off the display, which is what the scroll area
+exists to prevent. **The regression compared `dialog.height()` with the screen height, so it
+encoded the same mistake.** And the clause's identifier collided: `P-26` was already `UX-007`'s
+ratified duplicate-warning question. It is `P-29`, chosen by enumerating `P-1`…`P-28`.
+
+**A guard was deleted rather than defended.** A once-only flag on the re-clamp survived every
+mutation; written down, its justification did not hold — the clamp only shrinks, so the one case
+the flag changed was a window left taller than the screen.
+
+**Figures at `4d03937`:** ruff, ruff format, `mypy` (128 files) and `mypy --platform win32 src` all
+clean; `tests/unit` and `tests/ui` **2700 passed, 18 skipped**; `tests/integration` **393 passed**.
+Under `QT_SCALE_FACTOR=0.5` the options-dialog file runs **50 passed, no skip**.
 
 ## 2026-08-11 (second): the review came back, and six findings were real
 
