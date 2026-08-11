@@ -375,7 +375,12 @@ def compose(
     # be written was the one nothing had registered. Registering from `secrets` covers the rejected
     # value as well as the accepted one, which is the half that leaked.
     for literal in settings_read.secrets:
-        app_logging.remember_a_secret(literal)
+        # **`remember_a_path`, not `remember_a_secret`** (`T197-R1`, reopened). Every literal in
+        # `secrets` is a value the user configured and this application is about to name in a
+        # refusal — and a legal absolute path can be shorter than the generic floor. `/a` is two
+        # bytes, is already absolute, and reached the real formatter unredacted. Values in here
+        # that are not paths, such as a browser fragment, fall back to the floor inside that call.
+        app_logging.remember_a_path(literal)
 
     held = _Held(settings_read.settings)
 
@@ -608,23 +613,24 @@ def compose(
         `_COOKIE_FILENAME` recognise a path that *looks* like a cookie jar — `cookies.sqlite`,
         `.../cookies.txt`. A user may point at `~/session.txt`, and the review reproduced exactly
         that surviving the real formatter. Guessing harder is the enumeration failure `DAT-003`
-        records twice; **knowing** is `remember_a_secret`, which exists for *"a literal this
-        application is holding and knows is sensitive"* and had no caller until now.
+        records twice; **knowing** is `remember_a_path`, which exists for *"a filesystem path this
+        application supplied"* and carries no length floor — because a legal absolute cookie path
+        can be two bytes long (`T197-R1`, reopened at `4c48273`).
 
         Registered rather than replaced-and-forgotten: `forget_the_secrets()` clears every
         registered literal, and a stale entry only over-redacts its own exact string, which is the
         harmless direction.
         """
         if path is not None:
-            app_logging.remember_a_secret(str(path))
+            app_logging.remember_a_path(str(path))
             # Both spellings, for `_sensitive_literals`' reason: the refusal prints the
             # expansion, and `redact` replaces exact literals (`T197-R1`).
             with suppress(OSError, RuntimeError):
-                app_logging.remember_a_secret(str(Path(path).expanduser()))
+                app_logging.remember_a_path(str(Path(path).expanduser()))
             with suppress(OSError, RuntimeError):
-                # The absolute form, which is what a refusal prints and what carries a separator
-                # for a short relative name (`T197-R1`).
-                app_logging.remember_a_secret(str(Path(path).expanduser().absolute()))
+                # The absolute form, which is what a refusal prints, and what carries a separator
+                # for a bare relative name so the floor does not drop it (`T197-R1`).
+                app_logging.remember_a_path(str(Path(path).expanduser().absolute()))
 
     def choose_cookie_file(path: Path | None) -> None:
         """Use a cookies file for sites the user is signed in to, or none (`REQ-026`, `T-197`).

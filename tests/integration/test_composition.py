@@ -2340,6 +2340,68 @@ def test_refusing_a_choice_leaves_a_working_override_exactly_where_it_was(
         QApplication.processEvents()
 
 
+def test_a_short_cookie_path_is_redacted_by_the_assembled_application(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T197-R1`, reopened at `4c48273` — and asserted through `compose`, which is the point.**
+
+    `/a` is a legal cookie path, two bytes long, and *already* absolute — so the previous
+    correction's trick of registering a longer absolute spelling has nothing to reach for. It
+    survived the real `ARC-008` refusal.
+
+    **The unit gate could not have caught the regression this guards against.** Its version called
+    `remember_a_path` itself, so reverting composition to the floored `remember_a_secret` left it
+    green — the test agreed with the intended wiring rather than reading the real one. This builds
+    the application and asks the redaction sink what `compose` actually registered, so changing
+    that call is what fails.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text('[cookies]\nfile = "/a"\n', encoding="utf-8")
+
+    app_logging.forget_the_secrets()
+    try:
+        composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+        line = "settings: the cookies file /a does not exist"
+        assert "/a" not in app_logging.redact(line), (
+            "the assembled application did not register its own short cookie path: "
+            f"{app_logging.redact(line)!r}"
+        )
+    finally:
+        app_logging.forget_the_secrets()
+
+
+def test_a_short_cookie_path_chosen_at_runtime_is_redacted_too(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """The other route into the same leak, and it needed its own test (`T197-R1`).
+
+    A cookie file arrives two ways: read from `settings.toml` at startup, and **chosen while the
+    application is running**. They register through different code, and a mutation reverting only
+    the runtime one left every existing test green — including the startup test beside this. Two
+    routes, two regressions.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    choose = composition.window._on_cookie_file_chosen
+    assert choose is not None, "composition wired no cookies writer"
+
+    app_logging.forget_the_secrets()
+    try:
+        choose(Path("/a"))
+        QApplication.processEvents()
+
+        line = "settings: the cookies file /a does not exist"
+        assert "/a" not in app_logging.redact(line), (
+            f"a cookie path chosen at runtime was not registered: {app_logging.redact(line)!r}"
+        )
+    finally:
+        app_logging.forget_the_secrets()
+
+
 def test_the_cookies_file_reaches_the_workers_and_never_the_job(
     composed: Callable[..., application.Composition],
     tmp_path: Path,

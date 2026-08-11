@@ -138,7 +138,7 @@ def test_a_short_cookie_path_is_protected_and_short_prose_is_not_eaten() -> None
         logging_module.forget_the_secrets()
         try:
             for literal in read.secrets:
-                logging_module.remember_a_secret(literal)
+                logging_module.remember_a_path(literal)
             written = emitted(f"settings: {read.problem.reason}")
             for spelling in {
                 bare,
@@ -498,5 +498,121 @@ def test_no_rejected_cookie_fragment_survives_the_reported_reason(
                 f"{label}: {resolved_leak!r} survived into the log:\n{written}"
             )
         assert "settings:" in written, f"{label}: the report was scrubbed rather than the secret"
+    finally:
+        logging_module.forget_the_secrets()
+
+
+def test_a_short_absolute_cookie_path_does_not_survive_the_formatter() -> None:
+    """**`T197-R1`, reopened at `4c48273` — the assumption that broke it.**
+
+    Round six protected a short *relative* path by registering its **absolute** spelling, on the
+    reasoning that making a path absolute lengthens it past the four-byte floor. `/a` disproves
+    that in two characters: it is a legal cookie path, it is *already* absolute, and there is no
+    longer spelling for anything to fall back on. The reviewer's probe found
+    `secrets == ("/a",)`, `remember_a_secret` dropping it, and the real `ARC-008` refusal naming
+    `/a` unredacted.
+
+    **The answer is a different contract, not a different length.** `remember_a_path` is for a
+    filesystem path this application supplied, and carries no floor — because there is no length
+    at which a configured cookie path stops being sensitive.
+
+    Driven through the real loader and the real formatter, at the shortest legal absolute paths
+    there are.
+    """
+    import tempfile
+
+    for short in ("/a", "/ab", "/a/b"):
+        target = Path(tempfile.mkdtemp()) / "settings.toml"
+        target.write_text(f'[cookies]\nfile = "{short}"\n', encoding="utf-8")
+        read = app_settings.load(target)
+        assert read.problem is not None, f"{short!r} produced no reason to redact"
+        assert short in read.problem.reason, (
+            f"{short!r} is not named in its own refusal, so this asserts nothing"
+        )
+
+        logging_module.forget_the_secrets()
+        try:
+            for literal in read.secrets:
+                logging_module.remember_a_path(literal)
+            written = emitted(f"settings: {read.problem.reason}")
+            assert short not in written, (
+                f"the {len(short.encode())}-byte absolute cookie path {short!r} survived the real "
+                f"formatter:\n{written}"
+            )
+        finally:
+            logging_module.forget_the_secrets()
+
+
+def test_a_filesystem_root_is_still_refused_by_the_path_contract() -> None:
+    """`T197-R7` must stay fixed while `T197-R1` is fixed — the two pull in opposite directions.
+
+    Dropping the floor for paths is what protects `/a`. Dropping it for *everything* separator-
+    shaped is what let a stored `file = "/"` register the separator itself and take every slash in
+    the log with it. The line between them is that a root **names nothing**: there is no file at
+    `/` or at `C:\\`, so there is no supplied path to protect.
+    """
+    for root in ("/", "//", "\\\\", "C:\\", "C:/", "///"):
+        logging_module.forget_the_secrets()
+        try:
+            logging_module.remember_a_path(root)
+            line = f"read {root} and audio/video and C:\\Users\\A Person"
+            assert logging_module.redact(line) == line, (
+                f"registering the root {root!r} redacted ordinary content: "
+                f"{logging_module.redact(line)!r}"
+            )
+        finally:
+            logging_module.forget_the_secrets()
+
+
+def test_a_bare_name_handed_to_the_path_contract_still_meets_the_floor() -> None:
+    """A path contract is not a licence to register one-letter strings.
+
+    `remember_a_path` is handed everything in `secrets`, which includes browser fragments and the
+    *as-written* spelling of a relative cookie file. `a` carries no separator, so it is a bare name
+    rather than a path, and registering it would replace every `a` in every later line. It falls
+    back to the floor — and the absolute spelling, which callers register too, is what actually
+    covers the short relative case.
+    """
+    logging_module.forget_the_secrets()
+    try:
+        logging_module.remember_a_path("a")
+        logging_module.remember_a_path("ok")
+        prose = "a download is ok and the queue is ok"
+        assert logging_module.redact(prose) == prose, (
+            f"a bare name was registered without the floor: {logging_module.redact(prose)!r}"
+        )
+    finally:
+        logging_module.forget_the_secrets()
+
+
+def test_a_one_letter_relative_cookie_path_is_covered_by_its_absolute_spelling() -> None:
+    """The shortest relative name there is, and why it is asserted differently.
+
+    `file = "a"` cannot be checked the way `密` is. The bare spelling is a single letter that
+    occurs in almost every English sentence, so *"`a` does not appear in the log"* is not a
+    property any correct implementation has — and a test asserting it would only be satisfiable by
+    a gate that destroys the log.
+
+    What must hold is that the spelling the refusal actually prints — the absolute one — is gone.
+    That is the mechanism round six introduced and this keeps: it still works, it is simply not
+    sufficient on its own, which is what reopened `T197-R1`.
+    """
+    import tempfile
+
+    target = Path(tempfile.mkdtemp()) / "settings.toml"
+    target.write_text('[cookies]\nfile = "a"\n', encoding="utf-8")
+    read = app_settings.load(target)
+    assert read.problem is not None
+    absolute = str(Path("a").expanduser().absolute())
+    assert absolute in read.problem.reason, "the refusal does not print the absolute spelling"
+
+    logging_module.forget_the_secrets()
+    try:
+        for literal in read.secrets:
+            logging_module.remember_a_path(literal)
+        written = emitted(f"settings: {read.problem.reason}")
+        assert absolute not in written, (
+            f"the absolute spelling of a one-letter cookie path survived:\n{written}"
+        )
     finally:
         logging_module.forget_the_secrets()

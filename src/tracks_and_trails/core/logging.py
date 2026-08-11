@@ -213,6 +213,61 @@ def remember_a_secret(value: str | None) -> None:
     _secrets.add(value)
 
 
+#: A leading drive letter, which is part of a Windows anchor rather than part of a name.
+_DRIVE = re.compile(r"^[A-Za-z]:")
+
+
+def _names_something(value: str) -> bool:
+    """Whether a path string names anything at all, or is only an anchor.
+
+    `/`, `//`, `\\`, `C:\\` and `C:/` name no file — they are filesystem roots. Registering one
+    replaces every occurrence of it in every later line, which is `T197-R7`: a stored `file = "/"`
+    made every slash in the log vanish.
+    """
+    return bool(_DRIVE.sub("", value).strip("/\\"))
+
+
+def remember_a_path(value: str | None) -> None:
+    """Redact a **path this application supplied**, with no length floor (`T197-R1`).
+
+    **A path is not prose, and that is the whole distinction this function exists to make.**
+    `remember_a_secret` keeps a four-byte floor because it is handed arbitrary literals and
+    substring replacement would eat ordinary words. A caller here is making a stronger claim: *this
+    string is a filesystem path the user configured and I am about to use it*. There is no length
+    at which that stops being sensitive.
+
+    **The floor cannot be relied on to cover short paths, and `T197-R1` was reopened for exactly
+    that.** The previous correction assumed a path's *absolute* spelling is always long enough to
+    clear the floor, so the settings layer could register that instead. `[cookies] file = "/a"`
+    disproves it: `/a` is already absolute, is two bytes, and there is no longer spelling for
+    anything to fall back on. It reached the real formatter unredacted in an `ARC-008` refusal.
+
+    **This is not the separator exemption that `T197-R7` removed**, and the difference is which
+    side makes the claim. That rule waived the floor inside `remember_a_secret` for *any* value
+    containing a separator, so a bare `/` was registered and every slash in the log went with it.
+    Here the caller declares the value a path, and a value that names nothing but a filesystem root
+    is refused before anything is registered.
+
+    **A bare name falls back to the floor.** `a` and `cookies.txt` carry no separator, so they are
+    passed to `remember_a_secret` and treated as literals — registering a one-letter `a` would
+    corrupt every word containing it. The absolute spelling of such a name does carry a separator,
+    and callers register that too, so the short relative case stays covered.
+
+    **The cost, stated plainly:** a user whose cookie file really is at `/a` gets `/a` replaced
+    wherever it appears in their log, including inside longer paths. That is over-redaction of one
+    configured string, against a credential path leaking. It is the right way round, and it is
+    bounded by what the user themselves configured.
+    """
+    if not value:
+        return
+    if "/" not in value and "\\" not in value:
+        remember_a_secret(value)
+        return
+    if not _names_something(value):
+        return
+    _secrets.add(value)
+
+
 def forget_the_secrets() -> None:
     """Drop every registered literal. For tests, and for a settings change that invalidates them."""
     _secrets.clear()

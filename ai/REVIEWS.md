@@ -14714,3 +14714,71 @@ needs the maintainer's §10 disposition before another Medium-only correction pa
 
 The Reviewer changed `ai/REVIEWS.md` and current task disposition records only. No reviewed source,
 test, specification, commit, or remote state was changed.
+
+## 2026-08-11 — unattended-run focused correction re-review
+
+**Correction boundary:** `dcd72f3..4c48273`
+
+**Record-only head:** `8ae3cd1`
+
+### Verdicts
+
+| Task | Verdict |
+|---|---|
+| **T-224** | **Approved** — T224-R1 resolved at `28012ad` |
+| **T-217** | **Approved** — T217-R1 resolved at `28012ad` |
+| **T-214** | **Approved** — T214-R1 and T214-R2 resolved at `28012ad` |
+| **T-222** | **Blocked** — both correction paths retain blocking Medium defects after the ordinary review budget; another pass requires maintainer disposition under `AGENTS.md` §10 |
+| **T-197** | **Changes requested** — T197-R7 is resolved, but the correction reopens T197-R1 as Critical |
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T224-R1** | **Medium** | **Yes — pressed-state scope** | **Resolved at `28012ad`** | `MouseButtonPress` now establishes the state while the button is held and is consumed only inside the menu zone. Release clears it before menu emission and also clears a press-in/release-out path. Direct paint evidence distinguishes rest, hover, and held states. |
+| **T217-R1** | **Medium** | **Yes — film-frame scope** | **Resolved at `28012ad`** | Video now uses a drawn hollow film frame with symmetric sprocket columns rather than a play glyph or a platform-dependent font fallback. The shape regression rejects the prior triangle and a one-sided frame; audio retains its established note. |
+| **T214-R1** | **Medium** | **Yes — architecture direction gate** | **Resolved at `28012ad`** | Internal imports are resolved from absolute and relative AST forms against real modules. The deliberate forbidden-direction proof now covers five import grammars, including `from ..ui import theme`; the package-attribute case is filtered without losing real imported modules. |
+| **T214-R2** | **Medium** | **Yes — named Qt-free modules** | **Resolved at `28012ad`** | The guard walks reachable internal modules with cycle protection and reports the route to any direct Qt import. Its multi-hop control follows the real `__main__.py -> app.py -> Qt` chain, so reverting to direct roots fails. |
+| **T222-R1** | **Medium** | **Yes — opening geometry and reachable controls** | **Open, narrowed** | The content-aware hint fixes the 501px opening regression, and the no-scrollbar claim passes under a tall logical display. The short-screen bound is still wrong: `resize(..., availableGeometry.height())` assigns the **client** height, not the outer frame height. On the 800px review screen the dialog becomes 800px client / 804px frame and extends past the 800px available geometry; a native decorated window can lose substantially more to its title bar. The regression compares `dialog.height()` with screen height, so it encodes the same client/frame mistake. Bound `frameGeometry`, while preserving the verified tall-screen no-scroll behavior. |
+| **T222-R2** | **Medium** | **Yes — authoritative product-choice record** | **Open, narrowed** | The clause is correctly demoted to `[P]`, and the suspension is explicit. Its new identifier is not unique: `P-26` already means the ratified duplicate-warning choice in §9.3 and §10. The file now assigns two different questions and dispositions to one stable ID. Give the scroll question the next unused identifier and update every new reference; do not overwrite or reinterpret the existing P-26 ruling. |
+| **T197-R7** | **Medium** | **Yes — legitimate log content survives** | **Resolved at `4c48273`** | The separator-wide exemption is removed. `/`, separator-only strings, and ordinary paths/URLs now survive, while the previously reviewed relative `密` case remains protected through its long absolute spelling. |
+| **T197-R1** | **Critical** | **Yes — REQ-026, NFR-007, DAT-003, and the Phase 4 exit gate** | **Reopened at `4c48273`** | The correction assumes an absolute spelling is necessarily long. A legal absolute path can itself be shorter than the restored four-byte floor: loading `[cookies] file = "/a"` returns `secrets == ("/a",)`, `remember_a_secret()` drops it, and the real formatter emits `/a` unchanged in the ARC-008 refusal. There is no relative spelling for settings to lengthen. The separator exemption was unsafe, but deleting it without a cookie-path-specific registration contract recreates the Critical supplied-path leak for short absolute paths. |
+
+### Coordination defects
+
+- **Low, non-blocking, record corrected by the Reviewer:** the full `T197-R7 corrected` narrative
+  was appended inside **T-208**, after T-208's historical paragraph and before its owner, while
+  T-197 still said R7 was Open. The disposition edit moved the narrative back to T-197, marked R7
+  Resolved, and restored T-208's boundary; no implementation was changed.
+- **Low, non-blocking:** `STATUS.md` says eighteen commits are held even though its own record-only
+  commit makes the branch nineteen commits ahead. Update the count with the next status record.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edits | **clean; `main` ahead of `origin/main` by 19 commits** |
+| `git diff --check dcd72f3..8ae3cd1` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 166 files** |
+| `mypy src` | **pass, 52 files** |
+| bare `mypy` | **pass, 128 files** |
+| `mypy --platform win32` | **pass, 128 files** |
+| Full `tests/unit` | **1897 passed, 15 skipped in 16.84 s** |
+| Full `tests/integration` | **391 passed in 297.23 s**, including the eight frozen-probe cases |
+| T-224/T-217/T-222 focused UI | **123 passed, 1 skipped in 27.58 s**; the skip was the submitted short-screen no-scrollbar condition |
+| Tall logical-screen T-222 cases | **2 passed in 0.11 s** with `QT_SCALE_FACTOR=0.5`; the formerly skipped no-scrollbar assertion executed and passed |
+| T-214/T-197 focused unit and placement selection | **363 passed in 10.82 s** |
+| T-197 real loader/formatter probe | problem named `/a`; `secrets == ("/a",)`; formatted problem still named `/a` |
+| T-222 short-screen geometry probe | available `800`; client `800`; frame `804`; content scroll maximum `53` |
+
+### Push disposition
+
+**Do not push the 19-commit stack.** T-224, T-217, and T-214 are approved, but T-197 has a
+reopened Critical privacy leak and remains automatically eligible for a focused correction.
+T-222 has only blocking Medium findings after its focused pass and is Blocked pending the
+maintainer's §10 choice: authorize another focused correction, accept the documented risk, change
+scope, or carry the work into a named follow-up.
+
+The Reviewer changed `ai/REVIEWS.md` and current task dispositions only. No reviewed source, test,
+UX specification, status snapshot, commit, or remote state was changed.
