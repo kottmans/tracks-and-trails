@@ -355,6 +355,62 @@ paint and hit testing read.
 
 ## Ready
 
+### T-225 — Two UI test files pass apart and fail together
+
+**Status:** Proposed — filed 2026-08-11, found while building `T-224` and **verified pre-existing**
+by stashing that task's diff and reproducing it on the clean tree.
+**Owner:** Implementer
+**Priority:** Medium — the suite is currently green by an accident of alphabetical collection, and
+the accident is one file rename away from ending
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `tests/ui/test_row_delegate.py`, `tests/ui/test_add_dialog.py`
+(`test_an_open_playlist_shows_entries_and_a_way_back`,
+`test_the_menu_key_reaches_the_current_rows_menu`), `tests/ui/conftest.py` (the `qapp` fixture —
+one `QApplication` for the session, which is the only correct way to run Qt under pytest and also
+the reason state can travel between files), `ai/TESTING.md`
+**Affected surfaces:** `tests/ui/` — test-side unless the reproduction finds otherwise
+**Risk:** Low, with one caveat: if the shared state turns out to be in `ui/` rather than in the
+tests, the fix is a source change and this entry's scope grows
+
+#### Scope
+
+Running `tests/ui/test_row_delegate.py` **before** `tests/ui/test_add_dialog.py` in the same
+process fails two add-dialog tests that pass when either file runs alone or in the other order:
+
+```
+pytest tests/ui/test_row_delegate.py tests/ui/test_add_dialog.py
+  FAILED test_an_open_playlist_shows_entries_and_a_way_back
+  FAILED test_the_menu_key_reaches_the_current_rows_menu
+```
+
+CI does not see it **only because pytest collects alphabetically and `add_dialog` sorts before
+`row_delegate`**. Nothing about that is a property the suite asserts, so a file rename, a
+`-p randomly`, an `-n auto` shard boundary, or someone running one file to save time turns it into
+a red build with no code change behind it. A test that passes for a reason nobody chose is a test
+whose green is not evidence.
+
+**The mechanism is unestablished and this entry deliberately does not guess it.** The delegate
+holds module- or instance-level hover state and the `qapp` fixture is session-scoped, so leaked
+widget or focus state is the obvious suspect — obvious enough to be worth distrusting, given how
+often the last several tasks' "obvious" mechanism was the wrong one.
+
+#### Acceptance criteria
+
+- **The mechanism is identified and stated**, not worked around: which object holds state across
+  the file boundary, and how it reaches the two failing assertions
+- The two tests pass in **both** orders, and the fix is at the source of the leak rather than a
+  reset bolted onto the tests that happen to fail today
+- **The ordering property is asserted rather than inherited from the alphabet** — the suite gains
+  something that fails if this regresses, so the next instance is not found by accident
+- No test is deleted, skipped or weakened to reach green
+
+#### Out of scope
+
+- Making the whole suite order-independent — that is a larger sweep, and this entry is the one
+  reproducible instance
+- Introducing test-ordering plugins as a substitute for finding the cause
+
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** **Ready — the decision landed as `REL-002` (2026-08-04), so the blocker is gone.**
