@@ -353,6 +353,84 @@ paint and hit testing read.
 - Option G (removing the zone) — the recorded fallback, not this task
 - The menu's contents (`T-223`) and any change to zone geometry or hit-testing behaviour
 
+### T-222 — The options dialog clips the container note
+
+**Status:** **In Review — built 2026-08-11**, unattended on maintainer instruction.
+
+**Reproduced first, and the reproduction moved the task.** This entry guessed the defect was *"in
+how **this** group's height accounts for its wrapped note"*. It is not. Measured in a shown dialog:
+the four groups want ~760px, and **the dialog opened at 302 by 680 — its own `minimumSizeHint` —
+with the note already cut.** So the reported minimum was a claim the layout could not honour, and
+the size in the screenshot was not one the maintainer had dragged it down to.
+
+**The mechanism.** A word-wrapping `QLabel` reports a **one-line** `minimumSizeHint`, so Qt is free
+to squeeze an explanation to its first line to make the arithmetic come out — silently, with no
+scrollbar and no ellipsis. The Container note is simply the first casualty, being the one whose
+group has the least slack; the entry's *"the defect is in this group, not in wrapped labels
+generally"* was reading a symptom's distribution.
+
+**Two fixes on the raise-the-floor route were built and rejected on measurement**, both recorded
+because each looked right until it was run:
+
+| Candidate | Result |
+| --- | --- |
+| `Minimum` vertical policy on the wrapping labels | floor rises to 748, **still cuts the note by 6px** at narrow widths — the group is still squeezed under its own minimum |
+| `minimumSizeHint` overridden to report `heightForWidth` | nothing is cut, but the floor becomes **901px** — taller than the dialog's own natural 853 and than a 768px display, trading clipped text for an unreachable *OK* |
+
+**What was built.** The four groups sit in a `QScrollArea`; the save line and the button box stay
+outside it. The floor drops to 161px, nothing is cut at any size probed down to 200 by 300, and
+*OK* is reachable at every one of them.
+
+**Spec.** `docs/UX_SPEC.md` §6 gains a **[D]** clause with the derivation shown, since this changes
+what a user sees. **It is marked [D] rather than [P] on the argument that the height has to come
+from somewhere and the other two places were measured worse — and the clause says in its own text
+that this is the thing to reject if scrolling reads as a product choice.** The defect it answers is
+not in dispute either way.
+
+**Owner:** Implementer
+**Priority:** Medium — explanatory text a user is meant to read is unreadable at the size the
+dialog actually opened at, on the maintainer's real display
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing — `ui/options_dialog.py` is not in any open review's boundary
+**Relevant context:** `REQ-010` (the options this dialog offers), `ui/options_dialog.py`
+`_build_container` (the note: a `setWordWrap(True)` `QLabel` in the group's `QVBoxLayout`), the
+dialog's three sibling wrapped labels (`_audio_reason`, `_subtitle_reason`, `_save_result`),
+`T-209` (a geometry defect that only a **shown** widget exhibits — the lesson that shapes the
+reproduction), `tests/ui/test_options_dialog.py`
+**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+In the maintainer's 2026-08-10 screenshot (a roughly 355px-wide dialog on a real display), the
+Container group's explanation — *"Remuxing keeps the streams and is quick; recoding re-encodes
+them and is not."* — wraps to two lines and both are vertically clipped at the group's bottom
+edge. The same screenshot shows the audio group's two-line wrapped reason and the subtitles
+group's note displaying whole, so the defect is in how **this** group's height accounts for its
+wrapped note, not in wrapped labels generally. **The mechanism is unverified**: the note is a
+word-wrapping label in a plain `QVBoxLayout`, and a wrapped label's height-for-width is the
+classic thing a size hint under-reports — but the cause is the reproduction's to establish, not
+this entry's to assert.
+
+#### Acceptance criteria
+
+- **Reproduced first, in a shown dialog** at a width that wraps the note — `T-209`'s lesson:
+  this class of geometry defect does not exist in an unshown widget — with the clip demonstrated
+  failing before the correction and the same probe passing after it
+- **The note is fully visible at wrapping widths**: its rendered height accommodates its wrapped
+  line count (`heightForWidth` at its actual width), and no part of it is cut by the group's or
+  the dialog's bounds
+- **The three sibling wrapped labels are audited under the same probe** — they display correctly
+  in the screenshot, and the regression proves that rather than trusting it
+- The dialog's existing open-and-resize behaviour is otherwise unchanged — no fixed size is
+  introduced to make the numbers come out
+
+#### Out of scope
+
+- Rewording the note — its length is not the defect
+- Any other options-dialog layout change, and the dialog's spec-side description (`docs/UX_SPEC.md`)
+  unless the correction genuinely moves what a user sees
+
 ## Ready
 
 ### T-225 — Two UI test files pass apart and fail together
@@ -2284,53 +2362,6 @@ the two — this entry does not choose which.
 
 - Adding or removing any toolbar control — `ARC-007`'s concurrency control stays until `T-146`
   decides its fate, and nothing else changes membership
-
-### T-222 — The options dialog clips the container note
-
-**Status:** Proposed — filed 2026-08-10 from a maintainer report with screenshot.
-**Owner:** Implementer
-**Priority:** Medium — explanatory text a user is meant to read is unreadable at the size the
-dialog actually opened at, on the maintainer's real display
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** nothing — `ui/options_dialog.py` is not in any open review's boundary
-**Relevant context:** `REQ-010` (the options this dialog offers), `ui/options_dialog.py`
-`_build_container` (the note: a `setWordWrap(True)` `QLabel` in the group's `QVBoxLayout`), the
-dialog's three sibling wrapped labels (`_audio_reason`, `_subtitle_reason`, `_save_result`),
-`T-209` (a geometry defect that only a **shown** widget exhibits — the lesson that shapes the
-reproduction), `tests/ui/test_options_dialog.py`
-**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-In the maintainer's 2026-08-10 screenshot (a roughly 355px-wide dialog on a real display), the
-Container group's explanation — *"Remuxing keeps the streams and is quick; recoding re-encodes
-them and is not."* — wraps to two lines and both are vertically clipped at the group's bottom
-edge. The same screenshot shows the audio group's two-line wrapped reason and the subtitles
-group's note displaying whole, so the defect is in how **this** group's height accounts for its
-wrapped note, not in wrapped labels generally. **The mechanism is unverified**: the note is a
-word-wrapping label in a plain `QVBoxLayout`, and a wrapped label's height-for-width is the
-classic thing a size hint under-reports — but the cause is the reproduction's to establish, not
-this entry's to assert.
-
-#### Acceptance criteria
-
-- **Reproduced first, in a shown dialog** at a width that wraps the note — `T-209`'s lesson:
-  this class of geometry defect does not exist in an unshown widget — with the clip demonstrated
-  failing before the correction and the same probe passing after it
-- **The note is fully visible at wrapping widths**: its rendered height accommodates its wrapped
-  line count (`heightForWidth` at its actual width), and no part of it is cut by the group's or
-  the dialog's bounds
-- **The three sibling wrapped labels are audited under the same probe** — they display correctly
-  in the screenshot, and the regression proves that rather than trusting it
-- The dialog's existing open-and-resize behaviour is otherwise unchanged — no fixed size is
-  introduced to make the numbers come out
-
-#### Out of scope
-
-- Rewording the note — its length is not the defect
-- Any other options-dialog layout change, and the dialog's spec-side description (`docs/UX_SPEC.md`)
-  unless the correction genuinely moves what a user sees
 
 ### T-223 — The row's menu: drop the editor alias, name the removal
 

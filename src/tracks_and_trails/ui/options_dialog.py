@@ -76,6 +76,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -218,10 +219,43 @@ class OptionsDialog(QDialog):
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
-        layout.addWidget(self._build_audio())
-        layout.addWidget(self._build_container())
-        layout.addWidget(self._build_embedding())
-        layout.addWidget(self._build_subtitles())
+
+        # **The four groups scroll; the save line and the buttons do not** (`T-222`).
+        #
+        # The reported defect was the Container group's explanation clipped to one of its two
+        # wrapped lines. The measured cause is larger than that group: the four groups together
+        # want ~760px of height, this dialog is resizable, and **it opened at 302 by 680 — its own
+        # reported minimum — with the note already cut.** The minimum was a claim the layout could
+        # not honour, because a word-wrapping `QLabel` reports a one-line `minimumSizeHint`, so Qt
+        # is free to squeeze an explanation down to its first line to make the arithmetic come out.
+        # It does that silently: no scrollbar, no ellipsis, no sign that a sentence lost its
+        # second half.
+        #
+        # **So the fix is not a taller minimum.** Two candidates that took that route were measured
+        # and rejected: a `Minimum` vertical policy on the wrapped labels still cut the note by 6px
+        # at narrow widths, and a `minimumSizeHint` override reporting `heightForWidth` pushed the
+        # dialog's floor to 901px — taller than its own natural 853 and than the usable height of a
+        # 768px display, which trades clipped text for an unreachable *OK*. Scrolling drops the
+        # floor to 161px instead, and the notes are whole at every size probed, down to 200 by 300.
+        #
+        # **The buttons stay outside the viewport** so *OK* and *Cancel* are reachable however
+        # short the window is, and so is the save line's refusal (`P-13`'s rule — a control that
+        # cannot act keeps its reason beside it, which is no use scrolled off).
+        groups = QWidget(self)
+        stack = QVBoxLayout(groups)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.addWidget(self._build_audio())
+        stack.addWidget(self._build_container())
+        stack.addWidget(self._build_embedding())
+        stack.addWidget(self._build_subtitles())
+
+        scroller = QScrollArea(self)
+        scroller.setWidgetResizable(True)
+        # No frame: the groups already draw their own borders, and a second one around them reads
+        # as a panel this dialog does not otherwise have.
+        scroller.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroller.setWidget(groups)
+        layout.addWidget(scroller, 1)
 
         self._save_result = QLabel("", self)
         self._save_result.setObjectName(SAVE_RESULT_NAME)

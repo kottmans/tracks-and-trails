@@ -22,10 +22,12 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QLabel,
     QListWidget,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QWidget,
 )
 
@@ -50,6 +52,7 @@ from tracks_and_trails.ui.options_dialog import (
     NO_SUBTITLES_REASON,
     SAVE_PRESET_NAME,
     SAVE_PRESET_TEXT,
+    SAVE_RESULT_NAME,
     SUBTITLE_LANGUAGES_NAME,
     OptionsDialog,
 )
@@ -727,3 +730,127 @@ def test_ffmpeg_present_offers_everything_it_performs(
     assert thumbnail is not None and thumbnail.isEnabled(), (
         "embedding is refused with ffmpeg present, so the gate is unconditional"
     )
+
+
+# --- T-222: the explanations are not cut to make the dialog fit ------------------------------
+
+
+def _shown(dialog: OptionsDialog, size: tuple[int, int] | None = None) -> OptionsDialog:
+    """Show the dialog and let it lay out.
+
+    **Shown, because this class of defect does not exist in an unshown widget** — `T-209`'s lesson,
+    and the reason this task's entry required the reproduction before the correction. An unshown
+    dialog's children have no geometry to be wrong.
+    """
+    if size is not None:
+        dialog.resize(*size)
+    dialog.show()
+    for _ in range(4):
+        QApplication.processEvents()
+    return dialog
+
+
+def _clipped_explanations(dialog: OptionsDialog) -> list[str]:
+    """Every wrapping label that has less height than its own text needs at its own width.
+
+    **Every one of them, found by `wordWrap()` rather than by name.** The report named the
+    Container note, but three siblings wrap the same way and a fix aimed at one label would leave
+    the others one sentence away from the same defect. A label added later is audited by this
+    without anyone remembering to add it.
+    """
+    cut = []
+    for label in dialog.findChildren(QLabel):
+        if not label.wordWrap() or not label.text():
+            continue
+        needs = label.heightForWidth(label.width())
+        if needs > label.height():
+            cut.append(f"{label.text()[:40]!r} has {label.height()}px and needs {needs}px")
+    return cut
+
+
+def test_the_explanations_are_whole_at_the_size_the_dialog_opens_at(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**`T-222`, the reported defect.** The Container note lost its second line.
+
+    Measured before the correction: the dialog opened at 302 by 680 — *its own reported minimum* —
+    and the note was allotted 17px where its two wrapped lines need 34. So this was not a small
+    window a user had dragged down to; it was the size the dialog chose for itself.
+    """
+    dialog = _shown(editor())
+
+    assert not _clipped_explanations(dialog), (
+        "the dialog opened at a size that cuts its own explanatory text: "
+        + "; ".join(_clipped_explanations(dialog))
+    )
+
+
+@pytest.mark.parametrize(
+    "size",
+    [(300, 400), (355, 500), (355, 680), (355, 700), (420, 600), (900, 700)],
+    ids=lambda size: f"{size[0]}x{size[1]}",
+)
+def test_no_explanation_is_cut_at_any_size_a_user_can_drag_to(
+    editor: Callable[..., OptionsDialog], size: tuple[int, int]
+) -> None:
+    """The dialog is resizable, so *"it fits at the default size"* is not the property wanted.
+
+    355 by 700 is the maintainer's screenshot. The rest bracket it, including one window wide
+    enough that the note needs only one line — which is where a fix that simply reserved two lines
+    everywhere would waste a row and this would not notice, so the assertion is `heightForWidth` at
+    the label's *actual* width rather than a fixed number.
+    """
+    dialog = _shown(editor(), size)
+
+    assert not _clipped_explanations(dialog), "; ".join(_clipped_explanations(dialog))
+
+
+def test_content_taller_than_the_window_scrolls_rather_than_being_squeezed(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """What replaces the squeeze, asserted as the mechanism and not only as its absence.
+
+    Qt's response to a window shorter than its content was to shrink whatever could shrink, and a
+    word-wrapping label reports a one-line minimum, so the explanations went first — silently, with
+    no scrollbar and no ellipsis to say a sentence had lost half of itself. The four groups now sit
+    in a scroll area, so the height that does not fit is *reachable* instead of being taken out of
+    the text.
+    """
+    dialog = _shown(editor(), (355, 400))
+
+    scroller = dialog.findChild(QScrollArea)
+    assert scroller is not None, "the option groups are not in a scroll area"
+    bar = scroller.verticalScrollBar()
+    assert bar.maximum() > 0, (
+        "the window is far shorter than the content and nothing scrolls, so the height has gone "
+        "somewhere else"
+    )
+    scrolled = scroller.widget()
+    assert scrolled is not None, "the scroll area is empty"
+    reachable = bar.maximum() + scroller.viewport().height()
+    assert reachable >= scrolled.sizeHint().height(), (
+        "scrolling to the bottom still does not reach the end of the options"
+    )
+
+
+def test_the_buttons_stay_out_of_the_scroll_area(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """*OK* and *Cancel* are not something a user should have to scroll to find.
+
+    The save line goes with them: `P-13`'s rule is that a control which cannot act keeps its reason
+    beside it, and a reason scrolled off the bottom is not beside anything.
+    """
+    dialog = _shown(editor(), (355, 400))
+
+    scroller = dialog.findChild(QScrollArea)
+    assert scroller is not None
+    scrolled = scroller.widget()
+    assert scrolled is not None, "the scroll area is empty"
+    inside = set(scrolled.findChildren(QWidget))
+
+    buttons = dialog.findChild(QDialogButtonBox)
+    assert buttons is not None and buttons not in inside, "the buttons scroll with the options"
+    result = dialog.findChild(QLabel, SAVE_RESULT_NAME)
+    assert result is not None and result not in inside, "the save line scrolls with the options"
+    assert buttons.geometry().bottom() <= dialog.height(), "the buttons are below the window"

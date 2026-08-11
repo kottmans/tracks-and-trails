@@ -368,6 +368,23 @@ it: five checkboxes and one free list are different screens.
   (`T076-R1`).
 - **[T]** *(ruled `P-4`, `UX-007`)* A one-off options change **does not** silently become a preset. The editor offers
   *"Save as preset…"* explicitly.
+- **[D]** *(`T-222`, 2026-08-11)* **The four option groups scroll; the save line and the buttons do
+  not.** The rule this is derived from is `UX-005` §5's — a reason is shown *beside* the control it
+  explains — plus the plain requirement that text a user is meant to read is readable. What was
+  measured is that neither held: the dialog's four groups want ~760px, it opened at **302 by 680, its
+  own reported minimum**, and Qt made the difference up by squeezing whatever could be squeezed.
+  A word-wrapping `QLabel` reports a one-line minimum, so the explanations went first — the Container
+  note lost the second of its two lines with no scrollbar, no ellipsis and nothing else to say a
+  sentence had been cut in half.
+
+  **The derivation, so it can be disputed:** the height has to come from somewhere, and the three
+  places it can come from are the text (what was happening), the window's floor, or a scrollbar.
+  Raising the floor was measured and is worse — reporting the labels' true `heightForWidth` puts the
+  dialog's minimum at 901px, taller than its own natural 853 and than a 768px display, which trades
+  clipped text for an *OK* button nobody can reach. So the height comes from a scrollbar. **The
+  buttons and the save line stay outside it**, because *OK* is not something to hunt for and `P-13`'s
+  reason is no use scrolled off the bottom. If scrolling here reads as a product choice rather than a
+  consequence, this clause is the thing to reject — the defect it answers is not in dispute.
 
 ### Keyboard path
 
