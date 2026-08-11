@@ -31,6 +31,7 @@ from PySide6.QtCore import (
     QAbstractListModel,
     QEvent,
     QModelIndex,
+    QPoint,
     QPointF,
     QRect,
     QRunnable,
@@ -2371,6 +2372,52 @@ def test_audio_and_video_placeholders_can_be_told_apart(qapp: QApplication) -> N
     assert audio != video, "audio and video draw the same placeholder"
 
 
+def test_the_video_mark_is_a_film_frame_and_not_a_play_triangle(qapp: QApplication) -> None:
+    """**`T217-R1`.** The task scopes *a note for audio, a film frame for video*.
+
+    The first build drew `▶`. It satisfied every other assertion here — it is a mark, it differs
+    from the note, it reads against the block — and it says *this will play* rather than *this is
+    video*, which is a different statement. So the shape needs pinning, not just the presence of
+    ink.
+
+    Two properties a filled triangle fails and a frame passes:
+
+    - **It is hollow.** A frame is an outline; its middle is the tile's own colour. A triangle's
+      middle is ink.
+    - **It is left-right symmetric.** A triangle points somewhere; a frame does not.
+    """
+    hue = 200
+    image = _placeholder_image(MediaKind.VIDEO, hue=hue)
+    block = QColor(image.pixel(PADDING + 2, PADDING + 2))
+
+    width, height = THUMBNAIL_SIZE
+    left, top = PADDING, PADDING
+
+    def inked(x: int, y: int) -> bool:
+        return QColor(image.pixel(x, y)).value() > block.value() + 6
+
+    centre_x, centre_y = left + width // 2, top + height // 2
+    assert not inked(centre_x, centre_y), (
+        "the middle of the mark is inked, so it is a solid shape rather than a frame"
+    )
+
+    # Symmetry is measured about the **mark's own** bounding box, not the tile's centre: the
+    # frame is centred with `QRect.moveCenter`, which lands a pixel off centre for an even-width
+    # tile, and that is a placement detail rather than the shape being asymmetric.
+    rows = range(top + 2, top + height - 2)
+    columns = range(left + 2, left + width - 2)
+    per_column = [sum(1 for y in rows if inked(x, y)) for x in columns]
+    inked_columns = [i for i, count in enumerate(per_column) if count]
+    assert inked_columns, "nothing is drawn in the tile at all"
+
+    span = per_column[inked_columns[0] : inked_columns[-1] + 1]
+    difference = sum(abs(a - b) for a, b in zip(span, reversed(span), strict=True))
+    assert difference == 0, (
+        f"the mark is not left-right symmetric (mirror difference {difference}), so it points "
+        f"somewhere — a frame does not. Column profile: {span}"
+    )
+
+
 def test_the_glyph_does_not_cover_the_hue_that_tells_rows_apart(qapp: QApplication) -> None:
     """*Over* the block, not instead of it — the hue is a working signal already.
 
@@ -2479,3 +2526,145 @@ def test_real_artwork_replaces_the_glyph_entirely(
     plain_model = RowsModel([a_row(0, thumbnail=url, extra={HUE_ROLE: 120})])
     without = _tile_ink(paint_rows(plain_model, delegate, 0))
     assert with_glyph_role == without, "the placeholder glyph is still drawn over real artwork"
+
+
+def _press(
+    delegate: RowDelegate, model: RowsModel, option: QStyleOptionViewItem, at: QPoint
+) -> None:
+    delegate.editorEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(at),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+        model,
+        option,
+        model.index(0, 0),
+    )
+
+
+def _release(
+    delegate: RowDelegate, model: RowsModel, option: QStyleOptionViewItem, at: QPoint
+) -> None:
+    delegate.editorEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(at),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+        model,
+        option,
+        model.index(0, 0),
+    )
+
+
+def test_the_zone_is_drawn_sunken_while_the_button_is_held(qapp: QApplication) -> None:
+    """**`T224-R1`.** The pressed face was set and cleared inside one synchronous block.
+
+    The first build assigned `_pressed_zone` on *release*, asked for an asynchronous
+    `viewport().update()`, and cleared the value on the next line — so no paint could ever observe
+    it and the sunken look was unreachable. The three original tests covered only the border and
+    the hover, so nothing failed.
+
+    This drives a real `MouseButtonPress` and paints **while the button is still down**, which is
+    the only moment the state is supposed to exist.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    zone = delegate._menu_zone_of(option, index)
+
+    at_rest = _zone_pixels(paint_rows(model, delegate, 0), zone)
+    _press(delegate, model, option, zone.center())
+    held = _zone_pixels(paint_rows(model, delegate, 0), zone)
+
+    assert held != at_rest, (
+        "the zone paints identically with the button held down, so the pressed state is not "
+        "reachable by any paint"
+    )
+
+
+def test_the_pressed_face_differs_from_the_hover_face(qapp: QApplication) -> None:
+    """Three looks, not two — otherwise the press is a hover with extra steps.
+
+    A press over the zone is also a pointer over the zone, so an implementation that only tracked
+    hover would satisfy the test above while having no pressed state at all.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    zone = delegate._menu_zone_of(option, index)
+
+    delegate.editorEvent(
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(zone.center()),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+        model,
+        option,
+        index,
+    )
+    hovered = _zone_pixels(paint_rows(model, delegate, 0), zone)
+
+    _press(delegate, model, option, zone.center())
+    held = _zone_pixels(paint_rows(model, delegate, 0), zone)
+
+    assert held != hovered, "pressed and hovered paint the same, so the press is not its own state"
+
+
+def test_the_zone_comes_back_up_before_the_menu_opens(qapp: QApplication) -> None:
+    """A button left sunken behind a menu is worse than one that never moved.
+
+    The menu takes the pointer, so the face has to be released *before* the signal is emitted —
+    asserted inside the handler, because that is the moment the menu would be appearing.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    zone = delegate._menu_zone_of(option, index)
+
+    at_rest = _zone_pixels(paint_rows(model, delegate, 0), zone)
+    seen: list[int | None] = []
+    delegate.menu_requested.connect(lambda _where: seen.append(delegate._pressed_zone))
+
+    _press(delegate, model, option, zone.center())
+    _release(delegate, model, option, zone.center())
+
+    assert seen == [None], f"the zone was still {seen} when the menu opened"
+    assert _zone_pixels(paint_rows(model, delegate, 0), zone) == at_rest, (
+        "the zone is still drawn pressed after the menu opened"
+    )
+
+
+def test_a_press_that_wanders_off_the_zone_does_not_leave_it_stuck_down(
+    qapp: QApplication,
+) -> None:
+    """The other way a button gets stuck: pressed inside, released somewhere else.
+
+    Qt delivers the release to the widget that took the press, so without an unconditional clear
+    the face would stay drawn sunken until the next mouse move happened to cross the zone.
+    """
+    delegate = RowDelegate()
+    model = _row_with_a_control()
+    option = _selectable_row_option()
+    index = model.index(0, 0)
+    zone = delegate._menu_zone_of(option, index)
+
+    at_rest = _zone_pixels(paint_rows(model, delegate, 0), zone)
+    _press(delegate, model, option, zone.center())
+    _release(delegate, model, option, QPoint(zone.left() - 60, zone.center().y()))
+
+    assert delegate._pressed_zone is None
+    assert _zone_pixels(paint_rows(model, delegate, 0), zone) == at_rest, (
+        "the zone is still drawn pressed after a release that landed elsewhere"
+    )

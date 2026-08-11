@@ -344,25 +344,91 @@ def layer_of(rel_path: str) -> str:
     return head if head in MAY_IMPORT else ROOT
 
 
+PACKAGE: Final = "tracks_and_trails"
+
+
+def module_name_of(rel_path: str) -> str:
+    """The dotted module name of a file, so an import can be resolved back to it."""
+    parts = rel_path.removesuffix(".py").split("/")
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join([PACKAGE, *parts])
+
+
+def containing_package_of(rel_path: str) -> list[str]:
+    """The package a relative import in `rel_path` counts levels *from*."""
+    parts = rel_path.removesuffix(".py").split("/")
+    if parts[-1] != "__init__":
+        parts = parts[:-1]
+    return [PACKAGE, *parts]
+
+
+def internal_imports(source: str, rel_path: str) -> set[str]:
+    """Every module **inside this package** that `rel_path` imports, as dotted names.
+
+    **Relative imports are resolved rather than skipped, and that was `T214-R1`.** The first
+    version tested `node.level == 0` and returned early otherwise — reasoning, in a comment it
+    inherited from `imported_roots`, that *"relative imports are intra-package by definition and
+    cannot name a third-party root"*. True for the Qt and yt-dlp rules; the exact opposite of what
+    the internal-direction rule needs, since intra-package is precisely what it governs.
+    `from ..ui import theme` inside `core/` therefore passed, and every synthetic mutation case
+    used absolute imports, so nothing noticed.
+
+    `from X import y` contributes **both** `X` and `X.y`, because `from tracks_and_trails.ui import
+    theme` names a module in its second half, not an attribute.
+    """
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source, filename=rel_path)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == PACKAGE or alias.name.startswith(f"{PACKAGE}."):
+                    found.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                base = containing_package_of(rel_path)
+                # level 1 is the containing package, each further level one above it.
+                trimmed = base[: len(base) - (node.level - 1)] if node.level > 1 else base
+                if not trimmed:
+                    continue
+                prefix = ".".join(trimmed)
+                module = f"{prefix}.{node.module}" if node.module else prefix
+            elif node.module and (node.module == PACKAGE or node.module.startswith(f"{PACKAGE}.")):
+                module = node.module
+            else:
+                continue
+            found.add(module)
+            found.update(f"{module}.{alias.name}" for alias in node.names)
+    # **Only the names that are really modules.** `from tracks_and_trails import __version__`
+    # contributes `tracks_and_trails.__version__`, which is a constant in the package's `__init__`
+    # rather than a file — and counting it made `ui/main_window.py` look like it imported from the
+    # package root. Resolving against the tree is the filter, and it is the same resolution the
+    # Qt-freedom walk needs, so there is one of it.
+    return {module for module in found if file_for_module(module) is not None}
+
+
+def file_for_module(dotted: str) -> Path | None:
+    """The file a dotted module name names, or `None` if it names something that is not a module."""
+    if dotted != PACKAGE and not dotted.startswith(f"{PACKAGE}."):
+        return None
+    parts = dotted.split(".")[1:]
+    for candidate in (SRC.joinpath(*parts).with_suffix(".py"), SRC.joinpath(*parts, "__init__.py")):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def internal_targets(source: str, filename: str) -> set[str]:
-    """The layers this file imports from, by name.
+    """The layers `filename` imports from, by name.
 
     `imported_roots` cannot answer this: every intra-project import has the same top-level root,
     `tracks_and_trails`, so the four rules above see `from tracks_and_trails.ui import theme` and
-    `from tracks_and_trails.core import models` as the same import. This reads the second
-    component instead.
+    `from tracks_and_trails.core import models` as the same import.
     """
     targets: set[str] = set()
-    for node in ast.walk(ast.parse(source, filename=filename)):
-        modules: list[str] = []
-        if isinstance(node, ast.Import):
-            modules = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            modules = [node.module]
-        for module in modules:
-            parts = module.split(".")
-            if parts[0] == "tracks_and_trails" and len(parts) > 1:
-                targets.add(parts[1] if parts[1] in MAY_IMPORT else ROOT)
+    for module in internal_imports(source, filename):
+        parts = module.split(".")
+        if len(parts) > 1:
+            targets.add(parts[1] if parts[1] in MAY_IMPORT else ROOT)
     return targets
 
 
@@ -392,6 +458,51 @@ def test_no_module_imports_upward_or_sideways(path: Path) -> None:
     assert not violations, "\n".join(violations)
 
 
+#: The ways Python spells an import, so the guard is proved against the **grammar** and not only
+#: against the spelling I happened to use (`T214-R1`).
+#:
+#: Every synthetic case in the first version was absolute, and `internal_targets` tested
+#: `node.level == 0` — so relative imports bypassed the whole rule and no mutation could see it.
+#: A guard proved against one grammar is a guard against one grammar.
+#: One real module per layer, because the guard resolves imports against the tree. A synthetic
+#: `tracks_and_trails.ui.something` names no file and is correctly ignored, so the probes have to
+#: name modules that exist — `test_the_probe_modules_exist` keeps that honest if one is renamed.
+A_MODULE_IN: Final = {
+    "core": "models",
+    "persistence": "db",
+    "downloader": "manager",
+    "ui": "theme",
+}
+
+IMPORT_GRAMMARS: Final = {
+    "absolute-from-package": lambda target: f"from {PACKAGE}.{target} import {A_MODULE_IN[target]}",
+    "absolute-from-module": lambda target: (
+        f"from {PACKAGE}.{target}.{A_MODULE_IN[target]} import something"
+    ),
+    "absolute-import": lambda target: f"import {PACKAGE}.{target}.{A_MODULE_IN[target]}",
+    "relative-from-package": lambda target: f"from ..{target} import {A_MODULE_IN[target]}",
+    "relative-from-module": lambda target: (
+        f"from ..{target}.{A_MODULE_IN[target]} import something"
+    ),
+}
+
+
+def test_the_probe_modules_exist() -> None:
+    """A probe naming a module that was renamed away proves nothing, silently.
+
+    Every case below asserts that a forbidden import *is caught*. Resolution against the tree is
+    what makes the guard ignore names that are not modules — so a stale name here would turn every
+    one of those cases into an assertion about nothing.
+    """
+    missing = sorted(
+        f"{layer}/{name}.py"
+        for layer, name in A_MODULE_IN.items()
+        if not (SRC / layer / f"{name}.py").is_file()
+    )
+    assert not missing, f"the direction probes name modules that no longer exist: {missing}"
+
+
+@pytest.mark.parametrize("grammar", sorted(IMPORT_GRAMMARS))
 @pytest.mark.parametrize(
     ("importer", "target"),
     [
@@ -402,7 +513,9 @@ def test_no_module_imports_upward_or_sideways(path: Path) -> None:
     ],
     ids=lambda value: value,
 )
-def test_each_forbidden_direction_is_actually_caught(importer: str, target: str) -> None:
+def test_each_forbidden_direction_is_actually_caught(
+    importer: str, target: str, grammar: str
+) -> None:
     """**The rule is mutation-checked, not only the tree** — this task's first criterion.
 
     A tree that happens to be clean says nothing about whether the guard works; the guard passing
@@ -410,10 +523,10 @@ def test_each_forbidden_direction_is_actually_caught(importer: str, target: str)
     by `MAY_IMPORT`, and each gets its own case, so narrowing the rule to catch six of them fails
     here rather than silently reducing what is defended.
     """
-    source = f"from tracks_and_trails.{target} import something"
+    source = IMPORT_GRAMMARS[grammar](target)
     assert upward_imports(f"{importer}/probe.py", source), (
-        f"{importer}/ importing {target}/ is forbidden by ARCHITECTURE.md §4 and the guard does "
-        "not catch it"
+        f"{importer}/ importing {target}/ is forbidden by ARCHITECTURE.md §4, and the guard does "
+        f"not catch it written as {grammar}: {source!r}"
     )
 
 
@@ -455,6 +568,42 @@ QT_FREE_UI: Final = frozenset(
 )
 
 
+def qt_reached_from(rel_path: str) -> list[str]:
+    """Every module reachable from `rel_path` by internal imports that pulls Qt in.
+
+    **Direct roots are not the property these seven modules promise, and that was `T214-R2`.** The
+    first version asked only whether `PySide6` appeared in the file itself — so a listed module
+    could `from tracks_and_trails.ui import theme`, become Qt-dependent the moment it is imported,
+    and still pass, because its one direct root was `tracks_and_trails`. What the list claims is
+    that these modules stay importable headless; that is a statement about everything the import
+    *reaches*, not about which spellings appear in one file.
+
+    Returns the chain, so a failure names the route rather than only the destination.
+    """
+    start = SRC / rel_path
+    seen = {rel_path}
+    # Each entry is the path and how it was reached, so the message can show the whole route.
+    queue: list[tuple[Path, list[str]]] = [(start, [rel_path])]
+    reached: list[str] = []
+    while queue:
+        path, route = queue.pop()
+        source = path.read_text(encoding="utf-8")
+        here = rel(path)
+        if imported_roots(source, here) & QT:
+            reached.append(" -> ".join(route))
+            continue
+        for module in sorted(internal_imports(source, here)):
+            target = file_for_module(module)
+            if target is None:
+                continue
+            target_rel = rel(target)
+            if target_rel in seen:
+                continue
+            seen.add(target_rel)
+            queue.append((target, [*route, target_rel]))
+    return reached
+
+
 @pytest.mark.parametrize("rel_path", sorted(QT_FREE_UI))
 def test_the_deliberately_qt_free_ui_modules_stay_qt_free(rel_path: str) -> None:
     """Seven modules promise this in their own docstrings; now something checks.
@@ -464,12 +613,12 @@ def test_the_deliberately_qt_free_ui_modules_stay_qt_free(rel_path: str) -> None
     ever rules on it (this task's out-of-scope note). A `PySide6` import in any of them takes that
     away silently.
     """
-    source = (SRC / rel_path).read_text(encoding="utf-8")
-    roots = imported_roots(source, rel_path)
-    assert not roots & QT, (
-        f"{rel_path} imports {sorted(roots & QT)}. Its docstring says it is Qt-free, and seven "
-        "modules in ui/ depend on that being true rather than aspirational. If the import is "
-        "genuinely needed, remove the module from QT_FREE_UI and say why — do not weaken this."
+    routes = qt_reached_from(rel_path)
+    assert not routes, (
+        f"{rel_path} reaches Qt:\n  " + "\n  ".join(routes) + "\nIts docstring says it is "
+        "Qt-free, and being Qt-free is what makes it importable and unit-testable headless — a "
+        "property an indirect import destroys just as completely as a direct one. If the import "
+        "is genuinely needed, remove the module from QT_FREE_UI and say why; do not weaken this."
     )
 
 
@@ -491,11 +640,29 @@ def test_the_qt_free_list_names_only_modules_that_exist() -> None:
         for path in source_files()
         if rel(path).startswith("ui/")
         and path.name != "__init__.py"
-        and not imported_roots(path.read_text(encoding="utf-8"), rel(path)) & QT
+        and not qt_reached_from(rel(path))
     }
     dropped = actually_free - QT_FREE_UI
     assert not dropped, (
         f"these ui/ modules import no Qt but are not held to it: {sorted(dropped)}. Either add "
         "them to QT_FREE_UI, or — if being Qt-free is incidental rather than intended — say so in "
         "the module's own docstring and add it to the exceptions here."
+    )
+
+
+def test_the_qt_walk_follows_more_than_one_hop() -> None:
+    """**`T214-R2`.** Qt-freedom is about what an import *reaches*, not what a file spells.
+
+    A listed module could `from tracks_and_trails.ui import theme`, become Qt-dependent the instant
+    it is imported, and pass a direct-roots check — its only direct root being `tracks_and_trails`.
+
+    Proved on a real chain rather than a synthetic one: `__main__.py` names no Qt itself and
+    reaches it through `app.py`. If the walk ever stops following internal imports, this route
+    collapses to nothing and this fails.
+    """
+    routes = qt_reached_from("__main__.py")
+
+    assert routes, "__main__.py reaches Qt through app.py, and the walk did not find it"
+    assert any("->" in route for route in routes), (
+        f"every route found is a single file, so the walk is not following imports: {routes}"
     )

@@ -330,23 +330,12 @@ ROW_PRESET_NAME: Final = "rowPresetChoice"
 #: Space around the row's contents.
 PADDING: Final = 6
 
-#: What the derived tile is marked with when there is no artwork yet (`T-217`).
+#: The mark an audio row's derived tile carries when there is no artwork yet (`T-217`).
 #:
-#: A music note for audio and a film frame for video — the two `MediaKind` values, and `None` for a
-#: row whose kind is not one thing, which draws the plain block as before.
-#:
-#: **Text glyphs rather than drawn paths or bundled icons.** Both are in the fonts every target
-#: platform ships (`ARCHITECTURE.md` §8's stance on the `⋮`), they scale with the tile without a
-#: second asset per size, and `T-021`'s icon work is explicitly not this task.
-#: **Keyed by `str`, and the annotation is load-bearing.** `MediaKind` is a `StrEnum`, and a value
-#: handed back through `QAbstractItemModel.data` arrives as a plain `str` — PySide flattens it
-#: crossing the `QVariant` boundary. The first draft of this guarded with
-#: `isinstance(kind, MediaKind)` and drew nothing at all, on every row, silently. A `StrEnum` member
-#: hashes and compares as its own value, so `MediaKind.AUDIO` and `"audio"` are the same key here.
-PLACEHOLDER_GLYPHS: Final[dict[str, str]] = {
-    MediaKind.AUDIO: "\u266b",
-    MediaKind.VIDEO: "\u25b6",
-}
+#: **A text glyph, because this one is reliably present.** `QFontMetrics.inFont` says yes for
+#: `U+266B` on the base font, which is the same footing the `⋮` stands on (`ARCHITECTURE.md` §8) —
+#: it scales with the tile and needs no asset per size.
+AUDIO_GLYPH: Final = "\u266b"
 
 #: How opaque the glyph is over its hue block, out of 255 (`T-217`).
 #:
@@ -1540,25 +1529,67 @@ class RowDelegate(QStyledItemDelegate):
         second announcement of *audio* would be noise on every row of a queue.
         """
         kind = index.data(MEDIA_KIND_ROLE)
-        # `str`, not `MediaKind` — see `PLACEHOLDER_GLYPHS` for why, and for what narrowing on the
+        # `str`, not `MediaKind` — see `MEDIA_KIND_ROLE` for why, and for what narrowing on the
         # enum cost. Anything else, including `None`, leaves the plain block.
-        glyph = PLACEHOLDER_GLYPHS.get(kind) if isinstance(kind, str) else None
-        if glyph is None:
+        if not isinstance(kind, str) or kind not in (MediaKind.AUDIO, MediaKind.VIDEO):
             return
 
         painter.save()
         try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             ink = QColor.fromHsv(hue, 40, 235)
             ink.setAlpha(PLACEHOLDER_GLYPH_ALPHA)
-            painter.setPen(ink)
-            font = QFont(painter.font())
-            # Sized off the tile rather than off the row's text, because the child rows draw the
-            # same glyph in a smaller slot (`CHILD_THUMBNAIL`) and a fixed point size would fill it.
-            font.setPixelSize(max(8, int(tile.height() * PLACEHOLDER_GLYPH_SCALE)))
-            painter.setFont(font)
-            painter.drawText(tile, Qt.AlignmentFlag.AlignCenter, glyph)
+            side = max(8, int(tile.height() * PLACEHOLDER_GLYPH_SCALE))
+            if kind == MediaKind.AUDIO:
+                painter.setPen(ink)
+                font = QFont(painter.font())
+                # Sized off the tile rather than off the row's text, because a child row draws the
+                # same mark in a smaller slot (`CHILD_THUMBNAIL`) and a fixed point size would
+                # fill it.
+                font.setPixelSize(side)
+                painter.setFont(font)
+                painter.drawText(tile, Qt.AlignmentFlag.AlignCenter, AUDIO_GLYPH)
+            else:
+                self._draw_film_frame(painter, tile, ink, side)
         finally:
             painter.restore()
+
+    @staticmethod
+    def _draw_film_frame(painter: QPainter, tile: QRect, ink: QColor, side: int) -> None:
+        """A frame of film — an outline with sprocket holes down both edges (`T217-R1`).
+
+        **Drawn rather than typed, and the reason is a platform assumption I would otherwise be
+        making.** The task asks for a film frame; the first build shipped `▶`, a play triangle,
+        which says *this will play* rather than *this is video* and was not what was scoped. The
+        obvious replacement is `U+1F39E FILM FRAMES` — and `QFontMetrics.inFont` says it is **not**
+        in the base font. It happens to render here through a fallback, on this machine, in this
+        container. That is precisely the class of assumption `T146-R3`, `T199-R4` and `T-197` were
+        each corrected for, and a tile that draws a blank box on a machine without the fallback is
+        worse than the colour block it replaced.
+
+        Two rows of holes and a frame is what reads as film at this size; a strip with more than
+        two would turn to mush by the time a child row's slot has it.
+        """
+        height = side
+        width = int(height * 1.15)
+        frame = QRect(0, 0, width, height)
+        frame.moveCenter(tile.center())
+
+        painter.setPen(ink)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(frame)
+
+        hole = max(1, height // 7)
+        gap = max(1, (frame.height() - 3 * hole) // 4)
+        painter.setBrush(ink)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for row in range(3):
+            top = frame.top() + gap + row * (hole + gap)
+            painter.drawRect(QRect(frame.left() + hole, top, hole, hole))
+            # `right()` is the last pixel *inside* the rect, so mirroring the left
+            # hole's offset needs the `+ 1`. Without it the two columns sit a pixel
+            # apart and the frame is not symmetric — which the shape regression sees.
+            painter.drawRect(QRect(frame.right() - 2 * hole + 1, top, hole, hole))
 
     def _paint_text(
         self,
@@ -1847,10 +1878,34 @@ class RowDelegate(QStyledItemDelegate):
             # `MouseMove` only while a button is held, so the highlight would appear on drag.
             self._hover_at(option, index, event.position().toPoint())
             return False
-        if event.type() != QEvent.Type.MouseButtonRelease:
-            return False
         if event.button() != Qt.MouseButton.LeftButton:
             return False
+        if event.type() == QEvent.Type.MouseButtonPress:
+            # **The press is where the sunken face begins, and it has to be handled here or it is
+            # not a state at all** (`T224-R1`). The first build set `_pressed_zone` on *release*,
+            # asked for an asynchronous `viewport().update()`, and cleared it on the next line —
+            # so the value was gone before any paint could run, and the sunken look was
+            # unreachable. A probe confirmed `_pressed_zone` was `None` both after release and
+            # inside the menu signal's own handler.
+            #
+            # Consumed (`True`) only for the zone, so a press anywhere else keeps the view's
+            # ordinary selection behaviour. The zone is a button; a button that selects the row
+            # underneath it on the way down is two controls in one place.
+            if self._editable(index) and self._menu_zone_of(option, index).contains(
+                event.position().toPoint()
+            ):
+                self._pressed_zone = index.row()
+                self._repaint()
+                return True
+            return False
+        if event.type() != QEvent.Type.MouseButtonRelease:
+            return False
+        # **Released, wherever it landed** (`T224-R1`). A press inside the zone and a release
+        # outside it must not leave the face drawn sunken — that is the "button stuck down" the
+        # first build's comment was worried about, arrived at from the other direction.
+        if self._pressed_zone is not None:
+            self._pressed_zone = None
+            self._repaint()
         body, text_area = self._verb_area(option, index)
         where = event.position().toPoint()
 
@@ -1885,13 +1940,9 @@ class RowDelegate(QStyledItemDelegate):
         # the control's rect — carved from it, in `_menu_zone_of` — so the order here is what
         # makes the two targets two, and the geometry regression asserts both sides of the line.
         if self._menu_zone_of(option, index).contains(where):
-            # **Sunken while the press is held, and cleared before the menu opens** (`T-224`).
-            # The menu is modal-ish and takes the pointer, so a zone left sunken would stay drawn
-            # pressed behind it until the next mouse move — a button stuck down is worse than one
-            # that never moved.
-            self._pressed_zone = index.row()
-            self._repaint()
-            self._pressed_zone = None
+            # The sunken face was cleared above, before the menu opens — the menu takes the
+            # pointer, so a zone left drawn pressed would stay that way behind it until the next
+            # mouse move (`T-224`).
             self.menu_requested.emit(where)
             return True
         if not self._control_of(option, index).contains(where):

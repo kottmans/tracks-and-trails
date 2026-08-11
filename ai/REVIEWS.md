@@ -14635,3 +14635,82 @@ boundary. R6 is approved at this boundary.
 
 The Reviewer changed `ai/REVIEWS.md` and T-197's current task status/findings only. No reviewed
 source, test, decision, status snapshot, commit, or remote state was changed.
+
+## 2026-08-11 — unattended-run covering review
+
+**Covering boundary:** `55a267a..dcd72f3`
+
+**New implementation reviewed:** `59d3c87..007e10e`
+
+**Record-only head:** `dcd72f3`
+
+### Verdicts
+
+| Task | Boundary | Verdict |
+|---|---|---|
+| **T-197, sixth R1 correction** | `4fc1c97..59d3c87` | **Blocked** — the Critical leak is resolved, but a new blocking Medium over-redaction finding remains after the ordinary review budget; the maintainer must choose its disposition before another pass. |
+| **T-224** | `59d3c87..73c6679` | **Changes requested** |
+| **T-225 filing** | `73c6679..1ebe52f` | **Verified as a real open defect; correctly remains Proposed** |
+| **T-222** | `1ebe52f..9d5e26e` | **Changes requested** |
+| **T-217** | `9d5e26e..deca19c` | **Changes requested** |
+| **T-216** | `deca19c..d3f7b50` | **Approved** |
+| **T-214** | `d3f7b50..007e10e` | **Changes requested** |
+
+### Findings
+
+| ID | Severity | Blocks approval | Status | Finding |
+|---|---|---:|---|---|
+| **T197-R1** | **Critical** | **Yes — REQ-026, NFR-007, DAT-003, and the Phase 4 exit gate** | **Resolved at `59d3c87`** | Cookie-file diagnostics and registration now use the absolute spelling. A short relative value such as `密` is therefore emitted and registered as an absolute path, which clears the generic substring floor and disappears through the real formatter. The correction closes the reviewed leak without globally registering the bare token. |
+| **T197-R7** | **Medium** | **Yes — T-197's legitimate-content-survives acceptance direction** | **Open; maintainer disposition required** | `remember_a_secret()` now bypasses its floor for *any* value containing `/` or `\\`. The syntactically valid stored value `[cookies] file = "/"` is correctly refused as a directory, but registers `/` itself before that report; every slash in an ordinary line is then replaced, so paths, URLs, and prose such as `audio/video` become unreadable. This is not needed for R1: the settings boundary already registers an absolute spelling long enough to clear the floor, which is why removing the separator branch does not fail the cookie-path evidence. The direct `a/b` unit test proves the generic mechanism the task does not need, not a valid cookie-path outcome. Because only a blocking Medium remains after more than the ordinary review budget, `AGENTS.md` §10 requires the maintainer to authorize another focused pass, accept the risk, change scope, or carry it into a named follow-up. |
+| **T224-R1** | **Medium** | **Yes — explicit pressed-state scope** | **Open** | The pressed face is unreachable. `editorEvent()` ignores `MouseButtonPress`; on `MouseButtonRelease` it sets `_pressed_zone`, requests only an asynchronous viewport update, and clears the value before emitting the menu signal. A direct probe observed `press -> False/None`, and both after release and inside the synchronous signal handler `_pressed_zone` was `None`. No paint can observe the supposed pressed state, and the three new tests cover only border and hover. |
+| **T222-R1** | **Medium** | **Yes — existing open-and-resize behavior must otherwise stay unchanged** | **Open** | The scroller fixes clipping at constrained sizes, but it also changes the default shown dialog from the submission's measured `302x680` to `302x501`. At that opening size the four-group widget still wants about 760 px, the viewport is 408 px high, and its scrollbar maximum is 352: substantially more content is hidden even where the former opening fit. The tests resize every constrained case explicitly and do not pin the ordinary opening geometry. |
+| **T222-R2** | **Medium** | **Yes — product choice is recorded as derivation** | **Open** | The new UX_SPEC clause is **[P]**, not **[D]**. Measurement establishes that the old layout clips and that two floor-raising candidates are worse; it does not mechanically choose which region scrolls or which controls remain fixed. Those are presentation choices. Demote the clause; this ruling does not require unbuilding the scroll-area correction. |
+| **T217-R1** | **Medium** | **Yes — the task's stated visual scope** | **Open** | The task specifies a note for audio and a **film frame** for video, but `PLACEHOLDER_GLYPHS` draws `▶`, a play/action triangle. The entry's post-build summary silently changes the requested mark while its Scope still says film frame. The two shapes communicate different things; retain the stated film-frame design or obtain an explicit product ruling before changing it. |
+| **T214-R1** | **Medium** | **Yes — the new architecture gate does not gate every standard import form** | **Open** | `internal_targets()` examines `ImportFrom` only when `node.level == 0`. Standard relative imports therefore bypass every internal-direction case: `upward_imports("core/probe.py", "from ..ui import theme")` and the sibling equivalent from persistence to downloader both return `[]`. All synthetic mutation cases use absolute imports, so the required deliberate forbidden-direction proof misses this grammar. |
+| **T214-R2** | **Medium** | **Yes — the seven named modules are not held Qt-free** | **Open** | The named-module guard checks only direct roots for `PySide6`/`shiboken6`. A listed module can import `tracks_and_trails.ui.theme` (or another Qt-owning UI module), become Qt-dependent at import time, and still pass because its only direct root is `tracks_and_trails`. The task promises these modules stay headless and unit-testable, which requires guarding the reachable internal import, not only spelling `PySide6` in the same file. |
+
+### Requested rulings
+
+- **T-222:** the scroll-region clause is **[P]**. Demote its marker; retain the implementation subject to T222-R1.
+- **T-216:** keep a fully completed playlist group's segmented summary. A group header has no `JobStatus.COMPLETED`, and its segments encode member outcomes rather than restating an ordinary row's finished progress. The explicit failed/cancelled-group preservation and “one row whose work is over” boundary support the submitted interpretation.
+
+### T-216 disposition
+
+The ordinary completed row now has one visible state statement, no full-width progress bar, and a
+detail line containing uploader, duration, and final size. Its accessible progress text remains,
+running-row behavior is unchanged, and group outcome segments remain information-bearing. No open
+finding remains for T-216.
+
+### Independent verification
+
+| Check | Real result |
+|---|---|
+| Worktree before reviewer record edits | **clean; `main` ahead of `origin/main` by 16 commits** |
+| `git diff --check 55a267a..dcd72f3` | **pass** |
+| `ruff check .` | **pass** |
+| `ruff format --check .` | **pass, 166 files** |
+| `mypy src` | **pass, 52 files** |
+| bare `mypy` | **pass, 128 files** |
+| `mypy --platform win32` | **pass, 128 files** |
+| `py_compile` on the changed production modules in this run | **pass** |
+| Full `tests/unit` | **1861 passed, 15 skipped in 16.57 s** with loopback permitted. The sandboxed attempt had one `socket()` permission failure and 1860 passes. |
+| Full `tests/integration` | **391 passed in 293.28 s** with loopback/process permissions. The sandboxed attempt's 48 failures were all local-socket permission errors; 343 tests passed there. The successful run includes all eight frozen-probe integration cases. |
+| T-197/T-214 focused unit selection | **510 passed in 10.84 s** |
+| T-222/T-217/T-216/T-224 focused UI selection | **213 passed, 2 deprecation warnings in 32.77 s** |
+| T-225 reversed file-order reproduction | **2 failed, 211 passed in 139.63 s**, exactly the two tests filed in T-225 |
+| T-197 separator probe | a stored `/` made `read /home/alice/file and audio/video` redact every slash |
+| T-224 event probe | press was unhandled; release and the menu signal both observed no pressed state |
+| T-222 shown-dialog probe | `302x501`; scroll viewport `266x408`; scrollbar maximum `352` |
+| T-214 parser probes | relative upward/sideways imports returned no violations; a listed UI module's import of `ui.theme` did not intersect the direct Qt roots |
+
+The actual PyInstaller frozen-artifact build was not run; this boundary is not a release build and
+does not require it. The integration frozen-probe suite is green.
+
+### Push disposition
+
+**Do not push the 16-commit stack yet.** T-216 is individually approved and T-225 is correctly
+filed, but T-224, T-222, T-217, and T-214 have correctable blocking findings. T-197 additionally
+needs the maintainer's §10 disposition before another Medium-only correction pass may begin.
+
+The Reviewer changed `ai/REVIEWS.md` and current task disposition records only. No reviewed source,
+test, specification, commit, or remote state was changed.

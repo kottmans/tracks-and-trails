@@ -2,13 +2,15 @@
 
 **Purpose:** What each surface shows, what it offers, and how a keyboard reaches it.
 **Authority:** Canonical for the **built** surfaces below, which it absorbs from the `UX-` entries at
-`DOC-002`'s trigger. **Nothing is marked *Proposed* any more** — `UX-007` ruled all twenty-five on
-2026-08-07, and §10 is now the record of what was asked and answered rather than a list of what is
-open.
+`DOC-002`'s trigger. `UX-007` ruled all twenty-five of the original `[P]` clauses on 2026-08-07.
+**One is open again** — `P-26`, §6's scroll region, demoted from `[D]` by review on 2026-08-11 and
+listed in §10.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active — created 2026-08-06 for `T-105`, at the start of Phase 3
-**Last updated:** 2026-08-09 — `UX-010` amended §2.2's group chip: a queue group's chip is
+**Last updated:** 2026-08-11 — `T222-R2` demoted §6's scroll-region clause from `[D]` to `[P]`
+and opened it as `P-26`; the clause is built ahead of ratification on the reviewer's instruction.
+Before it, 2026-08-09: `UX-010` amended §2.2's group chip: a queue group's chip is
 done-of-total progress, and the History count rule stays History's. Before it, 2026-08-07: `UX-007`
 ruled every open `[P]` clause; `UX-006` (the queue is stopped until started) and `ARC-010` (option
 coverage) amended §2, §2.1 and §6
@@ -46,7 +48,7 @@ recorded as maintainer rulings that no maintainer had made.
 |---|---|
 | **[T]** *Transcribed* | Restated from an accepted decision or a requirement. This file may be wrong about it; the entry rules. |
 | **[D]** *Derived* | Follows from an accepted rule applied to a new surface, taking no product choice of its own. The derivation is shown so it can be disputed. |
-| **[P]** *Proposed* | **A product choice nobody has made.** Written so it can be ruled on, not so it can be built. Every one is collected in §10, and **no task may build a [P] clause until it is ratified.** **There are none left** — `UX-007` ratified all twenty-five on 2026-08-07 — and the mark stays defined because the next surface written before it is built will need it. |
+| **[P]** *Proposed* | **A product choice nobody has made.** Written so it can be ruled on, not so it can be built. Every one is collected in §10, and **no task may build a [P] clause until it is ratified.** **One is open**: `T-222`'s scroll-region clause in §6, demoted from `[D]` by review on 2026-08-11 and awaiting a maintainer ruling. `UX-007` ratified all twenty-five of the original set on 2026-08-07. |
 
 ---
 
@@ -368,23 +370,27 @@ it: five checkboxes and one free list are different screens.
   (`T076-R1`).
 - **[T]** *(ruled `P-4`, `UX-007`)* A one-off options change **does not** silently become a preset. The editor offers
   *"Save as preset…"* explicitly.
-- **[D]** *(`T-222`, 2026-08-11)* **The four option groups scroll; the save line and the buttons do
-  not.** The rule this is derived from is `UX-005` §5's — a reason is shown *beside* the control it
-  explains — plus the plain requirement that text a user is meant to read is readable. What was
-  measured is that neither held: the dialog's four groups want ~760px, it opened at **302 by 680, its
-  own reported minimum**, and Qt made the difference up by squeezing whatever could be squeezed.
-  A word-wrapping `QLabel` reports a one-line minimum, so the explanations went first — the Container
-  note lost the second of its two lines with no scrollbar, no ellipsis and nothing else to say a
-  sentence had been cut in half.
+- **[P]** *(`T-222`, 2026-08-11; **ruled `[P]` by review at `T222-R2`**, demoted from `[D]`)*
+  **The four option groups scroll; the save line and the buttons do not.**
 
-  **The derivation, so it can be disputed:** the height has to come from somewhere, and the three
-  places it can come from are the text (what was happening), the window's floor, or a scrollbar.
-  Raising the floor was measured and is worse — reporting the labels' true `heightForWidth` puts the
-  dialog's minimum at 901px, taller than its own natural 853 and than a 768px display, which trades
-  clipped text for an *OK* button nobody can reach. So the height comes from a scrollbar. **The
-  buttons and the save line stay outside it**, because *OK* is not something to hunt for and `P-13`'s
-  reason is no use scrolled off the bottom. If scrolling here reads as a product choice rather than a
-  consequence, this clause is the thing to reject — the defect it answers is not in dispute.
+  **This was written as `[D]` and the reviewer ruled it a product choice, correctly.** My argument
+  was that the height has to come from somewhere and the other two places were measured worse, so
+  scrolling followed. What measurement actually establishes is that the old layout clips and that
+  two floor-raising candidates are worse — it does not choose *which region* scrolls or *which
+  controls stay fixed*. Those are presentation decisions, and `T145-R1` and `T144-R1` are on record
+  as what it costs when I record one as a derivation.
+
+  **The defect it answers is not in dispute.** The dialog opened at 302 by 680 — its own reported
+  minimum — with the Container group's explanation cut to one of its two wrapped lines: no
+  scrollbar, no ellipsis, nothing to say a sentence had lost half of itself. A word-wrapping
+  `QLabel` reports a one-line minimum, so Qt is free to take height out of explanatory text to make
+  a short window's arithmetic work.
+
+  **Built ahead of ratification, on the reviewer's explicit instruction** — *"Demote the clause;
+  this ruling does not require unbuilding the scroll-area correction."* §1's bar says no task may
+  build a `[P]` clause until it is ratified, and this one is in the tree, so the exception is
+  recorded here rather than left to be discovered. What is open for the maintainer is whether
+  scrolling is the right shape, not whether the clipping needs fixing. See §10.
 
 ### Keyboard path
 
@@ -603,10 +609,20 @@ not be.
 
 ## 10 · The questions, and how each was ruled
 
-**Nothing in this file is unruled as of 2026-08-07.** Every `[P]` clause was ratified by `UX-007`,
-question by question, and §1's bar — *no task may build a `[P]` clause until it is ratified* — no
-longer stops anything. The section is kept as the record of what was asked and answered rather than
-deleted, because "what did we decide about the format table" is a question somebody will ask.
+**Every `[P]` clause in the original set was ratified by `UX-007` on 2026-08-07**, question by
+question. The section is kept as the record of what was asked and answered rather than deleted,
+because "what did we decide about the format table" is a question somebody will ask.
+
+### Open — one question, added 2026-08-11
+
+| # | Question | Status |
+|---|---|---|
+| **P-26** | **The options dialog is too tall for a short window. Which region gives up the height?** The four option groups scroll and the save line and buttons stay fixed — or some other division does. | **Open.** Raised by `T-222`, which recorded it as `[D]`; the reviewer ruled it `[P]` at `T222-R2`. **Already built**, on the reviewer's instruction that the demotion does not require unbuilding the correction — so this is a ruling on a shape that is in the tree, and a different answer is a change rather than a gap. The measured facts are in §6. |
+
+**§1's bar is suspended for `P-26` and for nothing else.** *No task may build a `[P]` clause until
+it is ratified* held for all twenty-five of the original set; this one was built before it was
+marked, which is the defect `T222-R2` names, and the reviewer chose to keep the correction rather
+than revert it while the shape is decided.
 
 **Three were ruled *against* what this file proposed**, and they are the rows worth reading:
 

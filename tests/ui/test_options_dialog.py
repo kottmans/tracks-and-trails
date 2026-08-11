@@ -854,3 +854,54 @@ def test_the_buttons_stay_out_of_the_scroll_area(
     result = dialog.findChild(QLabel, SAVE_RESULT_NAME)
     assert result is not None and result not in inside, "the save line scrolls with the options"
     assert buttons.geometry().bottom() <= dialog.height(), "the buttons are below the window"
+
+
+def test_the_dialog_opens_showing_everything_the_screen_has_room_for(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**`T222-R1`.** The scroller fixed the clipping and shrank the opening size.
+
+    `show()` sizes a window with `adjustSize()`, which clamps to **two thirds of the screen** — so
+    the dialog's old 680px opening was not a considered default, it was `minimumSizeHint`
+    overriding that clamp, and the minimum was itself a claim the layout could not honour. Dropping
+    the minimum to 161 removed the accidental floor and left the clamp showing: the reviewer
+    measured a shown dialog at **302 by 501**, hiding more of the options at the default size than
+    the original defect did.
+
+    The property wanted is not a number. It is that the dialog opens at the height its content
+    asks for, unless the display cannot supply it — which is why this is expressed against the
+    screen rather than against a constant, and why the previous round's tests, which resized every
+    case explicitly, could not have caught the regression.
+    """
+    dialog = _shown(editor())
+
+    room = dialog.screen().availableGeometry()
+    wanted = dialog.sizeHint().height()
+    assert dialog.height() >= min(wanted, room.height()), (
+        f"the dialog opened {dialog.height()}px tall; its content asks for {wanted}px and the "
+        f"screen has room for {room.height()}px"
+    )
+
+
+def test_nothing_scrolls_when_the_screen_can_show_it_all(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """A scrollbar on a display with room to spare is the scroller taking over the layout.
+
+    The scroll area is here for short windows. On one tall enough for the whole content, the
+    dialog should look exactly as it did before this task — no bar, nothing out of reach. Skipped
+    rather than failed where the display genuinely cannot fit it, because that is the other case
+    and it has its own test.
+    """
+    dialog = _shown(editor())
+    scroller = dialog.findChild(QScrollArea)
+    assert scroller is not None
+    scrolled = scroller.widget()
+    assert scrolled is not None
+
+    if dialog.screen().availableGeometry().height() < dialog.sizeHint().height():
+        pytest.skip("this display is shorter than the dialog's content; that is the other test")
+
+    assert scroller.verticalScrollBar().maximum() == 0, (
+        "the dialog scrolls at its opening size on a screen with room for all of it"
+    )

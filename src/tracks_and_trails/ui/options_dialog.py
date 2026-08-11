@@ -62,7 +62,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import replace
 from typing import Final, Protocol
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -176,6 +176,32 @@ class PresetSink(Protocol):
     def __call__(self, preset: Preset) -> str | None: ...
 
 
+class _OptionGroups(QScrollArea):
+    """The scroll area the option groups sit in, reporting what it would *like* to be.
+
+    **`QScrollArea` asks for almost nothing** — its `sizeHint` ignores the widget inside it, so a
+    dialog built around one opens at whatever the rest of the layout needs and scrolls from the
+    first moment. That is `T222-R1`: adding the scroller fixed the clipping and moved the dialog's
+    opening size from 302 by 680 down to **302 by 501**, hiding more of the options at the default
+    size than the defect it replaced did.
+
+    So `sizeHint` reports the content's own preferred height. `minimumSizeHint` is deliberately
+    **not** touched — it is what lets the dialog still shrink to 161px, which is the whole reason
+    the scroller is here. The two answer different questions: *what would you like* and *what can
+    you survive*, and the first build only had an answer for the second.
+    """
+
+    # Qt's override name, hence the camelCase.
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        content = self.widget()
+        if content is None:
+            return hint
+        frame = 2 * self.frameWidth()
+        preferred = content.sizeHint()
+        return QSize(max(hint.width(), preferred.width() + frame), preferred.height() + frame)
+
+
 class OptionsDialog(QDialog):
     """Set `REQ-010`'s seven options for one download, or for a preset.
 
@@ -214,6 +240,30 @@ class OptionsDialog(QDialog):
         self._build()
         self._show_preset(preset)
         self._update_enabled()
+        self._open_at_a_size_that_shows_the_options()
+
+    def _open_at_a_size_that_shows_the_options(self) -> None:
+        """Open showing everything the screen has room for (`T222-R1`).
+
+        **`show()` does not use `sizeHint()` for a window; it uses `adjustSize()`, which clamps to
+        two thirds of the screen.** That clamp is why this dialog opened at 302 by 680 before the
+        scroller and 302 by 501 after it — the old number was not a considered default either, it
+        was `minimumSizeHint` overriding the clamp, and the minimum was itself a claim the layout
+        could not honour. Lowering the minimum to 161 removed the accidental floor and left the
+        clamp showing.
+
+        So the size is asked for explicitly: the content's full preferred height, bounded by the
+        screen actually available. **Neither half is a fixed size** — the first is `sizeHint()`,
+        which grows if the text does, and the second is the display's. On a screen with room the
+        dialog opens with every group visible and no scrollbar; on a short one it opens as tall as
+        will fit and scrolls, which is the case the scroller exists for.
+        """
+        wanted = self.sizeHint()
+        # `QWidget.screen()` is non-optional in Qt's own typing — a widget always belongs to one,
+        # falling back to the primary screen before it is shown — so there is no `None` branch to
+        # write here; `mypy` reports one as unreachable if it is.
+        room = self.screen().availableGeometry()
+        self.resize(min(wanted.width(), room.width()), min(wanted.height(), room.height()))
 
     # --- construction -------------------------------------------------------------------
 
@@ -249,7 +299,7 @@ class OptionsDialog(QDialog):
         stack.addWidget(self._build_embedding())
         stack.addWidget(self._build_subtitles())
 
-        scroller = QScrollArea(self)
+        scroller = _OptionGroups(self)
         scroller.setWidgetResizable(True)
         # No frame: the groups already draw their own borders, and a second one around them reads
         # as a panel this dialog does not otherwise have.
