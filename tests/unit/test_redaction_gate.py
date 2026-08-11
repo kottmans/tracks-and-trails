@@ -526,8 +526,15 @@ def test_a_short_absolute_cookie_path_does_not_survive_the_formatter() -> None:
         target.write_text(f'[cookies]\nfile = "{short}"\n', encoding="utf-8")
         read = app_settings.load(target)
         assert read.problem is not None, f"{short!r} produced no reason to redact"
-        assert short in read.problem.reason, (
-            f"{short!r} is not named in its own refusal, so this asserts nothing"
+
+        # **The spelling the refusal actually prints, which is not the one in the file.** `load`
+        # reports the absolute form, and on Windows `Path("/a").absolute()` is `C:\a` — so a test
+        # asserting the literal `/a` disappears is asserting about a string that was never there.
+        # The Windows job caught exactly that, and only because the guard below refused to let the
+        # assertion pass over nothing.
+        reported = str(Path(short).expanduser().absolute())
+        assert reported in read.problem.reason, (
+            f"{reported!r} is not named in its own refusal, so this asserts nothing"
         )
 
         logging_module.forget_the_secrets()
@@ -535,9 +542,8 @@ def test_a_short_absolute_cookie_path_does_not_survive_the_formatter() -> None:
             for literal in read.secrets:
                 logging_module.remember_a_path(literal)
             written = emitted(f"settings: {read.problem.reason}")
-            assert short not in written, (
-                f"the {len(short.encode())}-byte absolute cookie path {short!r} survived the real "
-                f"formatter:\n{written}"
+            assert reported not in written, (
+                f"the absolute cookie path {reported!r} survived the real formatter:\n{written}"
             )
         finally:
             logging_module.forget_the_secrets()
