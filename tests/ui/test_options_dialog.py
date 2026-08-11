@@ -877,9 +877,39 @@ def test_the_dialog_opens_showing_everything_the_screen_has_room_for(
 
     room = dialog.screen().availableGeometry()
     wanted = dialog.sizeHint().height()
-    assert dialog.height() >= min(wanted, room.height()), (
+    assert dialog.height() >= min(wanted, room.height() - _decoration(dialog)), (
         f"the dialog opened {dialog.height()}px tall; its content asks for {wanted}px and the "
         f"screen has room for {room.height()}px"
+    )
+
+
+def _decoration(dialog: OptionsDialog) -> int:
+    """How much taller the window is than its client area — title bar, borders."""
+    return max(dialog.frameGeometry().height() - dialog.height(), 0)
+
+
+def test_the_whole_window_fits_the_screen_frame_and_all(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """**`T222-R1`, the half the first correction got wrong** — and its own test with it.
+
+    `resize()` sets the **client** area. A window is its client area *plus its frame*, so bounding
+    the client to the available height puts the frame past the bottom of the screen: measured at
+    **800 client / 804 frame against 800 available**, and a real title bar costs far more than four
+    pixels. What goes past the bottom is the button box — which is the exact harm the scroll area
+    was introduced to prevent, arrived at from the other direction.
+
+    **The previous version of this compared `dialog.height()` with the screen height**, so it
+    encoded the same client/frame mistake it was supposed to be guarding. This compares
+    `frameGeometry`, which is the thing that has to fit.
+    """
+    dialog = _shown(editor())
+
+    room = dialog.screen().availableGeometry()
+    frame = dialog.frameGeometry().height()
+    assert frame <= room.height(), (
+        f"the window is {frame}px tall including its frame, against {room.height()}px of available "
+        f"screen — {frame - room.height()}px of it, the buttons included, is off the bottom"
     )
 
 

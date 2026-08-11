@@ -3,13 +3,13 @@
 **Purpose:** What each surface shows, what it offers, and how a keyboard reaches it.
 **Authority:** Canonical for the **built** surfaces below, which it absorbs from the `UX-` entries at
 `DOC-002`'s trigger. `UX-007` ruled all twenty-five of the original `[P]` clauses on 2026-08-07.
-**One is open again** — `P-26`, §6's scroll region, demoted from `[D]` by review on 2026-08-11 and
+**One is open again** — `P-29`, §6's scroll region, demoted from `[D]` by review on 2026-08-11 and
 listed in §10.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active — created 2026-08-06 for `T-105`, at the start of Phase 3
 **Last updated:** 2026-08-11 — `T222-R2` demoted §6's scroll-region clause from `[D]` to `[P]`
-and opened it as `P-26`; the clause is built ahead of ratification on the reviewer's instruction.
+and opened it as `P-29`; the clause is built ahead of ratification on the reviewer's instruction.
 Before it, 2026-08-09: `UX-010` amended §2.2's group chip: a queue group's chip is
 done-of-total progress, and the History count rule stays History's. Before it, 2026-08-07: `UX-007`
 ruled every open `[P]` clause; `UX-006` (the queue is stopped until started) and `ARC-010` (option
@@ -48,7 +48,7 @@ recorded as maintainer rulings that no maintainer had made.
 |---|---|
 | **[T]** *Transcribed* | Restated from an accepted decision or a requirement. This file may be wrong about it; the entry rules. |
 | **[D]** *Derived* | Follows from an accepted rule applied to a new surface, taking no product choice of its own. The derivation is shown so it can be disputed. |
-| **[P]** *Proposed* | **A product choice nobody has made.** Written so it can be ruled on, not so it can be built. Every one is collected in §10, and **no task may build a [P] clause until it is ratified.** **One is open**: `T-222`'s scroll-region clause in §6, demoted from `[D]` by review on 2026-08-11 and awaiting a maintainer ruling. `UX-007` ratified all twenty-five of the original set on 2026-08-07. |
+| **[P]** *Proposed* | **A product choice nobody has made.** Written so it can be ruled on, not so it can be built. Every one is collected in §10, and **no task may build a [P] clause until it is ratified.** **One is open** as **`P-29`**: `T-222`'s scroll-region clause in §6, demoted from `[D]` by review on 2026-08-11 and awaiting a maintainer ruling. `UX-007` ratified all twenty-five of the original set on 2026-08-07. |
 
 ---
 
@@ -615,11 +615,16 @@ because "what did we decide about the format table" is a question somebody will 
 
 ### Open — one question, added 2026-08-11
 
+**Numbered `P-29` because `P-1`–`P-28` are all taken.** The first draft of this clause reused
+`P-26`, which `UX-007` had already ratified as the duplicate-warning question in §9.3 — two
+different questions and two different dispositions under one stable identifier, in the file whose
+whole job is being the stable reference (`T222-R2`).
+
 | # | Question | Status |
 |---|---|---|
-| **P-26** | **The options dialog is too tall for a short window. Which region gives up the height?** The four option groups scroll and the save line and buttons stay fixed — or some other division does. | **Open.** Raised by `T-222`, which recorded it as `[D]`; the reviewer ruled it `[P]` at `T222-R2`. **Already built**, on the reviewer's instruction that the demotion does not require unbuilding the correction — so this is a ruling on a shape that is in the tree, and a different answer is a change rather than a gap. The measured facts are in §6. |
+| **P-29** | **The options dialog is too tall for a short window. Which region gives up the height?** The four option groups scroll and the save line and buttons stay fixed — or some other division does. | **Open.** Raised by `T-222`, which recorded it as `[D]`; the reviewer ruled it `[P]` at `T222-R2`. **Already built**, on the reviewer's instruction that the demotion does not require unbuilding the correction — so this is a ruling on a shape that is in the tree, and a different answer is a change rather than a gap. The measured facts are in §6. |
 
-**§1's bar is suspended for `P-26` and for nothing else.** *No task may build a `[P]` clause until
+**§1's bar is suspended for `P-29` and for nothing else.** *No task may build a `[P]` clause until
 it is ratified* held for all twenty-five of the original set; this one was built before it was
 marked, which is the defect `T222-R2` names, and the reviewer chose to keep the correction rather
 than revert it while the shape is decided.

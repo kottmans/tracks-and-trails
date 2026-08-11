@@ -63,6 +63,7 @@ from dataclasses import replace
 from typing import Final, Protocol
 
 from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -254,9 +255,14 @@ class OptionsDialog(QDialog):
 
         So the size is asked for explicitly: the content's full preferred height, bounded by the
         screen actually available. **Neither half is a fixed size** — the first is `sizeHint()`,
-        which grows if the text does, and the second is the display's. On a screen with room the
-        dialog opens with every group visible and no scrollbar; on a short one it opens as tall as
-        will fit and scrolls, which is the case the scroller exists for.
+        which grows if the text does, and the second is the display's.
+
+        **The bound is applied again in `showEvent`, and that is not belt and braces.** `resize()`
+        sets the **client** area; a window is its client area *plus its frame*. Bounding the client
+        to the available height therefore puts the frame past the bottom of the screen — measured
+        at 800 client / 804 frame against 800 of available height, and a real title bar costs far
+        more than four pixels. The frame's size is not known until the window has been shown, so
+        the correction cannot happen here.
         """
         wanted = self.sizeHint()
         # `QWidget.screen()` is non-optional in Qt's own typing — a widget always belongs to one,
@@ -264,6 +270,24 @@ class OptionsDialog(QDialog):
         # write here; `mypy` reports one as unreachable if it is.
         room = self.screen().availableGeometry()
         self.resize(min(wanted.width(), room.width()), min(wanted.height(), room.height()))
+
+    # Qt's override name, hence the camelCase.
+    def showEvent(self, event: QShowEvent) -> None:
+        """Bound the **frame** to the screen, now that the frame has a size (`T222-R1`).
+
+        **Every show, not only the first.** A first draft guarded this with a once-only flag, on
+        the reasoning that a user who resizes the dialog and reopens it should get the size they
+        left. That does not survive being written down: this only ever *shrinks*, and the sole case
+        where the flag changes anything is a window left taller than the screen — which is the
+        defect, not a preference to preserve. A mutation removing the flag changed no test, which is
+        what prompted looking at it; the flag went rather than a test being written to defend it.
+        """
+        super().showEvent(event)
+        room = self.screen().availableGeometry()
+        decoration = max(self.frameGeometry().height() - self.height(), 0)
+        allowed = room.height() - decoration
+        if allowed > 0 and self.height() > allowed:
+            self.resize(self.width(), allowed)
 
     # --- construction -------------------------------------------------------------------
 

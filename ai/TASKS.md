@@ -2411,6 +2411,31 @@ shape `T145-R1` and `T144-R1` are recorded as costing. Demoted, opened as `P-26`
 §10, and §1's *"no task may build a `[P]` clause until it is ratified"* is recorded as suspended for
 this one clause on the reviewer's explicit instruction — because it **is** built, and leaving that
 undocumented would be the second defect.
+**Second correction pass 2026-08-11, on the maintainer's §10 authorisation** — both findings were
+Medium and the ordinary budget was spent, so this pass was theirs to grant.
+
+**`T222-R1` — the bound was on the wrong rectangle.** `resize()` sets the **client** area, and a
+window is its client area *plus its frame*. Bounding the client to the available height therefore
+puts the frame past the bottom of the screen: 800 client / 804 frame against 800 of available
+height on the review machine, and a real title bar costs far more than four pixels. What goes off
+the bottom is the button box — the exact harm the scroll area was added to prevent, reached from
+the other direction. **The regression compared `dialog.height()` with the screen height, so it
+encoded the same mistake it was guarding.** It compares `frameGeometry` now. The bound moved to
+`showEvent`, because a frame has no size until the window has been shown.
+
+**A once-only flag was written and then deleted.** It guarded the re-clamp on the reasoning that a
+user who resizes the dialog and reopens it should keep the size they left. That does not survive
+being written down: the clamp only ever shrinks, so the one case the flag changes is a window left
+*taller than the screen* — which is the defect, not a preference. **A mutation removing it changed
+no test**, which is what prompted looking; the flag went rather than a test being written to
+defend it.
+
+**`T222-R2` — the identifier collided.** The clause was opened as `P-26`, which `UX-007` had
+already ratified as the duplicate-warning question in §9.3 — two questions and two dispositions
+under one stable ID, in the file whose whole job is being the stable reference. It is **`P-29`**
+now, chosen by enumerating `P-1`…`P-28` rather than by assuming the next number, and every
+reference this task added moved with it. `UX-007`'s `P-26` is untouched.
+
 **Owner:** Implementer
 **Priority:** Medium — explanatory text a user is meant to read is unreadable at the size the
 dialog actually opened at, on the maintainer's real display
