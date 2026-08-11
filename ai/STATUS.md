@@ -5,21 +5,25 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — **`T-197` is built and In Review at `c5cbb94`**: the cookie source
-and the redaction gate the phase exits on. **`T-199` is Approved at `245676f` and Complete**, after four
-findings and two passes on `T199-R3`; the `DAT-003` amendment is corrected twice over its own
-contradictions and now names its forbidden sinks in a table. **`T-197` is unblocked** on the ruled
-shape. **`T-215` and `T-146` are Complete and pushed, and CI is green at `bc7445f`** — all five jobs, the Windows desktop one included, which is what closes `T146-R4` and
-`T146-R3` on Windows's own evidence rather than on my reasoning. **`T-199` is built and In Review**
-at `4fee30f`, held locally. **`T-197` is blocked on a `DAT-003` ruling** that must happen before
-cookie-file support lands. `T-146` is **Phase 4's first plan deliverable**: the `Settings` menu
-and the screen behind it, holding three of `REQ-023`'s eight settings.
-**Last verified against repository:** 2026-08-10 **for the eight 2026-08-10 blocks** — task
-states were checked against `ai/TASKS.md` after the placement gate ran, and the CI verdicts were
-read from the completed runs rather than assumed. The three 2026-08-09 blocks were verified that
-day; the Phase 3 block beneath
-them 2026-08-06. The Phase 1 and Phase 2 narrative from `## Next` onward was last swept
-2026-08-04 and is kept for its reasoning, not as a statement of what is true now.
+**Last updated:** 2026-08-11 — **an unattended overnight run: six commits, none pushed.** The
+`T197-R1` correction landed at `59d3c87`, and then **five tasks were built end to end and held**:
+`T-224` (`73c6679`), `T-222` (`9d5e26e`), `T-217` (`deca19c`), `T-216` (`d3f7b50`) and `T-214`
+(`007e10e`). `T-225` was filed (`1ebe52f`) for a pre-existing cross-file test-ordering defect found
+while building `T-224`. **All six are In Review and unpushed**, per the standing instruction; a
+handoff for each is ready untracked in `ai/handoffs/`.
+
+**Two of the five did not turn out to be what their entries said.** `T-222`'s clipped note was not
+a bug in one group's height — the dialog was opening at its own reported minimum with the text
+already cut, and two fixes that raised the floor measured worse than scrolling. `T-214`'s entry
+recorded the tree as clean in every internal direction; it was not, and writing the guard found
+three modules importing upward from `downloader/` for one string constant that existed in three
+copies.
+**Last verified against repository:** 2026-08-11 for the 2026-08-11 block — every commit hash was
+read from `git log`, the task states from `ai/TASKS.md` after the placement gate ran, and the test
+figures from the runs quoted. The 2026-08-10 blocks were verified that day; the three 2026-08-09
+blocks that day; the Phase 3 block beneath them 2026-08-06. The Phase 1 and Phase 2 narrative from
+`## Next` onward was last swept 2026-08-04 and is kept for its reasoning, not as a statement of
+what is true now.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -37,6 +41,60 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-11: an overnight run — five tasks built, six commits held
+
+**Nothing is pushed.** The head is `007e10e`; the last pushed commit is `55a267a`.
+
+**`T197-R1`, round six (`59d3c87`).** The secret floor is measured in **bytes**, so a three-character
+CJK path registers, and a value containing a path separator registers regardless of length — the
+floor only ever protected prose from short *bare words*. The residual is stated rather than implied.
+
+**`T-224` — the `⋮` zone is drawn as a button (`73c6679`).** Bordered face, hover fill, pressed
+fill, all from palette roles. Two things were measured rather than assumed: `PE_PanelButtonTool`
+paints **pixel-identically in every state** under a view item's palette, so a hover delegated to the
+style would have been invisible; and `State_MouseOver` is set for the whole *row*, so the zone
+resolves its own hover through `_menu_zone_of`. Three mutations fail.
+
+**`T-222` — the options dialog scrolls (`9d5e26e`).** The reproduction moved the task. The four
+groups want ~760px and **the dialog opened at 302 by 680 — its own reported minimum — with the note
+already cut**, so the size in the screenshot was not one anyone had dragged it down to. A wrapping
+`QLabel` reports a one-line minimum, so Qt squeezes explanations silently. Two floor-raising fixes
+were built and measured worse; one still cut the note at narrow widths, the other pushed the
+minimum to 901px and put *OK* off a 768px screen. Scrolling drops the floor to 161px. Eight of the
+nine new cases fail on the unfixed tree.
+
+**`T-217` — placeholder thumbnails are marked (`deca19c`).** A music note or a play triangle over
+the hue block, from a new `MEDIA_KIND_ROLE`; a mixed playlist group answers `None` and keeps the
+plain block. **`MediaKind` is a `StrEnum` and comes back from `data()` as a plain `str`** — PySide
+flattens it across `QVariant` — so the first build's `isinstance` guard drew nothing at all on every
+row while passing every gate. Five mutations fail; two of them found weak tests first.
+
+**`T-216` — the finished row (`d3f7b50`).** `Done` chip, `100%` and `— Completed` under a bar was
+one state said three times. The line now reads uploader · duration · final size, and the bar is
+gone. **The bar's fix was a deletion**: `is_terminal` already covered `COMPLETED`, so the special
+case added for it was dead — found because a mutation replacing it changed nothing and passed. A
+group's segmented bar deliberately stays; it says *which* entry failed. Five mutations fail. All 90
+pre-existing queue tests passed unchanged, before and after, which is why three redundant statements
+survived this long.
+
+**`T-214` — the layering guard, and what it found (`007e10e`).** Internal direction is enforced now,
+and the seven Qt-free `ui/` modules are held by name. The entry's premise was wrong: `core/logging`,
+`core/paths` and `persistence/db` all imported **upward** from `downloader/` for `APP_SLUG`, which
+also existed as two further hand-copied literals. It moved to `core/paths.py`. **My first guard was
+mutation-transparent** — `MAY_IMPORT` was the only statement of the rule, so widening it deleted its
+own test cases and passed, which is `T005-R1`'s defect in the file written to prevent it. §4's
+diagram is transcribed a second time as layer heights. Six mutations fail.
+
+**`T-225` filed (`1ebe52f`).** Running `tests/ui/test_row_delegate.py` before
+`tests/ui/test_add_dialog.py` fails two add-dialog tests. **Verified pre-existing** by stashing
+`T-224`'s diff. CI does not see it only because pytest collects alphabetically, which is not a
+property anything asserts.
+
+**Figures at the head:** `ruff check`, `ruff format`, `mypy` (128 files), `mypy --platform win32
+src` all clean; `tests/unit` and `tests/ui` together **2653 passed, 17 skipped**. The integration
+and frozen suites were not run — they were not run before this session either, and nothing here
+touches the worker, the adapter or the freeze.
 
 ## 2026-08-10 (T-197): the cookie source, and the gate the phase exits on
 
