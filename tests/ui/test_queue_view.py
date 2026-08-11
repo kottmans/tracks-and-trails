@@ -3272,3 +3272,170 @@ def test_a_reset_with_an_open_editor_keeps_a_selection_that_existed(
         "the reset dropped a selection the user had made; reopening an editor must not clear one "
         "any more than it may invent one"
     )
+
+
+# --- T-216: the finished row — the chip owns the state, the bar retires -----------------------
+
+
+def _finished(tmp_path: Path, **overrides: Any) -> Job:
+    """A completed job with a real measured size, which is what a finished row has to show."""
+    overrides.setdefault("uploader", "Trail Sounds")
+    overrides.setdefault("duration_seconds", 201)
+    overrides.setdefault("bytes_total", 5 * 1024 * 1024)
+    overrides.setdefault("bytes_done", 3)
+    return make_job("done-1", tmp_path, status=JobStatus.COMPLETED, **overrides)
+
+
+def test_a_finished_row_says_what_it_is_rather_than_how_far_along_it_got(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """**`T-216`.** The completed row stated its state three times over.
+
+    `Done` in the chip, `100%` on the detail line, and `— Completed` after it — beside a bar that
+    was the heaviest element on the row precisely because nothing was happening. What identifies a
+    finished download is its uploader, its length and how big the file turned out; the rest is
+    progress, and progress is over.
+    """
+    queue.add(_finished(tmp_path))
+    view = views(jobs=queue, manager=managers())
+    index = view.model.index(0, JOB_COLUMN)
+
+    detail = view.model.data(index, DETAIL_ROLE)
+
+    assert detail == "Trail Sounds · 3:21 · 5.0 MB", f"the finished row reads {detail!r}"
+    assert "100%" not in detail
+    assert " of " not in detail, "the detail line still reads the progress counter's 'x of x'"
+
+
+def test_a_finished_row_does_not_repeat_its_chip_on_the_line_below_it(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """`Done` and `Completed` are one fact, and the delegate's rule could not see that.
+
+    It drops the trailing state only when it is **identical** to the chip (`T130-R3`), which is
+    right for a running row — chip `62%`, state `Downloading video`, two different facts. `Done`
+    and `Completed` are not identical strings and are not two facts, so this is answered in the
+    model, which is where the row's words live.
+    """
+    queue.add(_finished(tmp_path))
+    view = views(jobs=queue, manager=managers())
+    index = view.model.index(0, JOB_COLUMN)
+
+    assert view.model.data(index, STATE_ROLE) == ""
+    assert view.model.data(index, STATE_CHIP_ROLE) == CHIP_TEXT[JobStatus.COMPLETED], (
+        "the state has been taken off the line below without the chip still carrying it, so the "
+        "row no longer says in words that it finished"
+    )
+
+
+def test_a_finished_row_draws_no_progress_bar(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """*A finished bar is furniture* — `T-145` §2's argument for History's group bar, one row over.
+
+    `None` rather than `0.0`: this model's existing distinction is that `None` means there is
+    nothing honest to draw, and the delegate draws no bar for it. A full bar would still be *drawn*
+    if this returned `1.0`.
+    """
+    queue.add(_finished(tmp_path))
+    view = views(jobs=queue, manager=managers())
+
+    assert view.model.data(view.model.index(0, JOB_COLUMN), PROGRESS_ROLE) is None
+
+
+def test_a_running_row_keeps_its_percentage_and_its_bar(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """The control, and the one that stops the rule above from being unconditional.
+
+    A change that dropped the bar and the percentage for every row would satisfy every assertion
+    about the finished row and destroy the thing this table is for.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.RUNNING,
+            bytes_done=512,
+            bytes_total=1024,
+            uploader="Trail Sounds",
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+    index = view.model.index(0, JOB_COLUMN)
+
+    assert view.model.data(index, PROGRESS_ROLE) == pytest.approx(0.5)
+    assert "50%" in view.model.data(index, DETAIL_ROLE)
+
+
+def test_a_screen_reader_is_still_told_the_row_finished(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """**Nothing is taken from the accessibility tree** — this is the drawn line only.
+
+    `T017-R2`'s split is one download described differently to two people, and it would be easy to
+    commit here by quietening a row for a sighted reader and calling it done. The columns keep
+    `REQ-014`'s six values, `SIZE_COLUMN` still reads *done of total*, and the progress cell still
+    speaks `describe_bar`'s finished phrasing.
+    """
+    queue.add(_finished(tmp_path))
+    view = views(jobs=queue, manager=managers())
+
+    assert view.model.text_at("done-1", PROGRESS_COLUMN) == "100%"
+    assert view.model.text_at("done-1", SIZE_COLUMN) == "5.0 MB of 5.0 MB"
+    assert view.model.accessible_text_at("done-1", PROGRESS_COLUMN) == describe_bar(
+        5 * 1024 * 1024, 5 * 1024 * 1024, finished=True
+    )
+    spoken = view.model.accessible_text_at("done-1", STATUS_COLUMN)
+    assert spoken is not None and "Completed" in spoken
+
+
+def test_a_group_that_failed_keeps_the_bar_that_says_which_part_did(
+    qapp: QApplication,
+    tmp_path: Path,
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """The exception this task states, asserted rather than assumed.
+
+    A group's segmented bar is not a progress indicator — it encodes *which* entry failed, which is
+    information a chip reading `3 of 5` cannot carry. Retiring it with the finished row's bar would
+    have been the easy over-reach.
+    """
+    for index, status in enumerate((JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)):
+        queue.add(
+            make_job(
+                f"entry-{index}",
+                tmp_path,
+                status=status,
+                playlist_id="pl-1",
+                playlist_index=index,
+                playlist_title="Trail Sounds",
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+
+    segments = view.model.data(view.model.index(0, 0), SEGMENTS_ROLE)
+    assert segments, "the group's segmented bar has gone with the finished row's"
+    assert SegmentState.FAILED in segments, "the bar no longer says which entry failed"

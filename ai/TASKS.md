@@ -494,6 +494,74 @@ audio, a film frame for video.
 - The application icon's small sizes — `T-021`
 - Fetching or generating artwork — the glyph marks absence; it does not fill it
 
+### T-216 — The finished row: the chip owns the state, the bar retires
+
+**Status:** **In Review — built 2026-08-11**, unattended on maintainer instruction.
+
+**What was built.** A `COMPLETED` row's second line reads *uploader · duration · final size*, its
+chip still reads `Done`, and it draws no bar. The three statements of one state are down to one.
+
+**Three separate places said it, and each needed a different answer.**
+
+- **`100%` and `5.0 MB of 5.0 MB`** came from the detail line assembling `REQ-014`'s progress
+  columns. A finished row takes the final size alone. **The columns themselves are untouched** —
+  `SIZE_COLUMN` still reads *done of total*, the progress cell still speaks `describe_bar`'s
+  `finished` phrasing, and the drawn line is the only thing that changed. Quietening a row for a
+  sighted reader while leaving the screen-reader text alone would be `T017-R2`'s split, and there
+  is a regression for it.
+- **`— Completed`** came from the delegate, which drops that trailing state only when it is
+  *identical* to the chip (`T130-R3`). That rule is right for a running row — chip `62%`, state
+  `Downloading video`, two different facts — and cannot see that `Done` and `Completed` are one
+  fact spelled twice. Answered in the model, because the row's words are the model's.
+- **The bar** was `_fraction` returning exactly `1.0` for a completed job.
+
+**The bar's fix turned out to be a deletion, and a mutation is what found that.** The first build
+added a `COMPLETED` branch returning `None` — which is **dead code**, because `is_terminal` already
+includes `COMPLETED` and the branch immediately below returns `None` for it. The mutation that
+replaced the special case with `is_terminal` changed nothing and passed, which is the only reason
+it was noticed. The finished row now falls under the rule the other two endings always had.
+
+**What was deliberately not touched: a group's segmented bar.** It is not a progress indicator — it
+encodes *which* entry failed, which a chip reading `3 of 5` cannot carry. There is a regression
+asserting a part-failed group keeps it, because retiring it alongside the finished row's bar was
+the available over-reach.
+
+**Five mutations, all failing**: the state repeated under the chip; the bar back at `1.0`; the
+percentage and *x of x* back on the line; the finished detail branch removed; the group's segments
+retired.
+
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing
+**Relevant context:** `docs/UX_SPEC.md` §2.2, `UX-005` §3 (row anatomy), `T-165` (solid-done beside
+solid-failed is the confusable pair), `T-143` (the detail line), `T-202` (words, never colour
+alone), `ui/queue_view.py` (`_detail`, `_chip`), `ui/row_delegate.py` (bar painting)
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `tests/ui/`
+**Risk:** Low
+
+#### Scope
+
+The completed row states its state three times — `Done` chip, `100%`, "— Completed" — under a
+full-width near-black bar that is the heaviest element on the row precisely when nothing is
+happening. A finished bar is furniture: the argument History used to drop its group bar
+(`T-145`'s decision, §2), applied to the one row whose work is over.
+
+#### Acceptance criteria
+
+- A `COMPLETED` row's detail line reads uploader · duration · final size — **no "100%", no
+  "X of X", no "Completed"** beside a chip that already says `Done`
+- **No progress bar is drawn on a `COMPLETED` row.** Failed and cancelled groups keep their
+  segmented bar — it still encodes *which part* failed, which is information
+- The state is still said in words (the chip), so `T-202` gains no new colour-only signal and
+  loses none
+- Tests assert the detail text and the absent bar; existing row tests are updated, not duplicated
+
+#### Out of scope
+
+- Failed-row presentation — `T-201`, including the byte-line suppression added to it 2026-08-09
+- The chip's own text — `UX-010` just ruled the group chip; the ordinary chips are settled
+
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -2246,41 +2314,6 @@ them can grow a `PySide6` import tomorrow and nothing fails.
 - **Moving the seven modules into `core/`.** A real option the audit raised, but that is a
   structure change for the Planner to rule on and `ARCHITECTURE.md` §4 to record — not something
   a test change smuggles in
-
-### T-216 — The finished row: the chip owns the state, the bar retires
-
-**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** nothing
-**Relevant context:** `docs/UX_SPEC.md` §2.2, `UX-005` §3 (row anatomy), `T-165` (solid-done beside
-solid-failed is the confusable pair), `T-143` (the detail line), `T-202` (words, never colour
-alone), `ui/queue_view.py` (`_detail`, `_chip`), `ui/row_delegate.py` (bar painting)
-**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `tests/ui/`
-**Risk:** Low
-
-#### Scope
-
-The completed row states its state three times — `Done` chip, `100%`, "— Completed" — under a
-full-width near-black bar that is the heaviest element on the row precisely when nothing is
-happening. A finished bar is furniture: the argument History used to drop its group bar
-(`T-145`'s decision, §2), applied to the one row whose work is over.
-
-#### Acceptance criteria
-
-- A `COMPLETED` row's detail line reads uploader · duration · final size — **no "100%", no
-  "X of X", no "Completed"** beside a chip that already says `Done`
-- **No progress bar is drawn on a `COMPLETED` row.** Failed and cancelled groups keep their
-  segmented bar — it still encodes *which part* failed, which is information
-- The state is still said in words (the chip), so `T-202` gains no new colour-only signal and
-  loses none
-- Tests assert the detail text and the absent bar; existing row tests are updated, not duplicated
-
-#### Out of scope
-
-- Failed-row presentation — `T-201`, including the byte-line suppression added to it 2026-08-09
-- The chip's own text — `UX-010` just ruled the group chip; the ordinary chips are settled
 
 ### T-218 — The add dialog's empty state: one instruction, inside the list
 

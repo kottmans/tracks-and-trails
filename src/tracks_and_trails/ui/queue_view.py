@@ -612,6 +612,21 @@ class QueueModel(QAbstractTableModel):
         if role == HEADLINE_ROLE:
             return self._text(row, JOB_COLUMN)
         if role == STATE_ROLE:
+            # **Empty on a finished row, and that is a statement rather than a gap** (`T-216`).
+            #
+            # The delegate drops this line's trailing state only when it is *identical* to the chip
+            # (`T130-R3`), because on a running row the chip reads `62%` and the state reads
+            # `Downloading video` — two different facts, and dropping one deletes information. A
+            # completed row is the case that rule does not reach: `Done` and `Completed` are not
+            # identical strings and *are* the same fact, so the row said its one remaining fact
+            # twice.
+            #
+            # Answered here rather than by teaching the delegate about completion, because the
+            # words on this row are the model's (`T-130`, `T130-R3`) — and "there is nothing to add
+            # beyond the chip" is a claim about this row's state, which is exactly what this model
+            # knows and the delegate does not.
+            if row.job.status is JobStatus.COMPLETED:
+                return ""
             return self._text(row, STATUS_COLUMN)
         if role == STATE_CHIP_ROLE:
             # **The queue draws its state as a chip** (`T-130`, `UX-005`'s 2026-08-04 amendment).
@@ -805,6 +820,25 @@ class QueueModel(QAbstractTableModel):
         and it is dropped once the download is finished, where it would be a warning about a
         situation that can no longer arise.
         """
+        if row.job.status is JobStatus.COMPLETED:
+            # **What is left to say about a finished download** (`T-216`, `T-145` §2's argument).
+            #
+            # `100%` and `5.0 MB of 5.0 MB` are progress, and progress is over. Both were true and
+            # both were furniture — a row that has finished is *identified* by its uploader, its
+            # duration and how big the file turned out, and the chip beside it already says `Done`.
+            #
+            # **The columns are untouched.** `REQ-014`'s six are the spine, `SIZE_COLUMN` still
+            # reads *done of total*, and the accessible text still carries `describe_bar`'s
+            # `finished` phrasing. This is the drawn second line only — what a sighted reader is
+            # given at a glance — and the screen-reader path loses nothing.
+            _, total = self._totals(row)
+            parts = [
+                row.job.uploader or "",
+                _duration_text(row.job.duration_seconds),
+                format_bytes(total) if total else "",
+            ]
+            return " · ".join(part for part in parts if part and part != UNKNOWN_TEXT)
+
         parts = [
             row.job.uploader or "",
             _duration_text(row.job.duration_seconds),
@@ -813,8 +847,11 @@ class QueueModel(QAbstractTableModel):
             self._text(row, SPEED_COLUMN),
             self._text(row, ETA_COLUMN),
         ]
+        # A completed row returned above, so the *"dropped once the download is finished"* half of
+        # the rule the docstring states is carried by that branch now rather than by a second test
+        # here (`T-216`); `mypy` reports this one as unreachable if it is left in.
         refusal = row.job.resume_refusal
-        if refusal is not None and row.job.status is not JobStatus.COMPLETED:
+        if refusal is not None:
             parts.append(refusal)
         return " · ".join(part for part in parts if part and part != UNKNOWN_TEXT)
 
@@ -878,9 +915,21 @@ class QueueModel(QAbstractTableModel):
         **`None` is not zero.** An unknown total is not "0%" — the same refusal `_text` makes for
         `INDETERMINATE_TEXT`, so the bar is absent exactly when the percentage is.
         """
-        if row.job.status is JobStatus.COMPLETED:
-            return 1.0
         if row.is_terminal:
+            # **A finished bar is furniture** (`T-216`), and the finished row is now covered by the
+            # same rule the other two endings always were. It used to be the exception above this
+            # line, returning exactly `1.0` — the heaviest element on the row at precisely the
+            # moment nothing was happening, full-width and near-black beside a chip already reading
+            # `Done`. `T-145` §2 made the argument for History's group bar and dropped it.
+            #
+            # **A `COMPLETED` special case here would be dead code**, which is worth saying because
+            # the first build had one: `is_terminal` includes `COMPLETED`, so a branch returning
+            # `None` above this one is this one. A mutation replacing it with `is_terminal` changed
+            # nothing and passed, which is what found it.
+            #
+            # `None` rather than `0.0` is this method's existing distinction — nothing honest to
+            # draw — and the delegate draws no bar for it. The chip keeps the state in words, so
+            # `T-202` gains no colour-only signal and loses none.
             return None
         done, total = self._totals(row)
         if not total or done is None:
