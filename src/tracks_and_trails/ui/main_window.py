@@ -49,7 +49,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails import __version__
 from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import REORDERABLE
-from tracks_and_trails.core.models import Preset
+from tracks_and_trails.core.models import MediaInfo, Preset
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
@@ -300,6 +300,21 @@ def save_geometry(window: QWidget, path: Path | None = None) -> None:
         )
     except OSError:
         return
+
+
+#: A stand-in item for validating a template with no row in hand (`T195-R2`).
+#:
+#: The settings screen's template applies to downloads that do not exist yet, so there is nothing
+#: real to render against — and a refusal must not depend on which row happens to be selected.
+#: Every supported field is filled, so a template naming any of them renders rather than failing
+#: for want of a value.
+_TEMPLATE_PROBE: Final = MediaInfo(
+    url="https://example.invalid/preview",
+    title="A download",
+    uploader="An uploader",
+    duration_seconds=1,
+    is_playlist=False,
+)
 
 
 class MainWindow(QMainWindow):
@@ -680,6 +695,27 @@ class MainWindow(QMainWindow):
             then=self.refresh_queue,
             otherwise=self._report_transiently,
         )
+
+    def _refuse_template(self, template: str) -> str | None:
+        """Why this template cannot be used, asked of the same route the row editor asks.
+
+        **`preview_output_path`, not a subcheck of it** (`T195-R2`). It runs yt-dlp's own syntax
+        parser, the supported-field check, a real render and the containment rule — and the row
+        editor already refuses through it, so the two surfaces cannot come to disagree about what a
+        usable template is.
+
+        A window with no manager answers `None`: it cannot ask, and claiming a refusal it did not
+        compute would be worse than deferring to the field-name check the screen falls back to.
+        """
+        if self._manager is None:
+            return None
+        request = presets.to_request(
+            presets.BUILT_IN_PRESETS[0],
+            url="https://example.invalid/preview",
+            output_directory=str(self._output_directory),
+            default_output_template=template,
+        )
+        return self._manager.preview_output_path(request, _TEMPLATE_PROBE).refusal
 
     def _show_row_menu(self, job_id: str, verbs: object) -> QMenu | None:
         """The queue row's menu, holding whatever the view said to hold.
@@ -1433,6 +1469,7 @@ class MainWindow(QMainWindow):
             shipped_template=self._shipped_template,
             on_default_preset_chosen=self._on_default_preset_chosen,
             on_output_template_chosen=self._on_output_template_chosen,
+            refuse_template=self._refuse_template,
             parent=self,
         )
         self._settings_dialog = dialog

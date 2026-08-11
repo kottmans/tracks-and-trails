@@ -138,6 +138,7 @@ class SettingsDialog(QDialog):
         shipped_template: str = "",
         on_default_preset_chosen: Callable[[str], None] | None = None,
         on_output_template_chosen: Callable[[str], None] | None = None,
+        refuse_template: Callable[[str], str | None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -165,6 +166,20 @@ class SettingsDialog(QDialog):
         #: a choice with a visible consequence rather than as a blank (`T-195`).
         self._shipped_template = shipped_template
         self._on_default_preset_chosen = on_default_preset_chosen
+        #: Why a template cannot be used, or `None` (`T195-R2`).
+        #:
+        #: **Injected, because the authoritative answer lives behind the manager.** The first build
+        #: called `unsupported_refusal` here, which checks *field names only* — so `%(title`, whose
+        #: syntax yt-dlp itself rejects, and `../%(title)s.%(ext)s`, which escapes the download
+        #: folder, were both accepted and stored. `DownloadManager.preview_output_path` is the
+        #: check the per-row editor makes: yt-dlp's own syntax parser, the field names, a real
+        #: render, and containment. `ui/` may not reach `ytdlp_adapter` (`ARCHITECTURE.md` §6), so
+        #: composition hands the route in rather than this screen learning the syntax.
+        #:
+        #: `None` falls back to the field-name check, which is what a screen built without a
+        #: manager can honestly do — and is why `refuse_template` is what composition always
+        #: passes.
+        self._refuse_template = refuse_template
         self._on_output_template_chosen = on_output_template_chosen
 
         self.setObjectName("settingsDialog")
@@ -349,10 +364,16 @@ class SettingsDialog(QDialog):
         """
         if self._on_output_template_chosen is None:
             return
-        refusal = unsupported_refusal(text) if text else None
+        refusal = self._refusal_for(text) if text else None
         self._template_note.setText(refusal or "")
         if refusal is None:
             self._on_output_template_chosen(text)
+
+    def _refusal_for(self, template: str) -> str | None:
+        """The authoritative refusal where composition supplied one (`T195-R2`)."""
+        if self._refuse_template is not None:
+            return self._refuse_template(template)
+        return unsupported_refusal(template)
 
     def show_default_preset(self, name: str) -> None:
         """Reflect the stored default, so the screen never disagrees with the file."""

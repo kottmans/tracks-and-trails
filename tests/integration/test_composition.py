@@ -1403,8 +1403,17 @@ def child_streaming_until_released(
     queue.put(WorkerFinished(job_id=job_id, exit_code=0))
 
 
+#: A template the application does not ship, for tests that must tell a **carried** value from a
+#: rebuilt one (`T195-R4`). The retarget regression started from the shipped template, so dropping
+#: the carry-across produced the same string and left the assertion green.
+CUSTOM_TEMPLATE = "%(uploader)s - %(title)s.%(ext)s"
+
+
 def queue_three(
-    composition: application.Composition, spin: Callable[..., bool], where: Path
+    composition: application.Composition,
+    spin: Callable[..., bool],
+    where: Path,
+    template: str = "%(title)s.%(ext)s",
 ) -> None:
     """Put three real rows in the composed application's own database."""
     from datetime import UTC, datetime
@@ -1421,7 +1430,7 @@ def queue_three(
                     url=f"https://composed.invalid/{job_id}",
                     output_directory=str(where),
                     format_selector="best",
-                    output_template="%(title)s.%(ext)s",
+                    output_template=template,
                 ),
                 created_at=datetime.now(UTC),
             )
@@ -1924,7 +1933,7 @@ def test_choosing_a_format_on_a_queued_row_changes_the_durable_request(
     So this drives the model the way an editor does, then reads the job out of the **store**.
     """
     composition = composed(entry_point=child_probing_then_waiting)
-    queue_three(composition, spin, tmp_path / "downloads")
+    queue_three(composition, spin, tmp_path / "downloads", template=CUSTOM_TEMPLATE)
     # **Refreshed explicitly**, because `queue_three` writes through the store rather than through
     # the add dialog — and adding is the one queue change nothing announces, which is why the
     # dialog's `finished` signal calls this in the real application.
@@ -1935,6 +1944,10 @@ def test_choosing_a_format_on_a_queued_row_changes_the_durable_request(
 
     before = composition.store.get("job-1")
     assert before is not None
+
+    custom = CUSTOM_TEMPLATE
+    assert custom != presets.DEFAULT_OUTPUT_TEMPLATE
+    assert before.request.output_template == custom
     chosen = presets.by_name("Audio only (original)")
     assert before.request.format_selector != chosen.format_selector, (
         "the row already has the format this test is about to choose, so it would pass without "
@@ -1952,7 +1965,12 @@ def test_choosing_a_format_on_a_queued_row_changes_the_durable_request(
             # **The naming the row already had, not the preset's** (`T-195`). A shipped preset
             # states no template; retargeting changes the format and must leave the filename
             # alone, or choosing a different format would silently rename the download.
-            and job.request.output_template == before.request.output_template
+            #
+            # `T195-R4`: this started from the *shipped* template, so dropping
+            # `default_output_template=job.request.output_template` produced the same string and
+            # left the assertion green. The row is given a deliberately custom template below,
+            # which the broken implementation cannot produce.
+            and job.request.output_template == custom
         ),
         timeout=60,
     ), (
@@ -2416,64 +2434,181 @@ def test_a_short_cookie_path_chosen_at_runtime_is_redacted_too(
         app_logging.forget_the_secrets()
 
 
-def test_a_stored_output_template_names_the_job_the_assembled_application_queues(
+def test_choosing_a_template_on_the_screen_reaches_the_file_and_the_next_paste(
     composed: Callable[..., application.Composition],
     tmp_path: Path,
 ) -> None:
-    """**`REQ-023`, `T-195`, and the criterion that says *not the stored string*.**
+    """**`REQ-023`, `T-195`, corrected at `T195-R4`.**
 
-    A setting that round-trips through a file proves persistence, not effect. What matters is that
-    a job the application actually queues carries the template — which means the shipped presets
-    have to defer, `to_request` has to resolve, and composition has to pass the resolved value in.
-    Any one of those missing leaves the setting looking like it works.
+    The first version of this test composed an application and then **bypassed both surfaces**,
+    calling `set_output_template` and `save` itself. It stayed green with the production wiring
+    entirely absent — which it was: neither new callback advanced `held.settings`, so the setting
+    was not live and a second edit erased the first (`T195-R1`).
+
+    So this drives the real route: the screen's callback, the file it writes, **and the value the
+    next add dialog is actually built from**. That last one is the half a file assertion cannot
+    reach, and the half that was broken.
     """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
     chosen = "%(uploader)s/%(title)s.%(ext)s"
-    settings_file = tmp_path / "settings.toml"
-    assert (
-        core_settings.save(
-            core_settings.set_output_template(core_settings.Settings(), chosen), settings_file
+
+    write = composition.window._on_output_template_chosen
+    assert write is not None, "composition wired no template writer"
+    write(chosen)
+
+    assert core_settings.load(settings_file).settings.output_template == chosen, (
+        "the chosen template never reached the file"
+    )
+    dialog = composition.window.open_add_dialog()
+    try:
+        assert dialog._default_output_template == chosen, (
+            "the next add dialog was built with the old template, so the setting is not live "
+            "until a restart"
         )
-        is None
-    )
-
-    composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
-
-    # Read back the way every reader does, then build the request the way composition does.
-    stored = core_settings.load(settings_file).settings
-    request = presets.to_request(
-        core_settings.default_preset_of(stored),
-        url="https://example.invalid/watch?v=abc123",
-        output_directory=str(tmp_path),
-        default_output_template=core_settings.output_template_of(stored),
-    )
-
-    assert request.output_template == chosen, (
-        "the assembled application's default preset does not carry the stored template, so a "
-        "queued job would be named the shipped way"
-    )
+    finally:
+        dialog.close()
 
 
-def test_the_default_preset_has_one_writer_across_both_surfaces(
+def test_two_settings_edits_in_a_row_do_not_erase_one_another(
     composed: Callable[..., application.Composition],
     tmp_path: Path,
 ) -> None:
-    """**The one-writer criterion, proved from the file rather than from a screen** (`T-195`).
+    """**`T195-R1`.** Each callback built new settings from `held.settings` and never advanced it.
 
-    The preset manager's *Set as default* and the settings screen's control both change the same
-    key. Asserted by writing through `settings.set_default_preset` — the function both call — and
-    reading it back through `default_preset_of`, which is what every reader uses. If a second
-    surface ever stored its own copy, the two would answer differently here.
+    So the second edit was derived from the settings as they were at startup and wrote them back
+    over the first. A reviewer's probe changed the default preset and then the template, and the
+    file came back with `default_preset` empty.
+
+    Two different keys, written one after the other through the composed callbacks, both expected
+    to survive. This is what a single-key test cannot see.
     """
     settings_file = tmp_path / "settings.toml"
-    composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
 
-    chosen = presets.AUDIO_MP3.name
-    written = core_settings.set_default_preset(core_settings.load(settings_file).settings, chosen)
-    assert core_settings.save(written, settings_file) is None
+    preset = composition.window._on_default_preset_chosen
+    template = composition.window._on_output_template_chosen
+    assert preset is not None and template is not None
 
-    reread = core_settings.load(settings_file).settings
-    assert core_settings.default_preset_of(reread).name == chosen
-    assert reread.default_preset == chosen, "the name was resolved away instead of being stored"
+    preset(presets.AUDIO_MP3.name)
+    template("%(uploader)s/%(title)s.%(ext)s")
+
+    stored = core_settings.load(settings_file).settings
+    assert stored.default_preset == presets.AUDIO_MP3.name, (
+        "the second edit was built from stale settings and erased the first"
+    )
+    assert stored.output_template == "%(uploader)s/%(title)s.%(ext)s"
+
+
+def test_the_default_preset_chosen_on_the_screen_is_what_the_next_paste_inherits(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """The criterion in the entry's own words: *a new paste actually inherits it*.
+
+    Read from the add dialog rather than from the file, because the file was never the thing in
+    doubt — `T195-R1` left the file correct and the session stale.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    write = composition.window._on_default_preset_chosen
+    assert write is not None
+    write(presets.AUDIO_MP3.name)
+
+    dialog = composition.window.open_add_dialog()
+    try:
+        assert dialog._default_preset == presets.AUDIO_MP3.name
+    finally:
+        dialog.close()
+
+
+def test_a_template_the_editor_would_refuse_is_refused_by_the_screen_too(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T195-R2`.** The first build checked field names only.
+
+    `unsupported_refusal` answers *is every `%(field)s` one we can fill* — and nothing else. So
+    `%(title`, which yt-dlp's own parser rejects, and `../%(title)s.%(ext)s`, which escapes the
+    download folder, were both accepted and written. The row editor refuses both, through
+    `preview_output_path`, and the two surfaces must not disagree about what is usable.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    refuse = composition.window._refuse_template
+
+    assert refuse("%(title") is not None, "malformed syntax was accepted"
+    assert refuse("../%(title)s.%(ext)s") is not None, "a template escaping the folder was accepted"
+    assert refuse("%(nonsense)s.%(ext)s") is not None, "an unfillable field was accepted"
+    assert refuse("%(uploader)s/%(title)s.%(ext)s") is None, (
+        "a usable template was refused, which would make the setting unsettable"
+    )
+
+
+def test_an_unusable_stored_template_is_reported_and_the_application_still_starts(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`ARC-008` and `T195-R2`, from disk rather than from the screen.**
+
+    `load()` cannot make this check: it lives in `core/`, and the authority needs yt-dlp's syntax
+    parser and the containment rule, which are the manager's. So a hand-edited file reached the
+    application unvalidated. It is re-asked once the manager exists — reported, cleared so the
+    shipped default applies, and the application starts either way.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text('output_template = "%(title"\n', encoding="utf-8")
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    dialog = composition.window.open_add_dialog()
+    try:
+        assert dialog._default_output_template == presets.DEFAULT_OUTPUT_TEMPLATE, (
+            "a refused stored template is still being used to name downloads"
+        )
+    finally:
+        dialog.close()
+
+
+def test_the_settings_screen_offers_only_presets_this_installation_can_perform(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T195-R3`.** The screen offered a default the next paste silently did not inherit.
+
+    `AddUrlDialog` drops presets that need an ffmpeg this installation does not have. The settings
+    combo was handed the *whole* catalogue — so with ffmpeg absent, choosing `Audio only (MP3)` as
+    the default was accepted and stored, and the next paste started on `Best video up to 1080p`
+    instead, because the stored name was no longer in the dialog's catalogue. Nothing said so.
+
+    That is `T199-R1`'s offered-versus-refused disagreement on a new surface, and the fix is the
+    same one: the screen and the dialog answer from the same function.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(
+        settings_file=settings_file,
+        ffmpeg_override=tmp_path / "no-ffmpeg-here",
+        entry_point=child_probing_then_waiting,
+    )
+    assert not composition.ffmpeg.available, "this environment has ffmpeg, so it proves nothing"
+
+    names = composition.window._preset_names
+    assert names is not None, "composition wired no preset catalogue for the screen"
+    offered = names()
+    assert offered, "nothing at all was offered, which is not the fix"
+    assert presets.AUDIO_MP3.name not in offered, (
+        "the screen offers a preset this installation cannot perform, so choosing it as the "
+        "default would store a name the next paste does not inherit"
+    )
+
+    dialog = composition.window.open_add_dialog()
+    try:
+        assert set(offered) == {preset.name for preset in dialog.presets}, (
+            "the settings screen and the add dialog disagree about the catalogue"
+        )
+    finally:
+        dialog.close()
 
 
 def test_the_cookies_file_reaches_the_workers_and_never_the_job(

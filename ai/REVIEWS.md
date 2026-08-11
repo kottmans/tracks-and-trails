@@ -14838,3 +14838,55 @@ the combined stack as release evidence.
 implementation heads above. The Reviewer changed only the append-only review record and current
 task dispositions; no reviewed source, test, specification, status snapshot, commit, or remote
 state was changed.
+
+## 2026-08-11 — T-195 default preset and output-template review
+
+**Review boundary:** `074d9df..e399545`
+
+**Verdict:** **Changes requested.** The empty-preset-template model and resolver are coherent, and
+the identity narrowing is accepted, but the assembled settings routes do not apply their changes
+to the current session, the new validator is only one subcheck of the editor's validator, and the
+default-preset surface can choose a preset the add dialog silently removes.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding |
+|---|---|---:|---|
+| **T195-R1** | **High** | **Yes — both primary settings are not live and edits clobber one another** | `choose_default_preset` and `choose_output_template` derive from `held.settings` and call `remember`, but neither advances `held.settings`. `remember` only saves; unlike the established settings callbacks, it does not apply the object. A real composed probe changed the default and then the template: the second write was built from the original settings and erased the first, leaving the file's `default_preset` empty. Even a single successful edit leaves the callable used by the next add dialog on the old value until restart. The submitted “one writer” integration test composes an application and then bypasses both surfaces by calling `set_default_preset` and `save` itself, so it stays green with both production omissions. Apply each accepted value to the held settings before persistence, preserve the existing save-failure warning policy, and drive screen → composition → file/current session → next add dialog for both keys. |
+| **T195-R2** | **High** | **Yes — invalid templates are accepted live and from disk** | The settings screen and `_output_template_from` call only `unsupported_refusal`, which checks field names. The existing editor's actual validator also asks yt-dlp for syntax, renders the template, and enforces output containment through `DownloadManager.preview_output_path`. Deterministic probes show `%(title` has yt-dlp's `incomplete format key` error but is stored and reloaded with no `SettingsProblem`; `../%(title)s.%(ext)s` is also stored and reloaded silently even though the manager refuses its escaped target. The regression names only `%(nonsense)s`, so it proves the field-name subcheck and not the claimed shared validator. Refuse every template the editor would refuse, do not write it live, and report/fall back under ARC-008 when it comes from disk. The correction needs one authoritative validation route rather than another partial parser. |
+| **T195-R3** | **Medium** | **Yes — the selected default is silently not inherited without ffmpeg** | The Settings combo receives every preset name, while `AddUrlDialog` removes presets that need unavailable ffmpeg. With ffmpeg absent, selecting `Audio only (MP3)` as the default is accepted and stored, but the next add dialog selects `Best video up to 1080p (MP4)` because the named default is no longer in its catalogue. The screen neither filters nor marks that choice unavailable. This violates the criterion that a new paste inherits the setting and reopens T199-R1's offered-versus-refused disagreement on the new surface. Make the Settings offer and the add-dialog capability answer agree, with an explicit unavailable reason where needed. |
+| **T195-R4** | **Medium** | **Yes — required regression evidence does not distinguish the changed wiring** | The output-template integration test calls `compose`, then manually reloads Settings and manually calls `to_request`; it never opens the real screen, queues a job, or observes the required written path. The cross-surface default test likewise calls the helper and file writer itself. The retarget test starts with the shipped template, so removing `default_output_template=job.request.output_template` still produces the same value and leaves the assertion green. Use a deliberately custom old template and the real `_retarget_job` boundary, and make the two settings regressions traverse the composed UI routes. These are the gates for R1 and the task's explicit real-effect criteria, not optional hardening. |
+
+### Design disposition
+
+- **Accepted:** empty `Preset.output_template` means defer; `to_request` resolves it before a
+  `DownloadRequest` exists; shipped presets defer; `DownloadRequest` remains non-empty.
+- **Accepted:** `output_template` is excluded from `format_text`'s built-in *format* identity. The
+  function names what is downloaded, while naming is separately editable; the one-field exclusion
+  and anti-drift test keep that boundary explicit.
+- **Accepted:** relaxing `Preset` to require a string rather than non-empty text is the right model
+  split. The validation defect is in the Settings entry routes, not in representing deferral.
+- **Verified:** retargeting's production shape preserves an existing request template when choosing
+  one of the shipped, deferring presets. Its submitted test simply does not prove that distinction.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree before reviewer records | **clean; `main` ahead of `origin/main` by one commit** |
+| `git diff --check 074d9df..e399545` | **pass** |
+| `ruff check .` / `ruff format --check .` | **pass; 166 files formatted** |
+| `mypy src` | **pass; 52 files** |
+| bare `mypy` / bare `mypy --platform win32` | **pass; 128 files each** |
+| Focused model/settings/UI selection | **34 passed, 437 deselected in 8.79 s** |
+| Submitted T-195 integration selection | **3 passed in 0.75 s** — and R1/R4 explain why these are false-green proofs |
+| Real composed live-settings probe | **failed as described:** the second new setting erased the first; held settings remained stale |
+| Validator probe | malformed syntax and an escaping template both reloaded with no problem; unsupported-field control was correctly refused |
+| Missing-ffmpeg default probe | stored/default MP3 became Best video up to 1080p in the add dialog |
+| Full suites | **not rerun by the Reviewer**; the submitted 2709/18 and 395 results are not disputed |
+
+### Push disposition
+
+**Do not push `e399545`.** Correct all four findings in the current task and return the focused
+boundary. The Reviewer changed only `ai/REVIEWS.md` and `ai/TASKS.md`; no reviewed source, test,
+status snapshot, commit, or remote state was changed.

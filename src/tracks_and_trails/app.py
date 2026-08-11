@@ -48,8 +48,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from tracks_and_trails import __version__
+from tracks_and_trails.core import settings as settings_module
 from tracks_and_trails.core.models import Preset
-from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE
+from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE, needs_ffmpeg
 from tracks_and_trails.core.settings import Settings as AppSettings
 
 if TYPE_CHECKING:
@@ -280,6 +281,27 @@ class Composition:
     cache_root: Path
     shutdown: OrderlyShutdown
     instance: InstanceLock
+
+
+def _joined(
+    problem: object, reason: str, settings_file: Path | None
+) -> settings_module.SettingsProblem:
+    """One report, however many parts (`ARC-008`, `T199-R3`).
+
+    A settings file that is both unparseable and names an unrunnable ffmpeg is one problem the user
+    reads once, not two dialogs racing each other. Extracted at `T195-R2`, when the template check
+    became a third caller and the alternative was a third copy of the same joining.
+
+    `settings` is imported inside `compose` rather than at module scope, so this does the same.
+    """
+    from tracks_and_trails.core import settings as app_settings
+
+    if problem is None:
+        return app_settings.SettingsProblem(
+            settings_file if settings_file is not None else app_settings.settings_path(), reason
+        )
+    assert isinstance(problem, app_settings.SettingsProblem)
+    return app_settings.SettingsProblem(problem.path, f"{problem.reason}\n\n{reason}")
 
 
 def compose(
@@ -641,6 +663,11 @@ def compose(
         what two records of one value costs; the answer here is that there are not two.
         """
         chosen = app_settings.set_default_preset(held.settings, name)
+        # **Applied before it is saved** (`T195-R1`). `remember` only writes the file; every other
+        # settings callback advances `held.settings` first, and these two did not. The cost was two
+        # defects at once: the next add dialog kept reading the old value until a restart, and a
+        # second edit was built from the *original* settings and erased the first.
+        held.settings = chosen
         remember(chosen, "the default preset")
 
     def choose_output_template(template: str) -> None:
@@ -650,6 +677,7 @@ def compose(
         the per-row editor uses — so what arrives here is a template that renders.
         """
         chosen = app_settings.set_output_template(held.settings, template)
+        held.settings = chosen  # `T195-R1`, for `choose_default_preset`'s reason.
         remember(chosen, "the output template")
 
     def choose_cookie_file(path: Path | None) -> None:
@@ -883,8 +911,18 @@ def compose(
         # The catalogue and the *stored* template, for the settings screen. Stored rather than
         # resolved on purpose: an empty box with the shipped template as its placeholder is how the
         # screen says "you have not chosen one", which a resolved value could not express.
+        # **The catalogue the add dialog will actually honour, not the whole of it** (`T195-R3`).
+        # `AddUrlDialog` drops presets this installation cannot perform, so offering `Audio only
+        # (MP3)` here with ffmpeg absent stored a default the next paste silently did not inherit —
+        # it fell back to the first offerable preset instead. That is `T199-R1`'s offered-versus-
+        # refused disagreement arriving on a new surface, and the fix is the same: one answer to
+        # what this installation can do.
         preset_names=lambda: tuple(
-            preset.name for preset in app_settings.all_presets(held.settings)
+            preset.name
+            for preset in app_settings.all_presets(held.settings)
+            # `needs_ffmpeg` and not `manager.requires_ffmpeg`: the add dialog filters with the
+            # former, and 'one answer' has to mean the same call, not two that a test says agree.
+            if ffmpeg.available or not needs_ffmpeg(preset)
         ),
         output_template=lambda: held.settings.output_template,
         shipped_template=DEFAULT_OUTPUT_TEMPLATE,
@@ -912,16 +950,28 @@ def compose(
     # **One report, however many parts** — the same shape `load()` uses to join its own reasons.
     # A settings file that is both unparseable and names an unrunnable ffmpeg is one problem the
     # user reads once, not two dialogs racing each other (`ARC-008`, `T199-R3`).
+    # **The stored template, checked by the authority rather than by a subset of it**
+    # (`T195-R2`, `ARC-008`). `load()` can only ask `unsupported_refusal`: it lives in `core/`, and
+    # the full check needs yt-dlp's own syntax parser and the containment rule, which are the
+    # manager's. So a template that parses as TOML and names real fields still reaches here
+    # unvalidated — `%(title` and `../%(title)s.%(ext)s` both did. Re-asked now that the manager
+    # exists, cleared if it is refused so the shipped default applies, and reported rather than
+    # silently reverted.
+    template_problem: str | None = None
+    if held.settings.output_template:
+        refusal = window._refuse_template(held.settings.output_template)
+        if refusal is not None:
+            template_problem = (
+                f"output_template was not used: {refusal}\n"
+                "Downloads are named the usual way until it is corrected."
+            )
+            held.settings = app_settings.set_output_template(held.settings, "")
+
     settings_problem = settings_read.problem
+    if template_problem is not None:
+        settings_problem = _joined(settings_problem, template_problem, settings_file)
     if ffmpeg_problem is not None:
-        settings_problem = app_settings.SettingsProblem(
-            settings_problem.path
-            if settings_problem is not None
-            else (settings_file if settings_file is not None else app_settings.settings_path()),
-            f"{settings_problem.reason}\n\n{ffmpeg_problem}"
-            if settings_problem is not None
-            else ffmpeg_problem,
-        )
+        settings_problem = _joined(settings_problem, ffmpeg_problem, settings_file)
     if settings_problem is not None:
         logging.getLogger("tracksandtrails.app").warning(
             "settings: %s (%s)", settings_problem.reason, settings_problem.path

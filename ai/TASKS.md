@@ -120,7 +120,23 @@ this one returned four verdicts before approving.*
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
-**Status:** **In Review — built 2026-08-11.**
+**Status:** **In Review — changes requested 2026-08-11.** The model/resolver decision is accepted;
+four blocking findings remain at `e399545`.
+
+- **`T195-R1` — High, Open.** The two new composition callbacks save derived settings without
+  advancing `held.settings`. A single edit is not live until restart; a second edit is derived from
+  the stale object and can erase the first from disk. Drive both real screen routes through the
+  current session and next add dialog rather than calling the helper and writer in the test.
+- **`T195-R2` — High, Open.** `unsupported_refusal` is only the supported-field subcheck, not the
+  template editor's full validator. Malformed syntax and output-directory escapes are accepted and
+  persisted live, and load returns them without the ARC-008 problem/fallback this task promises.
+- **`T195-R3` — Medium, Open.** Settings offers every preset as a default even when ffmpeg is
+  absent, while the add dialog filters the unusable ones. Choosing MP3 is accepted and stored, then
+  the next paste silently inherits Best video up to 1080p instead.
+- **`T195-R4` — Medium, Open.** The three central regressions do not traverse or distinguish the
+  changed production routes: the settings tests reconstruct through helpers after composing, and
+  the retarget test starts with the same shipped template the broken fallback would produce. Use a
+  custom old template and the real retarget boundary, and exercise the composed settings screens.
 
 **The entry's premise did not hold, and the maintainer ruled on the fork.** This entry says the
 task supplies *"the application default that a preset with no opinion falls back to"* — and no
@@ -180,6 +196,44 @@ predates this task for a per-row template. The old request's template is carried
 **Five mutations.** `to_request` no longer resolving; the shipped presets stating a template again;
 the resolver ignoring the stored value; a refused template written anyway; a second field joining
 the identity exclusion.
+
+**Correction pass 2026-08-11 — all four findings corrected.** Every one was real, and two of them
+were defects in the parts I had claimed evidence for.
+
+**`T195-R1` (High) — the settings were not live, and edits erased one another.** Both new callbacks
+derived from `held.settings` and called `remember`, which only *writes* — every other settings
+callback advances `held.settings` first, and these two did not. Two defects at once: the next add
+dialog kept the old value until a restart, and a second edit was built from the settings as they
+were at startup and overwrote the first. Reproduced against a composed application before fixing.
+
+**`T195-R2` (High) — the validator was one subcheck of the real one.** `unsupported_refusal`
+answers *are all the fields fillable* and nothing else, so `%(title` — which yt-dlp's own parser
+rejects — and `../%(title)s.%(ext)s` — which escapes the download folder — were both accepted, live
+and from disk. The authority is `DownloadManager.preview_output_path`, which the row editor already
+uses. **Two routes, because `core/` may not reach it** (`ARCHITECTURE.md` §6, and the guard `T-214`
+built): the screen gets an injected `refuse_template` backed by the manager, and the stored value is
+re-asked in composition **once the manager exists**, cleared if refused so the shipped default
+applies, and joined into the one `ARC-008` report — the shape `T199-R3` set for ffmpeg. The joining
+became a third copy, so it is a named helper now.
+
+**`T195-R3` (Medium) — the screen offered what the add dialog removes.** With ffmpeg absent,
+choosing `Audio only (MP3)` as the default stored a name the next paste did not inherit; it fell
+back to the first offerable preset, silently. That is `T199-R1`'s offered-versus-refused
+disagreement on a new surface. The screen now filters with **`needs_ffmpeg`, the same function the
+dialog filters with** — "one answer" has to mean the same call, not two a test says agree.
+
+**`T195-R4` (Medium) — my three central tests were false-green, and the finding is right.** The two
+settings regressions composed an application and then **bypassed both surfaces**, calling
+`set_default_preset` and `save` themselves — so they stayed green with the production wiring
+entirely absent, which is what `T195-R1` proves it was. The retarget test started from the *shipped*
+template, so dropping the carry-across produced the same string. All three are rewritten to traverse
+the composed routes: the screen's callback, the file, **and the value the next add dialog is built
+from** — that last is the half a file assertion cannot reach and the half that was broken.
+`queue_three` takes a template so the retarget case starts from one the application does not ship.
+
+**Five mutations, all failing**, each restoring the reviewed behaviour: neither callback advancing
+`held.settings`; the screen back on the field-name subcheck; the stored template no longer
+re-checked; the whole catalogue offered again; and retarget no longer carrying the row's template.
 
 **Owner:** Implementer
 **Priority:** Medium — the default preset is the one a user meets on every paste, and today it
