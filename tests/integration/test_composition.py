@@ -2363,8 +2363,12 @@ def test_a_short_cookie_path_is_redacted_by_the_assembled_application(
     try:
         composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
 
-        line = "settings: the cookies file /a does not exist"
-        assert "/a" not in app_logging.redact(line), (
+        # The written value is `/a` either way — it comes from the file, not from a `Path` — but
+        # the *reported* spelling is `str(Path("/a"))`, which is `\a` on Windows. Asserted through
+        # the same rendering the application uses, for the reason the runtime test above records.
+        spelled = str(Path("/a"))
+        line = f"settings: the cookies file {spelled} does not exist"
+        assert spelled not in app_logging.redact(line), (
             "the assembled application did not register its own short cookie path: "
             f"{app_logging.redact(line)!r}"
         )
@@ -2391,11 +2395,18 @@ def test_a_short_cookie_path_chosen_at_runtime_is_redacted_too(
 
     app_logging.forget_the_secrets()
     try:
-        choose(Path("/a"))
+        # **The path as *this platform* spells it, not as the literal was typed.** `Path("/a")`
+        # renders `\a` on Windows, so a hardcoded `/a` in the asserted line matches nothing there
+        # and the test passes without testing anything — it failed on the Windows job for exactly
+        # that reason. What the application registers is what `str(path)` produces, so that is what
+        # the line has to contain.
+        short = Path("/a")
+        choose(short)
         QApplication.processEvents()
 
-        line = "settings: the cookies file /a does not exist"
-        assert "/a" not in app_logging.redact(line), (
+        spelled = str(short)
+        line = f"settings: the cookies file {spelled} does not exist"
+        assert spelled not in app_logging.redact(line), (
             f"a cookie path chosen at runtime was not registered: {app_logging.redact(line)!r}"
         )
     finally:
