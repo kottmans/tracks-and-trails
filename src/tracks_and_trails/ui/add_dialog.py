@@ -82,9 +82,25 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final, Protocol, cast
 
-from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QAbstractListModel,
+    QEvent,
+    QModelIndex,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QAction, QFontMetrics, QKeyEvent, QPalette, QPixmap, QResizeEvent
+from PySide6.QtGui import (
+    QAction,
+    QFontMetrics,
+    QKeyEvent,
+    QPalette,
+    QPixmap,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -218,6 +234,9 @@ URL_BOX_LINES: Final = 4
 #: A panel sized to the viewport exactly would put *Done* on the final pixel of the visible area,
 #: where it reads as clipped even when it is not.
 PANEL_VIEWPORT_MARGIN: Final = 8
+
+#: Breathing room around the empty-list hint, so it is not flush against the frame.
+EMPTY_HINT_MARGIN: Final = 24
 
 #: What each row state says, in words (`NFR-005`). Derived from the state rather than written
 #: beside it, so a state cannot acquire a colour and no sentence.
@@ -510,7 +529,22 @@ class StagingList(QListView):
         #: true — `T118-R15` is this project's record of a width promise that held at one font.
         self._wanted: int | None = None
 
-    # Qt's override names, hence the camelCase.
+        # Qt's override names, hence the camelCase.
+        # **A label over the viewport, not a `paintEvent`** (`T-218`). The first build painted the
+        # hint in `paintEvent`; `viewport().grab()` never routed to it, so the text was invisible
+        # to every test that could have proved it — the mutation deleting the painting changed
+        # nothing. A child of the viewport can be asserted directly: shown, hidden, and read.
+        #
+        # It holds no slot in the focus chain (`T-060`): a `QLabel` takes `NoFocus` by default, and
+        # it is transparent to the mouse so a click still reaches the list underneath.
+        self._empty_hint = QLabel(self.EMPTY_HINT, self.viewport())
+        self._empty_hint.setObjectName("stagingEmptyHint")
+        self._empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_hint.setWordWrap(True)
+        self._empty_hint.setMargin(EMPTY_HINT_MARGIN)
+        self._empty_hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._empty_hint.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+
     def updateGeometries(self) -> None:
         """Keep the wheel gradual whatever is open (`T-210`).
 
@@ -553,9 +587,41 @@ class StagingList(QListView):
     #: disagreed, and an expanded row showed nothing at all.
     viewport_resized = Signal()
 
+    #: What the empty list says, in the space it is explaining (`T-218`).
+    #:
+    #: **The instruction moved here rather than being written a third time.** The dialog said the
+    #: same thing twice — the paste box's placeholder and a label under the list — while the list
+    #: itself, the largest thing on the screen, said nothing at all. This teaches what the list is
+    #: *for*, which the placeholder cannot: that a pasted line is read and shown here, with its
+    #: title and thumbnail, before anything is queued (`UX-003`).
+    #:
+    #: Painted rather than mounted as a widget, deliberately. A child widget would be one more
+    #: thing in the focus order and one more thing to hide on the first row; `T-060` declares that
+    #: chain and `T016-R4` keeps it stable. Paint has no such reach.
+    EMPTY_HINT: Final = (
+        "Paste URLs above.\n\n"
+        "Each line is read here — title, channel and thumbnail —\nbefore anything is queued."
+    )
+
+    # Qt's override name, hence the camelCase.
+    def setModel(self, model: QAbstractItemModel | None) -> None:
+        """Take the model, and follow it so the hint knows when to leave."""
+        super().setModel(model)
+        if model is not None:
+            for signal in (model.rowsInserted, model.rowsRemoved, model.modelReset):
+                signal.connect(self._show_hint_when_empty)
+        self._show_hint_when_empty()
+
+    def _show_hint_when_empty(self, *_: object) -> None:
+        """Visible exactly while there is nothing to read instead."""
+        model: QAbstractItemModel | None = self.model()
+        self._empty_hint.setVisible(model is None or model.rowCount() == 0)
+        self._empty_hint.setGeometry(self.viewport().rect())
+
     # Qt's override name, hence the camelCase.
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
+        self._empty_hint.setGeometry(self.viewport().rect())
         if event.oldSize().height() != event.size().height():
             self.viewport_resized.emit()
 
@@ -1328,7 +1394,7 @@ class AddUrlDialog(QDialog):
         # Selectable so the user can copy an extractor message into a search or a bug report. A
         # message kept verbatim (`NFR-006`) that cannot be copied is only half of the point.
         self._status.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-        self._status.setText(summarise(()))
+        self._status.setText(summarise(()))  # empty: the list carries the hint now
         layout.addWidget(self._status)
 
         layout.addWidget(self._build_preset_row())

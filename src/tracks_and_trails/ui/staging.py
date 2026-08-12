@@ -355,7 +355,11 @@ def summarise(rows: Iterable[Row]) -> str:
     """
     rows = tuple(rows)
     if not rows:
-        return "Paste one URL per line."
+        # **Empty says nothing here** (`T-218`). This returned "Paste one URL per line.", which the
+        # paste box's placeholder already said and which sat under an empty list that explained
+        # nothing. The instruction moved into the list itself, where it describes the space it is
+        # in; a summary of no rows is not a place to teach.
+        return ""
 
     ready = sum(1 for row in rows if row.state is RowState.READY)
     failed = sum(1 for row in rows if row.state is RowState.FAILED)

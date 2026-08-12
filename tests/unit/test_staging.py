@@ -257,7 +257,10 @@ def test_a_urls_placeholder_tile_is_stable_and_process_independent() -> None:
 
 def test_the_summary_names_the_state_in_words() -> None:
     """`NFR-005`: never a colour alone. The counts come from the rows, not from a second tally."""
-    assert summarise(()) == "Paste one URL per line."
+    # **An empty batch says nothing here** (`T-218`). This asserted "Paste one URL per line.",
+    # which the paste box's placeholder already said; the instruction now lives inside the empty
+    # list, where it explains the space it is in. A summary of no rows has nothing to summarise.
+    assert summarise(()) == ""
 
     rows = [Row(url=f"https://a.invalid/{n}", generation=1) for n in range(3)]
     assert summarise(rows) == "Reading 3 URLs — 0 done"

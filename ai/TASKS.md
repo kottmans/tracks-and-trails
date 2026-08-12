@@ -210,6 +210,64 @@ finds what removing them strands.
   `ui/theme.py`'s contrast metrics, `allowed_from`, `stage_of`. Documented as anchors; keep
 - Any behaviour change
 
+### T-218 — The add dialog's empty state: one instruction, inside the list
+
+**Status:** In Review — built 2026-08-12 in an authorized unattended run; filed 2026-08-09 from
+the maintainer-approved UI review.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing now — the add-dialog chain is approved and `T-213` has landed
+**Relevant context:** `ui/add_dialog.py` (the paste box placeholder, the "Paste one URL per line."
+label, the staging list), `UX-003` (nothing enters the queue unprobed — the fact the hint can
+teach), `T-060`/`T016-R4` (the focus chain is declared and stable), the `T-203` chain's narrowing
+contract
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+The dialog gives the same instruction twice — the paste box's placeholder and a separate label
+below the list — while the empty list, the largest thing on the screen, says nothing. One
+instruction, placed inside the space it explains, does both jobs and quietly teaches why the list
+exists.
+
+#### Acceptance criteria
+
+- The **empty staging list carries the hint inside itself** — paste URLs above; each line resolves
+  here with its title, channel and thumbnail before anything is queued — and it disappears with the
+  first row
+- The **duplicate label below the list is gone**; the paste box placeholder stays
+- The hint is **not a control**: the declared focus chain is unchanged (`T-060`), and the disabled
+  retry button stays exactly as the chain rule put it. The per-row verbs hold no chain slot to
+  preserve — `UX-011` put them in the row's menu, reached through the list itself
+- The dialog's **narrowing contract still holds** — the `T-203` chain's own test is the gate
+
+#### What was built, against those criteria
+
+- **The empty list carries the hint**: *"Paste URLs above. Each line is read here — title, channel
+  and thumbnail — before anything is queued."* It is a `QLabel` over the viewport, shown exactly
+  while `rowCount() == 0`, followed through `rowsInserted`, `rowsRemoved` and `modelReset`.
+- **The duplicate is gone.** `summarise(())` returned *"Paste one URL per line."* into the label
+  under the list — the same instruction the paste box's placeholder already gave. It returns `""`
+  now; a summary of no rows has nothing to summarise. The placeholder stays.
+- **It is not a control.** `NoFocus` and `WA_TransparentForMouseEvents`, so the declared chain
+  (`T-060`) is unchanged and a click still reaches the list underneath. Both asserted.
+
+**The first build was painted, and it was invisible to its own test.** `paintEvent` on the
+`QListView` never ran under `viewport().grab()`, so the hint could not be observed by anything that
+could have proved it: measured at **1209 distinct colours either way**, with and without the
+painting. The mutation deleting it changed nothing, which is how it was caught — the test was
+vacuous before the code was wrong. A child widget is asserted directly, which is why it is one.
+
+**Three mutations fail their evidence**: the hint never shown; the hint never hidden; the hint
+made focusable. Full slice **2712 passed, 18 skipped, exit 0**.
+
+#### Out of scope
+
+- The row's menu and its doors — `UX-011`'s ruled shape and `T-203`'s contract, not reopened here
+- Any change to when rows appear or how probing works (`UX-003`)
+
 ## Complete
 
 ### T-225 — Two UI test files pass apart and fail together
@@ -2704,44 +2762,6 @@ run is the deliverable; the pass is only what it hopefully shows.
 - **The Windows half.** `OPS-003`: there is no Windows machine, so the run is Linux; the
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
-
-### T-218 — The add dialog's empty state: one instruction, inside the list
-
-**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** the In Review add-dialog chain (`T-203`, `T-204`'s corrections) receiving verdicts
-— same file, same reason `T-213` waits
-**Relevant context:** `ui/add_dialog.py` (the paste box placeholder, the "Paste one URL per line."
-label, the staging list), `UX-003` (nothing enters the queue unprobed — the fact the hint can
-teach), `T-060`/`T016-R4` (the focus chain is declared and stable), the `T-203` chain's narrowing
-contract
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-The dialog gives the same instruction twice — the paste box's placeholder and a separate label
-below the list — while the empty list, the largest thing on the screen, says nothing. One
-instruction, placed inside the space it explains, does both jobs and quietly teaches why the list
-exists.
-
-#### Acceptance criteria
-
-- The **empty staging list carries the hint inside itself** — paste URLs above; each line resolves
-  here with its title, channel and thumbnail before anything is queued — and it disappears with the
-  first row
-- The **duplicate label below the list is gone**; the paste box placeholder stays
-- The hint is **not a control**: the declared focus chain is unchanged (`T-060`), and the disabled
-  retry button stays exactly as the chain rule put it. The per-row verbs hold no chain slot to
-  preserve — `UX-011` put them in the row's menu, reached through the list itself
-- The dialog's **narrowing contract still holds** — the `T-203` chain's own test is the gate
-
-#### Out of scope
-
-- The row's menu and its doors — `UX-011`'s ruled shape and `T-203`'s contract, not reopened here
-- Any change to when rows appear or how probing works (`UX-003`)
 
 ### T-220 — The toolbar and the run control: build and spec disagree
 

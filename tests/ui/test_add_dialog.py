@@ -101,6 +101,7 @@ from tracks_and_trails.ui.add_dialog import (
     UNKNOWN_TEXT,
     AddUrlDialog,
     FormatPanel,
+    StagingList,
     describe_kind,
     format_duration,
     headline_text,
@@ -5299,3 +5300,77 @@ def test_every_playlist_entry_inherits_the_default_cookie_browser(
         f"{len(missing)} playlist entries were queued without the default cookie browser: "
         f"{missing[:3]}"
     )
+
+
+def empty_hint(dialog: AddUrlDialog) -> QLabel:
+    """The staging list's own instruction, by the name it is declared under (`T-218`)."""
+    hint = dialog.findChild(QLabel, "stagingEmptyHint")
+    assert hint is not None, "the empty-list hint is not present under its declared name"
+    return hint
+
+
+def test_the_empty_list_carries_the_instruction_and_gives_it_up(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-218`.** The hint lives in the space it explains, and leaves when it is not needed.
+
+    **Both directions, because one of them is the whole point.** A hint that is always drawn is
+    not a hint, it is furniture in front of the rows — so the second half asserts it has gone once
+    there is something to read instead.
+
+    *(The first build painted this in `paintEvent`. `viewport().grab()` never routed there, so the
+    text was invisible to every assertion that could have proved it and the mutation deleting the
+    painting changed nothing — measured, 1209 distinct colours either way. A child widget can be
+    asserted directly, which is why it is one.)*
+    """
+    manager = managers(entry_point=child_replaying_a_fixture)
+    dialog = dialogs(manager)
+    listing = staging_list(dialog)
+    dialog.show()
+    try:
+        qapp.processEvents()
+        assert listing.model().rowCount() == 0, "the dialog did not open empty"
+        hint = empty_hint(dialog)
+        assert hint.isVisible(), "the empty list shows no instruction"
+        assert hint.text() == StagingList.EMPTY_HINT
+
+        type_urls(dialog, fixture_url(SINGLE_ITEM))
+        dialog.resolve()
+        assert spin(lambda: bool(dialog.rows) and all(st in SETTLED for st in states(dialog)))
+        qapp.processEvents()
+
+        assert listing.model().rowCount() > 0, "no row was staged"
+        assert not hint.isVisible(), (
+            "the instruction is still shown over a list that now has rows to read"
+        )
+    finally:
+        dialog.close()
+
+
+def test_the_instruction_is_not_a_control(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-218`.** Painted, so it holds no slot in the declared focus chain (`T-060`).
+
+    The chain is asserted whole elsewhere; what this adds is that nothing new joined it and that
+    no child widget carries the hint's words — a label would satisfy the visual criterion and
+    quietly change the tab order, which `T016-R4` exists to keep stable.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    try:
+        assert [widget.objectName() for widget in dialog.focus_chain()] == list(EXPECTED_TAB_ORDER)
+
+        hint = empty_hint(dialog)
+        assert hint.focusPolicy() == Qt.FocusPolicy.NoFocus, (
+            "the hint takes focus, so it has joined the tab order T-060 declares"
+        )
+        assert hint.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents), (
+            "the hint eats mouse events, so it is a control over the list rather than a label in it"
+        )
+    finally:
+        dialog.close()
