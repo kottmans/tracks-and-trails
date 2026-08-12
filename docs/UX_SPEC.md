@@ -129,9 +129,11 @@ rather than storing one.
 `REQ-020` was withdrawn the same day, so there is nothing anywhere to clear. `Clear finished` stays
 — it clears completed **queue rows**, and with no records beside it there is nothing left for it to
 be confused with. **[T]** *(built 2026-08-10 by `T-146`)* **`Settings` is a menu between `File`
-and `Help`**, and the screen behind it holds the three `REQ-023` settings this phase built — the
-download folder, the theme, and the concurrency limit the toolbar also shows. The screen states
-the five it does not hold, so it never reads as complete; `docs/DEVELOPMENT.md` carries the table.
+and `Help`**, and the screen behind it holds **seven** of `REQ-023`'s eight settings — the download
+folder, the theme, and the concurrency limit the toolbar also shows (`T-146`), the ffmpeg location
+(`T-199`), the cookie source (`T-197`), and the default preset and output template (`T-195`). The
+screen states the one it does not hold — network options, `T-196` — so it never reads as complete;
+`docs/DEVELOPMENT.md` carries the table.
 *(There was no Settings menu between 2026-08-06 and then: the shell built to hold the withdrawn
 records control went with the control.)*
 
@@ -527,10 +529,10 @@ silent on the rest, so these are scope choices.
   from the row menu's `Naming and folders…` entry** — renamed from `Where it goes…` on maintainer
   direction, because that label promised a folder picker and opened a `%(field)s` template editor,
   and the maintainer's own misreading of it as a destination picker was the evidence. Where files
-  *root* is `REQ-023`'s download directory (`T-146`, not built yet); the two are named apart so
-  they cannot be confused once both exist. **Whether the per-item template itself survives is
-  `REQ-011`'s open ruling** — `UX-011` moves its entrance and deliberately does not take that
-  ruling by implication.
+  *root* is `REQ-023`'s download directory, on the settings screen (`T-146`, built 2026-08-10);
+  the two are named apart so they cannot be confused, and both now exist. **Whether the per-item
+  template itself survives is `REQ-011`'s open ruling** — `UX-011` moves its entrance and
+  deliberately does not take that ruling by implication.
 - **[T]** `REQ-011` as amended (2026-08-01, `T046-R2` and `T046-R4`): a live preview of the resulting
   path, **labelled as the *intended* path** wherever the final container is yt-dlp's to choose.
   Audio extraction to a **named** codec previews exactly, through yt-dlp's own `ACODECS` table — the

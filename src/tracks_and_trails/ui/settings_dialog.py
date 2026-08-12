@@ -1,9 +1,10 @@
 """The Settings screen (`REQ-023`, built by `T-146`).
 
-**Three of `REQ-023`'s eight settings, and the screen says which.** The requirement names default
+**Seven of `REQ-023`'s eight settings, and the screen says which.** The requirement names default
 download directory, default preset, concurrency limit, output template, ffmpeg location, network
-options, cookie source and theme. This screen holds the download directory, the theme and the
-concurrency limit; the other five have their own owners (`T-195`, `T-196`, `T-197`, `T-199`), and
+options, cookie source and theme. This screen holds all but **network options**, which is `T-196`'s
+— the download directory, theme and concurrency limit from `T-146`, the ffmpeg location from
+`T-199`, the cookie source from `T-197`, and the default preset and output template from `T-195`.
 `SETTINGS_STILL_TO_COME` is shown on the screen itself so it never claims coverage it does not
 have — `T-146`'s own criterion, and the failure mode a settings screen has by default.
 
@@ -16,10 +17,11 @@ would not go looking for it.)*
 
 The same idiom as the toolbar's concurrency control, which has applied-and-saved on every change
 since `T-078`. An `OK`/`Cancel` pair would be the other honest shape, and it is the wrong one
-here: two of these three settings are already visible elsewhere in the window — the concurrency
-spinner in the toolbar, the theme in every pixel — so a change that waited for `OK` would have to
-either not preview (and make the theme unpickable without guessing) or preview and then be
-revertible, which is a transaction this screen has no way to roll back.
+here: several of these settings are already visible elsewhere — the concurrency spinner in the
+toolbar, the theme in every pixel, the default preset in the preset manager and on the next row a
+user pastes — so a change that waited for `OK` would have to either not preview (and make the theme
+unpickable without guessing) or preview and then be revertible, which is a transaction this screen
+has no way to roll back.
 
 ## The directory picker is injected
 
@@ -103,8 +105,8 @@ FFMPEG_ON_PATH_NOTE: Final = "Looked for on PATH"
 
 #: The screen's own statement of what it does not yet cover (`T-146`).
 #:
-#: **`REQ-023` names eight settings and this screen has three.** A settings screen that shows only
-#: what it implements reads as complete, and the five absences are each owned by a filed task —
+#: **`REQ-023` names eight settings and this screen has seven.** A settings screen that shows only
+#: what it implements reads as complete, and the one absence is owned by a filed task (`T-196`) —
 #: so the honest thing is to say so where the user is looking rather than only in a document they
 #: will not read.
 SETTINGS_STILL_TO_COME: Final = "Still to come: network options."

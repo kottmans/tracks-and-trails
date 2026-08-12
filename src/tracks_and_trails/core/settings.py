@@ -187,7 +187,9 @@ def settings_path() -> Path:
 class Settings:
     """The settings this application holds. Frozen, like every other model in `core/`.
 
-    One field today. Phase 4's `REQ-023` adds the other seven; this is the type they land on.
+    Phase 2 landed this with one field — the concurrency limit. Phase 4's `REQ-023` screen added
+    the rest on top of it rather than replacing it, which is what `ARC-007` said it would.
+    **Network options are the one `REQ-023` setting with no field here yet** (`T-196`).
     """
 
     concurrency: int = CONCURRENCY_DEFAULT

@@ -923,10 +923,13 @@ class MainWindow(QMainWindow):
     def _build_concurrency_control(self, initial: int) -> None:
         """One control for `REQ-013`'s limit, in this window rather than a dialog (`ARC-007`).
 
-        **Why here and not in a settings dialog.** Phase 4 owns the full `REQ-023` dialog covering
-        eight settings; a one-control dialog built now is a layout Phase 4 would replace, while a
-        control plus the TOML layer beneath it is purely additive. `ARC-007` records that trade and
-        what it concedes — one control in a toolbar is easier to miss than a Settings menu item.
+        **Why here as well as in the settings dialog.** This control predates the dialog:
+        `ARC-007` put it in the toolbar because a one-control dialog would have been a layout
+        Phase 4 replaced, while a control plus the TOML layer beneath it was purely additive.
+        **`T-146` built the `REQ-023` screen in Phase 4 and deliberately kept both**, one value
+        with two views of it — composition applies and saves once, then tells the window.
+        Removing this copy is `T-220`'s open ruling. `ARC-007` records what the toolbar-only
+        shape conceded — one control in a toolbar is easier to miss than a Settings menu item.
 
         **The range is the settings layer's, read from it rather than restated.** `REQ-013`'s
         minimum and `ARC-007`'s ceiling both live in `core/settings.py`; a spinbox with its own

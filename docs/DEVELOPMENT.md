@@ -283,9 +283,10 @@ packaging/        PyInstaller spec and the frozen smoke test (T-020)
 
 ## Which `REQ-023` settings the screen actually holds
 
-`REQ-023` names eight settings. **Settings → Settings… holds five** — three from `T-146`, the
-ffmpeg location from `T-199`, and the cookie source from `T-197`; the rest are filed and not built,
-and the screen says so itself rather than reading as complete.
+`REQ-023` names eight settings. **Settings → Settings… holds seven** — three from `T-146`, the
+ffmpeg location from `T-199`, the cookie source from `T-197`, and the default preset and output
+template from `T-195`; **network options are the one that remains**, filed as `T-196`, and the
+screen says so itself rather than reading as complete.
 
 **A cookie path is the one setting with a decision attached.** `DAT-003` (amended 2026-08-10) puts
 it in `settings.toml` and in a worker's arguments and **nowhere else** — never on
@@ -299,8 +300,8 @@ field.
 | Default download directory | Settings screen | `[downloads] directory` |
 | Theme (light/dark) | Settings screen | `[appearance] theme` |
 | Concurrency limit | Settings screen **and** the toolbar — one value, two controls | `[queue] concurrency` |
-| Default preset | not built — `T-195` | `default_preset` (written already by the preset manager) |
-| Output template | not built — `T-195` | — |
+| Default preset | Settings screen **and** the preset manager — two controls, **one writer** | `default_preset` (bare key, above the first table) |
+| Output template | Settings screen | `output_template` (bare key, above the first table); absent means the shipped template |
 | ffmpeg location | Settings screen | `[ffmpeg] location` |
 | Network options (rate limit, proxy, retries) | not built — `T-196` | — |
 | Cookie source | Settings screen | `[cookies] file`, plus `cookies_from_browser` per preset |
@@ -308,7 +309,15 @@ field.
 **The concurrency control is deliberately in both places** (`T-146`'s recorded choice). Its home is
 one value in `settings.toml` and both controls are views of it: composition applies and saves once,
 then tells the window, which updates whichever controls exist. Removing the toolbar copy is a
-change to the toolbar's composition, which is `T-220`'s open ruling and not this task's to take.
+change to the toolbar's composition, which is `T-220`'s open ruling and was not `T-146`'s to take.
+
+**The default preset is in two places for the same reason, and answered the same way** (`T-195`'s
+recorded choice). *Set as default* in the preset manager and the combo on the settings screen both
+call `settings.set_default_preset`; **neither keeps a copy**. The screen reads the catalogue and the
+current default *when it opens* rather than caching at startup, so a preset made default in the
+manager is what the screen shows next. Two controls writing one key is how the two records in
+`P3EXIT-R1` came to disagree, so the crossing is proved from the file in both directions rather than
+from either screen's state.
 
 **A bad value reports rather than reverting silently** (`ARC-008`). A download folder that has been
 deleted, is a file, or cannot be written to falls back to the platform's downloads folder *and*
