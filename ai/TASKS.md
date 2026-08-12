@@ -1539,18 +1539,28 @@ prerequisite is Phase 1 approved.)*
 
 ### T-066 — CI installs the project differently from how the documentation says to
 
-**Status:** **Ready — unblocked 2026-08-03.** Its stated blocker was that "both `frozen` jobs are
-hosted and have not started since the quota ran out". That is no longer true: `frozen windows` runs
-on `STARBASE` and `frozen ubuntu-latest` on a hosted runner, and both passed in runs `30861672178`
-and `30865054119`. The frozen-artifact shape this waited on is now produced on every ordinary push.
+**Status:** **Ready — unblocked 2026-08-03, records trued 2026-08-12.** Its stated blocker was that
+"both `frozen` jobs are hosted and have not started since the quota ran out". Neither half holds:
+`frozen windows` is pinned to `STARBASE` (`OPS-010`) and `frozen linux` follows `LINUX_RUNNER`,
+which is set (`OPS-012`), so **neither is hosted** — and both run on every ordinary push, 31 s and
+5m26s in run `31607180926`. *(This said `frozen ubuntu-latest` runs "on a hosted runner", which
+`OPS-012` retired on 2026-08-05; the runs it cited, `30861672178` and `30865054119`, are from
+before that ruling and are kept as the evidence of the day they were taken.)*
 *(This read "Blocked — on frozen-artifact evidence only, and no longer a Phase 1 exit dependency"
 (`OPS-005` as amended 2026-07-29) until that re-triage.)* **The process-tree half is discharged:** `T-072`
 added a *Process trees under the venv* step to the self-hosted `windows desktop` job, and run
 `30414186949` executed the `T-019` cases under the venv shape for the first time anywhere — 72
 passed, 3 skipped, the grandchild case among the passes. `T066-R1`'s survivor assertions ran there
-too. What remains is the frozen-artifact shape: both `frozen` jobs are hosted and have not started
-since the quota ran out, which is the unreachable-environment condition `OPS-005` covers and
-`OPS-006` states generally — *a criterion that waits on a payment is not a gate*.
+too.
+
+**Nothing remains on the frozen-artifact shape, and this paragraph said the opposite six lines
+after calling it untrue.** It went on reading *"both `frozen` jobs are hosted and have not started
+since the quota ran out"* — the exact sentence the status line above had already retired, left
+standing in the same paragraph. Both halves are false now: **neither job is hosted** (`frozen
+windows` is pinned to `[self-hosted, windows, desktop]`; `frozen linux` follows `LINUX_RUNNER`,
+which is set — `OPS-010` and `OPS-012`), and **both run on every ordinary push** — 31 s and 5m26s
+in run `31607180926`. The `OPS-005`/`OPS-006` unreachable-environment reading no longer applies,
+because nothing here waits on a payment.
 
 *(This said "on Windows process-tree and frozen evidence" until the runner supplied the first
 half. It then stood as a Phase 1 blocker until the `OPS-005` amendment: every frozen criterion in
@@ -1640,10 +1650,15 @@ assumption rather than a result.
 `90432207805` of run `30405803368` ran `Create the virtualenv` and then the desktop suite under
 it, green. That is the self-hosted runner, so it covers the Windows half of the change.
 
-**The four GitHub-hosted jobs have still never run it** — quota is exhausted and every hosted job
-fails before its first step. So the Linux half, the `frozen` jobs, and `cygpath -w` on a
-*hosted* Windows runner are all unverified. `ai/TESTING.md` §11's "local green is not evidence"
-still applies to those.
+**No job runs on a GitHub-hosted runner any more, so the hosted cells stay unverified — but not
+for the reason this said.** It read *"quota is exhausted and every hosted job fails before its
+first step"*, which described August 2026's exhausted allowance. What actually settled it is a
+ruling: `OPS-010` moved Windows to `STARBASE` and `OPS-012` moved Linux to the maintainer's Fedora
+machines, **and both record the surrender in writing** — Ubuntu as a tested platform, and
+clean-machine evidence on both platforms. So the hosted Linux half, the hosted `frozen` jobs and
+`cygpath -w` on a *hosted* Windows runner remain unverified **by decision**, not by outage;
+unsetting `LINUX_RUNNER`/`WINDOWS_RUNNER` restores them with no other change.
+`ai/TESTING.md` §11's *"local green is not evidence"* still applies to those cells.
 
 #### `T066-R1` — the crash tests killed one level, 2026-07-28
 
