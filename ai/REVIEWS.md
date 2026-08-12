@@ -15403,3 +15403,62 @@ finding. Under `AGENTS.md` §10, the Reviewer does not initiate another T-033 lo
 maintainer choice. T-033 moves from In Review back to Blocked. T-066 remains Ready; this review
 covers only commit `7983620`'s records claim, not a new implementation or final T-066 approval.
 No source, tests, workflow, dependency, commit, push, or remote state was changed by the Reviewer.
+
+## 2026-08-12 — T066-R2 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-066`; focused re-review of `T066-R2`
+**Base:** `7a1e233`
+**Head:** `6b7454b`
+**Platforms verified:** Records-only correction. Existing Windows evidence is used at its already
+reviewed boundary; no runtime platform was rerun for this documentation diff.
+**Verdict:** **Approved with follow-up `T-232`.** `T066-R2` is Resolved. The four T-066
+acceptance criteria are met at the evidence level the accepted `OPS-005` amendment defines;
+`T066-R1` was independently Resolved through `T-072`. New `T066-R3` is a Low, non-blocking stale
+test comment and is carried to `T-232`.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T066-R2** | **Medium** | **Resolved** | The corrected Phase field no longer routes completed evidence to T-033. Scope is explicitly the historical state the task was filed against, then states the current venv adoption before preserving the dated A/B. The shallow-tree claim now records the T-072 Windows execution. The frozen account retains the reasoned assumption without claiming a build is unavailable, and STATUS retires the hosted/quota premise with `OPS-010`, `OPS-012`, and the two green frozen runs adjacent. Reading the full entry and correction diff found no remaining live repetition of the five claims this finding identified. |
+| **T066-R3** | **Low** | **No — assertion and supported behavior are correct** | The comment immediately above `test_the_detector_sees_a_grandchild_and_not_just_a_worker` still says “CI installs without a virtualenv” and therefore that the old one-level assertion held on every runner (`tests/integration/test_manager.py:939-940`). CI has created and entered a venv in each functional job since T-066. The following paragraph correctly states the test's real invariant—at least two generations from the walker, valid under both install shapes—and the assertion implements that invariant, so this is stale explanation rather than a test defect. **Open — carried to `T-232`.** |
+
+### T-066 acceptance and residual assessment
+
+- **CI/documentation divergence:** met. The check, frozen, and Windows desktop job paths each
+  create a venv and add its native path to `GITHUB_PATH` before installing; the entry records the
+  maintainer's choice and the workflow implements it.
+- **Windows descendant reaping under the venv:** met. Run `30414186949` executed the T-019
+  process-tree cases under that shape, 72 passed / 3 skipped. The later Windows mutation omitted
+  the worker from the captured kill set while the independent oracle retained it; the worker
+  exited through the legitimate parent-watch containment path. The prior review consequently
+  marked `T072-R1`, and therefore the carried `T066-R1`, Resolved.
+- **Frozen process shape:** met at the explicitly accepted level. `OPS-005` says the artifact has
+  neither source/no-venv shape because PyInstaller relaunches the frozen executable through
+  `freeze_support()`, and deliberately accepts that answer as reasoned rather than measured. It
+  reopens if a later measurement differs. Green frozen jobs make measurement possible but do not
+  silently turn the accepted assumption into a measured result; the corrected entry preserves
+  that distinction.
+- **Detector test contract:** met. The test asserts a descendant at least two generations below
+  the walker and states that this invariant holds under both install shapes. `T066-R3` corrects
+  only the obsolete sentence about which shape CI currently uses.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and worktree before reviewer records | **Clean; `HEAD == origin/main == 6b7454b`; one submitted records commit follows `7a1e233`.** |
+| Changed paths | **Only `ai/TASKS.md` and `ai/STATUS.md`; T-033 is untouched.** |
+| `git diff --check 7a1e233..6b7454b` | **Passed.** |
+| Task-placement gate | **14 passed, exit 0** via `.venv/bin/pytest -q tests/unit/test_task_placement.py`. |
+| Workflow shape | Three functional job paths create a virtualenv and add it to `GITHUB_PATH`; the current test command executes the T-019/process-tree tests from that environment. |
+| Runtime suite / Windows CI | Not rerun for a records-only correction. No executable file changed; the already-reviewed Windows runs and `31607180926` frozen results remain the applicable evidence. |
+
+### Final disposition
+
+`T-066` is Approved with the accepted frozen-shape assumption visible, not converted into a
+measurement. It moves from Ready to Complete at `6b7454b`. `T-232` owns the one stale test comment
+and does not reopen correct behavior or the acceptance evidence. `T-033` remains Blocked on
+`T033-R6` and is outside this boundary. No source, tests, workflow, dependency, commit, push, or
+remote state was changed by the Reviewer.

@@ -120,6 +120,182 @@ this one returned four verdicts before approving.*
 
 ## Complete
 
+### T-066 — CI installs the project differently from how the documentation says to
+
+**Status:** **Complete — Approved with follow-up `T-232`, 2026-08-12.** All four
+acceptance criteria are met at the evidence level accepted by `OPS-005`; `T066-R1` is Resolved
+through `T-072`, and `T066-R2` is Resolved. `T066-R3` is a non-blocking stale test comment.
+Its stated blocker was that
+"both `frozen` jobs are hosted and have not started since the quota ran out". Neither half holds:
+`frozen windows` is pinned to `STARBASE` (`OPS-010`) and `frozen linux` follows `LINUX_RUNNER`,
+which is set (`OPS-012`), so **neither is hosted** — and both run on every ordinary push, 31 s and
+5m26s in run `31607180926`. *(This said `frozen ubuntu-latest` runs "on a hosted runner", which
+`OPS-012` retired on 2026-08-05; the runs it cited, `30861672178` and `30865054119`, are from
+before that ruling and are kept as the evidence of the day they were taken.)*
+*(This read "Blocked — on frozen-artifact evidence only, and no longer a Phase 1 exit dependency"
+(`OPS-005` as amended 2026-07-29) until that re-triage.)* **The process-tree half is discharged:** `T-072`
+added a *Process trees under the venv* step to the self-hosted `windows desktop` job, and run
+`30414186949` executed the `T-019` cases under the venv shape for the first time anywhere — 72
+passed, 3 skipped, the grandchild case among the passes. `T066-R1`'s survivor assertions ran there
+too.
+
+**Nothing remains on the frozen-artifact shape, and this paragraph said the opposite six lines
+after calling it untrue.** It went on reading *"both `frozen` jobs are hosted and have not started
+since the quota ran out"* — the exact sentence the status line above had already retired, left
+standing in the same paragraph. Both halves are false now: **neither job is hosted** (`frozen
+windows` is pinned to `[self-hosted, windows, desktop]`; `frozen linux` follows `LINUX_RUNNER`,
+which is set — `OPS-010` and `OPS-012`), and **both run on every ordinary push** — 31 s and 5m26s
+in run `31607180926`. The `OPS-005`/`OPS-006` unreachable-environment reading no longer applies,
+because nothing here waits on a payment.
+
+*(This said "on Windows process-tree and frozen evidence" until the runner supplied the first
+half. It then stood as a Phase 1 blocker until the `OPS-005` amendment: every frozen criterion in
+the plan is Phase 0's and met by `T-020`, Phase 1's section names none, and `T-033` owns the
+Windows frozen build in Phase 5.)*
+**Owner:** Implementer
+**Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
+environment a developer or a user actually has. High for what it decides, not for when: it gates
+no phase exit
+**Phase:** Phase 1 origin. **Does not gate the Phase 1 exit** (`OPS-005`, amended). *(This said
+its remaining evidence "lands with `T-033` in Phase 5"; `T-033`'s frozen evidence is produced on
+both platforms now — `frozen windows` and `frozen linux` green in `31570861414` and
+`31607180926` — so nothing of this task is waiting there. `T066-R2`.)*
+**Depends on:** nothing
+**Relevant context:** `T-019`, `T-056`, `docs/DEVELOPMENT.md`, `.github/workflows/ci.yml`
+**Affected surfaces:** `.github/workflows/ci.yml`, `docs/DEVELOPMENT.md`, possibly
+`tests/integration/test_manager.py`
+**Risk:** Medium — no product code is wrong; what is wrong is the environment the gate measures
+
+#### Scope
+
+***This section describes the state the task was filed against, and that state is over***
+(`T066-R2`). It read as live: that `ci.yml` installed *"straight into the `setup-python`
+interpreter, with no venv at any point"*, and that **the gate and the documentation describe
+different environments**. **CI adopts the virtualenv** — every job runs `Create the virtualenv`
+and prepends it to `GITHUB_PATH` before installing, which the *Evidence* section below has
+recorded since 2026-07-28. The divergence is closed; what follows is why it mattered.
+
+`docs/DEVELOPMENT.md` tells a developer to work in a virtualenv. CI did not, and on Windows the
+difference is not cosmetic.
+
+`python -m venv` on Windows does not copy the interpreter into `Scripts\python.exe`; it installs a
+launcher that **spawns the real interpreter as a child**. Measured on `STARBASE`, 2026-07-28:
+
+| Install | `Popen(sys.executable)` | interpreter that ran |
+|---|---|---|
+| venv, as `DEVELOPMENT.md` documents | 10500 | **7356** |
+| no venv, as CI installs | 11352 | 11352 |
+
+So under the documented setup every `multiprocessing` spawn sits one level deeper than it does on
+CI, because `sys.executable` is a redirector. `test_the_detector_sees_a_grandchild_and_not_just_a_worker`
+fails in the venv checkout and passes in the CI-style one, on the same machine and the same
+commit — an A/B, not an inference.
+
+**Why this was more than a failing test.** `T-019` exists to prove the application reaps a process
+*tree* on Windows, and `T-056` exists because the helper that decides those assertions was
+imprecise. Both were verified only against the shallower tree — the deeper one is what a developer
+following our own instructions produces, and plausibly what a user of a venv-based install
+produces too. *(Present tense until `T066-R2`. `T-072` added the venv process-tree step and run
+`30414186949` executed the `T-019` cases under that shape — 72 passed, 3 skipped — which the
+status line above records as the process-tree half being discharged.)*
+
+#### Acceptance criteria
+
+- The divergence is resolved rather than documented: either CI installs the way `DEVELOPMENT.md`
+  says to, or `DEVELOPMENT.md` stops saying it, and whichever is chosen is justified in writing
+- If the venv shape is the one to support, `T-019`'s descendant-reaping assertions are shown to
+  hold under it, on Windows, with the extra level present
+- Whether the frozen artifact (`T-020`, `T-033`) has the shallow or the deep shape is answered,
+  since that is what a user actually runs
+- `test_the_detector_sees_a_grandchild_and_not_just_a_worker` states which shape it assumes
+
+#### Evidence, 2026-07-28
+
+**Resolution: CI adopts the virtualenv** (maintainer decision). Every job creates `.venv` and
+prepends it to `GITHUB_PATH`, so the commands `ai/TESTING.md` §4 publishes stay identical. On
+Windows the path is converted with `cygpath -w`: `shell: bash` there is Git Bash, whose `$PWD` is
+an MSYS path the runner itself cannot resolve.
+
+Testing the deeper tree is the superset — reaping that works with an extra generation works
+without one — which is why this direction rather than deleting the venv from the docs.
+
+**`test_the_detector_sees_a_grandchild_and_not_just_a_worker` asserted more than it needed.** It
+required `ppid() == child.pid`: exactly one hop. That is true only when `sys.executable` starts
+the interpreter directly, and in a venv on Windows `Scripts\python.exe` is a launcher that spawns
+the real interpreter, so `child.pid` is the launcher and the grandchild sits one level further
+down. The test failed with "this test is not about a grandchild at all" while looking at a tree
+that was *deeper* than it expected.
+
+It now asserts **at least two generations below the test process**, which is the property the
+detector actually has to satisfy, and which holds under both install shapes. Verified passing in
+both the venv and the no-venv checkout on Windows, and on Linux.
+
+**My first attempt at that fix was wrong**, and it is worth recording why: I measured generations
+from `child.pid` rather than from the test process, so a correct Linux tree (test → child →
+grandchild) reported one hop and failed. "Grandchild" is relative to the process doing the
+walking, not to the process that was spawned.
+
+**The frozen artifact has neither shape.** Under PyInstaller `sys.executable` is the frozen
+executable and `multiprocessing` re-launches it through `freeze_support()`, so there is no
+launcher generation and no venv. This was **reasoned, not measured** when written — building the
+artifact on Windows is `T-033`'s ground, and at the time no frozen build had run on `STARBASE`.
+**It has since**: `frozen windows` runs there on every push and was green in `31570861414` and
+`31607180926`, so the assumption is now checkable against a real artifact. It is still recorded as
+an assumption, because nobody has gone and checked it — that is a task, not a claim. *(The
+"no frozen build has been run" was present tense until `T066-R2`.)*
+
+**Partly verified as of 2026-07-28.** The virtualenv step **has now executed on Windows**: job
+`90432207805` of run `30405803368` ran `Create the virtualenv` and then the desktop suite under
+it, green. That is the self-hosted runner, so it covers the Windows half of the change.
+
+**No job runs on a GitHub-hosted runner any more, so the hosted cells stay unverified — but not
+for the reason this said.** It read *"quota is exhausted and every hosted job fails before its
+first step"*, which described August 2026's exhausted allowance. What actually settled it is a
+ruling: `OPS-010` moved Windows to `STARBASE` and `OPS-012` moved Linux to the maintainer's Fedora
+machines, **and both record the surrender in writing** — Ubuntu as a tested platform, and
+clean-machine evidence on both platforms. So the hosted Linux half, the hosted `frozen` jobs and
+`cygpath -w` on a *hosted* Windows runner remain unverified **by decision**, not by outage;
+unsetting `LINUX_RUNNER`/`WINDOWS_RUNNER` restores them with no other change.
+`ai/TESTING.md` §11's *"local green is not evidence"* still applies to those cells.
+
+#### `T066-R1` — the crash tests killed one level, 2026-07-28
+
+The finding: *Windows crash tests kill the venv launcher PID, without proving the application
+interpreter was killed.* Measured, with the crash test's own `CREATE_NEW_PROCESS_GROUP` flags:
+
+| Process | After `process.kill()` |
+|---|---|
+| the pid `Popen` returned (the venv launcher) | dead |
+| its child (the application) | dead — the launcher's Job object propagates |
+| **its grandchild (the worker)** | **alive** |
+
+So the literal mechanism in the finding is not what happens — the interpreter *is* killed, by the
+Job object the venv launcher creates. **The consequence the finding points at is real and worse**:
+the kill reaches exactly one level, and under a virtualenv the worker is two levels down. A test
+whose entire subject is an application dying mid-download was leaving the download running.
+
+`kill_the_application` now enumerates the tree **before** killing anything — once the parent is
+gone its children are reparented and the walk finds nothing — and kills all of it, which is what
+the POSIX branch has always done via `killpg`. Still `TerminateProcess`, so nothing unwinds.
+
+| Evidence | Result |
+|---|---|
+| three-level probe, before | grandchild and one sibling **survive** |
+| three-level probe, after, through the real `kill_the_application` | **tree reaped**, no survivors |
+| `test_end_to_end.py` ×5, before | **4 failed** |
+| `test_end_to_end.py` ×5, after | **5 passed** |
+
+**This is why `T-019`'s sibling tests deserve the same look.** They were written on a machine with
+no Windows, from a design argument about Job objects and parent watchdogs that is half right: the
+Job object exists and does propagate — one level.
+
+#### Out of scope
+
+- Changing how `multiprocessing` starts workers
+- The Qt font failure and the long-path failure seen in the same run (`T-067`, `T-068`)
+
+---
+
 ### T-223 — The row's menu: drop the editor alias, name the removal
 
 **Status:** **Complete — Approved 2026-08-12 after the `T223-R1` focused re-review.** Built the
@@ -1281,178 +1457,43 @@ deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are fo
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
 
-### T-066 — CI installs the project differently from how the documentation says to
+### T-232 — T-066's process-tree test still says CI skips the virtualenv
 
-**Status:** **Ready — unblocked 2026-08-03, records trued 2026-08-12.** Its stated blocker was that
-"both `frozen` jobs are hosted and have not started since the quota ran out". Neither half holds:
-`frozen windows` is pinned to `STARBASE` (`OPS-010`) and `frozen linux` follows `LINUX_RUNNER`,
-which is set (`OPS-012`), so **neither is hosted** — and both run on every ordinary push, 31 s and
-5m26s in run `31607180926`. *(This said `frozen ubuntu-latest` runs "on a hosted runner", which
-`OPS-012` retired on 2026-08-05; the runs it cited, `30861672178` and `30865054119`, are from
-before that ruling and are kept as the evidence of the day they were taken.)*
-*(This read "Blocked — on frozen-artifact evidence only, and no longer a Phase 1 exit dependency"
-(`OPS-005` as amended 2026-07-29) until that re-triage.)* **The process-tree half is discharged:** `T-072`
-added a *Process trees under the venv* step to the self-hosted `windows desktop` job, and run
-`30414186949` executed the `T-019` cases under the venv shape for the first time anywhere — 72
-passed, 3 skipped, the grandchild case among the passes. `T066-R1`'s survivor assertions ran there
-too.
-
-**Nothing remains on the frozen-artifact shape, and this paragraph said the opposite six lines
-after calling it untrue.** It went on reading *"both `frozen` jobs are hosted and have not started
-since the quota ran out"* — the exact sentence the status line above had already retired, left
-standing in the same paragraph. Both halves are false now: **neither job is hosted** (`frozen
-windows` is pinned to `[self-hosted, windows, desktop]`; `frozen linux` follows `LINUX_RUNNER`,
-which is set — `OPS-010` and `OPS-012`), and **both run on every ordinary push** — 31 s and 5m26s
-in run `31607180926`. The `OPS-005`/`OPS-006` unreachable-environment reading no longer applies,
-because nothing here waits on a payment.
-
-*(This said "on Windows process-tree and frozen evidence" until the runner supplied the first
-half. It then stood as a Phase 1 blocker until the `OPS-005` amendment: every frozen criterion in
-the plan is Phase 0's and met by `T-020`, Phase 1's section names none, and `T-033` owns the
-Windows frozen build in Phase 5.)*
+**Status:** **Ready — non-blocking follow-up from `T066-R3`, 2026-08-12.**
 **Owner:** Implementer
-**Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
-environment a developer or a user actually has. High for what it decides, not for when: it gates
-no phase exit
-**Phase:** Phase 1 origin. **Does not gate the Phase 1 exit** (`OPS-005`, amended). *(This said
-its remaining evidence "lands with `T-033` in Phase 5"; `T-033`'s frozen evidence is produced on
-both platforms now — `frozen windows` and `frozen linux` green in `31570861414` and
-`31607180926` — so nothing of this task is waiting there. `T066-R2`.)*
+**Priority:** Low
+**Phase:** Phase 1 residue; gates no phase or task
 **Depends on:** nothing
-**Relevant context:** `T-019`, `T-056`, `docs/DEVELOPMENT.md`, `.github/workflows/ci.yml`
-**Affected surfaces:** `.github/workflows/ci.yml`, `docs/DEVELOPMENT.md`, possibly
-`tests/integration/test_manager.py`
-**Risk:** Medium — no product code is wrong; what is wrong is the environment the gate measures
+**Relevant context:** `T-066`, `T066-R3`, `.github/workflows/ci.yml`,
+`tests/integration/test_manager.py::test_the_detector_sees_a_grandchild_and_not_just_a_worker`
+**Affected surfaces:** `tests/integration/test_manager.py` comment only
+**Risk:** Low — the assertion is correct; the explanation names CI's retired install shape
 
 #### Scope
 
-***This section describes the state the task was filed against, and that state is over***
-(`T066-R2`). It read as live: that `ci.yml` installed *"straight into the `setup-python`
-interpreter, with no venv at any point"*, and that **the gate and the documentation describe
-different environments**. **CI adopts the virtualenv** — every job runs `Create the virtualenv`
-and prepends it to `GITHUB_PATH` before installing, which the *Evidence* section below has
-recorded since 2026-07-28. The divergence is closed; what follows is why it mattered.
+The comment above the generation assertion still says CI installs without a virtualenv and that
+the old one-hop assumption therefore held on every runner. T-066 changed that: every functional
+CI job creates and enters a virtualenv before installing. The following paragraph and the
+assertion are already correct — the detector needs a process at least two generations below the
+walker, and that invariant holds with or without the Windows launcher level.
 
-`docs/DEVELOPMENT.md` tells a developer to work in a virtualenv. CI did not, and on Windows the
-difference is not cosmetic.
-
-`python -m venv` on Windows does not copy the interpreter into `Scripts\python.exe`; it installs a
-launcher that **spawns the real interpreter as a child**. Measured on `STARBASE`, 2026-07-28:
-
-| Install | `Popen(sys.executable)` | interpreter that ran |
-|---|---|---|
-| venv, as `DEVELOPMENT.md` documents | 10500 | **7356** |
-| no venv, as CI installs | 11352 | 11352 |
-
-So under the documented setup every `multiprocessing` spawn sits one level deeper than it does on
-CI, because `sys.executable` is a redirector. `test_the_detector_sees_a_grandchild_and_not_just_a_worker`
-fails in the venv checkout and passes in the CI-style one, on the same machine and the same
-commit — an A/B, not an inference.
-
-**Why this was more than a failing test.** `T-019` exists to prove the application reaps a process
-*tree* on Windows, and `T-056` exists because the helper that decides those assertions was
-imprecise. Both were verified only against the shallower tree — the deeper one is what a developer
-following our own instructions produces, and plausibly what a user of a venv-based install
-produces too. *(Present tense until `T066-R2`. `T-072` added the venv process-tree step and run
-`30414186949` executed the `T-019` cases under that shape — 72 passed, 3 skipped — which the
-status line above records as the process-tree half being discharged.)*
+Correct the stale two-line explanation while preserving the historical reason the assertion
+changed and its install-shape-independent contract. Do not change test behavior.
 
 #### Acceptance criteria
 
-- The divergence is resolved rather than documented: either CI installs the way `DEVELOPMENT.md`
-  says to, or `DEVELOPMENT.md` stops saying it, and whichever is chosen is justified in writing
-- If the venv shape is the one to support, `T-019`'s descendant-reaping assertions are shown to
-  hold under it, on Windows, with the extra level present
-- Whether the frozen artifact (`T-020`, `T-033`) has the shallow or the deep shape is answered,
-  since that is what a user actually runs
-- `test_the_detector_sees_a_grandchild_and_not_just_a_worker` states which shape it assumes
-
-#### Evidence, 2026-07-28
-
-**Resolution: CI adopts the virtualenv** (maintainer decision). Every job creates `.venv` and
-prepends it to `GITHUB_PATH`, so the commands `ai/TESTING.md` §4 publishes stay identical. On
-Windows the path is converted with `cygpath -w`: `shell: bash` there is Git Bash, whose `$PWD` is
-an MSYS path the runner itself cannot resolve.
-
-Testing the deeper tree is the superset — reaping that works with an extra generation works
-without one — which is why this direction rather than deleting the venv from the docs.
-
-**`test_the_detector_sees_a_grandchild_and_not_just_a_worker` asserted more than it needed.** It
-required `ppid() == child.pid`: exactly one hop. That is true only when `sys.executable` starts
-the interpreter directly, and in a venv on Windows `Scripts\python.exe` is a launcher that spawns
-the real interpreter, so `child.pid` is the launcher and the grandchild sits one level further
-down. The test failed with "this test is not about a grandchild at all" while looking at a tree
-that was *deeper* than it expected.
-
-It now asserts **at least two generations below the test process**, which is the property the
-detector actually has to satisfy, and which holds under both install shapes. Verified passing in
-both the venv and the no-venv checkout on Windows, and on Linux.
-
-**My first attempt at that fix was wrong**, and it is worth recording why: I measured generations
-from `child.pid` rather than from the test process, so a correct Linux tree (test → child →
-grandchild) reported one hop and failed. "Grandchild" is relative to the process doing the
-walking, not to the process that was spawned.
-
-**The frozen artifact has neither shape.** Under PyInstaller `sys.executable` is the frozen
-executable and `multiprocessing` re-launches it through `freeze_support()`, so there is no
-launcher generation and no venv. This was **reasoned, not measured** when written — building the
-artifact on Windows is `T-033`'s ground, and at the time no frozen build had run on `STARBASE`.
-**It has since**: `frozen windows` runs there on every push and was green in `31570861414` and
-`31607180926`, so the assumption is now checkable against a real artifact. It is still recorded as
-an assumption, because nobody has gone and checked it — that is a task, not a claim. *(The
-"no frozen build has been run" was present tense until `T066-R2`.)*
-
-**Partly verified as of 2026-07-28.** The virtualenv step **has now executed on Windows**: job
-`90432207805` of run `30405803368` ran `Create the virtualenv` and then the desktop suite under
-it, green. That is the self-hosted runner, so it covers the Windows half of the change.
-
-**No job runs on a GitHub-hosted runner any more, so the hosted cells stay unverified — but not
-for the reason this said.** It read *"quota is exhausted and every hosted job fails before its
-first step"*, which described August 2026's exhausted allowance. What actually settled it is a
-ruling: `OPS-010` moved Windows to `STARBASE` and `OPS-012` moved Linux to the maintainer's Fedora
-machines, **and both record the surrender in writing** — Ubuntu as a tested platform, and
-clean-machine evidence on both platforms. So the hosted Linux half, the hosted `frozen` jobs and
-`cygpath -w` on a *hosted* Windows runner remain unverified **by decision**, not by outage;
-unsetting `LINUX_RUNNER`/`WINDOWS_RUNNER` restores them with no other change.
-`ai/TESTING.md` §11's *"local green is not evidence"* still applies to those cells.
-
-#### `T066-R1` — the crash tests killed one level, 2026-07-28
-
-The finding: *Windows crash tests kill the venv launcher PID, without proving the application
-interpreter was killed.* Measured, with the crash test's own `CREATE_NEW_PROCESS_GROUP` flags:
-
-| Process | After `process.kill()` |
-|---|---|
-| the pid `Popen` returned (the venv launcher) | dead |
-| its child (the application) | dead — the launcher's Job object propagates |
-| **its grandchild (the worker)** | **alive** |
-
-So the literal mechanism in the finding is not what happens — the interpreter *is* killed, by the
-Job object the venv launcher creates. **The consequence the finding points at is real and worse**:
-the kill reaches exactly one level, and under a virtualenv the worker is two levels down. A test
-whose entire subject is an application dying mid-download was leaving the download running.
-
-`kill_the_application` now enumerates the tree **before** killing anything — once the parent is
-gone its children are reparented and the walk finds nothing — and kills all of it, which is what
-the POSIX branch has always done via `killpg`. Still `TerminateProcess`, so nothing unwinds.
-
-| Evidence | Result |
-|---|---|
-| three-level probe, before | grandchild and one sibling **survive** |
-| three-level probe, after, through the real `kill_the_application` | **tree reaped**, no survivors |
-| `test_end_to_end.py` ×5, before | **4 failed** |
-| `test_end_to_end.py` ×5, after | **5 passed** |
-
-**This is why `T-019`'s sibling tests deserve the same look.** They were written on a machine with
-no Windows, from a design argument about Job objects and parent watchdogs that is half right: the
-Job object exists and does propagate — one level.
+- The comment states that CI now uses the documented virtualenv and marks the no-venv CI shape as
+  the pre-T-066 state
+- The explanation still says why `generations >= 2` is valid under both install shapes
+- No assertion, helper, fixture, workflow, or product behavior changes
 
 #### Out of scope
 
-- Changing how `multiprocessing` starts workers
-- The Qt font failure and the long-path failure seen in the same run (`T-067`, `T-068`)
+- Reworking the detector or its process fixture
+- Re-measuring the accepted frozen-artifact assumption
 
 ---
+
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
 For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
