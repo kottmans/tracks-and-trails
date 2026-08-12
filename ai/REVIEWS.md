@@ -15253,3 +15253,65 @@ The T-225/T-123 implementation manifest above is approved. It may be split into 
 per-task commits and pushed so CI supplies the missing Windows runtime evidence. Do not parallelise
 integration: `T-228` remains the gate for that. `T-230` is a real policy cleanup for spawned
 integration children, but it does not block the unit/UI parallel slice reviewed here.
+
+## 2026-08-12 — unattended-run initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-033`, `T-213`, `T-218`, `T-219`, `T-223`, `T-226`; `T-225` and `T-123`
+were not reopened after their reviews immediately above
+**Base:** `15f3d5c`
+**Head:** `b9e91d0` (implementation through `d5ba36a`; final status-only commit `b9e91d0`)
+**Platforms verified:** Linux locally; GitHub run `31570861414` independently confirmed all five
+jobs successful at `d5ba36a`, including both frozen platforms and `windows desktop`
+**Verdict:** **Changes requested** for `T-033` and `T-223`. **Approved**: `T-213`, `T-226`.
+**Approved with follow-up**: `T-218` (`T-231`). `T-219` is correctly **Blocked** on a scope ruling;
+under the current `REQ-009`, refusing/cancelling it is the only option that does not amend a
+higher-authority requirement.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T033-R5** | **High** | **Yes — documented architecture invariant** | yt-dlp integration boundary | `_freeze_probe.py:291-300` imports yt-dlp's private solver package and reads/calls `vendor.HASHES` and `vendor.load_script` directly. `ARCHITECTURE.md` §6 confines yt-dlp churn to `downloader/ytdlp_adapter.py` and `downloader/worker.py` and requires a change to yt-dlp option names or dict keys to be absorbable in those two files. The new probe is now a third module coupled to a private package path, symbol names, hash table, and loading API. Going through `_import_ytdlp` for the first half does not make this second direct integration compliant. | Move the solver-asset operation behind `downloader.worker` (or the permitted adapter, if that layer is the better fit), returning a project-owned result the frozen probe can report. Keep the real `vendor.load_script` path and frozen negative build; only relocate the upstream knowledge behind the approved boundary. | **Open — T-033** |
+| **T033-R6** | **Medium** | **Yes — current truth materially misstates the required gate and task readiness** | Decision/task/status records | `REL-002` is Accepted and says `collect_submodules("yt_dlp")` stays (`DECISIONS.md:449-475`), while the new task text again says the decision is open (`TASKS.md:1303-1305`), the task remains under `## Ready`, and `STATUS.md:63-64,83-84` asks the maintainer to make the already-recorded decision. This is not harmless history: the current actionable and status records report a false blocker and prevent a truthful review/completion disposition. | Preserve `REL-002`; remove only the current-truth claims that its decision remains open, record the successful Windows frozen evidence, and return `T-033` for focused re-review after R5 is corrected. | **Open — T-033** |
+| **T223-R1** | **Medium** | **Yes — observable correctness and the playlist criterion** | Remove label | `remove_label` decides playlist-ness from whether `MediaInfo.entries` is non-empty (`add_dialog.py:380-384`), even though the model deliberately records `is_playlist` separately and says an unenumerated playlist may have `entries == ()` with a real `entry_count` (`models.py:686-703`). The supported path is already tested at `test_add_dialog.py:2523-2545`: `MediaInfo(is_playlist=True, entry_count=9, entries=())` stays as one URL job. Direct reproduction makes the new label say **Remove this URL**, misclassifying the playlist and understating the same blast radius this task exists to name. The submitted test covers only an enumerated fixture, so it cannot catch the collapse. | Branch on `media.is_playlist`, define the honest wording/count source for enumerated, partially enumerated, and unenumerated playlists, and add the existing unenumerable shape to the menu regression. If no defensible `N` exists, amend the criterion/spec deliberately rather than calling the playlist a URL. | **Open — T-223** |
+| **T218-R1** | **Low** | **No — behavior and assertions are correct** | Source/test documentation | The final implementation is a child `QLabel`, but `add_dialog.py:619-621` still says it is painted because a child would enter the focus order. The test docstring at `test_add_dialog.py:5358-5362` likewise says it is painted and that no child carries the words, immediately before finding that child and asserting `NoFocus`. These are remnants of the mutation-rejected first implementation and direct a future maintainer toward it. | Correct the comments/docstring only; retain the child label and all assertions. | **Open — T-231** |
+
+### T-219 ruling assessment
+
+The refusal is sound. `REQ-009` requires the effective selector to be **always visible for any
+preset** so users can learn its syntax. `T-219` instead requires that no visible dialog surface
+print selector syntax. Tooltips or the options editor do not satisfy "always visible," and the
+row's existing selector line is intentional mixed-batch context. Therefore:
+
+- option 1 does not meet `T-219`'s own criterion;
+- option 2 contradicts `REQ-009`; and
+- option 3—cancel/refuse `T-219` under the current requirement—is the only presently compliant
+  disposition.
+
+Only the maintainer/Planner can choose to amend `REQ-009` and reopen option 2. No implementation
+should begin while the requirement stands.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree before reviewer records | **Clean; `HEAD == origin/main == b9e91d0`; 12 commits in the stated boundary.** |
+| `git diff --check 15f3d5c..b9e91d0` | **Passed.** |
+| Focused Ruff / format check | **Passed; 7 touched source/test files already formatted.** |
+| `mypy src` | **Passed; 51 source files.** |
+| Focused `T-218` / `T-223` UI and staging tests | **6 passed, 172 deselected.** |
+| `T-226` composition regression | **1 passed, 58 deselected.** |
+| Freeze-probe integration logic | **8 passed.** |
+| Layering + task-placement gates | **284 passed.** The layering gate does not detect R5 because the private import is dynamic. |
+| Direct `T223-R1` reproduction | `MediaInfo(is_playlist=True, entry_count=9, entries=())` produced **`Remove this URL`**. |
+| Solver positive logic | `_check_bundled_solver` loaded `yt.solver.core.js` through yt-dlp, verified `sha3_512`, and reported both shipped extras. |
+| GitHub Actions run `31570861414` | **Success at `d5ba36a`**: `linux`, `windows desktop`, `frozen linux`, `frozen windows`, and `STARBASE coverage`. The frozen Windows probe step passed. |
+
+### Readiness and correction scope
+
+`T-213` and `T-226` may move to Complete. `T-218` may move to Complete with `T-231` carrying its
+non-blocking prose cleanup. `T-033` and `T-223` remain unapproved; return one correction batch for
+the three blocking findings, with focused tests for the moved integration boundary and every
+playlist representation. The status-only commit's incorrect `collect_submodules` claims are part
+of `T033-R6` and need correction, but no reviewed product source was changed by the Reviewer.

@@ -40,6 +40,8 @@ observe them (`REQ-015`, `ARCHITECTURE.md` §3):
   killed, so without this a `SIGKILL`ed application would leave a download running forever.
 """
 
+import hashlib
+import importlib
 import logging
 import multiprocessing
 import os
@@ -50,8 +52,9 @@ import threading
 import traceback
 from collections.abc import Iterator, Mapping
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Final, Protocol
 
 from tracks_and_trails.core.errors import ErrorKind, FailureDetail
@@ -164,6 +167,110 @@ def _origin_of(module: Any, candidate: YtdlpCandidate) -> str:
         except ValueError:
             return f"{candidate.source} requested, but an already-imported yt-dlp was used"
     return candidate.source
+
+
+@dataclass(frozen=True, slots=True)
+class SolverReport:
+    """What the bundled YouTube challenge solver is, from inside whatever is running (`T-033`).
+
+    **A project-owned answer, so the frozen probe never touches yt-dlp** (`T033-R5`,
+    `ARCHITECTURE.md` §6). The knowledge of *where* the solver lives, what its assets are called,
+    which hash function vouches for them and how they are loaded is upstream's and changes when
+    upstream changes it — so it lives in `downloader/worker.py` with the rest of the yt-dlp
+    coupling, and this is what comes back out.
+
+    `problem` is `None` when the required solver was found and verified; otherwise it is a sentence
+    naming what is missing, which is the only thing the caller has to render.
+    """
+
+    name: str
+    version: str
+    also: tuple[str, ...] = field(default=())
+    problem: str | None = None
+
+    @property
+    def usable(self) -> bool:
+        return self.problem is None
+
+
+#: The solver asset `EJSBaseJCP._builtin_source` uses, and the one a frozen build must carry.
+#:
+#: **Not every name in `vendor.HASHES`.** That table records six and a normal install ships three —
+#: the two `lib` variants and the minified core are absent — so requiring the table would fail a
+#: correct artifact. The Deno and Bun variants are reported but not required: which of those ships
+#: is upstream's business.
+REQUIRED_SOLVER: Final = "yt.solver.core.js"
+
+#: Where yt-dlp keeps the built-in solver, relative to the package root.
+#:
+#: **A private path, and that is exactly why it is in this module** (`T033-R5`,
+#: `ARCHITECTURE.md` §6). `downloader/worker.py` and `downloader/ytdlp_adapter.py` are the two
+#: files an upstream rename is allowed to reach; the frozen probe imported this path directly and
+#: became a third, which is the coupling §6 exists to prevent.
+_SOLVER_PACKAGE: Final = "extractor.youtube.jsc._builtin.vendor"
+
+
+def bundled_solver(module: ModuleType) -> SolverReport:
+    """Load the built-in YouTube solver the way yt-dlp does, and say whether it is there.
+
+    **Through `vendor.load_script`, not through the filesystem.** That is the path
+    `EJSBaseJCP._builtin_source` actually takes, and it goes through `importlib.resources` — the
+    part that behaves differently inside a frozen archive. Reading the file with `pathlib` would
+    prove the bytes exist somewhere and prove nothing about whether yt-dlp can reach them.
+
+    **The hash is `sha3_512`, because that is what yt-dlp checks with.** `Script.hash` in
+    `extractor/youtube/jsc/_builtin/ejs.py` uses it against the same `vendor.HASHES` table read
+    here. Re-deriving the digest with another algorithm would be this project holding its own
+    opinion about a file it does not own.
+
+    **Why this matters at all** (`T-033`): removing `collect_data_files("yt_dlp")` from the
+    PyInstaller spec strips all three solver assets, and every other check in the frozen probe
+    still passed — an artifact shipping without them fails only on the sites that need the solver,
+    which reads exactly like the site breakage `C-002` teaches everyone to expect.
+    """
+    try:
+        vendor = importlib.import_module(f"{module.__name__}.{_SOLVER_PACKAGE}")
+    except ImportError as error:
+        return SolverReport(
+            name=REQUIRED_SOLVER,
+            version="unknown",
+            problem=(
+                f"yt-dlp's built-in solver package is not in this build ({error}). The YouTube "
+                "challenge solver cannot be loaded, so the sites that need it fail as if they had "
+                "changed."
+            ),
+        )
+
+    recorded: dict[str, str] = vendor.HASHES
+    source = vendor.load_script(REQUIRED_SOLVER)
+    version = str(getattr(vendor, "VERSION", "unknown"))
+    if source is None:
+        return SolverReport(
+            name=REQUIRED_SOLVER,
+            version=version,
+            problem=(
+                f"{REQUIRED_SOLVER} is not in this build. yt-dlp's package data was not collected, "
+                "so the built-in YouTube solver is missing while everything else about the build "
+                "looks correct. Check collect_data_files in packaging/tracks-and-trails.spec."
+            ),
+        )
+
+    if hashlib.sha3_512(source.encode("utf-8")).hexdigest() != recorded.get(REQUIRED_SOLVER):
+        return SolverReport(
+            name=REQUIRED_SOLVER,
+            version=version,
+            problem=(
+                f"{REQUIRED_SOLVER} loaded but its hash does not match the one yt-dlp records for "
+                "it. This build carries a solver yt-dlp does not vouch for."
+            ),
+        )
+
+    also = tuple(
+        name
+        for name in sorted(recorded)
+        if name != REQUIRED_SOLVER and vendor.load_script(name) is not None
+    )
+    return SolverReport(name=REQUIRED_SOLVER, version=version, also=also)
 
 
 def _import_ytdlp(candidates: tuple[YtdlpCandidate, ...]) -> ResolvedYtdlp:

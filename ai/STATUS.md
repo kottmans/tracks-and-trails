@@ -60,8 +60,9 @@ in the real user cache**, and it is 0 now.
 - **`T-033`** — the frozen probe was blind to package-data loss. Removing `collect_data_files`
   strips all three YouTube solver assets and the probe passed; it now loads the core solver through
   `vendor.load_script` and checks its `sha3_512` against yt-dlp's own table. Measured: baseline 3
-  assets exit 0, mutation 0 assets exit 1. **The `collect_submodules` decision stays open — it is
-  the maintainer's**, and an unattended run is the wrong place for a judgement about future pins.
+  assets exit 0, mutation 0 assets exit 1. **`collect_submodules` was never an open question**:
+  `REL-002` accepted it on 2026-08-04 and it stays. Saying otherwise was `T033-R6` — a
+  current-truth record reporting a blocker the decisions file had already cleared.
 - **`T-219` was refused, and the refusal is the deliverable.** Its premise does not hold: the
   footer is not the last surface printing selector syntax — every probed row prints it through
   `selector_text`, deliberately, because `REQ-009` asks for a selector a user can learn from and
@@ -80,7 +81,7 @@ the mechanism worked at all.
 retry deadline stops firing under load), `T-230` (a spawned child still gets the real directories —
 62 job logs from integration, 0 from the parallel slice), and `T-229` by the reviewer.
 
-**Open and the maintainer's:** `T-219`'s ruling, `T-033`'s `collect_submodules` decision, `T-208`'s
+**Open and the maintainer's:** `T-219`'s ruling, `T-208`'s
 disposition, `T-221`'s display question, `T-220`, and `P-29`.
 
 ## 2026-08-11 (fifth): T-195, six rounds
