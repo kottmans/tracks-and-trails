@@ -118,14 +118,15 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
+## Blocked
+
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
-**Status:** **In Review — changes requested in the fourth focused re-review 2026-08-11.**
-`T195-R5` and `T195-R6` are resolved. `T195-R4` now proves the ARC-008 dialog, but its two remaining
-tests stop one production boundary early: the surface crossing is manually wired between separate
-widgets, and the output-template test previews rather than writes the path. The maintainer's
-explicit offer to add the end-to-end file proof authorizes one more focused correction limited to
-these two gaps.
+**Status:** **Blocked — fifth focused re-review 2026-08-11.** All original T-195 findings are
+resolved at `a1e31c8`, but its new end-to-end regression exits 134 after reporting a pass because it
+never shuts down the composed application's writer (`T195-R7`). The extra-pass authorization is
+consumed; another focused correction requires the maintainer's explicit authorization under
+`AGENTS.md` §10.
 
 **`T195-R5` — the catalogue was a startup snapshot.** `preset_names` closed over the `ffmpeg`
 report composition was built with, while `choose_ffmpeg_location` updates `in_force.report`. So a
@@ -158,13 +159,10 @@ removing the screen's wiring entirely, which the previous round's tests could no
   and composition validates before the value becomes interactive.
 - **`T195-R3` — Medium, Resolved for the submitted startup case at `a152017`.** With ffmpeg absent
   at startup, Settings and Add now filter through `needs_ffmpeg` and offer the same catalogue.
-- **`T195-R4` — Medium, Open.** The real Settings controls, distinguishing retarget, staged-row
-  inheritance, and user-visible ARC-008 dialog are covered. The new bidirectional surface tests
-  construct the widgets separately and manually carry `Settings` between them, so deleting
-  composition's `held.settings = settings` manager handoff leaves both green; cross the real
-  composed routes instead. The output-template test persists and previews the request, but the
-  acceptance criterion explicitly says the job **writes** to a **real written path**; add that
-  proof in the end-to-end suite, as the correction itself proposes.
+- **`T195-R4` — Medium, Resolved at `a1e31c8`.** The manager → composition → Settings/session
+  crossing now uses the real composed callback, and deleting composition's `held.settings`
+  advance fails it. The localhost end-to-end route writes a file under the configured uploader
+  directory and fails when `to_request` ignores the default template.
 - **`T195-R5` — Medium, Resolved at `6326715`.** Settings reads `in_force.report` and an already-open
   screen is re-offered the catalogue after an accepted ffmpeg change. The focused host test proves
   both live and reopen routes. The adjacent preset-manager warning still captures startup state;
@@ -172,6 +170,12 @@ removing the screen's wiring entirely, which the previous round's tests could no
 - **`T195-R6` — Medium, Resolved at `e69cce7`.** All three tests construct an executable through
   `an_executable_ffmpeg`, and the entire composition file passes under an empty environment and
   `PATH`: **57 passed, no skips**.
+- **`T195-R7` — Medium, Open.** The new real-file test's `finally` calls only
+  `manager.stop_queue()`. It never runs `composition.shutdown.begin()` or waits for completion, so
+  the queue writer, database connection, and instance lock survive the test. In an isolated run,
+  the assertion reports **1 passed** and pytest then exits **134** with `QThread: Destroyed while
+  thread 'queue-writer' is still running`. Use the same `OrderlyShutdown` pattern as every
+  neighboring composed end-to-end test and assert it finishes.
 
 **The entry's premise did not hold, and the maintainer ruled on the fork.** This entry says the
 task supplies *"the application default that a preset with no opinion falls back to"* — and no
@@ -345,6 +349,26 @@ limited to the composed crossing and real-file assertion.
 
 **Two mutations, each killing exactly its own proof**: composition no longer advancing
 `held.settings` on a manager write, and `to_request` ignoring the supplied default.
+
+**Fifth focused re-review 2026-08-11.** `T195-R4` is independently resolved: the crossing traverses
+composition and the end-to-end assertion observes a real file at the custom path. That new test
+does not shut composition down, however. Its isolated process prints a passing assertion and then
+aborts with exit 134 when Qt destroys the still-running queue-writer thread (`T195-R7`). The
+submitted integration summary therefore is not a clean gate result. The authorized pass is
+consumed; the task is blocked pending maintainer authorization for another focused correction.
+
+**Sixth pass 2026-08-11 — `T195-R7`.** The new end-to-end test called `manager.stop_queue()`, which
+stops *scheduling* and leaves the writer thread running, so the process aborted at teardown:
+`QThread: Destroyed while thread 'queue-writer' is still running`, exit 134.
+
+**The abort was in my own output and I read past it.** The run printed `1 passed` first, so a green
+line and a crashed process came out of one command — which is precisely why the reviewer would not
+count the `403 passed` summary as a gate. Every neighbouring download test in that file begins the
+orderly shutdown and waits for it; this one did not.
+
+It uses `composition.shutdown.begin()` and waits on `shutdown.finished` now, like its neighbours.
+**Verified by exit code, not by the summary line**: the file alone exits `0`, and the whole
+integration suite is `403 passed` with exit `0`.
 
 **Owner:** Implementer
 **Priority:** Medium — the default preset is the one a user meets on every paste, and today it

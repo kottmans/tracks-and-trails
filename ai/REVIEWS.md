@@ -15009,3 +15009,38 @@ that offer authorizes one more focused correction limited to these two boundarie
 **Do not push `e69cce7`.** The four-commit T-195 stack remains held. The Reviewer changed only the
 append-only review record and current task disposition; no reviewed source, test, status snapshot,
 commit, or remote state was changed.
+
+## 2026-08-11 — T-195 fifth focused re-review
+
+**Review boundary:** `e69cce7..a1e31c8`
+
+**Verdict:** **Blocked.** Both remaining R4 behavior boundaries are now proved, but the new
+end-to-end test omits the application's shutdown lifecycle and makes its own pytest process abort
+after the assertion passes. The authorized extra pass is consumed; another focused correction
+requires explicit maintainer authorization under `AGENTS.md` §10.
+
+### Findings
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T195-R4** | **Medium** | **Resolved** | The new composition test opens the real manager callback, changes the default, and reads it from real Settings and the next Add dialog; deleting composition's `held.settings = settings` now fails the crossing. The localhost end-to-end test stores the custom template, queues through Add, completes a real download, and observes an existing file in the uploader-named subdirectory; ignoring the supplied default fails that proof. Changing Preset Manager from nested `exec()` to returned asynchronous `open()` is accepted: `open()` retains window modality, the parent and explicit holder preserve lifetime, and it matches the application's other testable dialog routes. |
+| **T195-R7** | **Medium** | **Yes — the new end-to-end test aborts its pytest process after passing** | Its `finally` calls only `composition.manager.stop_queue()`. That closes neither the queue-writer thread, database connection, nor instance lock; every neighboring direct `compose()` test instead calls `composition.shutdown.begin()` and waits for `shutdown.finished`. The Reviewer ran the focused localhost test with loopback permission: it printed **1 passed** and then `Qt: QThread: Destroyed while thread 'queue-writer' is still running`, exiting **134**. Replace the partial stop with the established orderly-shutdown sequence and assert completion. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree before reviewer records | **clean; `main` ahead of `origin/main` by five commits** |
+| `git diff --check e69cce7..a1e31c8` | **pass** |
+| `ruff check .` / `ruff format --check .` | **pass; 166 files formatted** |
+| `mypy src` | **pass; 52 files** |
+| bare `mypy` / bare `mypy --platform win32` | **pass; 128 files each** |
+| Composed manager → Settings crossing | **1 passed, 57 deselected in 0.48 s** |
+| Real-file localhost assertion | **assertion passed, then process exited 134 in 3.79 s because `queue-writer` remained running** |
+| Full suites | **not rerun by the Reviewer; submitted 2710 passed / 18 skipped and 403 integration assertions are noted, but the integration gate is not accepted as clean until its process exit is verified** |
+
+### Push disposition
+
+**Do not push `a1e31c8`.** The five-commit T-195 stack remains held. The Reviewer changed only the
+append-only review record and current task disposition; no reviewed source, test, status snapshot,
+commit, or remote state was changed.

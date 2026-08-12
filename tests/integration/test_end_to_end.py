@@ -998,7 +998,13 @@ def test_a_default_output_template_names_the_file_that_is_actually_written(
             "the job carries a template other than the one Settings stored"
         )
     finally:
-        composition.manager.stop_queue()
+        # **The orderly shutdown, not a stopped queue** (`T195-R7`). `stop_queue` stops *scheduling*
+        # and leaves the writer thread running, so the process aborted at teardown with
+        # `QThread: Destroyed while thread 'queue-writer' is still running` — after the assertions
+        # had passed, which is how a green line and an exit code of 134 came from one run. Every
+        # neighbouring download test here begins the shutdown and waits for it; this one did not.
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=120)
 
 
 def test_audio_postprocessing_does_not_overwrite_an_existing_final_path(
