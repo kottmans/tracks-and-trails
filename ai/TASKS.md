@@ -588,6 +588,21 @@ survives a re-wording.
 - The run states are exact too: `{"Start"}` then `{"Stop"}`, over the check-box role, with the
   tree still re-read after the state changes.
 
+**Verified on the runner** — run `31642823390`, `windows desktop` **success**:
+
+```
+test_no_interactive_control_reaches_the_tree_without_a_name PASSED
+test_the_toolbars_three_verbs_are_each_announced PASSED
+test_the_run_control_is_announced_in_both_of_its_states PASSED
+==================== 32 passed, 3141 deselected in 23.88s =====================
+```
+
+That is the whole evidence for these assertions: **exact sets are deliberately brittle** and cannot
+be run here, so a green Windows job is the only thing that distinguishes "correct" from "not yet
+wrong". The set subtracted for the frame's own buttons is not a guess either — run `31639831980`
+printed `['+ Add URLs', 'Clear finished', 'Close', 'Maximize', 'Minimize']`, which is where
+`TITLE_BAR_BUTTONS` earns its place here.
+
 **`T235-R1` — Medium, blocks approval (original finding):** The fixture, check-box discovery,
 expanded unnamed-control sweep, state transition, and green Windows evidence are all sound. The
 second criterion is not: `+ Add URLs` is imported as `ADD_URLS_BUTTON` rather than transcribed, and
