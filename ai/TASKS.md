@@ -633,7 +633,20 @@ Linux was always going to be verified by the runner or not at all; what it verif
 plausible assumption — *a toolbar verb is a Button* — is false for the one control on the bar that
 toggles.
 
-**The green Windows job is still owed**, and this entry does not pretend otherwise.
+#### The Windows evidence, delivered — run `31640266898`, `windows desktop` **success**
+
+```
+tests/ui/test_windows_accessibility.py::test_the_toolbars_three_verbs_are_each_announced PASSED
+tests/ui/test_windows_accessibility.py::test_the_run_control_is_announced_in_both_of_its_states PASSED
+==================== 32 passed, 3141 deselected in 27.13s =====================
+```
+
+`test_no_interactive_control_reaches_the_tree_without_a_name` passes with the toolbar in the tree
+**and** the check-box role added to its scope — so the three verbs and the run control are inside
+the `NFR-005` sweep for the first time, and none of them is unnamed.
+
+**The criteria are met**, including the one that could only be answered by the runner: the run
+control is announced `Start` stopped and `Stop` running.
 
 ---
 
