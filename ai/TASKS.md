@@ -420,7 +420,20 @@ after. No collection call, `Analysis` argument, workflow step or dependency move
 
 #### Review, 2026-08-12
 
-**`T237-R1` — Medium, blocks approval.** The canonical pointer and AST boundary are correct. The
+#### The correction, 2026-08-12 — `T237-R1`
+
+**Accepted, and the conflation was mine in both directions.** *"Neither removal fails anything
+today"* said of the gates what is only true of the gates, and the next clause then said a missing
+solver asset produces a user-visible failure — which is a statement about the **product**. Both
+sentences were true of different things and false as a pair.
+
+The comment now separates them: **neither removal fails a gate**, and the two removals are not
+otherwise alike — `collect_submodules` for *this pin* broke nothing that was measured, while
+`collect_data_files` **did** break the artifact and no gate fired anyway, because the probe never
+touches the assets it deletes. A future pin could put `collect_submodules` in the second position,
+which is the reason it stays. **Spec AST still identical.**
+
+**`T237-R1` — Medium, blocks approval (original finding):** The canonical pointer and AST boundary are correct. The
 closing paragraph is not: *"Neither removal fails anything today"* says the data-files mutant has
 no consequence, then the next sentence says a missing solver asset produces a user-visible
 failure. The measured statement is that neither removal fails the **current frozen probe/gates**;
@@ -560,7 +573,22 @@ control is announced `Start` stopped and `Stop` running.
 
 #### Review, 2026-08-12
 
-**Changes requested. `T235-R1` — Medium, blocks approval.** The fixture, check-box discovery,
+#### The correction, 2026-08-12 — `T235-R1`
+
+**Accepted: the docstring claimed something the code did not do.** It said the names were
+transcribed by hand while `+ Add URLs` was imported from `main_window.ADD_URLS_BUTTON`, and the
+run-state checks were `any("Start" in name ...)` over every check box. Both are gates that do not
+gate the contract they describe — a rename moves the expected side with production, and a substring
+survives a re-wording.
+
+- The import is **gone**, and both verbs are written out: the toolbar's buttons are compared as an
+  exact **set**, `{"+ Add URLs", "Clear finished"}`, so a missing verb, a fourth verb and a
+  re-worded verb all fail. The title bar's own `Close`/`Minimize`/`Maximize` are subtracted by
+  `TITLE_BAR_BUTTONS`, which already existed for that purpose.
+- The run states are exact too: `{"Start"}` then `{"Stop"}`, over the check-box role, with the
+  tree still re-read after the state changes.
+
+**`T235-R1` — Medium, blocks approval (original finding):** The fixture, check-box discovery,
 expanded unnamed-control sweep, state transition, and green Windows evidence are all sound. The
 second criterion is not: `+ Add URLs` is imported as `ADD_URLS_BUTTON` rather than transcribed, and
 the run test uses substring membership over the whole check-box set rather than exact `Start` and
@@ -3362,6 +3390,59 @@ worker uses the same queue.
 | Starved child processes | Time from `start()` to failure is 0.3–0.5 s in every loaded sample |
 | The `T-083` timer guard failing | Every `TIMER STOP` in every trace shows `retry_at={}` |
 | A good outcome discarded by the synthesised-sentinel violation | `outcome=None` — it never arrived |
+
+#### Bounded reachability, measured 2026-08-12 — and it exonerates the product shape
+
+**First, a correction to a number this entry reported.** *"Roughly one run in three"* was measured
+while the machine was also running other batches, and in some of them the tracing overhead. On an
+**otherwise idle** host it does not reproduce at any worker count:
+
+| Workers | Runs | Failures |
+|---|---:|---:|
+| `-n 1` (serial) | 5 | **0** |
+| `-n 4` | 5 | **0** |
+| `-n 8` | 5 | **0** |
+| `-n 20` (= `-n auto` here) | 5 | **0** |
+
+**Twenty clean runs.** So *worker multiplication is not the trigger*, and an integration-worker cap
+— the branch the review offered — would not have prevented anything measured here.
+
+**Saturation is the trigger.** The same `-n 20`, with 20 busy loops pinning the 20 cores before
+pytest starts: **3 failures in 5 runs** (`test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind`,
+`test_shutdown_leaves_no_descendant_either`,
+`test_a_pump_that_will_not_stop_keeps_the_manager_from_claiming_it_is_idle`) — a third set of
+tests again, which is now the most consistent thing about this defect.
+
+**Then the question the task exists for: is it reachable at supported product concurrency?**
+Driven the way the application drives it — a real `DownloadManager`, real spawned children, the
+child that failed in the suite — and counting the recorded `ErrorKind` rather than a test's verdict:
+
+| Shape | Sessions | `WORKER_CRASH` |
+|---|---:|---:|
+| One manager, concurrency 1, **idle** host | 30 | **0** |
+| One manager, concurrency 1, **saturated** host (40 loops on 20 cores) | 30 | **0** |
+| One manager, **concurrency 16** — `CONCURRENCY_MAXIMUM`, the busiest the application can be — saturated host | **320** | **0** |
+| **20 independent processes**, one manager each, all spawning at once | **300** | **0** |
+
+**680 sessions across every shape the product can take, including a 2:1 oversubscribed host, and
+not one lost message.** The `Failed(NETWORK)` outcome arrived every time.
+
+**So the classification is: not reachable at supported product concurrency by any means measured
+here.** It needs the **integration suite itself**, at high worker count, on a saturated host.
+Spawning many children does not do it; saturation does not do it; the product's maximum
+concurrency does not do it. The suite plus saturation does.
+
+**The remaining suspect, named rather than guessed at:** `tests/integration/test_manager.py`
+contains tests that deliberately kill workers, kill *process groups* and check orphan reaping, and
+`process_tree.kill_this_group()` is exactly the kind of operation whose blast radius depends on
+what shares a group. Under saturation, timing decides what is alive when one of those fires. The
+scattered failures — twelve distinct tests, then three more — fit interference between concurrently
+running tests better than they fit any one test's bound. **That is the next measurement, and it is
+about the harness rather than `src/`.**
+
+*(What this does **not** establish: that the loss is impossible for a user. It establishes that
+680 sessions in every shape the application supports did not produce one, which is the evidence
+this task was asked for and is the opposite of the direction the first round pointed.)*
 
 #### What this means, stated as a question rather than a decision
 
