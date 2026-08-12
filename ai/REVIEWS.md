@@ -15315,3 +15315,48 @@ non-blocking prose cleanup. `T-033` and `T-223` remain unapproved; return one co
 the three blocking findings, with focused tests for the moved integration boundary and every
 playlist representation. The status-only commit's incorrect `collect_submodules` claims are part
 of `T033-R6` and need correction, but no reviewed product source was changed by the Reviewer.
+
+## 2026-08-12 — T-033 / T-223 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-033`, `T-223`; `T-231` / `T218-R1` included as the submitted non-blocking
+follow-up
+**Base:** `b9e91d0`
+**Head:** `dbc7984` (`b235f4f` T-033, `725d763` T-223, `dbc7984` T-231/dispositions)
+**Platforms verified:** Linux locally; GitHub run `31607180926` independently confirmed all five
+jobs successful at `dbc7984`, including the relocated solver check in both frozen artifacts
+**Verdict:** **T-033 Blocked.** `T033-R5` is resolved, but blocking Medium `T033-R6` remains after
+the initial-plus-focused pass budget. **T-223 Approved. T-231 Approved / T218-R1 Resolved.**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T033-R5** | **High** | **Resolved** | The private package path, required solver name, `vendor.load_script`, `HASHES`, and `sha3_512` now live in `downloader/worker.py`, one of the two modules `ARCHITECTURE.md` §6 permits to absorb yt-dlp churn. `bundled_solver` returns a project-owned `SolverReport`; `_freeze_probe.py` reads only that report and decides the diagnostic/exit code. Grepping the probe confirms no `vendor`, `HASHES`, `sha3`, or dynamic-import knowledge remains. Both frozen CI jobs passed the relocated positive check, and the submitted rebuilt data-removal negative still exits 1. |
+| **T033-R6** | **Medium** | **Yes — current-truth task/status records still report false work and gates** | The specifically edited bullet, acceptance criterion, and top status summary now agree with `REL-002`, but the sibling audit the correction required did not happen. The live T-033 entry still says *“What remains is implementation: extend the frozen probe”* (`TASKS.md:221-224`), *“What remains is the probe extension and the separate-submodule decision”* and asks for a maintainer decision (`:227-236`), says Windows remains pending (`:342-346`), and its new R5 account says `SolverReport` is in `downloader/environment.py` (`:418-420`) before correctly saying it lives in `worker.py` ten lines later. `STATUS.md:2895-2906` and `:2931-2935` likewise still call the probe, submodule ruling, and Windows build outstanding. `TASKS.md` and `STATUS.md` are current truth under `AGENTS.md` §6; a dated provenance paragraph does not make present-tense false gates historical record. This materially misstates task/release readiness, so the mechanical-documentation exception does not make it non-blocking. | **Open — pass budget exhausted; T-033 Blocked pending maintainer choice under `AGENTS.md` §10** |
+| **T223-R1** | **Medium** | **Resolved** | `remove_label` branches on `MediaInfo.is_playlist`, uses `entry_count` when the site supplied it, falls back to materialised entries, preserves an unknown count without inventing zero, and handles singular grammar. The new regression independently covers unprobed/single, unenumerated-with-count, enumerated-without-count, unknown-count, and one-item shapes. The reviewer's nine-item reproduction now returns `Remove this playlist (9 items)`. |
+| **T218-R1** | **Low** | **Resolved** | The `EMPTY_HINT` comment and focus-test docstring now describe the child `QLabel`, its `NoFocus`/mouse-transparency contract, and why the unobservable paint implementation was rejected. Diff inspection confirms no behavior or assertion changed. The rewritten `T-231` entry faithfully carries the finding's substance; loss of the reviewer's original uncommitted wording does not alter the verdict. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree and boundary before reviewer records | **Clean; `HEAD == origin/main == dbc7984`; exactly the submitted three commits after `b9e91d0`.** |
+| `git diff --check b9e91d0..dbc7984` | **Passed.** |
+| Focused Ruff / format check | **Passed; 4 files already formatted.** |
+| `mypy src` | **Passed; 51 source files.** |
+| Freeze probe plus focused label/hint tests | **11 passed, 146 deselected.** |
+| Layering + task-placement gates | **284 passed.** |
+| Boundary grep | `_freeze_probe.py` contains no private solver package, `vendor`, `HASHES`, `sha3`, or `importlib` coupling; `worker.py` owns all of it. |
+| Corrected T223-R1 reproduction | `MediaInfo(is_playlist=True, entry_count=9, entries=())` returns **`Remove this playlist (9 items)`**. |
+| GitHub Actions run `31607180926` | **Success at `dbc7984`**: `linux`, `windows desktop`, `frozen linux`, `frozen windows`, and `STARBASE coverage`; both frozen probe steps passed. |
+
+### Convergence and next authority
+
+The High architecture defect is corrected, so no further serious-defect pass is required.
+`T033-R6` is a blocking Medium that survived the ordinary initial-plus-focused budget. Per
+`AGENTS.md` §10, the Reviewer does not initiate another correction loop: the maintainer must
+authorize one more focused records-only pass, accept the documented risk, change scope, or carry
+the correction into a named follow-up. `T-223` and `T-231` may move to Complete; `T-033` moves to
+Blocked. No reviewed source, tests, build files, commits, or remote state were changed by the
+Reviewer.
