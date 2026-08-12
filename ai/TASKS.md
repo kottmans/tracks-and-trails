@@ -3269,6 +3269,37 @@ is a lead, not a conclusion, and the third criterion below forbids treating rese
 of an answer — a per-test check that fails at the cause rather than at the crash — and `tests/ui`
 has no equivalent for *views*.
 
+#### Reproduction is not a viable strategy at this rate — 60 runs, 2026-08-12
+
+| Conditions | Runs | Crashes |
+|---|---:|---:|
+| `-n auto` unit/UI, idle machine | 40 | **0** |
+| `-n auto` unit/UI, host saturated (20 busy loops on 20 cores) | 12 | **0** |
+| `-n auto` unit/UI **while an `-n auto` integration batch runs beside it** | 8 | **0** |
+
+**Sixty runs, no reproduction — including the third row, which is the closest reconstruction of the
+original conditions available.** The observation happened while other pytest batches were running,
+so that shape was tried deliberately rather than as an afterthought.
+
+**The second row also refutes a recommendation this entry made two paragraphs earlier.** Having
+watched saturation reproduce `T-228` at 3-in-5, I wrote that the next attempt should reproduce under
+deliberate host load. It does not. Different defect, different lever — the same mistake as comparing
+this to `T-228` in the first place, made a second time in a smaller way.
+
+**So repetition is the wrong instrument here.** At worse than 1-in-60 the cost of catching it again
+is unbounded, and the retained stack already says more than another crash would: the object is a
+view, and the test it was blamed on never makes one.
+
+**What is worth building instead, proposed rather than done:** a `tests/ui` guard in the shape of
+`qt_lifecycle.fail_on_orphaned_timers()` — *after every test, assert no `QAbstractItemView` is
+awaiting deferred deletion* — which fails **at the test that leaked the view**, by name, on the
+first ordinary run, instead of waiting for a segfault to land somewhere else. That would satisfy the
+fourth criterion's *"a guard that fails before a worker dies"*, and `ai/TESTING.md` §13 already
+states the principle: the useful signal is the one at the cause.
+
+**Not built here**, because the fourth criterion is conditioned on product-versus-harness being
+established and it is not. This is the Implementer proposing the next step, not taking it.
+
 #### Scope
 
 Reproduce and diagnose the **worker SIGSEGV** under the supported parallel unit/UI command. Capture

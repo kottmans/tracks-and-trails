@@ -66,10 +66,24 @@ absence.
 integration workers; this is a per-process Qt thread pool and a parentless signal sink. *"Both are
 load-sensitive"* is not a shared mechanism.
 
-**Reproduction is running** — 40 `-n auto` unit/UI runs against the observed one-in-nine rate.
-**29 runs in, zero crashes**, which is itself worth recording: the original occurrence was during a
-session in which the machine was also running other batches, exactly as `T-228`'s contaminated
-rate was.
+**Reproduction was run and did not reproduce it: 60 runs, zero crashes** — 40 `-n auto` unit/UI on
+an idle machine, 12 with the host saturated, and 8 with an integration batch running beside them,
+which is the closest reconstruction of the original conditions. **Repetition is the wrong
+instrument** at worse than 1-in-60.
+
+**The retained stack says more than another crash would.** The faulting destructor is
+`QAbstractItemView::~QAbstractItemView`, reached from Shiboken's `runDeletionInMainThread` under
+`_Py_HandlePending` — a deferred deletion at an arbitrary bytecode boundary. **`test_row_delegate.py`
+imports no view class and constructs no view**, so the destroyed object was not created by the test
+xdist named. Stack kept at `ai/evidence/T238-SEGFAULT-gw7.txt`.
+
+**A second small correction of mine sits in that entry:** having watched saturation reproduce
+`T-228` at 3-in-5, I recommended reproducing this under load. It does not reproduce under load —
+the same over-reaching comparison, made twice.
+
+**Proposed, not built:** a `tests/ui` guard shaped like `qt_lifecycle.fail_on_orphaned_timers()` —
+after each test, assert no `QAbstractItemView` awaits deferred deletion — which would fail at the
+test that leaks the view rather than at a segfault somewhere else.
 
 
 **`T-236` is Approved and Complete.** The reviewer confirmed the pixel evidence independently:
