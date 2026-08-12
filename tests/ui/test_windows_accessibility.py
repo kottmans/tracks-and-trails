@@ -34,7 +34,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication, QMenu
 
-from tracks_and_trails.ui.main_window import APP_NAME, MainWindow
+from tracks_and_trails.ui.main_window import ADD_URLS_BUTTON, APP_NAME, MainWindow
 
 pytestmark = pytest.mark.windows_desktop
 
@@ -225,8 +225,20 @@ def read_tree(hwnd: int) -> Tree:
 
 @pytest.fixture
 def window(qapp: QApplication, tmp_path: Path) -> MainWindow:
-    """A shown, activated main window."""
-    shown = MainWindow(geometry_file=tmp_path / "window.toml")
+    """A shown, activated main window — **with its toolbar** (`T-235`).
+
+    **This built a bar-less window until 2026-08-12, and nobody noticed for a phase.** The gate
+    below sweeps every button in the tree and requires a name on each, and its docstring says
+    *"over every interactive control, not only the ones this file names"* — which was true of the
+    tree it was handed and false of the application. `MainWindow` builds no toolbar without
+    `control_bar` (`T-234` made that switch explicit; before, it was `concurrency`), so
+    `+ Add URLs`, the run control and `Clear finished` were **never in the tree at all** and have
+    never been checked for accessible names on Windows.
+
+    `T-234`'s criteria asked for this file to be *"updated for the removal"* and it could not be:
+    there was nothing here to update. `T234-R1` is that finding.
+    """
+    shown = MainWindow(geometry_file=tmp_path / "window.toml", control_bar=True)
     shown.show()
     shown.raise_()
     shown.activateWindow()
@@ -389,6 +401,62 @@ def test_each_menu_publishes_exactly_its_actions(
     finally:
         menu.close()
         QApplication.processEvents()
+
+
+# --- the toolbar (`T-235`) ------------------------------------------------------------------
+
+
+def test_the_toolbars_three_verbs_are_each_announced(window: MainWindow, tree: Tree) -> None:
+    """`NFR-005` over the controls a user reaches first, which this file had never seen.
+
+    **Transcribed by hand, not read from the toolbar.** The same rule the menu test follows:
+    deriving the expected names from the widgets would only prove the toolbar equals itself, and
+    the thing worth failing on is a verb that quietly stops being announced — or stops existing.
+    Three, because `UX-013` left three (`docs/UX_SPEC.md` §2.1).
+
+    **The sweep below is not a substitute for this.** It requires *a* name on every button; it
+    cannot notice that the button which used to say `Clear finished` now says nothing about what
+    it clears, nor that one of the three is gone.
+    """
+    named = {node.name for node in tree.of_type(UIA_BUTTON) if node.name.strip()}
+    for expected in (ADD_URLS_BUTTON, "Clear finished"):
+        assert expected in named, (
+            f"the toolbar's {expected!r} is not announced. Buttons in the tree: {sorted(named)}"
+        )
+
+    # The run control is checked by its own test, in both states.
+    run = window.run_action
+    assert run is not None, "the fixture's window has no run control, so it has no toolbar"
+
+
+def test_the_run_control_is_announced_in_both_of_its_states(window: MainWindow, tree: Tree) -> None:
+    """`UX-006`: one checkable control with two labels, so one reading covers half of it.
+
+    It reads `&Start` stopped and `&Stop` running (`T-220`), and its accessible name follows the
+    label. A check in one state says nothing about the other — and the running state is the one a
+    user is in while they are waiting, which is when they are most likely to be listening.
+
+    **The tree is re-read after the state changes**, because a snapshot taken before it is a
+    snapshot of the other state.
+    """
+    run = window.run_action
+    assert run is not None
+
+    stopped = {node.name for node in tree.of_type(UIA_BUTTON) if node.name.strip()}
+    assert any("Start" in name for name in stopped), (
+        f"a stopped queue's run control is not announced as Start. Buttons: {sorted(stopped)}"
+    )
+
+    window.show_queue_running(True)
+    QApplication.processEvents()
+    running = {
+        node.name
+        for node in read_tree(int(window.winId())).of_type(UIA_BUTTON)
+        if node.name.strip()
+    }
+    assert any("Stop" in name for name in running), (
+        f"a running queue's run control is not announced as Stop. Buttons: {sorted(running)}"
+    )
 
 
 # --- the About dialog -----------------------------------------------------------------------
