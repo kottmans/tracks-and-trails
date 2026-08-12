@@ -5,21 +5,22 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-11 (fourth entry) — **all six tasks from the unattended run are Approved
-and Complete**: `T-197`, `T-214`, `T-216`, `T-217`, `T-222`, `T-224`. `## In Review` is empty.
-**The reviewer has cleared the 22-commit stack to push; it has not been pushed** — that is the
-maintainer's instruction to give, and `AGENTS.md` §7 does not let it be inferred from a clearance.
+**Last updated:** 2026-08-11 (fifth entry) — **`T-195` is Approved and Complete at `7cd2002`**,
+after **six review rounds and eleven findings**. Four of REQ-023's eight settings are built. The
+six-commit stack is cleared to push.
 
-**`T-197` closes the phase's redaction exit criterion** — *logs carry no cookies, cookie paths,
-proxy credentials or tokens* — after seven findings across seven rounds, two of them Critical
-credential leaks and one of them created by the correction to the other. **Windows remains the only
-unverified gate**, and only a push produces it.
-**Last verified against repository:** 2026-08-11 for all four 2026-08-11 blocks — commit hashes read
+**Two Windows-only defects were caught by CI earlier the same day** (`d0cb822`, `074d9df`), both in
+tests I wrote, both invisible to every local run — the CI routing change to STARBASE and local
+machines (`3e824f4`) is what surfaced them.
+
+**What `T-195` cost is the record worth keeping.** The task entry described a model state that did
+not exist; two High findings were live defects; and **five of the eleven findings were about my own
+evidence** — tests that agreed with the code instead of testing it, including one that asserted the
+store and was presented as proving the wiring while the wiring was broken.
+**Last verified against repository:** 2026-08-11 for all five 2026-08-11 blocks — commit hashes read
 from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures from
-the runs quoted or from the reviewer's recorded independent run. The 2026-08-10 blocks were verified
-that day; the three 2026-08-09 blocks that day; the Phase 3 block beneath them 2026-08-06. The Phase
-1 and Phase 2 narrative from `## Next` onward was last swept 2026-08-04 and is kept for its
-reasoning, not as a statement of what is true now.
+the runs quoted, with exit codes checked rather than summary lines. Earlier blocks were verified on
+their own dates; the Phase 1 and Phase 2 narrative from `## Next` onward was last swept 2026-08-04.
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -37,6 +38,40 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-11 (fifth): T-195, six rounds
+
+**Approved at `7cd2002`.** The `REQ-023` settings `T-146` deferred: default preset and output
+template. **Four of the eight settings are now built**; network options (`T-196`) remain.
+
+**The design, ruled by the maintainer when the entry's premise did not hold:** an empty
+`Preset.output_template` means *use the application default*, resolved in `to_request` before a
+`DownloadRequest` exists. **The shipped presets state no template**, which is what gives the setting
+any effect — otherwise it would apply to nothing the user had not personally edited.
+
+**Three consequences that were design statements, all accepted:** `output_template` is no longer
+part of built-in *format* identity (without which every queue row printed its raw selector);
+retargeting carries the row's naming across; and `Preset` relaxed to a type check while
+`DownloadRequest` did not.
+
+**Eleven findings over six rounds.** Two High were live defects: the settings were not applied to
+the running session, so a second edit erased the first; and the template validator was one subcheck
+of the editor's, accepting syntax yt-dlp rejects and templates that escape the download folder.
+**Five were about my evidence** — including a test that asserted the *store* and was submitted as
+proof of the *wiring*, while the wiring was broken exactly as the first finding said.
+
+**The last one is the habit worth changing.** A test aborted the process at teardown — exit 134,
+`QThread: Destroyed while thread 'queue-writer' is still running` — **after printing `1 passed`**,
+and I reported the pass. A pytest summary describes assertions, not the process. Exit codes are
+checked now.
+
+**One production change for testability:** `manage_presets` used `exec()`, so no test could reach
+the composition behind the preset manager. It `open()`s and returns the screen, which is what
+`open_add_dialog` and `open_settings` already did.
+
+**Figures at `7cd2002`:** ruff, ruff format, `mypy` (128 files), `mypy --platform win32 src` all
+clean; `tests/unit` + `tests/ui` **2710 passed, 18 skipped**; `tests/integration` **403 passed,
+exit 0**; the composition suite passes with an empty `PATH`.
 
 ## 2026-08-11 (fourth): all six approved; the stack is cleared but not pushed
 

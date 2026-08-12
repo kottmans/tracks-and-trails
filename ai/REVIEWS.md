@@ -15044,3 +15044,41 @@ requires explicit maintainer authorization under `AGENTS.md` §10.
 **Do not push `a1e31c8`.** The five-commit T-195 stack remains held. The Reviewer changed only the
 append-only review record and current task disposition; no reviewed source, test, status snapshot,
 commit, or remote state was changed.
+
+## 2026-08-11 — T-195 final focused re-review
+
+**Review boundary:** `a1e31c8..7cd2002`
+
+**Verdict:** **Approved.** `T195-R7` is resolved and no blocking finding remains. This final pass
+was deliberately limited to the authorized shutdown correction and serious regressions.
+
+### Findings
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T195-R7** | **Medium** | **Resolved** | The new real-file end-to-end test now begins `composition.shutdown` and waits for `shutdown.finished`, matching the established lifecycle in its neighboring tests. The Reviewer reran it with localhost access and verified the process result—not only pytest's assertion summary: **1 passed, 16 deselected, exit 0**, with no `queue-writer` warning. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree before reviewer records | **clean; `main` ahead of `origin/main` by six commits** |
+| `git diff --check a1e31c8..7cd2002` | **pass** |
+| `ruff check .` / `ruff format --check .` | **pass; 166 files formatted** |
+| bare `mypy` / bare `mypy --platform win32` | **pass; 128 files each** |
+| Focused real-file localhost test | **1 passed, 16 deselected in 3.83 s; exit 0; no Qt shutdown warning** |
+| Task-placement gate after reviewer disposition | **14 passed** |
+| Full suites | **submitted `2710 passed, 18 skipped` for unit/UI and `403 passed, exit 0` for integration; not rerun in full by the Reviewer** |
+
+### Residual verification boundary
+
+Windows-native runtime evidence is still absent because the six-commit stack remains held. Both
+bare mypy platforms are clean; push the approved stack so CI exercises Windows before treating the
+combined branch as release evidence. Non-blocking `T-226` remains proposed for Preset Manager's
+stale ffmpeg warning after a live location change.
+
+### Push disposition
+
+**The reviewed T-195 stack through `7cd2002` may be pushed.** The Reviewer changed only the
+append-only review record and current task disposition; no reviewed source, test, status snapshot,
+commit, or remote state was changed.

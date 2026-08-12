@@ -118,15 +118,14 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
-## Blocked
+## Complete
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
-**Status:** **Blocked — fifth focused re-review 2026-08-11.** All original T-195 findings are
-resolved at `a1e31c8`, but its new end-to-end regression exits 134 after reporting a pass because it
-never shuts down the composed application's writer (`T195-R7`). The extra-pass authorization is
-consumed; another focused correction requires the maintainer's explicit authorization under
-`AGENTS.md` §10.
+**Status:** **Complete — Approved at `7cd2002` on 2026-08-11.** All seven focused findings are
+resolved. The real-file end-to-end proof now completes the composed application's orderly shutdown
+and independently exits zero; Windows-native execution remains for CI after this held stack is
+pushed, not a blocker to the Linux-reviewed implementation.
 
 **`T195-R5` — the catalogue was a startup snapshot.** `preset_names` closed over the `ffmpeg`
 report composition was built with, while `choose_ffmpeg_location` updates `in_force.report`. So a
@@ -170,12 +169,9 @@ removing the screen's wiring entirely, which the previous round's tests could no
 - **`T195-R6` — Medium, Resolved at `e69cce7`.** All three tests construct an executable through
   `an_executable_ffmpeg`, and the entire composition file passes under an empty environment and
   `PATH`: **57 passed, no skips**.
-- **`T195-R7` — Medium, Open.** The new real-file test's `finally` calls only
-  `manager.stop_queue()`. It never runs `composition.shutdown.begin()` or waits for completion, so
-  the queue writer, database connection, and instance lock survive the test. In an isolated run,
-  the assertion reports **1 passed** and pytest then exits **134** with `QThread: Destroyed while
-  thread 'queue-writer' is still running`. Use the same `OrderlyShutdown` pattern as every
-  neighboring composed end-to-end test and assert it finishes.
+- **`T195-R7` — Medium, Resolved at `7cd2002`.** The real-file test now calls
+  `composition.shutdown.begin()` and waits for `shutdown.finished`; the independent focused run is
+  **1 passed, exit 0**, with no live-writer warning.
 
 **The entry's premise did not hold, and the maintainer ruled on the fork.** This entry says the
 task supplies *"the application default that a preset with no opinion falls back to"* — and no
@@ -369,6 +365,11 @@ orderly shutdown and waits for it; this one did not.
 It uses `composition.shutdown.begin()` and waits on `shutdown.finished` now, like its neighbours.
 **Verified by exit code, not by the summary line**: the file alone exits `0`, and the whole
 integration suite is `403 passed` with exit `0`.
+
+**Final focused re-review 2026-08-11 — Approved at `7cd2002`.** `T195-R7` is resolved: the
+localhost real-file test completes `OrderlyShutdown`, reports **1 passed**, and exits **0** with no
+queue-writer warning. No blocking finding remains. `T-226` stays as the already-filed non-blocking
+follow-up for Preset Manager's stale live-ffmpeg warning.
 
 **Owner:** Implementer
 **Priority:** Medium — the default preset is the one a user meets on every paste, and today it
