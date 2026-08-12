@@ -117,13 +117,13 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+## Complete
 
 ### T-234 — The concurrency control leaves the toolbar
 
-**Status:** **In Review — Changes requested again, 2026-08-12.** `T234-R2` and `T234-R3` are
-Resolved. `T234-R1` remains open: the toolbar is finally in the Windows tree and the Windows job is
-green, but the test still derives/broad-matches the names its criterion requires it to transcribe
-exactly. T-235 owns the focused correction.
+**Status:** **Complete — Approved 2026-08-12 after two focused correction passes.** `T234-R1`,
+`T234-R2`, and `T234-R3` are Resolved. T-235's literal exact-set assertions now gate the remaining
+Windows-accessibility criterion, and run `31642823390` is green on all five jobs.
 
 *(The original verdict: the toolbar removal itself was sound, but its explicit
 Windows-accessibility criterion was left unmet, the only remaining limit control restored the
@@ -358,11 +358,12 @@ an example of a setting visible elsewhere) and its `show_concurrency`, and
 now composition rather than a second control. The sweep then read every file mentioning both
 *concurrency* and *toolbar*: what remains is history, each marked as history.
 
-**One thing I am declaring rather than burying:** in nine `-n auto` runs of unit+UI,
+**One thing I declared and initially described wrongly:** in nine `-n auto` runs of unit+UI, the
+xdist worker running
 `tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through`
-failed **once**. It passes in isolation, sits in a file this task does not touch, and the other
-eight runs were clean. I have not attributed it and am not claiming it is unrelated — it looks like
-the same load-sensitivity `T-228` is about.
+**segfaulted once**. None of the test's assertions fired. Calling that an assertion failure and
+speculating that it resembled `T-228` were both wrong; `T-238` carries the native-crash evidence
+and preserves uncertainty about its cause.
 
 #### Focused correction re-review, 2026-08-12
 
@@ -378,12 +379,23 @@ the same load-sensitivity `T-228` is about.
 - **`T234-R3` — Resolved.** Every remaining current-surface concurrency/toolbar mention was read;
   the surviving ones explicitly describe history and no longer state that two controls exist.
 
+#### Second focused correction re-review, 2026-08-12
+
+- **`T234-R1` — Resolved.** T-235 no longer imports the production label or accepts substrings:
+  the application buttons are exactly `{ "+ Add URLs", "Clear finished" }` after excluding the
+  observed title-bar furniture, and the refreshed check-box tree is exactly `{ "Start" }` then
+  `{ "Stop" }`. The Windows accessibility slice and all four sibling jobs passed in run
+  `31642823390` at `901cca4`; all later commits through the reviewed head are records only.
+- **Verdict — Approved.** The two previously resolved findings remain resolved, and the last
+  blocking acceptance criterion is now gated in the literal/exact form it required.
+
 ---
 
 ### T-237 — The spec recopies `REL-002` and then blurs its two collection results
 
-**Status:** **In Review — Changes requested, 2026-08-12.** `T237-R1` blocks: the shortened comment
-still contradicts itself about product failure versus gate failure.
+**Status:** **Complete — Approved 2026-08-12.** `T237-R1` is Resolved: the comment now separates
+what each mutant did to the artifact from whether the current gate detected it, with no executable
+spec change.
 **Owner:** Implementer
 **Priority:** Low — comments only; the build operations and gates are correct
 **Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
@@ -409,11 +421,10 @@ The `T-033` block now **points at `REL-002` rather than restating it**: one sent
 mutations live there, then one line per collection call. The 928-import figure, the three solver
 asset names and the probe's blind-spot reasoning are `REL-002`'s to hold.
 
-**The closing sentence is corrected rather than trimmed.** It said the failure *"either would
-produce"* is the dangerous kind, which reads as *both removals fail*, immediately after the
-comment establishes that one of them does not. It now says outright that **neither removal fails
-anything today**, and that this is precisely why the reasons are written down — the danger is the
-failure a user would meet, not one a gate would catch.
+**The first correction changed rather than merely trimmed the closing sentence.** It replaced the
+claim about the failure *"either would produce"* with *"neither removal fails anything today"*.
+That still blurred two subjects — product and gate — and `T237-R1` below records the final wording
+that separates them.
 
 **Comments only, proved rather than asserted:** the spec parses to an **identical AST** before and
 after. No collection call, `Analysis` argument, workflow step or dependency moved.
@@ -440,12 +451,20 @@ failure. The measured statement is that neither removal fails the **current froz
 only the current-pin submodule removal is known not to break product behavior. Preserve that
 product-versus-gate distinction rather than replacing the original blur with a new one.
 
+#### Correction re-review, 2026-08-12
+
+**Approved; `T237-R1` Resolved.** The corrected comment states the two measured results separately:
+current-pin submodule removal broke nothing measured, whereas data-file removal deleted the solver
+assets; neither mutant failed the gate. The future-pin statement is explicitly conditional. The
+spec AST is identical across `edb36da`, and the diff changes comments only.
+
 ---
 
 ### T-235 — The Windows accessibility sweep has never seen the toolbar
 
-**Status:** **In Review — Changes requested, 2026-08-12.** The Windows behavior and role sweep are
-green, but `T235-R1` blocks: the supposedly hand-transcribed names are derived or broad-matched.
+**Status:** **Complete — Approved 2026-08-12.** `T235-R1` is Resolved: the expected names are
+literal exact sets, the tree is refreshed for the running state, and run `31642823390` passed the
+dedicated Windows accessibility slice.
 **Owner:** Implementer
 **Priority:** Medium — `NFR-005` is a requirement, and the surface this misses is the three
 controls a user reaches for first. Not High only because no defect is known: the buttons may well
@@ -512,10 +531,11 @@ what it acts on, or stopped existing.
   is a snapshot of the other state. The running state is the one a user is in while waiting, which
   is when they are most likely to be listening.
 
-**This file cannot run here, so every symbol it uses was verified statically instead of assumed**
-— the honest alternative to shipping a Windows-only test on faith. `MainWindow.run_action`,
-`show_queue_running` and `winId` exist; `ADD_URLS_BUTTON` is imported rather than spelled out;
-`read_tree`, `Tree.of_type` and `UIA_BUTTON` are defined in the module.
+**This file cannot run here, so every symbol in the first submission was verified statically
+instead of assumed.** `MainWindow.run_action`, `show_queue_running` and `winId` exist;
+`read_tree`, `Tree.of_type` and `UIA_BUTTON` are defined in the module. That first submission
+imported `ADD_URLS_BUTTON` instead of spelling it out; `T235-R1` below records why that was not the
+promised gate and replaces it with literals.
 
 **And the names themselves were measured, not guessed.** Qt derives the UIA name from the same
 `QAccessible` interface on both platforms, so it was read off a live window here:
@@ -611,9 +631,16 @@ the run test uses substring membership over the whole check-box set rather than 
 substring. Use a literal exact expected set, just as the adjacent menu test does; keep the UIA
 role/tree assertions that proved the run control is a check box.
 
----
+#### Correction re-review, 2026-08-12
 
-## Complete
+**Approved; `T235-R1` Resolved.** `22fa7c7` removes the production-label import and compares the
+observed application-button names with the literal set `{ "+ Add URLs", "Clear finished" }`.
+The stopped and running check-box sets are exactly `{ "Start" }` and `{ "Stop" }`, with the UIA
+tree re-read after the state change. GitHub Actions run `31642823390` passed all five jobs at
+`901cca4`, including the three named accessibility tests; subsequent commits through the reviewed
+head change records only.
+
+---
 
 ### T-236 — The limit's only control has the affordance `T-141` ruled unreadable
 
@@ -3153,46 +3180,73 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
-### T-238 — A closed-thumbnail-store test flakes under the supported parallel UI run
+### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
-**Status:** Proposed — filed 2026-08-12 from T-234's correction evidence and the focused
-re-review. One of nine `-n auto` unit/UI runs failed; eight passed and the test passes alone.
+**Status:** Proposed — corrected 2026-08-12 from the retained run log. One of nine observed
+`-n auto` unit/UI runs ended when worker `gw7` segfaulted; eight sibling runs passed. **This was
+not an assertion failure, and one event in nine runs is a sample, not a measured rate.** Forty
+further repeated runs were started to reproduce and characterise it; their result is not yet
+recorded here.
 **Owner:** Implementer
-**Priority:** Medium — the unit/UI slice is deliberately parallel in CI, so a real one-in-nine
-failure is a gate flake until its assertion and mechanism are known
+**Priority:** High — this is a native process crash in the supported parallel test command, not a
+timing assertion, and its Qt/PySide lifetime stack belongs to the evidence class that made T-074
+and T-128 high-value investigations. One observation does not yet establish product reachability.
 **Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
 **Depends on:** nothing
-**Relevant context:** `T118-R13`, `T-123`, `T-228`,
+**Relevant context:** `T118-R13`, `T-074`, `T-128`, `T-123`,
 `tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through`,
 `ui/thumbnails.py` (`ThumbnailStore.close`, `_Sink`, the shared `QThreadPool`)
-**Affected surfaces:** `tests/ui/test_row_delegate.py`, and `ui/thumbnails.py` only if the behavior
-rather than the test is wrong
-**Risk:** Medium — the assertion covers both GUI-thread responsiveness and safe late worker
-completion; weakening it could hide either the original stall or emission through a deleted object
+**Affected surfaces:** unknown until the faulting object's lifetime is identified. The active test,
+Qt test fixtures/teardown, and `ui/thumbnails.py` are candidates, not conclusions
+**Risk:** High to gate integrity and potentially Medium to the product — a worker process is lost;
+whether supported application behavior can reach the same native fault is unverified
+
+#### What the retained run actually says
+
+xdist reported:
+
+```
+[gw7] node down: Not properly terminated
+worker 'gw7' crashed while running
+  'tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through'
+```
+
+Immediately before that, Python's fault handler reported **`Fatal Python error: Segmentation
+fault`**. The current Python frame was inside `occupy_pool()` at `store.pool.start(_Blocker(gate))`,
+before the test reached any of its three assertions. The C stack passes through
+`QObject::disconnectImpl`, `QAbstractItemView` destruction, and Shiboken's
+`BindingManager::runDeletionInMainThread`.
+
+That stack makes Qt/PySide object lifetime and deferred destruction a concrete lead. It does **not**
+identify the faulting object, establish that the thumbnail store caused the crash, distinguish an
+object left by an earlier test from one created here, or prove identity with T-074/T-128. A native
+Qt crash is the shared finding class; a shared cause remains to be demonstrated.
 
 #### Scope
 
-Reproduce and identify **which assertion failed** under the supported `-n auto` unit/UI command.
-Do not attribute it to T-228: that task has established lost `multiprocessing.Queue` delivery in
-spawned integration workers, while this test uses a per-process Qt thread pool and a parentless
-signal sink. “Both are load-sensitive” is not a shared mechanism.
+Reproduce and diagnose the **worker SIGSEGV** under the supported parallel unit/UI command. Capture
+the test order and teardown state around the crash, because xdist's *"while running"* attribution
+names the active node, not necessarily the object whose deferred deletion faulted.
 
-Distinguish among the three contracts in the test: deferred deletion returns within the
-interaction budget, the shared pool drains after the gate opens, and no runnable emits through a
-deleted `QObject`. Preserve all three unless evidence establishes that one assertion is testing a
-different property from the one its text claims.
+Do not fold it into T-228: that task concerns `multiprocessing.Queue` delivery in spawned
+integration workers. No assertion timed out here, so changing the interaction budget or pool-drain
+deadline is not a candidate correction. Preserve the three existing contracts: deletion does not
+block the GUI thread, the pool can drain, and late work does not emit through a deleted `QObject`.
 
 #### Acceptance criteria
 
-- The exact failing assertion and timings/state are captured under repeated `-n auto` runs before
-  any timeout or budget changes
-- The mechanism is established as product behavior or test orchestration; no timeout is merely
-  raised until the flake disappears
-- If test-only, the correction still fails when deletion waits on the GUI thread or a runnable
-  emits through the deleted store instead of the parentless sink
-- If product behavior, file/fix it under this task with a deterministic regression that exercises
-  the supported parallel run
-- Repeated `pytest -n auto tests/unit tests/ui` runs beat the observed one-in-nine rate
+- Reproduction evidence records the process signal/exit, Python and native stacks, explicit xdist
+  worker count, and the tests immediately preceding the active node; raw failing logs are retained
+- Serial, isolated, module-order, and explicit xdist-count runs distinguish a defect in this test
+  from deferred destruction or contamination left by another test
+- The faulting object and lifetime edge are identified before claiming identity with T-074 or
+  T-128; stack resemblance alone is not a cause
+- Product behavior versus test-harness behavior is established. A product-reachable fault gets a
+  deterministic regression; a harness-only fault gets a guard that fails before a worker dies
+- The original responsiveness, pool-drain, and no-emission-through-deleted-object assertions stay
+  intact; no timeout is raised to make the crash disappear
+- Repeated `pytest -n auto tests/unit tests/ui` runs after the correction materially exceed the
+  pre-fix sample without another worker loss
 
 ---
 

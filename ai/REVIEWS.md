@@ -15656,3 +15656,73 @@ T-234 findings, the remaining exact-name finding, T-236's approval, T-237's requ
 correction, and filed T-238. The Reviewer changed only `ai/REVIEWS.md` and approved task records in
 `ai/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote state was
 changed.
+
+## 2026-08-12 — T-234/T-235/T-237 second correction re-review; T-238 evidence correction
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-234` second focused re-review of `T234-R1`; correction reviews of `T-235` and
+`T-237`; correction of the review record's characterization of `T-238`
+**Correction boundary:** `22fa7c7` (T-235 exact literal sets) and `edb36da` (T-237
+product-versus-gate wording). The reviewed code is unchanged from GitHub Actions head `901cca4`;
+`994560e`, `79d36f0`, and `362c394` are records-only commits read for current truth.
+**Platforms verified:** Static/diff verification on Linux; GitHub Actions run `31642823390` at
+`901cca4`, successful on all five jobs. Its Windows job directly records the three accessibility
+tests passing (`32 passed, 3141 deselected`).
+**Verdict:** **T-234 Approved; T-235 Approved; T-237 Approved.** `T234-R1`, `T235-R1`, and
+`T237-R1` are Resolved. T-238 receives no implementation verdict; its evidence and task statement
+are corrected below.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Correction result |
+|---|---|---:|---|
+| **T234-R1** | **High** | **Resolved** | T-235's application-button expectation is the literal exact set `{ "+ Add URLs", "Clear finished" }` after excluding the title-bar buttons observed by the earlier Windows failure. Its check-box expectations are exactly `{ "Start" }` and `{ "Stop" }`, and the tree is re-read after the state transition. The last T-234 blocker is now gated in the form its criterion required. |
+| **T235-R1** | **Medium** | **Resolved** | `22fa7c7` removes `ADD_URLS_BUTTON` from the test import and replaces both derived/substring checks with literal set equalities. Missing, renamed, or additional differently named application controls fail the assertion; the UIA-role and refreshed-tree coverage from the first correction remain. |
+| **T237-R1** | **Medium** | **Resolved** | `edb36da` says neither mutant failed the current gate, then distinguishes their product results: current-pin submodule removal broke nothing measured; data-file removal deleted the solver assets. The future-pin claim remains conditional, and the spec AST is unchanged. |
+
+### Correction to the T-238 record
+
+The preceding review called the one event in nine runs a test *failure* and assigned T-238 the job
+of reproducing *"the exact assertion"*. That was wrong. The retained run log says:
+
+```
+Fatal Python error: Segmentation fault
+[gw7] node down: Not properly terminated
+worker 'gw7' crashed while running
+  'tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through'
+```
+
+None of the test's three assertions fired. The active Python frame was still in `occupy_pool()` at
+`store.pool.start(_Blocker(gate))`; the native stack includes `QObject::disconnectImpl`,
+`QAbstractItemView` destruction, and Shiboken's main-thread deletion path. This is a native
+Qt/PySide object-lifetime lead of the broad T-074/T-128 evidence class, not an interaction-budget
+failure. It does not yet establish the faulting object, product reachability, or identity with
+either prior crash. The earlier speculation connecting it to T-228's multiprocessing-queue loss is
+withdrawn.
+
+T-238's current-truth entry now asks for the signal/native stack, order and teardown context,
+faulting lifetime edge, and product-versus-harness disposition. It explicitly preserves the
+existing responsiveness and late-emission assertions and forbids treating a timeout change as the
+answer to a process crash.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree and boundary before reviewer records | **Clean tracked tree; `HEAD == origin/main == 362c394`.** `git diff --check` passed independently for `22fa7c7` and `edb36da`. |
+| T-235 source boundary | **Passed.** Production-label import removed; button and both check-box expectations are literal exact sets; refreshed UIA tree retained. |
+| T-237 executable boundary | **Passed.** AST identical before and after `edb36da`; the diff changes comments only. |
+| Submitted CI | **Run `31642823390` succeeded on all five jobs at `901cca4`.** The Windows log directly shows all three named accessibility tests passing and `32 passed, 3141 deselected`. |
+| Task-placement gate after reviewer records | **14 passed.** |
+| T-238 raw evidence | **Confirmed.** The log reports `Fatal Python error: Segmentation fault` and an improperly terminated xdist worker, not an assertion message. |
+
+### Final disposition and synchronization
+
+T-234, T-235, and T-237 move to Complete. T-238 remains Proposed, with its title, priority,
+evidence, scope, and criteria rewritten around the SIGSEGV while preserving causal uncertainty.
+
+`ai/STATUS.md` remains Implementer-owned and was not edited. It still repeats the superseded
+*failure / exact assertion* framing and needs a current-truth sync to the corrected T-238 evidence
+and these approvals. The Reviewer changed only `ai/REVIEWS.md` and approved task/follow-up records
+in `ai/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote state was
+changed.
