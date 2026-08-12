@@ -812,7 +812,13 @@ def compose(
             # the manager — one answer, derived from yt-dlp's own postprocessor hierarchy, rather
             # than a second one written against the preset's fields.
             requires_ffmpeg=manager.requires_ffmpeg,
-            ffmpeg_available=ffmpeg.available,
+            # **`in_force.report`, not the `ffmpeg` this function closed over** (`T-226`, and
+            # `T195-R5` one screen over). `choose_ffmpeg_location` replaces the report in force
+            # when Settings accepts a location; reading the captured value meant a user who
+            # started without ffmpeg, installed one and pointed Settings at it went on being told
+            # by this screen that its ffmpeg-dependent presets would fail. Restart was the only
+            # way out and nothing said so.
+            ffmpeg_available=in_force.report.available,
             parent=window,
         )
         managers.clear()

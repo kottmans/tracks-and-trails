@@ -72,6 +72,7 @@ from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.preset_manager import (
+    NO_FFMPEG_REASON,
     PRESET_LIST_NAME,
     SET_DEFAULT_NAME,
     PresetManager,
@@ -3142,4 +3143,71 @@ def test_retargeting_through_the_window_keeps_the_jobs_cookie_binding(
     assert after is not None
     assert after.request.cookies_from_browser == "firefox:Work", (
         "retargeting through the window dropped the browser the job was bound to at queue time"
+    )
+
+
+def test_pointing_settings_at_ffmpeg_reaches_the_preset_manager(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """**`T-226`.** The manager was built with the *startup* ffmpeg answer.
+
+    `T195-R5` fixed this for the add dialog's catalogue and the settings screen; `manage_presets`
+    still passed `ffmpeg.available` — the value composition closed over — so a user who started
+    without ffmpeg, installed one and pointed Settings at it went on being told by *this* screen
+    that its ffmpeg-dependent presets would fail. Restart was the only way out and nothing said so.
+
+    Opened through the route the footer button takes, and the **inverse transition is asserted
+    first**: a manager opened before the location is accepted must still carry the warning, or the
+    positive half would pass with the reason deleted.
+    """
+    real_ffmpeg = an_executable_ffmpeg(tmp_path, name="ffmpeg-live")
+    composition = composed(
+        settings_file=tmp_path / "settings.toml",
+        ffmpeg_override=tmp_path / "no-ffmpeg-here",
+        entry_point=child_probing_then_waiting,
+    )
+    assert not composition.ffmpeg.available, "this environment started with ffmpeg"
+
+    needs_it = next(p for p in presets.BUILT_IN_PRESETS if composition.manager.requires_ffmpeg(p))
+
+    def manager_reason() -> str:
+        opener = composition.window._manage_presets
+        assert opener is not None, "composition wired no preset manager"
+        screen = opener()
+        assert isinstance(screen, PresetManager), "the manager route returned no screen"
+        qapp.processEvents()
+        try:
+            listing = screen.findChild(QListWidget, PRESET_LIST_NAME)
+            assert listing is not None
+            for row in range(listing.count()):
+                # The list decorates each name — 'Audio only (MP3) - built-in' - so
+                # the match is on the name it starts with, not on the whole label.
+                if listing.item(row).text().startswith(needs_it.name):
+                    listing.setCurrentRow(row)
+                    break
+            else:
+                raise AssertionError(
+                    f"{needs_it.name} is not in the manager's list: "
+                    f"{[listing.item(i).text() for i in range(listing.count())]}"
+                )
+            qapp.processEvents()
+            return screen._reason.text()
+        finally:
+            screen.close()
+            qapp.processEvents()
+
+    assert NO_FFMPEG_REASON in manager_reason(), (
+        "the manager did not warn about an ffmpeg-dependent preset while ffmpeg is absent, so the "
+        "positive half below would prove nothing"
+    )
+
+    accept = composition.window._on_ffmpeg_location_chosen
+    assert accept is not None
+    accept(real_ffmpeg)
+
+    assert NO_FFMPEG_REASON not in manager_reason(), (
+        "the Preset Manager still says this preset will fail for want of ffmpeg, after Settings "
+        "accepted a real one — it was built with the startup answer (T-226)"
     )
