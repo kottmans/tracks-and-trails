@@ -62,12 +62,22 @@ obviously smaller. It now samples the edge pixel against `theme.LIGHT.border` **
 theme**, because `T-141`'s record warns that pinning a size or colour pins a styling choice.
 **Five mutations killed.**
 
-**`T-235` is built.** The accessibility fixture builds the window with `control_bar=True` — it
-never had a toolbar in the tree it sweeps — plus two hand-written tests naming the three verbs and
-checking the run control in **both** states. The file cannot run here, so every symbol was verified
-statically and the accessible names read off a live window: `+ Add URLs`, `Start`/`Stop`,
-`Clear finished`. `qt_toolbar_ext_button` is hidden at the default size, so it will not enter the
-tree unnamed. **The green Windows job is still owed.**
+**`T-235` is built, and the Windows runner immediately found a second hole.** The fixture now
+builds the window with `control_bar=True` — it never had a toolbar in the tree it sweeps — plus two
+hand-written tests naming the three verbs and checking the run control in **both** states.
+
+**Then the `windows desktop` job failed, and the failure is the finding:**
+`Buttons: ['+ Add URLs', 'Clear finished', 'Close', 'Maximize', 'Minimize']` — **the run control is
+not in the button list at all.** Qt gives a *checkable* `QToolButton` the accessible role
+**`CheckBox`** (measured locally: `Role.CheckBox` against `Role.Button` for its two neighbours),
+which UI Automation carries through as type 50002. So the `NFR-005` sweep, scoped to menu items and
+buttons, **has never covered the queue's main control** — it would not have covered it even with a
+toolbar in the tree. The sweep now includes the check-box role. Fixed at `c814bab`; **the green
+Windows job is still owed.**
+
+*A Windows-only test written from Linux is verified by the runner or not at all. What this one
+verified is that a plausible assumption — a toolbar verb is a Button — is false for the one control
+on the bar that toggles.*
 
 **`T234-R3` swept as a class.** `docs/DEVELOPMENT.md` contradicted its own corrected table one
 paragraph below it; `settings_dialog.py`'s module docstring cited the toolbar spinner **twice**;
