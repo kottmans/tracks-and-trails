@@ -24,16 +24,34 @@ datas = collect_data_files("tracks_and_trails", includes=["resources/icons/*"])
 # that loses this line fails loudly at startup instead of at the first download.
 datas += collect_data_files("tracks_and_trails", includes=["persistence/migrations/*.sql"])
 
-# T-033. Without this the artifact builds, launches, and fails every URL.
+# T-033. OPS-002 says every release bundles a pinned yt-dlp baseline.
 #
-# OPS-002 says every release bundles a pinned yt-dlp baseline. PyInstaller's analysis follows
-# *static* imports, and yt-dlp reaches its extractors through `lazy_extractors` — 972 of its
-# 1046 modules are extractors resolved by name at runtime. Static analysis therefore collects
-# the yt-dlp core and misses essentially every site.
+# **These two lines are here for different reasons, and only one of them is load-bearing today.**
+# The distinction was established by mutation (T-033, 2026-08-11): each line was removed in turn
+# and the artifact rebuilt and probed.
 #
-# The resulting failure is the dangerous kind: `import yt_dlp` succeeds, the window opens, and
-# every download reports "unsupported URL" — which reads exactly like ordinary site breakage,
-# so it would be diagnosed as a yt-dlp problem rather than a packaging one.
+# `collect_submodules` — **redundant for the current pin, kept as insurance for the next one**
+# (REL-002). This comment used to say yt-dlp reaches its extractors through `lazy_extractors`,
+# that 972 of its 1046 modules are resolved by name at runtime, and that static analysis
+# therefore "collects the core and misses essentially every site". **The mutation disproved that
+# for this pin**: `_extractors.py` carries **928 static `from .` imports**, so PyInstaller's
+# module graph follows them unaided and the artifact built without this line still resolved
+# extractors. It stays because the pin moves and that structure is yt-dlp's to change — a future
+# baseline that goes back to name-only resolution would break the artifact silently, and this
+# line is cheaper than finding out from a user. **Removing it today would not fail a gate**,
+# which is exactly why the reason has to be written down rather than inferred from its presence.
+#
+# `collect_data_files` — **load-bearing, and its mutant survived for the worst possible reason.**
+# Removing it deletes all three YouTube solver assets the baseline ships (`yt.solver.core.js`,
+# `yt.solver.deno.lib.js`, `yt.solver.bun.lib.js`, under
+# `yt_dlp/extractor/youtube/jsc/_builtin/vendor/`) — verified as three in the baseline artifact
+# and **zero** in the mutant. **The frozen probe still reported OK**, because it instantiates
+# `YoutubeIE` and checks a URL predicate and never touches them. So that survival measures a
+# blind spot in the gate, not a dead line.
+#
+# The failure either would produce is the dangerous kind: `import yt_dlp` succeeds, the window
+# opens, and downloads fail in a way that reads as ordinary site breakage rather than as a
+# packaging fault.
 ytdlp_hiddenimports = collect_submodules("yt_dlp")
 datas += collect_data_files("yt_dlp")
 

@@ -304,6 +304,78 @@ force.
 
 ---
 
+### T-233 — T-033's packaging comments still give the pre-REL-002 reason
+
+**Status:** **In Review — built 2026-08-12.** Non-blocking follow-up from `T033-R7`.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 5 residue; gates no phase or task
+**Depends on:** nothing
+**Relevant context:** `T-033`, `T033-R7`, `REL-002`, `packaging/tracks-and-trails.spec`,
+`tests/integration/test_freeze_probe.py`
+**Affected surfaces:** comments/docstrings only in the spec and frozen-probe integration test
+**Risk:** Low — collection and its executable gates are correct; the explanation gives a reason
+the mutation disproved
+
+#### Scope
+
+Two explanatory passages outside T-033's records still describe superseded evidence:
+
+- `packaging/tracks-and-trails.spec` says static analysis collects only yt-dlp's core and misses
+  essentially every extractor. The T-033 mutation established the opposite for this pin:
+  `_extractors.py` carries 928 static relative imports. `REL-002` retains
+  `collect_submodules("yt_dlp")` as insurance against a future pin, not because the current pin
+  needs it.
+- `tests/integration/test_freeze_probe.py` says the probe can be verified “for real” only in CI.
+  The local PyInstaller 6.21 builds were real frozen artifacts and supplied the Linux positive,
+  negative, and restored evidence. Exact both-platform CI remains an acceptance gate, but CI is
+  not the only place the artifact can be built and probed.
+
+Correct those explanations without changing the spec operations, probe, tests, workflow, or
+runtime behavior. Preserve why explicit submodule collection stays and why both-platform CI is
+still required.
+
+#### Acceptance criteria
+
+- The spec comment distinguishes current-pin redundancy from `REL-002`'s future-pin insurance
+- The integration-test docstring distinguishes local frozen verification from required
+  both-platform CI evidence
+- No executable statement, assertion, workflow, collection call, or dependency changes
+
+#### Out of scope
+
+- Removing either `collect_submodules` or `collect_data_files`
+- Changing the frozen probe or its acceptance evidence
+
+#### What was built, 2026-08-12
+
+**Comments and one module docstring. Nothing else — proved rather than asserted:** both files
+parse to an **identical AST** before and after, the test module's once its docstring is blanked.
+No collection call, assertion, workflow step or dependency moved.
+
+**`packaging/tracks-and-trails.spec`** now separates the two lines instead of giving one reason for
+both. `collect_submodules` is **redundant for the current pin** — `_extractors.py` carries 928
+static `from .` imports, so PyInstaller follows them unaided — and is kept as `REL-002`'s insurance
+against a pin that goes back to name-only resolution. The comment says outright that **removing it
+today would fail no gate**, which is why the reason has to be written down rather than read off its
+presence. `collect_data_files` is **load-bearing**, and its surviving mutant is recorded as what it
+actually measures: the artifact lost all three YouTube solver assets and **the probe still said
+OK**, so the survival is a blind spot in the gate rather than a dead line.
+
+**`tests/integration/test_freeze_probe.py`** no longer says the probe *"can only be verified for
+real in CI"*. `T-033` disproved that by building local PyInstaller 6.21 artifacts and probing them
+— that is where the Linux positive, negative and restored evidence came from, and where the
+collection mutations were run. What CI is still required for is **both platforms**: the Windows
+artifact cannot be built here and `REL-001`'s target is Windows. The docstring now draws that line
+instead of collapsing the two claims.
+
+**Gates:** `ruff check` over `src`, `tests` and `packaging` exit 0; `ruff format --check` exit 0;
+`tests/integration/test_freeze_probe.py` 8 passed. **No mutation testing**, and that is the honest
+note: there is no executable change to mutate. The evidence that this task did what it claimed is
+the AST comparison above.
+
+---
+
 ## Complete
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -1979,51 +2051,6 @@ preset with no opinion falls back to — not a second template implementation.
 deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
-
-### T-233 — T-033's packaging comments still give the pre-REL-002 reason
-
-**Status:** **Ready — non-blocking follow-up from `T033-R7`, 2026-08-12.**
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 5 residue; gates no phase or task
-**Depends on:** nothing
-**Relevant context:** `T-033`, `T033-R7`, `REL-002`, `packaging/tracks-and-trails.spec`,
-`tests/integration/test_freeze_probe.py`
-**Affected surfaces:** comments/docstrings only in the spec and frozen-probe integration test
-**Risk:** Low — collection and its executable gates are correct; the explanation gives a reason
-the mutation disproved
-
-#### Scope
-
-Two explanatory passages outside T-033's records still describe superseded evidence:
-
-- `packaging/tracks-and-trails.spec` says static analysis collects only yt-dlp's core and misses
-  essentially every extractor. The T-033 mutation established the opposite for this pin:
-  `_extractors.py` carries 928 static relative imports. `REL-002` retains
-  `collect_submodules("yt_dlp")` as insurance against a future pin, not because the current pin
-  needs it.
-- `tests/integration/test_freeze_probe.py` says the probe can be verified “for real” only in CI.
-  The local PyInstaller 6.21 builds were real frozen artifacts and supplied the Linux positive,
-  negative, and restored evidence. Exact both-platform CI remains an acceptance gate, but CI is
-  not the only place the artifact can be built and probed.
-
-Correct those explanations without changing the spec operations, probe, tests, workflow, or
-runtime behavior. Preserve why explicit submodule collection stays and why both-platform CI is
-still required.
-
-#### Acceptance criteria
-
-- The spec comment distinguishes current-pin redundancy from `REL-002`'s future-pin insurance
-- The integration-test docstring distinguishes local frozen verification from required
-  both-platform CI evidence
-- No executable statement, assertion, workflow, collection call, or dependency changes
-
-#### Out of scope
-
-- Removing either `collect_submodules` or `collect_data_files`
-- Changing the frozen probe or its acceptance evidence
-
----
 
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.

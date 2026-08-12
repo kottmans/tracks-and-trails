@@ -2,9 +2,17 @@
 
 `run_ytdlp_probe()` is the only thing standing between a build that silently omits yt-dlp's
 extractors and a release that launches, looks healthy, and fails every URL as if every site had
-broken at once. It runs inside the artifact, so it can only be verified for real in CI — but
-its *logic* can be verified here, and `T033-R2` is why that matters: the gate passed while the
+broken at once. It runs inside the artifact, so what this file verifies is its *logic* rather than
+its verdict on a real build — and `T033-R2` is why that matters: the gate passed while the
 artifact was in exactly the state it exists to reject.
+
+**A frozen artifact is not something only CI can produce.** This said the probe "can only be
+verified for real in CI", and `T-033` disproved it by doing otherwise: local PyInstaller 6.21
+builds supplied the Linux positive, negative and restored evidence, including the mutations that
+established which of the spec's two collection lines is load-bearing. What CI is still required
+for is **both platforms** — the Windows artifact cannot be built or probed from here, and
+`REL-001`'s target is Windows. So: local builds are real evidence, and exact both-platform CI
+remains the acceptance gate. The two are not the same claim.
 
 Each test drives the probe in a **fresh interpreter**. The checks turn on which modules are
 importable, and this interpreter has already imported yt-dlp and its extractors; anything
