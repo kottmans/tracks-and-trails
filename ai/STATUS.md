@@ -2900,10 +2900,14 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
   Linux negative is complete too, and it reopened the task** (`T033-R4`): removing
   `collect_data_files("yt_dlp")` strips all three YouTube solver assets — baseline has three, the
   mutant has zero — and **the probe still passes**, because it only instantiates `YoutubeIE` and
-  checks a URL predicate. The frozen gate is therefore blind to package-data loss, which is a live
-  regression risk rather than bookkeeping. `collect_submodules` is separately redundant for this
-  pin, since `_extractors.py` has 928 static imports. What remains: extend the probe so the data
-  removal fails, decide the submodule line, and the **Windows** build, which stays external.
+  checks a URL predicate. The frozen gate was therefore blind to package-data loss.
+
+  **All three of those are settled now** (`T033-R6` — this paragraph went on listing them as
+  outstanding after each had been done). The probe extension landed 2026-08-12 and the removal
+  fails: 3 assets and exit 0 against 0 and exit 1. `collect_submodules` was decided by `REL-002`
+  on **2026-08-04** — it stays; its redundancy is a fact about this pin, not about yt-dlp. And the
+  **Windows** build has run green twice, in CI `31570861414` and `31607180926`. What remains on
+  `T-033` is a records sweep, which is what this correction is.
 
   *(This said "the local probe is source-mode and proves nothing about the artifact", which was
   true when written and stopped being true when the artifact was built. `T033-R3`. An earlier
@@ -2928,11 +2932,14 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
 
 ## Blockers
 
-- **`T-033` — blocked on `T033-R4` and the Windows build.** Its corrections are reviewed and
-  verified, and the Linux frozen positive and negative are both done. The negative is what blocks
-  it: the probe survives the loss of every YouTube solver asset, so it does not gate the data
-  collection it exists to justify. A probe extension and a maintainer decision on
-  `collect_submodules` are owed before the Windows build matters.
+- **`T-033` — blocked on its own records** (`T033-R6`), and on nothing else. `T033-R5` is
+  Resolved: the solver knowledge lives behind `downloader/worker.py`, and both frozen CI jobs
+  passed the relocated check. **What this bullet used to say is the defect it now records** — it
+  called the task blocked on `T033-R4` and the Windows build, and said a probe extension and a
+  maintainer decision on `collect_submodules` were owed. The probe extension landed 2026-08-12,
+  `REL-002` decided the submodule line on 2026-08-04, and Windows has run green twice. A
+  records-only correction pass was authorized by the maintainer under `AGENTS.md` §10, the
+  ordinary budget having been spent.
 
   *(This said "PyInstaller is in the `build` extra and absent from the working venv, so none of it
   can be produced here." **It is present, at 6.21.0** — `T-064` reinstalled the venv with
