@@ -118,9 +118,11 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
+## Complete
+
 ### T-225 — Two UI test files pass apart and fail together
 
-**Status:** In Review — **Approved with follow-ups 2026-08-12** at the bounded T-123 final-review
+**Status:** **Complete — Approved with follow-ups 2026-08-12** at the bounded T-123 final-review
 manifest recorded in `ai/REVIEWS.md`. No blocking T-225 defect was found; its two Low evidence gaps
 are carried by `T-229`. Awaiting the required per-task commit split and coordination move to
 Complete.
@@ -244,7 +246,7 @@ cheaper option.** `ai/REVIEWS.md` holds the record.
 
 ### T-123 — Evaluate running the suite in parallel
 
-**Status:** **In Review — Approved with follow-ups 2026-08-12.** `T123-R1` and `T123-R2` are
+**Status:** **Complete — Approved with follow-ups 2026-08-12.** `T123-R1` and `T123-R2` are
 Resolved at the bounded final-review manifest in `ai/REVIEWS.md`. The adopted unit/UI slice is
 parallel and isolated; integration stays serial behind `T-228`; spawned integration children still
 using real per-user directories are filed as `T-230`. Awaiting the required per-task commit split
@@ -550,8 +552,6 @@ ruling."* The question is closed rather than left hanging on the maintainer.
 
 ---
 
-
-## Complete
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
