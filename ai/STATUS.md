@@ -5,7 +5,13 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-12 (review round) — **`T-234` came back with changes requested and is
+**Last updated:** 2026-08-12 (second review round) — **`T-236` is Complete/Approved.** `T-234`,
+`T-235` and `T-237` came back with changes requested and are corrected: the accessibility test now
+writes its expected names out instead of importing one and substring-matching the others
+(`T235-R1`), and the spec comment no longer says of the product what is only true of the gates
+(`T237-R1`). **`T-228`'s reachability is measured**: 680 sessions across every shape the product
+can take, on a saturated host, lost **no** messages — it is not reachable at supported concurrency
+by any means measured. Previously: — **`T-234` came back with changes requested and is
 corrected; `T-233` is Complete.** `T-235`, `T-236` and `T-237` are built and In Review beside it;
 the only evidence still owed is a green Windows job. Earlier: **`T-234` and `T-233` were built.** `UX-013`'s
 ruling is carried out and the concurrency control has left the toolbar, which releases `T-220`'s
@@ -39,6 +45,49 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-12 (second review round): T-236 approved; T-235 and T-237 corrected; T-228 measured
+
+**`T-236` is Approved and Complete.** The reviewer confirmed the pixel evidence independently:
+restoring the old `QToolBar`-scoped selector moves the sampled edge from `#748A7E` to Qt's
+`#AFB0AE` fallback.
+
+**`T235-R1` — my docstring claimed something the code did not do.** It said the toolbar's expected
+names were transcribed by hand while `+ Add URLs` was imported from `ADD_URLS_BUTTON`, and the run
+states were checked with `any("Start" in name ...)` over every check box. A name taken from
+production moves with production; a substring survives a re-wording. Both are now exact: the
+buttons compared as a set `{"+ Add URLs", "Clear finished"}` with the title bar's own subtracted,
+and the states as `{"Start"}` then `{"Stop"}`.
+
+**`T237-R1` — I conflated the gates with the product.** *"Neither removal fails anything today"* is
+true of the gates only, and the next clause said a missing solver asset produces a user-visible
+failure, which is about the product. The comment now keeps them apart: neither removal fails a
+gate; removing `collect_submodules` for this pin broke nothing measured, while removing
+`collect_data_files` **did** break the artifact and no gate fired anyway.
+
+### `T-228`: the reachability answer, and a number of ours that was wrong
+
+**"Roughly one run in three" was contaminated** — measured while the machine ran other batches. On
+an **idle** host it does not reproduce at any worker count: **20 runs, five each at `-n 1/4/8/20`,
+zero failures.** So worker multiplication is not the trigger, and the integration-worker cap the
+review offered would not have prevented anything measured. **Saturation is**: the same `-n 20` with
+20 busy loops pinning the cores fails **3 of 5**.
+
+**Then the classification, driven the way the application drives it** — real manager, real spawned
+children, counting the recorded `ErrorKind`:
+
+| Shape | Sessions | `WORKER_CRASH` |
+|---|---:|---:|
+| concurrency 1, idle | 30 | 0 |
+| concurrency 1, saturated | 30 | 0 |
+| **concurrency 16** (`CONCURRENCY_MAXIMUM`), saturated | **320** | **0** |
+| 20 independent processes, one manager each | **300** | **0** |
+
+**680 sessions, no lost message.** It is not reachable at supported product concurrency by any
+means measured here; it needs the integration suite itself, at high worker count, on a saturated
+host. The remaining suspect is named: the suite kills workers and **process groups**, and
+`kill_this_group`'s blast radius depends on what shares a group. That is a harness question, not a
+`src/` one.
 
 ## 2026-08-12 (review round): T-234's three findings corrected; T-233 Complete
 
