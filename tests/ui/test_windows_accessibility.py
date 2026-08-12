@@ -34,7 +34,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication, QMenu
 
-from tracks_and_trails.ui.main_window import ADD_URLS_BUTTON, APP_NAME, MainWindow
+from tracks_and_trails.ui.main_window import APP_NAME, MainWindow
 
 pytestmark = pytest.mark.windows_desktop
 
@@ -423,24 +423,26 @@ def test_each_menu_publishes_exactly_its_actions(
 def test_the_toolbars_three_verbs_are_each_announced(window: MainWindow, tree: Tree) -> None:
     """`NFR-005` over the controls a user reaches first, which this file had never seen.
 
-    **Transcribed by hand, not read from the toolbar.** The same rule the menu test follows:
-    deriving the expected names from the widgets would only prove the toolbar equals itself, and
-    the thing worth failing on is a verb that quietly stops being announced — or stops existing.
-    Three, because `UX-013` left three (`docs/UX_SPEC.md` §2.1).
+    **Written out here, not imported and not matched loosely** (`T235-R1`). The same rule the menu
+    test follows, and for the same reason: an expected name taken from production moves with
+    production, so a rename that silences a verb would rename the assertion too and the test would
+    go on passing. The first version of this imported `ADD_URLS_BUTTON` while its docstring claimed
+    the names were transcribed — a gate that did not gate what it said it did.
 
-    **The sweep below is not a substitute for this.** It requires *a* name on every button; it
-    cannot notice that the button which used to say `Clear finished` now says nothing about what
-    it clears, nor that one of the three is gone.
+    **The toolbar's buttons are compared as a set, exactly.** A missing verb fails, a fourth verb
+    fails, and a re-worded one fails. The title bar's own `Close`/`Minimize`/`Maximize` are the
+    frame's rather than this application's — `ElementFromHandle` returns the whole frame — so they
+    are excluded by name, which is what `TITLE_BAR_BUTTONS` already exists for.
+
+    **The run control is not here**: it is a `CheckBox`, not a `Button`, and its two states are
+    the next test's subject.
     """
-    named = {node.name for node in tree.of_type(UIA_BUTTON) if node.name.strip()}
-    for expected in (ADD_URLS_BUTTON, "Clear finished"):
-        assert expected in named, (
-            f"the toolbar's {expected!r} is not announced. Buttons in the tree: {sorted(named)}"
-        )
-
-    # The run control is checked by its own test, in both states.
-    run = window.run_action
-    assert run is not None, "the fixture's window has no run control, so it has no toolbar"
+    named = {node.name.strip() for node in tree.of_type(UIA_BUTTON) if node.name.strip()}
+    ours = named - set(TITLE_BAR_BUTTONS)
+    assert ours == {"+ Add URLs", "Clear finished"}, (
+        f"the toolbar publishes {sorted(ours)} as buttons, expected "
+        f"['+ Add URLs', 'Clear finished']. Full tree: {describe(tree.descendants)}"
+    )
 
 
 def test_the_run_control_is_announced_in_both_of_its_states(window: MainWindow, tree: Tree) -> None:
@@ -465,20 +467,20 @@ def test_the_run_control_is_announced_in_both_of_its_states(window: MainWindow, 
     run = window.run_action
     assert run is not None
 
-    stopped = {node.name for node in tree.of_type(UIA_CHECKBOX) if node.name.strip()}
-    assert any("Start" in name for name in stopped), (
-        f"a stopped queue's run control is not announced as Start. Check boxes: {sorted(stopped)}"
+    stopped = {node.name.strip() for node in tree.of_type(UIA_CHECKBOX) if node.name.strip()}
+    assert stopped == {"Start"}, (
+        f"a stopped queue publishes {sorted(stopped)} as check boxes, expected ['Start']"
     )
 
     window.show_queue_running(True)
     QApplication.processEvents()
     running = {
-        node.name
+        node.name.strip()
         for node in read_tree(int(window.winId())).of_type(UIA_CHECKBOX)
         if node.name.strip()
     }
-    assert any("Stop" in name for name in running), (
-        f"a running queue's run control is not announced as Stop. Check boxes: {sorted(running)}"
+    assert running == {"Stop"}, (
+        f"a running queue publishes {sorted(running)} as check boxes, expected ['Stop']"
     )
 
 
