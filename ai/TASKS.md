@@ -238,6 +238,13 @@ the movable and closable rules. What left is the spinner, its `Concurrent downlo
 `−`/`+` step buttons, and — with them — `STEP_DOWN_LABEL`, `STEP_UP_LABEL`, `STEP_BUTTON_PROPERTY`
 and **30 lines of style sheet** in `theme.py` that had nothing left to style.
 
+**The step buttons' finding outlived the widget, and that is filed as `T-236`.** `T-141` ruled
+the native spin arrows unreadable *"on the real 58×23 control"*; the Settings screen's spinner
+measures **57×22** with `ButtonSymbols.UpDownArrows`. Same control, same size, same finding — so
+`UX-005` row 11 now applies to the only place the limit can be set, and `T-141`'s answer is no
+longer anywhere in the application. Not fixed here: rebuilding the buttons on that screen changes
+a surface the maintainer approved from mockups showing a plain spinner row.
+
 **Three tests were deleted, not adapted.** `test_the_concurrency_control_steps_with_labelled_buttons`,
 `test_a_step_button_is_disabled_at_its_end_of_the_range` and `test_the_step_buttons_are_a_matched_pair`
 each assert properties of a widget that no longer exists; there is no version of them that says
@@ -2677,6 +2684,76 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
+
+### T-236 — The limit's only control has the affordance `T-141` ruled unreadable
+
+**Status:** Proposed — filed 2026-08-12 from `T-234`, **measured rather than suspected**.
+**Owner:** Implementer
+**Priority:** Medium — `NFR-005`, and it is now the *only* control for the setting. Not High
+because the control is still operable by typing and by `Up`/`Down`; what is unreadable is the
+affordance that says it can be stepped
+**Phase:** Phase 4 — polish. **Not a plan deliverable.**
+**Depends on:** nothing. `T-234` has landed
+**Relevant context:** `T-141` (the finding and its measurements), `T-133` (the same control,
+twice), `UX-005` row 11, `UX-013`, `T-234`, `ui/settings_dialog.py`, `ui/theme.py`'s deliberate
+omission of `QSpinBox`
+**Affected surfaces:** `ui/settings_dialog.py`, possibly `ui/theme.py`
+**Risk:** Low — an additive control on one screen
+
+#### Scope
+
+`T-141` ruled the native spin arrows unreadable and replaced them with labelled `−`/`+` buttons.
+Its measurement was *"the real 58×23 control"* on the maintainer's Wayland session: the platform
+draws the arrows correctly — up `4,6,8,10`, down `8,6,4` — **and they are still unreadable at that
+size**.
+
+`T-234` removed that control, and with it the step buttons. **The Settings screen's spinner is
+57×22** — measured 2026-08-12, offscreen, with the theme applied — which is the same control at
+the same size, with `ButtonSymbols.UpDownArrows`. So `UX-005` row 11's finding now applies to the
+only place the limit can be set, and the answer `T-141` reached is no longer anywhere in the
+application.
+
+**This is a consequence of `T-234`, disclosed by it rather than found later.** `T-234` deleted the
+step buttons because the widget they belonged to was gone; it did not rebuild them on the screen,
+because that is a change to a surface the maintainer approved from mockups that showed a plain
+spinner row.
+
+**What is *not* wrong:** `theme.py` still leaves `QSpinBox` unstyled on purpose (`T-133`,
+corrected), so the arrows are drawn by the platform rather than silently un-drawn. This is the
+size finding only, not the sheet one.
+
+#### The decision this needs
+
+Three shapes, and the entry does not take one — the second is a visual choice on a screen the
+maintainer has seen:
+
+- **Rebuild `T-141`'s answer on the screen**: `−`/`+` buttons, `ButtonSymbols.NoButtons`, each
+  disabled at its end of the range and each announcing direction *and* setting. The deleted tests
+  and the 30 lines of sheet are in `T-234`'s history and would come back nearly as they were.
+- **Let the screen's control be bigger instead.** A dialog has room the toolbar did not; if the
+  arrows are legible at a larger size the finding is about the toolbar's cramping and not about
+  the widget. **This needs a measurement on a real session, not a decision from here.**
+- **Accept it.** The spinner takes typed input and `Up`/`Down`, both of which work; the arrows are
+  an affordance rather than the only route. `T-141` considered and rejected this reasoning for the
+  toolbar, so accepting it here should say what changed.
+
+#### Acceptance criteria
+
+- The limit's control on the Settings screen offers a **readable** way to step it, or the entry
+  records why the toolbar's finding does not apply at the screen's size — with a measurement, not
+  an argument
+- If buttons return: each disabled at its end of the range (`UX-005` §5), each announcing the
+  direction **and** the setting (`NFR-005`), and `ButtonSymbols.NoButtons` so the control does not
+  offer two ways to step with one of them the unreadable one
+- The evidence is a **pixel measurement of the shipped control**, as `T-141`'s was. `T-133` passed
+  its first test against a control that rendered as two dots
+
+#### Out of scope
+
+- Anything about *where* the control lives. `UX-013` settled that and this does not reopen it
+- The toolbar, which no longer has one
+
+---
 
 ### T-235 — The Windows accessibility sweep has never seen the toolbar
 

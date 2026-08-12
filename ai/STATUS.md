@@ -59,6 +59,13 @@ directly; the tempting repair — call composition's handler — would have sati
 and quietly ended *"driven through the widget, never the constructor"*, which is the exact defect
 `P2PLAN-R3` filed. They now open the Settings screen through `open_settings` and drive its spinner.
 
+**The removal carried a finding with it, and it was measured rather than assumed.** `T-141` ruled
+the native spin arrows unreadable on *"the real 58×23 control"* and replaced them with labelled
+`−`/`+` buttons. Those buttons left with the spinner — and the Settings screen's spinner is
+**57×22** with the native arrows. Same control, same size, so `UX-005` row 11 now applies to the
+only place the limit can be set. **Filed as `T-236`**, not fixed here: rebuilding the buttons
+changes a screen the maintainer approved from mockups showing a plain spinner row.
+
 **One criterion could not be met because its premise was false, and that is filed rather than
 finessed.** It asked that `tests/ui/test_windows_accessibility.py` be *"updated for the removal"* —
 but that file builds a window with no control bar, so **its `NFR-005` sweep has never seen the
