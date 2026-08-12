@@ -15082,3 +15082,174 @@ stale ffmpeg warning after a live location change.
 **The reviewed T-195 stack through `7cd2002` may be pushed.** The Reviewer changed only the
 append-only review record and current task disposition; no reviewed source, test, status snapshot,
 commit, or remote state was changed.
+
+## 2026-08-11 — T-225 and T-123 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-225`, `T-123`
+**Base:** `15f3d5c`
+**Head:** bounded uncommitted snapshot. The ordered SHA-256 manifest of
+`.github/workflows/ci.yml`, `pyproject.toml`, `tests/integration/test_manager.py`,
+`docs/DEVELOPMENT.md`, `tests/ui/conftest.py`, and `tests/ui/test_suite_isolation.py` is
+`d08e9cd8dcfc838ef3867179979e655359f88917a546c544b1defd6a3ba5f3c5`; only the two named
+task entries and `T-228` were included from the shared `ai/TASKS.md` surface.
+**Platforms verified:** Linux. Windows has not seen the dependency or workflow change.
+**Verdict:** **Changes requested.** `T-225` has no blocking finding and its residual evidence gaps
+are carried by `T-229`; `T-123` has two blocking Medium findings.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T123-R1** | **Medium** | **Yes — submitted platform scope is not what CI executes** | Workflow expression | `.github/workflows/ci.yml:368` uses `${{ matrix.os == 'windows-latest' && '' || '-n auto' }}` as a pseudo-ternary. On Windows the true arm is the empty string, which is falsey, so the `||` arm wins and supplies `-n auto`; on Linux the same arm wins directly. Both matrix legs therefore parallelise unit/UI even though the task, workflow comments, and evidence limit adoption to Linux and expressly keep Windows serial because of `T-056`. | Invert the expression so its truthy arm is `'-n auto'` (or use platform-specific steps), then verify the rendered Windows command has no `-n`. Keep integration serial. | **Open** |
+| **T123-R2** | **Medium** | **Yes — the documented supported command contradicts the measured safe shape** | Developer workflow and hazard record | `docs/DEVELOPMENT.md:237-254` recommends bare `pytest -n auto` as “the same suite” and calls it safe, although the task records that exact whole-suite shape failing one run in six and deliberately adopts only `pytest -n auto tests/unit tests/ui` followed by serial integration. The rationale is also factually inverted: it says every `psutil` call avoids machine enumeration while the submitted fix exists because `test_manager.py` does exactly that, and the workflow says unit/UI “start no processes” despite subprocess/multiprocessing tests in `test_app_launch.py`, `test_suite_isolation.py`, `test_process_tree.py`, `test_logging.py`, and `test_skeleton.py`. Observed green is useful evidence, but these claims do not establish it. | Publish the exact split command that was measured and adopted. Describe why the process-spawning tests inside the parallel slice are isolated (own child/temporary roots and no cross-worker global reaping), rather than claiming they do not exist. | **Open** |
+| **T225-R1** | **Low** | **No — known global state is restored correctly** | Fixture evidence | The regression kills removal of the fixture but still passes when palette and `theme._applied` restoration are removed. Keeping both is the right ruling: `theme.apply` mutates them and the delegate consumes the latter, so knowingly leaving them global would recreate the defect class. Their restoration simply lacks discriminating evidence. | Retain both restorations and add field-specific evidence in `T-229`. | **Open — `T-229`** |
+| **T225-R2** | **Low** | **No — original order defect is fixed** | Product-state coverage | The two tests exposed by the leak assert an undressed application, while `run()` applies a theme. In particular, the keyboard test reuses an off-row point after the first menu changes geometry; under a theme it can become a pointer hit, so its second guard is not shipped-state evidence. This does not weaken T-225's isolation fix, but it should not remain the only proof of those behaviors. | In `T-229`, exercise both behaviors with a shipped theme and recompute/assert the off-row point immediately before each keyboard event. | **Open — `T-229`** |
+
+### Rulings requested by the handoff
+
+- **Keep palette and `_applied` restoration.** They are part of the known global mutation and
+  removing them because today's two failures depend only on the style sheet would knowingly leave
+  the same leak class in place. `T-229` owns proving them.
+- **Keep the original bare-state assertions for now, but do not treat them as product-state
+  coverage.** `T-229` adds the themed cases without weakening T-225 to reach green.
+- **Do not adopt `-n 4` for integration.** Three green runs do not resolve a failure already
+  reproduced under greater load. Keeping integration serial pending `T-228` is the sound ruling.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Bounded tree and scope | Base remains `15f3d5c`; no product-behavior source change belongs to either reviewed task. Reviewer edits are limited to this record and approved follow-up/task dispositions. |
+| `git diff --check` | **Passed** before reviewer records. |
+| `ruff check .` / `ruff format --check .` | **Passed; 167 files formatted.** |
+| bare `mypy` | **Passed; 129 files.** |
+| bare `mypy --no-incremental --platform win32` | **Passed; 129 files.** The first concurrent native/Win32 invocation collided in mypy's shared cache and produced the repository's previously documented spurious `ctypes.windll` pair; the required sequential control passed. |
+| Parallel unit/UI slice | First sandboxed run reached **2710 passed / 18 skipped** and failed only because the sandbox denied the loopback bind in `test_ytdlp_adapter.py`. Rerun with loopback permission: **2711 passed, 18 skipped, exit 0 in 23.76 s**. |
+| Collection parity | Serial and `-n auto` collection both reported **3130 tests, exit 0**. |
+| Marker-sensitive integration selection | Three process-liveness/detector tests spread over three xdist workers: **3 passed, exit 0**. |
+| T-225 normal regression | `tests/ui/test_suite_isolation.py`: **1 passed, exit 0**; its three explicit nodes: **3 passed, exit 0**. |
+| T-225 no-restoration mutation | Returning before fixture restoration made the new subprocess regression fail with exactly the submitted **2 failed, 1 passed** inner result; the mutation was restored. |
+| Full serial integration | **Not rerun by the Reviewer.** Submitted result is **403 passed, exit 0**. |
+| Windows runtime/CI | **Not run.** Nothing is committed or pushed. |
+
+### Readiness and push disposition
+
+`T-225` is acceptable as implemented, with `T-229` carrying its two non-blocking evidence gaps.
+`T-123` is not ready: correct the Windows selector and make the developer command and safety
+claims describe the split that was actually measured. **Do not push the submitted workflow until
+those two findings are corrected and focused re-review covers their diff.** No source, test,
+workflow, dependency, commit, or remote state was changed by the Reviewer.
+
+## 2026-08-11 — T-123 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-123`; focused re-review of `T123-R1` and `T123-R2`
+**Base:** bounded initial-review snapshot recorded immediately above
+**Head:** corrected uncommitted snapshot at base commit `15f3d5c`; correction scope is
+`.github/workflows/ci.yml`, `docs/DEVELOPMENT.md`, and the `T-123` / `T-225` task-entry hunks.
+The previously reviewed implementation files are byte-identical.
+**Platforms verified:** Linux plus rendered Windows/Linux shell commands; no Windows runtime.
+**Verdict:** **Blocked.** `T123-R1` is resolved and the unsafe-command half of `T123-R2` is
+resolved. The replacement isolation claim is contradicted by a real write from the adopted slice.
+The initial-plus-focused budget is exhausted, so another Medium correction pass requires the
+maintainer's authorization under `AGENTS.md` §10.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T123-R1** | **Medium** | **Resolved** | The GitHub expression is gone. The parsed workflow step uses `RUNNER_OS`; independent execution of that exact shell block recorded `pytest -v tests/unit tests/ui` with no `-n` on Windows, `pytest -v -n auto tests/unit tests/ui` on Linux, and serial integration on both. The condition also enables parallelism on a hypothetical macOS runner, but macOS is not a supported project platform or current matrix cell; that does not block this boundary. |
+| **T123-R2** | **Medium** | **Yes — required path isolation and the safety account remain false** | The guide now publishes the correct two-command split and explicitly refuses bare whole-suite `pytest -n auto`, resolving the main documentation defect. The new rationale says twelve matching files each spawn their own children and root writes in `tmp_path`. The twelve are lexical matches, not a behavioral inventory: they include prose-only mentions (`test_add_dialog`, `test_errors`, `test_protocol`), a negative source assertion (`test_environment`), and a `CompletedProcess` fake (`test_reveal`), while indirect manager launches are not discoverable by that grep. More materially, running the adopted UI test `test_an_open_playlist_shows_entries_and_a_way_back` with `XDG_CACHE_HOME=/tmp/t123-shared-cache-probe` created `/tmp/t123-shared-cache-probe/tracksandtrails/jobs/<uuid>.log`. With no override, every xdist worker uses the same real user cache. This contradicts both the submitted “roots whatever it writes in its own `tmp_path`” claim and `ai/TESTING.md` §5's rule that tests never use real config/data/cache directories. | **Open** |
+
+### Required correction for T123-R2
+
+Isolate the per-user paths used by the adopted parallel slice per worker (including indirect
+`DownloadManager` job logs), and verify the behavior through the real tests. Replace the lexical
+“twelve files” argument with a behavioral/call-path inventory or narrower statement that does not
+claim prose and fakes spawn processes. Then keep the workflow and developer guide within what that
+evidence proves.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Correction scope | Only workflow, developer guide, and shared task-entry hunks changed since the initial snapshot; the four implementation/test files named in the handoff retain their reviewed hashes. |
+| YAML parse | **Passed** with PyYAML 6.0.3; the `Tests` step's parsed `run:` block was inspected and executed. |
+| Rendered Windows route | **Exit 0:** unit/UI serial, integration serial. |
+| Rendered Linux route | **Exit 0:** unit/UI `-n auto`, integration serial. |
+| Revised developer command | Exact adopted split is present; bare whole-suite `-n auto` is explicitly warned against. |
+| Global-reaper search | `psutil.process_iter` is absent from `tests/unit` and `tests/ui`; that narrower claim is true. |
+| Lexical process inventory | Twelve matching files confirmed, but five contain only prose, a negative assertion, or a fake rather than the claimed process launch; indirect manager launches make the grep incomplete in the other direction. |
+| Shared-cache probe | **1 passed, exit 0**, and created a real per-job log under the sentinel platform cache root, proving the adopted slice does not root all writes in `tmp_path` or per-worker state. |
+| Full suite/static gates | Not rerun by the Reviewer because the correction changes workflow and prose only. The submitted clean gates and **2711 / 18**, **403**, and T-225 focused results are not disputed. |
+| Windows runtime/CI | **Not run; nothing is committed or pushed.** |
+
+### Readiness and push disposition
+
+Do not push the T-123 workflow as approved evidence yet. The command selection is correct, but
+the task's path-isolation hazard remains real in the slice being parallelised. The maintainer must
+authorize another focused correction pass, carry the isolation work into a named follow-up and
+accept the present risk, or otherwise disposition `T123-R2`. The Reviewer changed only this
+append-only record and the current T-123 task disposition.
+
+## 2026-08-12 — T-123 authorized final correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-123`; final focused re-review of `T123-R2`
+**Base:** bounded focused-review snapshot recorded immediately above
+**Head:** authorized uncommitted correction snapshot at repository base `15f3d5c`. Ordered
+implementation/evidence manifest SHA-256:
+`2ab7ae8ae64cb30d8a1ed422bfcd6aeea9fdd3eb55f37738ddad999591cc201c`.
+The manifest covers `.github/workflows/ci.yml`, `pyproject.toml`,
+`tests/integration/test_manager.py`, `docs/DEVELOPMENT.md`, `tests/conftest.py`,
+`tests/user_directories.py`, `tests/unit/test_user_directories.py`, `ai/TESTING.md`,
+`tests/ui/conftest.py`, and `tests/ui/test_suite_isolation.py`, in that order.
+**Platforms verified:** Linux; both workflow routes rendered. Windows runtime remains for CI.
+**Verdict:** **Approved with follow-ups.** `T123-R2` is resolved. `T-230` owns the independently
+measured spawned-integration-child residue; `T-228` continues to keep integration serial.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Final result |
+|---|---|---:|---|
+| **T123-R2** | **Medium** | **Resolved** | A root autouse fixture now redirects all in-process `platformdirs` consumers into each test's own `tmp_path`, without taking `monkeypatch` and perturbing teardown order. The source-derived AST guard covers every current consumer, direct consumer evidence exercises the copied module binding, and disabling the fixture independently fails both behavioral guards. Most importantly, the Reviewer ran the exact adopted `-n auto tests/unit tests/ui` slice with sentinel config/data/cache roots: **2714 passed, 18 skipped, exit 0**, and the sentinel roots contained **zero files** afterward. The workflow and developer guide now state only the checked properties: no shared per-user writes in the adopted slice and no global process reaper there. |
+
+### Correction assessment
+
+- Patching both `platformdirs` and already-imported consumer-module bindings is the correct
+  cross-platform mechanism. It reaches function-local later imports without importing Qt from the
+  root conftest and does not rely on POSIX-only `XDG_*` behavior.
+- Avoiding the `monkeypatch` fixture is load-bearing, not stylistic. The previously affected
+  `test_kill_tree_reports_a_survivor` independently returned to **1 passed, exit 0 in 10.10 s**.
+- The in-process boundary is explicit. Spawned integration children still resolve their own real
+  directories; that is not hidden under this approval. Integration remains serial, the residue is
+  UUID-named rather than cross-worker state, and `T-230` has a measured zero-file criterion and a
+  Windows-aware helper requirement.
+- The AST guard describes every current import accurately. Its future alias handling and the
+  behavioral root assertion are narrower than their prose suggests, but the current imports are
+  all unaliased and the full-slice sentinel measurement proves the shipped test boundary. Those
+  test-hardening limits do not reopen the corrected current isolation.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Correction scope and manifest | Reviewed files match the ordered manifest above; previous T-225 and T123-R1 implementation files remain unchanged where claimed. |
+| `git diff --check` | **Passed.** |
+| `ruff check .` / `ruff format --check .` | **Passed; 169 files formatted.** |
+| bare `mypy` / `mypy --no-incremental --platform win32` | **Passed; 131 files each.** |
+| Redirect guards | **3 passed, exit 0.** |
+| No-redirect mutation | **2 failed, 1 passed** for the intended real-directory assertions; mutation restored. |
+| Parallel unit/UI with sentinel roots | **2714 passed, 18 skipped, exit 0 in 21.24 s; zero files under the sentinel config/data/cache root.** |
+| Teardown-order regression | `test_kill_tree_reports_a_survivor`: **1 passed, exit 0 in 10.10 s.** |
+| Task placement | **14 passed, exit 0.** |
+| Full serial integration | Not rerun by the Reviewer; submitted final-tree result is **403 passed, exit 0**, including the teardown regression twice. |
+| Windows runtime/CI | **Not run; nothing is committed or pushed.** |
+
+### Readiness and push disposition
+
+The T-225/T-123 implementation manifest above is approved. It may be split into the required
+per-task commits and pushed so CI supplies the missing Windows runtime evidence. Do not parallelise
+integration: `T-228` remains the gate for that. `T-230` is a real policy cleanup for spawned
+integration children, but it does not block the unit/UI parallel slice reviewed here.

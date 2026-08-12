@@ -118,6 +118,439 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
+### T-225 — Two UI test files pass apart and fail together
+
+**Status:** In Review — **Approved with follow-ups 2026-08-12** at the bounded T-123 final-review
+manifest recorded in `ai/REVIEWS.md`. No blocking T-225 defect was found; its two Low evidence gaps
+are carried by `T-229`. Awaiting the required per-task commit split and coordination move to
+Complete.
+**Owner:** Implementer
+**Priority:** Medium — the suite is currently green by an accident of alphabetical collection, and
+the accident is one file rename away from ending
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `tests/ui/test_row_delegate.py`, `tests/ui/test_add_dialog.py`
+(`test_an_open_playlist_shows_entries_and_a_way_back`,
+`test_the_menu_key_reaches_the_current_rows_menu`), `tests/ui/conftest.py` (the `qapp` fixture —
+one `QApplication` for the session, which is the only correct way to run Qt under pytest and also
+the reason state can travel between files), `ai/TESTING.md`
+**Affected surfaces:** `tests/ui/` — test-side unless the reproduction finds otherwise
+**Risk:** Low, with one caveat: if the shared state turns out to be in `ui/` rather than in the
+tests, the fix is a source change and this entry's scope grows
+
+#### Scope
+
+Running `tests/ui/test_row_delegate.py` **before** `tests/ui/test_add_dialog.py` in the same
+process fails two add-dialog tests that pass when either file runs alone or in the other order:
+
+```
+pytest tests/ui/test_row_delegate.py tests/ui/test_add_dialog.py
+  FAILED test_an_open_playlist_shows_entries_and_a_way_back
+  FAILED test_the_menu_key_reaches_the_current_rows_menu
+```
+
+CI does not see it **only because pytest collects alphabetically and `add_dialog` sorts before
+`row_delegate`**. Nothing about that is a property the suite asserts, so a file rename, a
+`-p randomly`, an `-n auto` shard boundary, or someone running one file to save time turns it into
+a red build with no code change behind it. A test that passes for a reason nobody chose is a test
+whose green is not evidence.
+
+**The mechanism is unestablished and this entry deliberately does not guess it.** The delegate
+holds module- or instance-level hover state and the `qapp` fixture is session-scoped, so leaked
+widget or focus state is the obvious suspect — obvious enough to be worth distrusting, given how
+often the last several tasks' "obvious" mechanism was the wrong one.
+
+#### Acceptance criteria
+
+- **The mechanism is identified and stated**, not worked around: which object holds state across
+  the file boundary, and how it reaches the two failing assertions
+- The two tests pass in **both** orders, and the fix is at the source of the leak rather than a
+  reset bolted onto the tests that happen to fail today
+- **The ordering property is asserted rather than inherited from the alphabet** — the suite gains
+  something that fails if this regresses, so the next instance is not found by accident
+- No test is deleted, skipped or weakened to reach green
+
+#### Out of scope
+
+- Making the whole suite order-independent — that is a larger sweep, and this entry is the one
+  reproducible instance
+- Introducing test-ordering plugins as a substitute for finding the cause
+
+#### What was built, against those criteria
+
+- **The mechanism, and it is one cause rather than two.** `theme.apply` changes three things on
+  the single session `QApplication` — style sheet, palette, and the module global `_applied` — and
+  nothing put them back. **One test leaks it**:
+  `test_row_delegate.py::test_an_abandoned_block_is_not_drawn_like_a_finished_one` applies both
+  themes and leaves `LIGHT` on. Both add-dialog failures follow from the style sheet alone:
+  - `PlaylistPanel.__init__` calls `setAutoFillBackground(True)` **for the unstyled case a test
+    window runs in** — its own comment says so — and Qt's style-sheet polish, which the panel
+    invokes two lines later, clears it. The assertion is therefore an assertion about a *bare*
+    application, and the panel is not defective.
+  - `test_the_menu_key_reaches_the_current_rows_menu` computes a probe point *below every row*,
+    then asserts a keyboard request there opens nothing. Dressed, the sheet's metrics make the
+    rows taller — measured at the send: `off=(1, 146)` against `last_bottom=157` — so the point
+    lands **on** a row, `_show_row_menu` resolves it through `indexAt` exactly as designed, and a
+    menu opens. The test had silently stopped driving the keyboard route it exists to prove.
+- **Proved by construction, not by argument.** Applying `theme.apply(qapp, LIGHT)` from a
+  throwaway plugin reproduces **both** failures against the add-dialog file alone, in 3.41 s — so
+  the cause is the dressing and nothing else in `test_row_delegate.py`.
+- **The fix is `tests/ui/conftest.py`'s `_undressed_afterwards`**, an autouse fixture that puts the
+  dressing back around every UI test. **Not a reset in the two tests that failed**: thirteen call
+  sites dress the application on purpose, and the next leak would otherwise be found by accident
+  again. `test_theme_metrics.py`'s local `themed` fixture already carried this reasoning in its
+  docstring and restored the style sheet only, for one file.
+- **The ordering property is asserted**: `tests/ui/test_suite_isolation.py` runs the three node
+  ids in the reported order **in a subprocess**, because a defect that exists between tests in one
+  process cannot be observed from inside it. **3.9 s against the four minutes** the two whole files
+  cost, and it checks `3 passed` as well as the exit code so a rename cannot make it pass
+  vacuously.
+- **Two mutations, and one of them failed to fail.** Restoring nothing → the regression fails
+  (exit 1, the two filed failures). Restoring **only the style sheet** → it still **passes**, so
+  the palette and `_applied` restoration are *unproven*. They are kept because
+  `ui/row_delegate.py:1278` reads `theme.applied()` while painting, which is a real leak with no
+  test on it rather than one that cannot happen — recorded in the fixture's own comment rather
+  than left as an implied claim (`T180-R2`).
+- **The four-minute reproduction is now 3.9 s**, which is the difference between a regression that
+  runs and one nobody runs.
+
+#### Reviewed 2026-08-11 — no blocking finding; both questions ruled
+
+**The two questions this entry put to the reviewer are answered, and both answers went against the
+cheaper option.** `ai/REVIEWS.md` holds the record.
+
+- **`T225-R1` (Low) — keep the palette and `theme._applied` restoration**, despite the mutation
+  showing the regression passes without them. *"Removing them because today's two failures depend
+  only on the style sheet would knowingly leave the same leak class in place."* Their missing
+  evidence is `T-229`'s, not a reason to drop them. **No change here.**
+- **`T225-R2` (Low) — keep the bare-state assertions, but stop treating them as product-state
+  coverage.** The reviewer added the sharper version of the point this entry raised: the keyboard
+  test **reuses an off-row point after the first menu has already changed the geometry**, so under
+  a theme it can become a pointer hit. `T-229` adds the themed cases and recomputes the point
+  immediately before each keyboard event. **No change here** — weakening either assertion to reach
+  green is what the criteria forbid.
+
+#### For the reviewer
+
+- The two failing assertions are **left exactly as they were**. Both describe an undressed
+  application, which is a state the shipped application never has — `run()` applies a theme at
+  launch. That is a real weakness in what they prove and it is **not** this task's to change:
+  altering them would be the "weakened to reach green" the criteria forbid. *(Ruled above; owned by
+  `T-229`.)*
+- **`tests/integration/` is not covered.** Its conftest is separate, and `test_composition.py`
+  composes the real application, which dresses it. Integration sorts *before* `ui` alphabetically,
+  so the same class is reachable there in a combined run; the suites run separately today. Named
+  rather than fixed, per this entry's own out-of-scope line.
+
+### T-123 — Evaluate running the suite in parallel
+
+**Status:** **In Review — Approved with follow-ups 2026-08-12.** `T123-R1` and `T123-R2` are
+Resolved at the bounded final-review manifest in `ai/REVIEWS.md`. The adopted unit/UI slice is
+parallel and isolated; integration stays serial behind `T-228`; spawned integration children still
+using real per-user directories are filed as `T-230`. Awaiting the required per-task commit split
+and coordination move to Complete.
+Originally adopted in half on maintainer instruction (*"do T-225 and T-123"*), after CI run
+`31553176677` was cancelled at the 15-minute cap inside the `Tests` step
+with every other gate green. **`tests/unit` and `tests/ui` take `-n auto`; `tests/integration`
+stays serial**, and the reason is evidence rather than caution: two of the hazards this entry
+predicted are real, one is fixed here and the other is filed as `T-228`. What was built is at the
+end of this entry.
+*(Was: **Ready — measured 2026-08-04, and the answer is yes.** `-n auto` runs the
+suite in **58 s** against **~400 s** serial — a **7x** reduction — with one hazard identified by
+name rather than guessed at. The measurement is below; the adoption has not been done.)*
+*(This read "Proposed — for evaluation, not yet a commitment", 2026-08-03. Filed rather than
+attempted: the payoff is large and the hazards are specific, and deciding which applies is the
+work. That was the right call — the evaluation found the hazard on its second run.)*
+**Owner:** Implementer
+**Priority:** Medium — the suite is the largest single cost in every gate and in local development
+**Phase:** Phase 2 test infrastructure
+**Relevant context:** `T-122`, `NFR-001`, `AGENTS.md` §9, run `30861672178`
+**Affected surfaces:** `pyproject.toml`, `tests/**`, possibly `.github/workflows/ci.yml`
+**Risk:** Medium — the failure mode is *intermittent* tests, which is worse than slow ones
+
+#### The overnight measurement, 2026-08-04
+
+Ten runs at head `8d1b01c`, on the maintainer's laptop (20 cores), each the **full** suite:
+
+| Mode | Wall clock | Result |
+|---|---|---|
+| serial (39 soak passes) | ~400 s | 37 green, **2 segfaults** — see `T-128`, unrelated to parallelism |
+| `-n auto` | 58 s, 59 s, 58 s | **2 of 3 green** |
+| `-n 4` | 127 s, 125 s, 127 s | **3 of 3 green** |
+
+**`-n auto` is ~7x and `-n 4` is ~3x.** The times are strikingly stable within each mode, which
+matters: a parallel run whose duration varied wildly would be contending for something.
+
+**One test failed under `-n auto` and never serially:**
+`tests/integration/test_manager.py::test_the_survival_check_can_tell_a_live_process_from_a_dead_one`.
+
+**The direction matters and was nearly missed.** The assertion was *"a running process was reported
+dead"* — `still_running([alive.pid])` returned `[]` for a process that was alive. That is worth
+stating because `T-056` is the **opposite**: a *reaped* process reported **alive**, on Windows. The
+two look like the same finding at a glance and are not, and `T-056` now records that this candidate
+was checked and rejected. What this does establish is that `still_running` has a **second failure
+mode**, a false negative under parallel load, which nobody had seen.
+
+That is not a random flake, it is **the predicted hazard arriving on schedule** — a test whose
+subject is whether a *real process* is alive, run beside other tests that spawn and kill real
+processes. It is the first item in every list of what breaks under `xdist`, and finding exactly it
+is the strongest possible argument that the hazard analysis is the work rather than the tuning.
+
+**What the run did not do:** it did not test `-n auto` more than three times. One failure in three
+bounds nothing usefully — the rate could be 10% or 90%. Before adoption, that test's behaviour
+under load needs a proper sample, not three runs.
+
+#### The recommendation
+
+**Adopt `-n`, and pin the process-contending tests rather than tuning the worker count down.**
+`-n 4` looks safer only because it happened to be green three times; it has the same hazard with a
+lower probability of hitting it, which is the worst of both — a gate that fails rarely is one
+people re-run.
+
+The hazards to handle, in order:
+
+- **Real processes.** `tests/integration/test_manager.py`, `test_phase_2_exit.py` and
+  `test_end_to_end.py` spawn, kill and enumerate processes. Anything asking "is this process alive"
+  or "how many workers exist" must not run beside another test doing the same. Pin them to one
+  worker (`xdist_group`), do not try to isolate them by luck.
+- **The single-instance lock.** `tests/ui/test_app_launch.py` is about a lock that is global to the
+  user. Two workers running it concurrently test each other.
+- **Per-user paths.** Temp, cache, config and the SQLite library each need to be per-worker, and
+  `PYTEST_XDIST_WORKER` is how.
+
+**Do not adopt on CI first.** Land it locally, run the soak again under `-n`, and only then change
+the workflow — `OPS-010` already records that a green board must mean what it says.
+
+**The measurement.** 1984 tests in **291 s** locally and **573 s** on `STARBASE`. There is no hot
+spot to remove: the twenty slowest tests are 104 s of the 291 s, and the average is 0.15 s. The
+cost is a long tail of integration tests that spawn real worker processes, so the only lever that
+scales is running them at once.
+
+**What to evaluate.** `pytest-xdist` at `-n auto`. Most of these tests are independent and each
+xdist worker is its own process, so a `QApplication` per worker is not a problem.
+
+#### The hazards, which are the actual work
+
+- **Tests that spawn and kill real worker processes.** `AGENTS.md` §9 says to run these "one
+  worktree at a time" because concurrent runs wedge each other. *That instruction names
+  `-m process_tree`, and **no test carries that marker*** — only `network` and `windows_desktop`
+  are registered. So the guidance cannot be followed as written, and the first job here is to find
+  out which tests it meant.
+- **The localhost server fixtures.** `T-121` is already a connection aborting under load on one
+  hosted runner, and the reviewer's sandbox denied sixteen of these outright. Several workers
+  binding servers at once is the same pressure, multiplied.
+- **Shared per-user paths.** Every worker needs its own temp, database and config directory —
+  `AGENTS.md` §9 states this for parallel *agents* and it applies identically here.
+
+#### Acceptance criteria, if it proceeds
+
+- A deterministic demonstration that the parallel run and the serial run collect and pass the same
+  tests, rather than a wall-clock comparison alone.
+- The process-spawning tests identified by name, and either isolated or pinned to one worker with
+  a stated reason.
+- Repeated runs — not one — showing no intermittent failure, because the thing this can buy is
+  speed and the thing it can cost is a suite nobody trusts.
+
+#### Out of scope
+
+- Deleting or skipping tests to make the suite faster. The suite is slow because it exercises real
+  processes, which is what makes it worth having.
+
+#### What was built, 2026-08-11, against those criteria
+
+**`pytest-xdist` was in nobody's manifest.** It was installed in one local virtualenv and named in
+no `pyproject.toml`, no workflow and no document — so the evaluation above ran against a tool CI
+could not have used. Declared in `[dev]` now, which is the difference between a measurement and an
+adoption.
+
+- **Same tests, proved rather than compared on wall clock.** `--collect-only` diffed serial against
+  `-n auto`: **3130 node ids each, empty diff, both exit 0**. `tests/unit tests/ui
+  tests/integration` collects the same 3130 as the bare default run, so the split invocation covers
+  what the single one did.
+- **The hazards, checked one at a time instead of pinned on suspicion.** Pinning the seven
+  process-touching modules to one worker was measured first and **rejected**: they are 243 s
+  serially, so that "fix" would have made the suite slower than the 78 s it was trying to protect.
+  What the checking found:
+  - **The single-instance lock is already isolated** — every test takes its database from its own
+    `tmp_path` and `lock_path_for` puts the lock beside that database, so two workers never meet.
+    This entry's second hazard does not hold in the code as written.
+  - **Per-user paths are already per-worker** — `tmp_path` is, and `test_app_launch.py`'s own
+    comment records it passing a temp data directory precisely so a run cannot open the
+    developer's real database.
+  - **The first hazard is real, and it was not what this entry guessed.** It is not that the tests
+    ask about processes; it is that `test_manager.py`'s stray-reaper **kills by scanning every
+    process on the machine** — it must, because a reparented stray is findable no other way — and
+    every worker shared one marker string. Two workers running that file therefore killed each
+    other's live processes. **That is the `still_running` "false negative under load" this entry
+    recorded on 2026-08-04**, and it was never a `still_running` defect: reproduced here at
+    **one run in six** as `[] == [914917]`, *"a running process was reported dead"*, on the same
+    assertion. `GRANDCHILD_MARKER` now carries `PYTEST_XDIST_WORKER`, so a worker can only reap
+    its own.
+- **A second hazard this entry did not predict**, found because the first fix made room for it:
+  under parallel load a retry deadline stops firing and
+  `test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started` fails, roughly one run in
+  three when that file alone is spread across 20 workers. **Filed as `T-228`** rather than absorbed
+  or worked around, because whether the bound belongs to the test or the product is not yet
+  established.
+- **Repeated runs, and the criterion is met for what is adopted and not for what is not.**
+  `tests/unit tests/ui` under `-n auto`: **five runs, five green, 2711 passed each, ~23 s** against
+  186 s serial. Whole suite under `-n auto`: **77.6 s**, but **one failure in six runs** — which is
+  exactly why the whole suite is not what shipped.
+- **What CI runs now**: `-n auto` over unit and UI, then `tests/integration` serially at 297 s, on
+  Linux only. **Windows stays serial** — the evidence is Linux and `T-056` is an open Windows
+  defect about whether a process is alive, the question load perturbs.
+- **The job timeout is 25 minutes, raised from 15.** The parallel half is the fix; the headroom is
+  so the next overrun fails late instead of at a cliff (`T118-R10`).
+
+#### Initial review — 2026-08-11, Changes requested, both findings corrected
+
+`ai/REVIEWS.md` holds the record. **Both were Medium and both blocked**, and both are the same
+shape: *a claim in this submission that the submission itself disproved.*
+
+- **`T123-R1` — the workflow did the opposite of what its own comments promised.** The selector was
+  `${{ matrix.os == 'windows-latest' && '' || '-n auto' }}` — the common GitHub pseudo-ternary,
+  and **wrong whenever the true arm is falsey**. On Windows it reduces to `'' || '-n auto'` and the
+  empty string loses, so **both legs parallelised**, on the one platform the evidence deliberately
+  excludes and `T-056` argues against. Corrected to a shell test on `RUNNER_OS` — the runner's own
+  answer, which also stays right when `LINUX_RUNNER`/`WINDOWS_RUNNER` points a label at another
+  machine. **Verified by rendering the step**: `RUNNER_OS=Windows` produces `pytest -v tests/unit
+  tests/ui` with no `-n`; `RUNNER_OS=Linux` produces `-n auto`; integration is serial on both.
+- **`T123-R2` — the developer documentation recommended the shape this task rejected.**
+  `docs/DEVELOPMENT.md` published bare `pytest -n auto` as *"the same suite"* and called it safe,
+  while this entry records that exact command failing one run in six. Worse, its rationale was
+  **inverted**: it said every `psutil` call avoids enumerating the machine, and the reason this
+  task exists is that `test_manager.py` does exactly that. The workflow comment carried the
+  matching error — that the parallel slice *"starts no processes"*, when **twelve files under
+  `tests/unit` and `tests/ui` use `subprocess` or `multiprocessing`**, including the `T-225`
+  regression added beside it. Both now publish the measured split and state the real property:
+  each test spawns *its own* children and addresses them by the handle it holds, roots its writes
+  in its own `tmp_path`, and **none reaps by scanning** — `psutil.process_iter` appears nowhere in
+  that slice, checked rather than asserted.
+
+**Both were claims written before the evidence that disproved them, and never revisited.** The
+`psutil` sentence was true when drafted and false by the time it shipped, in the same session, in a
+document this task was editing anyway — which is `T-227`'s subject arriving inside `T-227`'s own
+session.
+
+#### Focused re-review — 2026-08-11, Blocked
+
+- **`T123-R1` is Resolved.** Parsing the checked-in YAML and executing its exact `run:` block with
+  a recording `pytest` function produced a serial unit/UI command on `RUNNER_OS=Windows`, `-n auto`
+  only on `RUNNER_OS=Linux`, and serial integration on both. The non-Windows selector is accepted
+  for the project's two supported platforms; a future macOS job would need its own evidence.
+- **`T123-R2` remains Open.** The documented split is now the measured split and bare whole-suite
+  `-n auto` is explicitly refused. The replacement safety rationale is still not true of the tree:
+  searching for the words `subprocess` and `multiprocessing` finds documentation, negative source
+  assertions and a `CompletedProcess` fake as well as real launches, while indirect
+  `DownloadManager` launches are not identified that way. More importantly, the review ran
+  `test_an_open_playlist_shows_entries_and_a_way_back` with a sentinel `XDG_CACHE_HOME` and it
+  created `tracksandtrails/jobs/<uuid>.log` there. Without that override every xdist worker shares
+  the user's platform cache, directly contradicting “roots what it writes in its own `tmp_path`”
+  and `ai/TESTING.md` §5. Isolate all per-user paths for the parallel slice and base the process
+  inventory on behavior/call paths rather than lexical matches, then make the workflow and guide
+  state only what that evidence proves.
+
+#### Focused re-review — 2026-08-11, Blocked, then corrected on maintainer authorization
+
+**`T123-R1` Resolved.** The reviewer executed the parsed step: Windows renders no `-n`, Linux
+renders `-n auto`, integration serial on both.
+
+**`T123-R2` stayed open, and the reason was a real write, not a wording.** The replacement
+isolation claim — *"roots whatever it writes in its own `tmp_path`"* — was **false**. Running the
+adopted UI test `test_an_open_playlist_shows_entries_and_a_way_back` under a sentinel
+`XDG_CACHE_HOME` created a real per-job log there. Measured across the whole adopted slice:
+**241 job logs in the developer's real cache, from one run.**
+
+**The defect was pre-existing and larger than this task.** `ai/TESTING.md` §5 has always said
+tests must not touch the real config, data or cache directories, *"`platformdirs` paths are
+redirected to `tmp_path` by an autouse fixture"* — **and no such fixture existed**. `tests/conftest.py`
+defined none; eight files each arranged their own redirect and everything else reached the machine.
+Serial runs polluted it too. What parallelism changed was not the pollution but my argument: the
+adoption rested on isolation that was never there.
+
+**The maintainer authorized the correction pass** (`AGENTS.md` §10, the budget being exhausted),
+choosing to build the mechanism rather than narrow the claim.
+
+- **`tests/user_directories.py` + the autouse `_per_user_directories` fixture** redirect config,
+  data, cache and downloads into each test's own `tmp_path`. **Module attributes, not `XDG_*`**:
+  every consumer binds the function by name at import, and platformdirs consults `XDG_*` only on
+  POSIX — the Windows job is the one this project keeps finding defects on. Only modules already
+  in `sys.modules` are patched, which is how the deliberately **Qt-free** root conftest covers
+  `ui/main_window.py` without importing Qt.
+- **Measured, not asserted: 241 job logs before, `0` after**, over the same command.
+- **Two mutations, and the redirect dies to both.** Disabling it returns **242** files to the real
+  cache *and* fails `test_the_redirect_answers_inside_the_given_root` and
+  `test_a_consumer_module_calls_the_redirected_function`.
+- **The consumer list is derived, not maintained by hand.**
+  `test_every_platformdirs_consumer_is_redirected` re-parses `src/` and compares. **Its own first
+  version proved the point against itself**: it matched `^from platformdirs import (\w+)` and
+  missed `app.py`, whose import is indented inside a function — a guard proved against one
+  spelling, inside the test written to prevent guards proved against one spelling (`T214-R1`). It
+  uses `ast` now.
+- **`app.py` needs no module patch and gets none.** Its import is function-local, so the name is
+  resolved on `platformdirs` at call time and the module-level patch governs it; patching
+  unconditionally raised `AttributeError` and errored **518** tests before that was understood.
+- **The twelve-file inventory is withdrawn.** It was a lexical grep presented as behaviour —
+  five of the twelve are prose, a negative assertion or a `CompletedProcess` fake, and it missed
+  indirect manager launches. Both documents now claim only what is checked: nothing shared is
+  written, and nothing reaps what it did not start (`psutil.process_iter` absent from the slice).
+- **`ai/TESTING.md` §5 now names its own mechanism**, so the rule can be checked rather than
+  believed.
+
+**The fixture broke a test, and how it was attributed is worth keeping.** `tests/integration/
+test_single_instance.py::test_kill_tree_reports_a_survivor` began erroring — *"1 process survived
+the reap"* — and took 20 s where it had taken 10. **Attributed by bisection rather than by
+reasoning**: the pristine tree passed; the tree with the redirect *call* disabled still failed; the
+tree with the whole fixture removed passed. So it was the fixture's **presence**, not what it did.
+
+**The cause is fixture ordering, and `monkeypatch` was the carrier.** That test neuters `kill` and
+`wait` so `_kill_tree` can report a survivor, and it passes only because `monkeypatch` is undone
+*before* the `reap` fixture tears down. An autouse fixture in the **root** conftest that requests
+`monkeypatch` makes it a dependency set up earlier, so its undo moves to *after* the teardown of
+fixtures the test declared itself — and the holder survived a reap running against neutered kills.
+`redirect` patches and restores on its own now; `monkeypatch`'s ordering is untouched. Verified:
+10 s and green, twice.
+
+#### The residual, measured rather than implied
+
+**A monkeypatch lives in one interpreter**, so a test that *spawns* a process gives the child the
+real directories. Same sentinel measurement, same commands CI runs:
+
+| Slice | Files left in the real per-user roots |
+|---|---|
+| `tests/unit` + `tests/ui`, `-n auto` | **0** |
+| `tests/integration`, serial | **62**, all job logs |
+
+**Filed as `T-230`**, not absorbed: it is nine spawn sites in a suite this task does not
+parallelise, and `ai/TESTING.md` §5 now carries the in-process caveat until that lands. The
+adopted parallel slice is clean, which is the claim `T123-R2` blocked.
+
+#### Final re-review — Approved with follow-ups 2026-08-12
+
+`T123-R2` is Resolved. The Reviewer independently ran the exact adopted slice with sentinel
+config/data/cache roots: **2714 passed, 18 skipped, exit 0; zero files in the sentinel roots**.
+Disabling the fixture failed both behavioral guards, and the teardown-order regression passed in
+10.10 s. Ruff, format, both mypy platforms and task placement are clean.
+
+The approved boundary is the ordered implementation/evidence manifest recorded in
+`ai/REVIEWS.md`. `T-230` remains a real §5 cleanup for spawned integration children but does not
+block this serial-integration design; `T-228` continues to prohibit parallel integration. Windows
+runtime evidence remains for CI after the required per-task commit split and push.
+
+#### The decision this task does not take
+
+**`-n 4` runs `tests/integration` in 83 s against 297 s, green three times of three.** It is
+measured and it is not adopted, because this entry's own recommendation says a lower worker count
+is the same hazard at a lower rate and *"a gate that fails rarely is one people re-run"* — and
+because `T-228` is the honest way to earn it.
+
+**Ruled 2026-08-11 by the reviewer: do not adopt it.** *"Three green runs do not resolve a failure
+already reproduced under greater load. Keeping integration serial pending `T-228` is the sound
+ruling."* The question is closed rather than left hanging on the maintainer.
+
+---
+
+
 ## Complete
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
@@ -126,6 +559,16 @@ this one returned four verdicts before approving.*
 resolved. The real-file end-to-end proof now completes the composed application's orderly shutdown
 and independently exits zero; Windows-native execution remains for CI after this held stack is
 pushed, not a blocker to the Linux-reviewed implementation.
+
+**The sixth acceptance criterion was unmet at approval, and is met 2026-08-11.** It required *the
+record of which `REQ-023` settings are implemented* to be updated by this task; the screen's own
+sentence and its honesty test were updated correctly, and **`docs/DEVELOPMENT.md` went out still
+marking both of this task's settings "not built — `T-195`"**. Found by a maintainer-requested
+walkthrough of Phase 4, not by a gate — six review rounds and eleven findings did not reach it,
+because **no gate reads the documents**. Corrected the same day across five records, and **`T-227`
+is filed to own the gate**; the correction is not reopened work and this entry is not reopened.
+*(Recorded here rather than smoothed: a criterion signed as met is the worst place to leave a gap,
+which is `T-189`'s reasoning about criterion 2 reused.)*
 
 **`T195-R5` — the catalogue was a startup snapshot.** `preset_names` closed over the `ffmpeg`
 report composition was built with, while `choose_ffmpeg_location` updates `in_force.report`. So a
@@ -618,112 +1061,6 @@ task is the other half — that the pure-Python package actually *ships*. Purity
 inclusion still yields an application that cannot download anything.
 
 ---
-
-### T-123 — Evaluate running the suite in parallel
-
-**Status:** **Ready — measured 2026-08-04, and the answer is yes.** `-n auto` runs the
-suite in **58 s** against **~400 s** serial — a **7x** reduction — with one hazard identified by
-name rather than guessed at. The measurement is below; the adoption has not been done.
-*(This read "Proposed — for evaluation, not yet a commitment", 2026-08-03. Filed rather than
-attempted: the payoff is large and the hazards are specific, and deciding which applies is the
-work. That was the right call — the evaluation found the hazard on its second run.)*
-**Owner:** Implementer
-**Priority:** Medium — the suite is the largest single cost in every gate and in local development
-**Phase:** Phase 2 test infrastructure
-**Relevant context:** `T-122`, `NFR-001`, `AGENTS.md` §9, run `30861672178`
-**Affected surfaces:** `pyproject.toml`, `tests/**`, possibly `.github/workflows/ci.yml`
-**Risk:** Medium — the failure mode is *intermittent* tests, which is worse than slow ones
-
-#### The overnight measurement, 2026-08-04
-
-Ten runs at head `8d1b01c`, on the maintainer's laptop (20 cores), each the **full** suite:
-
-| Mode | Wall clock | Result |
-|---|---|---|
-| serial (39 soak passes) | ~400 s | 37 green, **2 segfaults** — see `T-128`, unrelated to parallelism |
-| `-n auto` | 58 s, 59 s, 58 s | **2 of 3 green** |
-| `-n 4` | 127 s, 125 s, 127 s | **3 of 3 green** |
-
-**`-n auto` is ~7x and `-n 4` is ~3x.** The times are strikingly stable within each mode, which
-matters: a parallel run whose duration varied wildly would be contending for something.
-
-**One test failed under `-n auto` and never serially:**
-`tests/integration/test_manager.py::test_the_survival_check_can_tell_a_live_process_from_a_dead_one`.
-
-**The direction matters and was nearly missed.** The assertion was *"a running process was reported
-dead"* — `still_running([alive.pid])` returned `[]` for a process that was alive. That is worth
-stating because `T-056` is the **opposite**: a *reaped* process reported **alive**, on Windows. The
-two look like the same finding at a glance and are not, and `T-056` now records that this candidate
-was checked and rejected. What this does establish is that `still_running` has a **second failure
-mode**, a false negative under parallel load, which nobody had seen.
-
-That is not a random flake, it is **the predicted hazard arriving on schedule** — a test whose
-subject is whether a *real process* is alive, run beside other tests that spawn and kill real
-processes. It is the first item in every list of what breaks under `xdist`, and finding exactly it
-is the strongest possible argument that the hazard analysis is the work rather than the tuning.
-
-**What the run did not do:** it did not test `-n auto` more than three times. One failure in three
-bounds nothing usefully — the rate could be 10% or 90%. Before adoption, that test's behaviour
-under load needs a proper sample, not three runs.
-
-#### The recommendation
-
-**Adopt `-n`, and pin the process-contending tests rather than tuning the worker count down.**
-`-n 4` looks safer only because it happened to be green three times; it has the same hazard with a
-lower probability of hitting it, which is the worst of both — a gate that fails rarely is one
-people re-run.
-
-The hazards to handle, in order:
-
-- **Real processes.** `tests/integration/test_manager.py`, `test_phase_2_exit.py` and
-  `test_end_to_end.py` spawn, kill and enumerate processes. Anything asking "is this process alive"
-  or "how many workers exist" must not run beside another test doing the same. Pin them to one
-  worker (`xdist_group`), do not try to isolate them by luck.
-- **The single-instance lock.** `tests/ui/test_app_launch.py` is about a lock that is global to the
-  user. Two workers running it concurrently test each other.
-- **Per-user paths.** Temp, cache, config and the SQLite library each need to be per-worker, and
-  `PYTEST_XDIST_WORKER` is how.
-
-**Do not adopt on CI first.** Land it locally, run the soak again under `-n`, and only then change
-the workflow — `OPS-010` already records that a green board must mean what it says.
-
-**The measurement.** 1984 tests in **291 s** locally and **573 s** on `STARBASE`. There is no hot
-spot to remove: the twenty slowest tests are 104 s of the 291 s, and the average is 0.15 s. The
-cost is a long tail of integration tests that spawn real worker processes, so the only lever that
-scales is running them at once.
-
-**What to evaluate.** `pytest-xdist` at `-n auto`. Most of these tests are independent and each
-xdist worker is its own process, so a `QApplication` per worker is not a problem.
-
-#### The hazards, which are the actual work
-
-- **Tests that spawn and kill real worker processes.** `AGENTS.md` §9 says to run these "one
-  worktree at a time" because concurrent runs wedge each other. *That instruction names
-  `-m process_tree`, and **no test carries that marker*** — only `network` and `windows_desktop`
-  are registered. So the guidance cannot be followed as written, and the first job here is to find
-  out which tests it meant.
-- **The localhost server fixtures.** `T-121` is already a connection aborting under load on one
-  hosted runner, and the reviewer's sandbox denied sixteen of these outright. Several workers
-  binding servers at once is the same pressure, multiplied.
-- **Shared per-user paths.** Every worker needs its own temp, database and config directory —
-  `AGENTS.md` §9 states this for parallel *agents* and it applies identically here.
-
-#### Acceptance criteria, if it proceeds
-
-- A deterministic demonstration that the parallel run and the serial run collect and pass the same
-  tests, rather than a wall-clock comparison alone.
-- The process-spawning tests identified by name, and either isolated or pinned to one worker with
-  a stated reason.
-- Repeated runs — not one — showing no intermittent failure, because the thing this can buy is
-  speed and the thing it can cost is a suite nobody trusts.
-
-#### Out of scope
-
-- Deleting or skipping tests to make the suite faster. The suite is slow because it exercises real
-  processes, which is what makes it worth having.
-
----
-
 
 *(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
 `ai/IMPLEMENTATION_PLAN.md` §Phase 2. `T-097` is a planning-review follow-up; the entries after the
@@ -1536,6 +1873,253 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-230 — A spawned child still gets the developer's real directories
+
+**Status:** Proposed — filed 2026-08-12 from `T123-R2`'s correction, measured rather than inferred.
+**Owner:** Implementer
+**Priority:** Medium — it is the remaining half of a rule `ai/TESTING.md` §5 states without
+qualification, and the half that is left is the one no in-process fixture can reach
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing. `T123-R2`'s fixture is the in-process half and is built
+**Relevant context:** `tests/user_directories.py`, `tests/conftest.py`, `ai/TESTING.md` §5,
+`tests/ui/test_app_launch.py` (the one place that already does this correctly), `T123-R2`
+**Affected surfaces:** `tests/integration/**`, possibly a shared spawn helper
+**Risk:** Low — the tests pass today; what is wrong is where their children write
+
+#### Scope
+
+`T123-R2` built the autouse redirect that `ai/TESTING.md` §5 always required, and **the parallel
+slice now writes nothing to the real per-user directories: 241 job logs before, 0 after.** A
+monkeypatch lives in one interpreter, so the half it cannot reach is a test that *spawns* a
+process: the child resolves `platformdirs` for itself and gets the developer's real directories.
+
+**Measured 2026-08-12 with sentinel `XDG_*` roots**, same command CI runs:
+
+| Slice | Files left in the real per-user roots |
+|---|---|
+| `tests/unit` + `tests/ui`, `-n auto` | **0** |
+| `tests/integration`, serial | **62**, all `cache/tracksandtrails/jobs/*.log` |
+
+**`tests/ui/test_app_launch.py` already does this right** — it sets `XDG_*` for the application it
+launches, and its own comment explains why. So the shape of the answer exists; what is missing is
+that nine integration files spawn children and only one arranges the child's environment.
+
+**This is not a parallelism hazard and must not be filed as one.** Integration runs serially and
+the logs are uuid-named, so nothing collides. What it is: tests writing to the developer's machine,
+which §5 forbids in terms.
+
+#### Acceptance criteria
+
+- Every spawned child in `tests/integration/` resolves its per-user directories inside the test's
+  own `tmp_path`, **through one shared helper** rather than nine hand-rolled environments
+- **`XDG_*` is not sufficient on its own and the entry says so**: platformdirs consults those only
+  on POSIX, so the helper must carry whatever Windows needs, or record what it cannot cover and
+  which platform is therefore still writing where
+- **Measured the way this entry measures it** — sentinel roots, file count before and after, `0`
+  as the passing number — rather than by reading the code
+- A test fails if a new spawn site skips the helper, or the entry records why that cannot be
+  guarded and what is done instead
+- `ai/TESTING.md` §5's in-process caveat is removed only when it stops being true
+
+#### Out of scope
+
+- The in-process redirect, which is built and proved (`T123-R2`)
+- Making `tests/integration` parallel — `T-228` owns the blocker for that
+
+---
+
+### T-228 — A retry deadline stops firing under parallel load
+
+**Status:** Proposed — filed 2026-08-11 from `T-123`'s adoption run, reproduced at roughly one run
+in three under `pytest -n auto tests/integration/test_manager.py`.
+**Owner:** Implementer
+**Priority:** Medium — it blocks the second half of `T-123`. Integration runs serially today, so
+nothing is red because of it; what it costs is **297 s of every CI run**, which `-n 4` would take
+to 83 s if this were fixed
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `tests/integration/test_manager.py::test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started`,
+`T-123`, `T118-R10`, `T-083`
+**Affected surfaces:** `tests/integration/test_manager.py`, and `downloader/manager.py` if the
+deadline turns out to be the product's rather than the test's
+**Risk:** Medium — the answer decides whether this is a test with no headroom or a retry that can
+genuinely be starved
+
+#### Scope
+
+Under parallel load the test fails on:
+
+```
+assert repository.jobs["job-network"].status is JobStatus.QUEUED
+  AssertionError: the retry's deadline never fired at all, so this proved nothing about the gate
+  assert <JobStatus.FAILED> is <JobStatus.QUEUED>
+```
+
+**The assertion's own message is the finding.** It already anticipates the deadline not firing and
+says that when it does not, the test proved nothing — so this is a test that knows it has no
+headroom and reports it honestly, which is more than most.
+
+**What is not yet established, and must not be assumed:** whether the deadline is the *test's*
+(a bound chosen for an unloaded machine, `T118-R10`'s defect class, which `T-083` also carries) or
+the *product's* (a retry that a busy machine can starve, which would be a real defect and a
+different task's shape). `T-123`'s own hazard list guessed the process tests and was right about
+one and wrong about the mechanism; this entry deliberately does not guess.
+
+#### Acceptance criteria
+
+- **The mechanism is established first** — test bound or product behaviour — with the reproduction
+  driven rather than inferred, and the answer recorded here before anything is changed
+- If it is the test's bound: the bound is derived from something observable rather than raised
+  until it stops failing, and **the test still fails when the gate it guards is mutated away** —
+  a deadline made generous enough to pass everywhere is a test deleted
+- If it is the product's: a defect entry of its own, and this task closes as the reproduction
+- **The fix is demonstrated under load**, not on an idle machine: `pytest -n auto
+  tests/integration/test_manager.py` repeated enough times to beat the one-in-three base rate
+  measured 2026-08-11
+- The same sweep names any sibling timed gate in `tests/integration/` with the same shape, or
+  records that there is none
+
+#### Out of scope
+
+- Adopting `-n` for `tests/integration` in CI. That is `T-123`'s, and it waits on this
+- `T-056` and the Windows process-liveness question, which is a different failure in a different
+  direction
+
+---
+
+### T-229 — Prove theme isolation beyond the original T-225 leak
+
+**Status:** Proposed — filed 2026-08-11 from the initial `T-225` review (`T225-R1`, `T225-R2`).
+**Owner:** Implementer
+**Priority:** Low — the original order defect is fixed and mutation-proved; this is evidence for
+the two restored theme fields that did not cause today's failures, plus product-state coverage for
+two assertions that currently run only on a bare application
+**Phase:** Phase 4 — test hardening. **Not a plan deliverable.**
+**Depends on:** `T-225`
+**Relevant context:** `tests/ui/conftest.py::_undressed_afterwards`,
+`tests/ui/test_add_dialog.py::test_an_open_playlist_shows_entries_and_a_way_back`,
+`tests/ui/test_add_dialog.py::test_the_menu_key_reaches_the_current_rows_menu`,
+`ui/row_delegate.py`'s use of `theme.applied()`
+**Affected surfaces:** `tests/ui/`
+**Risk:** Low — the fixture restores the complete known state correctly; the gap is that only its
+style-sheet half and the undressed widget state are asserted today
+
+#### Scope and acceptance criteria
+
+- Add evidence that removing palette restoration or `_applied` restoration fails for the field
+  removed; do not merely inspect the helper that performs the restoration
+- Exercise the playlist panel and keyboard-menu behavior under an applied shipped theme. Compute
+  an off-row probe at the moment it is sent so a metric change cannot silently turn the keyboard
+  route back into the pointer route
+- Keep the bare-application fallback assertion if it remains a useful component contract, but do
+  not present it as evidence for the state `run()` ships
+- Do not broaden this into a whole-suite state-isolation audit
+
+---
+
+### T-227 — Nothing gates the documents that say what is built
+
+**Status:** Proposed — filed 2026-08-11 after `T-195`'s sixth acceptance criterion was found unmet
+**hours after the task was approved the same day**, by a maintainer-requested walkthrough of the
+phase rather than by any gate.
+**Owner:** Implementer
+**Priority:** Medium — no user is misled, because the sentence *on the screen* was correct
+throughout. What rotted is every document describing it, and the phase exits on a **recorded
+checklist run** (`T-212`) read against those documents
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `T-146`'s last criterion, `T-195`'s sixth, `T-212`,
+`tests/ui/test_settings_dialog.py::test_the_screen_says_which_settings_it_does_not_cover`,
+`P3EXIT-R4`, `T214-R1`
+**Affected surfaces:** a new test, and whichever document is chosen as the source of truth
+**Risk:** Medium — see the trap below. A prose gate is easy to write and easy to write *badly*
+
+#### Scope
+
+`T-195`'s sixth criterion reads: *"The record of which `REQ-023` settings are implemented —
+`T-146`'s last criterion — is **updated by this task**, so the screen never claims coverage it does
+not have."* `T-195` was approved 2026-08-11 at `7cd2002`, after six review rounds and eleven
+findings, with that record still saying two of the settings it had just built were **not built**.
+
+**The gate that exists did not fail, and could not have.**
+`test_the_screen_says_which_settings_it_does_not_cover` asserts against `SETTINGS_STILL_TO_COME` —
+the constant rendered on the screen. `T-195` updated the constant *and* that test, both correctly.
+Nothing reads the documents, so five records rotted while every gate stayed green:
+
+| Where | What it said |
+|---|---|
+| `docs/DEVELOPMENT.md` §coverage | *"holds **five**"*; *Default preset* and *Output template* rows marked **"not built — `T-195`"** |
+| `docs/UX_SPEC.md` §2 | *"the **three** `REQ-023` settings this phase built"* … *"the five it does not hold"* |
+| `docs/UX_SPEC.md` §9.1 | the download directory *"(`T-146`, **not built yet**)"* — `T-146` completed 2026-08-10 |
+| `ui/settings_dialog.py` docstring and the `SETTINGS_STILL_TO_COME` comment | *"**Three** of `REQ-023`'s eight"*; *"the **five** absences"*; the no-`OK`-button rationale resting on *"two of these **three** settings"* |
+| `core/settings.py` — `Settings` docstring | *"**One field today.** Phase 4's `REQ-023` adds the other seven"* — the dataclass has nine fields |
+
+**All five are corrected 2026-08-11**, alongside this entry, on maintainer instruction — *"update
+the documentation so it isn't stale"*. **That correction is not this task**, and this task must not
+be read as needing it done again. What is unowned is the gate.
+
+**This is `P3EXIT-R4`'s shape one layer out.** That finding was a second copy of a *finding's state*
+rotting; this is a second copy of *what is built* rotting. The project's answer to `P3EXIT-R4` was
+to delete the copy and name one canonical home. **That answer is not available here** — a screen's
+constant, a developer table and a UX spec clause are genuinely different audiences, and none of the
+three can be deleted in favour of another.
+
+#### The trap, named before anyone builds it
+
+`T214-R1` and `T214-R2` are one lesson twice: **a guard proved against one spelling is a guard
+against one spelling.** A test grepping `docs/DEVELOPMENT.md` for the word *five* would pass the
+moment someone rewrote the sentence to say *5*, or *all but three*, or moved the count into the
+table. **A gate that can be defeated by rephrasing is worse than no gate**, because it is also a
+claim that the documents are checked.
+
+The mutation that matters is therefore not "change the number" but **"build a setting and update
+nothing"** — the exact sequence that produced this task.
+
+#### Acceptance criteria
+
+- **The gate fails on the real sequence**: a setting is added to the screen and *no* document is
+  updated. Demonstrated by mutation, not by argument — the mutation is applied and the gate is
+  observed red
+- **The gate names what disagrees and where**, in the failure message. `T-214`'s corrected guard
+  reports the route rather than only that a rule was broken, and that is why its third defect was
+  caught immediately
+- **One source of truth is chosen and recorded in this entry**, with the rejected options and their
+  costs. The candidates are enumerated below; the choice is design work this task does, not a
+  ruling it needs
+- **Rephrasing any covered document does not break the gate** — no assertion on a spelling, a
+  count-word, or a sentence's shape. If the chosen design cannot meet this, the entry says so and
+  says what is covered instead, rather than shipping a gate whose reach is narrower than its name
+- **The gate's own reach is stated where it is defined** — which documents it covers and which it
+  does not. `SETTINGS_STILL_TO_COME`'s comment already carries this idiom
+- `ruff`, `ruff format`, both `mypy` gates and the affected suites are clean, with **exit codes
+  checked rather than summary lines** (`T195-R7`)
+
+#### Candidate shapes, none chosen
+
+1. **Derive every claim from one structure.** A mapping in `core/settings.py` or the dialog module
+   naming each `REQ-023` setting and its owning task; the screen's sentence, the `DEVELOPMENT.md`
+   table and the test all read it. Strongest coverage, largest change, and it puts a documentation
+   concern inside `core/` — which `ARCHITECTURE.md` §4 may refuse
+2. **A test that reads the documents and the built controls, and compares sets.** No prose parsing:
+   assert that every setting the dialog builds a control for is absent from the *"still to come"*
+   sentence **and** marked as built in the table, by looking up its row rather than reading the
+   prose around it. Needs the table to carry a machine-readable column, which it nearly does
+3. **Widen the existing honesty test only** — leave the documents ungated and record that
+   deliberately, on the reasoning that the user-facing sentence is the one that matters and the
+   documents are the maintainer's own. **Cheapest, and it is a real option**: this rot misled
+   nobody. It must be recorded as a decision rather than reached by not doing the work
+
+#### Out of scope
+
+- **Correcting the five records above.** Done 2026-08-11; this task starts from a clean tree
+- Any other document class. `ai/STATUS.md`, `ai/TASKS.md` and `ai/REVIEWS.md` have their own
+  conventions and their own gate (`T-096`); widening into them is a different task with a different
+  argument
+- `T-196`'s network options. When they land they will be this gate's first real exercise, and that
+  is a reason to have it before then rather than to fold the two together
+
+---
+
 ### T-226 — Preset Manager keeps the startup ffmpeg warning after a live change
 
 **Status:** Proposed — filed 2026-08-11 from the focused `T195-R5` sibling audit; verified in the
@@ -1567,62 +2151,6 @@ ffmpeg is installed.
   than depending on a machine-installed ffmpeg
 
 ---
-
-### T-225 — Two UI test files pass apart and fail together
-
-**Status:** Proposed — filed 2026-08-11, found while building `T-224` and **verified pre-existing**
-by stashing that task's diff and reproducing it on the clean tree.
-**Owner:** Implementer
-**Priority:** Medium — the suite is currently green by an accident of alphabetical collection, and
-the accident is one file rename away from ending
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing
-**Relevant context:** `tests/ui/test_row_delegate.py`, `tests/ui/test_add_dialog.py`
-(`test_an_open_playlist_shows_entries_and_a_way_back`,
-`test_the_menu_key_reaches_the_current_rows_menu`), `tests/ui/conftest.py` (the `qapp` fixture —
-one `QApplication` for the session, which is the only correct way to run Qt under pytest and also
-the reason state can travel between files), `ai/TESTING.md`
-**Affected surfaces:** `tests/ui/` — test-side unless the reproduction finds otherwise
-**Risk:** Low, with one caveat: if the shared state turns out to be in `ui/` rather than in the
-tests, the fix is a source change and this entry's scope grows
-
-#### Scope
-
-Running `tests/ui/test_row_delegate.py` **before** `tests/ui/test_add_dialog.py` in the same
-process fails two add-dialog tests that pass when either file runs alone or in the other order:
-
-```
-pytest tests/ui/test_row_delegate.py tests/ui/test_add_dialog.py
-  FAILED test_an_open_playlist_shows_entries_and_a_way_back
-  FAILED test_the_menu_key_reaches_the_current_rows_menu
-```
-
-CI does not see it **only because pytest collects alphabetically and `add_dialog` sorts before
-`row_delegate`**. Nothing about that is a property the suite asserts, so a file rename, a
-`-p randomly`, an `-n auto` shard boundary, or someone running one file to save time turns it into
-a red build with no code change behind it. A test that passes for a reason nobody chose is a test
-whose green is not evidence.
-
-**The mechanism is unestablished and this entry deliberately does not guess it.** The delegate
-holds module- or instance-level hover state and the `qapp` fixture is session-scoped, so leaked
-widget or focus state is the obvious suspect — obvious enough to be worth distrusting, given how
-often the last several tasks' "obvious" mechanism was the wrong one.
-
-#### Acceptance criteria
-
-- **The mechanism is identified and stated**, not worked around: which object holds state across
-  the file boundary, and how it reaches the two failing assertions
-- The two tests pass in **both** orders, and the fix is at the source of the leak rather than a
-  reset bolted onto the tests that happen to fail today
-- **The ordering property is asserted rather than inherited from the alphabet** — the suite gains
-  something that fails if this regresses, so the next instance is not found by accident
-- No test is deleted, skipped or weakened to reach green
-
-#### Out of scope
-
-- Making the whole suite order-independent — that is a larger sweep, and this entry is the one
-  reproducible instance
-- Introducing test-ordering plugins as a substitute for finding the cause
 
 *(**Section added 2026-08-09**, on maintainer direction, after Phase 3's work was pushed. **Phase 4
 had no section of its own.** `T-146` sat under `## Proposed — Phase 3` stating `Phase: Phase 4`, and
