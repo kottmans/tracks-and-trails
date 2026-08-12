@@ -5,22 +5,13 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-12 (second review round, synchronised) — **`T-236` is Complete,
-approved.** `T-238` is filed for the parallel-UI flake. **`T-236` is Complete/Approved.** `T-234`,
-`T-235` and `T-237` came back with changes requested and are corrected: the accessibility test now
-writes its expected names out instead of importing one and substring-matching the others
-(`T235-R1`), and the spec comment no longer says of the product what is only true of the gates
-(`T237-R1`). **`T-228`'s reachability is measured**: 680 sessions across every shape the product
-can take, on a saturated host, lost **no** messages — it is not reachable at supported concurrency
-by any means measured. Previously: — **`T-234` came back with changes requested and is
-corrected; `T-233` is Complete.** `T-235`, `T-236` and `T-237` are built and In Review beside it;
-the only evidence still owed is a green Windows job. Earlier: **`T-234` and `T-233` were built.** `UX-013`'s
-ruling is carried out and the concurrency control has left the toolbar, which releases `T-220`'s
-blocker and opens `T-235` and `T-236`; `T-233` trues `T-033`'s packaging comments to what its
-mutations found. Earlier the same day, an unattended run built five tasks, refused one, and pushed
-eleven commits; `origin/main` was at `d5ba36a` with **CI run `31570861414` green on all five
-jobs**, the Linux job at **4m51s** against the 15-minute cap it was cancelled at the night before.
-`T-225` and `T-123` are Complete, approved with follow-ups.
+**Last updated:** 2026-08-12 (approvals) — **`T-233`, `T-234`, `T-235`, `T-236` and `T-237` are
+Complete**, all approved; `T234-R1`, `T235-R1` and `T237-R1` are Resolved. **`T-238` is High**: the
+one-in-nine parallel-UI event is a **native crash**, not a test failure — `gw7` segfaulted before
+any assertion fired, and the stack points toward Qt/PySide object destruction. Identity with
+`T-074`/`T-128` is unproven and the `T-228` comparison is withdrawn. **`T-228` stays Proposed with
+its reachability measured**: 680 sessions across every shape the product can take, on a saturated
+host, lost **no** messages, so it is not reachable at supported concurrency by any means measured.
 
 **Last verified against repository:** 2026-08-12 for the block above — commit hashes and the
 CI conclusion read from `git log` and `gh run view`, task states from `ai/TASKS.md` after the
@@ -49,27 +40,36 @@ were waiting on a screen to put their keys on.
 
 ## 2026-08-12 (second review round): T-236 approved; T-235 and T-237 corrected; T-238 filed
 
-**Verdicts:** `T-236` **Approved and Complete**. `T-234` changes requested again — `T234-R2` and
-`T234-R3` **Resolved**, `T234-R1` open pending `T-235`. `T-235` and `T-237` changes requested.
-`T-228` read for context, no verdict.
+**Verdicts *of this round*, all since superseded except `T-236`'s:** `T-236` **Approved and
+Complete**. `T-234` changes requested again — `T234-R2` and `T234-R3` **Resolved**, `T234-R1` open
+pending `T-235`. `T-235` and `T-237` changes requested. `T-228` read for context, no verdict.
 
-**Both requested changes are corrected and pushed** (`22fa7c7`, `edb36da`), and verified on the
+**Both requested changes were corrected and pushed** (`22fa7c7`, `edb36da`) and verified on the
 Windows runner by run `31642823390` — green on all five jobs, with the accessibility slice at
-`32 passed, 3141 deselected`. **The verdicts above were recorded against the earlier head**
-(`c814bab`, CI `31640266898`), so `T-234`/`T-235`/`T-237` are awaiting re-review of the
-corrections rather than awaiting work.
+`32 passed, 3141 deselected`. **All three are now approved**: `T234-R1`, `T235-R1` and `T237-R1`
+are Resolved, and `T-234`, `T-235` and `T-237` join `T-233` and `T-236` as Complete.
 
-### `T-238` — filed, and it is **not** `T-228`
+### `T-238` — a **native crash**, not a test failure, and not `T-228`
 
-The one-in-nine parallel-UI failure I declared is now its own task, and the entry corrects a
-speculation of mine: I wrote in the handoff that it *"most likely belongs to the same class"* as
-`T-228`. It does not, and the entry says why — `T-228` is lost `multiprocessing.Queue` delivery in
-**spawned integration workers**, while this test uses a **per-process Qt thread pool and a
-parentless signal sink**. *"Both are load-sensitive"* is not a shared mechanism, and I should not
-have offered it as one.
+**High priority.** `gw7` **segfaulted before any assertion fired**; the native stack points toward
+Qt/PySide object destruction. Identity with `T-074`/`T-128` is **unproven**.
 
-Its first criterion is to capture **which assertion failed**, with timings, under repeated
-`-n auto` runs — before any timeout or budget is touched.
+**Two corrections of mine live here, and both were mine to make.**
+
+*I described it as a failing test.* The log says
+`worker 'gw7' crashed while running …`, and neither of the test's two failure messages appears in
+it. No assertion fired. I carried the "failure" framing into the handoff, the records and my report
+before reading the log properly — the same class of mistake as reporting a truncated `grep` as
+absence.
+
+*I compared it to `T-228`.* Withdrawn. `T-228` is lost `multiprocessing.Queue` delivery in spawned
+integration workers; this is a per-process Qt thread pool and a parentless signal sink. *"Both are
+load-sensitive"* is not a shared mechanism.
+
+**Reproduction is running** — 40 `-n auto` unit/UI runs against the observed one-in-nine rate.
+**29 runs in, zero crashes**, which is itself worth recording: the original occurrence was during a
+session in which the machine was also running other batches, exactly as `T-228`'s contaminated
+rate was.
 
 
 **`T-236` is Approved and Complete.** The reviewer confirmed the pixel evidence independently:
@@ -165,6 +165,11 @@ Spec AST identical.
 **One thing declared rather than buried:** in nine `-n auto` unit+UI runs,
 `test_deleting_a_closed_store_neither_waits_nor_is_emitted_through` failed **once**, passes in
 isolation, and sits in a file none of this touches. Not attributed, and not claimed unrelated.
+
+*(**Corrected 2026-08-12**: it did not "fail". The `gw7` worker **crashed** — a segfault before any
+assertion fired — which is `T-238` and is a different kind of event from the one this paragraph
+describes. The description above is left as written because it is what was reported at the time,
+and the correction belongs where the mistake was.)*
 
 ## 2026-08-12 (later): T-234 and T-233 built; T-228's mechanism found; T-235 and T-236 filed
 
