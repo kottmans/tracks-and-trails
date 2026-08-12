@@ -16,8 +16,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 # Imported after the platform is pinned above, so nothing can load a Qt plugin before the
 # offscreen choice is in the environment.
 from PySide6.QtCore import QCoreApplication
+from PySide6.QtGui import QPalette
+from PySide6.QtWidgets import QApplication
 
 from tests import qt_lifecycle
+from tracks_and_trails.ui import theme
 
 
 @pytest.fixture
@@ -58,3 +61,65 @@ qt_lifecycle.fail_on_orphaned_timers()
 def _no_orphaned_timers() -> Iterator[None]:
     yield
     qt_lifecycle.assert_no_orphaned_timers()
+
+
+# --- `T-225`: the application's dressing is global, so dressing it dresses every later test -----
+#
+# `theme.apply` changes three things on the one `QApplication` the session shares — the style
+# sheet, the palette, and the module-level theme `_applied` — and **nothing put them back**. A test
+# that dressed the application therefore dressed every test that ran after it in the same process.
+#
+# **That is what `T-225` was.** `tests/ui/test_row_delegate.py` has one test that applies both
+# themes and leaves `LIGHT` on. Two `tests/ui/test_add_dialog.py` tests assert behaviour that only
+# holds on an *undressed* application, and both failed when that file ran first:
+#
+#   - `PlaylistPanel` calls `setAutoFillBackground(True)` for the unstyled case a test window runs
+#     in, and Qt's style-sheet polish clears it — so the panel's own `autoFillBackground` assertion
+#     is an assertion about a bare application.
+#   - A probe point computed as *off every row* stops being off every row once the sheet's metrics
+#     make the rows taller, so a keyboard-fallback test silently drove the pointer path instead.
+#
+# Both files passed alone. The suite was green only because pytest collects `add_dialog` before
+# `row_delegate`, which is an accident of the alphabet rather than a property anything asserted.
+#
+# **Restored around every test rather than fixed in the two tests that failed.** A reset bolted
+# onto today's failures leaves the next one to be found by accident; putting the dressing back at
+# the boundary every test already has means no test can leak it, including tests not yet written.
+# Dressing the application inside a test stays entirely legitimate — thirteen call sites do it on
+# purpose — and now costs the tests that follow nothing.
+#
+# **What the regression proves, and what it does not.** `tests/ui/test_suite_isolation.py` fails
+# when this restores nothing. It still **passes** when only the style sheet is put back — measured
+# by mutation, not assumed — because the two tests `T-225` filed depend on the sheet alone. The
+# palette and `theme._applied` are restored regardless, and not for symmetry: `ui/row_delegate.py`
+# reads `theme.applied()` while painting, so a leaked one changes what a later test is shown. They
+# are a leak with no test on it rather than a leak that cannot happen, and this paragraph is the
+# record that they are unproven — `T180-R2`'s lesson, that a mutation check is worth only what it
+# is aimed at.
+
+
+def _dressing(app: QApplication) -> tuple[str, QPalette, theme.Theme]:
+    """Everything `theme.apply` changes, in one value that can be compared and put back.
+
+    Typed `QApplication` rather than the `QCoreApplication` its neighbours take: a style sheet and
+    a palette are widget concerns and live on the `QtWidgets` class, which is what `qapp` is.
+
+    The palette is compared by `QPalette.__eq__` rather than by `cacheKey()`: a restored palette
+    is *equal* to the saved one but does not get its cache key back, so a key comparison would
+    report a leak on every test that dressed and cleaned up correctly.
+    """
+    return app.styleSheet(), app.palette(), theme.applied()
+
+
+@pytest.fixture(autouse=True)
+def _undressed_afterwards(qapp: QApplication) -> Iterator[None]:
+    """Put the application's theme back the way this test found it."""
+    sheet, palette, applied = _dressing(qapp)
+    yield
+    if _dressing(qapp) == (sheet, palette, applied):
+        return
+    qapp.setStyleSheet(sheet)
+    qapp.setPalette(palette)
+    # The module global `theme.apply` writes. Restored directly because `theme.apply` is the only
+    # thing that sets it and calling that would re-dress the application this is undressing.
+    theme._applied = applied
