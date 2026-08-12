@@ -270,8 +270,8 @@ made focusable. Full slice **2712 passed, 18 skipped, exit 0**.
 
 ### T-223 — The row's menu: drop the editor alias, name the removal
 
-**Status:** In Review — built 2026-08-12 in an authorized unattended run; filed 2026-08-10 from
-`UX-012`, the maintainer's ruling on three live-use
+**Status:** In Review — **`T223-R1` corrected 2026-08-12**; built the same day in an authorized
+unattended run; filed 2026-08-10 from `UX-012`, the maintainer's ruling on three live-use
 reports.
 **Owner:** Implementer
 **Priority:** Medium — the alias actively confuses on a playlist row, and Remove's label
@@ -331,6 +331,29 @@ line removes the batch; a single item keeps `Remove this URL` (a row can be audi
 - **`docs/UX_SPEC.md` §3's `UX-012` clause re-read against the built menu** at submission — the
   wording it describes and what `row_menu` now produces agree, including that a single item keeps
   *this URL* because a row can be audio-only.
+
+#### `T223-R1` — corrected 2026-08-12
+
+**The label decided playlist-ness from whether `entries` was non-empty**, which collapses two
+states `MediaInfo` keeps apart on purpose: an **unenumerated** playlist has `entries == ()` and a
+real `entry_count`, and it is a supported shape — `MediaInfo(is_playlist=True, entry_count=9,
+entries=())` stays one job by design, with a test already covering it. The reviewer reproduced it
+directly: a nine-item playlist read **"Remove this URL"**, understating exactly the blast radius
+this task exists to name.
+
+- **It branches on `media.is_playlist`** now, which is the field the model keeps for the question.
+- **The count is the site's when the site gives one.** `entry_count` is what the extractor
+  reported; `entries` is what this extraction materialised. Removing the row removes the whole
+  batch, so the reported number is the honest one, with the materialised length as the fallback for
+  a playlist enumerated without a count.
+- **A playlist with no count keeps its noun and loses its number** — `Remove this playlist`.
+  `entry_count is None` means *unknown*, not zero, so "(0 items)" would be the confident lie the
+  model refuses to tell in terms.
+- **`(1 item)`, not `(1 items)`.**
+- **The regression drives the label directly** over all five shapes, because these are states the
+  fixture probes do not produce — and a state the tests could not reach is exactly where the
+  collapse hid. **Three mutations fail**: entries deciding playlist-ness (which reproduces the
+  reviewer's exact result), the count taken from `entries` only, and an unknown count becoming 0.
 
 #### Out of scope
 

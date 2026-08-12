@@ -373,15 +373,30 @@ def remove_label(row: Row) -> str:
     **A single item stays "this URL" rather than becoming "this video".** A row can be audio-only,
     so *video* would be a lie on exactly the rows `UX-005` spends its effort keeping honest.
 
-    The count is the row's own entries, read from the media it was probed into — not from the
-    selection, which is what the user has *ticked*. Removing the row removes the entries it stands
-    for whether or not they are ticked.
+    **Playlist-ness is `is_playlist`, not "did we enumerate anything"** (`T223-R1`). The first
+    version read `entries`, which collapses the state the model keeps deliberately apart: an
+    **unenumerated** playlist has `entries == ()` and a real `entry_count`, and it is a supported
+    shape — `MediaInfo(is_playlist=True, entry_count=9, entries=())` stays one job by design. That
+    version called it a URL and understated exactly the blast radius this label exists to name.
+
+    **The count is the site's when the site gives one.** `entry_count` is what the extractor
+    reported; `entries` is what this extraction materialised. Removing the row removes the whole
+    batch, so the site's number is the honest one, and the materialised length is the fallback for
+    a playlist enumerated without a reported count.
+
+    **A playlist with no count keeps its noun and loses its number.** `entry_count is None` means
+    *unknown*, not zero — the model says so in terms — so *"(0 items)"* would be the confident lie
+    `Job.progress` already refuses to tell. It reads `Remove this playlist`, which is still the
+    truth that matters: the click takes more than one thing.
     """
     media = row.media
-    entries = getattr(media, "entries", ()) if isinstance(media, MediaInfo) else ()
-    if entries:
-        return f"Remove this playlist ({len(entries)} items)"
-    return "Remove this URL"
+    if not isinstance(media, MediaInfo) or not media.is_playlist:
+        return "Remove this URL"
+
+    count = media.entry_count if media.entry_count is not None else len(media.entries) or None
+    if count is None:
+        return "Remove this playlist"
+    return f"Remove this playlist ({count} item{'' if count == 1 else 's'})"
 
 
 def headline_text(row: Row) -> str:

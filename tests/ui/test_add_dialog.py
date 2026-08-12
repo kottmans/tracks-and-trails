@@ -105,6 +105,7 @@ from tracks_and_trails.ui.add_dialog import (
     describe_kind,
     format_duration,
     headline_text,
+    remove_label,
     row_text,
     selector_candidates,
     split_urls,
@@ -5416,6 +5417,52 @@ def test_the_keyboard_still_opens_the_row_control_without_the_alias(
         )
     finally:
         dialog.close()
+
+
+def test_the_remove_label_reads_every_playlist_shape() -> None:
+    """**`T223-R1`.** Playlist-ness is `is_playlist`, and the count is the site's when it gives one.
+
+    The first version decided playlist-ness from whether `entries` was non-empty, which collapses
+    the two states `MediaInfo` keeps apart on purpose: an **unenumerated** playlist has
+    `entries == ()` and a real `entry_count`, and it is a supported shape — the reviewer reproduced
+    it directly and got *"Remove this URL"* for a nine-item playlist.
+
+    Driven on the label function rather than through a dialog, because these are shapes the fixture
+    probes do not produce, and a state the tests cannot reach is exactly where the collapse hid.
+    """
+
+    url = "https://a.invalid/x"
+
+    def label(media: MediaInfo | None) -> str:
+        return remove_label(Row(url=url, generation=1, media=media))
+
+    single = MediaInfo(url=url, title="One", is_playlist=False)
+    assert label(single) == "Remove this URL"
+    assert label(None) == "Remove this URL", "an unprobed row is not a playlist"
+
+    # The shape T223-R1 reproduced: the site reported nine, this extraction materialised none.
+    unenumerated = MediaInfo(url=url, title="Nine", is_playlist=True, entry_count=9, entries=())
+    assert label(unenumerated) == "Remove this playlist (9 items)"
+
+    # Enumerated without a reported count: the materialised length is the honest number.
+    counted_by_hand = MediaInfo(
+        url=url,
+        title="Two",
+        is_playlist=True,
+        entries=(
+            PlaylistEntry(url="https://a.invalid/1", title="One"),
+            PlaylistEntry(url="https://a.invalid/2", title="Two"),
+        ),
+    )
+    assert label(counted_by_hand) == "Remove this playlist (2 items)"
+
+    # **No number rather than a wrong one.** `entry_count is None` means unknown, not zero, so
+    # "(0 items)" would be the confident lie the model refuses to tell.
+    uncounted = MediaInfo(url=url, title="Unknown", is_playlist=True, entry_count=None, entries=())
+    assert label(uncounted) == "Remove this playlist"
+
+    one_item = MediaInfo(url=url, title="One item", is_playlist=True, entry_count=1)
+    assert label(one_item) == "Remove this playlist (1 item)", "the label says '1 items'"
 
 
 def test_removing_a_playlist_row_says_how_much_it_takes(
