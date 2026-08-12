@@ -2499,6 +2499,62 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-234 — The concurrency control leaves the toolbar
+
+**Status:** Proposed — filed 2026-08-12 under `UX-013`, the maintainer's ruling.
+**Owner:** Implementer
+**Priority:** Medium — it unblocks `T-220`, and it is the last step of a stopgap whose own undo
+condition was written down, met, and then missed for a phase
+**Phase:** Phase 4 — polish. **Not a plan deliverable.**
+**Depends on:** nothing. `T-146` already built the Settings screen's control
+**Relevant context:** `UX-013` (the ruling), `ARC-007` (what it amends), `T-146` (the screen, and
+its *"kept in both places"* record), `T-220` (whose options collapse once this lands),
+`docs/UX_SPEC.md` §2.1 as amended, `ui/main_window.py` (`_build_concurrency_control`, the toolbar
+spacer), `tests/ui/test_windows_accessibility.py` (names every control by hand)
+**Affected surfaces:** `ui/main_window.py`, `app.py`'s wiring of the toolbar spinner,
+`tests/ui/test_main_window.py`, `tests/ui/test_windows_accessibility.py`
+**Risk:** Low — one view of a value is removed; the value, its file and its layer are untouched
+
+#### Scope
+
+`Settings → Settings…` becomes the only place the concurrency limit is set. The toolbar keeps
+three verbs: `+ Add URLs`, the run control, `Clear finished`.
+
+**This removes a view, not a value.** `settings.toml`, `core/settings.py` and the manager's
+`concurrency` are unchanged, and composition still applies and saves once. What goes is the
+toolbar's copy and the mirroring that kept two controls in step.
+
+**Two things the removal should take with it, and one it must not.** The `Concurrent downloads:`
+label and its `−`/`+` step buttons go with the spinner. **The toolbar spacer stays** — `UX-005`
+row 7 put it there so what *adds* work sits apart from what *acts on work already queued*, and
+that distinction survives the spinner: `+ Add URLs` on one side, the run control and
+`Clear finished` on the other.
+
+#### Acceptance criteria
+
+- **No concurrency control exists in the main window**, asserted by name rather than by eye —
+  `concurrencyChoice` is absent from the window's children
+- **The limit still reaches the manager from Settings**, asserted against a real change: set it on
+  the screen, and the value the manager is told is the new one. `T-146`'s crossing test is the
+  shape; this proves it still holds with the second control gone
+- **The window's first focusable widget is no longer the spinner** — the defect `T203-R3` recorded
+  was `Shift+F10` reaching the spin box's own edit menu instead of the row menu. State what it is
+  now, and whether the window needs a declared tab order or inherits a sensible one
+- **The toolbar is three verbs**, and the spacer still separates `+ Add URLs` from the queue verbs
+  (`UX-005` row 7)
+- `tests/ui/test_windows_accessibility.py` names every remaining control, updated for the removal
+- `docs/UX_SPEC.md` §2.1 already describes the outcome (`UX-013`); this task does not amend it again
+
+#### Out of scope
+
+- **A mid-run throttle.** `UX-013` accepts the loss of adjusting the limit without leaving the
+  queue, and says that if it matters the answer is a control on the *queue surface* — a new
+  control, not this removal
+- `T-220`'s ordering and label questions, which this unblocks rather than answers
+- Any change to `settings.toml`, `core/settings.py`, or how composition applies the value
+
+---
+
 ### T-230 — A spawned child still gets the developer's real directories
 
 **Status:** Proposed — filed 2026-08-12 from `T123-R2`'s correction, measured rather than inferred.
@@ -3152,8 +3208,12 @@ the two — this entry does not choose which.
 
 #### Out of scope
 
-- Adding or removing any toolbar control — `ARC-007`'s concurrency control stays until `T-146`
-  decides its fate, and nothing else changes membership
+- Adding or removing any toolbar control — nothing here changes membership. *(This read
+  *"`ARC-007`'s concurrency control stays until `T-146` decides its fate"*. `T-146` decided it
+  stayed **pending this ruling**, and this entry excluded membership — so each deferred to the
+  other and neither could act. **`UX-013` ended that on 2026-08-12**: the control leaves, and
+  `T-234` builds it. Waiting for `T-234` collapses most of what this task is choosing between,
+  because the spinner's position was the bulk of the disagreement.)*
 
 ## Proposed — Phase 4.5
 

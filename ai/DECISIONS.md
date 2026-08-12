@@ -5042,6 +5042,65 @@ The menu keeps `Naming and folders…` and removes no capability, so this ruling
 and takes nothing by implication. Removing the capability later still requires the maintainer
 ruling `T-203` records as open.
 
+## UX-013 — The concurrency control leaves the toolbar for Settings
+
+**Status:** **Accepted** (2026-08-12) — maintainer decision
+**Date:** 2026-08-12
+**Amends:** `ARC-007`, which put a single concurrency control in the main window *"until Phase 4's
+settings dialog replaces it"*. That dialog exists (`T-146`), so the condition `ARC-007` named has
+been met. **Unblocks:** the question `T-146` and `T-220` had each deferred to the other.
+**Raised by:** the maintainer, asking directly — *"should the concurrent downloads stay on the tool
+bar? or should that just be in settings/preferances?"* — and ruled in the same exchange: *"i think
+we will move it."*
+
+### Context
+
+**Neither task could take this decision, and each said so.** `T-146` recorded *"kept in both
+places"* and that removing the toolbar copy was **"not this task's to take"**, deferring to
+`T-220`. `T-220`'s out-of-scope says the control *"stays until `T-146` decides its fate"* and
+excludes membership changes outright. `T-146` has since decided — it stays, *pending `T-220`'s
+ruling* — which leaves `T-220` unable to act on a clause that is already spent. **A decision with
+no owner is how a stopgap becomes permanent**, which is what this ruling ends.
+
+The evidence weighed, all of it already in the records:
+
+- **`docs/UX_SPEC.md` §2.1 anticipates the move in its own wording** — the control is there *"until
+  Phase 4's settings dialog replaces it"*.
+- **`ARC-007` was explicit that it was a trade**, and named what it conceded: *one control in a
+  toolbar is easier to miss than a Settings menu item*. The reason for the trade was that no dialog
+  existed.
+- **It is the only non-verb on the toolbar.** That bar's own rule is that *nothing on it acts on a
+  selection, and every verb on it names the list it empties*; `+ Add URLs`, the run control and
+  `Clear finished` are verbs, and a spinner is a setting.
+- **It has already cost a defect.** During `T203-R3` the toolbar spin box was the window's **first
+  focusable widget**, so `Shift+F10` raised the spin box's own edit menu and the row menu could not
+  open at all. The fallback was corrected by other means; the window still declares no tab order.
+
+### Decision
+
+**The concurrency control is removed from the toolbar. `Settings → Settings…` is the only place it
+is set.** `settings.toml` and `core/settings.py` are unchanged — this removes a *view* of the
+value, not the value.
+
+### What is given up, in writing
+
+- **Adjusting the limit without leaving the queue.** Changing it mid-run now costs a dialog. This
+  is the one argument for keeping it that `ARC-007`'s reasoning does not already answer, and it is
+  accepted rather than dismissed: if watching-and-throttling turns out to matter, the honest answer
+  is a control on the queue surface, not a setting parked on the toolbar.
+- **Discoverability.** `ARC-007` put it in the window because a toolbar control is found sooner
+  than a menu item. That cost is now paid deliberately, with a Settings screen that names it.
+
+### Consequences
+
+- `T-234` builds it. `T-220`'s three options collapse: with the spinner gone the toolbar is four
+  verbs, and most of what §2.1 and the build disagreed about was where the spinner sat.
+- `docs/UX_SPEC.md` §2.1 is amended by a Planner pass under this ruling, as `UX-012`'s was.
+- `T-146`'s *"kept in both places"* becomes history rather than current truth, and its entry says
+  so rather than being rewritten.
+
+---
+
 ## UX-012 — The row's menu says what it removes, and the ⋮ reads as a button
 
 **Status:** **Accepted** (2026-08-10) — maintainer ruling on three reports from live use of the

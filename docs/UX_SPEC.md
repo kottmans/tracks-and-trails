@@ -89,10 +89,15 @@ recorded as maintainer rulings that no maintainer had made.
 
 ### 2.1 The toolbar
 
-**[T]** `UX-005` (2026-08-04 amendment), `DAT-005` (2026-08-05 amendment) and `UX-006`
-(2026-08-07). `+ Add URLs` first, as the primary action; the **run control**; `Clear finished`; and
-the `Concurrent downloads` control that `ARC-007` put there until Phase 4's settings dialog
-replaces it.
+**[T]** `UX-005` (2026-08-04 amendment), `DAT-005` (2026-08-05 amendment), `UX-006`
+(2026-08-07) and `UX-013` (2026-08-12). `+ Add URLs` first, as the primary action; the **run
+control**; and `Clear finished`. **Three verbs and nothing else.**
+
+*(The `Concurrent downloads` control stood here too, which `ARC-007` put in the window "until
+Phase 4's settings dialog replaces it". That dialog exists — `T-146` — so `UX-013` completed the
+sentence: the limit is set in `Settings → Settings…` and nowhere else. `T-234` builds the removal.
+The clause is worth keeping as history because it is the shape of every stopgap: the condition for
+undoing it was written down, met, and then went unnoticed for a phase.)*
 
 **[T]** **The run control is one control with two states, and the queue opens stopped** (`UX-006`).
 It reads `Start` while the queue is stopped and `Stop` while it is running — the same single
