@@ -5,7 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-12 (second review round) — **`T-236` is Complete/Approved.** `T-234`,
+**Last updated:** 2026-08-12 (second review round, synchronised) — **`T-236` is Complete,
+approved.** `T-238` is filed for the parallel-UI flake. **`T-236` is Complete/Approved.** `T-234`,
 `T-235` and `T-237` came back with changes requested and are corrected: the accessibility test now
 writes its expected names out instead of importing one and substring-matching the others
 (`T235-R1`), and the spec comment no longer says of the product what is only true of the gates
@@ -46,7 +47,30 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
-## 2026-08-12 (second review round): T-236 approved; T-235 and T-237 corrected; T-228 measured
+## 2026-08-12 (second review round): T-236 approved; T-235 and T-237 corrected; T-238 filed
+
+**Verdicts:** `T-236` **Approved and Complete**. `T-234` changes requested again — `T234-R2` and
+`T234-R3` **Resolved**, `T234-R1` open pending `T-235`. `T-235` and `T-237` changes requested.
+`T-228` read for context, no verdict.
+
+**Both requested changes are corrected and pushed** (`22fa7c7`, `edb36da`), and verified on the
+Windows runner by run `31642823390` — green on all five jobs, with the accessibility slice at
+`32 passed, 3141 deselected`. **The verdicts above were recorded against the earlier head**
+(`c814bab`, CI `31640266898`), so `T-234`/`T-235`/`T-237` are awaiting re-review of the
+corrections rather than awaiting work.
+
+### `T-238` — filed, and it is **not** `T-228`
+
+The one-in-nine parallel-UI failure I declared is now its own task, and the entry corrects a
+speculation of mine: I wrote in the handoff that it *"most likely belongs to the same class"* as
+`T-228`. It does not, and the entry says why — `T-228` is lost `multiprocessing.Queue` delivery in
+**spawned integration workers**, while this test uses a **per-process Qt thread pool and a
+parentless signal sink**. *"Both are load-sensitive"* is not a shared mechanism, and I should not
+have offered it as one.
+
+Its first criterion is to capture **which assertion failed**, with timings, under repeated
+`-n auto` runs — before any timeout or budget is touched.
+
 
 **`T-236` is Approved and Complete.** The reviewer confirmed the pixel evidence independently:
 restoring the old `QToolBar`-scoped selector moves the sampled edge from `#748A7E` to Qt's
