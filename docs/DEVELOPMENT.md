@@ -350,10 +350,15 @@ field.
 | Network options (rate limit, proxy, retries) | not built — `T-196` | — |
 | Cookie source | Settings screen | `[cookies] file`, plus `cookies_from_browser` per preset |
 
-**The concurrency control is deliberately in both places** (`T-146`'s recorded choice). Its home is
-one value in `settings.toml` and both controls are views of it: composition applies and saves once,
-then tells the window, which updates whichever controls exist. Removing the toolbar copy is a
-change to the toolbar's composition, which is `T-220`'s open ruling and was not `T-146`'s to take.
+**The concurrency control is in one place** (`UX-013`, built by `T-234`). Its home is one value in
+`settings.toml`, and the Settings screen is the only view of it: composition applies and saves
+once, then tells the window, which holds the number so the screen opens on what is running.
+
+*(This paragraph said the control was **deliberately in both places** — `T-146`'s recorded choice,
+which kept the toolbar's copy and left removing it to `T-220`'s open ruling. `UX-013` took that
+ruling on 2026-08-12 and `T-234` carried it out, so the stopgap and the pending ruling are both
+finished. The two-control mechanism it described — composition as the single writer, controls as
+views — is unchanged; there is simply one view now.)*
 
 **The default preset is in two places for the same reason, and answered the same way** (`T-195`'s
 recorded choice). *Set as default* in the preset manager and the combo on the settings screen both

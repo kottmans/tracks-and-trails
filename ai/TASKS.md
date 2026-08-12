@@ -120,10 +120,15 @@ this one returned four verdicts before approving.*
 
 ### T-234 — The concurrency control leaves the toolbar
 
-**Status:** **In Review — Changes requested, 2026-08-12.** `T234-R1` through `T234-R3` block
-approval. The toolbar removal itself is sound, but its explicit Windows-accessibility criterion
-was left unmet, the only remaining limit control restores the native arrows `UX-005` row 11
-rejected, and several current explanations still say the toolbar copy exists.
+**Status:** **In Review — corrected 2026-08-12**, after changes were requested the same day.
+`T234-R1` through `T234-R3` are answered: `T-235` and `T-236` are built as their own In Review
+entries and the two-control text is swept as a class. **The Windows job is the one piece of
+evidence still owed**, and only a push can produce it.
+
+*(The original verdict: the toolbar removal itself was sound, but its explicit
+Windows-accessibility criterion was left unmet, the only remaining limit control restored the
+native arrows `UX-005` row 11 rejected, and several current explanations still said the toolbar
+copy exists.)*
 **Owner:** Implementer
 **Priority:** Medium — it unblocks `T-220`, and it is the last step of a stopgap whose own undo
 condition was written down, met, and then missed for a phase
@@ -323,6 +328,288 @@ widget through the composed route. Three blockers remain:
   `settings_dialog.py` repeats the toolbar premise in its module and `show_concurrency`
   docstrings; and `test_settings_dialog.py` names and explains its sync test as toolbar mirroring.
   Sweep the affected current surfaces rather than correcting only these four hits.
+
+#### The correction, 2026-08-12
+
+**All three findings are accepted without argument.** `T234-R2` in particular: I filed `T-236` and
+then shipped anyway, on the reasoning that rebuilding the buttons would change a screen the
+maintainer had approved from mockups. That reasoning is wrong in the way the finding says —
+`UX-005` row 11 rules on **the concurrency control**, not on the toolbar it stood on, so the
+relocation carried the ruling with it and had no authority to unbuild it. Filing a defect is not a
+substitute for not shipping it.
+
+**`T234-R1` → `T-235`, built.** The accessibility fixture now builds the window with
+`control_bar=True`, so the toolbar is in the tree the `NFR-005` sweep walks, and two hand-written
+tests name the three verbs and check the run control in **both** states. Every symbol was verified
+statically and the accessible names read off a live window (`+ Add URLs`, `Start`/`Stop`,
+`Clear finished`), because the file cannot run here. **The green Windows job is still owed.**
+
+**`T234-R2` → `T-236`, built.** `T-141`'s answer is rebuilt on the Settings screen: `−`/`+`, sized
+17x25 and identical, disabled at their ends, announcing direction and setting, with
+`ButtonSymbols.NoButtons` on the box. Five mutations killed — including one that first **survived**
+and exposed a vacuous assertion of mine, disclosed in `T-236`'s record rather than quietly fixed.
+
+**`T234-R3` — swept as a class, not as four hits.** The named ones are corrected:
+`docs/DEVELOPMENT.md`'s paragraph that contradicted its own table, `settings_dialog.py`'s module
+docstring (which cited the toolbar spinner **twice** — as the apply-on-change idiom's origin and as
+an example of a setting visible elsewhere) and its `show_concurrency`, and
+`test_settings_dialog.py`'s mirroring test, renamed to
+`test_the_concurrency_control_shows_what_was_applied_without_echoing_it` because what it follows is
+now composition rather than a second control. The sweep then read every file mentioning both
+*concurrency* and *toolbar*: what remains is history, each marked as history.
+
+**One thing I am declaring rather than burying:** in nine `-n auto` runs of unit+UI,
+`tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through`
+failed **once**. It passes in isolation, sits in a file this task does not touch, and the other
+eight runs were clean. I have not attributed it and am not claiming it is unrelated — it looks like
+the same load-sensitivity `T-228` is about.
+
+---
+
+### T-237 — The spec recopies `REL-002` and then blurs its two collection results
+
+**Status:** **In Review — built 2026-08-12.** Low follow-up `T233-R1`.
+**Owner:** Implementer
+**Priority:** Low — comments only; the build operations and gates are correct
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `T-233`, `T233-R1`, `REL-002`, `packaging/tracks-and-trails.spec`
+**Affected surfaces:** comments only in `packaging/tracks-and-trails.spec`
+**Risk:** Low
+
+#### Scope and acceptance criteria
+
+- Keep the fact `T-233` had to restore: `collect_submodules` is redundant for the current pin and
+  stays as future-pin insurance under `REL-002`.
+- Keep `REL-002` as the canonical rationale rather than copying its measurements and argument into
+  the spec. A short stable pointer is sufficient.
+- Do not say that removing either line produces a failure today: the current-pin submodule mutant
+  resolved extractors and failed no gate; the data-files mutant removed three solver assets while
+  the probe still passed.
+- No executable statement, collection call, assertion, workflow, or dependency changes.
+
+#### What was built, 2026-08-12
+
+The `T-033` block now **points at `REL-002` rather than restating it**: one sentence saying the
+mutations live there, then one line per collection call. The 928-import figure, the three solver
+asset names and the probe's blind-spot reasoning are `REL-002`'s to hold.
+
+**The closing sentence is corrected rather than trimmed.** It said the failure *"either would
+produce"* is the dangerous kind, which reads as *both removals fail*, immediately after the
+comment establishes that one of them does not. It now says outright that **neither removal fails
+anything today**, and that this is precisely why the reasons are written down — the danger is the
+failure a user would meet, not one a gate would catch.
+
+**Comments only, proved rather than asserted:** the spec parses to an **identical AST** before and
+after. No collection call, `Analysis` argument, workflow step or dependency moved.
+
+---
+
+### T-236 — The limit's only control has the affordance `T-141` ruled unreadable
+
+**Status:** **In Review — built 2026-08-12.** Accepted as blocking finding `T234-R2`; Filed from `T-234`
+and measured rather than suspected; its correction is required before T-234 can be approved.
+**Owner:** Implementer
+**Priority:** Medium — `NFR-005`, and it is now the *only* control for the setting. Not High
+because the control is still operable by typing and by `Up`/`Down`; what is unreadable is the
+affordance that says it can be stepped
+**Phase:** Phase 4 — polish. **Not a plan deliverable.**
+**Depends on:** nothing. `T-234` has landed
+**Relevant context:** `T-141` (the finding and its measurements), `T-133` (the same control,
+twice), `UX-005` row 11, `UX-013`, `T-234`, `ui/settings_dialog.py`, `ui/theme.py`'s deliberate
+omission of `QSpinBox`
+**Affected surfaces:** `ui/settings_dialog.py`, possibly `ui/theme.py`
+**Risk:** Low — an additive control on one screen
+
+#### Scope
+
+`T-141` ruled the native spin arrows unreadable and replaced them with labelled `−`/`+` buttons.
+Its measurement was *"the real 58×23 control"* on the maintainer's Wayland session: the platform
+draws the arrows correctly — up `4,6,8,10`, down `8,6,4` — **and they are still unreadable at that
+size**.
+
+`T-234` removed that control, and with it the step buttons. **The Settings screen's spinner is
+57×22** — measured 2026-08-12, offscreen, with the theme applied — which is the same control at
+the same size, with `ButtonSymbols.UpDownArrows`. So `UX-005` row 11's finding now applies to the
+only place the limit can be set, and the answer `T-141` reached is no longer anywhere in the
+application.
+
+**This is a consequence of `T-234`, disclosed by it rather than found later.** `T-234` deleted the
+step buttons because the widget they belonged to was gone; it did not rebuild them on the screen,
+because that is a change to a surface the maintainer approved from mockups that showed a plain
+spinner row.
+
+**What is *not* wrong:** `theme.py` still leaves `QSpinBox` unstyled on purpose (`T-133`,
+corrected), so the arrows are drawn by the platform rather than silently un-drawn. This is the
+size finding only, not the sheet one.
+
+#### The decision this needs
+
+Three shapes, and the entry does not take one — the second is a visual choice on a screen the
+maintainer has seen:
+
+- **Rebuild `T-141`'s answer on the screen**: `−`/`+` buttons, `ButtonSymbols.NoButtons`, each
+  disabled at its end of the range and each announcing direction *and* setting. The deleted tests
+  and the 30 lines of sheet are in `T-234`'s history and would come back nearly as they were.
+- **Let the screen's control be bigger instead.** A dialog has room the toolbar did not; if the
+  arrows are legible at a larger size the finding is about the toolbar's cramping and not about
+  the widget. **This needs a measurement on a real session, not a decision from here.**
+- **Accept it.** The spinner takes typed input and `Up`/`Down`, both of which work; the arrows are
+  an affordance rather than the only route. `T-141` considered and rejected this reasoning for the
+  toolbar, so accepting it here should say what changed.
+
+#### Acceptance criteria
+
+- The limit's control on the Settings screen offers a **readable** way to step it, or the entry
+  records why the toolbar's finding does not apply at the screen's size — with a measurement, not
+  an argument
+- If buttons return: each disabled at its end of the range (`UX-005` §5), each announcing the
+  direction **and** the setting (`NFR-005`), and `ButtonSymbols.NoButtons` so the control does not
+  offer two ways to step with one of them the unreadable one
+- The evidence is a **pixel measurement of the shipped control**, as `T-141`'s was. `T-133` passed
+  its first test against a control that rendered as two dots
+
+#### Out of scope
+
+- Anything about *where* the control lives. `UX-013` settled that and this does not reopen it
+- The toolbar, which no longer has one
+
+#### What was built, 2026-08-12 — the first of the three shapes
+
+**`T-141`'s answer is rebuilt on the Settings screen**, and the reviewer's reasoning is why the
+other two were not taken: `UX-005` row 11 rules on **the concurrency control**, not on the toolbar,
+so `UX-013` moved the control and carried the ruling with it. Accepting the native arrows, or
+arguing the dialog gives them room, would both amend an accepted decision — which is not something
+a relocation had authority to do.
+
+`settings_dialog.py` now builds `−` and `+` beside the spinner, with `ButtonSymbols.NoButtons` on
+the box itself. `STEP_DOWN_LABEL`, `STEP_UP_LABEL` and `STEP_BUTTON_PROPERTY` come back here rather
+than to `main_window.py`, because they belong to the control and the control moved.
+
+**The style sheet's selector is the part that had to change, and it is the part that fails
+silently.** The rule was `QToolBar QToolButton[stepButton="true"]`; on a dialog that matches
+nothing, and the buttons fall back to Qt's own tool-button frame — **not to nothing**, which is
+what made the first version of the regression vacuous (below). It is now scoped by the role
+property alone.
+
+**Measured on the shipped control** (offscreen, theme applied), which the third criterion asks for:
+
+| | Before (`T-234`) | After |
+|---|---|---|
+| Spin box | 57x22, `UpDownArrows` | `NoButtons` |
+| `−` / `+` | absent | **17x25 each**, identical |
+| Edge colour | — | `#748A7E` = `theme.LIGHT.border` |
+| At `CONCURRENCY_MINIMUM` | — | `−` disabled, `+` enabled |
+| At `CONCURRENCY_MAXIMUM` | — | `+` disabled, `−` enabled |
+| Accessible names | — | *"Fewer concurrent downloads"*, *"More concurrent downloads"* |
+| Focus policy | — | `NoFocus` on both |
+
+**A vacuous assertion was caught by mutation and replaced — the disclosure matters more than the
+fix.** `test_the_step_buttons_are_a_matched_pair` first asserted `width > 10` as its check that the
+sheet reaches the buttons, with a docstring claiming it would catch a selector left scoped to
+`QToolBar`. **It did not: that mutant passed.** Unstyled, Qt draws its own frame — 21x24 with a
+`#AFB0AE` edge against the styled 17x25 with `#748A7E` — so the button is neither missing nor
+obviously smaller. The test now samples the edge pixel and compares it to **`theme.LIGHT.border`
+read from the theme**, never a literal, because `T-141`'s own record warns that pinning a size or a
+colour pins a styling choice.
+
+**Five mutations, all killed:** `NoButtons` removed; the range gate stuck enabled; the sheet
+selector re-scoped to `QToolBar`; the whole sheet block deleted; and a step button given focus.
+
+---
+
+### T-235 — The Windows accessibility sweep has never seen the toolbar
+
+**Status:** **In Review — built 2026-08-12.** Accepted as blocking finding `T234-R1`; Filed from `T-234`,
+which found it by trying to satisfy a criterion that assumed the opposite; its correction and
+green Windows evidence are required before T-234 can be approved.
+**Owner:** Implementer
+**Priority:** Medium — `NFR-005` is a requirement, and the surface this misses is the three
+controls a user reaches for first. Not High only because no defect is known: the buttons may well
+announce correctly, and nobody has looked
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing. `T-234` settled what is on the toolbar
+**Relevant context:** `tests/ui/test_windows_accessibility.py`, `NFR-005`, `T-026`/`T026-R2` (why
+the menus are queried through their own handles), `T-234`'s criteria, `OPS-012` (`WINDOWS_RUNNER`)
+**Affected surfaces:** `tests/ui/test_windows_accessibility.py`
+**Risk:** Low to change, **unknown to run** — this is the point of the task
+
+#### Scope
+
+`test_no_interactive_control_reaches_the_tree_without_a_name` sweeps every `UIA_BUTTON` and
+`UIA_MENU_ITEM` in the window's accessibility tree and requires a name on each. Its docstring says
+*"over every interactive control, not only the ones this file names"*, and **that is true of the
+tree it is given and false of the window**: every construction in the file is
+`MainWindow(geometry_file=tmp_path / "window.toml")`, which since `T-234` means `control_bar` is
+false and **there is no toolbar in the tree at all**.
+
+So `+ Add URLs`, the run control and `Clear finished` have never been checked for accessible names
+on Windows. The sweep has been passing over a window whose only buttons are in dialogs and menus.
+
+**This was found by `T-234`**, whose criterion read *"names every remaining control, updated for
+the removal"* — an instruction that could not be followed, because the file never named them.
+
+#### Why it was not just fixed there
+
+Adding `control_bar=True` is one word. Running it is not: the file is `windows_desktop`-marked and
+executes only on the Windows runner, so the change cannot be observed from the development
+machine. If the tool buttons *do* expose no name — plausible, since `QToolButton` derives its
+accessible name from the action's text and the run control's text changes with its state — the
+result is a red Windows job and a real `NFR-005` finding, which is a task rather than a footnote.
+
+#### Acceptance criteria
+
+- The accessibility fixture builds a window **with** the control bar, so the toolbar is in the
+  tree the sweep walks
+- The three verbs are each asserted **by name**, transcribed by hand in the way the menu test
+  transcribes its items — a sweep alone would let a control disappear silently
+- **The run control is checked in both states.** Its text is `&Start`/`&Stop` (`T-220`), so its
+  accessible name changes as the queue runs; a check in one state says nothing about the other
+- Whatever the run reveals is recorded: if a control announces nothing, that is the finding, and
+  the fix belongs to this task
+- The Windows job is green on the runner, not inferred from a Linux run that skips the file
+
+#### Out of scope
+
+- The Linux/`AT-SPI` side. `NFR-005`'s automatable evidence on this project is the Windows tree
+- Any change to what the toolbar holds — `T-234` and `UX-013` settled that
+
+#### What was built, 2026-08-12
+
+**The fixture builds the window with `control_bar=True`**, so the toolbar is in the tree the
+`NFR-005` sweep walks. That is the one-word change; the rest is the two tests the criteria ask for,
+because a sweep that requires *a* name on every button cannot notice that a verb stopped saying
+what it acts on, or stopped existing.
+
+- `test_the_toolbars_three_verbs_are_each_announced` — the names **transcribed by hand**, the same
+  rule the menu test follows: reading them off the toolbar would only prove the toolbar equals
+  itself.
+- `test_the_run_control_is_announced_in_both_of_its_states` — `Start` stopped, then
+  `show_queue_running(True)` and **the tree re-read**, because a snapshot taken before the change
+  is a snapshot of the other state. The running state is the one a user is in while waiting, which
+  is when they are most likely to be listening.
+
+**This file cannot run here, so every symbol it uses was verified statically instead of assumed**
+— the honest alternative to shipping a Windows-only test on faith. `MainWindow.run_action`,
+`show_queue_running` and `winId` exist; `ADD_URLS_BUTTON` is imported rather than spelled out;
+`read_tree`, `Tree.of_type` and `UIA_BUTTON` are defined in the module.
+
+**And the names themselves were measured, not guessed.** Qt derives the UIA name from the same
+`QAccessible` interface on both platforms, so it was read off a live window here:
+
+| Widget | `QAccessible` name |
+|---|---|
+| `addUrlsButton` | `+ Add URLs` — the action's `iconText`, not its `&Add URLs...` text |
+| run control, stopped | `Start` |
+| run control, running | `Stop` |
+| clear action | `Clear finished` |
+
+`qt_toolbar_ext_button` is **hidden** at the default size, so it does not enter the tree unnamed
+and fail the sweep — checked, because it is the obvious way this change could redden the Windows
+job for a reason that has nothing to do with the criterion.
+
+**The Windows evidence is still owed**, and this entry does not pretend otherwise: the criteria
+require the job green on the runner, which only the push can show.
 
 ---
 
@@ -2744,159 +3031,6 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
-
-### T-237 — The spec recopies `REL-002` and then blurs its two collection results
-
-**Status:** Proposed — Low follow-up `T233-R1`, accepted 2026-08-12.
-**Owner:** Implementer
-**Priority:** Low — comments only; the build operations and gates are correct
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing
-**Relevant context:** `T-233`, `T233-R1`, `REL-002`, `packaging/tracks-and-trails.spec`
-**Affected surfaces:** comments only in `packaging/tracks-and-trails.spec`
-**Risk:** Low
-
-#### Scope and acceptance criteria
-
-- Keep the fact `T-233` had to restore: `collect_submodules` is redundant for the current pin and
-  stays as future-pin insurance under `REL-002`.
-- Keep `REL-002` as the canonical rationale rather than copying its measurements and argument into
-  the spec. A short stable pointer is sufficient.
-- Do not say that removing either line produces a failure today: the current-pin submodule mutant
-  resolved extractors and failed no gate; the data-files mutant removed three solver assets while
-  the probe still passed.
-- No executable statement, collection call, assertion, workflow, or dependency changes.
-
----
-
-### T-236 — The limit's only control has the affordance `T-141` ruled unreadable
-
-**Status:** Proposed — **accepted as blocking finding `T234-R2`, 2026-08-12.** Filed from `T-234`
-and measured rather than suspected; its correction is required before T-234 can be approved.
-**Owner:** Implementer
-**Priority:** Medium — `NFR-005`, and it is now the *only* control for the setting. Not High
-because the control is still operable by typing and by `Up`/`Down`; what is unreadable is the
-affordance that says it can be stepped
-**Phase:** Phase 4 — polish. **Not a plan deliverable.**
-**Depends on:** nothing. `T-234` has landed
-**Relevant context:** `T-141` (the finding and its measurements), `T-133` (the same control,
-twice), `UX-005` row 11, `UX-013`, `T-234`, `ui/settings_dialog.py`, `ui/theme.py`'s deliberate
-omission of `QSpinBox`
-**Affected surfaces:** `ui/settings_dialog.py`, possibly `ui/theme.py`
-**Risk:** Low — an additive control on one screen
-
-#### Scope
-
-`T-141` ruled the native spin arrows unreadable and replaced them with labelled `−`/`+` buttons.
-Its measurement was *"the real 58×23 control"* on the maintainer's Wayland session: the platform
-draws the arrows correctly — up `4,6,8,10`, down `8,6,4` — **and they are still unreadable at that
-size**.
-
-`T-234` removed that control, and with it the step buttons. **The Settings screen's spinner is
-57×22** — measured 2026-08-12, offscreen, with the theme applied — which is the same control at
-the same size, with `ButtonSymbols.UpDownArrows`. So `UX-005` row 11's finding now applies to the
-only place the limit can be set, and the answer `T-141` reached is no longer anywhere in the
-application.
-
-**This is a consequence of `T-234`, disclosed by it rather than found later.** `T-234` deleted the
-step buttons because the widget they belonged to was gone; it did not rebuild them on the screen,
-because that is a change to a surface the maintainer approved from mockups that showed a plain
-spinner row.
-
-**What is *not* wrong:** `theme.py` still leaves `QSpinBox` unstyled on purpose (`T-133`,
-corrected), so the arrows are drawn by the platform rather than silently un-drawn. This is the
-size finding only, not the sheet one.
-
-#### The decision this needs
-
-Three shapes, and the entry does not take one — the second is a visual choice on a screen the
-maintainer has seen:
-
-- **Rebuild `T-141`'s answer on the screen**: `−`/`+` buttons, `ButtonSymbols.NoButtons`, each
-  disabled at its end of the range and each announcing direction *and* setting. The deleted tests
-  and the 30 lines of sheet are in `T-234`'s history and would come back nearly as they were.
-- **Let the screen's control be bigger instead.** A dialog has room the toolbar did not; if the
-  arrows are legible at a larger size the finding is about the toolbar's cramping and not about
-  the widget. **This needs a measurement on a real session, not a decision from here.**
-- **Accept it.** The spinner takes typed input and `Up`/`Down`, both of which work; the arrows are
-  an affordance rather than the only route. `T-141` considered and rejected this reasoning for the
-  toolbar, so accepting it here should say what changed.
-
-#### Acceptance criteria
-
-- The limit's control on the Settings screen offers a **readable** way to step it, or the entry
-  records why the toolbar's finding does not apply at the screen's size — with a measurement, not
-  an argument
-- If buttons return: each disabled at its end of the range (`UX-005` §5), each announcing the
-  direction **and** the setting (`NFR-005`), and `ButtonSymbols.NoButtons` so the control does not
-  offer two ways to step with one of them the unreadable one
-- The evidence is a **pixel measurement of the shipped control**, as `T-141`'s was. `T-133` passed
-  its first test against a control that rendered as two dots
-
-#### Out of scope
-
-- Anything about *where* the control lives. `UX-013` settled that and this does not reopen it
-- The toolbar, which no longer has one
-
----
-
-### T-235 — The Windows accessibility sweep has never seen the toolbar
-
-**Status:** Proposed — **accepted as blocking finding `T234-R1`, 2026-08-12.** Filed from `T-234`,
-which found it by trying to satisfy a criterion that assumed the opposite; its correction and
-green Windows evidence are required before T-234 can be approved.
-**Owner:** Implementer
-**Priority:** Medium — `NFR-005` is a requirement, and the surface this misses is the three
-controls a user reaches for first. Not High only because no defect is known: the buttons may well
-announce correctly, and nobody has looked
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing. `T-234` settled what is on the toolbar
-**Relevant context:** `tests/ui/test_windows_accessibility.py`, `NFR-005`, `T-026`/`T026-R2` (why
-the menus are queried through their own handles), `T-234`'s criteria, `OPS-012` (`WINDOWS_RUNNER`)
-**Affected surfaces:** `tests/ui/test_windows_accessibility.py`
-**Risk:** Low to change, **unknown to run** — this is the point of the task
-
-#### Scope
-
-`test_no_interactive_control_reaches_the_tree_without_a_name` sweeps every `UIA_BUTTON` and
-`UIA_MENU_ITEM` in the window's accessibility tree and requires a name on each. Its docstring says
-*"over every interactive control, not only the ones this file names"*, and **that is true of the
-tree it is given and false of the window**: every construction in the file is
-`MainWindow(geometry_file=tmp_path / "window.toml")`, which since `T-234` means `control_bar` is
-false and **there is no toolbar in the tree at all**.
-
-So `+ Add URLs`, the run control and `Clear finished` have never been checked for accessible names
-on Windows. The sweep has been passing over a window whose only buttons are in dialogs and menus.
-
-**This was found by `T-234`**, whose criterion read *"names every remaining control, updated for
-the removal"* — an instruction that could not be followed, because the file never named them.
-
-#### Why it was not just fixed there
-
-Adding `control_bar=True` is one word. Running it is not: the file is `windows_desktop`-marked and
-executes only on the Windows runner, so the change cannot be observed from the development
-machine. If the tool buttons *do* expose no name — plausible, since `QToolButton` derives its
-accessible name from the action's text and the run control's text changes with its state — the
-result is a red Windows job and a real `NFR-005` finding, which is a task rather than a footnote.
-
-#### Acceptance criteria
-
-- The accessibility fixture builds a window **with** the control bar, so the toolbar is in the
-  tree the sweep walks
-- The three verbs are each asserted **by name**, transcribed by hand in the way the menu test
-  transcribes its items — a sweep alone would let a control disappear silently
-- **The run control is checked in both states.** Its text is `&Start`/`&Stop` (`T-220`), so its
-  accessible name changes as the queue runs; a check in one state says nothing about the other
-- Whatever the run reveals is recorded: if a control announces nothing, that is the finding, and
-  the fix belongs to this task
-- The Windows job is green on the runner, not inferred from a Linux run that skips the file
-
-#### Out of scope
-
-- The Linux/`AT-SPI` side. `NFR-005`'s automatable evidence on this project is the Windows tree
-- Any change to what the toolbar holds — `T-234` and `UX-013` settled that
-
----
 
 ### T-230 — A spawned child still gets the developer's real directories
 

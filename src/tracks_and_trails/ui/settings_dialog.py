@@ -15,13 +15,18 @@ would not go looking for it.)*
 
 ## Changes apply as they are made, and the button says `Close`
 
-The same idiom as the toolbar's concurrency control, which has applied-and-saved on every change
-since `T-078`. An `OK`/`Cancel` pair would be the other honest shape, and it is the wrong one
-here: several of these settings are already visible elsewhere — the concurrency spinner in the
-toolbar, the theme in every pixel, the default preset in the preset manager and on the next row a
-user pastes — so a change that waited for `OK` would have to either not preview (and make the theme
-unpickable without guessing) or preview and then be revertible, which is a transaction this screen
-has no way to roll back.
+Every control here applies and saves as it is changed — the idiom `T-078` established for the
+concurrency limit, and the one this screen inherited when `UX-013` made it that limit's only home
+(`T-234`). An `OK`/`Cancel` pair would be the other honest shape, and it is the wrong one here:
+several of these settings are already visible elsewhere — the theme in every pixel, the default
+preset in the preset manager and on the next row a user pastes — so a change that waited for `OK`
+would have to either not preview (and make the theme unpickable without guessing) or preview and
+then be revertible, which is a transaction this screen has no way to roll back.
+
+*(This paragraph named the toolbar's concurrency spinner twice: as the idiom's origin and as an
+example of a setting visible elsewhere. `UX-013` removed that spinner. The idiom's origin is still
+`T-078` — the behaviour outlived the widget that first had it — and the concurrency limit is no
+longer an example of the second thing, because this screen is where it is seen.)*
 
 ## The directory picker is injected
 
@@ -38,6 +43,7 @@ from typing import Final
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -49,6 +55,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSpinBox,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -67,6 +74,9 @@ __all__ = [
     "FFMPEG_ON_PATH_NOTE",
     "NO_COOKIES_NOTE",
     "SETTINGS_STILL_TO_COME",
+    "STEP_BUTTON_PROPERTY",
+    "STEP_DOWN_LABEL",
+    "STEP_UP_LABEL",
     "THEME_LABELS",
     "SettingsDialog",
 ]
@@ -102,6 +112,24 @@ NO_COOKIES_NOTE: Final = "No cookies file - downloads are not signed in"
 #: Shown where the path would be when none is set. Names the mechanism, because *"not set"* does
 #: not tell a user what the application is doing instead.
 FFMPEG_ON_PATH_NOTE: Final = "Looked for on PATH"
+
+#: What the concurrency control's step buttons read (`UX-005` row 11, `T-141`, `T-236`).
+#:
+#: A true minus sign rather than a hyphen: at this size a hyphen reads as a dash in a sentence,
+#: and the pair has to look like a pair.
+#:
+#: **These lived in `main_window.py` until `T-234`**, which deleted them with the toolbar's
+#: spinner. `UX-005` row 11 rules on *the concurrency control*, not on the toolbar, so they come
+#: back with the control rather than staying where the control used to be.
+STEP_DOWN_LABEL: Final = "\u2212"
+STEP_UP_LABEL: Final = "+"
+
+#: The dynamic property the sheet styles the step buttons against (`T-141`).
+#:
+#: **A role, not a name.** `theme.py` styles by class so a widget nobody remembered still gets
+#: themed, and an object-name selector fails silently when it stops matching — the button just goes
+#: back to looking like text.
+STEP_BUTTON_PROPERTY: Final = "stepButton"
 
 #: The screen's own statement of what it does not yet cover (`T-146`).
 #:
@@ -704,10 +732,39 @@ class SettingsDialog(QDialog):
         # toolbar's."* There is no toolbar copy to be the same as.
         self._concurrency.setRange(CONCURRENCY_MINIMUM, CONCURRENCY_MAXIMUM)
         self._concurrency.setValue(self._initial_concurrency)
+        # **The steps are labelled buttons, not native arrows** (`UX-005` row 11, `T-141`,
+        # rebuilt here by `T-236`). The arrows were reported missing twice: first drawn as solid
+        # blocks by the CSS border-triangle trick, then drawn correctly as ~10px native wedges in
+        # a 23px control and **still unreadable** — measured on the maintainer's own session at
+        # the real size, up `4,6,8,10` and down `8,6,4`. The two step labels are **text**, and no
+        # style sheet can silently un-draw text, which is the shared cause of `T-129`, `T-133`
+        # and `T-139`.
+        #
+        # **The ruling names the control, not the toolbar** (`T234-R2`). `UX-013` moved where the
+        # control lives; it did not amend how it steps. `T-234` removed the buttons with the
+        # toolbar and left this spinner at **57x22 with `UpDownArrows`** — materially the 58x23
+        # control `T-141` measured — so the accepted design was unbuilt by a relocation that had
+        # no authority to unbuild it.
+        self._concurrency.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self._concurrency.valueChanged.connect(self._on_concurrency_chosen)
+
+        fewer = self._step_button(box, STEP_DOWN_LABEL, "Fewer concurrent downloads")
+        more = self._step_button(box, STEP_UP_LABEL, "More concurrent downloads")
+        fewer.clicked.connect(self._concurrency.stepDown)
+        more.clicked.connect(self._concurrency.stepUp)
+        row.addWidget(fewer)
         row.addWidget(self._concurrency)
+        row.addWidget(more)
         row.addStretch(1)
         layout.addLayout(row)
+
+        def _limit_the_steps(value: int) -> None:
+            """Neither button offers a step the range will not take (`UX-005` §5)."""
+            fewer.setEnabled(value > CONCURRENCY_MINIMUM)
+            more.setEnabled(value < CONCURRENCY_MAXIMUM)
+
+        self._concurrency.valueChanged.connect(_limit_the_steps)
+        _limit_the_steps(self._concurrency.value())
 
         explanation = QLabel(
             "Each download is a separate process, so a higher number is not always faster.",
@@ -719,12 +776,39 @@ class SettingsDialog(QDialog):
         layout.addWidget(explanation)
         return box
 
-    def show_concurrency(self, limit: int) -> None:
-        """Follow a change made on the toolbar, without echoing it back (`T-146`).
+    def _step_button(self, parent: QWidget, label: str, announced: str) -> QToolButton:
+        """One of the concurrency control's step buttons (`UX-005` row 11, `T-141`, `T-236`).
 
-        The two controls edit one value (`REQ-013`), so each has to be able to show what the other
-        did — and a naive `setValue` here would emit `valueChanged`, call composition again, and
-        make every change a round trip. Blocked for exactly the assignment.
+        **Its accessible name says the direction *and* the setting** (`NFR-005`). "Plus" read on
+        its own says nothing about what it increases, and the visible label is a single character
+        that a screen reader may or may not pronounce usefully.
+        """
+        button = QToolButton(parent)
+        button.setObjectName(f"settingsConcurrencyStep{'Up' if label == STEP_UP_LABEL else 'Down'}")
+        button.setText(label)
+        button.setAccessibleName(announced)
+        button.setStatusTip(announced)
+        button.setProperty(STEP_BUTTON_PROPERTY, True)
+        button.setAutoRepeat(True)
+        # **Focus stays on the value, not on the steppers.** A user tabbing to this control wants
+        # the number, and `NFR-005` asks the keyboard to reach what the pointer reaches — `Up` and
+        # `Down` already do, from the spin box itself, so three tab stops for one setting would be
+        # the keyboard reaching it three times rather than once.
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        return button
+
+    def show_concurrency(self, limit: int) -> None:
+        """Show the limit **composition applied**, without echoing it back (`T-146`).
+
+        A naive `setValue` here would emit `valueChanged`, call composition again, and make every
+        change a round trip. Blocked for exactly the assignment.
+
+        **What this follows changed with `UX-013`** (`T-234`). It existed because two controls
+        edited one value (`REQ-013`) and each had to show what the other did; the toolbar's copy is
+        gone, and what remains to follow is composition itself — the number it applies is not
+        always the number this control emitted, because `settings.toml` clamps
+        (`CONCURRENCY_MINIMUM`/`MAXIMUM`) and the applied value is the one in force. A screen
+        showing a number the pool is not running is a screen that will write it back.
         """
         blocked = self._concurrency.blockSignals(True)
         try:

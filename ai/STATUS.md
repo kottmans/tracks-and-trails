@@ -5,7 +5,9 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-12 (later) — **`T-234` and `T-233` are built and In Review.** `UX-013`'s
+**Last updated:** 2026-08-12 (review round) — **`T-234` came back with changes requested and is
+corrected; `T-233` is Complete.** `T-235`, `T-236` and `T-237` are built and In Review beside it;
+the only evidence still owed is a green Windows job. Earlier: **`T-234` and `T-233` were built.** `UX-013`'s
 ruling is carried out and the concurrency control has left the toolbar, which releases `T-220`'s
 blocker and opens `T-235` and `T-236`; `T-233` trues `T-033`'s packaging comments to what its
 mutations found. Earlier the same day, an unattended run built five tasks, refused one, and pushed
@@ -37,6 +39,49 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-12 (review round): T-234's three findings corrected; T-233 Complete
+
+**Codex requested changes on `T-234` and they were all right.**
+
+**`T234-R2` is the one worth recording against myself.** I measured `T-236`, filed it, and shipped
+anyway — reasoning that rebuilding the step buttons would change a screen the maintainer had
+approved from mockups. That is wrong in the way the finding says: `UX-005` row 11 rules on **the
+concurrency control**, not on the toolbar it stood on, so `UX-013` moved the control and carried
+the ruling with it. **Filing a defect is not a substitute for not shipping it.**
+
+**`T-236` is built.** `−`/`+` on the Settings screen, 17x25 and identical, disabled at their ends,
+announcing direction and setting, `ButtonSymbols.NoButtons` on the box. The sheet selector had to
+lose its `QToolBar` scope — on a dialog it matched nothing.
+
+**A vacuous assertion of mine was caught by mutation, and the disclosure is the point.** The
+matched-pair test first checked `width > 10` and claimed in its docstring to catch a selector left
+scoped to `QToolBar`. **That mutant passed**: unstyled, Qt draws its own frame — 21x24 with a
+`#AFB0AE` edge against the styled 17x25 with `#748A7E` — so the button is neither missing nor
+obviously smaller. It now samples the edge pixel against `theme.LIGHT.border` **read from the
+theme**, because `T-141`'s record warns that pinning a size or colour pins a styling choice.
+**Five mutations killed.**
+
+**`T-235` is built.** The accessibility fixture builds the window with `control_bar=True` — it
+never had a toolbar in the tree it sweeps — plus two hand-written tests naming the three verbs and
+checking the run control in **both** states. The file cannot run here, so every symbol was verified
+statically and the accessible names read off a live window: `+ Add URLs`, `Start`/`Stop`,
+`Clear finished`. `qt_toolbar_ext_button` is hidden at the default size, so it will not enter the
+tree unnamed. **The green Windows job is still owed.**
+
+**`T234-R3` swept as a class.** `docs/DEVELOPMENT.md` contradicted its own corrected table one
+paragraph below it; `settings_dialog.py`'s module docstring cited the toolbar spinner **twice**;
+`show_concurrency` and the mirroring test both described a second control. Every file mentioning
+both *concurrency* and *toolbar* was then read: what remains is history, marked as history.
+
+**`T-237`** points the spec at `REL-002` instead of recopying it, and corrects a sentence saying
+*either* removal produces a failure — neither does today, which is the reason the comment exists.
+Spec AST identical.
+
+**Gates:** ruff, format and mypy clean; **2719 passed** unit+UI; **404 passed** integration.
+**One thing declared rather than buried:** in nine `-n auto` unit+UI runs,
+`test_deleting_a_closed_store_neither_waits_nor_is_emitted_through` failed **once**, passes in
+isolation, and sits in a file none of this touches. Not attributed, and not claimed unrelated.
 
 ## 2026-08-12 (later): T-234 and T-233 built; T-228's mechanism found; T-235 and T-236 filed
 

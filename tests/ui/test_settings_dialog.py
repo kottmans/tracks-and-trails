@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
     QComboBox,
     QLabel,
@@ -25,10 +26,12 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSpinBox,
+    QToolButton,
 )
 
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core import settings as core_settings
+from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.preset_manager import (
     DEFAULT_MARK,
     PRESET_LIST_NAME,
@@ -42,6 +45,8 @@ from tracks_and_trails.ui.settings_dialog import (
     OUTPUT_TEMPLATE_NAME,
     OUTPUT_TEMPLATE_NOTE_NAME,
     SETTINGS_STILL_TO_COME,
+    STEP_DOWN_LABEL,
+    STEP_UP_LABEL,
     SettingsDialog,
 )
 
@@ -238,14 +243,18 @@ def test_picking_a_theme_reports_it_once(
     assert control(screen, QRadioButton, "themeDark").isChecked()
 
 
-def test_the_concurrency_control_mirrors_the_toolbars_without_echoing_it(
+def test_the_concurrency_control_shows_what_was_applied_without_echoing_it(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
-    """**Two controls, one value** (`REQ-013`, `T-146`'s recorded choice).
+    """**Showing must not report** (`REQ-013`). A `setValue` that emitted `valueChanged` would call
+    composition, which would call back here, which is a loop rather than a sync.
 
-    The screen's spinner and the toolbar's edit the same setting, so each has to be able to show
-    what the other did — and showing must not report. A `setValue` that emitted `valueChanged`
-    would call composition, which would call back here, which is a loop rather than a sync.
+    *(This was `..._mirrors_the_toolbars_...`, and it was about `T-146`'s recorded choice to keep
+    **two controls, one value**. `UX-013` removed the toolbar's copy and `T-234` carried it out, so
+    there is no second control to mirror. The property survives the removal with a different
+    reason: what `show_concurrency` follows now is **composition**, whose applied value is not
+    always the number this control emitted — `settings.toml` clamps — and a screen that reported
+    the applied value back would turn one clamp into a loop.)*
     """
     reported: list[int] = []
     screen, _ = screens(concurrency=3, concurrency_sink=reported.append)
@@ -264,9 +273,131 @@ def test_the_concurrency_control_mirrors_the_toolbars_without_echoing_it(
     screen.show_concurrency(2)
     assert spinner.value() == 2
     assert reported == [5], (
-        f"following the toolbar reported back to composition: {reported}. Two controls that echo "
-        "each other turn one user change into a round trip"
+        f"showing the applied limit reported it back to composition: {reported}. A control that "
+        "echoes what it is told turns one user change into a round trip"
     )
+
+
+def test_the_concurrency_control_steps_with_labelled_buttons(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """`UX-005` row 11 (`T-141`), rebuilt on this screen by `T-236`.
+
+    The ruling is about **the concurrency control**, not about the toolbar it used to sit on, so
+    `UX-013` moving the control moved this with it. `T-234` did not, and left the only control for
+    the limit at 57x22 with the native `UpDownArrows` — materially the 58x23 control whose wedges
+    `T-141` measured as unreadable at the real size (`T234-R2`).
+
+    **`NoButtons` is asserted as well as the labels.** A control offering both would offer two ways
+    to step with one of them the unreadable one this replaced, and that is the mutation which
+    otherwise survives.
+    """
+    screen, _ = screens(concurrency=3)
+    box = control(screen, QSpinBox, "settingsConcurrencyChoice")
+    fewer = control(screen, QToolButton, "settingsConcurrencyStepDown")
+    more = control(screen, QToolButton, "settingsConcurrencyStepUp")
+
+    assert (fewer.text(), more.text()) == (STEP_DOWN_LABEL, STEP_UP_LABEL)
+    assert box.buttonSymbols() is QAbstractSpinBox.ButtonSymbols.NoButtons, (
+        "the spin box still draws its own arrows, so the control offers two ways to step and one "
+        "of them is the unreadable one this replaced"
+    )
+
+    started = box.value()
+    more.click()
+    assert box.value() == started + 1, "the + button does not step the value"
+    fewer.click()
+    assert box.value() == started, "the minus button does not step the value"
+
+    # **Each announces the direction *and* the setting** (`NFR-005`): "Plus" alone says nothing
+    # about what it increases, and the visible label is one character.
+    for button in (fewer, more):
+        announced = button.accessibleName()
+        assert "concurrent downloads" in announced.lower(), (
+            f"a step button announces {announced!r}, which does not say what it changes"
+        )
+
+
+def test_a_step_button_is_disabled_at_its_end_of_the_range(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """`UX-005` §5: a control must not offer a choice nothing acts on.
+
+    Both ends, because a test at one would pass with the other button permanently enabled.
+    """
+    screen, _ = screens(concurrency=3)
+    box = control(screen, QSpinBox, "settingsConcurrencyChoice")
+    fewer = control(screen, QToolButton, "settingsConcurrencyStepDown")
+    more = control(screen, QToolButton, "settingsConcurrencyStepUp")
+
+    box.setValue(core_settings.CONCURRENCY_MINIMUM)
+    assert not fewer.isEnabled(), "the minus button offers a step below the minimum"
+    assert more.isEnabled(), "the + button is disabled at the minimum, where it can still step"
+
+    box.setValue(core_settings.CONCURRENCY_MAXIMUM)
+    assert not more.isEnabled(), "the + button offers a step above the maximum"
+    assert fewer.isEnabled(), "the minus button is disabled at the maximum, where it can still step"
+
+
+def test_the_step_buttons_are_a_matched_pair(
+    qapp: QApplication, screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]]
+) -> None:
+    """`T-141`, corrected: the minus looked boxed and the plus did not.
+
+    Left bare, both were transparent text — and the sheet's global `*:focus` rule then drew an
+    accent border on whichever one had focus, so the pair was asymmetric depending on what the
+    user had last clicked. **Two controls doing the same thing in opposite directions must not
+    differ in whether they look like controls at all.**
+
+    Asserted as *sameness*, which is the property, rather than as a particular size or colour —
+    pinning either would pin a styling choice instead.
+
+    **The selector is the thing most likely to break here** (`T-236`). The sheet rule said
+    `QToolBar QToolButton[stepButton="true"]` while the control was on a toolbar; on this screen
+    that matches nothing, and the failure is silent — the buttons simply go back to looking like
+    text, which is the defect this test exists for.
+    """
+    was_sheet, was_palette = qapp.styleSheet(), qapp.palette()
+    try:
+        theme.apply(qapp, theme.LIGHT)
+        screen, _ = screens(concurrency=3)
+        screen.resize(700, 700)
+        screen.show()
+        qapp.processEvents()
+        fewer = control(screen, QToolButton, "settingsConcurrencyStepDown")
+        more = control(screen, QToolButton, "settingsConcurrencyStepUp")
+
+        assert fewer.size() == more.size(), (
+            f"the step buttons are {fewer.size()} and {more.size()}; a pair that does the same "
+            "thing in two directions must be one shape"
+        )
+
+        # **The sheet is what paints them, and this is how that is checked.**
+        #
+        # *A size assertion does not do it, and the first version of this test used one.* Measured
+        # against the `QToolBar`-scoped selector: styled the button is 17x25 with a `#748A7E` edge;
+        # unstyled it is 21x24 with a `#AFB0AE` one — **Qt falls back to the platform's own tool
+        # button frame**, so it is neither invisible nor obviously smaller, and `width > 10` passed
+        # against the mutation this test names. That mutation is the whole point of the test.
+        #
+        # **The colour is read from the theme, not written down here** — `T-141`'s own record warns
+        # that pinning a size or a colour pins a styling choice. What is asserted is that the edge
+        # is *the theme's border*, which only the sheet can make it.
+        for button in (fewer, more):
+            image = button.grab().toImage()
+            edge = image.pixelColor(0, image.height() // 2)
+            assert edge.name().upper() == theme.LIGHT.border.upper(), (
+                f"the {button.text()!r} button's edge is {edge.name()}, not the theme's border "
+                f"{theme.LIGHT.border}. The sheet is not reaching it — most likely its selector "
+                "still scopes these buttons to a QToolBar, which is where they used to live"
+            )
+        for button in (fewer, more):
+            assert button.focusPolicy() is Qt.FocusPolicy.NoFocus, (
+                "a step button takes focus, so one setting is three tab stops"
+            )
+    finally:
+        qapp.setStyleSheet(was_sheet)
+        qapp.setPalette(was_palette)
 
 
 # --- T-197: the cookie source -----------------------------------------------------------------

@@ -361,6 +361,41 @@ QTabBar::tab:hover {{
    The alternative was to ship arrow images, which `NFR-004` and `T-033` would then have to carry
    through the frozen artifact for the sake of a triangle. Letting the platform draw its own
    control costs this one widget a themed border and is the smaller commitment by far. */
+QToolButton[stepButton="true"] {{
+    /* **A pair has to look like a pair** (`T-141`, corrected; rebuilt by `T-236`). Left bare,
+       these were transparent text — and the global `*:focus` rule then drew an accent border on
+       whichever one had focus, so the minus appeared boxed and the plus did not. Two controls
+       doing the same kind of thing in opposite directions must not differ in whether they look
+       like controls at all.
+       Given a border of their own, focus deepens an edge that is already there instead of
+       inventing one on one of them.
+       **Not scoped to `QToolBar` any more** (`T-236`). It was, because the control was on one;
+       `UX-013` moved it into the Settings screen, and a selector that still said `QToolBar` would
+       match nothing and fail exactly the way this comment's first paragraph describes — silently,
+       with the buttons back to looking like text. Scoped by the role property alone, which is
+       what `theme.py` styles by. */
+    background-color: {theme.surface};
+    border: 1px solid {theme.border};
+    border-radius: 4px;
+    min-width: 15px;
+    max-width: 15px;
+    padding: 1px 0 2px 0;
+    font-weight: 600;
+}}
+QToolButton[stepButton="true"]:hover {{
+    background-color: {theme.sunken};
+    border-color: {theme.primary};
+}}
+QToolButton[stepButton="true"]:pressed {{
+    background-color: {theme.rule};
+}}
+QToolButton[stepButton="true"]:disabled {{
+    /* At the range's end. Quieter, still a shape — a control that vanished at the limit would
+       read as the application breaking rather than the limit being reached. */
+    background-color: {theme.window};
+    color: {theme.muted};
+    border-color: {theme.rule};
+}}
 QToolBar QToolButton {{
     /* **The mockup's `.btn`, and they are buttons** (`T-132`, corrected twice).
        First they stamped a flat `window` fill over the toolbar's own vertical gradient, so the
