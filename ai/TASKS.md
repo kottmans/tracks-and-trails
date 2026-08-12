@@ -120,9 +120,11 @@ this one returned four verdicts before approving.*
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
-**Status:** **In Review — third correction pass 2026-08-11, on the maintainer's §10
-authorization.** The two High findings were resolved at `a152017`; `T195-R4` and `T195-R5` are
-corrected here.
+**Status:** **In Review — changes requested in the third focused re-review 2026-08-11.**
+`T195-R5`'s production correction is resolved at `6326715`; `T195-R4` still lacks three required
+boundary proofs, and the correction tests add an optional-ffmpeg dependency (`T195-R6`). The
+maintainer's explicit offer to add the cross-surface proof authorizes one more focused correction,
+limited to these recorded gaps.
 
 **`T195-R5` — the catalogue was a startup snapshot.** `preset_names` closed over the `ffmpeg`
 report composition was built with, while `choose_ffmpeg_location` updates `in_force.report`. So a
@@ -155,17 +157,19 @@ removing the screen's wiring entirely, which the previous round's tests could no
   and composition validates before the value becomes interactive.
 - **`T195-R3` — Medium, Resolved for the submitted startup case at `a152017`.** With ffmpeg absent
   at startup, Settings and Add now filter through `needs_ffmpeg` and offer the same catalogue.
-- **`T195-R4` — Medium, Open.** The three central regressions do not traverse or distinguish the
-  changed production routes. The retarget half now distinguishes a custom template, but the two
-  settings tests call `window._on_*` directly rather than opening the composed Settings screen;
-  removing the screen callback/validator wiring still leaves them green. The stored-template test
-  also does not assert the ARC-008 report its name and docstring claim. Exercise the real controls,
-  the cross-surface default, a staged row/written template effect, and the report boundary.
-- **`T195-R5` — Medium, Open.** The correction's Settings catalogue closes over the startup
-  `ffmpeg.available`, while the add dialog follows the window's live value. Starting without
-  ffmpeg and accepting a usable location makes Add offer MP3/original/embedded-subtitle presets,
-  but Settings remains on the one no-ffmpeg preset even after it is reopened. Keep the catalogue
-  live when an accepted ffmpeg choice changes capability, including the already-open screen.
+- **`T195-R4` — Medium, Open.** The real Settings controls, distinguishing retarget, and staged-row
+  inheritance are now covered. Three explicitly requested boundaries remain: the stored-template
+  test asserts a log record rather than the user-visible ARC-008 dialog; the one-writer test still
+  applies the core setter instead of crossing preset-manager ↔ Settings; and no test follows the
+  chosen default template to the real written path the acceptance criterion names.
+- **`T195-R5` — Medium, Resolved at `6326715`.** Settings reads `in_force.report` and an already-open
+  screen is re-offered the catalogue after an accepted ffmpeg change. The focused host test proves
+  both live and reopen routes. The adjacent preset-manager warning still captures startup state;
+  that pre-existing Medium is filed separately as `T-226` rather than reopening this task.
+- **`T195-R6` — Medium, Open.** The new screen tests select MP3 without arranging ffmpeg, and the
+  R5 regression skips when the host has none. With an empty `PATH`, the focused correction set is
+  **2 failed, 4 passed, 1 skipped**. Use the existing cross-platform `an_executable_ffmpeg` fixture
+  so the required evidence neither fails nor disappears with an optional system dependency.
 
 **The entry's premise did not hold, and the maintainer ruled on the fork.** This entry says the
 task supplies *"the application default that a preset with no opinion falls back to"* — and no
@@ -271,6 +275,42 @@ becomes available live, Settings and Add disagree (`T195-R5`). `T195-R4` remains
 committed settings regressions still bypass the composed screen and do not prove the staged/written
 effects or ARC-008 report they claim. The ordinary initial-plus-focused review budget is exhausted;
 the task is blocked pending the maintainer's choice under `AGENTS.md` §10.
+
+**Third focused re-review 2026-08-11.** `T195-R5` is resolved in production: both an open Settings
+screen and one reopened after a live ffmpeg choice agree with Add. `T195-R4` is only partly
+resolved. Its control wiring and staged-row halves are now real, but a log is not the ARC-008
+dialog, the preset-manager ↔ Settings crossing explicitly required by the criterion is still
+absent, and the default template still is not followed to a real written path. `T195-R6` records
+the correction suite's dependency on a system ffmpeg. The maintainer's explicit offer to add the
+cross-surface proof is the authorization for one more focused correction, limited to these gaps.
+
+**Fourth pass 2026-08-11 — `T195-R4` closed, `T195-R6` corrected.** The reviewer read my offer to
+add the cross-surface proof as authorization, which is fair: I offered it.
+
+- **The `ARC-008` proof is the dialog now, not a log line.** I had argued the modal needed a nested
+  event loop; it does not — `report_settings_problem` names its dialog and the corrupt-settings
+  test has been finding it with `findChild` since `T-102`. A log line is not what `ARC-008`
+  promises the user.
+- **The preset manager ↔ Settings crossing is built, in both directions.** *Set as default* in the
+  manager, then the settings screen opened on what it saved; and the screen's combo, then the
+  manager's marked row. The reverse direction is the half a one-way test misses — a screen keeping
+  its own key would satisfy the forward one.
+- **The output template is followed to a durable request and a rendered path.** It queues a row
+  through the add dialog, reads the request back out of the database, and asks the manager where it
+  would write. **A file on disk needs a real download**, which is `test_end_to_end.py`'s job, and
+  the test says so rather than implying more than it proves.
+- **`T195-R6` — the evidence depended on the host's ffmpeg.** `which("ffmpeg")` is gone for
+  `an_executable_ffmpeg`, and two further tests needed it that the finding did not name: they
+  select MP3, which `T195-R3`'s own filter removes when ffmpeg is absent, so `findData` answered
+  `-1` and the selection silently did nothing. They supply an ffmpeg and assert the entry exists
+  before selecting it. **The whole composition suite now passes with an empty `PATH`.**
+
+**Three mutations**: the stored template cleared with no dialog; `set_default_preset` no longer
+writing, which fails both directions of the crossing; and `to_request` ignoring the supplied
+default, which fails the written-path proof.
+
+**`T-226` is the reviewer's follow-up** for the stale preset-manager warning at `app.py`, filed as
+non-blocking and not touched here.
 
 **Owner:** Implementer
 **Priority:** Medium — the default preset is the one a user meets on every paste, and today it
@@ -1436,6 +1476,38 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
+
+### T-226 — Preset Manager keeps the startup ffmpeg warning after a live change
+
+**Status:** Proposed — filed 2026-08-11 from the focused `T195-R5` sibling audit; verified in the
+same composition closure, outside that finding's Settings/Add catalogue boundary.
+**Owner:** Implementer
+**Priority:** Medium — the trigger is narrow and restart is a workaround, but the screen states a
+capability answer that is no longer true
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** `T-199`
+**Relevant context:** `REQ-024`, `app.py` (`manage_presets`, `choose_ffmpeg_location`),
+`ui/preset_manager.py` (`NO_FFMPEG_REASON`), `T195-R5`
+**Affected surfaces:** `app.py`, composition tests
+**Risk:** Low — one live value passed to one modal screen
+
+#### Scope
+
+`choose_ffmpeg_location` replaces `in_force.report` when Settings accepts a location, and the main
+window plus add/settings catalogues now follow it. `manage_presets` still constructs
+`PresetManager` with the startup `ffmpeg.available`. Starting without ffmpeg, accepting one, and
+then opening Preset Manager therefore still says its ffmpeg-dependent presets will fail until
+ffmpeg is installed.
+
+#### Acceptance criteria
+
+- Preset Manager reads the ffmpeg availability currently in force when it opens
+- Starting unavailable, accepting a usable location, and then opening the manager removes the
+  stale `NO_FFMPEG_REASON`; the inverse transition shows it
+- The regression constructs an executable through the repository's cross-platform helper rather
+  than depending on a machine-installed ffmpeg
+
+---
 
 ### T-225 — Two UI test files pass apart and fail together
 

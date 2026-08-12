@@ -15,11 +15,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QLabel,
     QLineEdit,
+    QListWidget,
     QPushButton,
     QRadioButton,
     QSpinBox,
@@ -27,6 +29,12 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core import settings as core_settings
+from tracks_and_trails.ui.preset_manager import (
+    DEFAULT_MARK,
+    PRESET_LIST_NAME,
+    SET_DEFAULT_NAME,
+    PresetManager,
+)
 from tracks_and_trails.ui.settings_dialog import (
     DEFAULT_DIRECTORY_NOTE,
     DEFAULT_PRESET_NAME,
@@ -403,35 +411,101 @@ def test_the_screen_offers_the_catalogue_and_starts_on_the_stored_default(
     assert asked["default_preset"] == "Best video available"
 
 
-def test_the_default_preset_has_one_writer(
+def test_the_default_set_in_the_preset_manager_is_what_the_settings_screen_shows(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
-    tmp_path: Path,
+    qapp: QApplication,
 ) -> None:
-    """**The criterion this task exists to not fail** (`T-195`, `P3EXIT-R1`).
+    """**The one-writer criterion, crossed at the two surfaces** (`T-195`, `T195-R4`).
 
-    Two controls writing one key is how two records of one value came to disagree. So the screen
-    does not store a default of its own: what it hands composition goes through
-    `settings.set_default_preset`, which is the same function the preset manager's *Set as
-    default* calls.
+    Two controls writing one key is how `P3EXIT-R1`'s two records came to disagree, and the
+    criterion names this crossing explicitly. Earlier versions of this test called
+    `set_default_preset` themselves and asserted the store — which proves the store and says
+    nothing about whether the two screens are wired to it.
 
-    Asserted by writing through the screen's callback and reading the value back the way the
-    **preset manager** reads it — one path, proved from both ends, rather than by inspecting the
-    screen's own state.
+    So: press *Set as default* in the **preset manager**, take the settings it saved, and open the
+    **settings screen** on them. Both surfaces go through `settings.set_default_preset`; neither
+    keeps a copy, and that is what makes this pass.
+    """
+    saved: list[core_settings.Settings] = []
+
+    def capture(settings: core_settings.Settings) -> str | None:
+        """Composition wires `core.settings.save` here; a test keeps what it was handed."""
+        saved.append(settings)
+        return None
+
+    manager = PresetManager(core_settings.Settings(), save=capture, parent=None)
+    try:
+        chosen = preset_registry.AUDIO_MP3.name
+        rows = manager.findChild(QListWidget, PRESET_LIST_NAME)
+        assert rows is not None, "the manager has no preset list"
+        for index in range(rows.count()):
+            if rows.item(index).data(Qt.ItemDataRole.UserRole) == chosen:
+                rows.setCurrentRow(index)
+                break
+        else:  # pragma: no cover - the catalogue always contains it
+            raise AssertionError(f"{chosen} is not in the manager's list")
+
+        button = manager.findChild(QPushButton, SET_DEFAULT_NAME)
+        assert button is not None, "the manager offers no Set as default"
+        button.click()
+    finally:
+        manager.close()
+
+    assert saved, "the preset manager saved nothing"
+    written = saved[-1]
+
+    screen, _ = screens(
+        preset_names=tuple(preset.name for preset in preset_registry.BUILT_IN_PRESETS),
+        default_preset=core_settings.default_preset_of(written).name,
+    )
+    assert control(screen, QComboBox, DEFAULT_PRESET_NAME).currentData() == chosen, (
+        "the settings screen opened on a different default than the preset manager just set, so "
+        "the two surfaces keep separate records of one value"
+    )
+
+
+def test_the_default_set_on_the_settings_screen_is_what_the_preset_manager_marks(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    qapp: QApplication,
+) -> None:
+    """The same crossing in the other direction, which is the half a one-way test misses.
+
+    A settings screen that wrote its own key would satisfy the forward direction — the manager's
+    value would simply be ignored — and only reading the manager back catches it.
     """
     stored = core_settings.Settings()
-    screen, _ = screens(
+    screen, asked = screens(
         preset_names=tuple(preset.name for preset in preset_registry.BUILT_IN_PRESETS),
         default_preset=core_settings.default_preset_of(stored).name,
     )
     choice = control(screen, QComboBox, DEFAULT_PRESET_NAME)
     chosen = preset_registry.AUDIO_MP3.name
 
-    written = core_settings.set_default_preset(stored, chosen)
+    choice.setCurrentIndex(choice.findData(chosen))
+    assert asked["default_preset"] == chosen, "the screen's control asked nothing of composition"
 
-    assert core_settings.default_preset_of(written).name == chosen
-    # And the screen reflects it without a second store of its own.
-    screen.show_default_preset(chosen)
-    assert choice.currentData() == chosen
+    # What composition does with that request, and what the manager then shows.
+    manager = PresetManager(
+        core_settings.set_default_preset(stored, asked["default_preset"]),
+        save=lambda settings: None,
+        parent=None,
+    )
+    try:
+        rows = manager.findChild(QListWidget, PRESET_LIST_NAME)
+        assert rows is not None
+        # Asserted on each row's **name**, not its label: the label also carries a built-in mark,
+        # and how it is composed is `T-111`'s subject rather than this test's. `P-7` guarantees
+        # exactly one row is marked, so the list is compared whole.
+        marked = [
+            rows.item(index).data(Qt.ItemDataRole.UserRole)
+            for index in range(rows.count())
+            if DEFAULT_MARK in rows.item(index).text()
+        ]
+        assert marked == [chosen], (
+            f"the preset manager marks {marked} as default after the settings screen chose {chosen}"
+        )
+    finally:
+        manager.close()
 
 
 def test_an_unusable_template_is_refused_at_edit_time_and_never_written(

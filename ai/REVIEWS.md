@@ -14932,3 +14932,42 @@ explicit authorization under `AGENTS.md` §10.
 **Do not push `a152017`.** The correction stack remains held. The Reviewer changed only the
 append-only review record and current task disposition; no reviewed source, test, status snapshot,
 commit, or remote state was changed.
+
+## 2026-08-11 — T-195 third focused re-review
+
+**Review boundary:** `a152017..6326715`
+
+**Verdict:** **Changes requested.** The maintainer-authorized third pass resolves the live Settings/Add
+catalogue defect and now exercises the Settings controls themselves. `T195-R4` remains incomplete
+at three boundaries already named by the task and prior review, and the correction tests depend on
+an optional system ffmpeg. The maintainer explicitly offered to add the cross-surface proof if the
+review required it; this review does, and treats that offer as authorization for one more focused
+correction limited to the recorded gaps.
+
+### Findings
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T195-R4** | **Medium** | **Yes — three required boundary proofs remain** | Opening Settings and operating its combo/line edit resolves the screen-wiring half, the retarget test distinguishes its custom template, and the default is now read from a staged row. The stored-template test, however, asserts the application log; deleting `window.report_settings_problem(settings_problem)` still leaves it green. The existing `T199-R3` test demonstrates that the non-blocking `settingsProblemDialog` can be found without entering a nested event loop, and states the governing rule: a log line is not an ARC-008 report. The task's explicit preset-manager ↔ Settings one-writer crossing is still replaced by a manual `set_default_preset` call, and the output-template integration still stops at `dialog._default_output_template` rather than the required real written path. These were named in the preceding R4 result and are not optional additions. |
+| **T195-R5** | **Medium** | **Resolved** | The Settings catalogue now reads `in_force.report.available`; `show_ffmpeg_location` re-offers it to an already-open screen. The normal-host focused test exercises both the open and reopen routes and agrees with Add. A direct sibling still passes startup `ffmpeg.available` into Preset Manager and leaves its warning stale after a live change; because that behavior predates this correction and sits outside the Settings/Add catalogue finding, it is a non-blocking follow-up in `T-226`. |
+| **T195-R6** | **Medium** | **Yes — correction evidence fails or skips on a supported no-ffmpeg host** | Two screen tests select `Audio only (MP3)` from a composition that does not arrange ffmpeg, while the R5 regression calls `shutil.which("ffmpeg")` and skips if absent. Running the focused correction set with an empty `PATH` produced **2 failed, 4 passed, 1 skipped**: both MP3 selections resolved to index `-1`, and the only R5 evidence disappeared. The suite already provides the cross-platform `an_executable_ffmpeg` helper; use it and the explicit override seam so an optional installation is neither an undeclared prerequisite nor a skip. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree before reviewer records | **clean; `main` ahead of `origin/main` by three commits** |
+| `git diff --check a152017..6326715` | **pass** |
+| `ruff check .` / `ruff format --check .` | **pass; 166 files formatted** |
+| `mypy src` | **pass; 52 files** |
+| bare `mypy` / bare `mypy --platform win32` | **pass; 128 files each** |
+| Focused T-195 composition selection on the normal host | **9 passed, 48 deselected in 1.69 s** |
+| Settings/MainWindow UI selection | **79 passed in 0.93 s** |
+| Focused correction selection with an empty `PATH` | **2 failed, 4 passed, 1 skipped, 50 deselected in 2.35 s** |
+| Full suites | **not rerun by the Reviewer; submitted 2709 passed / 18 skipped and 401 integration passed are not disputed** |
+
+### Push disposition
+
+**Do not push `6326715`.** The three-commit T-195 stack remains held. The Reviewer changed only the
+append-only review record and current task/follow-up dispositions; no reviewed source, test,
+status snapshot, commit, or remote state was changed.

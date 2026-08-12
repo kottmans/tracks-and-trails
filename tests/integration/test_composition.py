@@ -35,7 +35,6 @@ import time
 from collections.abc import Callable, Iterator
 from io import StringIO
 from pathlib import Path
-from shutil import which
 from typing import Any, Final
 
 import pytest
@@ -2463,6 +2462,7 @@ def _settings_screen(composition: application.Composition) -> SettingsDialog:
 
 def test_choosing_a_template_on_the_screen_reaches_the_file_and_the_next_paste(
     composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
     tmp_path: Path,
 ) -> None:
     """**`REQ-023`, `T-195`, corrected twice — at `T195-R4` and again after it.**
@@ -2490,13 +2490,48 @@ def test_choosing_a_template_on_the_screen_reaches_the_file_and_the_next_paste(
     assert core_settings.load(settings_file).settings.output_template == chosen, (
         "typing into the screen's field never reached the file"
     )
+    # **The durable request a worker would be given, and the path it renders to** (`T195-R4`).
+    # Reading `dialog._default_output_template` proved the dialog was *built* with the value and
+    # stopped there. This queues a row through the dialog and reads the request back out of the
+    # database, then asks the manager where that request would write — which exercises the render
+    # and the containment rule rather than the stored string.
+    #
+    # A file on disk would need a real download; `tests/integration/test_end_to_end.py` is where
+    # that lives, and it is deliberately not this suite's job. What is proved here is that the
+    # template reaches a persisted request and renders to a path under the chosen folder.
     dialog = composition.window.open_add_dialog()
     try:
-        assert dialog._default_output_template == chosen, (
-            "the next add dialog was built with the old template, so the setting is not live"
-        )
+        type_urls(dialog, "https://composed.invalid/named")
+        dialog.resolve()
+        assert spin(
+            lambda: bool(dialog.rows) and all(row.committable for row in dialog.rows), timeout=60
+        ), "the pasted URL never resolved"
+        dialog.add_to_queue()
+        assert spin(lambda: bool(dialog.queued_job_ids), timeout=30), "the row never persisted"
+        job_id = dialog.queued_job_ids[0]
     finally:
         dialog.close()
+
+    queued = composition.store.get(job_id)
+    assert queued is not None
+    assert queued.request.output_template == chosen, (
+        "the template chosen on the settings screen never reached the queued request"
+    )
+
+    previewed = composition.manager.preview_output_path(
+        queued.request,
+        MediaInfo(
+            url=queued.request.url,
+            title="A download",
+            uploader="An uploader",
+            is_playlist=False,
+        ),
+    )
+    assert previewed.refusal is None, previewed.refusal
+    assert previewed.path.startswith(str(tmp_path)), previewed.path
+    assert "An uploader" in previewed.path, (
+        f"the rendered path does not use the chosen template: {previewed.path!r}"
+    )
 
 
 def test_a_refused_template_typed_into_the_screen_is_not_stored(
@@ -2537,15 +2572,26 @@ def test_two_settings_edits_in_a_row_do_not_erase_one_another(
     over the first. Driven through the screen's two controls, in one sitting, because that is how a
     user would meet it.
     """
+    # **This test picks MP3, so it has to supply an ffmpeg** (`T195-R6`). The settings screen only
+    # offers presets this installation can perform — `T195-R3`'s own fix — so on a host without
+    # ffmpeg the combo has no MP3 entry, `findData` answers `-1`, and `setCurrentIndex(-1)` selects
+    # nothing. The test then failed for a reason that had nothing to do with what it asserts.
+    ffmpeg_here = an_executable_ffmpeg(tmp_path)
     settings_file = tmp_path / "settings.toml"
-    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    composition = composed(
+        settings_file=settings_file,
+        ffmpeg_override=ffmpeg_here,
+        entry_point=child_probing_then_waiting,
+    )
 
     screen = _settings_screen(composition)
     try:
         combo = screen.findChild(QComboBox, DEFAULT_PRESET_NAME)
         field = screen.findChild(QLineEdit, OUTPUT_TEMPLATE_NAME)
         assert combo is not None and field is not None
-        combo.setCurrentIndex(combo.findData(presets.AUDIO_MP3.name))
+        found = combo.findData(presets.AUDIO_MP3.name)
+        assert found >= 0, "the screen does not offer the preset this test selects"
+        combo.setCurrentIndex(found)
         field.setText("%(uploader)s/%(title)s.%(ext)s")
     finally:
         screen.close()
@@ -2567,14 +2613,25 @@ def test_the_default_chosen_on_the_screen_is_what_a_staged_row_inherits(
     Asserted against a **staged row**, not against the dialog's stored default — the entry asks for
     the row, and a row is what carries the choice into a request.
     """
+    # **This test picks MP3, so it has to supply an ffmpeg** (`T195-R6`). The settings screen only
+    # offers presets this installation can perform — `T195-R3`'s own fix — so on a host without
+    # ffmpeg the combo has no MP3 entry, `findData` answers `-1`, and `setCurrentIndex(-1)` selects
+    # nothing. The test then failed for a reason that had nothing to do with what it asserts.
+    ffmpeg_here = an_executable_ffmpeg(tmp_path)
     settings_file = tmp_path / "settings.toml"
-    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    composition = composed(
+        settings_file=settings_file,
+        ffmpeg_override=ffmpeg_here,
+        entry_point=child_probing_then_waiting,
+    )
 
     screen = _settings_screen(composition)
     try:
         combo = screen.findChild(QComboBox, DEFAULT_PRESET_NAME)
         assert combo is not None
-        combo.setCurrentIndex(combo.findData(presets.AUDIO_MP3.name))
+        found = combo.findData(presets.AUDIO_MP3.name)
+        assert found >= 0, "the screen does not offer the preset this test selects"
+        combo.setCurrentIndex(found)
     finally:
         screen.close()
 
@@ -2614,7 +2671,6 @@ def test_a_template_the_editor_would_refuse_is_refused_by_the_screen_too(
 
 def test_an_unusable_stored_template_is_reported_and_the_application_still_starts(
     composed: Callable[..., application.Composition],
-    caplog: pytest.LogCaptureFixture,
     tmp_path: Path,
 ) -> None:
     """**`ARC-008` and `T195-R2`, from disk rather than from the screen.**
@@ -2627,20 +2683,21 @@ def test_an_unusable_stored_template_is_reported_and_the_application_still_start
     settings_file = tmp_path / "settings.toml"
     settings_file.write_text('output_template = "%(title"\n', encoding="utf-8")
 
-    # **The report, which this test claimed and did not check** (`T195-R4`). `ARC-008`'s rule is
-    # that a discarded setting is *reported*, not silently corrected — asserting only the fallback
+    # **The report the user actually sees** (`T195-R4`, twice). `ARC-008`'s rule is that a
+    # discarded setting is *reported*, not silently corrected — so asserting the fallback alone
     # would pass an implementation that reverted in silence, which is the whole defect.
     #
-    # Read from the log rather than from the modal: composition logs the same reason it shows,
-    # deliberately — *"the status line is gone in thirty seconds and the reason is what a bug
-    # report needs"* — and a test that drove the message box would need a nested event loop.
-    with caplog.at_level(logging.WARNING, logger="tracksandtrails.app"):
-        composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    # The first correction read the log instead, on the belief that driving the message box needed
+    # a nested event loop. It does not: `report_settings_problem` names its dialog, and the
+    # corrupt-settings test above has been finding it with `findChild` since `T-102`. A log line is
+    # not what `ARC-008` promises.
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
 
-    said = "\n".join(record.getMessage() for record in caplog.records)
-    assert "output_template" in said, (
-        f"the refused stored template was discarded without a word:\n{said}"
-    )
+    shown = composition.window.findChild(QMessageBox, "settingsProblemDialog")
+    assert shown is not None, "the refused stored template was discarded without telling anyone"
+    said = f"{shown.text()}\n{shown.informativeText()}\n{shown.detailedText()}"
+    assert "output_template" in said, said
+    shown.close()
 
     dialog = composition.window.open_add_dialog()
     try:
@@ -2706,9 +2763,11 @@ def test_installing_ffmpeg_widens_the_settings_catalogue_without_a_restart(
     Two halves, and the second is the one a naive fix misses: the catalogue has to be right for a
     screen opened *afterwards*, and for one that is **already open** when the location is accepted.
     """
-    real_ffmpeg = which("ffmpeg")
-    if real_ffmpeg is None:
-        pytest.skip("this machine has no ffmpeg to point at, so there is nothing to widen to")
+    # **A file this test makes, not the host's ffmpeg** (`T195-R6`). `which("ffmpeg")` made the
+    # evidence depend on the machine: with an empty `PATH` the focused set went to two failures and
+    # a skip. `an_executable_ffmpeg` is what `T199-R4` wrote for exactly this, and it is executable
+    # by the platform's own rule rather than by a mode bit.
+    real_ffmpeg = an_executable_ffmpeg(tmp_path, name="ffmpeg-live")
 
     composition = composed(
         settings_file=tmp_path / "settings.toml",
@@ -2725,7 +2784,7 @@ def test_installing_ffmpeg_widens_the_settings_catalogue_without_a_restart(
 
         accept = composition.window._on_ffmpeg_location_chosen
         assert accept is not None
-        accept(Path(real_ffmpeg))
+        accept(real_ffmpeg)
 
         assert narrow.count() > before, (
             "the open Settings screen still offers the catalogue it was built with, so a user who "
