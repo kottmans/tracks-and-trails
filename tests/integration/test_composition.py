@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QSpinBox,
 )
 
 from tracks_and_trails import app as application
@@ -241,6 +242,30 @@ def shown_status(composition: application.Composition, job_id: str) -> JobStatus
         return None
     job = view.model.job_for(job_id)
     return job.status if job is not None else None
+
+
+def concurrency_control(composition: application.Composition) -> QSpinBox:
+    """The spinner a person reaches to set the limit, opened the way they open it.
+
+    **This used to be `composition.window.concurrency_control`** — a toolbar spinner the test could
+    touch without opening anything. `UX-013` moved the limit into the Settings screen (`T-234`),
+    so the control now exists only while that screen is up, and reaching it means going through
+    `open_settings` exactly as the menu item does.
+
+    That keeps `T-078`'s criterion intact rather than working around it: **driven through the
+    widget, never the constructor.** A test that switched to calling composition's handler
+    directly when the toolbar spinner went away would satisfy every assertion below and stop
+    testing the thing `P2PLAN-R3` reported.
+    """
+    screen = composition.window.open_settings()
+    assert screen is not None, (
+        "the composed window would not open its Settings screen, so there is no concurrency "
+        "control to drive — composition did not wire the settings writers"
+    )
+    QApplication.processEvents()
+    box = screen.findChild(QSpinBox, "settingsConcurrencyChoice")
+    assert box is not None, "the Settings screen has no concurrency spinner"
+    return box
 
 
 def test_a_queued_playlist_entry_left_on_disk_is_probed_after_restart(
@@ -532,8 +557,9 @@ def test_a_setting_that_could_not_be_saved_says_so(
     got a setting that visibly took effect and was gone at the next launch. *"A chosen directory
     survives a restart"* is the criterion, and a silent write failure is exactly where it does not.
 
-    **Driven through a real control on the composed application**: the toolbar spinner, whose
-    handler is composition's own `choose_concurrency`. All three callbacks route through the same
+    **Driven through a real control on the composed application**: the Settings screen's spinner,
+    whose handler is composition's own `choose_concurrency`. *(The toolbar's, until `UX-013` moved
+    the limit into that screen.)* All three callbacks route through the same
     `remember` helper, so this exercises the shared mechanism rather than one caller's copy of it —
     and concurrency is the one of the three with no global side effect, so it can be driven without
     restyling the `QApplication` every other test in this session shares.
@@ -547,8 +573,7 @@ def test_a_setting_that_could_not_be_saved_says_so(
     """
     settings_file = tmp_path / "config" / "settings.toml"
     composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
-    spinner = composition.window.concurrency_control
-    assert spinner is not None, "the composed window has no concurrency control to drive"
+    spinner = concurrency_control(composition)
 
     # After composition has read it, so startup is ordinary and only the *write* fails.
     shutil.rmtree(settings_file.parent, ignore_errors=True)
@@ -1158,8 +1183,7 @@ def test_the_limit_changes_through_the_control_and_survives_a_restart(
     settings_file = tmp_path / "settings.toml"
     first = composed(settings_file=settings_file)
 
-    box = first.window.concurrency_control
-    assert box is not None, "composition did not give the window a concurrency control"
+    box = concurrency_control(first)
     assert box.value() == app_settings.CONCURRENCY_DEFAULT
     assert first.manager.concurrency == app_settings.CONCURRENCY_DEFAULT
 
@@ -1179,8 +1203,7 @@ def test_the_limit_changes_through_the_control_and_survives_a_restart(
         settings_file=settings_file,
     )
     assert second.manager.concurrency == 5, "a restart did not pick the chosen limit back up"
-    assert second.window.concurrency_control is not None
-    assert second.window.concurrency_control.value() == 5, (
+    assert concurrency_control(second).value() == 5, (
         "the control came back showing a different number from the pool it governs"
     )
 
@@ -1197,8 +1220,7 @@ def test_the_control_offers_exactly_the_range_the_settings_layer_allows(
     from tracks_and_trails.core import settings as app_settings
 
     composition = composed(settings_file=tmp_path / "settings.toml")
-    box = composition.window.concurrency_control
-    assert box is not None
+    box = concurrency_control(composition)
     assert box.minimum() == app_settings.CONCURRENCY_MINIMUM
     assert box.maximum() == app_settings.CONCURRENCY_MAXIMUM
 
@@ -1271,8 +1293,7 @@ def test_lowering_the_limit_through_the_control_holds_new_work_without_stopping_
     )
     assert manager._waiting == ["job-4"]
 
-    box = composition.window.concurrency_control
-    assert box is not None
+    box = concurrency_control(composition)
     box.setValue(1)
 
     assert manager.concurrency == 1, (

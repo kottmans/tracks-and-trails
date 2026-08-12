@@ -20,18 +20,16 @@ import pytest
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QAccessible, QContextMenuEvent, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import (
-    QAbstractSpinBox,
     QApplication,
     QComboBox,
     QMenu,
     QMessageBox,
-    QSpinBox,
     QStyleOptionViewItem,
     QToolBar,
     QToolButton,
 )
 
-from tracks_and_trails.core import presets, settings
+from tracks_and_trails.core import presets
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
@@ -39,8 +37,6 @@ from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 from tracks_and_trails.ui.main_window import (
-    STEP_DOWN_LABEL,
-    STEP_UP_LABEL,
     MainWindow,
 )
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN
@@ -108,6 +104,7 @@ def _window_over(jobs: list[Job], tmp_path: Path, **handlers: Any) -> MainWindow
     return MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
+        control_bar=True,
         manager=manager,
         queue=_FakeQueue(jobs),
         **handlers,
@@ -586,6 +583,7 @@ def _shown_window(queue: _MutableQueue, tmp_path: Path, **handlers: Any) -> Main
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
+        control_bar=True,
         manager=manager,
         queue=queue,
         **handlers,
@@ -1138,6 +1136,7 @@ def test_a_lifecycle_commit_of_an_unchanged_editor_never_reaches_the_manager(
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
+        control_bar=True,
         manager=manager,
         queue=store,
     )
@@ -1200,6 +1199,7 @@ def test_a_real_choice_still_reaches_the_durable_request_through_the_manager(
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
+        control_bar=True,
         manager=manager,
         queue=store,
     )
@@ -1333,6 +1333,7 @@ def test_the_windows_real_add_button_is_filled_after_the_toolbar_builds_it(
         window = MainWindow(
             geometry_file=tmp_path / "window.toml",
             concurrency=1,
+            control_bar=True,
             manager=DownloadManager(_EmptyJobStore(), concurrency=1),  # type: ignore[arg-type]
             queue=_FakeQueue([_job("job-1", 0)]),
             jobs=_RecordingSink(),
@@ -1436,7 +1437,8 @@ def test_the_queue_verbs_sit_at_the_far_end_of_the_toolbar(
     """`UX-005` row 7 (`T-132`): the mockup's `.spacer{flex:1 1 auto}`.
 
     What *adds* work and what *acts on work already queued* are different kinds of verb. Packed
-    left, `Clear finished` ran straight up against the concurrency spinner.
+    left, `Clear finished` ran straight up against the concurrency spinner that stood there then
+    (`UX-013` has since moved it to the Settings screen).
 
     **Asserted by geometry, not by insertion order.** A separator inserted in the right place
     would satisfy an order check and still leave everything bunched at the left.
@@ -1455,8 +1457,12 @@ def test_the_queue_verbs_sit_at_the_far_end_of_the_toolbar(
     bar = window.findChild(QToolBar, "queueToolBar")
     assert bar is not None
 
-    spinner = bar.findChild(QSpinBox, "concurrencyChoice")
-    assert spinner is not None
+    # **The left group's last widget is the anchor.** This measured from the concurrency spinner's
+    # right edge until `UX-013` moved that spinner to the Settings screen (`T-234`); *Add URLs* is
+    # what now sits at the left end, and the spacer's job — collect the free space *before* the
+    # list verbs — is unchanged by which widget precedes it.
+    adds = bar.findChild(QToolButton, "addUrlsButton")
+    assert adds is not None
     list_verbs = [
         widget
         for action in bar.actions()
@@ -1468,7 +1474,7 @@ def test_the_queue_verbs_sit_at_the_far_end_of_the_toolbar(
     # (`REQ-020` withdrawn). Nothing is waiting to become a third (`T-176`).
     assert len(list_verbs) == 2, "the toolbar no longer holds both whole-list verbs"
 
-    gap = min(widget.x() for widget in list_verbs) - (spinner.x() + spinner.width())
+    gap = min(widget.x() for widget in list_verbs) - (adds.x() + adds.width())
     trailing = bar.width() - max(widget.x() + widget.width() for widget in list_verbs)
     assert gap > trailing, (
         f"{gap}px of free space sits before the list verbs and {trailing}px after them on a "
@@ -1652,125 +1658,6 @@ def test_the_toolbars_verbs_are_drawn_as_buttons(qapp: QApplication, tmp_path: P
             beside = image.pixel(bar.width() - 3, row)
             assert inside != beside, (
                 f"{button.text()!r} is indistinguishable from the toolbar beside it at the same "
-                "height, so it reads as text rather than as something to press"
-            )
-    finally:
-        qapp.setStyleSheet(was_sheet)
-        qapp.setPalette(was_palette)
-
-
-def test_the_concurrency_control_steps_with_labelled_buttons(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """`UX-005` row 11 (`T-141`): the arrows were reported missing twice.
-
-    Both times it was a rendering question, not a wiring one — first solid blocks from the CSS
-    border-triangle trick, then correct ~10px native wedges in a 23px control and still unreadable.
-    **Text cannot be silently un-drawn by a style sheet**, which is the shared cause of `T-129`,
-    `T-133` and `T-139`, and a label can be asserted by content rather than by wedge geometry.
-
-    Driven through the widgets, so a control that looked right and stepped nothing would fail.
-    """
-    window = _window_over([_job("job-1", 0)], tmp_path)
-    bar = window.findChild(QToolBar, "queueToolBar")
-    assert bar is not None
-    box = bar.findChild(QSpinBox, "concurrencyChoice")
-    fewer = bar.findChild(QToolButton, "concurrencyStepDown")
-    more = bar.findChild(QToolButton, "concurrencyStepUp")
-    assert box is not None and fewer is not None and more is not None, (
-        "the concurrency control has no step buttons"
-    )
-
-    assert (fewer.text(), more.text()) == (STEP_DOWN_LABEL, STEP_UP_LABEL)
-    assert box.buttonSymbols() is QAbstractSpinBox.ButtonSymbols.NoButtons, (
-        "the spin box still draws its own arrows, so the control offers two ways to step and one "
-        "of them is the unreadable one this replaced"
-    )
-
-    started = box.value()
-    more.click()
-    assert box.value() == started + 1, "the + button does not step the value"
-    fewer.click()
-    assert box.value() == started, "the minus button does not step the value"
-
-    # **Each announces the direction *and* the setting** (`NFR-005`): "Plus" alone says nothing
-    # about what it increases, and the visible label is one character.
-    for button in (fewer, more):
-        announced = button.accessibleName()
-        assert "concurrent downloads" in announced.lower(), (
-            f"a step button announces {announced!r}, which does not say what it changes"
-        )
-
-
-def test_a_step_button_is_disabled_at_its_end_of_the_range(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """`UX-005` §5: a control must not offer a choice nothing acts on.
-
-    Both ends, because a test at one would pass with the other button permanently enabled.
-    """
-    window = _window_over([_job("job-1", 0)], tmp_path)
-    bar = window.findChild(QToolBar, "queueToolBar")
-    assert bar is not None
-    box = bar.findChild(QSpinBox, "concurrencyChoice")
-    fewer = bar.findChild(QToolButton, "concurrencyStepDown")
-    more = bar.findChild(QToolButton, "concurrencyStepUp")
-    assert box is not None and fewer is not None and more is not None
-
-    box.setValue(settings.CONCURRENCY_MINIMUM)
-    assert not fewer.isEnabled(), "the minus button offers a step below the minimum"
-    assert more.isEnabled(), "the + button is disabled at the minimum, where it can still step"
-
-    box.setValue(settings.CONCURRENCY_MAXIMUM)
-    assert not more.isEnabled(), "the + button offers a step above the maximum"
-    assert fewer.isEnabled(), "the minus button is disabled at the maximum, where it can still step"
-
-
-def test_the_step_buttons_are_a_matched_pair(qapp: QApplication, tmp_path: Path) -> None:
-    """`T-141`, corrected: the minus looked boxed and the plus did not.
-
-    Left bare, both were transparent text on the toolbar — and the sheet's global `*:focus` rule
-    then drew an accent border on whichever one had focus, so the pair was asymmetric depending on
-    what the user had last clicked. **Two controls doing the same thing in opposite directions
-    must not differ in whether they look like controls at all.**
-
-    Asserted as *sameness*, which is the property, rather than as a particular size or colour —
-    pinning either would pin a styling choice instead.
-    """
-    was_sheet, was_palette = qapp.styleSheet(), qapp.palette()
-    try:
-        theme.apply(qapp, theme.LIGHT)
-        window = _window_over([_job("job-1", 0)], tmp_path)
-        window.resize(900, 500)
-        window.show()
-        qapp.processEvents()
-        bar = window.findChild(QToolBar, "queueToolBar")
-        assert bar is not None
-        fewer = bar.findChild(QToolButton, "concurrencyStepDown")
-        more = bar.findChild(QToolButton, "concurrencyStepUp")
-        assert fewer is not None and more is not None
-
-        assert fewer.size() == more.size(), (
-            f"the step buttons are {fewer.size()} and {more.size()}; a pair that does the same "
-            "thing in two directions must be one shape"
-        )
-        # Neither takes focus, so neither can acquire the accent border the other lacks.
-        assert fewer.focusPolicy() is Qt.FocusPolicy.NoFocus, "the minus button takes focus"
-        assert more.focusPolicy() is Qt.FocusPolicy.NoFocus, "the plus button takes focus"
-
-        # Both are drawn as shapes: a bordered button differs from the toolbar beside it.
-        #
-        # **Sampled at the same `y`.** The toolbar paints a vertical gradient, so comparing a
-        # pixel inside the button against one at a different height differs whatever the button
-        # looks like — which is how the first version of this passed with the styling removed.
-        image = bar.grab().toImage()
-        for button, name in ((fewer, "minus"), (more, "plus")):
-            box = button.geometry()
-            row = box.top() + 2
-            inside = image.pixel(box.center().x(), row)
-            beside = image.pixel(bar.width() - 3, row)
-            assert inside != beside, (
-                f"the {name} button is indistinguishable from the toolbar beside it at the same "
                 "height, so it reads as text rather than as something to press"
             )
     finally:
@@ -1977,6 +1864,7 @@ def test_the_first_rows_of_a_first_run_take_the_keyboard(
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         concurrency=1,
+        control_bar=True,
         manager=manager,
         queue=_FakeQueue(jobs),
     )

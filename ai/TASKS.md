@@ -118,6 +118,185 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
+### T-234 — The concurrency control leaves the toolbar
+
+**Status:** In Review — built 2026-08-12 against `UX-013`, the maintainer's ruling. The gate was
+chosen by the maintainer (*"go with your recommendation"*, 2026-08-12) from the three shapes this
+entry had named without taking one.
+**Owner:** Implementer
+**Priority:** Medium — it unblocks `T-220`, and it is the last step of a stopgap whose own undo
+condition was written down, met, and then missed for a phase
+**Phase:** Phase 4 — polish. **Not a plan deliverable.**
+**Depends on:** nothing. `T-146` already built the Settings screen's control
+**Relevant context:** `UX-013` (the ruling), `ARC-007` (what it amends), `T-146` (the screen, and
+its *"kept in both places"* record), `T-220` (whose options collapse once this lands),
+`docs/UX_SPEC.md` §2.1 as amended, `ui/main_window.py` (`_build_concurrency_control`, the toolbar
+spacer), `tests/ui/test_windows_accessibility.py` (names every control by hand)
+**Affected surfaces:** `ui/main_window.py`, `app.py`'s wiring of the toolbar spinner,
+`tests/ui/test_main_window.py`, `tests/ui/test_windows_accessibility.py`
+**Risk:** Medium — the value and its layer are untouched, but the parameter being removed is
+also the switch that builds the whole toolbar (see below), so the signature change reaches every
+window construction in the tests
+
+#### Scope
+
+`Settings → Settings…` becomes the only place the concurrency limit is set. The toolbar keeps
+three verbs: `+ Add URLs`, the run control, `Clear finished`.
+
+**This removes a view, not a value.** `settings.toml`, `core/settings.py` and the manager's
+`concurrency` are unchanged, and composition still applies and saves once. What goes is the
+toolbar's copy and the mirroring that kept two controls in step.
+
+**Two things the removal should take with it, and one it must not.** The `Concurrent downloads:`
+label and its `−`/`+` step buttons go with the spinner. **The toolbar spacer stays** — `UX-005`
+row 7 put it there so what *adds* work sits apart from what *acts on work already queued*, and
+that distinction survives the spinner: `+ Add URLs` on one side, the run control and
+`Clear finished` on the other. **`T-220`'s option A ruling (2026-08-12) confirms it**, chosen from
+mockups drawn after this removal.
+
+**Two consequences the mockups surfaced, both in `_build_control_bar`:**
+
+- **The separator after `+ Add URLs` becomes redundant.** It divided the primary action from the
+  concurrency control; with the spacer immediately after it, a line and a gap would divide the same
+  two groups twice. It goes, and the spacer does the dividing.
+- **`toggleViewAction().setVisible(False)` keeps its behaviour and loses its reason.** Its comment
+  justifies a non-closable toolbar with *"this is the only way to change the limit until Phase 4's
+  dialog"* — which is the limit that is leaving. The toolbar should still not be closable, for the
+  reason in the same comment's first half (*a control the user can hide and then not find is worse
+  than a control they ignore*), and that half now has to carry it alone. **A behaviour whose stated
+  reason has expired is the class `T-231`, `T066-R3` and `T033-R6` were all instances of.**
+
+#### What the removal actually costs — read 2026-08-12, before building
+
+**It is not a deletion, and the reason is one line of coupling.** `MainWindow.__init__` takes
+`concurrency: int | None`, and `if concurrency is not None: self._build_concurrency_control(...)`
+— **that method is what creates the `QToolBar`.** A window given no `concurrency` therefore has no
+toolbar at all, and no `+ Add URLs`, run control or `Clear finished` either. The comment beside it
+states the rule deliberately: *"built with the control bar, so a window given no `concurrency` has
+no toolbar and therefore neither of them — the same all-or-nothing rule the add-URL action
+follows, and the reason `T-007`'s bare-window tests keep working."*
+
+**So the parameter is two things at once**: the initial limit, and the switch for the whole
+control bar. Removing the limit means deciding what the switch becomes — and that is a design
+question this entry has to answer before any code moves:
+
+- **A new explicit gate**, e.g. `control_bar: bool`, which says what it means and makes the
+  all-or-nothing rule legible instead of implied.
+- **Gate on an existing callback** — a window with `on_run_changed` has queue verbs to show — which
+  adds no parameter but ties the bar's existence to something that is not about the bar.
+- **Keep building the bar always**, and let `T-007`'s bare-window tests say what they actually
+  need. This is the smallest signature and the largest behaviour change.
+
+**The surface, measured rather than estimated:** five `concurrency=` sites in `src/` and eight test
+files that construct or drive the control. `_build_concurrency_control` also carries the toolbar's
+own construction — the primary-action styling, `T132-R2`'s no-repolish finding, the movable and
+closable rules — **so the bar's construction has to be lifted out of it before the spinner can
+leave**, not deleted with it.
+
+**Nothing was built.** The label half of `T-220` landed separately; this half stops here because
+choosing the gate is a decision, and an entry that names three shapes without taking one is the
+honest state to leave it in.
+
+#### Acceptance criteria
+
+- **No concurrency control exists in the main window**, asserted by name rather than by eye —
+  `concurrencyChoice` is absent from the window's children
+- **The limit still reaches the manager from Settings**, asserted against a real change: set it on
+  the screen, and the value the manager is told is the new one. `T-146`'s crossing test is the
+  shape; this proves it still holds with the second control gone
+- **The window's first focusable widget is no longer the spinner** — the defect `T203-R3` recorded
+  was `Shift+F10` reaching the spin box's own edit menu instead of the row menu. State what it is
+  now, and whether the window needs a declared tab order or inherits a sensible one
+- **The toolbar is three verbs**, and the spacer still separates `+ Add URLs` from the queue verbs
+  (`UX-005` row 7, and `T-220`'s option A)
+- **The redundant separator is gone and the non-closable comment states a reason that is still
+  true**
+- `tests/ui/test_windows_accessibility.py` names every remaining control, updated for the removal
+- `docs/UX_SPEC.md` §2.1 already describes the outcome (`UX-013`); this task does not amend it again
+
+#### Out of scope
+
+- **A mid-run throttle.** `UX-013` accepts the loss of adjusting the limit without leaving the
+  queue, and says that if it matters the answer is a control on the *queue surface* — a new
+  control, not this removal
+- `T-220`'s ordering and label questions, which this unblocks rather than answers
+- Any change to `settings.toml`, `core/settings.py`, or how composition applies the value
+
+#### What was built, 2026-08-12
+
+**The gate is `control_bar: bool`** — the first of the three shapes above, chosen by the
+maintainer. `concurrency` survives as what it says it is: the limit in force, which the window
+carries in `_concurrency_limit` so the Settings screen opens on the value that is running. The
+two meanings are now two parameters, and a window can be told the limit without being given a
+toolbar — which is the state the third assertion in
+`test_the_queue_actions_exist_only_with_the_control_bar` pins, and the one that would have caught
+the coupling silently surviving this task.
+
+**`_build_concurrency_control` became `_build_control_bar`**, keeping the toolbar construction the
+entry warned was buried inside it: the primary-action styling, `T132-R2`'s no-repolish finding,
+the movable and closable rules. What left is the spinner, its `Concurrent downloads:` label, the
+`−`/`+` step buttons, and — with them — `STEP_DOWN_LABEL`, `STEP_UP_LABEL`, `STEP_BUTTON_PROPERTY`
+and **30 lines of style sheet** in `theme.py` that had nothing left to style.
+
+**Three tests were deleted, not adapted.** `test_the_concurrency_control_steps_with_labelled_buttons`,
+`test_a_step_button_is_disabled_at_its_end_of_the_range` and `test_the_step_buttons_are_a_matched_pair`
+each assert properties of a widget that no longer exists; there is no version of them that says
+anything about the application now.
+
+**The integration tests kept driving a real control**, which is the part of this that could have
+gone quietly wrong. `T-078`'s criterion is *"driven through the widget, never the constructor"* —
+`P2PLAN-R3` filed it because a pool whose limit is only a constructor argument passes every
+behavioural test. Five sites reached `window.concurrency_control`, and the tempting repair was to
+call composition's handler directly. Instead a `concurrency_control()` helper opens the Settings
+screen through `open_settings` and returns its spinner, so the tests still go the route a user
+goes and `T-078` still means what it meant.
+
+**Three mutations fail their evidence:** the gate reverted to `concurrency is not None`; a spinner
+re-added to the bar; and the Settings screen told `CONCURRENCY_DEFAULT` instead of the limit in
+force.
+
+#### The criteria, answered
+
+- **No concurrency control in the main window** — met.
+  `test_the_window_has_no_concurrency_control_of_its_own` searches every child for a `QSpinBox`,
+  not just for the object name: renaming the widget would satisfy a name search and leave two
+  controls editing one value.
+- **The limit still reaches the manager from Settings** — met, by
+  `test_the_limit_changes_through_the_control_and_survives_a_restart`, now driving the screen's
+  spinner. It asserts the running pool, the file, and a second composition reading it back.
+- **The window's first focusable widget is no longer the spinner** — met, and the answer is
+  **nothing**. Re-measured: `QToolBar` gives its buttons `NoFocus`, so a freshly opened window
+  focuses no widget at all and the queue's table is the only focusable thing the chrome has.
+  **No declared tab order is needed** — there is nothing to order. That makes
+  `_give_the_rows_the_keyboard` more load-bearing than it was, not less, and
+  `test_nothing_on_the_toolbar_can_take_the_keyboard_from_the_rows` fails if a focusable control
+  is ever added to the bar. The three verbs stay keyboard-reachable by mnemonic, and `+ Add URLs`
+  by `File → Add URLs…` as well.
+- **The toolbar is three verbs, and the spacer still separates them** — met by
+  `test_the_toolbar_carries_the_three_verbs_and_the_spacer_and_nothing_else`, which accounts for
+  **every** action including the anonymous ones. The existing name-set test compares
+  `objectName()`s and skips unnamed widget actions, so it would have passed with the spinner still
+  on the bar; that gap is why the new test exists rather than being a second copy of the old one.
+- **The redundant separator is gone and the non-closable comment states a true reason** — met.
+- **`tests/ui/test_windows_accessibility.py` names every remaining control, updated for the
+  removal** — **the premise is false, and nothing was updated.** That file builds
+  `MainWindow(geometry_file=…)` with no `control_bar`, so **it has never seen the toolbar at
+  all**: its `NFR-005` sweep covers the menu bar and title bar, and the three verbs have never
+  been checked for accessible names on Windows. This is a gap that predates the task, not one it
+  created, and it is left alone deliberately — adding `control_bar=True` there is a change to a
+  Windows-only test that cannot be run or observed from here, and if the toolbar's buttons turn
+  out to expose no names it is a real `NFR-005` finding that deserves its own task rather than a
+  line in this one. **Filed as `T-235`.**
+- **`docs/UX_SPEC.md` §2.1 is not amended again** — met. Three *other* documents did carry claims
+  this falsifies, and those were trued: `DEVELOPMENT.md`'s settings table said the limit lives in
+  *"Settings screen **and** the toolbar — one value, two controls"*; `UX_SPEC.md` §3 called it
+  *"the concurrency limit the toolbar also shows"*; and `CRITERION_8_CHECKLIST.md` row 2.5 told a
+  tester the `Shift+F10` failure mode was the key going to the toolbar's stepper. The Settings
+  screen's own explanation ended *"This is the same setting as the toolbar's."* — a user-visible
+  string, and the one that would have been read by someone standing in front of the application.
+
+---
+
 ## Complete
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -2499,107 +2678,60 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
-### T-234 — The concurrency control leaves the toolbar
+### T-235 — The Windows accessibility sweep has never seen the toolbar
 
-**Status:** Proposed — filed 2026-08-12 under `UX-013`, the maintainer's ruling.
+**Status:** Proposed — filed 2026-08-12 from `T-234`, which found it by trying to satisfy a
+criterion that assumed the opposite.
 **Owner:** Implementer
-**Priority:** Medium — it unblocks `T-220`, and it is the last step of a stopgap whose own undo
-condition was written down, met, and then missed for a phase
-**Phase:** Phase 4 — polish. **Not a plan deliverable.**
-**Depends on:** nothing. `T-146` already built the Settings screen's control
-**Relevant context:** `UX-013` (the ruling), `ARC-007` (what it amends), `T-146` (the screen, and
-its *"kept in both places"* record), `T-220` (whose options collapse once this lands),
-`docs/UX_SPEC.md` §2.1 as amended, `ui/main_window.py` (`_build_concurrency_control`, the toolbar
-spacer), `tests/ui/test_windows_accessibility.py` (names every control by hand)
-**Affected surfaces:** `ui/main_window.py`, `app.py`'s wiring of the toolbar spinner,
-`tests/ui/test_main_window.py`, `tests/ui/test_windows_accessibility.py`
-**Risk:** Medium — the value and its layer are untouched, but the parameter being removed is
-also the switch that builds the whole toolbar (see below), so the signature change reaches every
-window construction in the tests
+**Priority:** Medium — `NFR-005` is a requirement, and the surface this misses is the three
+controls a user reaches for first. Not High only because no defect is known: the buttons may well
+announce correctly, and nobody has looked
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing. `T-234` settled what is on the toolbar
+**Relevant context:** `tests/ui/test_windows_accessibility.py`, `NFR-005`, `T-026`/`T026-R2` (why
+the menus are queried through their own handles), `T-234`'s criteria, `OPS-012` (`WINDOWS_RUNNER`)
+**Affected surfaces:** `tests/ui/test_windows_accessibility.py`
+**Risk:** Low to change, **unknown to run** — this is the point of the task
 
 #### Scope
 
-`Settings → Settings…` becomes the only place the concurrency limit is set. The toolbar keeps
-three verbs: `+ Add URLs`, the run control, `Clear finished`.
+`test_no_interactive_control_reaches_the_tree_without_a_name` sweeps every `UIA_BUTTON` and
+`UIA_MENU_ITEM` in the window's accessibility tree and requires a name on each. Its docstring says
+*"over every interactive control, not only the ones this file names"*, and **that is true of the
+tree it is given and false of the window**: every construction in the file is
+`MainWindow(geometry_file=tmp_path / "window.toml")`, which since `T-234` means `control_bar` is
+false and **there is no toolbar in the tree at all**.
 
-**This removes a view, not a value.** `settings.toml`, `core/settings.py` and the manager's
-`concurrency` are unchanged, and composition still applies and saves once. What goes is the
-toolbar's copy and the mirroring that kept two controls in step.
+So `+ Add URLs`, the run control and `Clear finished` have never been checked for accessible names
+on Windows. The sweep has been passing over a window whose only buttons are in dialogs and menus.
 
-**Two things the removal should take with it, and one it must not.** The `Concurrent downloads:`
-label and its `−`/`+` step buttons go with the spinner. **The toolbar spacer stays** — `UX-005`
-row 7 put it there so what *adds* work sits apart from what *acts on work already queued*, and
-that distinction survives the spinner: `+ Add URLs` on one side, the run control and
-`Clear finished` on the other. **`T-220`'s option A ruling (2026-08-12) confirms it**, chosen from
-mockups drawn after this removal.
+**This was found by `T-234`**, whose criterion read *"names every remaining control, updated for
+the removal"* — an instruction that could not be followed, because the file never named them.
 
-**Two consequences the mockups surfaced, both in `_build_control_bar`:**
+#### Why it was not just fixed there
 
-- **The separator after `+ Add URLs` becomes redundant.** It divided the primary action from the
-  concurrency control; with the spacer immediately after it, a line and a gap would divide the same
-  two groups twice. It goes, and the spacer does the dividing.
-- **`toggleViewAction().setVisible(False)` keeps its behaviour and loses its reason.** Its comment
-  justifies a non-closable toolbar with *"this is the only way to change the limit until Phase 4's
-  dialog"* — which is the limit that is leaving. The toolbar should still not be closable, for the
-  reason in the same comment's first half (*a control the user can hide and then not find is worse
-  than a control they ignore*), and that half now has to carry it alone. **A behaviour whose stated
-  reason has expired is the class `T-231`, `T066-R3` and `T033-R6` were all instances of.**
-
-#### What the removal actually costs — read 2026-08-12, before building
-
-**It is not a deletion, and the reason is one line of coupling.** `MainWindow.__init__` takes
-`concurrency: int | None`, and `if concurrency is not None: self._build_concurrency_control(...)`
-— **that method is what creates the `QToolBar`.** A window given no `concurrency` therefore has no
-toolbar at all, and no `+ Add URLs`, run control or `Clear finished` either. The comment beside it
-states the rule deliberately: *"built with the control bar, so a window given no `concurrency` has
-no toolbar and therefore neither of them — the same all-or-nothing rule the add-URL action
-follows, and the reason `T-007`'s bare-window tests keep working."*
-
-**So the parameter is two things at once**: the initial limit, and the switch for the whole
-control bar. Removing the limit means deciding what the switch becomes — and that is a design
-question this entry has to answer before any code moves:
-
-- **A new explicit gate**, e.g. `control_bar: bool`, which says what it means and makes the
-  all-or-nothing rule legible instead of implied.
-- **Gate on an existing callback** — a window with `on_run_changed` has queue verbs to show — which
-  adds no parameter but ties the bar's existence to something that is not about the bar.
-- **Keep building the bar always**, and let `T-007`'s bare-window tests say what they actually
-  need. This is the smallest signature and the largest behaviour change.
-
-**The surface, measured rather than estimated:** five `concurrency=` sites in `src/` and eight test
-files that construct or drive the control. `_build_concurrency_control` also carries the toolbar's
-own construction — the primary-action styling, `T132-R2`'s no-repolish finding, the movable and
-closable rules — **so the bar's construction has to be lifted out of it before the spinner can
-leave**, not deleted with it.
-
-**Nothing was built.** The label half of `T-220` landed separately; this half stops here because
-choosing the gate is a decision, and an entry that names three shapes without taking one is the
-honest state to leave it in.
+Adding `control_bar=True` is one word. Running it is not: the file is `windows_desktop`-marked and
+executes only on the Windows runner, so the change cannot be observed from the development
+machine. If the tool buttons *do* expose no name — plausible, since `QToolButton` derives its
+accessible name from the action's text and the run control's text changes with its state — the
+result is a red Windows job and a real `NFR-005` finding, which is a task rather than a footnote.
 
 #### Acceptance criteria
 
-- **No concurrency control exists in the main window**, asserted by name rather than by eye —
-  `concurrencyChoice` is absent from the window's children
-- **The limit still reaches the manager from Settings**, asserted against a real change: set it on
-  the screen, and the value the manager is told is the new one. `T-146`'s crossing test is the
-  shape; this proves it still holds with the second control gone
-- **The window's first focusable widget is no longer the spinner** — the defect `T203-R3` recorded
-  was `Shift+F10` reaching the spin box's own edit menu instead of the row menu. State what it is
-  now, and whether the window needs a declared tab order or inherits a sensible one
-- **The toolbar is three verbs**, and the spacer still separates `+ Add URLs` from the queue verbs
-  (`UX-005` row 7, and `T-220`'s option A)
-- **The redundant separator is gone and the non-closable comment states a reason that is still
-  true**
-- `tests/ui/test_windows_accessibility.py` names every remaining control, updated for the removal
-- `docs/UX_SPEC.md` §2.1 already describes the outcome (`UX-013`); this task does not amend it again
+- The accessibility fixture builds a window **with** the control bar, so the toolbar is in the
+  tree the sweep walks
+- The three verbs are each asserted **by name**, transcribed by hand in the way the menu test
+  transcribes its items — a sweep alone would let a control disappear silently
+- **The run control is checked in both states.** Its text is `&Start`/`&Stop` (`T-220`), so its
+  accessible name changes as the queue runs; a check in one state says nothing about the other
+- Whatever the run reveals is recorded: if a control announces nothing, that is the finding, and
+  the fix belongs to this task
+- The Windows job is green on the runner, not inferred from a Linux run that skips the file
 
 #### Out of scope
 
-- **A mid-run throttle.** `UX-013` accepts the loss of adjusting the limit without leaving the
-  queue, and says that if it matters the answer is a control on the *queue surface* — a new
-  control, not this removal
-- `T-220`'s ordering and label questions, which this unblocks rather than answers
-- Any change to `settings.toml`, `core/settings.py`, or how composition applies the value
+- The Linux/`AT-SPI` side. `NFR-005`'s automatable evidence on this project is the Windows tree
+- Any change to what the toolbar holds — `T-234` and `UX-013` settled that
 
 ---
 
@@ -3273,6 +3405,16 @@ screen-reader user who hears only the verb cannot tell whether the queue is runn
 
 **Still owed here:** confirming the built bar against §2.1 once `T-234` removes the spinner. This
 task cannot close until then.
+
+**The blocker is released, 2026-08-12.** `T-234` landed, and the confirmation §2.1 asks for is
+`test_the_toolbar_carries_the_three_verbs_and_the_spacer_and_nothing_else` — every action on the
+bar, anonymous ones included, is `+ Add URLs`, the spacer, the run control, `Clear finished`.
+Which is *three verbs and nothing else*, the sentence `UX-013` wrote into the spec.
+
+**This entry is left `Proposed` rather than closed by the task that unblocked it.** The remaining
+work is a verdict on whether spec and build now agree, and `T-234` is in review itself — a task
+declaring its own follow-on satisfied, before anyone has looked at it, is the shape this
+project's reviews keep finding. What is owed here is now one reading, not one build.
 **Owner:** Implementer, with a Planner edit if the spec side wins
 **Priority:** Low — a two-line reconciliation, in whichever direction
 **Phase:** Phase 4 — polish, not a plan deliverable

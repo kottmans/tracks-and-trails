@@ -9,7 +9,7 @@ automatable and stays an `OPS-003` known gap.
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QRect
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QSpinBox,
     QToolBar,
+    QWidget,
 )
 
 from tracks_and_trails import __version__
@@ -32,6 +34,7 @@ from tracks_and_trails.ui.main_window import (
     ACTIONABLE_STATUS_PROPERTY,
     APP_NAME,
     DEFAULT_SIZE,
+    TOOLBAR_SPACER_PROPERTY,
     MainWindow,
     app_icon,
     geometry_path,
@@ -335,16 +338,122 @@ def test_the_queue_actions_exist_only_with_the_control_bar(qapp: QApplication) -
     """`T-007`'s bare window still opens, and offers neither action.
 
     The all-or-nothing rule the add-URL action follows: a window holding half of what an action
-    needs could only offer one that fails. A window built with no `concurrency` has no toolbar, so
-    it has no queue actions either — and `T-007`'s tests construct exactly that window.
+    needs could only offer one that fails. A window built with `control_bar=False` has no toolbar,
+    so it has no queue actions either — and `T-007`'s tests construct exactly that window.
+
+    **The switch used to be `concurrency`** (`T-234`): one argument meant both *the limit* and
+    *build the bar*, which held only while the bar's reason for existing was the spinner. `UX-013`
+    moved that spinner to the Settings screen, and a gate still reading `concurrency is not None`
+    would have taken *Start* and *Clear finished* down with it. The third assertion is the one
+    that would have caught that — a window told the limit but not to build a bar.
     """
     bare = MainWindow()
     assert bare.run_action is None
     assert bare.clear_completed_action is None
 
-    equipped = MainWindow(concurrency=3)
+    equipped = MainWindow(control_bar=True)
     assert equipped.run_action is not None
     assert equipped.clear_completed_action is not None
+
+    limit_only = MainWindow(concurrency=3)
+    assert limit_only.run_action is None, (
+        "knowing the limit built a toolbar, so the two are still one switch"
+    )
+
+
+def test_the_window_has_no_concurrency_control_of_its_own(qapp: QApplication) -> None:
+    """`UX-013`, `T-234`: `Settings → Settings…` is the only place the limit is set.
+
+    **Asserted by name over the whole window**, not by reading the toolbar's actions. The
+    neighbouring test compares `objectName()`s and skips the anonymous ones — a widget action
+    holding a spin box has no action name, so a spinner left on the bar would pass it. The
+    question here is whether the control exists *at all*, and the only assertion that answers it
+    searches every child.
+
+    **A `QSpinBox`, not the object name alone.** Removing the name while leaving the widget would
+    satisfy a name search and leave two controls editing one value, which is the state `UX-013`
+    ended.
+    """
+    window = _window_over([_job("a", 0)])
+    assert window.findChild(QSpinBox, "concurrencyChoice") is None, (
+        "the toolbar still carries the concurrency spinner UX-013 moved to the Settings screen"
+    )
+    assert not window.findChildren(QSpinBox), (
+        "the window holds a spin box of some other name; the limit is the only number it ever "
+        "asked a user to type, so a new one is either that control renamed or a change nobody "
+        "declared"
+    )
+
+
+def test_the_toolbar_carries_the_three_verbs_and_the_spacer_and_nothing_else(
+    qapp: QApplication,
+) -> None:
+    """`UX_SPEC` §2.1 as `UX-013` amended it: **three verbs and nothing else.**
+
+    Every action on the bar, including the anonymous ones the name-set test filters out. The
+    spacer is a widget action with no name of its own, so it is identified by the dynamic property
+    `theme.py` styles it against — the same handle the sheet uses, which means a spacer that
+    stopped carrying it would fail here *and* stop being styled, rather than silently becoming an
+    unaccounted widget.
+    """
+    window = _window_over([_job("a", 0)])
+    bar = window.findChild(QToolBar, "queueToolBar")
+    assert bar is not None
+
+    accounted: list[str] = []
+    for action in bar.actions():
+        if action.objectName():
+            accounted.append(action.objectName())
+            continue
+        widget = bar.widgetForAction(action)
+        if widget.property(TOOLBAR_SPACER_PROPERTY):
+            accounted.append("<spacer>")
+            continue
+        accounted.append(f"<unaccounted {type(widget).__name__} {widget!r}>")
+
+    assert accounted == [
+        "actionAddUrls",
+        "<spacer>",
+        "runQueueAction",
+        "clearCompletedAction",
+    ], (
+        f"the toolbar holds {accounted}. UX-013 left it three verbs with the spacer between what "
+        "adds work and what acts on work already queued (UX-005 row 7); anything else on it is "
+        "either a fourth verb or the concurrency control back"
+    )
+
+
+def test_nothing_on_the_toolbar_can_take_the_keyboard_from_the_rows(qapp: QApplication) -> None:
+    """`T-234`'s focus criterion, answered by measurement rather than by reasoning.
+
+    `T203-R3` recorded `Shift+F10` reaching the spin box's own edit menu instead of the row menu,
+    because the spinner was the first thing on a freshly opened window that could hold focus.
+    **With the spinner gone, no widget on the toolbar can**: `QToolBar` gives its buttons
+    `NoFocus`, so the queue's table is the only focusable widget the window chrome has, and
+    `_give_the_rows_the_keyboard` puts the keyboard there.
+
+    **So the window needs no declared tab order** — there is nothing to order. That is the
+    criterion's second half, and it is a fact about the widgets rather than a preference, which is
+    why it is asserted here instead of written into a comment. A control added to the bar that
+    *can* take focus fails this and has to answer `T203-R3` again.
+
+    The three verbs stay reachable without Tab: each carries a mnemonic (`&Start`), and
+    `+ Add URLs` is `File → Add URLs…` as well — `NFR-005`'s requirement is a keyboard route, not
+    a place in the tab chain.
+    """
+    window = _window_over([_job("a", 0)])
+    bar = window.findChild(QToolBar, "queueToolBar")
+    assert bar is not None
+
+    grabby = [
+        (type(child).__name__, child.objectName())
+        for child in bar.findChildren(QWidget)
+        if child.focusPolicy() is not Qt.FocusPolicy.NoFocus
+    ]
+    assert not grabby, (
+        f"{grabby} on the toolbar can hold focus, so a freshly opened window may deliver Shift+F10 "
+        "there instead of to the rows — the defect T203-R3 recorded against the spinner"
+    )
 
 
 def test_the_toolbar_holds_nothing_that_acts_on_a_selection(qapp: QApplication) -> None:
@@ -409,7 +518,7 @@ def test_the_run_toggle_reports_once_and_says_which_way(qapp: QApplication) -> N
     manager call the second press did not earn.
     """
     reported: list[bool] = []
-    window = MainWindow(concurrency=3, on_run_changed=reported.append)
+    window = MainWindow(concurrency=3, control_bar=True, on_run_changed=reported.append)
     action = window.run_action
     assert action is not None
 
@@ -433,7 +542,7 @@ def test_showing_the_run_state_does_not_report_it_back(qapp: QApplication) -> No
     fail.
     """
     reported: list[bool] = []
-    window = MainWindow(concurrency=3, on_run_changed=reported.append)
+    window = MainWindow(concurrency=3, control_bar=True, on_run_changed=reported.append)
     action = window.run_action
     assert action is not None
 
@@ -458,7 +567,7 @@ def test_the_window_opens_with_the_queue_stopped_and_says_so(qapp: QApplication)
     changes_the_real_manager` asserts the pair; this asserts the window's half on its own, so a
     failure says which side moved.
     """
-    window = MainWindow(concurrency=3)
+    window = MainWindow(concurrency=3, control_bar=True)
     action = window.run_action
     assert action is not None
 
@@ -488,7 +597,7 @@ def test_the_run_control_says_its_state_in_words_not_only_by_being_checked(
     Both are asserted here rather than one, because a control and a status line that disagree are
     worse than either alone.
     """
-    window = MainWindow(concurrency=3)
+    window = MainWindow(concurrency=3, control_bar=True)
     action = window.run_action
     state = window.findChild(QLabel, "queueGateState")
     assert action is not None and state is not None
@@ -520,7 +629,7 @@ def test_the_run_control_is_reachable_by_keyboard(qapp: QApplication) -> None:
     control with no mnemonic is reachable only by `Tab` order, which `T-040` already covers for
     the window as a whole — this is the half that names *this* control.
     """
-    window = MainWindow(concurrency=3)
+    window = MainWindow(concurrency=3, control_bar=True)
     action = window.run_action
     assert action is not None
     assert "&" in action.text(), (
@@ -588,7 +697,12 @@ def _job(job_id: str, position: int, status: JobStatus = JobStatus.QUEUED) -> Jo
 def _window_over(jobs: list[Job], **handlers: object) -> MainWindow:
     manager = DownloadManager(_EmptyJobStore(), concurrency=1)
     manager.start_queue()
-    return MainWindow(concurrency=1, manager=manager, queue=_FakeQueue(jobs), **handlers)  # type: ignore[arg-type]
+    return MainWindow(
+        control_bar=True,
+        manager=manager,
+        queue=_FakeQueue(jobs),
+        **handlers,  # type: ignore[arg-type]
+    )
 
 
 class _EmptyJobStore:
@@ -694,7 +808,7 @@ def test_moving_past_either_end_asks_for_nothing(qapp: QApplication) -> None:
 def test_clear_finished_is_always_offered_and_asks_once(qapp: QApplication) -> None:
     """Unlike the per-job actions, this needs no selection — it is a queue-level chore."""
     asked: list[int] = []
-    window = MainWindow(concurrency=1, on_clear_requested=lambda: asked.append(1))
+    window = MainWindow(concurrency=1, control_bar=True, on_clear_requested=lambda: asked.append(1))
     action = window.clear_completed_action
     assert action is not None
 
@@ -812,7 +926,7 @@ def test_the_queue_state_sits_at_the_left_and_the_summary_at_the_right(
     does not. Asserted on measured positions rather than on which method was called, because the
     defect a reader sees is the distance between them.
     """
-    window = MainWindow(concurrency=3)
+    window = MainWindow(concurrency=3, control_bar=True)
     window.resize(1000, 600)
     window.show()
     qapp.processEvents()
@@ -849,7 +963,7 @@ def test_only_the_stopped_state_is_emphasised(qapp: QApplication) -> None:
     previous = qapp.styleSheet()
     theme.apply(qapp, theme.LIGHT)
     try:
-        window = MainWindow(concurrency=3)
+        window = MainWindow(concurrency=3, control_bar=True)
         gate = window.findChild(QLabel, "queueGateState")
         assert gate is not None
 

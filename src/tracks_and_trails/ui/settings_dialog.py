@@ -696,8 +696,12 @@ class SettingsDialog(QDialog):
         self._concurrency = QSpinBox(box)
         self._concurrency.setObjectName("settingsConcurrencyChoice")
         self._concurrency.setAccessibleName("Downloads at once")
-        # **The range is the settings layer's**, read from it rather than restated — the same rule
-        # the toolbar's spinner follows, and the reason `REQ-013`'s bounds live in `core/`.
+        # **The range is the settings layer's**, read from it rather than restated — the reason
+        # `REQ-013`'s bounds live in `core/` rather than in a widget.
+        #
+        # **This is the only control for the limit since `UX-013`** (`T-234`), which retires the
+        # sentence this explanation used to end with — *"This is the same setting as the
+        # toolbar's."* There is no toolbar copy to be the same as.
         self._concurrency.setRange(CONCURRENCY_MINIMUM, CONCURRENCY_MAXIMUM)
         self._concurrency.setValue(self._initial_concurrency)
         self._concurrency.valueChanged.connect(self._on_concurrency_chosen)
@@ -706,8 +710,7 @@ class SettingsDialog(QDialog):
         layout.addLayout(row)
 
         explanation = QLabel(
-            "Each download is a separate process, so a higher number is not always faster. "
-            "This is the same setting as the toolbar's.",
+            "Each download is a separate process, so a higher number is not always faster.",
             box,
         )
         explanation.setObjectName("settingsConcurrencyNote")

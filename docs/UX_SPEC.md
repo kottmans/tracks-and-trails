@@ -135,7 +135,8 @@ rather than storing one.
 — it clears completed **queue rows**, and with no records beside it there is nothing left for it to
 be confused with. **[T]** *(built 2026-08-10 by `T-146`)* **`Settings` is a menu between `File`
 and `Help`**, and the screen behind it holds **seven** of `REQ-023`'s eight settings — the download
-folder, the theme, and the concurrency limit the toolbar also shows (`T-146`), the ffmpeg location
+folder, the theme, and the concurrency limit (`T-146`; the toolbar showed it too until `UX-013`
+moved it here alone), the ffmpeg location
 (`T-199`), the cookie source (`T-197`), and the default preset and output template (`T-195`). The
 screen states the one it does not hold — network options, `T-196` — so it never reads as complete;
 `docs/DEVELOPMENT.md` carries the table.

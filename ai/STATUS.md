@@ -5,10 +5,12 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-12 — **an unattended run built five tasks, refused one, and pushed
-eleven commits**; `origin/main` is at `d5ba36a` and **CI run `31570861414` is green on all five
-jobs**, with the Linux job at **4m51s** against the 15-minute cap it was cancelled at the night
-before. `T-225` and `T-123` are Complete, approved with follow-ups.
+**Last updated:** 2026-08-12 (later) — **`T-234` is built and In Review**: `UX-013`'s ruling is
+carried out and the concurrency control has left the toolbar, which releases `T-220`'s blocker and
+opens `T-235`. Earlier the same day, an unattended run built five tasks, refused one, and pushed
+eleven commits; `origin/main` was at `d5ba36a` with **CI run `31570861414` green on all five
+jobs**, the Linux job at **4m51s** against the 15-minute cap it was cancelled at the night before.
+`T-225` and `T-123` are Complete, approved with follow-ups.
 
 **Last verified against repository:** 2026-08-12 for the block above — commit hashes and the
 CI conclusion read from `git log` and `gh run view`, task states from `ai/TASKS.md` after the
@@ -34,6 +36,54 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-12 (later): T-234 built — the concurrency control leaves the toolbar
+
+**`T-234` is In Review.** `UX-013`'s ruling is carried out: `Settings → Settings…` is the only
+place the download limit is set, and the toolbar is three verbs — `+ Add URLs`, the run control,
+`Clear finished` — with `UX-005` row 7's spacer still dividing what *adds* work from what *acts on
+work already queued*.
+
+**The gate is `control_bar: bool`, chosen by the maintainer** from the three shapes the entry had
+named. `concurrency` had been doing two jobs — the limit *and* the switch that built the entire
+toolbar — so removing the limit would have taken *Start* and *Clear finished* with it. The two
+meanings are now two parameters.
+
+**What went with the spinner:** its label, the `−`/`+` step buttons, three tests that assert
+properties of a widget that no longer exists, three module constants, and 30 lines of style sheet.
+**What did not:** `settings.toml`, `core/settings.py`, the manager's `concurrency`, and the one
+place composition applies and saves it.
+
+**`T-078`'s criterion survived the move intact.** Five integration sites drove the toolbar spinner
+directly; the tempting repair — call composition's handler — would have satisfied every assertion
+and quietly ended *"driven through the widget, never the constructor"*, which is the exact defect
+`P2PLAN-R3` filed. They now open the Settings screen through `open_settings` and drive its spinner.
+
+**One criterion could not be met because its premise was false, and that is filed rather than
+finessed.** It asked that `tests/ui/test_windows_accessibility.py` be *"updated for the removal"* —
+but that file builds a window with no control bar, so **its `NFR-005` sweep has never seen the
+toolbar at all** and the three verbs have never been checked for accessible names on Windows. A
+pre-existing gap, `T-235`, left alone here because verifying it needs a Windows runner.
+
+**Four stale claims trued**, all of them statements a reader would have believed: `DEVELOPMENT.md`'s
+settings table (*"Settings screen **and** the toolbar — one value, two controls"*), `UX_SPEC.md` §3,
+`CRITERION_8_CHECKLIST.md` row 2.5's `Shift+F10` failure mode, and the Settings screen's own
+user-visible sentence *"This is the same setting as the toolbar's."*
+
+**The focus question is answered by measurement:** a freshly opened window now focuses **nothing** —
+`QToolBar` gives its buttons `NoFocus`, so the queue's table is the only focusable widget in the
+chrome and no declared tab order is needed. `T203-R3`'s defect (`Shift+F10` reaching the spin box's
+edit menu) cannot recur, and a test fails if a focusable control is ever added to the bar.
+
+**Gates, exit codes checked rather than summary lines read:** `ruff check`, `ruff format --check`
+and `mypy` clean over `src` and `tests`; **2716 passed, 18 skipped** on unit+UI `-n auto`;
+**404 passed** on integration. **Three mutations fail their evidence** — the gate reverted to
+`concurrency is not None`, a spinner re-added to the bar, and the Settings screen told
+`CONCURRENCY_DEFAULT` instead of the limit in force.
+
+**`T-220`'s blocker is released** and the entry is deliberately left `Proposed`: what it owes is
+now a reading rather than a build, and a task declaring its own follow-on satisfied before anyone
+has looked is the shape this project's reviews keep finding.
 
 ## 2026-08-12: an unattended run — five tasks, eleven commits, and CI green on all five jobs
 

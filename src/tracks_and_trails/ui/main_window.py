@@ -34,15 +34,12 @@ from PySide6.QtGui import (
     QKeySequence,
 )
 from PySide6.QtWidgets import (
-    QAbstractSpinBox,
     QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
     QSizePolicy,
-    QSpinBox,
     QToolBar,
-    QToolButton,
     QWidget,
 )
 
@@ -84,16 +81,6 @@ ADD_URLS_BUTTON: Final = "+ Add URLs"
 #: selector would have made a second primary action somewhere else silently draw flat. Named here
 #: rather than written into both the widget and the sheet, because a selector that stops matching
 #: fails silently: the button just goes back to looking like the other three.
-#: What the concurrency control's step buttons read (`T-141`, `UX-005` row 11).
-#:
-#: A true minus sign rather than a hyphen: at this size a hyphen reads as a dash in a sentence,
-#: and the pair has to look like a pair.
-STEP_DOWN_LABEL: Final = "\u2212"
-STEP_UP_LABEL: Final = "+"
-
-#: The dynamic property the sheet styles the concurrency step buttons against (`T-141`).
-#: A role, not a name, for the reason `PRIMARY_ACTION_PROPERTY` gives.
-STEP_BUTTON_PROPERTY: Final = "stepButton"
 
 #: The dynamic property that marks a status-bar statement the user is expected to **act on**
 #: (`T-192`). A role, not a name, for the reason `PRIMARY_ACTION_PROPERTY` gives.
@@ -336,6 +323,7 @@ class MainWindow(QMainWindow):
         job_reader: JobReader | None = None,
         retry: Callable[[str], None] | None = None,
         concurrency: int | None = None,
+        control_bar: bool = False,
         on_concurrency_changed: Callable[[int], None] | None = None,
         on_run_changed: Callable[[bool], None] | None = None,
         on_remove_requested: Callable[[str], None] | None = None,
@@ -446,10 +434,24 @@ class MainWindow(QMainWindow):
         self._on_reorder_requested = on_reorder_requested
         self._on_clear_requested = on_clear_requested
         self._build_menus()
-        self._concurrency: QSpinBox | None = None
-        #: `T-080`'s queue actions. Built with the control bar, so a window given no `concurrency`
-        #: has no toolbar and therefore neither of them — the same all-or-nothing rule the add-URL
-        #: action follows, and the reason `T-007`'s bare-window tests keep working.
+        #: The limit in force, carried for the Settings screen this window opens (`T-234`).
+        #:
+        #: **A number, not a control.** `UX-013` took the spinner off the toolbar, so the window
+        #: shows the limit nowhere — but it still *opens* the screen that sets it, and that screen
+        #: has to open on the value in force. `show_concurrency` keeps this in step with
+        #: composition.
+        self._concurrency_limit: int = (
+            concurrency if concurrency is not None else settings.CONCURRENCY_DEFAULT
+        )
+        #: `T-080`'s queue actions. Built with the control bar, so a window given
+        #: `control_bar=False` has no toolbar and therefore neither of them — the same
+        #: all-or-nothing rule the add-URL action follows, and the reason `T-007`'s bare-window
+        #: tests keep working.
+        #:
+        #: **The gate is its own parameter since `T-234`.** It was `concurrency is not None`, so
+        #: one argument meant both *the initial limit* and *build the whole toolbar* — and when
+        #: `UX-013` took the limit away the switch would have gone with it. A switch that says
+        #: what it switches cannot be removed by accident.
         #:
         #: **Two, since `T124-R3`.** *Remove*, *Move up* and *Move down* were here too, acting on
         #: the queue's selection, and `UX-005` chose row verbs *"rather than a toolbar acting on a
@@ -461,8 +463,8 @@ class MainWindow(QMainWindow):
         self._clear: QAction | None = None
         #: The toolbar's copy of File → Add URLs…, or `None` on a window with no control bar.
         self._add_urls_button: QAction | None = None
-        if concurrency is not None:
-            self._build_concurrency_control(concurrency)
+        if control_bar:
+            self._build_control_bar()
         #: Whether the queue is running, said in words and permanently (`UX-006`, `T-181`).
         #:
         #: **A stopped queue that holds work must say so somewhere the user is looking**, and the
@@ -544,7 +546,12 @@ class MainWindow(QMainWindow):
         # `NFR-005`). The first fix gave the view a current index, which is what
         # `_row_menu_asked_for` falls back to — and `Shift+F10` still did nothing, because Qt
         # delivers it to the *focused* widget and nothing here ever focused a view. Measured on a
-        # freshly opened window: `QSpinBox concurrencyChoice`, the toolbar's stepper.
+        # freshly opened window, focus sat on `QSpinBox concurrencyChoice`, the toolbar's stepper.
+        #
+        # **Re-measured after `UX-013` removed that spinner** (`T-234`): a freshly opened window
+        # now focuses *nothing at all* — the toolbar's remaining widgets are tool buttons, which
+        # take no focus. That makes the placement below more necessary, not less: there is no
+        # longer even a wrong widget holding the key.
         #
         # **Rows arriving is the other moment the key can be placed** — but only the *first* rows
         # (`P2EXIT-R13`). An empty view hides its list and cannot hold focus at construction, so a
@@ -920,22 +927,17 @@ class MainWindow(QMainWindow):
         """
         return () if self._queue is None else self._queue.model.queued_urls()
 
-    def _build_concurrency_control(self, initial: int) -> None:
-        """One control for `REQ-013`'s limit, in this window rather than a dialog (`ARC-007`).
+    def _build_control_bar(self) -> None:
+        """The window's toolbar: three verbs and the gap between two kinds of verb.
 
-        **Why here as well as in the settings dialog.** This control predates the dialog:
-        `ARC-007` put it in the toolbar because a one-control dialog would have been a layout
-        Phase 4 replaced, while a control plus the TOML layer beneath it was purely additive.
-        **`T-146` built the `REQ-023` screen in Phase 4 and deliberately kept both**, one value
-        with two views of it — composition applies and saves once, then tells the window.
-        Removing this copy is `T-220`'s open ruling. `ARC-007` records what the toolbar-only
-        shape conceded — one control in a toolbar is easier to miss than a Settings menu item.
+        **`+ Add URLs`, the run control, `Clear finished`** — `docs/UX_SPEC.md` §2.1 as amended by
+        `UX-013`, in the order `T-220` ruled (option A, 2026-08-12).
 
-        **The range is the settings layer's, read from it rather than restated.** `REQ-013`'s
-        minimum and `ARC-007`'s ceiling both live in `core/settings.py`; a spinbox with its own
-        numbers would be a second opinion about a bound, and the bound that matters is the one
-        applied to the *file* — `settings.toml` is hand-editable, so this range constrains the
-        widget and never the value.
+        **This used to be `_build_concurrency_control`**, which built the bar as a side effect of
+        building a spin box (`T-234`). `ARC-007` had put a concurrency control in the window
+        *"until Phase 4's settings dialog replaces it"*; `T-146` built that dialog, and `UX-013`
+        completed the sentence — the limit is set in `Settings → Settings…` and nowhere else. The
+        bar outlived the control it was built for, so it is named for what it is.
         """
         bar = QToolBar("Queue", self)
         bar.setObjectName("queueToolBar")
@@ -974,56 +976,21 @@ class MainWindow(QMainWindow):
                 # the action and `UX-005` row 6 correctly paints a disabled primary `sunken`. A
                 # composed window with the action enabled fills it with the brand either way, and
                 # the regression below stays green with the repolish gone — which is why it went.
-            bar.addSeparator()
-        # Not closable: a control the user can hide and then not find is worse than a control
-        # they ignore, and this is the only way to change the limit until Phase 4's dialog.
+        # **No separator after the primary action** (`T-234`). One divided `+ Add URLs` from the
+        # concurrency control; with the spacer immediately after it, a line and a gap would divide
+        # the same two groups twice. The spacer does the dividing.
+        #
+        # Not closable: a control the user can hide and then not find is worse than a control they
+        # ignore. *(This also said "and this is the only way to change the limit until Phase 4's
+        # dialog" — the limit left with `UX-013`, so the first half carries it alone now.)*
         bar.toggleViewAction().setVisible(False)
 
-        label = QLabel("Concurrent downloads:", bar)
-        label.setObjectName("concurrencyLabel")
-        bar.addWidget(label)
-
-        box = QSpinBox(bar)
-        box.setObjectName("concurrencyChoice")
-        box.setRange(settings.CONCURRENCY_MINIMUM, settings.CONCURRENCY_MAXIMUM)
-        box.setValue(initial)
-        # `NFR-005`: the visible label is beside it, but a screen reader reads the control, and a
-        # bare number announced as "spin box" says nothing about what it governs.
-        box.setAccessibleName("Concurrent downloads")
-        box.setAccessibleDescription(
-            "How many downloads run at once. Lowering this lets downloads already running finish; "
-            "it never stops one."
-        )
-        box.setStatusTip("How many downloads run at once")
-        # `valueChanged` rather than `editingFinished`: raising the limit should start waiting work
-        # as soon as the user asks, and `editingFinished` would hold that until focus moved.
-        # **The steps are labelled buttons, not native arrows** (`T-141`, `UX-005` row 11). The
-        # arrows were reported missing twice: first drawn as solid blocks by the CSS
-        # border-triangle trick, then drawn correctly as ~10px native wedges in a 23px control and
-        # still unreadable. The two step labels are **text**, and no style sheet can silently
-        # un-draw text — which is the shared cause of `T-129`, `T-133` and `T-139`.
-        box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        box.valueChanged.connect(self._concurrency_chosen)
-
-        fewer = self._step_button(bar, STEP_DOWN_LABEL, "Fewer concurrent downloads", box.stepDown)
-        bar.addWidget(fewer)
-        bar.addWidget(box)
-        more = self._step_button(bar, STEP_UP_LABEL, "More concurrent downloads", box.stepUp)
-        bar.addWidget(more)
-
-        def _limit_the_steps(value: int) -> None:
-            """Neither button offers a step the range will not take (`UX-005` §5)."""
-            fewer.setEnabled(value > settings.CONCURRENCY_MINIMUM)
-            more.setEnabled(value < settings.CONCURRENCY_MAXIMUM)
-
-        box.valueChanged.connect(_limit_the_steps)
-        _limit_the_steps(box.value())
-
         # **The mockup's `.spacer{{flex:1 1 auto}}`** (`T-132`, `UX-005` row 7). What *adds* work
-        # and what *acts on work already queued* are different kinds of verb; packed left, the
-        # toolbar ran `Clear finished` straight up against the concurrency spinner with nothing
-        # between them. A separator here would only draw a line — the ruling is that the queue
-        # verbs sit at the far edge, which needs a widget that takes the leftover width.
+        # and what *acts on work already queued* are different kinds of verb, and the queue verbs
+        # sit at the far edge — which needs a widget that takes the leftover width, not a separator
+        # that only draws a line. *(Row 7's own example was `Clear finished` running up against the
+        # concurrency spinner. That spinner is gone (`UX-013`) and `T-220` kept the ruling anyway,
+        # deliberately: the principle is about kinds of verb, not about the spinner.)*
         spacer = QWidget(bar)
         spacer.setObjectName("toolBarSpacer")
         spacer.setProperty(TOOLBAR_SPACER_PROPERTY, True)
@@ -1034,33 +1001,6 @@ class MainWindow(QMainWindow):
         self._build_queue_actions(bar)
 
         self.addToolBar(bar)
-        self._concurrency = box
-
-    def _step_button(
-        self, bar: QToolBar, label: str, announced: str, step: Callable[[], None]
-    ) -> QToolButton:
-        """One of the concurrency control's step buttons (`T-141`).
-
-        **Its accessible name says the direction *and* the setting** (`NFR-005`). "Plus" read on
-        its own says nothing about what it increases, and the visible label is a single character
-        that a screen reader may or may not pronounce usefully.
-        """
-        button = QToolButton(bar)
-        button.setObjectName(
-            f"concurrency{label and 'Step'}{'Up' if label == STEP_UP_LABEL else 'Down'}"
-        )
-        button.setText(label)
-        button.setAccessibleName(announced)
-        button.setStatusTip(announced)
-        button.setProperty(STEP_BUTTON_PROPERTY, True)
-        button.setAutoRepeat(True)
-        # **Focus stays on the value, not on the steppers.** A user tabbing to the concurrency
-        # control wants the number, and `NFR-005` asks the keyboard to reach what the pointer
-        # reaches — Up and Down already do, from the spin box itself, so three tab stops for one
-        # setting would be the keyboard reaching it three times rather than once.
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        button.clicked.connect(step)
-        return button
 
     def _build_queue_actions(self, bar: QToolBar) -> None:
         """The verbs that act on a **whole list**, each naming the list it acts on (`UX-001`).
@@ -1337,11 +1277,6 @@ class MainWindow(QMainWindow):
         if self._on_concurrency_changed is not None:
             self._on_concurrency_changed(value)
 
-    @property
-    def concurrency_control(self) -> QSpinBox | None:
-        """The limit control, if this window was given one."""
-        return self._concurrency
-
     def _build_menus(self) -> None:
         """File → Add URLs…, File → Quit, Settings → Settings…, and Help → About.
 
@@ -1435,9 +1370,11 @@ class MainWindow(QMainWindow):
         asserted. `None` when composition supplied no writers — the action is disabled then, and
         this is the second half of that rather than a trust in the first.
 
-        **Held while it is open**, so a concurrency change made on the toolbar can reach the
-        screen's own spinner. Two controls edit one value (`REQ-013`), and a screen showing a
-        stale number is a screen that will write it back.
+        **Held while it is open**, so a setting composition applies while the screen is up reaches
+        the screen's own controls. A screen showing a stale number is a screen that will write it
+        back. *(This held for concurrency because two controls edited one value; since `UX-013`
+        this screen is the only one, and the holding still matters for the settings — the download
+        folder, the cookie source — that composition resolves after the screen has opened.)*
         """
         if (
             self._on_directory_chosen is None
@@ -1450,14 +1387,9 @@ class MainWindow(QMainWindow):
             download_directory=self._output_directory,
             directory_is_default=self._directory_is_default,
             theme=self._theme,
-            # The toolbar spinner is the value in force where there is one. A window built without
-            # a control bar has no limit on screen, so the screen opens on the documented default
-            # rather than on a zero the spinbox's own range would refuse.
-            concurrency=(
-                self._concurrency.value()
-                if self._concurrency is not None
-                else settings.CONCURRENCY_DEFAULT
-            ),
+            # The limit in force, carried rather than read off a control: since `UX-013` the
+            # window has no spinner to read (`T-234`).
+            concurrency=self._concurrency_limit,
             on_directory_chosen=self._on_directory_chosen,
             on_theme_chosen=self._theme_chosen,
             cookie_file=self._cookie_file,
@@ -1537,18 +1469,16 @@ class MainWindow(QMainWindow):
                 )
 
     def show_concurrency(self, limit: int) -> None:
-        """Follow a limit changed elsewhere, on both controls that show it (`T-146`).
+        """Follow a limit changed elsewhere (`T-146`).
 
-        Signals blocked around each assignment: the toolbar spinner and the screen's spinner both
-        report `valueChanged`, and either echoing back into composition would turn one user
-        change into an unbounded round trip between two controls.
+        **One control shows it now, not two** (`UX-013`, `T-234`). The window keeps the number so
+        the Settings screen opens on the value in force, and forwards it to that screen when one is
+        open. *(This blocked signals around a toolbar spinner as well, because two controls
+        reporting `valueChanged` would turn one user change into a round trip between them. With
+        the spinner gone there is one control and no round trip to prevent — the screen's own
+        `show_concurrency` still blocks its own.)*
         """
-        if self._concurrency is not None:
-            blocked = self._concurrency.blockSignals(True)
-            try:
-                self._concurrency.setValue(limit)
-            finally:
-                self._concurrency.blockSignals(blocked)
+        self._concurrency_limit = limit
         if self._settings_dialog is not None:
             self._settings_dialog.show_concurrency(limit)
 

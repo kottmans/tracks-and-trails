@@ -545,9 +545,10 @@ def compose(
         manager.set_concurrency(chosen.concurrency)
         held.settings = chosen
         remember(chosen, "the number of downloads at once")
-        # **Both controls follow the value, from here** (`T-146`). The toolbar spinner and the
-        # settings screen's edit one setting, so the window is told what was applied rather than
-        # each control telling the other — one writer, two views, and no round trip between them.
+        # **The window follows the value, from here** (`T-146`). It keeps the number so the
+        # Settings screen opens on what is in force, and forwards it to that screen when one is
+        # open. *(This said "both controls" — the toolbar spinner was the other, until `UX-013`
+        # removed it and `T-234` built that.)*
         window.show_concurrency(chosen.concurrency)
 
     def choose_download_directory(directory: Path | None) -> None:
@@ -893,6 +894,10 @@ def compose(
         # dialog's publications stay in one directory this instance owns alone (`T118-R16`).
         cache_root=cache_root,
         concurrency=settings.concurrency,
+        # **The toolbar exists because this window is the composed one** (`T-234`). It was gated on
+        # `concurrency is not None`, so one argument meant both *the limit* and *build the bar* —
+        # and `UX-013` taking the limit off the toolbar would have taken the bar with it.
+        control_bar=True,
         on_concurrency_changed=choose_concurrency,
         # `T-146`'s screen: what it opens showing, and the two writers behind it. The theme is
         # applied by `run()` rather than here — `compose()` restyling the shared `QApplication`

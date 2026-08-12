@@ -343,7 +343,7 @@ field.
 |---|---|---|
 | Default download directory | Settings screen | `[downloads] directory` |
 | Theme (light/dark) | Settings screen | `[appearance] theme` |
-| Concurrency limit | Settings screen **and** the toolbar — one value, two controls | `[queue] concurrency` |
+| Concurrency limit | Settings screen — the toolbar's copy went with `UX-013` (`T-234`) | `[queue] concurrency` |
 | Default preset | Settings screen **and** the preset manager — two controls, **one writer** | `default_preset` (bare key, above the first table) |
 | Output template | Settings screen | `output_template` (bare key, above the first table); absent means the shipped template |
 | ffmpeg location | Settings screen | `[ffmpeg] location` |
