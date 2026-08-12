@@ -2513,7 +2513,9 @@ its *"kept in both places"* record), `T-220` (whose options collapse once this l
 spacer), `tests/ui/test_windows_accessibility.py` (names every control by hand)
 **Affected surfaces:** `ui/main_window.py`, `app.py`'s wiring of the toolbar spinner,
 `tests/ui/test_main_window.py`, `tests/ui/test_windows_accessibility.py`
-**Risk:** Low — one view of a value is removed; the value, its file and its layer are untouched
+**Risk:** Medium — the value and its layer are untouched, but the parameter being removed is
+also the switch that builds the whole toolbar (see below), so the signature change reaches every
+window construction in the tests
 
 #### Scope
 
@@ -2542,6 +2544,37 @@ mockups drawn after this removal.
   reason in the same comment's first half (*a control the user can hide and then not find is worse
   than a control they ignore*), and that half now has to carry it alone. **A behaviour whose stated
   reason has expired is the class `T-231`, `T066-R3` and `T033-R6` were all instances of.**
+
+#### What the removal actually costs — read 2026-08-12, before building
+
+**It is not a deletion, and the reason is one line of coupling.** `MainWindow.__init__` takes
+`concurrency: int | None`, and `if concurrency is not None: self._build_concurrency_control(...)`
+— **that method is what creates the `QToolBar`.** A window given no `concurrency` therefore has no
+toolbar at all, and no `+ Add URLs`, run control or `Clear finished` either. The comment beside it
+states the rule deliberately: *"built with the control bar, so a window given no `concurrency` has
+no toolbar and therefore neither of them — the same all-or-nothing rule the add-URL action
+follows, and the reason `T-007`'s bare-window tests keep working."*
+
+**So the parameter is two things at once**: the initial limit, and the switch for the whole
+control bar. Removing the limit means deciding what the switch becomes — and that is a design
+question this entry has to answer before any code moves:
+
+- **A new explicit gate**, e.g. `control_bar: bool`, which says what it means and makes the
+  all-or-nothing rule legible instead of implied.
+- **Gate on an existing callback** — a window with `on_run_changed` has queue verbs to show — which
+  adds no parameter but ties the bar's existence to something that is not about the bar.
+- **Keep building the bar always**, and let `T-007`'s bare-window tests say what they actually
+  need. This is the smallest signature and the largest behaviour change.
+
+**The surface, measured rather than estimated:** five `concurrency=` sites in `src/` and eight test
+files that construct or drive the control. `_build_concurrency_control` also carries the toolbar's
+own construction — the primary-action styling, `T132-R2`'s no-repolish finding, the movable and
+closable rules — **so the bar's construction has to be lifted out of it before the spinner can
+leave**, not deleted with it.
+
+**Nothing was built.** The label half of `T-220` landed separately; this half stops here because
+choosing the gate is a decision, and an entry that names three shapes without taking one is the
+honest state to leave it in.
 
 #### Acceptance criteria
 
