@@ -5,9 +5,10 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-12 (later) — **`T-234` is built and In Review**: `UX-013`'s ruling is
-carried out and the concurrency control has left the toolbar, which releases `T-220`'s blocker and
-opens `T-235`. Earlier the same day, an unattended run built five tasks, refused one, and pushed
+**Last updated:** 2026-08-12 (later) — **`T-234` and `T-233` are built and In Review.** `UX-013`'s
+ruling is carried out and the concurrency control has left the toolbar, which releases `T-220`'s
+blocker and opens `T-235` and `T-236`; `T-233` trues `T-033`'s packaging comments to what its
+mutations found. Earlier the same day, an unattended run built five tasks, refused one, and pushed
 eleven commits; `origin/main` was at `d5ba36a` with **CI run `31570861414` green on all five
 jobs**, the Linux job at **4m51s** against the 15-minute cap it was cancelled at the night before.
 `T-225` and `T-123` are Complete, approved with follow-ups.
@@ -37,7 +38,20 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
-## 2026-08-12 (later): T-234 built — the concurrency control leaves the toolbar
+## 2026-08-12 (later): T-234 and T-233 built; T-235 and T-236 filed
+
+**`T-233` is In Review too** — `T033-R7`'s comments-only follow-up. The spec gave one reason for
+both yt-dlp collection lines; the `T-033` mutations had already established that they are there
+for different reasons and only one is load-bearing today. `collect_submodules` is redundant for
+this pin (`_extractors.py` carries 928 static `from .` imports) and stays as `REL-002`'s insurance
+— the comment now says outright that removing it today would fail no gate. `collect_data_files` is
+the load-bearing one, and its surviving mutant is recorded as what it measures: the probe reported
+OK on an artifact missing all three YouTube solver assets, which is a blind spot in the gate. The
+frozen-probe docstring no longer says the probe *"can only be verified for real in CI"* — `T-033`
+built and probed local artifacts; what CI is required for is **both platforms**.
+**Comments only, proved rather than asserted:** both files parse to an identical AST before and
+after, the test module's once its docstring is blanked.
+
 
 **`T-234` is In Review.** `UX-013`'s ruling is carried out: `Settings → Settings…` is the only
 place the download limit is set, and the toolbar is three verbs — `+ Add URLs`, the run control,
