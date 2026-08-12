@@ -269,7 +269,13 @@ def remember_a_path(value: str | None) -> None:
 
 
 def forget_the_secrets() -> None:
-    """Drop every registered literal. For tests, and for a settings change that invalidates them."""
+    """Drop every registered literal.
+
+    **Called only by tests** (`T-213`). This said "and for a settings change that invalidates
+    them"; nothing in `src/` calls it, so registered literals accumulate for the life of the
+    process and a value that has been replaced goes on being redacted. Whether that is the wanted
+    behaviour is not recorded anywhere, so this says what happens rather than why.
+    """
     _secrets.clear()
 
 

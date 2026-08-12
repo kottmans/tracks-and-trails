@@ -58,13 +58,11 @@ class TemplateField:
 SUPPORTED_FIELDS: Final[tuple[TemplateField, ...]] = (
     TemplateField("title", "the item's title, as the site gives it"),
     TemplateField("uploader", "who published it — `NA` where the site names nobody"),
+    # yt-dlp derives this from `duration` itself, and the raw number renders as `507.1` — which
+    # is why only the formatted spelling is offered.
     TemplateField("duration_string", "how long it is, as `8-27`"),
     TemplateField("ext", "the file extension"),
 )
-
-#: What `duration_string` is derived from. Supplied to the renderer, never named in a template:
-#: offering both would be two spellings of one fact, and the raw number renders as `507.1`.
-_DERIVED_FROM: Final = {"duration_string": "duration"}
 
 SUPPORTED_NAMES: Final = frozenset(field.name for field in SUPPORTED_FIELDS)
 

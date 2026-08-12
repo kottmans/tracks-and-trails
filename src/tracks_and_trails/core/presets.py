@@ -357,9 +357,11 @@ def with_post_processing(
 def post_processing_of(preset: Preset) -> dict[str, Any]:
     """The five adjustable options as `with_post_processing` takes them.
 
-    The round trip the editor needs: open showing what the preset already asks for, and hand back
-    what the user made it. Built from `POST_PROCESSING_FIELDS` rather than listed a second time,
-    so a sixth option is carried by both directions the day it is added.
+    **A spec anchor for tests, not a caller's helper** (`T-213`). This described the round trip
+    "the editor needs"; the options dialog reads the preset's fields directly and has never called
+    this. It stays because it states the pairing `with_post_processing` relies on — built from
+    `POST_PROCESSING_FIELDS` rather than listed a second time, so a sixth option is carried both
+    ways the day it is added — and because the tests assert that pairing through it.
     """
     return {field: getattr(preset, field) for field in sorted(POST_PROCESSING_FIELDS)}
 

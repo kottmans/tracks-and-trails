@@ -140,6 +140,7 @@ from tracks_and_trails.ui.row_delegate import (
     INHERITED_TEXT,
     JOB_ID_ROLE,
     MANAGE_PRESETS_DATA,
+    MANAGE_PRESETS_TEXT,
     MEDIA_KIND_ROLE,
     OPTIONS_AVAILABLE_ROLE,
     OPTIONS_DATA,
@@ -217,10 +218,6 @@ URL_BOX_LINES: Final = 4
 #: A panel sized to the viewport exactly would put *Done* on the final pixel of the visible area,
 #: where it reads as clipped even when it is not.
 PANEL_VIEWPORT_MARGIN: Final = 8
-
-#: How a failed withdrawal announces itself. A prefix rather than a whole message, because the
-#: URL and the reason belong in it and `NFR-005` forbids signalling the state any other way.
-WITHDRAW_FAILED_PREFIX: Final = "Still queued:"
 
 #: What each row state says, in words (`NFR-005`). Derived from the state rather than written
 #: beside it, so a state cannot acquire a colour and no sentence.
@@ -1356,7 +1353,12 @@ class AddUrlDialog(QDialog):
         # catalogue every row chooses from and does the same thing from every one of them, so it was
         # offered N times to mean one thing. `ResetRole` is what puts it at the *left* of the box,
         # away from the two buttons that decide the dialog's outcome.
-        self._manage_presets_button = QPushButton("&Manage presets…", self)
+        # **One definition of this label** (`T-213`). The negative assertions — that the row
+        # combo no longer offers it — import `MANAGE_PRESETS_TEXT`, while this button spelled
+        # it a second time. Two spellings of one label is how a guard comes to police a string
+        # nothing says any more. The accelerator is inserted rather than stored, because it
+        # belongs to this button and not to the name of the action.
+        self._manage_presets_button = QPushButton(f"&{MANAGE_PRESETS_TEXT}", self)
         self._manage_presets_button.setObjectName("managePresetsButton")
         self._manage_presets_button.setAccessibleName("Manage presets")
         self._manage_presets_button.setAutoDefault(False)

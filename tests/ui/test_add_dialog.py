@@ -42,7 +42,6 @@ from PySide6.QtCore import (
     QItemSelectionModel,
     QModelIndex,
     QPoint,
-    QPointF,
     QRect,
     Qt,
 )
@@ -53,7 +52,6 @@ from PySide6.QtGui import (
     QFontMetrics,
     QImage,
     QPainter,
-    QWheelEvent,
 )
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -4792,21 +4790,6 @@ def test_a_value_refresh_leaves_the_open_format_table_over_its_row(
         assert dialog.open_panel is None, "Esc did not close the format table"
     finally:
         dialog.close()
-
-
-def _wheel_down(target: QWidget) -> QWheelEvent:
-    """One notch of wheel-down, aimed at `target`'s centre."""
-    centre = QPointF(target.rect().center())
-    return QWheelEvent(
-        centre,
-        QPointF(target.mapToGlobal(target.rect().center())),
-        QPoint(0, 0),
-        QPoint(0, -120),
-        Qt.MouseButton.NoButton,
-        Qt.KeyboardModifier.NoModifier,
-        Qt.ScrollPhase.NoScrollPhase,
-        False,
-    )
 
 
 def test_the_footer_offers_the_preset_manager_where_a_store_is_wired(

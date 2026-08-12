@@ -231,6 +231,9 @@ def find_ffmpeg(
 def describe_candidates(candidates: Sequence[YtdlpCandidate]) -> str:
     """A log-safe description of the resolution order.
 
+    **Nothing in `src/` logs it** (`T-213`). The name promises a caller that does not exist; it is
+    a spec anchor, asserted by tests, for the rule stated below.
+
     **No user path appears here** (`NFR-007`). The user-managed directory sits under the user's
     home, so logging it leaks a username into a file that may be attached to a bug report. The
     source label carries the useful information — *which* candidate was chosen — without it.

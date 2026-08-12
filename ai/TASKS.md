@@ -118,6 +118,98 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
+### T-213 — Remove the dead code a full-tree audit verified
+
+**Status:** In Review — built 2026-08-12 in an authorized unattended run; filed 2026-08-09 from a
+maintainer-requested audit of the whole tree.
+**Owner:** Implementer
+**Priority:** Low — nothing misbehaves; every item is weight with no function
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** the In Review add-dialog chain (`T-203`, `T-204`'s corrections) receiving verdicts
+first — two of the items live in files that chain is still changing, and deleting under an open
+review moves the review boundary.
+**Relevant context:** `ruff check --select F401,F811,F841` is already clean; these are the items
+reference-analysis finds and lint cannot. Each was verified to have exactly one occurrence in the
+tree — its definition — including string references, the PyInstaller spec's `hiddenimports`, and
+`pyproject.toml` entry points
+**Affected surfaces:** `ui/add_dialog.py`, `core/output_template.py`,
+`tests/ui/test_add_dialog.py`, `ui/widgets/`, `ui/row_delegate.py`
+**Risk:** Low — the residual risk is a string-referenced usage the greps missed, which the suite
+covers
+
+#### Scope
+
+**Four verified-dead items:**
+
+- **`WITHDRAW_FAILED_PREFIX`** (`ui/add_dialog.py` §221) — a leftover of the withdrawal machinery
+  `T-118` removed; the module itself says *"there is nothing to withdraw"*, and the constant's
+  comment still describes the removed behaviour
+- **`_DERIVED_FROM`** (`core/output_template.py` §67) — its comment claims it is *"supplied to the
+  renderer"*; no renderer touches it. The comment's true half — yt-dlp derives `duration_string`
+  itself — may survive as prose if worth keeping
+- **`_wheel_down`** (`tests/ui/test_add_dialog.py` §4530) — its callers were deleted by `bcaa38a`
+  (`T-203`) and the helper stayed
+- **`ui/widgets/`** — a docstring-only package nothing imports; absent from the PyInstaller spec
+  and from every import in `src/`, `tests/`, `tools/`
+
+**One single-source-of-truth repair, not a deletion.** `MANAGE_PRESETS_TEXT`
+(`ui/row_delegate.py` §282) is asserted by tests only in the *negative* — that the combo no longer
+contains it — while the live footer button label is a second hardcoded string at
+`ui/add_dialog.py` §1311. Point both at one constant, so the negative assertions cannot drift from
+the label they exist to police.
+
+**Docstring honesty, no code change.** `post_processing_of` (`core/presets.py` §345),
+`forget_the_secrets` (`core/logging.py` §177) and `describe_candidates`
+(`downloader/environment.py` §209) each promise a `src/` caller that does not exist — the options
+dialog reads preset fields directly, no settings change invalidates secrets, nothing logs the
+resolution order. Used only by tests. Either wire the promised caller or state plainly that the
+function is a spec anchor for tests, the way `SCHEMA_SNAPSHOT` and `CANCEL_BUDGET_SECONDS` already
+do.
+
+#### Acceptance criteria
+
+- The four dead items are gone, and a grep for each name finds nothing
+- The *Manage presets…* label has one definition, read by both the footer button and the
+  negative assertions
+- The three docstrings state who actually calls them
+- `ruff check`, `ruff format --check`, `mypy src`, and the suites owning the touched files pass
+
+#### What was built, against those criteria
+
+**Each item was re-verified dead before deletion, not trusted from the 2026-08-09 audit.** Three
+days and several tasks had passed; a grep for each name across `src`, `tests`, `tools`,
+`packaging` and `pyproject.toml` returned **exactly one occurrence — its own definition** —
+and `ui/widgets/` had **zero** importers.
+
+- **`WITHDRAW_FAILED_PREFIX`, `_DERIVED_FROM`, `_wheel_down`, `ui/widgets/`** are gone; a grep
+  for all three names now returns 0.
+- **`_DERIVED_FROM`'s comment had a true half and it survives as prose** where the field is
+  described: yt-dlp derives `duration_string` itself, and the raw number renders as `507.1`,
+  which is why only the formatted spelling is offered.
+- **The *Manage presets…* label has one definition.** The footer button spelled it a second time
+  as `"&Manage presets…"` while the negative assertions imported `MANAGE_PRESETS_TEXT`; the
+  button now reads `f"&{MANAGE_PRESETS_TEXT}"`. The accelerator is inserted rather than stored,
+  because it belongs to the button and not to the name of the action.
+- **The three docstrings say who calls them**, and two claims were narrowed while writing them
+  because they asserted intent nobody recorded. `forget_the_secrets` now says only what is
+  checkable — nothing in `src/` calls it, so registered literals accumulate for the life of the
+  process and a replaced value goes on being redacted — and explicitly that *whether that is
+  wanted is not recorded anywhere*. `describe_candidates` is a spec anchor, not a logger.
+
+**Four tests fewer, and none of them was lost.** `2714 → 2710`, all four the layering guard's
+parametrised cases for `ui/widgets/__init__.py`: the guard runs per module, so deleting the module
+deleted its cases. Confirmed by diffing `--collect-only` against `HEAD` rather than by assuming.
+
+**Ruff found what the deletion orphaned** — `QPointF` and `QWheelEvent` in `test_add_dialog.py` —
+which is the intended division of labour: reference analysis finds the dead definitions, lint
+finds what removing them strands.
+
+#### Out of scope
+
+- The deliberate test-only invariant anchors — `SCHEMA_SNAPSHOT`, `CANCEL_BUDGET_SECONDS`,
+  `ui/theme.py`'s contrast metrics, `allowed_from`, `stage_of`. Documented as anchors; keep
+- Any behaviour change
+
 ## Complete
 
 ### T-225 — Two UI test files pass apart and fail together
@@ -2612,67 +2704,6 @@ run is the deliverable; the pass is only what it hopefully shows.
 - **The Windows half.** `OPS-003`: there is no Windows machine, so the run is Linux; the
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
-
-### T-213 — Remove the dead code a full-tree audit verified
-
-**Status:** Proposed — filed 2026-08-09 from a maintainer-requested audit of the whole tree.
-**Owner:** Implementer
-**Priority:** Low — nothing misbehaves; every item is weight with no function
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** the In Review add-dialog chain (`T-203`, `T-204`'s corrections) receiving verdicts
-first — two of the items live in files that chain is still changing, and deleting under an open
-review moves the review boundary.
-**Relevant context:** `ruff check --select F401,F811,F841` is already clean; these are the items
-reference-analysis finds and lint cannot. Each was verified to have exactly one occurrence in the
-tree — its definition — including string references, the PyInstaller spec's `hiddenimports`, and
-`pyproject.toml` entry points
-**Affected surfaces:** `ui/add_dialog.py`, `core/output_template.py`,
-`tests/ui/test_add_dialog.py`, `ui/widgets/`, `ui/row_delegate.py`
-**Risk:** Low — the residual risk is a string-referenced usage the greps missed, which the suite
-covers
-
-#### Scope
-
-**Four verified-dead items:**
-
-- **`WITHDRAW_FAILED_PREFIX`** (`ui/add_dialog.py` §221) — a leftover of the withdrawal machinery
-  `T-118` removed; the module itself says *"there is nothing to withdraw"*, and the constant's
-  comment still describes the removed behaviour
-- **`_DERIVED_FROM`** (`core/output_template.py` §67) — its comment claims it is *"supplied to the
-  renderer"*; no renderer touches it. The comment's true half — yt-dlp derives `duration_string`
-  itself — may survive as prose if worth keeping
-- **`_wheel_down`** (`tests/ui/test_add_dialog.py` §4530) — its callers were deleted by `bcaa38a`
-  (`T-203`) and the helper stayed
-- **`ui/widgets/`** — a docstring-only package nothing imports; absent from the PyInstaller spec
-  and from every import in `src/`, `tests/`, `tools/`
-
-**One single-source-of-truth repair, not a deletion.** `MANAGE_PRESETS_TEXT`
-(`ui/row_delegate.py` §282) is asserted by tests only in the *negative* — that the combo no longer
-contains it — while the live footer button label is a second hardcoded string at
-`ui/add_dialog.py` §1311. Point both at one constant, so the negative assertions cannot drift from
-the label they exist to police.
-
-**Docstring honesty, no code change.** `post_processing_of` (`core/presets.py` §345),
-`forget_the_secrets` (`core/logging.py` §177) and `describe_candidates`
-(`downloader/environment.py` §209) each promise a `src/` caller that does not exist — the options
-dialog reads preset fields directly, no settings change invalidates secrets, nothing logs the
-resolution order. Used only by tests. Either wire the promised caller or state plainly that the
-function is a spec anchor for tests, the way `SCHEMA_SNAPSHOT` and `CANCEL_BUDGET_SECONDS` already
-do.
-
-#### Acceptance criteria
-
-- The four dead items are gone, and a grep for each name finds nothing
-- The *Manage presets…* label has one definition, read by both the footer button and the
-  negative assertions
-- The three docstrings state who actually calls them
-- `ruff check`, `ruff format --check`, `mypy src`, and the suites owning the touched files pass
-
-#### Out of scope
-
-- The deliberate test-only invariant anchors — `SCHEMA_SNAPSHOT`, `CANCEL_BUDGET_SECONDS`,
-  `ui/theme.py`'s contrast metrics, `allowed_from`, `stage_of`. Documented as anchors; keep
-- Any behaviour change
 
 ### T-218 — The add dialog's empty state: one instruction, inside the list
 
