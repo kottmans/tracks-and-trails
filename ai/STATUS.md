@@ -2499,9 +2499,10 @@ before executing a single step, on GitHub's billing annotation.
 
 **That no longer stops the criterion**, which is the part this paragraph got wrong for a day.
 `OPS-005` and `OPS-006` gave both halves a platform that does not depend on the quota, and `T-073`
-made the Windows half actually run. What holds criterion 7 now is `T-074`, not billing. The hosted
-jobs still gate `T-066`'s frozen artifacts — which, as of the `OPS-005` amendment, gate no phase
-exit; that evidence lands with `T-033` in Phase 5.
+made the Windows half actually run. What holds criterion 7 now is `T-074`, not billing. *(This ended
+"the hosted jobs still gate `T-066`'s frozen artifacts … that evidence lands with `T-033` in Phase
+5". Neither holds: `OPS-010` and `OPS-012` moved both frozen jobs off hosted runners, `T-066` is
+**Complete** with its criteria met, and `T-033`'s frozen evidence is produced on both platforms.)*
 
 *(This paragraph said `T-069` was "reproduced and narrowed but not fixed" and that `T-040` still
 needed the `windows desktop` job, after both had moved — `COORD-R5`. It then said the criterion
@@ -2894,7 +2895,9 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
   path to pass through it and `ai/TESTING.md` §7 listing path safety as mandatory. Found while
   planning Phase 1; now filed and blocking `T-012`.
 
-- **`T-033` — implemented, not closed** (`P1-R2`). The spec collects yt-dlp's submodules and
+- **`T-033` — Complete, approved 2026-08-12 with follow-up `T-233`.** *(This read "implemented,
+  not closed" (`P1-R2`) until the approval; the account below is kept because it is how the task
+  got there.)* The spec collects yt-dlp's submodules and
   data files; the probe resolves an extractor *by name* through the lazy machinery and asserts
   the bundled version against the pin (`T033-R1`). **The Linux half is now complete**, produced
   against a real frozen artifact on 2026-07-29 and independently re-verified by the reviewer:
@@ -2908,8 +2911,10 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
   outstanding after each had been done). The probe extension landed 2026-08-12 and the removal
   fails: 3 assets and exit 0 against 0 and exit 1. `collect_submodules` was decided by `REL-002`
   on **2026-08-04** — it stays; its redundancy is a fact about this pin, not about yt-dlp. And the
-  **Windows** build has run green twice, in CI `31570861414` and `31607180926`. What remains on
-  `T-033` is a records sweep, which is what this correction is.
+  **Windows** build has run green twice, in CI `31570861414` and `31607180926`. **The records
+  sweep that remained is done and approved** — `T033-R5` and `T033-R6` both Resolved, all six
+  acceptance criteria met. *(This ended "what remains on `T-033` is a records sweep, which is what
+  this correction is", which was true for the two days that sweep took.)*
 
   *(This said "the local probe is source-mode and proves nothing about the artifact", which was
   true when written and stopped being true when the artifact was built. `T033-R3`. An earlier
@@ -2934,23 +2939,18 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
 
 ## Blockers
 
-- **`T-033` — blocked on its own records** (`T033-R6`), and on nothing else. `T033-R5` is
-  Resolved: the solver knowledge lives behind `downloader/worker.py`, and both frozen CI jobs
-  passed the relocated check. **What this bullet used to say is the defect it now records** — it
-  called the task blocked on `T033-R4` and the Windows build, and said a probe extension and a
-  maintainer decision on `collect_submodules` were owed. The probe extension landed 2026-08-12,
-  `REL-002` decided the submodule line on 2026-08-04, and Windows has run green twice. A
-  records-only correction pass was authorized by the maintainer under `AGENTS.md` §10, the
-  ordinary budget having been spent.
+**Nothing is blocked.** `T-033` was the last entry here and it cleared on **2026-08-12**, approved
+with follow-up `T-233` — `T033-R5` and `T033-R6` both Resolved, and **all six acceptance criteria
+marked met**. Its remaining follow-ups are non-blocking prose: `T-233` carries two stale
+explanations in the spec and the freeze-probe test docstring.
 
-  *(This said "PyInstaller is in the `build` extra and absent from the working venv, so none of it
-  can be produced here." **It is present, at 6.21.0** — `T-064` reinstalled the venv with
-  `.[dev,build]` deliberately, and it was installed before that too. The reviewer placed the
-  sentence at `a2966156`, well before any recent boundary, and asked for it as separate cleanup
-  rather than folded into `T-064`. Corrected here. **And then this sentence outlived its own
-  bullet**: it ended "what blocks `T-033` is the hosted frozen jobs, not a missing local
-  dependency", six lines under an opening that says the task is blocked on its records and nothing
-  else, and after `OPS-010`/`OPS-012` had moved both frozen jobs off hosted runners. `T033-R6`.)*
+*(What this bullet used to say is worth one line, because it was the defect rather than the state:
+it called `T-033` blocked on `T033-R4` and the Windows build, then on the hosted frozen jobs, then
+on its own records — each reading outliving the thing it described. The probe extension landed
+2026-08-12, `REL-002` decided `collect_submodules` on 2026-08-04, `OPS-010`/`OPS-012` moved both
+frozen jobs off hosted runners, and CI `31570861414` and `31607180926` are green on all five jobs.
+The full account is `T-033`'s entry and `ai/REVIEWS.md`; this file records the state, not the
+history.)*
 
 *(the `T-003` logo blocker cleared on 2026-07-25 when the maintainer supplied the source
 asset)*

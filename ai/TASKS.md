@@ -118,67 +118,13 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
-### T-232 — T-066's process-tree test still says CI skips the virtualenv
-
-**Status:** **In Review — corrected 2026-08-12**, the same day it was filed from `T066-R3`.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 1 residue; gates no phase or task
-**Depends on:** nothing
-**Relevant context:** `T-066`, `T066-R3`, `.github/workflows/ci.yml`,
-`tests/integration/test_manager.py::test_the_detector_sees_a_grandchild_and_not_just_a_worker`
-**Affected surfaces:** `tests/integration/test_manager.py` comment only
-**Risk:** Low — the assertion is correct; the explanation names CI's retired install shape
-
-#### Scope
-
-The comment above the generation assertion still says CI installs without a virtualenv and that
-the old one-hop assumption therefore held on every runner. T-066 changed that: every functional
-CI job creates and enters a virtualenv before installing. The following paragraph and the
-assertion are already correct — the detector needs a process at least two generations below the
-walker, and that invariant holds with or without the Windows launcher level.
-
-Correct the stale two-line explanation while preserving the historical reason the assertion
-changed and its install-shape-independent contract. Do not change test behavior.
-
-#### Acceptance criteria
-
-- The comment states that CI now uses the documented virtualenv and marks the no-venv CI shape as
-  the pre-T-066 state
-- The explanation still says why `generations >= 2` is valid under both install shapes
-- No assertion, helper, fixture, workflow, or product behavior changes
-
-#### What was built, against those criteria
-
-Comment only, in
-`tests/integration/test_manager.py::test_the_detector_sees_a_grandchild_and_not_just_a_worker`.
-
-- **The no-venv CI shape is marked as the pre-`T-066` state**, and the comment now says CI adopted
-  the venv — every job creates `.venv` and prepends it to `GITHUB_PATH` — so the runners exercise
-  the deeper shape too.
-- **The install-shape-independent contract is still stated**: `generations >= 2` is what the
-  detector must satisfy, and the adoption did not disturb the assertion precisely because it was
-  written to hold under both shapes.
-- **Nothing else changed.** No assertion, helper, fixture, workflow or product behaviour;
-  `ruff`, `ruff format --check` and `mypy` clean, and the three `grandchild` cases pass.
-
-*(Its own last line records what it was: a comment describing a divergence in the present tense
-after that divergence was closed — the third `T-0NN`-numbered instance of that class in two days,
-after `T-231` and `T066-R2`.)*
-
-#### Out of scope
-
-- Reworking the detector or its process fixture
-- Re-measuring the accepted frozen-artifact assumption
-
----
+## Complete
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
-**Status:** **In Review — second records-only pass, 2026-08-12**, on a fresh maintainer
-authorization under `AGENTS.md` §10 after the first was spent on an incomplete sweep. `T033-R5`
-remains Resolved; `T033-R6`'s three surviving instances — the Scope, an undated parenthetical, and
-the `STATUS.md` blocker's closing sentence — are retired below.
+**Status:** **Complete — Approved with follow-up `T-233`, 2026-08-12.** `T033-R5` remains
+Resolved and the second maintainer-authorized records pass resolves `T033-R6`. All six acceptance
+criteria are met. `T033-R7` is Low, comment-only cleanup outside the submitted records surfaces.
 **No source, test, workflow or dependency change is part of either pass.**
 
 *(The first pass retired the six claims it had enumerated and missed those three, because it
@@ -420,9 +366,12 @@ itself, so an upstream rename would have had to be absorbed there as well as in 
 #### Acceptance criteria
 
 - The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
-  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
+  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass *(met: the probe
+  checks the normalized runtime version against the restated exact pin, whose equality with
+  `pyproject.toml` is gated; both frozen jobs passed it in `31570861414` and `31607180926`)*
 - A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
-  stable URL pattern, without network access
+  stable URL pattern, without network access *(met: the probe instantiates the concrete YouTube
+  extractor and checks its positive and negative URL predicates offline; both frozen jobs passed)*
 - **The data collection has a failing negative** — removing `collect_data_files("yt_dlp")` makes
   the probe fail, exercised once and reverted, as `T-020`'s negative proof was *(met 2026-08-12;
   the single blanket criterion this replaces could not be met, because the two collection lines
@@ -432,8 +381,11 @@ itself, so an upstream rename would have had to be absorbed there as well as in 
   until `T033-R6`, eight days after the decision was taken.)*
 - The `OPS-002` resolution order is honoured: with a directory present at
   `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
-  or unimportable, it reports the baseline and says why
+  or unimportable, it reports the baseline and says why *(met by the approved `T-035` candidate
+  ordering and `T-012` importer/report/fallback contract)*
 - Both the Linux and Windows frozen jobs stay green, and the artifact-size change is recorded
+  *(met: both green in `31570861414` and `31607180926`; the recorded rebuilt baseline is
+  194 788 KiB against 194 740 KiB without data collection)*
 
 #### Out of scope
 
@@ -449,7 +401,61 @@ inclusion still yields an application that cannot download anything.
 
 ---
 
-## Complete
+### T-232 — T-066's process-tree test still says CI skips the virtualenv
+
+**Status:** **Complete — Approved 2026-08-12.** `T066-R3` is Resolved; the correction is comment
+only and preserves the install-shape-independent assertion.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1 residue; gates no phase or task
+**Depends on:** nothing
+**Relevant context:** `T-066`, `T066-R3`, `.github/workflows/ci.yml`,
+`tests/integration/test_manager.py::test_the_detector_sees_a_grandchild_and_not_just_a_worker`
+**Affected surfaces:** `tests/integration/test_manager.py` comment only
+**Risk:** Low — the assertion is correct; the explanation names CI's retired install shape
+
+#### Scope
+
+The comment above the generation assertion still says CI installs without a virtualenv and that
+the old one-hop assumption therefore held on every runner. T-066 changed that: every functional
+CI job creates and enters a virtualenv before installing. The following paragraph and the
+assertion are already correct — the detector needs a process at least two generations below the
+walker, and that invariant holds with or without the Windows launcher level.
+
+Correct the stale two-line explanation while preserving the historical reason the assertion
+changed and its install-shape-independent contract. Do not change test behavior.
+
+#### Acceptance criteria
+
+- The comment states that CI now uses the documented virtualenv and marks the no-venv CI shape as
+  the pre-T-066 state
+- The explanation still says why `generations >= 2` is valid under both install shapes
+- No assertion, helper, fixture, workflow, or product behavior changes
+
+#### What was built, against those criteria
+
+Comment only, in
+`tests/integration/test_manager.py::test_the_detector_sees_a_grandchild_and_not_just_a_worker`.
+
+- **The no-venv CI shape is marked as the pre-`T-066` state**, and the comment now says CI adopted
+  the venv — every job creates `.venv` and prepends it to `GITHUB_PATH` — so the runners exercise
+  the deeper shape too.
+- **The install-shape-independent contract is still stated**: `generations >= 2` is what the
+  detector must satisfy, and the adoption did not disturb the assertion precisely because it was
+  written to hold under both shapes.
+- **Nothing else changed.** No assertion, helper, fixture, workflow or product behaviour;
+  `ruff`, `ruff format --check` and `mypy` clean, and the three `grandchild` cases pass.
+
+*(Its own last line records what it was: a comment describing a divergence in the present tense
+after that divergence was closed — the third `T-0NN`-numbered instance of that class in two days,
+after `T-231` and `T066-R2`.)*
+
+#### Out of scope
+
+- Reworking the detector or its process fixture
+- Re-measuring the accepted frozen-artifact assumption
+
+---
 
 ### T-066 — CI installs the project differently from how the documentation says to
 
@@ -1787,6 +1793,51 @@ preset with no opinion falls back to — not a second template implementation.
 deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
+
+### T-233 — T-033's packaging comments still give the pre-REL-002 reason
+
+**Status:** **Ready — non-blocking follow-up from `T033-R7`, 2026-08-12.**
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 5 residue; gates no phase or task
+**Depends on:** nothing
+**Relevant context:** `T-033`, `T033-R7`, `REL-002`, `packaging/tracks-and-trails.spec`,
+`tests/integration/test_freeze_probe.py`
+**Affected surfaces:** comments/docstrings only in the spec and frozen-probe integration test
+**Risk:** Low — collection and its executable gates are correct; the explanation gives a reason
+the mutation disproved
+
+#### Scope
+
+Two explanatory passages outside T-033's records still describe superseded evidence:
+
+- `packaging/tracks-and-trails.spec` says static analysis collects only yt-dlp's core and misses
+  essentially every extractor. The T-033 mutation established the opposite for this pin:
+  `_extractors.py` carries 928 static relative imports. `REL-002` retains
+  `collect_submodules("yt_dlp")` as insurance against a future pin, not because the current pin
+  needs it.
+- `tests/integration/test_freeze_probe.py` says the probe can be verified “for real” only in CI.
+  The local PyInstaller 6.21 builds were real frozen artifacts and supplied the Linux positive,
+  negative, and restored evidence. Exact both-platform CI remains an acceptance gate, but CI is
+  not the only place the artifact can be built and probed.
+
+Correct those explanations without changing the spec operations, probe, tests, workflow, or
+runtime behavior. Preserve why explicit submodule collection stays and why both-platform CI is
+still required.
+
+#### Acceptance criteria
+
+- The spec comment distinguishes current-pin redundancy from `REL-002`'s future-pin insurance
+- The integration-test docstring distinguishes local frozen verification from required
+  both-platform CI evidence
+- No executable statement, assertion, workflow, collection call, or dependency changes
+
+#### Out of scope
+
+- Removing either `collect_submodules` or `collect_data_files`
+- Changing the frozen probe or its acceptance evidence
+
+---
 
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.

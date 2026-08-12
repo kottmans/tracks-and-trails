@@ -15462,3 +15462,63 @@ measurement. It moves from Ready to Complete at `6b7454b`. `T-232` owns the one 
 and does not reopen correct behavior or the acceptance evidence. `T-033` remains Blocked on
 `T033-R6` and is outside this boundary. No source, tests, workflow, dependency, commit, push, or
 remote state was changed by the Reviewer.
+
+## 2026-08-12 — T033-R6 second authorized records re-review / T-232 review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-033`, second maintainer-authorized records pass for `T033-R6`; `T-232` correction
+of `T066-R3`
+**Base:** `2751ae5`
+**Head:** `034d4c1` (`c93301b` T-232; `d815aef` and `034d4c1` T-033)
+**Platforms verified:** Linux focused logic tests; no executable T-033 behavior changed. Existing
+both-platform frozen evidence remains the independently reviewed CI evidence for the acceptance
+criteria.
+**Verdict:** **T-033 Approved with follow-up `T-233`; T-232 Approved.** `T033-R6` and
+`T066-R3` are Resolved. New `T033-R7` is Low, comment-only cleanup and does not reopen the
+correct packaging operations or frozen gate.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T033-R6** | **Medium** | **Resolved** | The second authorized sweep retires all three remaining live instances from the prior review. Scope now labels the zero-file/stub account as the pre-T-012 world, states the current artifact and worker facts first, and reconciles the extractor premise with this pin's 928 static imports. The undated external/hosted parenthetical now says neither job is external or hosted and cites `OPS-010`/`OPS-012` plus both green runs. The STATUS parenthetical no longer ends by naming hosted frozen jobs as the blocker six lines after saying records were the only blocker. Reading the full current T-033 entry and both STATUS blocks found no further present-tense false gate. Commit `034d4c1` also truthfully returns the task to In Review after the failed assertion in `d815aef`; stripping the T-033 block from both trees produces identical TASKS hashes, so the large diff is relocation rather than collateral rewriting. |
+| **T066-R3** | **Low** | **Resolved** | T-232 changes only the stale comment above the process-depth assertion. It marks no-venv CI as the pre-T-066 state, records current venv adoption, and preserves why `generations >= 2` is valid under both install shapes. The three grandchild cases pass and the executable test is byte-identical. |
+| **T033-R7** | **Low** | **No — collection, probe, and evidence are correct** | Two explanatory passages outside the submitted records surfaces retain superseded wording. `packaging/tracks-and-trails.spec:29-36` says static analysis misses essentially every extractor, although the mutation and `REL-002` establish 928 static relative imports for this pin; the line stays as future-pin insurance. `tests/integration/test_freeze_probe.py:3-8` says real verification is possible only in CI, although the recorded Linux positive/negative/restored evidence came from real local frozen artifacts. Exact both-platform CI is still required. **Open — carried to `T-233`; comments/docstrings only.** |
+
+### T-033 acceptance criteria
+
+| Criterion | Reviewer result |
+|---|---|
+| Frozen package and exact pin | **Met.** `BASELINE_YTDLP_VERSION` is gated against the exact `pyproject.toml` pin; the in-artifact probe normalizes and compares the loaded version. Both frozen jobs passed in `31570861414` and `31607180926`. |
+| Offline named-extractor probe inside the artifact | **Met.** The probe instantiates the concrete YouTube extractor through the lazy table, rejects a still-lazy class, and checks positive and negative URL predicates without fetching. Both frozen platforms passed it. |
+| Data-collection failing negative | **Met.** The rebuilt baseline carries three solver assets and exits 0; removing `collect_data_files("yt_dlp")` carries zero and exits 1; the restored spec returns to exit 0. |
+| Submodule decision | **Met.** Accepted `REL-002` keeps `collect_submodules("yt_dlp")` as future-pin insurance while recording its redundancy for this pin. |
+| `OPS-002` resolution order and reporting | **Met.** Approved T-035 orders an existing user candidate ahead of the baseline; approved T-012 imports in that order, emits the selected version/source, and falls back loudly for every tested unimportable user-copy shape. |
+| Both frozen jobs and artifact-size change | **Met.** Linux and Windows frozen jobs are green in both cited runs. The final recorded rebuild is 194 788 KiB with data collection versus 194 740 KiB without it. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and worktree before reviewer records | **Clean; `HEAD == origin/main == 034d4c1`; exactly the submitted three commits follow `2751ae5`.** |
+| Changed paths | `ai/TASKS.md`, `ai/STATUS.md`, and one comment in `tests/integration/test_manager.py`; no assertion, source behavior, workflow, build operation, or dependency changed. |
+| `git diff --check 2751ae5..034d4c1` | **Passed.** |
+| T-033 focused pin/probe/resolution slice | **19 passed, exit 0.** This includes all frozen-probe logic tests, pin/restatement checks, candidate ordering, and seven broken-user-copy fallback shapes. |
+| T-232 grandchild slice | **3 passed, 151 deselected, exit 0.** |
+| Task-placement gate | **14 passed, exit 0.** |
+| T-033 relocation integrity | Removing the T-033 block from TASKS at `d815aef` and `034d4c1` gives the same SHA-256, `d6a0ded6…b2d85434d`; only the intended block moved. |
+| Runtime frozen build / Windows CI | Not rerun for records/comment-only corrections. Previously independently reviewed run `31607180926` remains applicable and green on all five jobs. |
+
+### Final disposition and STATUS synchronization
+
+T-033 moves to Complete with all six criteria marked met; T-232 moves to Complete. `T-233`
+owns the non-blocking explanatory cleanup. The failed assertion described in the handoff did not
+hide a final-tree omission: `034d4c1` supplies the missing status edit, and the submitted head is
+internally coherent.
+
+At `034d4c1`, `ai/STATUS.md` correctly still calls T-033 blocked because this verdict did not yet
+exist. This approval changes that fact. The implementer/maintainer recording the reviewer-owned
+disposition must now rewrite that current blocker paragraph from this verdict; this is mechanical
+post-verdict synchronization and needs no focused implementation re-review. The Reviewer does not
+edit implementer-owned STATUS. No reviewed source, test assertion, workflow, build operation,
+dependency, commit, push, or remote state was changed by the Reviewer.
