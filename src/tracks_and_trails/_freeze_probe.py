@@ -26,11 +26,14 @@ at one while the recursion happens anyway. That was found by actually removing
 `freeze_support()` and rebuilding, not by reasoning about it.
 """
 
+import hashlib
+import importlib
 import multiprocessing
 import os
 import sys
 from multiprocessing.queues import Queue as QueueType
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 #: Names the file that records one line per top-level application start. Set by the caller
@@ -245,8 +248,79 @@ def run_ytdlp_probe() -> int:
         )
         return 1
 
+    if (failure := _check_bundled_solver(resolved.module)) is not None:
+        print(failure, file=sys.stderr)
+        return 1
+
     print("OK: the frozen artifact carries a usable yt-dlp with its extractors")
     return 0
+
+
+#: The solver asset `EJSBaseJCP._builtin_source` uses, and the one this probe requires.
+#:
+#: **Not every name in `vendor.HASHES`.** That table records six and the baseline ships three —
+#: the two `lib` variants and the minified core are absent from a normal install — so requiring
+#: all of them would fail a correct artifact. The Deno and Bun variants are reported but not
+#: required, because which of those ships is upstream's business and this gate is about *ours*.
+_REQUIRED_SOLVER = "yt.solver.core.js"
+
+
+def _check_bundled_solver(ytdlp: ModuleType) -> str | None:
+    """Load the built-in YouTube solver the way yt-dlp does, or say what is missing (`T033-R4`).
+
+    **This is the assertion that makes `collect_data_files("yt_dlp")` load-bearing.** Removing
+    that line from the spec strips all three solver assets from the artifact — verified: the
+    baseline carries three and the stripped build carries zero — and every other check in this
+    probe still passed, because none of them touches package *data*. A gate blind to a real
+    regression is worse than no gate: an artifact shipping without these fails only on the sites
+    that need the solver, which reads exactly like the site breakage `C-002` teaches everyone to
+    expect.
+
+    **Through `vendor.load_script`, not through the filesystem.** That is the path
+    `EJSBaseJCP._builtin_source` actually takes, and it goes through `importlib.resources` —
+    which is the part that behaves differently inside a frozen archive. Reading the file with
+    `pathlib` would prove the bytes exist somewhere and prove nothing about whether yt-dlp can
+    reach them.
+
+    **The hash is checked with `sha3_512`, because that is what yt-dlp checks with.** `Script.hash`
+    in `extractor/youtube/jsc/_builtin/ejs.py` uses it, and `_ALLOWED_HASHES` compares against the
+    same `vendor.HASHES` table read here. Re-deriving the digest with a different algorithm would
+    be this probe having its own opinion about a file it does not own.
+    """
+    try:
+        vendor = importlib.import_module(f"{ytdlp.__name__}.extractor.youtube.jsc._builtin.vendor")
+    except ImportError as error:
+        return (
+            f"FAIL: yt-dlp's built-in solver package is not in the artifact ({error}). The "
+            "YouTube challenge solver cannot be loaded, so the sites that need it fail as if "
+            "they had changed (T-033, T033-R4)."
+        )
+
+    recorded: dict[str, str] = vendor.HASHES
+    source = vendor.load_script(_REQUIRED_SOLVER)
+    if source is None:
+        return (
+            f"FAIL: {_REQUIRED_SOLVER} is not in the artifact. yt-dlp's package data was not "
+            "collected, so the built-in YouTube solver is missing while everything else about "
+            "this build looks correct (T-033, T033-R4). Check collect_data_files in "
+            "packaging/tracks-and-trails.spec."
+        )
+
+    digest = hashlib.sha3_512(source.encode("utf-8")).hexdigest()
+    if digest != recorded.get(_REQUIRED_SOLVER):
+        return (
+            f"FAIL: {_REQUIRED_SOLVER} loaded but its hash does not match the one yt-dlp records "
+            f"for it. The artifact carries a solver this yt-dlp does not vouch for (T-033)."
+        )
+
+    also = sorted(
+        name
+        for name in recorded
+        if name != _REQUIRED_SOLVER and vendor.load_script(name) is not None
+    )
+    print(f"solver          {_REQUIRED_SOLVER} v{vendor.VERSION}, hash verified")
+    print(f"solver extras   {len(also)} of {len(recorded) - 1} recorded: {', '.join(also) or '-'}")
+    return None
 
 
 def run_database_probe() -> int:

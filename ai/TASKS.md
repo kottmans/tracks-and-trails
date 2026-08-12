@@ -1035,14 +1035,48 @@ exactly like the site-breakage `C-002` teaches everyone to expect, so it will be
 
 Collect the package explicitly in the spec, and prove it from inside the artifact.
 
+#### The probe extension, 2026-08-12 — `T033-R4`'s blind spot is closed
+
+**`collect_data_files("yt_dlp")` now has a failing negative.** Built both ways on Fedora, Python
+3.14.6, PyInstaller 6.21.0:
+
+| Build | Artifact | Solver assets | `--ytdlp-probe` |
+|---|---|---:|---|
+| Baseline | 194 788 KiB | **3** | **exit 0** — `yt.solver.core.js v0.8.0, hash verified` |
+| `collect_data_files("yt_dlp")` removed | 194 740 KiB | **0** | **exit 1** — names the missing asset *and the spec line* |
+| Baseline, spec restored | — | 3 | exit 0; `frozen_smoke.py` exit 0 |
+
+**Loaded the way yt-dlp loads it, and hashed the way yt-dlp hashes it.** The check goes through
+`vendor.load_script`, which is `importlib.resources` — the part that behaves differently inside a
+frozen archive — rather than reading the file with `pathlib`, which would prove bytes exist
+somewhere and nothing about whether yt-dlp can reach them. The digest is **`sha3_512`**, because
+that is what `Script.hash` in `extractor/youtube/jsc/_builtin/ejs.py` uses against the same
+`vendor.HASHES` table; re-deriving it with another algorithm would be this probe holding its own
+opinion about a file it does not own.
+
+**Only the core solver is required, and that is deliberate.** `vendor.HASHES` records **six**
+names and a normal install ships **three** — the two `lib` variants and the minified core are
+absent — so requiring the table would fail a correct artifact. The other two are reported, not
+required: which of them upstream ships is upstream's business.
+
+**Still open, and it is the maintainer's:** whether `collect_submodules("yt_dlp")` stays as
+insurance against a pin that returns to lazy resolution, or goes as redundant for this one
+(`_extractors.py` carries 928 static `from .` imports, so the module graph follows them unaided).
+**Not taken here** — this run was unattended, and it is a judgement about future pins rather than
+about this tree.
+
 #### Acceptance criteria
 
 - The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
   `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
 - A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
   stable URL pattern, without network access
-- Removing the collection from the spec makes that probe fail — the mutation is exercised once
-  and reverted, as `T-020`'s negative proof was
+- **The data collection has a failing negative** — removing `collect_data_files("yt_dlp")` makes
+  the probe fail, exercised once and reverted, as `T-020`'s negative proof was *(met 2026-08-12;
+  the single blanket criterion this replaces could not be met, because the two collection lines
+  behave differently — `T033-R4`)*
+- **The submodule collection has a recorded decision** — keep as insurance or remove as redundant
+  *(open; the maintainer's)*
 - The `OPS-002` resolution order is honoured: with a directory present at
   `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
   or unimportable, it reports the baseline and says why
