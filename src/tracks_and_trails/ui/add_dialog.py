@@ -1164,7 +1164,7 @@ class AddUrlDialog(QDialog):
         default_cookie_browser: Callable[[], str | None] | None = None,
         queued_urls: QueuedUrls | None = None,
         save_preset: PresetSink | None = None,
-        manage_presets: Callable[[], None] | None = None,
+        manage_presets: Callable[[], object] | None = None,
         default_preset: str = "",
         default_output_template: str = preset_registry.DEFAULT_OUTPUT_TEMPLATE,
         parent: QWidget | None = None,

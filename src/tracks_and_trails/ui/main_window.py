@@ -343,7 +343,7 @@ class MainWindow(QMainWindow):
         on_clear_requested: Callable[[], None] | None = None,
         queue: QueueReader | None = None,
         save_preset: PresetSink | None = None,
-        manage_presets: Callable[[], None] | None = None,
+        manage_presets: Callable[[], object] | None = None,
         presets: Callable[[], Sequence[Preset]] | None = None,
         default_preset: Callable[[], str] | None = None,
         cache_root: Path | None = None,

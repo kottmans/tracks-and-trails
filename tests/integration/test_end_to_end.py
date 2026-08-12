@@ -45,6 +45,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails import app as application
+from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.errors import ErrorKind, is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
@@ -937,6 +938,67 @@ def test_each_preset_produces_the_file_it_promises(
     finally:
         composition.shutdown.begin()
         assert spin(lambda: composition.shutdown.finished, timeout=120)
+
+
+def test_a_default_output_template_names_the_file_that_is_actually_written(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    media_url: Callable[..., str],
+) -> None:
+    """**`REQ-023`, `T-195`: the criterion read literally** (`T195-R4`).
+
+    The criterion says a job whose preset states no template *"writes to the path that template
+    renders"*, and every earlier version of this proof stopped short of a file: the composition
+    tests persist the request and preview its path, which exercises the render and the containment
+    rule but creates nothing on disk.
+
+    This downloads. The template is set in `settings.toml` before the application composes, the
+    shipped preset states none and therefore defers to it, and the assertion is that **the file
+    exists at the path the template describes** — a folder named for the uploader, which the
+    default template does not produce.
+    """
+    chosen = "%(uploader)s/%(title)s.%(ext)s"
+    settings_file = tmp_path / "settings.toml"
+    assert (
+        core_settings.save(
+            core_settings.set_output_template(core_settings.Settings(), chosen), settings_file
+        )
+        is None
+    )
+
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+        settings_file=settings_file,
+    )
+    # `UX-006`: a composed application opens with its queue stopped, so this presses Start.
+    composition.manager.start_queue()
+    try:
+        job_id = queue_one(composition, media_url())
+        assert spin(
+            lambda: shown_status(composition, job_id) is JobStatus.COMPLETED, timeout=180
+        ), f"the download never completed — {why(composition, job_id)}"
+
+        job = composition.store.get(job_id)
+        assert job is not None and job.output_path is not None
+        written = Path(job.output_path)
+
+        assert written.exists(), (
+            f"the queue recorded {written} and no such file exists, so the template names a path "
+            "nothing was written to"
+        )
+        assert written.parent != tmp_path / "downloads", (
+            f"{written} sits directly in the download folder, so the uploader segment the chosen "
+            "template asks for was never applied — the shipped default was used instead"
+        )
+        assert job.request.output_template == chosen, (
+            "the job carries a template other than the one Settings stored"
+        )
+    finally:
+        composition.manager.stop_queue()
 
 
 def test_audio_postprocessing_does_not_overwrite_an_existing_final_path(

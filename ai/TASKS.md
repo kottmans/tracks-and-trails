@@ -120,11 +120,12 @@ this one returned four verdicts before approving.*
 
 ### T-195 — The `REQ-023` settings `T-146` defers: default preset and output template
 
-**Status:** **In Review — changes requested in the third focused re-review 2026-08-11.**
-`T195-R5`'s production correction is resolved at `6326715`; `T195-R4` still lacks three required
-boundary proofs, and the correction tests add an optional-ffmpeg dependency (`T195-R6`). The
-maintainer's explicit offer to add the cross-surface proof authorizes one more focused correction,
-limited to these recorded gaps.
+**Status:** **In Review — changes requested in the fourth focused re-review 2026-08-11.**
+`T195-R5` and `T195-R6` are resolved. `T195-R4` now proves the ARC-008 dialog, but its two remaining
+tests stop one production boundary early: the surface crossing is manually wired between separate
+widgets, and the output-template test previews rather than writes the path. The maintainer's
+explicit offer to add the end-to-end file proof authorizes one more focused correction limited to
+these two gaps.
 
 **`T195-R5` — the catalogue was a startup snapshot.** `preset_names` closed over the `ffmpeg`
 report composition was built with, while `choose_ffmpeg_location` updates `in_force.report`. So a
@@ -157,19 +158,20 @@ removing the screen's wiring entirely, which the previous round's tests could no
   and composition validates before the value becomes interactive.
 - **`T195-R3` — Medium, Resolved for the submitted startup case at `a152017`.** With ffmpeg absent
   at startup, Settings and Add now filter through `needs_ffmpeg` and offer the same catalogue.
-- **`T195-R4` — Medium, Open.** The real Settings controls, distinguishing retarget, and staged-row
-  inheritance are now covered. Three explicitly requested boundaries remain: the stored-template
-  test asserts a log record rather than the user-visible ARC-008 dialog; the one-writer test still
-  applies the core setter instead of crossing preset-manager ↔ Settings; and no test follows the
-  chosen default template to the real written path the acceptance criterion names.
+- **`T195-R4` — Medium, Open.** The real Settings controls, distinguishing retarget, staged-row
+  inheritance, and user-visible ARC-008 dialog are covered. The new bidirectional surface tests
+  construct the widgets separately and manually carry `Settings` between them, so deleting
+  composition's `held.settings = settings` manager handoff leaves both green; cross the real
+  composed routes instead. The output-template test persists and previews the request, but the
+  acceptance criterion explicitly says the job **writes** to a **real written path**; add that
+  proof in the end-to-end suite, as the correction itself proposes.
 - **`T195-R5` — Medium, Resolved at `6326715`.** Settings reads `in_force.report` and an already-open
   screen is re-offered the catalogue after an accepted ffmpeg change. The focused host test proves
   both live and reopen routes. The adjacent preset-manager warning still captures startup state;
   that pre-existing Medium is filed separately as `T-226` rather than reopening this task.
-- **`T195-R6` — Medium, Open.** The new screen tests select MP3 without arranging ffmpeg, and the
-  R5 regression skips when the host has none. With an empty `PATH`, the focused correction set is
-  **2 failed, 4 passed, 1 skipped**. Use the existing cross-platform `an_executable_ffmpeg` fixture
-  so the required evidence neither fails nor disappears with an optional system dependency.
+- **`T195-R6` — Medium, Resolved at `e69cce7`.** All three tests construct an executable through
+  `an_executable_ffmpeg`, and the entire composition file passes under an empty environment and
+  `PATH`: **57 passed, no skips**.
 
 **The entry's premise did not hold, and the maintainer ruled on the fork.** This entry says the
 task supplies *"the application default that a preset with no opinion falls back to"* — and no
@@ -311,6 +313,38 @@ default, which fails the written-path proof.
 
 **`T-226` is the reviewer's follow-up** for the stale preset-manager warning at `app.py`, filed as
 non-blocking and not touched here.
+
+**Fourth focused re-review 2026-08-11.** The ARC-008 dialog and `T195-R6` are independently
+resolved. `T195-R4` remains open at two boundaries. The two new surface tests manually hand a
+`Settings` object between separately constructed widgets, so they do not gate composition's
+manager-to-`held.settings` handoff; they repeat the store-versus-wiring distinction this finding
+has tracked. The template test reaches a durable request and the authoritative preview, but the
+criterion's *writes to a real written path* language is literal. The maintainer already offered to
+add that end-to-end proof if read strictly; that offer authorizes one more focused correction,
+limited to the composed crossing and real-file assertion.
+
+**Fifth pass 2026-08-11 — `T195-R4`'s last two boundaries.**
+
+- **The crossing traverses composition now.** The UI-level pair proved each screen honours
+  `set_default_preset`, but moved the settings object between them by hand — so deleting
+  composition's `held.settings = settings` left both green, and that line *is* the crossing. The
+  new test opens the real manager out of a composed application, presses *Set as default*, opens
+  the real Settings screen, and reads its combo. **Nothing is handed between them**, and the next
+  add dialog is checked too.
+
+  **This needed a production change**: `manage_presets` used `exec()`, a nested event loop, so a
+  test could reach the manager but never the composition behind it. It `open()`s and returns the
+  screen now — which is what `open_add_dialog` and `open_settings` already do, for the reason
+  their docstrings give. Window modality is unchanged.
+
+- **The written path is a real file.** The criterion says *writes to the path that template
+  renders*, and the reviewer read it literally, correctly: previewing a path creates nothing.
+  `tests/integration/test_end_to_end.py` now stores a template in `settings.toml`, downloads from
+  the localhost server, and asserts the file **exists** and that its parent is not the download
+  folder — a folder named for the uploader, which the shipped template does not produce.
+
+**Two mutations, each killing exactly its own proof**: composition no longer advancing
+`held.settings` on a manager write, and `to_request` ignoring the supplied default.
 
 **Owner:** Implementer
 **Priority:** Medium — the default preset is the one a user meets on every paste, and today it

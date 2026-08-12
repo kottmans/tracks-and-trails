@@ -14971,3 +14971,41 @@ correction limited to the recorded gaps.
 **Do not push `6326715`.** The three-commit T-195 stack remains held. The Reviewer changed only the
 append-only review record and current task/follow-up dispositions; no reviewed source, test,
 status snapshot, commit, or remote state was changed.
+
+## 2026-08-11 — T-195 fourth focused re-review
+
+**Review boundary:** `6326715..e69cce7`
+
+**Verdict:** **Changes requested.** The ARC-008 dialog and no-ffmpeg evidence are corrected. The
+one-writer tests operate both widgets but manually connect them instead of traversing composition,
+and the template proof stops at a preview despite the criterion's explicit real-write language.
+The maintainer offered to add the end-to-end proof if that language was read strictly; it is, and
+that offer authorizes one more focused correction limited to these two boundaries.
+
+### Findings
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T195-R4** | **Medium** | **Yes — two production boundaries remain unproved** | The stored-template test now finds `settingsProblemDialog` and asserts its message, resolving ARC-008. The two new one-writer tests operate real `PresetManager` and `SettingsDialog` widgets in both directions, but construct them separately and manually carry the resulting `Settings` object between them. Deleting `held.settings = settings` from composition's `save_settings` leaves both green, so the real manager → composition → Settings crossing remains ungated—the same store-versus-wiring distinction R4 exists for. Drive the composed manager callback and then open composed Settings; drive composed Settings and inspect the manager composition opens. The template test now queues and reloads the durable request and runs the authoritative renderer, which is valuable, but it explicitly stops short of a file. The criterion says a job **writes to the path** and requires a **real written path**; add the offered end-to-end download assertion rather than weakening those words. |
+| **T195-R6** | **Medium** | **Resolved** | `which("ffmpeg")` is gone and all three MP3/live-capability tests construct a platform-valid executable through `an_executable_ffmpeg`, assert the selectable entry exists, and do not skip. The Reviewer independently ran the entire composition file under an empty environment and `PATH`: **57 passed, no skips**. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Worktree before reviewer records | **clean; `main` ahead of `origin/main` by four commits** |
+| `git diff --check 6326715..e69cce7` | **pass** |
+| `ruff check .` / `ruff format --check .` | **pass; 166 files formatted** |
+| `mypy src` | **pass; 52 files** |
+| bare `mypy` / bare `mypy --platform win32` | **pass; 128 files each** |
+| Focused corrected composition selection | **5 passed, 52 deselected in 2.59 s** |
+| Settings/MainWindow UI selection | **80 passed in 1.24 s** |
+| Entire composition file under `/usr/bin/env -i PATH=` | **57 passed in 21.09 s; no skips** |
+| Task-placement gate after reviewer records | **14 passed** |
+| Full suites | **not rerun by the Reviewer; submitted 2710 passed / 18 skipped and 401 integration passed are not disputed** |
+
+### Push disposition
+
+**Do not push `e69cce7`.** The four-commit T-195 stack remains held. The Reviewer changed only the
+append-only review record and current task disposition; no reviewed source, test, status snapshot,
+commit, or remote state was changed.

@@ -38,13 +38,15 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QMetaMethod, QObject
+from PySide6.QtCore import QMetaMethod, QObject, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMessageBox,
+    QPushButton,
     QRadioButton,
 )
 
@@ -69,6 +71,11 @@ from tracks_and_trails.downloader.protocol import (
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui import theme as ui_theme
+from tracks_and_trails.ui.preset_manager import (
+    PRESET_LIST_NAME,
+    SET_DEFAULT_NAME,
+    PresetManager,
+)
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN, SIZE_COLUMN
 from tracks_and_trails.ui.row_delegate import PRESET_ROLE
 from tracks_and_trails.ui.row_verbs import Verb
@@ -2810,6 +2817,69 @@ def test_installing_ffmpeg_widens_the_settings_catalogue_without_a_restart(
             dialog.close()
     finally:
         reopened.close()
+
+
+def test_a_default_set_in_the_preset_manager_reaches_settings_through_composition(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**The crossing, with nothing carried by hand** (`T-195`, `T195-R4`).
+
+    The UI-level pair proved each screen honours `settings.set_default_preset` — but it moved the
+    settings object between them itself, so **deleting composition's `held.settings = settings`
+    left both green**. That line is the crossing: without it the manager's write reaches the file
+    and the running session never learns of it.
+
+    So this opens the real manager, presses *Set as default*, and then opens the real Settings
+    screen out of the same composition. Nothing is handed between them.
+    """
+    ffmpeg_here = an_executable_ffmpeg(tmp_path)
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(
+        settings_file=settings_file,
+        ffmpeg_override=ffmpeg_here,
+        entry_point=child_probing_then_waiting,
+    )
+    chosen = presets.AUDIO_MP3.name
+
+    open_manager = composition.window._manage_presets
+    assert open_manager is not None, "composition wired no preset manager"
+    manager = open_manager()
+    # `manage_presets` is typed `Callable[[], object]` at the window's boundary — the window has no
+    # business knowing what screen composition builds. The test does.
+    assert isinstance(manager, PresetManager)
+    try:
+        rows = manager.findChild(QListWidget, PRESET_LIST_NAME)
+        assert rows is not None
+        for index in range(rows.count()):
+            if rows.item(index).data(Qt.ItemDataRole.UserRole) == chosen:
+                rows.setCurrentRow(index)
+                break
+        else:  # pragma: no cover - the catalogue always contains it
+            raise AssertionError(f"{chosen} is not in the manager's list")
+        button = manager.findChild(QPushButton, SET_DEFAULT_NAME)
+        assert button is not None
+        button.click()
+    finally:
+        manager.close()
+
+    screen = _settings_screen(composition)
+    try:
+        combo = screen.findChild(QComboBox, DEFAULT_PRESET_NAME)
+        assert combo is not None
+        assert combo.currentData() == chosen, (
+            "the Settings screen opened on a different default than the preset manager just set, "
+            "so the manager's write never reached the running session"
+        )
+    finally:
+        screen.close()
+
+    # And the session, not only the screen: the next paste inherits it too.
+    dialog = composition.window.open_add_dialog()
+    try:
+        assert dialog._default_preset == chosen
+    finally:
+        dialog.close()
 
 
 def test_the_cookies_file_reaches_the_workers_and_never_the_job(

@@ -787,12 +787,21 @@ def compose(
         held.settings = settings
         return None
 
-    def manage_presets() -> None:
+    #: The open manager, so `open()` does not let it be collected the moment this returns.
+    managers: list[object] = []
+
+    def manage_presets() -> object:
         """Open `docs/UX_SPEC.md` §8's manager (`REQ-007`, `T-111`).
 
         Modal against the window that asked, so the catalogue cannot be edited in two places at
         once — the add dialog reads the presets afresh each time it is built, and two open managers
         would be two answers to what the list contains.
+
+        **`open()` and a returned screen, as `open_add_dialog` and `open_settings` already do**
+        (`T195-R4`). It was `exec()`, which starts a nested event loop — so a test could reach the
+        manager's catalogue but never the composition behind it, and the *set a default here, see it
+        in Settings* crossing had to be assembled by hand from both halves. Window modality is
+        unchanged; what changes is that the caller gets the screen back.
         """
         from tracks_and_trails.ui.preset_manager import PresetManager
 
@@ -806,7 +815,11 @@ def compose(
             ffmpeg_available=ffmpeg.available,
             parent=window,
         )
-        screen.exec()
+        managers.clear()
+        managers.append(screen)
+        screen.finished.connect(lambda _result: managers.clear())
+        screen.open()
+        return screen
 
     def choose_run(running: bool) -> None:
         """Start or stop the queue (`UX-001`, `UX-006`, `T-181`).
