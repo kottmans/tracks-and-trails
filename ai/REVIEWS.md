@@ -15598,3 +15598,61 @@ requested, T-233 is complete with Low follow-up T-237, T-235/T-236 block T-234, 
 criterion remains open. The Reviewer changed only `ai/REVIEWS.md` and approved task/follow-up
 records in `ai/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote
 state was changed.
+
+## 2026-08-12 — T-234 focused correction re-review / T-235, T-236, T-237 reviews
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-234` focused re-review of `T234-R1` through `T234-R3`; initial reviews of
+`T-235`, `T-236`, and `T-237`
+**Correction boundary:** `d86b9da..c814bab` (`de6ceb4` T-235, `e1152c7` T-237, `4176f37`
+T-236 plus the T234-R3 sweep, `c814bab` T-235's UIA-role correction). Later records-only commits
+`3391fc5` and `da0be4c` were read for current truth; T-228 received no verdict.
+**Platforms verified:** Linux focused UI tests; GitHub Actions run `31640266898` at `c814bab`,
+successful on all five jobs. Its `windows desktop` job includes the dedicated accessibility slice
+and full Windows suite.
+**Verdict:** **T-234 Changes requested; T-235 Changes requested; T-236 Approved; T-237 Changes
+requested.** `T234-R2` and `T234-R3` are Resolved. `T234-R1` remains open because T-235's
+exact-name criterion is still not gated.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T234-R1** | **High** | **Yes** | **Still Open.** The correction fixes the structural hole and the second UIA-role hole: the fixture builds the toolbar, the unnamed-control sweep includes `CheckBox`, and the Windows runner observed `Start` and `Stop`. But the acceptance criterion requires each verb to be asserted by a hand-transcribed name in the adjacent menu test's literal/exact shape. The test imports `ADD_URLS_BUTTON` from production and accepts any check-box name containing `Start`/`Stop`; a rename can move the expected side with production or retain the substring. T-235 owns the remaining correction. |
+| **T234-R2** | **Medium** | **Resolved** | T-236 restores labelled `−`/`+` buttons at the control's new home, disables each at its range end, gives both direction-and-setting accessible names and `NoFocus`, and suppresses native arrows. The shipped-control pixel evidence is meaningful: independently restoring the old `QToolBar`-scoped selector changes the sampled edge from `#748A7E` (the applied theme border) to `#AFB0AE` (Qt's fallback). |
+| **T234-R3** | **Medium** | **Resolved** | The named explanations now describe one control and why `show_concurrency` follows composition. A complete grep/read of current surfaces found only explicitly historical concurrency/toolbar mentions; none says a toolbar copy currently exists. |
+| **T235-R1** | **Medium** | **Yes** | The test says its expected toolbar names are transcribed by hand, but `+ Add URLs` comes from production's `ADD_URLS_BUTTON`; the two run-state assertions use `any("Start" in name ...)` / `any("Stop" in name ...)` over all check boxes rather than exact names. This is a gate that does not gate the precise acceptance contract. Use an exact literal expected set while retaining the role and refreshed-tree checks. |
+| **T237-R1** | **Medium** | **Yes** | The canonical `REL-002` pointer and unchanged AST are correct, but the closing comment still blurs product behavior and gate behavior. *“Neither removal fails anything today”* is immediately contradicted by *“a missing solver asset produces”* a user-visible failure. The measured statement is that neither mutant fails the current frozen probe/gates; only current-pin submodule removal is known not to break product behavior. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and worktree before reviewer records | **Clean; `HEAD == origin/main == da0be4c`.** `git diff --check` passed for each implementation commit and the combined `d86b9da..c814bab` boundary. |
+| Focused T-234/T-236 UI slice | **146 passed**: `test_settings_dialog.py`, `test_main_window.py`, and `test_row_verb_wiring.py`. |
+| T-236 selector mutation | **Killed independently.** With the stylesheet transformed back to `QToolBar QToolButton[stepButton="true"]`, both edges measure `#AFB0AE`, not `theme.LIGHT.border` (`#748A7E`). |
+| T-237 AST boundary | **Passed:** `packaging/tracks-and-trails.spec` has an identical AST before and after `e1152c7`. |
+| Task-placement gate | **14 passed after T-236's final relocation to Complete.** |
+| Submitted CI | **Run `31640266898`: all five jobs successful.** The dedicated Windows desktop suite and full Windows suite both passed at `c814bab`; the original `31639831980` failure correctly exposed the run control's `CheckBox` role. |
+
+### The disclosed parallel UI flake
+
+One failure in nine supported `-n auto` unit/UI runs is enough to record, but not enough to
+attribute. It is **not folded into T-228**: that task's mechanism is lost multiprocessing-queue
+delivery in spawned integration workers, while this test uses a Qt thread pool and parentless
+signal sink. `T-238` owns reproducing the exact assertion and distinguishing interaction-budget,
+pool-drain, and late-emission failures. It does not block these verdicts because it is outside the
+changed files, passed in eight sibling runs and isolation, and no mechanism connects it to the
+submission.
+
+### Final disposition and synchronization
+
+T-234 and T-235 remain In Review on the exact-name gate. T-236 moves to Complete and closes
+`T234-R2`. T-237 remains In Review on its product-versus-gate sentence. The correction of
+`T234-R3` is complete. T-228's amended records were read but not reviewed or dispositioned.
+
+`ai/STATUS.md` remains Implementer-owned and was not edited. It must now record the two resolved
+T-234 findings, the remaining exact-name finding, T-236's approval, T-237's requested wording
+correction, and filed T-238. The Reviewer changed only `ai/REVIEWS.md` and approved task records in
+`ai/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote state was
+changed.
