@@ -98,7 +98,20 @@ pytest --cov=tracks_and_trails --cov-report=term-missing
   and path-traversal attempts (`../`, absolute paths).
 - No test may write outside `tmp_path`. No test may download real media into the repository.
 - Tests must not read or write the developer's real config, data, or cache directories —
-  `platformdirs` paths are redirected to `tmp_path` by an autouse fixture.
+  `platformdirs` paths are redirected to `tmp_path` by the autouse `_per_user_directories`
+  fixture in `tests/conftest.py`, over the consumer list in `tests/user_directories.py`.
+
+  ***This rule described a fixture that did not exist until 2026-08-11*** (`T123-R2`). Eight test
+  files each arranged their own redirect and everything they did not cover reached the real
+  machine: one `-n auto tests/unit tests/ui` run left **241 job logs** under the real
+  `user_cache_dir`. **A rule that names its own mechanism is a rule that can be checked**, and
+  this one was not — `tests/unit/test_user_directories.py` now re-derives the consumer list from
+  `src/` with `ast`, so a module that starts importing a `platformdirs` directory fails a test
+  instead of silently escaping the redirect.
+
+  **The redirect is in-process only.** A test that *spawns* a process gives the child the real
+  directories unless it passes explicit paths — `tests/ui/test_app_launch.py` sets `XDG_*` for the
+  application it launches, and that half is still the test's own job.
 
 ## 6. Mocking policy
 

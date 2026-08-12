@@ -47,6 +47,11 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=6.0",
     "pytest-qt>=4.4",
+    # T-123: the suite is the largest cost in every gate, and it parallelises. Declared here
+    # rather than assumed present — it was installed in one local virtualenv and named in no
+    # manifest, so the CI that needs it most would have run the suite serially and silently.
+    # Dev-only tooling, so no DECISIONS entry is required (AGENTS.md §7).
+    "pytest-xdist>=3.6",
     "ruff>=0.9",
 ]
 build = ["pyinstaller>=6.21"]

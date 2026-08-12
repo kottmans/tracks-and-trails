@@ -614,7 +614,21 @@ def child_writing_a_partial_and_ignoring_cancellation(
 #: A string that appears in the command line of every process these tests spawn as a stand-in
 #: for `ffmpeg`, and nowhere else. It is how the teardown below finds strays it can safely kill —
 #: including ones that have been reparented away and are no longer descendants of this process.
-GRANDCHILD_MARKER: Final = "tracks-and-trails-test-descendant"
+#:
+#: **The worker id is part of it, and that is what makes the teardown safe under `-n`** (`T-123`).
+#: The teardown scans *every process on the machine*, because a reparented stray is no longer
+#: findable any other way — so with one shared marker, two `pytest-xdist` workers running this
+#: file kill each other's live processes. That is not theoretical: it is
+#: `test_the_survival_check_can_tell_a_live_process_from_a_dead_one` reporting `[] == [914917]`,
+#: *"a running process was reported dead"* — the failure `T-123` recorded on 2026-08-04 and this
+#: task reproduced at **one run in six** before this line, on exactly the same assertion.
+#:
+#: Per *worker* rather than per process id: the teardown runs in the same worker that spawned the
+#: strays, and a worker id survives the several processes a session goes through. `master` is what
+#: xdist calls a serial run, so the marker keeps a stable spelling when nobody is parallelising.
+GRANDCHILD_MARKER: Final = (
+    f"tracks-and-trails-test-descendant-{os.environ.get('PYTEST_XDIST_WORKER', 'master')}"
+)
 
 #: What a leaked grandchild runs: a process that outlives anything short of being killed.
 #:

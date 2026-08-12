@@ -123,7 +123,14 @@ jobs:
       ${{ matrix.os == 'windows-latest'
           && fromJSON(vars.WINDOWS_RUNNER || '"windows-latest"')
           || fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
-    timeout-minutes: 15
+    # **25, raised from 15 on 2026-08-11** (`T-123`). The 15 was set when the suite was 2653 tests
+    # and 4m29s on this machine; at 3130 it ran out mid-`Tests` in run `31553176677` and cancelled
+    # a job whose every other gate was green. Parallelising the unit and UI half is the actual fix
+    # and it is in the `Tests` step below — this is the headroom, so that the *next* time the
+    # suite outgrows the bound the board says "slow" by failing late rather than by failing at a
+    # cliff nobody was watching. A bound with no headroom flaps on runner speed rather than on the
+    # code, which is `T118-R10`.
+    timeout-minutes: 25
 
     strategy:
       fail-fast: false
@@ -328,9 +335,66 @@ jobs:
         # (`T-189`). The step above installs the tool on both hosted runners, so the variable
         # should never fire here — which is the point: if the install ever silently stops working,
         # the required end-to-end case goes red instead of turning into a green SKIPPED line.
+        #
+        # **Two invocations, because only one half of the suite parallelises safely** (`T-123`).
+        # This step is what run `31553176677` was cancelled inside, at the 15-minute cap, with
+        # every gate before it green: the suite had grown past the bound — 3130 tests against the
+        # 2653 behind the 4m29s measured on this machine on 2026-08-05.
+        #
+        #   - **`tests/unit` and `tests/ui` take `-n auto`**: 2711 of the 3130 tests, **23 s
+        #     against 186 s**, five consecutive green runs.
+        #
+        #     **Not because they start no processes** — that claim was wrong twice (`T123-R2`),
+        #     first by denying the processes and then by asserting an isolation the slice did not
+        #     have. What holds is two properties, both now enforced rather than argued:
+        #
+        #       * **nothing shared is written** — every per-user directory is redirected into the
+        #         test's own `tmp_path` by the autouse fixture in `tests/conftest.py`, the one
+        #         `ai/TESTING.md` §5 always required and nobody had built. The same run left
+        #         **241 job logs in the real user cache** before it existed and **0** after;
+        #       * **nothing reaps what it did not start** — `psutil.process_iter` appears nowhere
+        #         under `tests/unit` or `tests/ui`, which is the property parallelism breaks and
+        #         the one `tests/integration/test_manager.py` violated.
+        #   - **`tests/integration` stays serial.** It is where every hazard `T-123` names lives,
+        #     and two of them are real. One was found and fixed here: the stray-reaper in
+        #     `test_manager.py` scans *every process on the machine* and killed other xdist
+        #     workers' live processes, which is `test_the_survival_check_can_tell_a_live_process_
+        #     from_a_dead_one` failing one run in six. The other is open: under parallel load a
+        #     retry deadline stops firing and
+        #     `test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started` fails — a timed
+        #     gate with no headroom, which is `T118-R10`'s defect class and is filed rather than
+        #     absorbed here.
+        #
+        # `-n 4` runs integration in **83 s against 297 s**, green three times of three. That is
+        # not adopted: `T-123` says in terms that a lower worker count carries the same hazard at
+        # a lower rate, and "a gate that fails rarely is one people re-run". It is the maintainer's
+        # call, not a tuning knob to reach for once the board is green.
+        #
+        # **Linux only.** The evidence is Linux, and `T-056` is an open *Windows* defect about
+        # whether a process is alive — the question parallel load perturbs. The Windows legs stay
+        # serial until someone can watch a parallel run there.
+        #
+        # **The selector is a shell test, not a `${{ }}` ternary, and that is `T123-R1`.** This
+        # read `${{ matrix.os == 'windows-latest' && '' || '-n auto' }}`, which is the common
+        # pseudo-ternary idiom and is **wrong whenever the true arm is falsey**: on Windows it
+        # evaluates to `'' || '-n auto'`, and the empty string loses. Both legs parallelised, so
+        # the workflow did the opposite of what the four comments above it promised, on the one
+        # platform the evidence deliberately excludes. GitHub has no ternary; an expression whose
+        # correctness depends on both arms being truthy is a trap, so the decision is made where
+        # it can be read and run.
+        #
+        # `RUNNER_OS` rather than `matrix.os`: the runner's own answer, which stays right when
+        # `LINUX_RUNNER` or `WINDOWS_RUNNER` points a matrix label at a different machine.
         env:
           TRACKSANDTRAILS_REQUIRE_FFMPEG: "1"
-        run: pytest -v --junitxml="reports/pytest.xml" 2>&1 | tee "reports/pytest.txt"
+        run: |
+          parallel=""
+          if [ "$RUNNER_OS" != "Windows" ]; then parallel="-n auto"; fi
+          echo "unit/UI slice: pytest -v ${parallel:-(serial)} on $RUNNER_OS"
+          pytest -v $parallel tests/unit tests/ui \
+            --junitxml="reports/pytest-unit-ui.xml" 2>&1 | tee "reports/pytest-unit-ui.txt"
+          pytest -v tests/integration \
+            --junitxml="reports/pytest-integration.xml" 2>&1 | tee "reports/pytest-integration.txt"
 
       - name: Upload evidence
         if: always()

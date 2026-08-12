@@ -210,7 +210,8 @@ python -m pip install -e ".[dev]"
 ```
 
 `-e` installs the package in editable mode, so `src/` changes take effect without reinstalling.
-`[dev]` adds ruff, mypy, pytest, and pytest-qt. Add `[build]` when you need PyInstaller.
+`[dev]` adds ruff, mypy, pytest, pytest-qt and pytest-xdist. Add `[build]` when you need
+PyInstaller.
 
 Verify:
 
@@ -232,11 +233,54 @@ ruff check .                 # lint
 ruff check --fix .           # lint, fixing what is auto-fixable
 ruff format .                # format
 mypy                         # types (strict; paths come from pyproject.toml)
-pytest                       # default suite
+pytest                       # default suite, serial
 pytest tests/unit            # fast headless loop
 pytest -m network            # opt-in; hits real sites
 pytest --cov --cov-report=term-missing
 ```
+
+**The full sweep is two commands, and the split is the point** (`T-123`). This is what CI runs on
+Linux and the only parallel shape that has been measured green:
+
+```bash
+pytest -n auto tests/unit tests/ui   # 2711 tests — 23 s, against 186 s serial
+pytest tests/integration             # 403 tests — 297 s, and serial on purpose
+```
+
+**Do not reach for bare `pytest -n auto`.** It runs the whole suite in 78 s and **fails about one
+run in six** — measured, not feared. Two hazards live in `tests/integration`: one is fixed (a
+stray-reaper that killed other workers' processes) and one is open (`T-228`, a retry deadline that
+stops firing under load). Until `T-228` is answered, integration runs serially.
+
+**What makes the parallel half safe is two properties, and both are now enforced rather than
+argued.**
+
+**Nothing shared is written.** Every per-user directory — config, data, cache, downloads — is
+redirected into the test's own `tmp_path` by an autouse fixture in `tests/conftest.py`, which is
+what `ai/TESTING.md` §5 has always required. *Before it existed, one `-n auto tests/unit tests/ui`
+run left 241 job logs in the developer's real cache*; it is 0 now, and
+`tests/unit/test_user_directories.py` re-derives the list of consuming modules from `src/` with
+`ast` so a new consumer cannot be missed silently.
+
+**Nothing reaps what it did not start.** `psutil.process_iter` appears nowhere under `tests/unit`
+or `tests/ui` — checked, and the narrow claim rather than a count of files that merely mention
+`subprocess`. That is the property parallelism actually breaks, and
+`tests/integration/test_manager.py` is where it was broken: its reaper must scan the machine,
+because a reparented stray is findable no other way, so its marker now carries
+`PYTEST_XDIST_WORKER` and a worker can only reap its own.
+
+**The limit worth knowing:** a monkeypatch lives in one interpreter, so a test that *spawns* a
+process gives the child the real directories unless it passes explicit paths.
+`tests/ui/test_app_launch.py` does exactly that for the application it launches. The fixture is the
+in-process half and does not replace it.
+
+Serial and parallel collect the identical 3130 tests, checked by diffing `--collect-only`.
+**The Windows jobs stay serial**: `T-056` is an open Windows defect about whether a process is
+alive, which is precisely the question parallel load perturbs.
+
+**`-n auto` is not in `addopts`, and that is a choice.** The runs where you want it — the sweep
+before calling a change done — are not the runs where you want `-x`, `--pdb` or a readable
+traceback, and xdist makes all three worse. Reach for it on the sweep, leave it off in the loop.
 
 Building the frozen artifact, which CI does on both platforms every run (`T-020`):
 

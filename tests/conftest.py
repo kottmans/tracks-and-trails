@@ -13,11 +13,45 @@ because pytest discovers fixtures from `conftest.py` and plugins, not from an or
 
 import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
+
+from tests import user_directories
 from tests.capabilities import ffmpeg, symlinks
 
 __all__ = ["ffmpeg", "symlinks"]
+
+
+# --- `ai/TESTING.md` §5, which had a rule and no mechanism (`T123-R2`) -------------------------
+#
+# §5 says tests must not touch the developer's real config, data or cache directories, and that
+# `platformdirs` paths are redirected to `tmp_path` **by an autouse fixture**. That fixture did
+# not exist. Eight test files arranged their own redirect and everything else went to the real
+# machine: one `-n auto tests/unit tests/ui` run left **241 job logs** under the real
+# `user_cache_dir`, measured 2026-08-11.
+#
+# It is here rather than in a suite's own conftest because the rule is every suite's, and because
+# a root conftest is the one place that runs before all of them. `tests/user_directories.py` is
+# Qt-free and patches only modules already imported, so this file keeps the property its own
+# docstring claims.
+
+
+@pytest.fixture(autouse=True)
+def _per_user_directories(tmp_path: Path) -> Iterator[None]:
+    """Give this test its own config, data, cache and downloads directories.
+
+    **It does not request `monkeypatch`, and that is load-bearing** — see `redirect`. Requesting it
+    from an autouse fixture moves `monkeypatch`'s undo after the teardown of fixtures the test
+    declared itself, which broke `test_kill_tree_reports_a_survivor`.
+    """
+    undo = user_directories.redirect(tmp_path / "platform")
+    try:
+        yield
+    finally:
+        undo()
+
 
 # --- Qt needs to be told where Windows keeps its fonts (`T-068`) -------------------------------
 #
