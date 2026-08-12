@@ -363,6 +363,27 @@ def describe_preset(row: Row, effective: Preset) -> str:
     return f"{format_name(format_choice_of(effective))} — {source} · Format selector: {selector}"
 
 
+def remove_label(row: Row) -> str:
+    """What removing this row takes with it (`UX-012`, `T-223`).
+
+    **A playlist row names the batch, because removing the line removes all of it.** *"Remove this
+    URL"* on a row standing for sixteen downloads understates what the click does, and a label owes
+    the user its blast radius.
+
+    **A single item stays "this URL" rather than becoming "this video".** A row can be audio-only,
+    so *video* would be a lie on exactly the rows `UX-005` spends its effort keeping honest.
+
+    The count is the row's own entries, read from the media it was probed into — not from the
+    selection, which is what the user has *ticked*. Removing the row removes the entries it stands
+    for whether or not they are ticked.
+    """
+    media = row.media
+    entries = getattr(media, "entries", ()) if isinstance(media, MediaInfo) else ()
+    if entries:
+        return f"Remove this playlist ({len(entries)} items)"
+    return "Remove this URL"
+
+
 def headline_text(row: Row) -> str:
     """The row's first line: the extractor's title once there is one, else the pasted URL.
 
@@ -2440,13 +2461,13 @@ class AddUrlDialog(QDialog):
             retry = QAction("Read this URL again", menu)
             retry.triggered.connect(lambda: self._retry_row(row))
             menu.addAction(retry)
-        if index.isValid() and self._model.flags(index) & _EDITABLE:
-            # **The same editor the keyboard reaches** (`T118-R9`), offered here so the route is
-            # discoverable rather than only documented. Both go through `edit_row`.
-            choose = QAction("Choose a format for this URL…", menu)
-            choose.triggered.connect(lambda: self.edit_row(index.row()))
-            menu.addAction(choose)
-        remove = QAction("Remove this URL", menu)
+        # **`T118-R9`'s discoverability alias is gone** (`UX-012`, `T-223`). It opened the row's
+        # format combo through `edit_row` — a control already visible on the row — so on a single
+        # item it named a thing the user was looking at, and on a playlist row it read as a no-op
+        # that highlights a combo and changes nothing. **The keyboard route it advertised is
+        # untouched**: the edit key still reaches `edit_row`, which is what made the entry
+        # redundant rather than what made it useful.
+        remove = QAction(remove_label(row), menu)
         remove.triggered.connect(lambda: self.remove_row(row))
         menu.addAction(remove)
         return menu

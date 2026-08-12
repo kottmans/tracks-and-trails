@@ -268,6 +268,76 @@ made focusable. Full slice **2712 passed, 18 skipped, exit 0**.
 - The row's menu and its doors — `UX-011`'s ruled shape and `T-203`'s contract, not reopened here
 - Any change to when rows appear or how probing works (`UX-003`)
 
+### T-223 — The row's menu: drop the editor alias, name the removal
+
+**Status:** In Review — built 2026-08-12 in an authorized unattended run; filed 2026-08-10 from
+`UX-012`, the maintainer's ruling on three live-use
+reports.
+**Owner:** Implementer
+**Priority:** Medium — the alias actively confuses on a playlist row, and Remove's label
+understates what it removes
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** `T-203` (Complete — the menu this edits is its build). **Same-file coordination:**
+`T-213`/`T-218`/`T-219` also touch `add_dialog.py`; serial order among the four is the
+implementer's to pick, one task per commit as always.
+**Relevant context:** `UX-012` (the ruling, with the maintainer's words), `UX-011` (the shape this
+does not change), `docs/UX_SPEC.md` §3's `UX-012` clause, `T118-R9` (why the alias existed),
+`ui/add_dialog.py` `row_menu`/`edit_row`, `tests/ui/test_add_dialog.py` (the menu-content and
+two-door tests, and `choose_in_editor`'s sentinel reroute — which drives `Choose specific
+formats…`, a different entry that stays)
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+Two menu edits ruled by `UX-012`. The `Choose a format for this URL…` entry — `T118-R9`'s
+discoverability alias for `edit_row` — leaves the menu: the combo is visibly on the row, and on a
+playlist row the alias reads as a no-op highlight. And `Remove this URL` on a playlist row
+becomes `Remove this playlist (N items)` with the row's real entry count, because removing the
+line removes the batch; a single item keeps `Remove this URL` (a row can be audio-only, so
+`video` would lie).
+
+#### Acceptance criteria
+
+- The alias entry appears in **no** row's menu — single item, playlist, failed row — asserted on
+  the built menus
+- **The keyboard route to the combo survives the removal and is asserted**: the edit key still
+  opens the row's format control through `edit_row`, proven independently of any menu entry
+- A playlist row's Remove reads `Remove this playlist (N items)` with `N` from the row's own
+  entries; a single item's reads `Remove this URL`; the action itself is unchanged either way
+- The label is built from the opened-from row — opening row 1's menu while row 0 is current names
+  row 1's count — extending the existing structural-target regression rather than adding
+  announcement machinery
+- The two-door test still proves both doors produce the same (now smaller) action set
+- `docs/UX_SPEC.md` §3's `UX-012` clause `[T]` re-verified against the built menu at submission
+
+#### What was built, against those criteria
+
+- **The alias is gone from every row's menu**, and the regression asserts it over *all three*
+  fixture rows rather than one — `T118-R9` added it for every row, so a removal proved on a single
+  item would leave it on the shape the ruling was about.
+- **The keyboard route it advertised is asserted independently.** That is what makes the removal
+  safe rather than merely smaller: the entry's whole justification was making `edit_row`
+  discoverable, so the door it named is now proved without reference to any menu.
+- **`remove_label` names the batch**: `Remove this playlist (N items)` from the row's own
+  `media.entries`; a single item keeps `Remove this URL`. Counted from the entries the row was
+  probed into, **not from the selection** — removing the row removes what it stands for whether or
+  not the user has ticked it.
+- **The label is the opened-from row's.** The regression asks the playlist's menu while row 0 is
+  *current*, so a label taken from the current row would name the wrong count and fail. That
+  extends `T203-R1`'s structural-target property instead of adding announcement machinery.
+- **Three mutations fail their evidence**: the alias restored; the playlist branch removed; the
+  count taken from the wrong place.
+- **`docs/UX_SPEC.md` §3's `UX-012` clause re-read against the built menu** at submission — the
+  wording it describes and what `row_menu` now produces agree, including that a single item keeps
+  *this URL* because a row can be audio-only.
+
+#### Out of scope
+
+- The `⋮` zone's rendering — `T-224`
+- Any per-entry gesture on playlist rows — offered and not taken in `UX-012`; its own ruling
+- The entry picker, `remove_row`'s mechanics, and every other menu entry
+
 ## Complete
 
 ### T-225 — Two UI test files pass apart and fail together
@@ -2799,54 +2869,6 @@ the two — this entry does not choose which.
 
 - Adding or removing any toolbar control — `ARC-007`'s concurrency control stays until `T-146`
   decides its fate, and nothing else changes membership
-
-### T-223 — The row's menu: drop the editor alias, name the removal
-
-**Status:** Proposed — filed 2026-08-10 from `UX-012`, the maintainer's ruling on three live-use
-reports.
-**Owner:** Implementer
-**Priority:** Medium — the alias actively confuses on a playlist row, and Remove's label
-understates what it removes
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** `T-203` (Complete — the menu this edits is its build). **Same-file coordination:**
-`T-213`/`T-218`/`T-219` also touch `add_dialog.py`; serial order among the four is the
-implementer's to pick, one task per commit as always.
-**Relevant context:** `UX-012` (the ruling, with the maintainer's words), `UX-011` (the shape this
-does not change), `docs/UX_SPEC.md` §3's `UX-012` clause, `T118-R9` (why the alias existed),
-`ui/add_dialog.py` `row_menu`/`edit_row`, `tests/ui/test_add_dialog.py` (the menu-content and
-two-door tests, and `choose_in_editor`'s sentinel reroute — which drives `Choose specific
-formats…`, a different entry that stays)
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-Two menu edits ruled by `UX-012`. The `Choose a format for this URL…` entry — `T118-R9`'s
-discoverability alias for `edit_row` — leaves the menu: the combo is visibly on the row, and on a
-playlist row the alias reads as a no-op highlight. And `Remove this URL` on a playlist row
-becomes `Remove this playlist (N items)` with the row's real entry count, because removing the
-line removes the batch; a single item keeps `Remove this URL` (a row can be audio-only, so
-`video` would lie).
-
-#### Acceptance criteria
-
-- The alias entry appears in **no** row's menu — single item, playlist, failed row — asserted on
-  the built menus
-- **The keyboard route to the combo survives the removal and is asserted**: the edit key still
-  opens the row's format control through `edit_row`, proven independently of any menu entry
-- A playlist row's Remove reads `Remove this playlist (N items)` with `N` from the row's own
-  entries; a single item's reads `Remove this URL`; the action itself is unchanged either way
-- The label is built from the opened-from row — opening row 1's menu while row 0 is current names
-  row 1's count — extending the existing structural-target regression rather than adding
-  announcement machinery
-- The two-door test still proves both doors produce the same (now smaller) action set
-- `docs/UX_SPEC.md` §3's `UX-012` clause `[T]` re-verified against the built menu at submission
-
-#### Out of scope
-
-- The `⋮` zone's rendering — `T-224`
-- Any per-entry gesture on playlist rows — offered and not taken in `UX-012`; its own ruling
-- The entry picker, `remove_row`'s mechanics, and every other menu entry
 
 ## Proposed — Phase 4.5
 

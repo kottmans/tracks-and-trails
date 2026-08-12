@@ -5374,3 +5374,79 @@ def test_the_instruction_is_not_a_control(
         )
     finally:
         dialog.close()
+
+
+def test_no_rows_menu_offers_the_editor_alias(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-223`, `UX-012`.** The alias is gone from every kind of row, not just the playlist.
+
+    Asserted over **every** row's built menu rather than one: `T118-R9` added the entry for all of
+    them, and a removal proved on a single item would leave it on the shape the ruling was about.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST, AUDIO_ONLY)
+    try:
+        for row in dialog.rows:
+            offered = [action.text() for action in dialog.row_menu(row).actions()]
+            assert not any("Choose a format for this URL" in text for text in offered), (
+                f"the editor alias is still offered on {row.url}: {offered}"
+            )
+    finally:
+        dialog.close()
+
+
+def test_the_keyboard_still_opens_the_row_control_without_the_alias(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-223`.** The route the alias advertised outlives it.
+
+    This is the half that makes the removal safe rather than merely smaller: the entry was
+    justified as making `edit_row` discoverable, so the keyboard door it named is asserted
+    independently of any menu.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    try:
+        control = open_row_editor(dialog, 0)
+        assert control.isVisible() or control.parent() is not None, (
+            "edit_row no longer opens the row's format control"
+        )
+    finally:
+        dialog.close()
+
+
+def test_removing_a_playlist_row_says_how_much_it_takes(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-223`, `UX-012`.** A label owes the user its blast radius.
+
+    **Built from the row the menu was opened from**, which is the property `T203-R1` was about: the
+    playlist's menu is asked for while row 0 is the current one, so a label taken from "the current
+    row" would name the wrong count and this would fail.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
+    listing = staging_list(dialog)
+    try:
+        listing.setCurrentIndex(dialog.model.index(0, 0))
+
+        single, playlist = dialog.rows[0], dialog.rows[1]
+        media = playlist.media
+        assert isinstance(media, MediaInfo), "the playlist row was never probed into media"
+        entries = len(media.entries)
+        assert entries > 1, "the playlist fixture no longer has entries to count"
+
+        playlist_labels = [action.text() for action in dialog.row_menu(playlist).actions()]
+        assert f"Remove this playlist ({entries} items)" in playlist_labels, playlist_labels
+
+        single_labels = [action.text() for action in dialog.row_menu(single).actions()]
+        assert "Remove this URL" in single_labels, single_labels
+        assert not any("playlist" in text for text in single_labels), (
+            "a single item's menu names a playlist; a row can be audio-only and 'video' would lie"
+        )
+    finally:
+        dialog.close()
