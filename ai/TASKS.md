@@ -2743,42 +2743,6 @@ exists.
 - The row's menu and its doors — `UX-011`'s ruled shape and `T-203`'s contract, not reopened here
 - Any change to when rows appear or how probing works (`UX-003`)
 
-### T-219 — The dialog footer speaks the naming rule, not the selector
-
-**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** the In Review add-dialog chain receiving verdicts — same file as `T-218`
-**Relevant context:** `T126-R2`, `T140-R3`, `T-159` — three findings establishing that surfaces
-speak the naming rule, never raw selector syntax; `ui/format_text.py` (the rule),
-`ui/add_dialog.py` (the footer line under *Download as*)
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-The footer under *Download as* prints
-`Every row · Format selector: bestvideo[height<=1080][ext=mp4]+…` — yt-dlp syntax on the primary
-add surface, after three review findings moved every row to the naming rule. The dialog's own
-footer is the last surface still speaking syntax.
-
-#### Acceptance criteria
-
-- The footer line names what rows inherit **in the naming rule's words, through the same function
-  the rows use** — a second phrasing of the same fact is `T140-R3`'s defect and is not built
-- The **raw selector stays reachable** — a tooltip on the line, or the options editor — and this
-  entry records where it went
-- **No visible surface in the dialog prints selector syntax**; a test asserts the footer text for
-  a built-in preset
-- A screen reader hears the same words a sighted user reads — the accessible description carries
-  the friendly line, not the selector
-
-#### Out of scope
-
-- The selector's role in requests, presets, or `REQ-009`'s custom-selector escape hatch — this
-  changes one label, not what is downloaded
-
 ### T-220 — The toolbar and the run control: build and spec disagree
 
 **Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review's closing note.
@@ -2985,6 +2949,76 @@ under a stated precedence.
 
 
 ## Blocked
+
+### T-219 — The dialog footer speaks the naming rule, not the selector
+
+**Status:** **Blocked on a ruling — 2026-08-12.** Picked up in an authorized unattended run and
+**not built**: the entry's premise does not hold, and what it asks for overturns recorded design.
+See *What the reproduction found* below. The same-file dependency is otherwise clear —
+`T-203`'s chain is approved and `T-213` has landed.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** a maintainer ruling (below). The same-file hold behind the add-dialog chain is over
+**Relevant context:** `T126-R2`, `T140-R3`, `T-159` — three findings establishing that surfaces
+speak the naming rule, never raw selector syntax; `ui/format_text.py` (the rule),
+`ui/add_dialog.py` (the footer line under *Download as*)
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+The footer under *Download as* prints
+`Every row · Format selector: bestvideo[height<=1080][ext=mp4]+…` — yt-dlp syntax on the primary
+add surface, after three review findings moved every row to the naming rule. The dialog's own
+footer is the last surface still speaking syntax.
+
+#### What the reproduction found, 2026-08-12
+
+**The footer is not the last surface speaking syntax, and the entry says it is.** `selector_text`
+— *"the row's third line"* — builds `Download as: <name> — <whose choice> · Format selector:
+<selector>` through `describe_preset` (`ui/add_dialog.py`). **Every probed row prints the raw
+selector**, not just the footer. Verified by reading both call sites: `describe_preset` feeds the
+row's drawn line at `selector_text`, and the footer builds its own copy in
+`_update_selector_label`.
+
+**And the duplication is deliberate, with its reasoning recorded twice.** `_update_selector_label`'s
+docstring: *"`REQ-009` asks for a selector a user can learn the syntax from and then write their
+own, which means it has to be selectable text they can copy — and a delegate paints pixels, not
+selectable text. The row draws its own selector so a mixed batch can be read at a glance; this is
+where the one in hand can be taken away."* `T118-R8` was reported **twice** against that line.
+
+**So the criterion below cannot be met without overturning `REQ-009`'s reading and `T118-R8`'s
+design**, and that is a ruling rather than an implementation detail. Three shapes, none chosen:
+
+1. **Footer only.** The footer speaks the naming rule with the selector on its tooltip; the row's
+   third line keeps the selector. Smallest change, and it leaves the criterion *"no visible
+   surface prints selector syntax"* **unmet** — the entry would be amended to say so.
+2. **Both surfaces.** Row and footer speak the naming rule; the selector lives on a tooltip and in
+   the options editor. Meets the criterion as written, and is the one that overturns `T118-R8` —
+   a mixed batch would no longer be readable at a glance, which is what that finding was about.
+3. **Neither.** `REQ-009`'s *learn the syntax* is judged to outweigh the three findings that moved
+   other surfaces to the naming rule, and the task closes as refused with that recorded.
+
+**Nothing was built.** An unattended run is the wrong place to overturn a requirement's reading.
+
+#### Acceptance criteria
+
+*(Criterion 3 is the one in question; see above.)*
+
+- The footer line names what rows inherit **in the naming rule's words, through the same function
+  the rows use** — a second phrasing of the same fact is `T140-R3`'s defect and is not built
+- The **raw selector stays reachable** — a tooltip on the line, or the options editor — and this
+  entry records where it went
+- **No visible surface in the dialog prints selector syntax**; a test asserts the footer text for
+  a built-in preset
+- A screen reader hears the same words a sighted user reads — the accessible description carries
+  the friendly line, not the selector
+
+#### Out of scope
+
+- The selector's role in requests, presets, or `REQ-009`'s custom-selector escape hatch — this
+  changes one label, not what is downloaded
 
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
