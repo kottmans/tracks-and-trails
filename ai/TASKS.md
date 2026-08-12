@@ -118,6 +118,61 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
+### T-232 — T-066's process-tree test still says CI skips the virtualenv
+
+**Status:** **In Review — corrected 2026-08-12**, the same day it was filed from `T066-R3`.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1 residue; gates no phase or task
+**Depends on:** nothing
+**Relevant context:** `T-066`, `T066-R3`, `.github/workflows/ci.yml`,
+`tests/integration/test_manager.py::test_the_detector_sees_a_grandchild_and_not_just_a_worker`
+**Affected surfaces:** `tests/integration/test_manager.py` comment only
+**Risk:** Low — the assertion is correct; the explanation names CI's retired install shape
+
+#### Scope
+
+The comment above the generation assertion still says CI installs without a virtualenv and that
+the old one-hop assumption therefore held on every runner. T-066 changed that: every functional
+CI job creates and enters a virtualenv before installing. The following paragraph and the
+assertion are already correct — the detector needs a process at least two generations below the
+walker, and that invariant holds with or without the Windows launcher level.
+
+Correct the stale two-line explanation while preserving the historical reason the assertion
+changed and its install-shape-independent contract. Do not change test behavior.
+
+#### Acceptance criteria
+
+- The comment states that CI now uses the documented virtualenv and marks the no-venv CI shape as
+  the pre-T-066 state
+- The explanation still says why `generations >= 2` is valid under both install shapes
+- No assertion, helper, fixture, workflow, or product behavior changes
+
+#### What was built, against those criteria
+
+Comment only, in
+`tests/integration/test_manager.py::test_the_detector_sees_a_grandchild_and_not_just_a_worker`.
+
+- **The no-venv CI shape is marked as the pre-`T-066` state**, and the comment now says CI adopted
+  the venv — every job creates `.venv` and prepends it to `GITHUB_PATH` — so the runners exercise
+  the deeper shape too.
+- **The install-shape-independent contract is still stated**: `generations >= 2` is what the
+  detector must satisfy, and the adoption did not disturb the assertion precisely because it was
+  written to hold under both shapes.
+- **Nothing else changed.** No assertion, helper, fixture, workflow or product behaviour;
+  `ruff`, `ruff format --check` and `mypy` clean, and the three `grandchild` cases pass.
+
+*(Its own last line records what it was: a comment describing a divergence in the present tense
+after that divergence was closed — the third `T-0NN`-numbered instance of that class in two days,
+after `T-231` and `T066-R2`.)*
+
+#### Out of scope
+
+- Reworking the detector or its process fixture
+- Re-measuring the accepted frozen-artifact assumption
+
+---
+
 ## Complete
 
 ### T-066 — CI installs the project differently from how the documentation says to
@@ -1456,43 +1511,6 @@ preset with no opinion falls back to — not a second template implementation.
 deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
-
-### T-232 — T-066's process-tree test still says CI skips the virtualenv
-
-**Status:** **Ready — non-blocking follow-up from `T066-R3`, 2026-08-12.**
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 1 residue; gates no phase or task
-**Depends on:** nothing
-**Relevant context:** `T-066`, `T066-R3`, `.github/workflows/ci.yml`,
-`tests/integration/test_manager.py::test_the_detector_sees_a_grandchild_and_not_just_a_worker`
-**Affected surfaces:** `tests/integration/test_manager.py` comment only
-**Risk:** Low — the assertion is correct; the explanation names CI's retired install shape
-
-#### Scope
-
-The comment above the generation assertion still says CI installs without a virtualenv and that
-the old one-hop assumption therefore held on every runner. T-066 changed that: every functional
-CI job creates and enters a virtualenv before installing. The following paragraph and the
-assertion are already correct — the detector needs a process at least two generations below the
-walker, and that invariant holds with or without the Windows launcher level.
-
-Correct the stale two-line explanation while preserving the historical reason the assertion
-changed and its install-shape-independent contract. Do not change test behavior.
-
-#### Acceptance criteria
-
-- The comment states that CI now uses the documented virtualenv and marks the no-venv CI shape as
-  the pre-T-066 state
-- The explanation still says why `generations >= 2` is valid under both install shapes
-- No assertion, helper, fixture, workflow, or product behavior changes
-
-#### Out of scope
-
-- Reworking the detector or its process fixture
-- Re-measuring the accepted frozen-artifact assumption
-
----
 
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.

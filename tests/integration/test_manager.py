@@ -936,8 +936,13 @@ def test_the_detector_sees_a_grandchild_and_not_just_a_worker(
         # failed with "this test is not about a grandchild at all" while looking at a tree that
         # was, if anything, deeper than it expected.
         #
-        # CI installs without a virtualenv while `docs/DEVELOPMENT.md` documents one, so this
-        # held on every runner and failed for a developer following our own instructions.
+        # **That was the divergence `T-066` was filed for**: CI installed without a virtualenv
+        # while `docs/DEVELOPMENT.md` documented one, so the old assertion held on every runner
+        # and failed for a developer following our own instructions. **CI adopted the venv**
+        # (`T-066`, resolved) — every job creates `.venv` and prepends it to `GITHUB_PATH` — so
+        # the runners now run the deeper shape too. The assertion below is written to hold under
+        # both, which is why the adoption did not disturb it. *(This comment went on describing
+        # the divergence in the present tense after it was closed: `T066-R3`, `T-232`.)*
         #
         # What the detector must actually do is reach a process that is **not a direct child of
         # the process doing the walking**, which is exactly `worker_processes(existing_children)`'s
