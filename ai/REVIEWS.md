@@ -15522,3 +15522,79 @@ disposition must now rewrite that current blocker paragraph from this verdict; t
 post-verdict synchronization and needs no focused implementation re-review. The Reviewer does not
 edit implementer-owned STATUS. No reviewed source, test assertion, workflow, build operation,
 dependency, commit, push, or remote state was changed by the Reviewer.
+
+## 2026-08-12 — T-234 initial review / T-233 review / T-228 investigation ruling
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-234`, `T-233`; process rulings on `T-236` and `T-228`
+**Boundaries:** `T-234` at `3b842e5..100f8f1`; `T-233` at `79ad52f..18dd762`. Current records
+through `07e9add` were inspected to rule on the filed follow-ups and T-228's mechanism.
+**Platforms verified:** Linux focused UI/integration tests plus GitHub Actions run `31629076871`
+at `18dd762`, green on Linux, Windows desktop, frozen Linux, frozen Windows, and STARBASE coverage.
+**Verdict:** **T-234 Changes requested. T-233 Approved with follow-up `T-237`.** `T-236` should
+have blocked T-234 and now does as `T234-R2`. T-228 correctly stopped before changing source, but
+should have continued the empirical investigation: its product-versus-test classification remains
+unanswered, so its first acceptance criterion is not met.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding and disposition |
+|---|---|---:|---|
+| **T234-R1** | **High** | **Yes** | T-234 explicitly requires `tests/ui/test_windows_accessibility.py` to name every remaining control and be updated for the removal. The submitted diff does not touch that file, and its fixture still constructs `MainWindow(geometry_file=...)` without `control_bar=True`; the toolbar and all three verbs are absent from the UIA tree. Run `31629076871` proves the unchanged toolbar-less Windows test is green, not that the criterion is met. **Open; `T-235` owns the correction and must check all three verbs plus both `Start` and `Stop` states on the Windows runner.** |
+| **T234-R2** | **Medium** | **Yes** | Accepted `UX-005` row 11 says **the concurrency control** steps with labelled `−`/`+` buttons rather than native arrows. `UX-013` changes only its location. T-234 removes those buttons while the sole Settings control is a 57×22 `QSpinBox` with `UpDownArrows`, materially the same 58×23 control whose native wedges were measured unreadable in T-141. Typed input and `Up`/`Down` are workarounds, keeping the consequence Medium, but this is an observable accessibility defect and an unamended approved-design violation. **Open; `T-236` owns the correction and blocks T-234.** |
+| **T234-R3** | **Medium** | **Yes** | The changed/current surfaces still materially describe the retired two-control design. `docs/DEVELOPMENT.md` corrects the settings table and immediately says the control is deliberately in both places and its removal remains T-220's ruling. `settings_dialog.py` repeats the toolbar premise in the module docstring and `show_concurrency`; `test_settings_dialog.py` still names and explains the sync test as toolbar mirroring. This is the same current-truth defect class the implementation says it swept. **Open; correct the class across affected current surfaces, not only the named hits.** |
+| **T233-R1** | **Low** | **No** | The two submitted explanations are corrected and executable ASTs are unchanged, but the spec now copies most of `REL-002`'s rationale despite that accepted decision making itself the canonical home. Its closing claim that a failure is what “either” removal would produce also blurs the distinction just established: removing `collect_submodules` for this pin produced no failure and failed no gate. **Open, carried to `T-237`; comment-only and does not reopen T-233.** |
+
+### Acceptance results
+
+| Task / criterion | Reviewer result |
+|---|---|
+| T-234: no main-window concurrency control | **Met.** The toolbar contains no `QSpinBox`; the complete action accounting would fail on an anonymous widget action. |
+| T-234: Settings value reaches the manager and survives restart | **Met.** The focused composed path opens the real Settings screen, changes its spinner, verifies the running pool and file, and reopens on the saved value. |
+| T-234: focus leaves the spinner; toolbar is three verbs with spacer; separator/comment cleanup | **Met.** The explicit gate preserves the bare-window contract, composed windows opt in, toolbar widgets take no focus, and the spacer separates Add URLs from the two queue verbs. |
+| T-234: Windows accessibility names every remaining control | **Not met — `T234-R1`.** |
+| T-234: accepted accessibility/design behavior survives relocation | **Not met — `T234-R2`.** This is a governing-decision check even though the task omitted it from its criteria. |
+| T-234: affected current explanations describe the built one-control state | **Not met — `T234-R3`.** |
+| T-233: current-pin redundancy versus future-pin insurance | **Met.** The spec states both distinctly; `T233-R1` concerns canonical placement and the overbroad closing sentence. |
+| T-233: local frozen evidence versus required both-platform CI | **Met.** The module docstring now distinguishes them accurately. |
+| T-233: no executable change | **Met.** Spec ASTs are identical; test ASTs are identical after removing the changed module docstring. |
+
+### T-228 ruling
+
+The trace establishes a valuable immediate mechanism: under load, the child reports a network
+outcome but the manager reaches `_fail_loudly` first, records `WORKER_CRASH`, and correctly refuses
+automatic retry. It does **not** yet establish the task's required classification of that path as a
+test-only oversubscription artefact or supported product behavior. That fact cannot be selected by
+a maintainer preference.
+
+The next evidence is bounded reachability: repeat with explicit xdist counts rather than only
+`-n auto`, then drive one application instance under controlled host load and trace the exact
+outcome/sentinel ordering condition. If supported product concurrency can enter it, file the
+product defect and let T-228 close as its reproduction; if only worker multiplication enters it,
+derive and prove the integration-worker cap. T-228 does not block either verdict in this review.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Repository state before reviewer records | **Clean tracked tree; `HEAD == origin/main == 07e9add`.** The submitted handoff is ignored/untracked as required. |
+| Boundary whitespace checks | **Passed** for `3b842e5..100f8f1` and `79ad52f..18dd762`. |
+| T-234 UI slice | **143 passed**: `test_main_window.py`, `test_row_verb_wiring.py`, and `test_settings_dialog.py`. |
+| T-234 composed Settings paths | **4 passed**: save refusal, live-and-restart limit, settings-layer range, and lowering the live limit without stopping existing work. |
+| T-233 frozen-probe logic | **8 passed.** |
+| T-233 AST boundary | **Passed:** spec AST identical; test AST identical after removing the module docstring. |
+| Submitted CI | **Run `31629076871` succeeded on all five jobs at `18dd762`.** The Windows result is applicable to the code but does not cover the omitted-toolbar criterion (`T234-R1`). |
+
+### Final disposition and synchronization
+
+T-234 stays In Review with three blocking findings. The focused correction may arrive as T-234's
+records sweep plus the separately committed T-235 and T-236 implementations; all three blockers
+are reviewed together once. T-233 moves to Complete and `T033-R7` is Resolved; `T-237` carries its
+Low comment cleanup. T-228 stays Proposed with the causal chain recorded and the empirical
+classification still open.
+
+`ai/STATUS.md` remains Implementer-owned and was not edited. It now needs to say T-234 has changes
+requested, T-233 is complete with Low follow-up T-237, T-235/T-236 block T-234, and T-228's first
+criterion remains open. The Reviewer changed only `ai/REVIEWS.md` and approved task/follow-up
+records in `ai/TASKS.md`; no reviewed source, test, workflow, dependency, commit, push, or remote
+state was changed.

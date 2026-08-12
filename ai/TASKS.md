@@ -120,9 +120,10 @@ this one returned four verdicts before approving.*
 
 ### T-234 — The concurrency control leaves the toolbar
 
-**Status:** In Review — built 2026-08-12 against `UX-013`, the maintainer's ruling. The gate was
-chosen by the maintainer (*"go with your recommendation"*, 2026-08-12) from the three shapes this
-entry had named without taking one.
+**Status:** **In Review — Changes requested, 2026-08-12.** `T234-R1` through `T234-R3` block
+approval. The toolbar removal itself is sound, but its explicit Windows-accessibility criterion
+was left unmet, the only remaining limit control restores the native arrows `UX-005` row 11
+rejected, and several current explanations still say the toolbar copy exists.
 **Owner:** Implementer
 **Priority:** Medium — it unblocks `T-220`, and it is the last step of a stopgap whose own undo
 condition was written down, met, and then missed for a phase
@@ -302,11 +303,36 @@ force.
   screen's own explanation ended *"This is the same setting as the toolbar's."* — a user-visible
   string, and the one that would have been read by someone standing in front of the application.
 
+#### Review, 2026-08-12
+
+**Changes requested.** The implementation correctly removes the main-window spinner, preserves
+the three verbs and spacer, separates the toolbar gate from the limit, and drives the Settings
+widget through the composed route. Three blockers remain:
+
+- **`T234-R1` — High.** The Windows accessibility acceptance criterion is explicitly unmet.
+  `test_windows_accessibility.py` still constructs `MainWindow` without `control_bar=True`, so the
+  green Windows sweep contains none of the three toolbar verbs. `T-235` owns the correction and
+  must return Windows-run evidence for both run-control states.
+- **`T234-R2` — Medium.** `UX-005` row 11 adopted labelled `−`/`+` buttons for **the concurrency
+  control**; `UX-013` changed its location and did not amend that ruling. The Settings spinner is
+  the same measured size with the same native arrows. The keyboard and typed-input workarounds
+  keep this Medium, but the approved-design violation and observable accessibility defect block.
+  `T-236` owns the correction.
+- **`T234-R3` — Medium.** Current text still materially says there are two controls:
+  `docs/DEVELOPMENT.md` contradicts its corrected table in the paragraph immediately below it;
+  `settings_dialog.py` repeats the toolbar premise in its module and `show_concurrency`
+  docstrings; and `test_settings_dialog.py` names and explains its sync test as toolbar mirroring.
+  Sweep the affected current surfaces rather than correcting only these four hits.
+
 ---
+
+## Complete
 
 ### T-233 — T-033's packaging comments still give the pre-REL-002 reason
 
-**Status:** **In Review — built 2026-08-12.** Non-blocking follow-up from `T033-R7`.
+**Status:** **Complete — Approved with follow-up `T-237`, 2026-08-12.** `T033-R7` is Resolved:
+the two submitted explanations are current and no executable statement changed. `T233-R1` is Low
+and does not reopen the correction.
 **Owner:** Implementer
 **Priority:** Low
 **Phase:** Phase 5 residue; gates no phase or task
@@ -374,9 +400,16 @@ instead of collapsing the two claims.
 note: there is no executable change to mutate. The evidence that this task did what it claimed is
 the AST comparison above.
 
----
+#### Review, 2026-08-12
 
-## Complete
+**Approved with follow-up `T-237`.** Both acceptance explanations are corrected and the spec AST
+is identical; the test AST is identical after removing its changed module docstring. `T233-R1` is
+Low and non-blocking: the spec now copies most of `REL-002`'s rationale despite that accepted
+decision making itself the canonical home, and its final *"failure either would produce"* sentence
+does not preserve the distinction it just drew — removing `collect_submodules` for the current pin
+produced no failure. `T-237` reduces the copy to the current fact plus its stable decision pointer.
+
+---
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
@@ -2712,9 +2745,34 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-237 — The spec recopies `REL-002` and then blurs its two collection results
+
+**Status:** Proposed — Low follow-up `T233-R1`, accepted 2026-08-12.
+**Owner:** Implementer
+**Priority:** Low — comments only; the build operations and gates are correct
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `T-233`, `T233-R1`, `REL-002`, `packaging/tracks-and-trails.spec`
+**Affected surfaces:** comments only in `packaging/tracks-and-trails.spec`
+**Risk:** Low
+
+#### Scope and acceptance criteria
+
+- Keep the fact `T-233` had to restore: `collect_submodules` is redundant for the current pin and
+  stays as future-pin insurance under `REL-002`.
+- Keep `REL-002` as the canonical rationale rather than copying its measurements and argument into
+  the spec. A short stable pointer is sufficient.
+- Do not say that removing either line produces a failure today: the current-pin submodule mutant
+  resolved extractors and failed no gate; the data-files mutant removed three solver assets while
+  the probe still passed.
+- No executable statement, collection call, assertion, workflow, or dependency changes.
+
+---
+
 ### T-236 — The limit's only control has the affordance `T-141` ruled unreadable
 
-**Status:** Proposed — filed 2026-08-12 from `T-234`, **measured rather than suspected**.
+**Status:** Proposed — **accepted as blocking finding `T234-R2`, 2026-08-12.** Filed from `T-234`
+and measured rather than suspected; its correction is required before T-234 can be approved.
 **Owner:** Implementer
 **Priority:** Medium — `NFR-005`, and it is now the *only* control for the setting. Not High
 because the control is still operable by typing and by `Up`/`Down`; what is unreadable is the
@@ -2784,8 +2842,9 @@ maintainer has seen:
 
 ### T-235 — The Windows accessibility sweep has never seen the toolbar
 
-**Status:** Proposed — filed 2026-08-12 from `T-234`, which found it by trying to satisfy a
-criterion that assumed the opposite.
+**Status:** Proposed — **accepted as blocking finding `T234-R1`, 2026-08-12.** Filed from `T-234`,
+which found it by trying to satisfy a criterion that assumed the opposite; its correction and
+green Windows evidence are required before T-234 can be approved.
 **Owner:** Implementer
 **Priority:** Medium — `NFR-005` is a requirement, and the surface this misses is the three
 controls a user reaches for first. Not High only because no defect is known: the buttons may well
@@ -2897,10 +2956,9 @@ which §5 forbids in terms.
 ### T-228 — A retry deadline stops firing under parallel load
 
 **Status:** Proposed — filed 2026-08-11 from `T-123`'s adoption run, reproduced at roughly one run
-in three under `pytest -n auto tests/integration/test_manager.py`. **The mechanism was established
-2026-08-12** (see below) and is not what the title says: the entry is left Proposed because what it
-found opens a question the maintainer should rule on, and its own first criterion says to record
-before changing.
+in three under `pytest -n auto tests/integration/test_manager.py`. **The immediate causal chain was
+established 2026-08-12** (see below), but the first criterion remains open: it requires classifying
+the condition as test-only or product behavior, and that reachability has not been measured yet.
 **Owner:** Implementer
 **Priority:** Medium — it blocks the second half of `T-123`. Integration runs serially today, so
 nothing is red because of it; what it costs is **297 s of every CI run**, which `-n 4` would take
@@ -2936,7 +2994,9 @@ one and wrong about the mechanism; this entry deliberately does not guess.
 
 #### The mechanism, established 2026-08-12 — and it is neither of the two shapes above
 
-**The first criterion is met. Nothing is changed yet, which is what that criterion asks for.**
+**The causal chain is established; the first criterion is not yet met.** It asks for *test bound
+or product behaviour*, and the evidence below has not established which. Nothing is changed yet,
+which is correct while that classification remains open.
 
 **The reproduction, driven rather than inferred:** **50 runs** of `pytest -n auto
 tests/integration/test_manager.py` on a 20-core machine, in seven batches. **19 runs failed, 21
@@ -3007,10 +3067,13 @@ for a pending backoff holds under load in every instrumented run.
   the thing that does not happen. That is a defect entry of its own, which this task's third
   criterion already anticipates.
 
-**Which of those it is has not been established**, and this entry stops here rather than guessing
-a second time. What is needed next is the condition inside `_fail_loudly`'s caller that decides a
-session ended without a believable outcome, and whether it is a deadline that a busy machine can
-beat. **`T-056`'s `still_running` question may be the same seam from the other side.**
+**Which of those it is has not been established. Reviewer ruling, 2026-08-12:** stopping before a
+source change was correct; stopping the investigation was early. This is an empirical reachability
+question, not yet a product choice for the maintainer. Continue through the condition inside
+`_fail_loudly`'s caller that decides a session ended without a believable outcome, first under
+bounded xdist worker counts and then under a single application instance with controlled host
+load. Establish whether a supported user configuration can enter the same path. **`T-056`'s
+`still_running` question may be the same seam from the other side.**
 
 *(Method note: the manager was instrumented on a throwaway working copy and restored; the probe
 test used to take the measurements was deleted. `git status` is clean of both, and the serial run
