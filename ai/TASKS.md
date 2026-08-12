@@ -2974,8 +2974,12 @@ version-against-pin half of `T033-R1` with it.)*
 
 *(This said the evidence was something "this repository cannot produce locally", on the belief
 that PyInstaller was absent from the working venv. It is present at 6.21.0 and has been; the
-reviewer flagged the claim as stale and the local build proves it. What is genuinely external is
-Windows, and the two `frozen` jobs being GitHub-hosted.)*
+reviewer flagged the claim as stale and the local build proves it. **Its own last sentence then
+outlived the same way**: it concluded that "what is genuinely external is Windows, and the two
+`frozen` jobs being GitHub-hosted" — undated, present tense, and false on both counts by the time
+the opening of this entry said so. Nothing here is external now: `frozen windows` runs on
+`STARBASE` and `frozen linux` on the maintainer's machines (`OPS-010`, `OPS-012`), both green in
+`31570861414` and `31607180926`. `T033-R6`.)*
 
 #### Linux evidence, 2026-07-29 — produced locally
 
@@ -3096,21 +3100,31 @@ and `31607180926`; the "Windows remains pending" that stood here is `T033-R6`. `
 
 #### Scope
 
-`OPS-002` says every release bundles a pinned yt-dlp baseline. The frozen artifact currently
-contains **none of it**: a search of the built `dist/tracks-and-trails` for `yt_dlp` returns
-zero files. That is correct today — nothing imports it, because `worker.py` and
-`ytdlp_adapter.py` are still stubs — but it will not self-correct when `T-012` lands.
+***Written before `T-012`, and describing that world in the present tense ever since***
+(`T033-R6`). **The artifact carries yt-dlp now** — the *Linux evidence* table below records 3
+matching files and 1751 extractors resolved from inside it, and both frozen CI jobs assert the
+same on every push. `worker.py` is no longer a stub; it is the module that imports yt-dlp, which
+is the whole subject of `T033-R5`. What follows is the risk the task was filed against, kept
+because it is why the spec collects the package at all.
 
-PyInstaller's analysis follows *static* imports. yt-dlp resolves its extractors dynamically:
-1046 package files, **972 of them extractor modules**, reached through `lazy_extractors`
-rather than by direct import. Static analysis will therefore collect the yt-dlp core and miss
-essentially every extractor.
+`OPS-002` says every release bundles a pinned yt-dlp baseline. When this was written the frozen
+artifact contained **none of it** — a search of the built `dist/tracks-and-trails` for `yt_dlp`
+returned zero files — which was correct then, because nothing imported it while `worker.py` and
+`ytdlp_adapter.py` were stubs, and would not have self-corrected when `T-012` landed.
 
-The resulting failure is the dangerous kind: the artifact **builds and launches normally**,
-`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads
-exactly like the site-breakage `C-002` teaches everyone to expect, so it will be misdiagnosed.
+PyInstaller's analysis follows *static* imports, and yt-dlp resolves its extractors dynamically:
+1046 package files, **972 of them extractor modules**, reached through `lazy_extractors` rather
+than by direct import. The fear was that static analysis would collect the core and miss
+essentially every extractor. *(For the pinned version it would not have: `_extractors.py` carries
+928 static `from .` imports, which the collection-removal negative below established and
+`REL-002` reasoned from. The fear was right about the class and wrong about this pin.)*
 
-Collect the package explicitly in the spec, and prove it from inside the artifact.
+The failure it guards against is the dangerous kind: the artifact **builds and launches normally**,
+`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads exactly
+like the site-breakage `C-002` teaches everyone to expect, so it would be misdiagnosed.
+
+The answer, built: collect the package explicitly in the spec, and prove it from inside the
+artifact.
 
 #### The probe extension, 2026-08-12 — `T033-R4`'s blind spot is closed
 

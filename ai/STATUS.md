@@ -2947,8 +2947,10 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
   can be produced here." **It is present, at 6.21.0** — `T-064` reinstalled the venv with
   `.[dev,build]` deliberately, and it was installed before that too. The reviewer placed the
   sentence at `a2966156`, well before any recent boundary, and asked for it as separate cleanup
-  rather than folded into `T-064`. Corrected here; what blocks `T-033` is the hosted frozen jobs,
-  not a missing local dependency.)*
+  rather than folded into `T-064`. Corrected here. **And then this sentence outlived its own
+  bullet**: it ended "what blocks `T-033` is the hosted frozen jobs, not a missing local
+  dependency", six lines under an opening that says the task is blocked on its records and nothing
+  else, and after `OPS-010`/`OPS-012` had moved both frozen jobs off hosted runners. `T033-R6`.)*
 
 *(the `T-003` logo blocker cleared on 2026-07-25 when the maintainer supplied the source
 asset)*
