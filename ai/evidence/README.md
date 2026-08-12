@@ -14,6 +14,7 @@ What is here now:
 | File | Why it cannot be regenerated |
 |---|---|
 | `SOAK-FAILED-13.txt`, `SOAK-FAILED-19.txt` | The only two observations of `T-128`'s segfault, from 39 full-suite runs. Reproducing one takes hours and may not succeed; these are the stacks the investigation has to work from. |
+| `T238-SEGFAULT-gw7.txt` | The only observation of `T-238`'s worker segfault, from a run in which the machine was also busy. 37 further `-n auto` runs on an idle machine have not reproduced it. The Python and C stacks are what the investigation has to work from — same case as the two above. |
 | `mutation.json` | 1185 mutants over six modules. Regenerable in principle, but it is the baseline the next mutation run is compared against, and a diff needs both sides. |
 
 **Do not add CI output here.** `reports/` artifacts are uploaded by the workflow and retained for

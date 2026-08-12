@@ -3222,6 +3222,53 @@ identify the faulting object, establish that the thumbnail store caused the cras
 object left by an earlier test from one created here, or prove identity with T-074/T-128. A native
 Qt crash is the shared finding class; a shared cause remains to be demonstrated.
 
+#### The 40 runs, and what the retained stack narrows it to — 2026-08-12
+
+**40 of 40 `-n auto` unit/UI runs passed. Zero crashes, zero failures.** On an otherwise idle
+machine, against one observation in nine.
+
+**That is a result, not a null.** The original run happened while the machine was also running
+other pytest batches — the same contamination that made `T-228`'s *"one in three"* wrong. **The
+one-in-nine figure is not a rate**, and this entry's Status already says so; 40 idle runs now say
+it from the other side. Whatever this is, **idle repetition of the supported command does not reach
+it**, so the next attempt should reproduce under deliberate host load, as `T-228`'s did.
+
+**The raw stack is retained** at `ai/evidence/T238-SEGFAULT-gw7.txt` — `ai/evidence/README.md`'s
+test is *"could I get it back"*, and 40 runs say no. Trimmed to the crash; the warnings summary is
+not evidence.
+
+**What the C stack narrows, read rather than skimmed:**
+
+```
+_Py_HandlePending
+  → Shiboken::BindingManager::runDeletionInMainThread
+    → QAbstractItemView::~QAbstractItemView
+      → QObject::disconnectImpl        ← faults here
+```
+
+Two things follow, and only two:
+
+- **The faulting object is a `QAbstractItemView`.** `tests/ui/test_row_delegate.py` imports
+  `QApplication` and `QStyleOptionViewItem` from `QtWidgets` and **nothing else** — no view class —
+  and constructs no view anywhere in its 2600 lines. `ThumbnailStore` is a `QObject`, not a view.
+  **So the destroyed object was not created by the test xdist named**, which is exactly the
+  attribution trap this entry warned about: *"while running"* names the active node.
+- **It ran at `_Py_HandlePending`** — a deferred deletion executing at an arbitrary bytecode
+  boundary, here inside `occupy_pool`'s `store.pool.start(...)`. That is why the Python frame points
+  at this test while the destructor belongs to something else.
+
+**What it does not establish**, and must not be written as though it did: which object, which test
+created it, whether `thumbnails.py` is implicated at all, or identity with `T-074`/`T-128`. A
+`QAbstractItemView` destructor under Shiboken deferred deletion is the same *class* of stack as
+`T-128`'s — a QObject destroyed at a moment nobody chose — and `T-128` was a **harness** defect. That
+is a lead, not a conclusion, and the third criterion below forbids treating resemblance as cause.
+
+**The search is therefore narrower than the entry assumed**: not "what is wrong with this test", but
+**which earlier test in the same worker leaves a view whose deletion is still pending**. The
+`qt_lifecycle` orphan-timer guard (`T-128`, `tests/integration/conftest.py`) is the existing shape
+of an answer — a per-test check that fails at the cause rather than at the crash — and `tests/ui`
+has no equivalent for *views*.
+
 #### Scope
 
 Reproduce and diagnose the **worker SIGSEGV** under the supported parallel unit/UI command. Capture
