@@ -15360,3 +15360,46 @@ authorize one more focused records-only pass, accept the documented risk, change
 the correction into a named follow-up. `T-223` and `T-231` may move to Complete; `T-033` moves to
 Blocked. No reviewed source, tests, build files, commits, or remote state were changed by the
 Reviewer.
+
+## 2026-08-12 — T-033 authorized records re-review / T-066 records cleanup review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-033` (`T033-R6`, maintainer-authorized extra pass) and the submitted `T-066`
+current-truth cleanup
+**Base:** `d9848ca`
+**Head:** `7983620` (`9be5f25` for T-033; `7983620` for T-066)
+**Platforms verified:** Records only; no executable surface changed and no runtime platform was
+rerun for this boundary.
+**Verdict:** **T-033 Blocked; `T033-R6` remains open after the authorized records pass.**
+**T-066 records cleanup: Changes requested** on new `T066-R2`; this does not review or change
+T-066's underlying task disposition.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T033-R6** | **Medium** | **Yes — current truth still materially misstates task and release readiness** | The pass correctly retires the six claims enumerated in its handoff and fixes the contradictory `SolverReport` location. The required sibling audit is nevertheless still incomplete. The live Scope says the frozen artifact “currently contains none” of yt-dlp, `worker.py` and `ytdlp_adapter.py` “are still stubs,” static analysis “will therefore” omit the extractors, and asks to collect/prove the package (`TASKS.md:264-280`), all contradicted by the same entry's completed build and CI evidence. An undated parenthetical still concludes that Windows and “the two `frozen` jobs being GitHub-hosted” are what is genuinely external (`TASKS.md:142-145`), although the corrected opening and line 221 say neither is pending or hosted. Most directly, the corrected `STATUS.md` blocker still ends, “what blocks `T-033` is the hosted frozen jobs” (`STATUS.md:2944-2949`), contradicting lines 2935-2942 of that same bullet. These are the exact same present-tense false-gate class as the original finding, not settled historical measurements. **Open — the authorized extra pass is spent; T-033 returns to Blocked pending a fresh maintainer choice under `AGENTS.md` §10.** |
+| **T066-R2** | **Medium** | **Yes — submitted records cleanup still contradicts itself about completed work** | The edited opening now correctly says nothing remains on the frozen-artifact shape. The unchanged live fields immediately below still say “its remaining evidence lands with `T-033`” (`TASKS.md:1573-1574`), and Scope still says CI installs without a venv and the Windows process-tree evidence covers only the shallower shape (`:1581-1605`), although the entry's Evidence records the venv adoption and the opening records the process-tree discharge. `STATUS.md:2329-2332` likewise says remaining evidence can only be gathered on GitHub-hosted runners while the quota is out — the precise state commit `7983620` correctly retires elsewhere. The explicitly dated 2026-07-28 measurement at `TASKS.md:1643-1647` and the two past-tense quota mentions named in the handoff remain valid history; they are not this finding. **Open — focused records correction required.** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and worktree | **Clean; `HEAD == origin/main == 7983620`; exactly the submitted two records-only commits follow `d9848ca`.** |
+| Changed paths | **Only `ai/TASKS.md` and `ai/STATUS.md`.** |
+| `git diff --check d9848ca..7983620` | **Passed.** |
+| Task-placement gate | **14 passed, exit 0** via `.venv/bin/pytest -q tests/unit/test_task_placement.py`. |
+| Executable validation | Not rerun: no source, test, workflow, build, or dependency file changed. The previously reviewed `dbc7984` executable evidence is not reopened by this boundary. |
+
+### Convergence and disposition
+
+The edited sentences themselves are accurate, and the two retained past-tense quota accounts are
+properly historical because each is dated or followed by its resolution. The blocking problem is
+the missed sibling set: the entries and STATUS still use the superseded premises as current
+Scope, Phase, and blocker statements.
+
+The maintainer-authorized extra pass for `T033-R6` has now been reviewed and did not resolve the
+finding. Under `AGENTS.md` §10, the Reviewer does not initiate another T-033 loop without a fresh
+maintainer choice. T-033 moves from In Review back to Blocked. T-066 remains Ready; this review
+covers only commit `7983620`'s records claim, not a new implementation or final T-066 approval.
+No source, tests, workflow, dependency, commit, push, or remote state was changed by the Reviewer.
