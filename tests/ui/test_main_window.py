@@ -463,7 +463,7 @@ def test_the_window_opens_with_the_queue_stopped_and_says_so(qapp: QApplication)
     assert action is not None
 
     assert not action.isChecked(), "the window opened claiming a running queue"
-    assert action.text() == "&Start queue", (
+    assert action.text() == "&Start", (
         f"the control reads {action.text()!r} on a stopped queue; its label names what pressing "
         "it does, and a window where nothing has ever run must not offer Stop"
     )
@@ -482,7 +482,7 @@ def test_the_run_control_says_its_state_in_words_not_only_by_being_checked(
 ) -> None:
     """`NFR-005`: no information by a visual cue alone, and a checkbox tick is one.
 
-    A screen-reader user hearing only *Start queue* cannot tell whether the queue is running —
+    A screen-reader user hearing only *Start* cannot tell whether the queue is running —
     the verb is the same shape either way. So the state itself is in the tooltip, which is what a
     toolbar button publishes as its accessible description, and in the status bar's own words.
     Both are asserted here rather than one, because a control and a status line that disagree are
@@ -496,7 +496,7 @@ def test_the_run_control_says_its_state_in_words_not_only_by_being_checked(
     assert "stopped" in action.toolTip().lower(), action.toolTip()
 
     window.show_queue_running(True)
-    assert action.text() == "&Stop queue"
+    assert action.text() == "&Stop"
     assert "running" in action.toolTip().lower(), (
         f"a running queue's control describes {action.toolTip()!r}; the state a user cannot see "
         "from the tick is the one that has to be said"
@@ -504,7 +504,7 @@ def test_the_run_control_says_its_state_in_words_not_only_by_being_checked(
     assert "running" in state.text().lower(), state.text()
 
     window.show_queue_running(False)
-    assert action.text() == "&Start queue"
+    assert action.text() == "&Start"
     assert "stopped" in action.toolTip().lower()
     assert "stopped" in state.text().lower(), (
         "the status bar kept the running wording after the queue stopped; it follows the manager's "

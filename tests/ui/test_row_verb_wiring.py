@@ -1861,7 +1861,7 @@ def test_a_running_queue_looks_different_from_a_stopped_one(
         button = next(
             child
             for child in window.findChildren(QToolButton)
-            if child.text().replace("&", "") == "Start queue"
+            if child.text().replace("&", "") == "Start"
         )
         stopped = button.grab().toImage()
 

@@ -1485,7 +1485,7 @@ def test_the_composed_run_control_changes_the_real_manager(
     running = composition.manager.is_running
     assert running
     assert action.isChecked()
-    assert action.text() == "&Stop queue", (
+    assert action.text() == "&Stop", (
         "a running queue's control still offers Start, so its label names the state it is in "
         "rather than what pressing it does"
     )
@@ -1494,7 +1494,7 @@ def test_the_composed_run_control_changes_the_real_manager(
     again = composition.manager.is_running
     assert not again
     assert not action.isChecked()
-    assert action.text() == "&Start queue"
+    assert action.text() == "&Start"
 
 
 def test_the_composed_move_control_updates_the_store_and_the_table(

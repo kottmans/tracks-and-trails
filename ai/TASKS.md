@@ -3205,8 +3205,41 @@ have needed row 7 amended — and the argument for it was that row 7's own examp
 against the concurrency spinner) disappears with the spinner. **The ruling keeps the principle
 rather than retiring it with its example.**
 
-**With `UX-013` and this ruling, the composition work is `T-234`'s**, and what remains here is the
-label plus confirming the bar against §2.1 once the spinner has gone.
+#### The label, ruled — `Start` / `Stop`
+
+**The spec's wording wins** (2026-08-12, *"lets just do start/stop"*). The run control reads
+`Start` while the queue is stopped and `Stop` while it runs, exactly as §2.1 has said since
+`UX-006`.
+
+**What the build's longer form had going for it, and why it loses:** the toolbar's habit is that a
+verb names the list it acts on, which is what `Clear finished` does. But the status bar already
+carries the noun — *"Queue stopped — 3 waiting"* — and with the concurrency control gone the bar is
+three verbs on a window that is a queue. The noun was earning its width when it sat beside a
+setting; it does not now.
+
+**Unchanged either way** (`UX-006`, `T-181`): one checkable action with two states, opening
+unchecked because the queue opens stopped, with the label following the state rather than naming a
+fixed verb. Only the spelling moved.
+
+**Both halves are now ruled**, so `T-220` is buildable: the label is its own work, and the order it
+confirms is `T-234`'s.
+
+#### What was built, 2026-08-12 — the label half
+
+`_describe_run_action` sets `&Start`/`&Stop`. **The label is the only thing that moved**: the
+status tips, the tooltips and the checkable-with-two-states shape (`UX-006`, `T-181`) are
+untouched, and the accessible description still names the *state* rather than the verb, because a
+screen-reader user who hears only the verb cannot tell whether the queue is running.
+
+**Four assertion sites updated**, found by sweeping rather than by the suite: `test_main_window.py`
+(three), `test_row_verb_wiring.py`'s menu-key probe, and `tests/integration/test_composition.py`
+(two) — the last is in a suite the unit/UI run does not cover, so a grep found it and a green
+`-n auto` would not have.
+
+**Two mutations fail their evidence**: the two states swapped, and the old `Start queue` restored.
+
+**Still owed here:** confirming the built bar against §2.1 once `T-234` removes the spinner. This
+task cannot close until then.
 **Owner:** Implementer, with a Planner edit if the spec side wins
 **Priority:** Low — a two-line reconciliation, in whichever direction
 **Phase:** Phase 4 — polish, not a plan deliverable

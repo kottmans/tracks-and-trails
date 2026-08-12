@@ -1088,8 +1088,8 @@ class MainWindow(QMainWindow):
         one of them disabled, and a screen reader would read the disabled one too.
 
         **It opens unchecked, because the queue opens stopped.** The label follows the state rather
-        than naming a fixed verb: a control reading *Stop queue* on a window where nothing has ever
-        run describes the wrong half of itself.
+        than naming a fixed verb: a control reading *Stop* on a window where nothing has ever run
+        describes the wrong half of itself.
         """
         run = QAction(self)
         run.setObjectName("runQueueAction")
@@ -1125,9 +1125,15 @@ class MainWindow(QMainWindow):
         """Make the run control's four pieces of text say the same state (`UX-006`, `NFR-005`).
 
         **The label names what pressing it does**, which is the opposite of the current state:
-        stopped reads *Start queue*. The accessible description names the state itself, because a
+        stopped reads *Start*. The accessible description names the state itself, because a
         screen-reader user who hears only the verb cannot tell whether the queue is running — the
         checked state is a visual cue and `NFR-005` forbids leaving it as the only one.
+
+        **`Start`/`Stop`, not `Start queue`/`Stop queue`** (`T-220`, ruled 2026-08-12). The longer
+        form followed the toolbar's habit of naming the list a verb acts on, which is what
+        `Clear finished` does — but the status bar already carries the noun, and with the
+        concurrency control gone (`UX-013`) the bar is three verbs on a window that *is* a queue.
+        The noun earned its width beside a setting; it does not beside two other verbs.
 
         `QAction` has no accessible-name property in Qt 6 — the name comes from the text, and the
         toolbar button takes its accessible *description* from the tooltip — so the state sentence
@@ -1135,7 +1141,7 @@ class MainWindow(QMainWindow):
         """
         if self._run is None:
             return
-        self._run.setText("&Stop queue" if running else "&Start queue")
+        self._run.setText("&Stop" if running else "&Start")
         if running:
             self._run.setStatusTip("The queue is running. Stop starting new downloads.")
             self._run.setToolTip(
