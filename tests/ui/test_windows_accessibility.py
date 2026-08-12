@@ -55,12 +55,20 @@ UIA_MENU_ITEM = 50011
 UIA_BUTTON = 50000
 UIA_TITLE_BAR = 50037
 
+#: **The run control is a `CheckBox`, not a `Button`** (`T-235`, measured 2026-08-12 after the
+#: Windows job proved it). Qt gives a *checkable* `QToolButton` the accessible role `CheckBox`, and
+#: UI Automation carries that through — so the queue's `Start`/`Stop` control has never been in
+#: reach of a sweep scoped to buttons and menu items. That is a second hole in the same criterion,
+#: found by the first one being fixed.
+UIA_CHECKBOX = 50002
+
 #: Role names, for failure messages that a reader can interpret without a lookup table.
 ROLE_NAMES = {
     UIA_WINDOW: "Window",
     UIA_MENU_BAR: "MenuBar",
     UIA_MENU_ITEM: "MenuItem",
     UIA_BUTTON: "Button",
+    UIA_CHECKBOX: "CheckBox",
     UIA_TITLE_BAR: "TitleBar",
 }
 
@@ -342,14 +350,20 @@ def test_no_interactive_control_reaches_the_tree_without_a_name(tree: Tree) -> N
 
     A control added later without a label fails here rather than shipping unreadable.
 
-    Scoped to menu items and buttons — the roles a user actually operates. Qt and Windows
-    leave the `TitleBar` and the `MenuBar` **container** unnamed, which the first CI run of
-    this assertion flagged as two violations. They are not: a screen reader announces those by
-    role, and their children carry the names. Requiring a name there would assert something
+    Scoped to menu items, buttons and **check boxes** — the roles a user actually operates. The
+    third was added by `T-235` and is not a formality: Qt gives a *checkable* `QToolButton` the
+    `CheckBox` role, so the queue's own run control was outside this sweep for as long as it has
+    existed. It was outside the tree entirely as well, which is the finding that led here.
+
+    Qt and Windows leave the `TitleBar` and the `MenuBar` **container** unnamed, which the first
+    CI run of this assertion flagged as two violations. They are not: a screen reader announces
+    those by role, and their children carry the names. Requiring a name there would assert something
     the platform does not do, and the only way to make it pass would be to weaken it.
     """
     interactive = tuple(
-        node for node in tree.descendants if node.control_type in (UIA_MENU_ITEM, UIA_BUTTON)
+        node
+        for node in tree.descendants
+        if node.control_type in (UIA_MENU_ITEM, UIA_BUTTON, UIA_CHECKBOX)
     )
     assert interactive, "no interactive controls in the tree at all"
 
@@ -438,24 +452,33 @@ def test_the_run_control_is_announced_in_both_of_its_states(window: MainWindow, 
 
     **The tree is re-read after the state changes**, because a snapshot taken before it is a
     snapshot of the other state.
+
+    **It is a `CheckBox`, and finding that out is what this test was for.** The first version read
+    `UIA_BUTTON` and failed on the Windows runner with
+    `Buttons: ['+ Add URLs', 'Clear finished', 'Close', 'Maximize', 'Minimize']` — the run control
+    absent from the tree altogether. Qt gives a *checkable* `QToolButton` the accessible role
+    `CheckBox` (measured locally: `Role.CheckBox` against `Role.Button` for its two neighbours),
+    and UI Automation carries that through. So the queue's main control sat outside a sweep scoped
+    to buttons and menu items for as long as both have existed, and the sweep above now includes
+    the role.
     """
     run = window.run_action
     assert run is not None
 
-    stopped = {node.name for node in tree.of_type(UIA_BUTTON) if node.name.strip()}
+    stopped = {node.name for node in tree.of_type(UIA_CHECKBOX) if node.name.strip()}
     assert any("Start" in name for name in stopped), (
-        f"a stopped queue's run control is not announced as Start. Buttons: {sorted(stopped)}"
+        f"a stopped queue's run control is not announced as Start. Check boxes: {sorted(stopped)}"
     )
 
     window.show_queue_running(True)
     QApplication.processEvents()
     running = {
         node.name
-        for node in read_tree(int(window.winId())).of_type(UIA_BUTTON)
+        for node in read_tree(int(window.winId())).of_type(UIA_CHECKBOX)
         if node.name.strip()
     }
     assert any("Stop" in name for name in running), (
-        f"a running queue's run control is not announced as Stop. Buttons: {sorted(running)}"
+        f"a running queue's run control is not announced as Stop. Check boxes: {sorted(running)}"
     )
 
 

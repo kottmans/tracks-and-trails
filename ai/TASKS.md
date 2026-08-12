@@ -608,8 +608,32 @@ what it acts on, or stopped existing.
 and fail the sweep — checked, because it is the obvious way this change could redden the Windows
 job for a reason that has nothing to do with the criterion.
 
-**The Windows evidence is still owed**, and this entry does not pretend otherwise: the criteria
-require the job green on the runner, which only the push can show.
+#### The Windows job found something, which is what it was for — 2026-08-12
+
+**Run `31639831980`'s `windows desktop` job failed, and the failure is the finding.**
+
+```
+AssertionError: a stopped queue's run control is not announced as Start.
+Buttons: ['+ Add URLs', 'Clear finished', 'Close', 'Maximize', 'Minimize']
+```
+
+The run control is **not in the button list at all**. Measured locally afterwards: Qt gives a
+*checkable* `QToolButton` the accessible role **`CheckBox`** — `Role.CheckBox` against
+`Role.Button` for its two neighbours — and UI Automation carries that through as
+`UIA_CheckBoxControlTypeId` (50002).
+
+**So there were two holes, not one.** The first was this file's window having no toolbar. The
+second is that `test_no_interactive_control_reaches_the_tree_without_a_name` scopes itself to
+menu items and buttons, so **the queue's main control has been outside the `NFR-005` sweep for as
+long as both have existed** — it would have been outside it even with a toolbar in the tree. The
+sweep now includes the check-box role, and the run-control test reads that role.
+
+**This is the criterion working rather than the change failing.** A Windows-only test written from
+Linux was always going to be verified by the runner or not at all; what it verified is that a
+plausible assumption — *a toolbar verb is a Button* — is false for the one control on the bar that
+toggles.
+
+**The green Windows job is still owed**, and this entry does not pretend otherwise.
 
 ---
 
