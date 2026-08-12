@@ -38,7 +38,33 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
-## 2026-08-12 (later): T-234 and T-233 built; T-235 and T-236 filed
+## 2026-08-12 (later): T-234 and T-233 built; T-228's mechanism found; T-235 and T-236 filed
+
+**`T-228`'s mechanism is established, and it is not what the entry's title says.** 50 runs of
+`pytest -n auto tests/integration/test_manager.py` on a 20-core machine: **19 failed, 21 failures,
+twelve distinct tests** — and across the first 20 runs no test failed twice, which is why a
+single-test entry was the wrong shape to look through. **Fourteen of the 21 say the same thing: an
+automatic retry never happened.**
+
+**It is not a bound with no headroom.** `spin` is wall-clock, so the failures include a `timeout=120`
+and several `timeout=60` that genuinely elapsed; and time from `start()` to the child's failure
+measures **0.3–0.5 s in every sample under full load**, so nothing is starving the children.
+
+**What the instrumentation caught:** in a failing run no retry is ever *scheduled* for the failing
+job — no call to `_schedule_automatic_retry`, no `_retry_at` entry with the backoff that test
+monkeypatches in. The job reaches `FAILED` down `_fail_loudly` instead
+(`FAIL_LOUDLY job=job-NETWORK ended=True sentinel=True forced=False`), so the child's `NETWORK`
+outcome is recorded as `WORKER_CRASH` — which `_schedule_automatic_retry` correctly declines,
+because putting `WORKER_CRASH` into a retry loop is exactly what its docstring forbids. **The
+`T-083` timer guard holds in every run**; it was the obvious suspect and it is not the cause.
+
+**The open question, left for the maintainer:** if that misattribution is only reachable under
+20-worker oversubscription it is an artefact and the answer is a worker cap; if it is reachable on
+a loaded user machine it is a **user-visible defect** — a transient network failure that silently
+stops retrying — and needs its own entry. `T-228` stops there rather than guessing a second time.
+**Nothing was changed**: the manager was instrumented on a throwaway copy and restored, the probe
+test deleted, and the serial run is 154 passed, exit 0.
+
 
 **`T-233` is In Review too** — `T033-R7`'s comments-only follow-up. The spec gave one reason for
 both yt-dlp collection lines; the `T-033` mutations had already established that they are there

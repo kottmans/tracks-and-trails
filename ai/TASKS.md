@@ -2897,7 +2897,10 @@ which §5 forbids in terms.
 ### T-228 — A retry deadline stops firing under parallel load
 
 **Status:** Proposed — filed 2026-08-11 from `T-123`'s adoption run, reproduced at roughly one run
-in three under `pytest -n auto tests/integration/test_manager.py`.
+in three under `pytest -n auto tests/integration/test_manager.py`. **The mechanism was established
+2026-08-12** (see below) and is not what the title says: the entry is left Proposed because what it
+found opens a question the maintainer should rule on, and its own first criterion says to record
+before changing.
 **Owner:** Implementer
 **Priority:** Medium — it blocks the second half of `T-123`. Integration runs serially today, so
 nothing is red because of it; what it costs is **297 s of every CI run**, which `-n 4` would take
@@ -2930,6 +2933,88 @@ headroom and reports it honestly, which is more than most.
 the *product's* (a retry that a busy machine can starve, which would be a real defect and a
 different task's shape). `T-123`'s own hazard list guessed the process tests and was right about
 one and wrong about the mechanism; this entry deliberately does not guess.
+
+#### The mechanism, established 2026-08-12 — and it is neither of the two shapes above
+
+**The first criterion is met. Nothing is changed yet, which is what that criterion asks for.**
+
+**The reproduction, driven rather than inferred:** **50 runs** of `pytest -n auto
+tests/integration/test_manager.py` on a 20-core machine, in seven batches. **19 runs failed, 21
+failures in total.** The rate rises when the run is instrumented — file I/O on the retry path took
+it from roughly 1-in-3 to 6-in-8 — which is itself evidence: this is load-sensitive, not a fixed
+bound.
+
+**The entry's framing was too narrow in two ways.**
+
+*It is not one test.* The 21 failures landed on **twelve distinct tests** — and across the first
+20 runs **no test failed twice**, which is why a single-test entry was the wrong shape to look
+through:
+
+| Failing assertion | Test |
+|---|---|
+| Test | Times | Failing assertion |
+|---|---|---|
+| `test_a_network_failure_retries_itself_and_counts_the_attempt` | 5 | *"a network failure never retried itself"* |
+| `test_idle_is_not_announced_while_a_retry_is_waiting` | 3 | *"idle went out with an automatic retry still waiting"* |
+| `test_the_attempt_count_is_bounded_and_the_last_error_survives` | 2 | *"the automatic attempts never reached the bound and settled"* |
+| `test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started` | 2 | *"the retry's deadline never fired at all"* |
+| `test_an_automatic_retry_preserves_a_probe_as_a_probe` | 1 | *"the probe's automatic retry never ran"* |
+| `test_the_backoff_is_waited_rather_than_declared` | 1 | — |
+| `test_a_started_queue_stays_started_for_work_added_afterwards` | 2 | *"the first job never finished, so the queue never drained"* |
+| five others | 5 | shutdown-descendants, pump-idle, saturated-drain, paused-status, cancellation |
+
+**Fourteen of the 21 are one sentence: an automatic retry never happened.** The task this entry
+was filed against is only the fourth-most-frequent of them.
+
+*It is not a bound with no headroom.* `spin` is **wall-clock** (`tests/integration/conftest.py`),
+so the failures include a `timeout=120` and several `timeout=60` that genuinely elapsed. And the
+obvious explanation is ruled out by measurement: **time from `start()` to the child's failure is
+0.3–0.5 s in every sample taken under full load** (8 samples, max 0.518 s). The machine is not
+starving the children.
+
+**What is actually happening**, from instrumenting `_schedule_automatic_retry`,
+`_perform_due_retries`, the timer stop and `_fail_loudly`:
+
+- In a failing run, **no retry is ever scheduled for the failing job.** The trace records every
+  call to `_schedule_automatic_retry` *before* its `kind is not NETWORK` guard, and for the
+  failing job there is no such call at all — nor any `_retry_at` entry with the backoff that
+  test monkeypatches in. (`test_idle_is_not_announced_while_a_retry_is_waiting` uses **30 s**;
+  no 30-second deadline appears anywhere in a trace of the run that failed it.)
+- The job still reaches `FAILED` — the tests' preceding spin passes.
+- The route it takes is `_fail_loudly`. Captured directly:
+  `FAIL_LOUDLY job=job-NETWORK ended=True sentinel=True forced=False`, in the one worker process
+  whose test failed, while other workers scheduled their retries normally in the same run.
+
+**So: under load the child's outcome is not believed before the session is judged ended, the
+failure is recorded as `WORKER_CRASH` instead of the `NETWORK` the child reported, and
+`_schedule_automatic_retry` correctly declines** — its docstring says exactly why, that deriving
+retryability from `is_retryable` *"would put `WORKER_CRASH` into a loop on its own"*. The tests
+then wait out generous timeouts for a retry that will never come, and their messages
+(*"never fired"*, *"never retried itself"*) name the symptom rather than this cause.
+
+**The timer is not the problem, and that is worth recording because it was the obvious suspect.**
+Every `TIMER STOP` in every trace shows `retry_at={}` — the `T-083` guard that keeps the tick alive
+for a pending backoff holds under load in every instrumented run.
+
+#### What this means, stated as a question rather than a decision
+
+**This is a third shape the entry did not list**, and it is not clearly a test problem:
+
+- **If the misattribution is only reachable under absurd oversubscription**, it is an artefact of
+  `-n auto` spawning 20 workers that each spawn children, and the answer is a worker cap.
+- **If it is reachable on a loaded user machine**, it is a **user-visible defect**: a transient
+  network failure recorded as a crash stops retrying, silently, and `REQ-018`'s automatic retry is
+  the thing that does not happen. That is a defect entry of its own, which this task's third
+  criterion already anticipates.
+
+**Which of those it is has not been established**, and this entry stops here rather than guessing
+a second time. What is needed next is the condition inside `_fail_loudly`'s caller that decides a
+session ended without a believable outcome, and whether it is a deadline that a busy machine can
+beat. **`T-056`'s `still_running` question may be the same seam from the other side.**
+
+*(Method note: the manager was instrumented on a throwaway working copy and restored; the probe
+test used to take the measurements was deleted. `git status` is clean of both, and the serial run
+is **154 passed, exit 0** — this task changed nothing.)*
 
 #### Acceptance criteria
 
