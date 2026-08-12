@@ -1314,8 +1314,10 @@ Windows frozen build in Phase 5.)*
 **Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
 environment a developer or a user actually has. High for what it decides, not for when: it gates
 no phase exit
-**Phase:** Phase 1 origin; its remaining evidence lands with `T-033` in Phase 5. **Does not gate
-the Phase 1 exit** (`OPS-005`, amended)
+**Phase:** Phase 1 origin. **Does not gate the Phase 1 exit** (`OPS-005`, amended). *(This said
+its remaining evidence "lands with `T-033` in Phase 5"; `T-033`'s frozen evidence is produced on
+both platforms now — `frozen windows` and `frozen linux` green in `31570861414` and
+`31607180926` — so nothing of this task is waiting there. `T066-R2`.)*
 **Depends on:** nothing
 **Relevant context:** `T-019`, `T-056`, `docs/DEVELOPMENT.md`, `.github/workflows/ci.yml`
 **Affected surfaces:** `.github/workflows/ci.yml`, `docs/DEVELOPMENT.md`, possibly
@@ -1324,9 +1326,14 @@ the Phase 1 exit** (`OPS-005`, amended)
 
 #### Scope
 
-`docs/DEVELOPMENT.md` tells a developer to work in a virtualenv. `ci.yml` installs with
-`python -m pip install -e ".[dev]"` straight into the `setup-python` interpreter, with no venv at
-any point. **The gate and the documentation describe different environments**, and on Windows the
+***This section describes the state the task was filed against, and that state is over***
+(`T066-R2`). It read as live: that `ci.yml` installed *"straight into the `setup-python`
+interpreter, with no venv at any point"*, and that **the gate and the documentation describe
+different environments**. **CI adopts the virtualenv** — every job runs `Create the virtualenv`
+and prepends it to `GITHUB_PATH` before installing, which the *Evidence* section below has
+recorded since 2026-07-28. The divergence is closed; what follows is why it mattered.
+
+`docs/DEVELOPMENT.md` tells a developer to work in a virtualenv. CI did not, and on Windows the
 difference is not cosmetic.
 
 `python -m venv` on Windows does not copy the interpreter into `Scripts\python.exe`; it installs a
@@ -1342,11 +1349,13 @@ CI, because `sys.executable` is a redirector. `test_the_detector_sees_a_grandchi
 fails in the venv checkout and passes in the CI-style one, on the same machine and the same
 commit — an A/B, not an inference.
 
-**Why this is more than a failing test.** `T-019` exists to prove the application reaps a process
+**Why this was more than a failing test.** `T-019` exists to prove the application reaps a process
 *tree* on Windows, and `T-056` exists because the helper that decides those assertions was
-imprecise. Both are verified only against the shallower tree. The deeper tree is the one a
-developer following our own instructions produces, and plausibly the one a user of a venv-based
-install produces too.
+imprecise. Both were verified only against the shallower tree — the deeper one is what a developer
+following our own instructions produces, and plausibly what a user of a venv-based install
+produces too. *(Present tense until `T066-R2`. `T-072` added the venv process-tree step and run
+`30414186949` executed the `T-019` cases under that shape — 72 passed, 3 skipped — which the
+status line above records as the process-tree half being discharged.)*
 
 #### Acceptance criteria
 
@@ -1386,9 +1395,12 @@ walking, not to the process that was spawned.
 
 **The frozen artifact has neither shape.** Under PyInstaller `sys.executable` is the frozen
 executable and `multiprocessing` re-launches it through `freeze_support()`, so there is no
-launcher generation and no venv. This is **reasoned, not measured** — building the artifact on
-Windows is `T-033`'s ground and no frozen build has been run on `STARBASE`. Recorded as an
-assumption rather than a result.
+launcher generation and no venv. This was **reasoned, not measured** when written — building the
+artifact on Windows is `T-033`'s ground, and at the time no frozen build had run on `STARBASE`.
+**It has since**: `frozen windows` runs there on every push and was green in `31570861414` and
+`31607180926`, so the assumption is now checkable against a real artifact. It is still recorded as
+an assumption, because nobody has gone and checked it — that is a task, not a claim. *(The
+"no frozen build has been run" was present tense until `T066-R2`.)*
 
 **Partly verified as of 2026-07-28.** The virtualenv step **has now executed on Windows**: job
 `90432207805` of run `30405803368` ran `Create the virtualenv` and then the desktop suite under

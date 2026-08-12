@@ -2326,10 +2326,12 @@ The exit review has since recorded criterion 7 as **met with accepted residual r
 reports that verdict rather than deferring to it. *(This read "calling criterion 7 met is the exit
 review's to record, not this file's" after that review had recorded it — `COORD-R9`.)*
 
-**`T-066` no longer blocks the exit** (`OPS-005` amended 2026-07-29, maintainer decision). Its
-remaining frozen-artifact evidence can only be gathered on GitHub-hosted runners and the quota is
-out — the unreachable-environment condition `OPS-005` covers, which `OPS-006` states generally as
-*a criterion that waits on a payment is not a gate*. The amendment also records why the frozen
+**`T-066` no longer blocks the exit** (`OPS-005` amended 2026-07-29, maintainer decision). *(This
+went on to say its remaining frozen-artifact evidence "can only be gathered on GitHub-hosted
+runners and the quota is out" — the unreachable-environment condition `OPS-005` covers, which
+`OPS-006` states generally as* a criterion that waits on a payment is not a gate. **Neither half
+holds now** — `OPS-010` and `OPS-012` moved both platforms off hosted runners by ruling, and the
+frozen jobs run on every push: green in `31570861414` and `31607180926`. `T066-R2`.)* The amendment also records why the frozen
 shape was never Phase 1's question: **all five** frozen references in `IMPLEMENTATION_PLAN.md`
 belong to Phase 0 — its deliverable, its exit criterion, its evidence row, its rationale, and the
 Phase-level risk-register row at `:330`, which attributes itself to Phase 0 — while Phase 1's
