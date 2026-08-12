@@ -5,19 +5,15 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-11 (fifth entry) — **`T-195` is Approved and Complete at `7cd2002`**,
-after **six review rounds and eleven findings**. Four of REQ-023's eight settings are built. The
-six-commit stack is cleared to push.
+**Last updated:** 2026-08-12 — **an unattended run built five tasks, refused one, and pushed
+eleven commits**; `origin/main` is at `d5ba36a` and **CI run `31570861414` is green on all five
+jobs**, with the Linux job at **4m51s** against the 15-minute cap it was cancelled at the night
+before. `T-225` and `T-123` are Complete, approved with follow-ups.
 
-**Two Windows-only defects were caught by CI earlier the same day** (`d0cb822`, `074d9df`), both in
-tests I wrote, both invisible to every local run — the CI routing change to STARBASE and local
-machines (`3e824f4`) is what surfaced them.
-
-**What `T-195` cost is the record worth keeping.** The task entry described a model state that did
-not exist; two High findings were live defects; and **five of the eleven findings were about my own
-evidence** — tests that agreed with the code instead of testing it, including one that asserted the
-store and was presented as proving the wiring while the wiring was broken.
-**Last verified against repository:** 2026-08-11 for all five 2026-08-11 blocks — commit hashes read
+**Last verified against repository:** 2026-08-12 for the block above — commit hashes and the
+CI conclusion read from `git log` and `gh run view`, task states from `ai/TASKS.md` after the
+placement gate ran, and every figure from the run quoted with its exit code checked rather
+than its summary line. 2026-08-11 for all five 2026-08-11 blocks — commit hashes read
 from `git log`, task states from `ai/TASKS.md` after the placement gate ran, and the figures from
 the runs quoted, with exit codes checked rather than summary lines. Earlier blocks were verified on
 their own dates; the Phase 1 and Phase 2 narrative from `## Next` onward was last swept 2026-08-04.
@@ -38,6 +34,54 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-12: an unattended run — five tasks, eleven commits, and CI green on all five jobs
+
+**Everything is pushed and `origin/main` is at `d5ba36a`. CI run `31570861414` succeeded on all
+five jobs** — `linux`, `windows desktop`, `frozen linux`, `frozen windows`, `STARBASE coverage`.
+
+**The Linux job runs in 4m51s, against the 15-minute cap it was cancelled at the night before.**
+That cancellation (`31553176677`) was not a defect: every gate in it passed and the suite had
+simply grown past its bound at 3130 tests. `T-123` is the fix and `T-225` was its prerequisite.
+
+**`T-225` and `T-123` are Complete, approved with follow-ups.** The reviewer ran the adopted slice
+with sentinel per-user roots — **2714 passed, zero files under the sentinel**. Integration stays
+serial behind `T-228`; `-n 4` was measured (83s against 297s, green 3/3) and **ruled against**,
+because three green runs do not resolve a failure already reproduced under load.
+
+**Two defects were found inside the work that fixed them**, and both were in evidence rather than
+code. `T-123`'s stray-reaper killed other xdist workers' processes — the *"`still_running` false
+negative"* recorded on 2026-08-04, which was never a `still_running` defect. And the autouse
+redirect that `ai/TESTING.md` §5 has always claimed **did not exist**: one run left **241 job logs
+in the real user cache**, and it is 0 now.
+
+**The unattended run built five tasks and refused one.**
+
+- **`T-033`** — the frozen probe was blind to package-data loss. Removing `collect_data_files`
+  strips all three YouTube solver assets and the probe passed; it now loads the core solver through
+  `vendor.load_script` and checks its `sha3_512` against yt-dlp's own table. Measured: baseline 3
+  assets exit 0, mutation 0 assets exit 1. **The `collect_submodules` decision stays open — it is
+  the maintainer's**, and an unattended run is the wrong place for a judgement about future pins.
+- **`T-219` was refused, and the refusal is the deliverable.** Its premise does not hold: the
+  footer is not the last surface printing selector syntax — every probed row prints it through
+  `selector_text`, deliberately, because `REQ-009` asks for a selector a user can learn from and
+  copy. Meeting the criterion overturns that reading, which is a ruling. Three shapes recorded,
+  none chosen; the task is Blocked.
+- **`T-218`, `T-223`, `T-226`, `T-213`** built with mutation evidence each.
+
+**`T-218` is the one worth keeping.** Its first build painted the hint in `paintEvent`;
+`viewport().grab()` never routes there, so the text was invisible to every assertion that could
+have proved it — **1209 distinct colours with and without the painting**. The mutation deleting it
+changed nothing. *The test was vacuous before the code was wrong*, and it took two wrong assertions
+to notice, because the second was written after the first mutation survived without checking that
+the mechanism worked at all.
+
+**Filed by this run:** `T-227` (nothing gates the documents that say what is built), `T-228` (a
+retry deadline stops firing under load), `T-230` (a spawned child still gets the real directories —
+62 job logs from integration, 0 from the parallel slice), and `T-229` by the reviewer.
+
+**Open and the maintainer's:** `T-219`'s ruling, `T-033`'s `collect_submodules` decision, `T-208`'s
+disposition, `T-221`'s display question, `T-220`, and `P-29`.
 
 ## 2026-08-11 (fifth): T-195, six rounds
 
