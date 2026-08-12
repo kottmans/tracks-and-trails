@@ -39,10 +39,17 @@ datas += collect_data_files("tracks_and_trails", includes=["persistence/migratio
 # baseline ships, and **the frozen probe still reported OK**, because the probe never touches them.
 # That mutant's survival measures a blind spot in the gate rather than a dead line.
 #
-# **Neither removal fails anything today, and that is the point of writing the reasons down.** A
-# missing extractor or a missing solver asset produces the dangerous kind of failure — `import
-# yt_dlp` succeeds, the window opens, and downloads fail in a way that reads as ordinary site
-# breakage rather than as a packaging fault — and nothing here would catch either.
+# **Neither removal fails a gate, and the two removals are not otherwise alike.** Keeping those
+# apart is the point of writing the reasons down:
+#
+#   - removing `collect_submodules` for *this pin* broke nothing that was measured — the artifact
+#     built and still resolved extractors — so no gate fired because there was nothing to fire at;
+#   - removing `collect_data_files` **did** break the artifact, deleting the solver assets, and no
+#     gate fired anyway because the probe never touches them.
+#
+# The second is the dangerous kind: `import yt_dlp` succeeds, the window opens, and downloads fail
+# in a way that reads as ordinary site breakage rather than as a packaging fault. A future pin
+# could put `collect_submodules` in the same position, which is why it stays.
 ytdlp_hiddenimports = collect_submodules("yt_dlp")
 datas += collect_data_files("yt_dlp")
 
