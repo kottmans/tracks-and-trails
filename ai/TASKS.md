@@ -118,156 +118,6 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 
-### T-213 — Remove the dead code a full-tree audit verified
-
-**Status:** In Review — built 2026-08-12 in an authorized unattended run; filed 2026-08-09 from a
-maintainer-requested audit of the whole tree.
-**Owner:** Implementer
-**Priority:** Low — nothing misbehaves; every item is weight with no function
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** the In Review add-dialog chain (`T-203`, `T-204`'s corrections) receiving verdicts
-first — two of the items live in files that chain is still changing, and deleting under an open
-review moves the review boundary.
-**Relevant context:** `ruff check --select F401,F811,F841` is already clean; these are the items
-reference-analysis finds and lint cannot. Each was verified to have exactly one occurrence in the
-tree — its definition — including string references, the PyInstaller spec's `hiddenimports`, and
-`pyproject.toml` entry points
-**Affected surfaces:** `ui/add_dialog.py`, `core/output_template.py`,
-`tests/ui/test_add_dialog.py`, `ui/widgets/`, `ui/row_delegate.py`
-**Risk:** Low — the residual risk is a string-referenced usage the greps missed, which the suite
-covers
-
-#### Scope
-
-**Four verified-dead items:**
-
-- **`WITHDRAW_FAILED_PREFIX`** (`ui/add_dialog.py` §221) — a leftover of the withdrawal machinery
-  `T-118` removed; the module itself says *"there is nothing to withdraw"*, and the constant's
-  comment still describes the removed behaviour
-- **`_DERIVED_FROM`** (`core/output_template.py` §67) — its comment claims it is *"supplied to the
-  renderer"*; no renderer touches it. The comment's true half — yt-dlp derives `duration_string`
-  itself — may survive as prose if worth keeping
-- **`_wheel_down`** (`tests/ui/test_add_dialog.py` §4530) — its callers were deleted by `bcaa38a`
-  (`T-203`) and the helper stayed
-- **`ui/widgets/`** — a docstring-only package nothing imports; absent from the PyInstaller spec
-  and from every import in `src/`, `tests/`, `tools/`
-
-**One single-source-of-truth repair, not a deletion.** `MANAGE_PRESETS_TEXT`
-(`ui/row_delegate.py` §282) is asserted by tests only in the *negative* — that the combo no longer
-contains it — while the live footer button label is a second hardcoded string at
-`ui/add_dialog.py` §1311. Point both at one constant, so the negative assertions cannot drift from
-the label they exist to police.
-
-**Docstring honesty, no code change.** `post_processing_of` (`core/presets.py` §345),
-`forget_the_secrets` (`core/logging.py` §177) and `describe_candidates`
-(`downloader/environment.py` §209) each promise a `src/` caller that does not exist — the options
-dialog reads preset fields directly, no settings change invalidates secrets, nothing logs the
-resolution order. Used only by tests. Either wire the promised caller or state plainly that the
-function is a spec anchor for tests, the way `SCHEMA_SNAPSHOT` and `CANCEL_BUDGET_SECONDS` already
-do.
-
-#### Acceptance criteria
-
-- The four dead items are gone, and a grep for each name finds nothing
-- The *Manage presets…* label has one definition, read by both the footer button and the
-  negative assertions
-- The three docstrings state who actually calls them
-- `ruff check`, `ruff format --check`, `mypy src`, and the suites owning the touched files pass
-
-#### What was built, against those criteria
-
-**Each item was re-verified dead before deletion, not trusted from the 2026-08-09 audit.** Three
-days and several tasks had passed; a grep for each name across `src`, `tests`, `tools`,
-`packaging` and `pyproject.toml` returned **exactly one occurrence — its own definition** —
-and `ui/widgets/` had **zero** importers.
-
-- **`WITHDRAW_FAILED_PREFIX`, `_DERIVED_FROM`, `_wheel_down`, `ui/widgets/`** are gone; a grep
-  for all three names now returns 0.
-- **`_DERIVED_FROM`'s comment had a true half and it survives as prose** where the field is
-  described: yt-dlp derives `duration_string` itself, and the raw number renders as `507.1`,
-  which is why only the formatted spelling is offered.
-- **The *Manage presets…* label has one definition.** The footer button spelled it a second time
-  as `"&Manage presets…"` while the negative assertions imported `MANAGE_PRESETS_TEXT`; the
-  button now reads `f"&{MANAGE_PRESETS_TEXT}"`. The accelerator is inserted rather than stored,
-  because it belongs to the button and not to the name of the action.
-- **The three docstrings say who calls them**, and two claims were narrowed while writing them
-  because they asserted intent nobody recorded. `forget_the_secrets` now says only what is
-  checkable — nothing in `src/` calls it, so registered literals accumulate for the life of the
-  process and a replaced value goes on being redacted — and explicitly that *whether that is
-  wanted is not recorded anywhere*. `describe_candidates` is a spec anchor, not a logger.
-
-**Four tests fewer, and none of them was lost.** `2714 → 2710`, all four the layering guard's
-parametrised cases for `ui/widgets/__init__.py`: the guard runs per module, so deleting the module
-deleted its cases. Confirmed by diffing `--collect-only` against `HEAD` rather than by assuming.
-
-**Ruff found what the deletion orphaned** — `QPointF` and `QWheelEvent` in `test_add_dialog.py` —
-which is the intended division of labour: reference analysis finds the dead definitions, lint
-finds what removing them strands.
-
-#### Out of scope
-
-- The deliberate test-only invariant anchors — `SCHEMA_SNAPSHOT`, `CANCEL_BUDGET_SECONDS`,
-  `ui/theme.py`'s contrast metrics, `allowed_from`, `stage_of`. Documented as anchors; keep
-- Any behaviour change
-
-### T-218 — The add dialog's empty state: one instruction, inside the list
-
-**Status:** In Review — built 2026-08-12 in an authorized unattended run; filed 2026-08-09 from
-the maintainer-approved UI review.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** nothing now — the add-dialog chain is approved and `T-213` has landed
-**Relevant context:** `ui/add_dialog.py` (the paste box placeholder, the "Paste one URL per line."
-label, the staging list), `UX-003` (nothing enters the queue unprobed — the fact the hint can
-teach), `T-060`/`T016-R4` (the focus chain is declared and stable), the `T-203` chain's narrowing
-contract
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-The dialog gives the same instruction twice — the paste box's placeholder and a separate label
-below the list — while the empty list, the largest thing on the screen, says nothing. One
-instruction, placed inside the space it explains, does both jobs and quietly teaches why the list
-exists.
-
-#### Acceptance criteria
-
-- The **empty staging list carries the hint inside itself** — paste URLs above; each line resolves
-  here with its title, channel and thumbnail before anything is queued — and it disappears with the
-  first row
-- The **duplicate label below the list is gone**; the paste box placeholder stays
-- The hint is **not a control**: the declared focus chain is unchanged (`T-060`), and the disabled
-  retry button stays exactly as the chain rule put it. The per-row verbs hold no chain slot to
-  preserve — `UX-011` put them in the row's menu, reached through the list itself
-- The dialog's **narrowing contract still holds** — the `T-203` chain's own test is the gate
-
-#### What was built, against those criteria
-
-- **The empty list carries the hint**: *"Paste URLs above. Each line is read here — title, channel
-  and thumbnail — before anything is queued."* It is a `QLabel` over the viewport, shown exactly
-  while `rowCount() == 0`, followed through `rowsInserted`, `rowsRemoved` and `modelReset`.
-- **The duplicate is gone.** `summarise(())` returned *"Paste one URL per line."* into the label
-  under the list — the same instruction the paste box's placeholder already gave. It returns `""`
-  now; a summary of no rows has nothing to summarise. The placeholder stays.
-- **It is not a control.** `NoFocus` and `WA_TransparentForMouseEvents`, so the declared chain
-  (`T-060`) is unchanged and a click still reaches the list underneath. Both asserted.
-
-**The first build was painted, and it was invisible to its own test.** `paintEvent` on the
-`QListView` never ran under `viewport().grab()`, so the hint could not be observed by anything that
-could have proved it: measured at **1209 distinct colours either way**, with and without the
-painting. The mutation deleting it changed nothing, which is how it was caught — the test was
-vacuous before the code was wrong. A child widget is asserted directly, which is why it is one.
-
-**Three mutations fail their evidence**: the hint never shown; the hint never hidden; the hint
-made focusable. Full slice **2712 passed, 18 skipped, exit 0**.
-
-#### Out of scope
-
-- The row's menu and its doors — `UX-011`'s ruled shape and `T-203`'s contract, not reopened here
-- Any change to when rows appear or how probing works (`UX-003`)
-
 ### T-223 — The row's menu: drop the editor alias, name the removal
 
 **Status:** In Review — **`T223-R1` corrected 2026-08-12**; built the same day in an authorized
@@ -360,116 +210,6 @@ this task exists to name.
 - The `⋮` zone's rendering — `T-224`
 - Any per-entry gesture on playlist rows — offered and not taken in `UX-012`; its own ruling
 - The entry picker, `remove_row`'s mechanics, and every other menu entry
-
-### T-226 — Preset Manager keeps the startup ffmpeg warning after a live change
-
-**Status:** In Review — built 2026-08-12 in an authorized unattended run; filed 2026-08-11
-from the focused `T195-R5` sibling audit; verified in the
-same composition closure, outside that finding's Settings/Add catalogue boundary.
-**Owner:** Implementer
-**Priority:** Medium — the trigger is narrow and restart is a workaround, but the screen states a
-capability answer that is no longer true
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** `T-199`
-**Relevant context:** `REQ-024`, `app.py` (`manage_presets`, `choose_ffmpeg_location`),
-`ui/preset_manager.py` (`NO_FFMPEG_REASON`), `T195-R5`
-**Affected surfaces:** `app.py`, composition tests
-**Risk:** Low — one live value passed to one modal screen
-
-#### Scope
-
-`choose_ffmpeg_location` replaces `in_force.report` when Settings accepts a location, and the main
-window plus add/settings catalogues now follow it. `manage_presets` still constructs
-`PresetManager` with the startup `ffmpeg.available`. Starting without ffmpeg, accepting one, and
-then opening Preset Manager therefore still says its ffmpeg-dependent presets will fail until
-ffmpeg is installed.
-
-#### Acceptance criteria
-
-- Preset Manager reads the ffmpeg availability currently in force when it opens
-- Starting unavailable, accepting a usable location, and then opening the manager removes the
-  stale `NO_FFMPEG_REASON`; the inverse transition shows it
-- The regression constructs an executable through the repository's cross-platform helper rather
-  than depending on a machine-installed ffmpeg
-
-#### What was built, against those criteria
-
-- **`manage_presets` reads `in_force.report.available`**, the report `choose_ffmpeg_location`
-  replaces, instead of the `ffmpeg` composition closed over. One line, and the same shape
-  `T195-R5` fixed for the add dialog's catalogue and the settings screen — this was the sibling
-  that audit named and did not reach.
-- **Driven through the real route**, not composition's end of the wire: the manager is opened the
-  way the window opens it, its list is selected the way a user selects a preset, and the assertion
-  reads the reason label the screen actually shows (`T195-R4`'s lesson).
-- **The inverse transition is asserted first.** A manager opened *before* the location is accepted
-  must still carry `NO_FFMPEG_REASON` — without that half, deleting the reason entirely would make
-  the positive assertion pass.
-- **The mutation reproduces the defect exactly**: restoring `ffmpeg.available` fails the test with
-  *"the Preset Manager still says this preset will fail for want of ffmpeg, after Settings accepted
-  a real one"*.
-- **The list decorates its names** — `Audio only (MP3) — built-in` — so the test matches the name
-  it starts with. Found by the assertion printing the list rather than by guessing at it.
-
-**Figures:** ruff, ruff format, `mypy` (130 files) and `mypy --platform win32` clean;
-`tests/unit` + `tests/ui` **2715 passed, 18 skipped, exit 0**; `tests/integration` **404 passed,
-exit 0**.
-
----
-
-*(**Section added 2026-08-09**, on maintainer direction, after Phase 3's work was pushed. **Phase 4
-had no section of its own.** `T-146` sat under `## Proposed — Phase 3` stating `Phase: Phase 4`, and
-**seven of the plan's eight deliverables had no entry anywhere.** That is the condition
-`IMPLEMENTATION_PLAN.md` §Phase 3 was in on 2026-08-01 — "zero tasks against seven plan
-deliverables" — and `T-146`'s own closing note called it out as the reason to decompose early.)*
-
-**`ai/IMPLEMENTATION_PLAN.md` §Phase 4 is the authority for what belongs here.** The map below is
-this file's claim to cover it, and it is the first thing a reviewer should attack: a deliverable
-with no owner is the failure this section exists to prevent, and a map that *claims* an owner it
-does not have is worse than no map.
-
-| Plan deliverable | Owner |
-|---|---|
-| Full settings dialog covering `REQ-023` | `T-146` — the screen, the menu, the directory, the theme |
-| — its deferred `REQ-023` keys: default preset, output template | `T-195` |
-| Network options: rate limit, proxy, retry policy | `T-196` |
-| Cookie source configuration, redaction verified (`REQ-026`, `REQ-EXCL-003`) | `T-197` |
-| In-app yt-dlp version display and update action (`REQ-025`, `OPS-002`) | `T-198` |
-| ffmpeg detection, capability reporting, override path (`REQ-024`) | `T-199` |
-| Theme: brand palette, light and dark (`ARCHITECTURE.md` §8) | `T-146` (the selector) and `T-021` (the small-size glyph). **Both palettes already exist** |
-| Accessibility pass: keyboard, focus order, screen-reader labels (`NFR-005`) | `T-200` |
-| Error-surface pass: every taxonomy class tested and actionable (`NFR-006`) | `T-201` |
-
-| Plan exit criterion | Owner |
-|---|---|
-| Every function reachable by keyboard alone, verified on Linux | `T-200` |
-| A screen reader announces every control meaningfully (Orca, Linux) | `T-200` |
-| No information is conveyed by colour alone | `T-202` |
-| Logs carry no cookies, cookie paths, proxy credentials or token-like parameters (`NFR-007`) | `T-197` |
-| Updating yt-dlp changes the reported version; reverting restores the baseline | `T-198` |
-| *(Added 2026-08-09 by maintainer ruling)* The built window matches the agreed flow — a recorded checklist run in `ai/evidence/` | `T-212` — filed 2026-08-09; it runs last |
-| Reviewed and signed off | the phase exit review, as in Phases 1–3 |
-
-**Polish carried into the phase rather than planned for it.** `T-191`, `T-192`, `T-193` and `T-194`
-are maintainer-found defects filed during Phase 3 and ruled Phase 4; `T-203` and `T-204` come from
-the 2026-08-08 review of the add dialog. They are not plan deliverables and **must not be counted as
-satisfying one** — that conflation is what `P3EXIT-R1` found in Phase 3's own records.
-*(**The set has grown since this was written, 2026-08-09.** `T-192`, `T-193` and `T-194` are
-approved and Complete, with their review's corrections `T-205` and `T-206`. `T-204`'s fix produced
-a correction chain — `T-207`, `T-209`, `T-210`, `T-211`, with `T-208` holding the still-unreproduced
-multi-row report. `T-213` and `T-214`, filed 2026-08-09 from a maintainer-requested audit of the
-whole tree, are maintenance under the same rule. `T-215`–`T-220`, filed later the same day when the
-maintainer ruled the UI review's suggestions into tasks, are polish under it too — the same review
-also amended `T-201` (the reason on the failed row) and produced `UX-010` (the queue group's chip).
-Every one of them is polish or maintenance: none satisfies a plan deliverable.)*
-
-**What this section does not settle.** *(Narrowed 2026-08-09; re-trued 2026-08-10 for `T203-R4`,
-which found this paragraph still instructing Phase 4 against the bar the maintainer had rejected
-on sight.)* `T-203`'s **shape is ruled by `UX-011`** — option *E*, after eight mockup rounds — and
-built: the row's combo holds presets only, and the three per-row verbs are entries in the row's
-own menu, one menu behind the `⋮` zone and the context-menu routes. The spec amendment this
-paragraph once held open is **written** — `UX-011` amends `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1.
-**What stays open is the `REQ-011` per-item template ruling** — whether a per-item output template
-survives at all. It is not agreed work until taken.
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
@@ -725,6 +465,309 @@ inclusion still yields an application that cannot download anything.
 ---
 
 ## Complete
+
+### T-226 — Preset Manager keeps the startup ffmpeg warning after a live change
+
+**Status:** **Complete — Approved 2026-08-12.** Built in an authorized unattended run; filed 2026-08-11
+from the focused `T195-R5` sibling audit; verified in the
+same composition closure, outside that finding's Settings/Add catalogue boundary.
+**Owner:** Implementer
+**Priority:** Medium — the trigger is narrow and restart is a workaround, but the screen states a
+capability answer that is no longer true
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** `T-199`
+**Relevant context:** `REQ-024`, `app.py` (`manage_presets`, `choose_ffmpeg_location`),
+`ui/preset_manager.py` (`NO_FFMPEG_REASON`), `T195-R5`
+**Affected surfaces:** `app.py`, composition tests
+**Risk:** Low — one live value passed to one modal screen
+
+#### Scope
+
+`choose_ffmpeg_location` replaces `in_force.report` when Settings accepts a location, and the main
+window plus add/settings catalogues now follow it. `manage_presets` still constructs
+`PresetManager` with the startup `ffmpeg.available`. Starting without ffmpeg, accepting one, and
+then opening Preset Manager therefore still says its ffmpeg-dependent presets will fail until
+ffmpeg is installed.
+
+#### Acceptance criteria
+
+- Preset Manager reads the ffmpeg availability currently in force when it opens
+- Starting unavailable, accepting a usable location, and then opening the manager removes the
+  stale `NO_FFMPEG_REASON`; the inverse transition shows it
+- The regression constructs an executable through the repository's cross-platform helper rather
+  than depending on a machine-installed ffmpeg
+
+#### What was built, against those criteria
+
+- **`manage_presets` reads `in_force.report.available`**, the report `choose_ffmpeg_location`
+  replaces, instead of the `ffmpeg` composition closed over. One line, and the same shape
+  `T195-R5` fixed for the add dialog's catalogue and the settings screen — this was the sibling
+  that audit named and did not reach.
+- **Driven through the real route**, not composition's end of the wire: the manager is opened the
+  way the window opens it, its list is selected the way a user selects a preset, and the assertion
+  reads the reason label the screen actually shows (`T195-R4`'s lesson).
+- **The inverse transition is asserted first.** A manager opened *before* the location is accepted
+  must still carry `NO_FFMPEG_REASON` — without that half, deleting the reason entirely would make
+  the positive assertion pass.
+- **The mutation reproduces the defect exactly**: restoring `ffmpeg.available` fails the test with
+  *"the Preset Manager still says this preset will fail for want of ffmpeg, after Settings accepted
+  a real one"*.
+- **The list decorates its names** — `Audio only (MP3) — built-in` — so the test matches the name
+  it starts with. Found by the assertion printing the list rather than by guessing at it.
+
+**Figures:** ruff, ruff format, `mypy` (130 files) and `mypy --platform win32` clean;
+`tests/unit` + `tests/ui` **2715 passed, 18 skipped, exit 0**; `tests/integration` **404 passed,
+exit 0**.
+
+---
+
+*(**Section added 2026-08-09**, on maintainer direction, after Phase 3's work was pushed. **Phase 4
+had no section of its own.** `T-146` sat under `## Proposed — Phase 3` stating `Phase: Phase 4`, and
+**seven of the plan's eight deliverables had no entry anywhere.** That is the condition
+`IMPLEMENTATION_PLAN.md` §Phase 3 was in on 2026-08-01 — "zero tasks against seven plan
+deliverables" — and `T-146`'s own closing note called it out as the reason to decompose early.)*
+
+**`ai/IMPLEMENTATION_PLAN.md` §Phase 4 is the authority for what belongs here.** The map below is
+this file's claim to cover it, and it is the first thing a reviewer should attack: a deliverable
+with no owner is the failure this section exists to prevent, and a map that *claims* an owner it
+does not have is worse than no map.
+
+| Plan deliverable | Owner |
+|---|---|
+| Full settings dialog covering `REQ-023` | `T-146` — the screen, the menu, the directory, the theme |
+| — its deferred `REQ-023` keys: default preset, output template | `T-195` |
+| Network options: rate limit, proxy, retry policy | `T-196` |
+| Cookie source configuration, redaction verified (`REQ-026`, `REQ-EXCL-003`) | `T-197` |
+| In-app yt-dlp version display and update action (`REQ-025`, `OPS-002`) | `T-198` |
+| ffmpeg detection, capability reporting, override path (`REQ-024`) | `T-199` |
+| Theme: brand palette, light and dark (`ARCHITECTURE.md` §8) | `T-146` (the selector) and `T-021` (the small-size glyph). **Both palettes already exist** |
+| Accessibility pass: keyboard, focus order, screen-reader labels (`NFR-005`) | `T-200` |
+| Error-surface pass: every taxonomy class tested and actionable (`NFR-006`) | `T-201` |
+
+| Plan exit criterion | Owner |
+|---|---|
+| Every function reachable by keyboard alone, verified on Linux | `T-200` |
+| A screen reader announces every control meaningfully (Orca, Linux) | `T-200` |
+| No information is conveyed by colour alone | `T-202` |
+| Logs carry no cookies, cookie paths, proxy credentials or token-like parameters (`NFR-007`) | `T-197` |
+| Updating yt-dlp changes the reported version; reverting restores the baseline | `T-198` |
+| *(Added 2026-08-09 by maintainer ruling)* The built window matches the agreed flow — a recorded checklist run in `ai/evidence/` | `T-212` — filed 2026-08-09; it runs last |
+| Reviewed and signed off | the phase exit review, as in Phases 1–3 |
+
+**Polish carried into the phase rather than planned for it.** `T-191`, `T-192`, `T-193` and `T-194`
+are maintainer-found defects filed during Phase 3 and ruled Phase 4; `T-203` and `T-204` come from
+the 2026-08-08 review of the add dialog. They are not plan deliverables and **must not be counted as
+satisfying one** — that conflation is what `P3EXIT-R1` found in Phase 3's own records.
+*(**The set has grown since this was written, 2026-08-09.** `T-192`, `T-193` and `T-194` are
+approved and Complete, with their review's corrections `T-205` and `T-206`. `T-204`'s fix produced
+a correction chain — `T-207`, `T-209`, `T-210`, `T-211`, with `T-208` holding the still-unreproduced
+multi-row report. `T-213` and `T-214`, filed 2026-08-09 from a maintainer-requested audit of the
+whole tree, are maintenance under the same rule. `T-215`–`T-220`, filed later the same day when the
+maintainer ruled the UI review's suggestions into tasks, are polish under it too — the same review
+also amended `T-201` (the reason on the failed row) and produced `UX-010` (the queue group's chip).
+Every one of them is polish or maintenance: none satisfies a plan deliverable.)*
+
+**What this section does not settle.** *(Narrowed 2026-08-09; re-trued 2026-08-10 for `T203-R4`,
+which found this paragraph still instructing Phase 4 against the bar the maintainer had rejected
+on sight.)* `T-203`'s **shape is ruled by `UX-011`** — option *E*, after eight mockup rounds — and
+built: the row's combo holds presets only, and the three per-row verbs are entries in the row's
+own menu, one menu behind the `⋮` zone and the context-menu routes. The spec amendment this
+paragraph once held open is **written** — `UX-011` amends `docs/UX_SPEC.md` §§3, 4, 6, 8 and 9.1.
+**What stays open is the `REQ-011` per-item template ruling** — whether a per-item output template
+survives at all. It is not agreed work until taken.
+
+### T-218 — The add dialog's empty state: one instruction, inside the list
+
+**Status:** **Complete — Approved 2026-08-12 with follow-up `T-231`.** Built in an authorized unattended run; filed 2026-08-09 from
+the maintainer-approved UI review.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing now — the add-dialog chain is approved and `T-213` has landed
+**Relevant context:** `ui/add_dialog.py` (the paste box placeholder, the "Paste one URL per line."
+label, the staging list), `UX-003` (nothing enters the queue unprobed — the fact the hint can
+teach), `T-060`/`T016-R4` (the focus chain is declared and stable), the `T-203` chain's narrowing
+contract
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+The dialog gives the same instruction twice — the paste box's placeholder and a separate label
+below the list — while the empty list, the largest thing on the screen, says nothing. One
+instruction, placed inside the space it explains, does both jobs and quietly teaches why the list
+exists.
+
+#### Acceptance criteria
+
+- The **empty staging list carries the hint inside itself** — paste URLs above; each line resolves
+  here with its title, channel and thumbnail before anything is queued — and it disappears with the
+  first row
+- The **duplicate label below the list is gone**; the paste box placeholder stays
+- The hint is **not a control**: the declared focus chain is unchanged (`T-060`), and the disabled
+  retry button stays exactly as the chain rule put it. The per-row verbs hold no chain slot to
+  preserve — `UX-011` put them in the row's menu, reached through the list itself
+- The dialog's **narrowing contract still holds** — the `T-203` chain's own test is the gate
+
+#### What was built, against those criteria
+
+- **The empty list carries the hint**: *"Paste URLs above. Each line is read here — title, channel
+  and thumbnail — before anything is queued."* It is a `QLabel` over the viewport, shown exactly
+  while `rowCount() == 0`, followed through `rowsInserted`, `rowsRemoved` and `modelReset`.
+- **The duplicate is gone.** `summarise(())` returned *"Paste one URL per line."* into the label
+  under the list — the same instruction the paste box's placeholder already gave. It returns `""`
+  now; a summary of no rows has nothing to summarise. The placeholder stays.
+- **It is not a control.** `NoFocus` and `WA_TransparentForMouseEvents`, so the declared chain
+  (`T-060`) is unchanged and a click still reaches the list underneath. Both asserted.
+
+**The first build was painted, and it was invisible to its own test.** `paintEvent` on the
+`QListView` never ran under `viewport().grab()`, so the hint could not be observed by anything that
+could have proved it: measured at **1209 distinct colours either way**, with and without the
+painting. The mutation deleting it changed nothing, which is how it was caught — the test was
+vacuous before the code was wrong. A child widget is asserted directly, which is why it is one.
+
+**Three mutations fail their evidence**: the hint never shown; the hint never hidden; the hint
+made focusable. Full slice **2712 passed, 18 skipped, exit 0**.
+
+#### Out of scope
+
+- The row's menu and its doors — `UX-011`'s ruled shape and `T-203`'s contract, not reopened here
+- Any change to when rows appear or how probing works (`UX-003`)
+
+### T-213 — Remove the dead code a full-tree audit verified
+
+**Status:** **Complete — Approved 2026-08-12.** Built in an authorized unattended run; filed 2026-08-09 from a
+maintainer-requested audit of the whole tree.
+**Owner:** Implementer
+**Priority:** Low — nothing misbehaves; every item is weight with no function
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** the In Review add-dialog chain (`T-203`, `T-204`'s corrections) receiving verdicts
+first — two of the items live in files that chain is still changing, and deleting under an open
+review moves the review boundary.
+**Relevant context:** `ruff check --select F401,F811,F841` is already clean; these are the items
+reference-analysis finds and lint cannot. Each was verified to have exactly one occurrence in the
+tree — its definition — including string references, the PyInstaller spec's `hiddenimports`, and
+`pyproject.toml` entry points
+**Affected surfaces:** `ui/add_dialog.py`, `core/output_template.py`,
+`tests/ui/test_add_dialog.py`, `ui/widgets/`, `ui/row_delegate.py`
+**Risk:** Low — the residual risk is a string-referenced usage the greps missed, which the suite
+covers
+
+#### Scope
+
+**Four verified-dead items:**
+
+- **`WITHDRAW_FAILED_PREFIX`** (`ui/add_dialog.py` §221) — a leftover of the withdrawal machinery
+  `T-118` removed; the module itself says *"there is nothing to withdraw"*, and the constant's
+  comment still describes the removed behaviour
+- **`_DERIVED_FROM`** (`core/output_template.py` §67) — its comment claims it is *"supplied to the
+  renderer"*; no renderer touches it. The comment's true half — yt-dlp derives `duration_string`
+  itself — may survive as prose if worth keeping
+- **`_wheel_down`** (`tests/ui/test_add_dialog.py` §4530) — its callers were deleted by `bcaa38a`
+  (`T-203`) and the helper stayed
+- **`ui/widgets/`** — a docstring-only package nothing imports; absent from the PyInstaller spec
+  and from every import in `src/`, `tests/`, `tools/`
+
+**One single-source-of-truth repair, not a deletion.** `MANAGE_PRESETS_TEXT`
+(`ui/row_delegate.py` §282) is asserted by tests only in the *negative* — that the combo no longer
+contains it — while the live footer button label is a second hardcoded string at
+`ui/add_dialog.py` §1311. Point both at one constant, so the negative assertions cannot drift from
+the label they exist to police.
+
+**Docstring honesty, no code change.** `post_processing_of` (`core/presets.py` §345),
+`forget_the_secrets` (`core/logging.py` §177) and `describe_candidates`
+(`downloader/environment.py` §209) each promise a `src/` caller that does not exist — the options
+dialog reads preset fields directly, no settings change invalidates secrets, nothing logs the
+resolution order. Used only by tests. Either wire the promised caller or state plainly that the
+function is a spec anchor for tests, the way `SCHEMA_SNAPSHOT` and `CANCEL_BUDGET_SECONDS` already
+do.
+
+#### Acceptance criteria
+
+- The four dead items are gone, and a grep for each name finds nothing
+- The *Manage presets…* label has one definition, read by both the footer button and the
+  negative assertions
+- The three docstrings state who actually calls them
+- `ruff check`, `ruff format --check`, `mypy src`, and the suites owning the touched files pass
+
+#### What was built, against those criteria
+
+**Each item was re-verified dead before deletion, not trusted from the 2026-08-09 audit.** Three
+days and several tasks had passed; a grep for each name across `src`, `tests`, `tools`,
+`packaging` and `pyproject.toml` returned **exactly one occurrence — its own definition** —
+and `ui/widgets/` had **zero** importers.
+
+- **`WITHDRAW_FAILED_PREFIX`, `_DERIVED_FROM`, `_wheel_down`, `ui/widgets/`** are gone; a grep
+  for all three names now returns 0.
+- **`_DERIVED_FROM`'s comment had a true half and it survives as prose** where the field is
+  described: yt-dlp derives `duration_string` itself, and the raw number renders as `507.1`,
+  which is why only the formatted spelling is offered.
+- **The *Manage presets…* label has one definition.** The footer button spelled it a second time
+  as `"&Manage presets…"` while the negative assertions imported `MANAGE_PRESETS_TEXT`; the
+  button now reads `f"&{MANAGE_PRESETS_TEXT}"`. The accelerator is inserted rather than stored,
+  because it belongs to the button and not to the name of the action.
+- **The three docstrings say who calls them**, and two claims were narrowed while writing them
+  because they asserted intent nobody recorded. `forget_the_secrets` now says only what is
+  checkable — nothing in `src/` calls it, so registered literals accumulate for the life of the
+  process and a replaced value goes on being redacted — and explicitly that *whether that is
+  wanted is not recorded anywhere*. `describe_candidates` is a spec anchor, not a logger.
+
+**Four tests fewer, and none of them was lost.** `2714 → 2710`, all four the layering guard's
+parametrised cases for `ui/widgets/__init__.py`: the guard runs per module, so deleting the module
+deleted its cases. Confirmed by diffing `--collect-only` against `HEAD` rather than by assuming.
+
+**Ruff found what the deletion orphaned** — `QPointF` and `QWheelEvent` in `test_add_dialog.py` —
+which is the intended division of labour: reference analysis finds the dead definitions, lint
+finds what removing them strands.
+
+#### Out of scope
+
+- The deliberate test-only invariant anchors — `SCHEMA_SNAPSHOT`, `CANCEL_BUDGET_SECONDS`,
+  `ui/theme.py`'s contrast metrics, `allowed_from`, `stage_of`. Documented as anchors; keep
+- Any behaviour change
+
+### T-231 — Two records still describe the paint implementation `T-218` rejected
+
+**Status:** **Complete — corrected 2026-08-12**, in the same batch as the `T-033`/`T-223` findings.
+*(Filed by the Reviewer as `T218-R1`, Low and non-blocking. **The Reviewer's own filing of this
+entry was destroyed by the Implementer** — `git checkout -- ai/TASKS.md`, undoing an unrelated
+over-deletion, discarded their uncommitted work. This entry is rewritten from `T218-R1`'s text in
+`ai/REVIEWS.md`; if it differs from what they wrote, theirs was the original.)*
+**Owner:** Implementer
+**Priority:** Low — behaviour and assertions are correct; what is wrong is that two records point a
+future maintainer at an implementation this task's own evidence rejected
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `T-218`, `T218-R1`, `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Affected surfaces:** comments and one docstring; **no code change**
+**Risk:** None
+
+#### Scope
+
+`T-218` shipped a child `QLabel`. Two records still described the painted first build:
+
+- `ui/add_dialog.py`'s comment above `EMPTY_HINT` said the hint was *"painted rather than mounted
+  as a widget, deliberately"* because a child *"would be one more thing in the focus order"* —
+  which is the reasoning the implementation abandoned, and it is wrong: a `QLabel` takes `NoFocus`.
+- `test_the_instruction_is_not_a_control`'s docstring said the hint was painted and that *"no child
+  widget carries the hint's words"* — immediately before finding that child and asserting
+  `NoFocus` on it.
+
+**A record that points at a rejected design is worse than no record**, because the next person
+follows it. Both now say what is there and why the alternative lost.
+
+#### Acceptance criteria
+
+- The comment and the docstring describe the child label, and say why painting was rejected
+  *(met)*
+- **No code and no assertion changes** — the label and every assertion stay exactly as approved
+  *(met)*
+
+#### Out of scope
+
+- Anything about `T-218`'s behaviour, which is approved
+
+---
 
 ### T-225 — Two UI test files pass apart and fail together
 

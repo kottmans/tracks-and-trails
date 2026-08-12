@@ -5356,11 +5356,16 @@ def test_the_instruction_is_not_a_control(
     managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
 ) -> None:
-    """**`T-218`.** Painted, so it holds no slot in the declared focus chain (`T-060`).
+    """**`T-218`.** A child widget that holds no slot in the declared focus chain (`T-060`).
 
-    The chain is asserted whole elsewhere; what this adds is that nothing new joined it and that
-    no child widget carries the hint's words — a label would satisfy the visual criterion and
-    quietly change the tab order, which `T016-R4` exists to keep stable.
+    The chain is asserted whole elsewhere; what this adds is that the hint did not join it. A label
+    over a list is the obvious way to change a tab order by accident, which `T016-R4` exists to keep
+    stable — so `NoFocus` and mouse transparency are asserted on the widget itself rather than
+    assumed from its type.
+
+    *(This docstring said the hint was painted and that no child carries its words, immediately
+    before finding that child — remnants of the rejected first implementation, corrected as
+    `T-231`.)*
     """
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
     try:

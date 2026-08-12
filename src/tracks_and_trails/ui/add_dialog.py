@@ -631,9 +631,15 @@ class StagingList(QListView):
     #: *for*, which the placeholder cannot: that a pasted line is read and shown here, with its
     #: title and thumbnail, before anything is queued (`UX-003`).
     #:
-    #: Painted rather than mounted as a widget, deliberately. A child widget would be one more
-    #: thing in the focus order and one more thing to hide on the first row; `T-060` declares that
-    #: chain and `T016-R4` keeps it stable. Paint has no such reach.
+    #: **Mounted as a child of the viewport, not painted** (`T-231`). Painting it was the first
+    #: build and it was rejected: `viewport().grab()` never routes to a `QListView.paintEvent`, so
+    #: the text was invisible to every assertion that could have proved it — 1209 distinct colours
+    #: with and without the painting, and the mutation deleting it changed nothing. A child can be
+    #: asserted directly.
+    #:
+    #: **It costs nothing in the focus chain**, which is what painting was reached for: a `QLabel`
+    #: takes `NoFocus`, and `WA_TransparentForMouseEvents` keeps clicks going through to the list.
+    #: `T-060` declares that chain and `T016-R4` keeps it stable; both are asserted.
     EMPTY_HINT: Final = (
         "Paste URLs above.\n\n"
         "Each line is read here — title, channel and thumbnail —\nbefore anything is queued."
