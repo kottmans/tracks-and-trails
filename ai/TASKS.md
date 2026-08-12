@@ -2528,7 +2528,20 @@ toolbar's copy and the mirroring that kept two controls in step.
 label and its `−`/`+` step buttons go with the spinner. **The toolbar spacer stays** — `UX-005`
 row 7 put it there so what *adds* work sits apart from what *acts on work already queued*, and
 that distinction survives the spinner: `+ Add URLs` on one side, the run control and
-`Clear finished` on the other.
+`Clear finished` on the other. **`T-220`'s option A ruling (2026-08-12) confirms it**, chosen from
+mockups drawn after this removal.
+
+**Two consequences the mockups surfaced, both in `_build_control_bar`:**
+
+- **The separator after `+ Add URLs` becomes redundant.** It divided the primary action from the
+  concurrency control; with the spacer immediately after it, a line and a gap would divide the same
+  two groups twice. It goes, and the spacer does the dividing.
+- **`toggleViewAction().setVisible(False)` keeps its behaviour and loses its reason.** Its comment
+  justifies a non-closable toolbar with *"this is the only way to change the limit until Phase 4's
+  dialog"* — which is the limit that is leaving. The toolbar should still not be closable, for the
+  reason in the same comment's first half (*a control the user can hide and then not find is worse
+  than a control they ignore*), and that half now has to carry it alone. **A behaviour whose stated
+  reason has expired is the class `T-231`, `T066-R3` and `T033-R6` were all instances of.**
 
 #### Acceptance criteria
 
@@ -2541,7 +2554,9 @@ that distinction survives the spinner: `+ Add URLs` on one side, the run control
   was `Shift+F10` reaching the spin box's own edit menu instead of the row menu. State what it is
   now, and whether the window needs a declared tab order or inherits a sensible one
 - **The toolbar is three verbs**, and the spacer still separates `+ Add URLs` from the queue verbs
-  (`UX-005` row 7)
+  (`UX-005` row 7, and `T-220`'s option A)
+- **The redundant separator is gone and the non-closable comment states a reason that is still
+  true**
 - `tests/ui/test_windows_accessibility.py` names every remaining control, updated for the removal
 - `docs/UX_SPEC.md` §2.1 already describes the outcome (`UX-013`); this task does not amend it again
 
@@ -3177,6 +3192,21 @@ run is the deliverable; the pass is only what it hopefully shows.
 ### T-220 — The toolbar and the run control: build and spec disagree
 
 **Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review's closing note.
+**Half ruled 2026-08-12: option A, the grouped bar.** The maintainer chose it from rendered
+mockups after `UX-013` removed the concurrency control — *"lets go with option A given those
+mockups"*. **The label half is still open.**
+
+#### The order, ruled — option A
+
+`+ Add URLs`, then the spacer, then the run control and `Clear finished`. **Nothing is overturned
+by it**: §2.1's sequence holds, and `UX-005` row 7's separation of *what adds work* from *what acts
+on work already queued* holds with it. The rejected option was packing all three left, which would
+have needed row 7 amended — and the argument for it was that row 7's own example (`Clear finished`
+against the concurrency spinner) disappears with the spinner. **The ruling keeps the principle
+rather than retiring it with its example.**
+
+**With `UX-013` and this ruling, the composition work is `T-234`'s**, and what remains here is the
+label plus confirming the bar against §2.1 once the spinner has gone.
 **Owner:** Implementer, with a Planner edit if the spec side wins
 **Priority:** Low — a two-line reconciliation, in whichever direction
 **Phase:** Phase 4 — polish, not a plan deliverable
