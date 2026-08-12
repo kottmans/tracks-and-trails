@@ -3214,6 +3214,62 @@ then wait out generous timeouts for a retry that will never come, and their mess
 Every `TIMER STOP` in every trace shows `retry_at={}` — the `T-083` guard that keeps the tick alive
 for a pending backoff holds under load in every instrumented run.
 
+#### Second round, 2026-08-12 — the earlier conclusion was half right, and the half that was wrong matters
+
+**The reviewer ruled that stopping before a source change was correct and stopping the
+investigation was not.** This is the continuation. **Still nothing changed in `src/`.**
+
+**The causal chain above named `_fail_loudly` and stopped there. Instrumenting what it is handed
+shows which of its two branches fires, and it is not the one the chain implied.**
+
+`_fail_loudly` covers two shapes of untrustworthy session: *a stream that broke the contract*
+(`session.violations`) and *a session that reported no outcome* (`outcome is None`). The first
+reading here was that a good `NETWORK` outcome had arrived and was then discarded because
+synthesising the sentinel records a violation — which `_end_the_stream` does, and which would have
+made this a misattribution of a perfectly good worker.
+
+**That is not what happens.** The record captured for the failing job:
+
+```
+FAIL_LOUDLY job=job-NETWORK
+  violations=['the worker exited (code 1) without sending its WorkerFinished sentinel; the parent
+               supplied one so the receiver could stop reading',
+              'a download session produced no outcome; a receiver cannot tell that from a crashed
+               worker (REQ-028)']
+  outcome=None  ended=True  sentinel_sent=True
+```
+
+**`outcome=None`.** Neither of the two messages the child sent arrived — not the `Failed(NETWORK)`
+outcome and not the `WorkerFinished` sentinel. Nothing was discarded, because nothing was
+received. The parent's behaviour from there is correct in every step: no outcome means it cannot
+tell a silent worker from a crashed one (`REQ-028`), so `WORKER_CRASH`, and `WORKER_CRASH` is
+deliberately not retried.
+
+**The child is two lines**, which is what makes this worth recording:
+
+```python
+queue.put(Failed(job_id=job_id, kind=named, message=f"failed as {named.value}"))
+queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+```
+
+`multiprocessing.Queue.put` is asynchronous — it buffers and a feeder thread writes to the pipe —
+so **both messages were lost between the child's `put` and the parent's pump**. That is a delivery
+question, not a scheduling one, and it is the thing that decides product-versus-test: a real
+worker uses the same queue.
+
+**What was ruled out along the way, each by measurement rather than argument:**
+
+| Hypothesis | Ruled out by |
+|---|---|
+| A tight test bound | `spin` is wall-clock; a `timeout=120` elapsed |
+| Starved child processes | Time from `start()` to failure is 0.3–0.5 s in every loaded sample |
+| The `T-083` timer guard failing | Every `TIMER STOP` in every trace shows `retry_at={}` |
+| A good outcome discarded by the synthesised-sentinel violation | `outcome=None` — it never arrived |
+
+**Still open, and it is the classification the task exists for:** whether messages can be lost this
+way at supported concurrency, or only when 20 xdist workers each spawn children. The bounded
+reachability sweep the reviewer asked for is the next step and is measured separately below.
+
 #### What this means, stated as a question rather than a decision
 
 **This is a third shape the entry did not list**, and it is not clearly a test problem:
