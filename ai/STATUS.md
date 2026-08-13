@@ -5,6 +5,14 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (rulings) — **every open ruling is taken and nothing is blocked on a
+decision.** `T-196` means yt-dlp's `--retries`; `T-238`'s guard is authorised; `T-219` is Cancelled
+(refused), `T-208` Complete, `T-228` Cancelled as a harness artefact, `P-29` ratified as built, and
+`T-221` Complete on a real-display observation with its re-check moved into `T-212`'s checklist.
+**`T-196` was the critical path** — `T-200` and `T-212` are what it was holding.
+
+*(The block below is the review round and is left as written.)*
+
 **Last updated:** 2026-08-13 (review round one) — **`T-198` came back Changes requested with four
 findings, and **all four are corrected**. `T198-R1` (criterion 2 proved only a version query, and the
 synthetic wheel had no `YoutubeDL`), `T198-R3` (an update could replace a running worker's package
@@ -157,6 +165,43 @@ product choice the entry does not take.
 `tests/unit` + `tests/ui` **2773 passed, 18 skipped**; `tests/integration` **414 passed**. Exit
 codes checked rather than summary lines read. **Nineteen mutations fail their evidence** — nine
 against the installer, nine against the screen and the wiring, one against composition.
+
+## 2026-08-13 (rulings): six answered, and the blocked queue is empty
+
+**The maintainer took every open ruling on the board.** What was blocked on a decision no longer is.
+
+- **`T-196` — "retries" means yt-dlp's own `--retries`**, per-fragment, inside one attempt, and the
+  control must be labelled so it cannot be read as the job-level one. **This was the critical
+  path**: `T-196` → `T-200` (two exit criteria) → `T-212` → the phase exit. The job-level retry is
+  already governed by `REQ-015`/`REQ-018`, and a second control over it would contradict a sentence
+  `T-201` just put on screen — that a network failure *"retries by itself"*. The cheaper
+  alternative — build no control and call `REQ-023`'s retry policy satisfied — was offered and not
+  taken.
+- **`T-238` — build the leak guard.** The entry conditioned it on product-versus-harness being
+  established and then could not establish it; the guard **is** that instrument. A ruling about the
+  order of the criteria, not a waiver of any.
+- **`T-219` — refuse and close.** Cancelled. The premise does not hold: every probed row prints
+  selector syntax deliberately, so meeting the criterion would overturn `REQ-009`'s reading for one
+  surface and leave it standing on the others.
+- **`T-208` — close on the bounded, verified correction.** Complete. The gesture is unrecoverable,
+  so further probing has no oracle; it could only produce a different reproduction and call it the
+  same report.
+- **`T-228` — a harness artefact.** Cancelled, with the suspect named rather than implied:
+  `kill_this_group`'s blast radius. 680 sessions found it unreachable at supported concurrency.
+  **What it costs is stated**: `-n 4` stays unadopted and its 214 seconds stay unsaved. It refiles
+  on any lost message outside that harness.
+- **`P-29` — ratified as built.** `docs/UX_SPEC.md` §10 records it; §1's suspension of the
+  build-before-ratification bar has ended, because nothing is `[P]` any more.
+
+**`T-221` is Complete on an observation, and its residual is re-homed rather than dropped.** The
+maintainer ran both panel openings on a real display and **saw no flash** — then directed that the
+transient be re-checked by hand in the end-of-phase UI pass. It is a row in `T-212`'s recorded
+checklist run now: one observation on one machine is evidence about that machine, and the checklist
+is where a second is taken deliberately and recorded.
+
+**`## Blocked` no longer holds anything waiting on a decision.** What remains there is `T-092`
+(somebody at `STARBASE`), `T-068` (the runner question), `T-056` (a reproduction) and `T-039`
+(until Phase 5 produces an installer) — none of them Phase 4, none of them a ruling.
 
 ## 2026-08-13 (review round one): T-198's three corrections, and the one still open
 

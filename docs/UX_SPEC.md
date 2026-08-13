@@ -3,7 +3,8 @@
 **Purpose:** What each surface shows, what it offers, and how a keyboard reaches it.
 **Authority:** Canonical for the **built** surfaces below, which it absorbs from the `UX-` entries at
 `DOC-002`'s trigger. `UX-007` ruled all twenty-five of the original `[P]` clauses on 2026-08-07.
-**One is open again** — `P-29`, §6's scroll region, demoted from `[D]` by review on 2026-08-11 and
+**None is open.** `P-29` — §6's scroll region — was **ratified by the maintainer on 2026-08-13**,
+as built. *(It had been demoted from `[D]` by review on 2026-08-11 and
 listed in §10.
 **Owner:** Planner
 **Maintainer:** Sean Kottman
@@ -48,7 +49,7 @@ recorded as maintainer rulings that no maintainer had made.
 |---|---|
 | **[T]** *Transcribed* | Restated from an accepted decision or a requirement. This file may be wrong about it; the entry rules. |
 | **[D]** *Derived* | Follows from an accepted rule applied to a new surface, taking no product choice of its own. The derivation is shown so it can be disputed. |
-| **[P]** *Proposed* | **A product choice nobody has made.** Written so it can be ruled on, not so it can be built. Every one is collected in §10, and **no task may build a [P] clause until it is ratified.** **One is open** as **`P-29`**: `T-222`'s scroll-region clause in §6, demoted from `[D]` by review on 2026-08-11 and awaiting a maintainer ruling. `UX-007` ratified all twenty-five of the original set on 2026-08-07. |
+| **[P]** *Proposed* | **A product choice nobody has made.** Written so it can be ruled on, not so it can be built. Every one is collected in §10, and **no task may build a [P] clause until it is ratified.** **None is open.** `P-29` — `T-222`'s scroll-region clause in §6 — was ratified as built on 2026-08-13; `UX-007` ratified all twenty-five of the original set on 2026-08-07. |
 
 ---
 
@@ -630,9 +631,10 @@ whole job is being the stable reference (`T222-R2`).
 
 | # | Question | Status |
 |---|---|---|
-| **P-29** | **The options dialog is too tall for a short window. Which region gives up the height?** The four option groups scroll and the save line and buttons stay fixed — or some other division does. | **Open.** Raised by `T-222`, which recorded it as `[D]`; the reviewer ruled it `[P]` at `T222-R2`. **Already built**, on the reviewer's instruction that the demotion does not require unbuilding the correction — so this is a ruling on a shape that is in the tree, and a different answer is a change rather than a gap. The measured facts are in §6. |
+| **P-29** | **The options dialog is too tall for a short window. Which region gives up the height?** The four option groups scroll and the save line and buttons stay fixed. | **Ratified as built, 2026-08-13** (maintainer). Raised by `T-222`, recorded `[D]`, ruled `[P]` by the reviewer at `T222-R2`, and built on the reviewer's instruction that the demotion did not require unbuilding the correction — so the ruling was taken on a shape already in the tree. **The measured facts in §6 are what carried it**: the old layout clipped its own note at the opening size, and both floor-raising alternatives measured worse — one still cut the note, the other put *OK* off a 768px screen. What measurement could not decide was *which* region gives up the height, and that is the part now ruled. |
 
-**§1's bar is suspended for `P-29` and for nothing else.** *No task may build a `[P]` clause until
+**§1's bar is no longer suspended for anything.** `P-29` is ratified, so the suspension it named has
+ended. *(It read: no task may build a `[P]` clause until
 it is ratified* held for all twenty-five of the original set; this one was built before it was
 marked, which is the defect `T222-R2` names, and the reviewer chose to keep the correction rather
 than revert it while the shape is decided.

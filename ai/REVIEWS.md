@@ -15855,3 +15855,64 @@ race as one correction batch. `ai/TASKS.md` and `ai/STATUS.md` remain Implemente
 edited; both need the Changes requested verdict, the corrected integration count, and the finding
 states synchronized. The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow,
 dependency, commit, push, handoff, roadmap, or other remote state was changed.
+
+## 2026-08-13 — T-198 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction boundary:** `90ee6f0..fa3cb50` — `d91d628` and `fa3cb50` only. `90ee6f0` and
+all of T-201 remain excluded and receive no verdict.
+**Platforms verified:** Linux static/focused verification and a fresh PyInstaller 6.22.0 artifact
+at exact correction head `fa3cb50`. Nothing was pushed, so the new frozen probe has not executed on
+Windows.
+**Verdict:** **Changes requested.** `T198-R1` and `T198-R4` are Resolved. `T198-R2` is corrected
+and independently green on Linux but remains Open pending its required Windows frozen execution.
+`T198-R3` remains Open: the correction checks once before queuing the updater but does not prevent a
+worker from starting during its network/staging work. The correction also prematurely records all
+four findings as reviewer-resolved (`T198-R5`). Do not push this head merely for Windows evidence;
+close the local race and current-truth defect first, then let one final head receive both frozen
+jobs.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T198-R1** | **High** | **Resolved** | The new regression installs a wheel made from the real yt-dlp package with only its version assignment stamped, composes the real application, completes an HLS download through spawned worker sessions, requires an output file, and checks every session `ResolutionReport` for the stamped user-managed version and no rejection. The permission-correct independent run passed. Removing or breaking the installed copy cannot be hidden by baseline fallback because the report assertions fail. |
+| **T198-R2** | **High** | **Yes** | **Still Open, narrowed to Windows execution.** A fresh Linux PyInstaller 6.22.0 build ran `--ytdlp-update-probe` successfully: baseline `2026.07.04`, installed/resolved `9000.1.1` from the user-managed copy in a spawned child, then baseline again after revert. The existing yt-dlp and database probes also remained green. The workflow invokes this probe in both frozen matrix legs, and release-gate item 10 does not require a media download in this same probe; `T198-R1` owns that distinct proof. `OPS-003` still requires the unexecuted Windows result before resolution. |
+| **T198-R3** | **Medium** | **Yes** | **Still Open.** `install_latest_version()` / `revert()` call `_refuse_while_workers_run()` once, then submit asynchronous work to the Qt pool. The GUI and manager remain live during index lookup, download, extraction, and the later swap, so Start, admission, a manager tick, or an automatic retry can start a worker after the check. A deterministic probe changed the predicate from false to true between that guard and `_run` and observed `install_latest` proceed while active. `manager.active_job_ids()` also omits `_retry_at`, even though `is_idle` correctly counts it as future work. The correction must establish mutual exclusion for the whole tree-changing operation: acquire quiescence before scheduling, prevent any new worker start until success/failure releases it, and mutation-check the composed manager/service wiring. A second point-in-time predicate check is still a race. |
+| **T198-R4** | **Low** | **Resolved** | The current task/status summary identifies **415** as the reviewed-head integration count and explains the earlier 414 as a measurement of the preceding tree. The correction head's independent focused counts are recorded separately rather than retroactively attributed to `21be6a2`. |
+| **T198-R5** | **Medium** | **Yes** | `ai/TASKS.md` says all four findings are **Resolved** and that *“the reviewer confirmed”* them; `ai/STATUS.md` likewise calls all four Resolved. Only the Reviewer may make that disposition, `T198-R3` is demonstrably still open, and `T198-R2` lacks its required Windows evidence. This materially misstates the required gate rather than merely using loose completion language. Synchronize both current-truth files to this pass: R1/R4 Resolved, R2 Open pending Windows, R3 Open pending full-operation exclusion, and R5 corrected awaiting re-review. |
+
+### Acceptance and declared-boundary results
+
+| Area | Reviewer result |
+|---|---|
+| Criterion 2: download after update uses the new copy | **Met — `T198-R1` Resolved.** This is now a real composed download, not a resolution query. |
+| Criterion 4: frozen install, spawned resolution, revert | **Met on Linux; Windows pending — `T198-R2`.** The offline in-memory index is a legitimate deterministic substitute for PyPI availability; the production installer, extraction, resolver, spawn, and revert are exercised inside the artifact. |
+| Stable code tree for active workers | **Not met — `T198-R3`.** Refusal at button-press time is not exclusion over the asynchronous operation. |
+| UI-level disabling while the queue runs | **Not independently required.** The product may leave the buttons enabled if the service reports refusal, but the manager/service boundary must make overlap impossible. |
+| Corrected reviewed-head count | **Met — `T198-R4` Resolved.** |
+| Current-truth review state | **Not met — `T198-R5`.** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and state | **Passed:** clean tracked tree at local `fa3cb50`, two commits ahead of `origin/main`; `git diff --check 90ee6f0..fa3cb50` passed; ignored handoff excluded. |
+| Static gates | **Passed:** `ruff check .`; `ruff format --check .` (**177 files**); `mypy src` (**55 source files**); bare `mypy` (**139 source/test files**); `mypy --platform win32 src` (**55 source files**). The venv's generated `mypy` launcher has a stale shebang, so the successful type runs used the same environment through `python -m mypy`. |
+| Layering and service correction slice | **299 passed:** `tests/unit/test_layering.py` plus `tests/integration/test_ytdlp_service.py`. |
+| Post-update real download | **1 passed** with the loopback capability its local HLS fixture requires. The first sandboxed attempt was discarded after socket creation was denied; all twelve service tests in that invocation had already passed. |
+| Frozen Linux correction | **Passed:** fresh PyInstaller 6.22.0 build; `--ytdlp-update-probe`, `--ytdlp-probe`, and `--database-probe` all exited 0. The update probe printed `2026.07.04 → 9000.1.1 → 2026.07.04`, with the installed reading user-managed. |
+| Active-worker race probe | **Reproduced.** With the predicate false at the initial guard and true as `_run` began, `install_latest` was called while it reported active. This is the ordinary asynchronous interval the implementation leaves unprotected, not a filesystem or platform assumption. |
+| Windows frozen correction | **Not run.** The commits are intentionally unpushed; no CI claim is made. |
+
+### Next correction boundary
+
+Keep the correction unpushed. Close `T198-R3` with a manager/service exclusion held for the whole
+install or revert, cover the composed wiring and the start-during-update case, and synchronize
+`ai/TASKS.md` / `ai/STATUS.md` per `T198-R5`. Then push that final head so the existing frozen matrix
+step can provide `T198-R2`'s Windows evidence. Because High `T198-R2` remains unresolved, the next
+focused verification of R2/R3/R5 remains within §10's convergence rule without separate maintainer
+authorization.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow, dependency, commit,
+push, handoff, roadmap, or other remote state was changed.

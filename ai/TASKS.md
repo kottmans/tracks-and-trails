@@ -341,6 +341,493 @@ take.
 
 ## Complete
 
+### T-208 — Reproduce the multi-row missing-disclosure report
+
+**Status:** **Complete — closed by maintainer ruling 2026-08-13 on the bounded, verified
+correction.** `T208-R1` had narrowed to one choice, and the maintainer took *close* rather than
+*probe further*: the original gesture is unrecoverable, so further probing has **no oracle to match
+against** — it could only produce a different reproduction and call it the same report. The reviewer
+independently removed the re-anchor and reproduced the collapse control at y=−63, so what the fix
+addresses is established; what cannot be established is that it was the same thing the user saw, and
+no amount of probing changes that.
+
+*(Originally: Blocked — correction verified 2026-08-10; the disposition narrowed the same day
+and one choice remains.** One multi-row route was reproduced and fixed: removing a row above an
+open playlist with content below stranded its collapse control above the viewport. Codex
+independently verified the correction and its mutation at `d21a243`. **Asked directly whether
+remove-row-above was the observed gesture, the maintainer answered 2026-08-10:** *"I'm not sure
+what the missing arrow gesture was."* **Confirmation is therefore unavailable, not merely
+pending** — the original gesture cannot be elicited from anyone — and the report stays
+known-unverified exactly as the criteria require. What remains of `T208-R1` is one deliberate
+choice, and it is still the maintainer's: **close the report on this bounded, verified
+correction, or direct further multi-row probing** — noting that with no recollection to match,
+further probing has no oracle and can only fix routes on their own merits.
+
+Probe scripts drove a shown dialog through six multi-row gestures against one question — *what
+escape does the expanded playlist offer right now?* An expanded row's twisty is deliberately
+unpainted (`T-210`'s one-arrow rule), so "the arrow is lost" means exactly: role expanded, and the
+panel's collapse control absent or outside the viewport.
+
+| Gesture, picker open on the playlist | Result |
+|---|---|
+| A sibling re-probes (value refresh) | intact |
+| A sibling fails (value refresh) | intact |
+| A URL is added (structural remount) | intact |
+| **The row above is removed**, content below | **BROKEN — collapse at y=−63, permanent: 50 turns never recover it** |
+| A second playlist opened over the first | first closes; second mounts at its 190×26 minimum for **one turn**, healed by the deferred remount — now `T-221` |
+| The playlist row leaves `READY` | `T-204` §1, already fixed and guarded |
+
+**The break is scroll anchoring, and the negative findings matter as much**: not role admission
+(`EXPANDED_ROLE` answered `True` throughout), not row identity (the panel followed its row), not
+a stale mount (panel geometry equalled `visualRect` exactly). Removing a row above shrinks the
+scroll range and Qt keeps the *offset*, so the surviving row — panel and all — slides up until
+its top, **where the collapse control lives**, sits above the fold and stays there. Two rows
+alone heal by clamping; a third row below makes it permanent.
+
+**Fix**: `remount_panel` re-anchors the row's top into view (`PositionAtTop`) exactly when the
+remount finds it above the viewport — a reset that moved nothing does not move the view.
+**Regression**: `test_removing_a_row_above_keeps_the_open_panels_way_back_on_screen`, which also
+proves the close keeps a selection made before the removal. Codex independently removed the
+re-anchor and reproduced the collapse control at y=−63.
+
+**What is not claimed:** that this is the gesture behind *"with multiple items … the playlist
+loses the arrow"*, or the only one. The route existed, is fixed, and cannot come back; **the
+disposition on the report itself stays with the maintainer**, exactly as the criteria require.
+*(Was: In Review — one route reproduced and fixed; whether it was the report remained the
+maintainer's call. Before that: Ready — the original passing multi-row guard was not a
+reproduction.)*
+
+**Owner:** Implementer
+**Priority:** Medium — the reported end state traps the user in the panel, but the exact trigger
+remains unconfirmed
+**Phase:** Phase 4 — follow-up to T-204
+**Depends on:** maintainer disposition on `T208-R1`
+**Relevant context:** `T-204`, `T204-R3`, `T108-R2`, `ui/add_dialog.py` (`remount_panel`,
+`EXPANDED_ROLE`), `tests/ui/test_add_dialog.py`
+**Affected surfaces:** `ui/add_dialog.py` (`remount_panel`), `tests/ui/test_add_dialog.py`
+**Risk:** Medium — the report may be this geometry path or a distinct route, and assuming which
+one is how T-204 reached review without reproducing it
+
+#### Acceptance criteria
+
+- Recover or elicit the exact multi-row gesture sequence and reproduce it through the built dialog
+  *(partially met, and the elicitation half is closed as impossible: one route reproduced; the
+  maintainer stated 2026-08-10 they cannot recall the gesture, so it is unrecoverable)*
+- Establish whether the missing arrow comes from role admission, structural remounting, row
+  identity, or geometry; do not credit the current passing guard as reproduction evidence
+  *(met for the reproduced route: geometry — scroll anchoring)*
+- If the defect remains, add a regression that fails before its correction and proves the panel can
+  be closed without losing the playlist selection *(met and independently mutation-checked)*
+- If it cannot be reproduced, record the attempts and keep the report explicitly known-unverified;
+  closing the task requires a maintainer disposition, not an agent inference that it was T-204
+  *(still binding as `T208-R1`)*
+- Run the checks required by `ai/TESTING.md` §3 for whatever surfaces the investigation changes
+  *(met at submission and review)*
+
+#### Out of scope
+
+- The separate row/panel-overlap screenshot unless the reproduced trigger proves they are one defect
+
+---
+
+
+### T-221 — Decide whether the deferred panel mount visibly flashes
+
+**Status:** **Complete — observed 2026-08-13. No visible flash.** The maintainer ran both panel
+openings on a real display and **did not see the one-turn mount transient**, which is what this
+entry existed to find out. `T209-R1` is closed by the observation.
+
+**The residual is not dropped — it is re-homed.** The maintainer directed that the transient be
+re-checked by hand as part of the **UI manual pass at the end of the phase**, so it is a row in
+`T-212`'s recorded checklist run rather than an open task. One observation on one machine is
+evidence about that machine; the checklist is where a second one is taken deliberately, in front of
+the whole built window, and recorded.
+
+*(Originally: Blocked — needs the maintainer's real-display observation.)* `T-209`'s audit proved
+every permanent state and surfaced one transient: both panel kinds spend the turn between index
+widget mount and deferred geometry at their 190×26 minimum. Offscreen tests can measure the turn
+but cannot establish whether a user sees a flash. `T209-R1` assigns the question here so T-209 can
+close without leaving an ownerless finding.
+**Owner:** Maintainer for observation → Implementer only if a correction is needed
+**Priority:** Low — the panel self-heals in one event-loop turn; no control or selection is lost
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** a real-display run of both panel openings
+**Relevant context:** `T-209`, `T108-R2`, `T107-R2`, `T-204`, `OPS-003`,
+`ui/add_dialog.py` (`_open_panel`, `_mount_panel`, `relayout_panel`)
+**Affected surfaces:** observation first; `ui/add_dialog.py` and its UI tests only if visible
+**Risk:** Medium if changed — the deferral prevents mounting an index widget while Qt is still
+closing the combo editor, the dead-editor ordering `T108-R2` established
+
+#### Acceptance criteria
+
+- On a real display, open both the playlist picker and the format table and record whether either
+  visibly flashes at 190×26 before filling the row
+- If no flash is visible, record the observation and close the task without source work
+- If it is visible, reproduce it with the strongest deterministic evidence available and correct
+  it without mounting under the live editor; both panel kinds, editor teardown and structural
+  reset survival remain green
+- Run the source gates and affected UI suites if source or tests change
+
+#### Out of scope
+
+- Reopening T-209's proved permanent value-refresh geometry
+- Reordering the `T108-R2` mount seam without a visible defect
+
+---
+
+
+### T-219 — The dialog footer speaks the naming rule, not the selector
+
+**Status:** **Cancelled — ruled 2026-08-13. The refusal is the outcome.** The maintainer chose
+*refuse and close* from the three shapes this entry recorded.
+
+**The ruling, and why it is the right one:** the entry's premise does not hold. The footer is not
+the last surface printing selector syntax — **every probed row prints it too**, through
+`selector_text`, and deliberately: `REQ-009` asks for a selector a user can learn from and copy, and
+`T118-R8` was reported twice against that line. Meeting the criterion would have overturned that
+reading for one surface while leaving it standing on the others, which is the worst of the three
+shapes rather than the cheapest.
+
+**Nothing is owed by this closure.** `T126-R2`, `T140-R3` and `T-159` — the three findings that
+establish surfaces speak the naming rule — are unaffected: they govern *prose* surfaces, and the
+selector is offered as a value to copy rather than as a sentence. The other two shapes are left
+recorded below as what was not chosen.
+
+*(Originally: Blocked on a ruling — 2026-08-12, picked up in an authorized unattended run and not
+built.)*
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** a maintainer ruling (below). The same-file hold behind the add-dialog chain is over
+**Relevant context:** `T126-R2`, `T140-R3`, `T-159` — three findings establishing that surfaces
+speak the naming rule, never raw selector syntax; `ui/format_text.py` (the rule),
+`ui/add_dialog.py` (the footer line under *Download as*)
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+The footer under *Download as* prints
+`Every row · Format selector: bestvideo[height<=1080][ext=mp4]+…` — yt-dlp syntax on the primary
+add surface, after three review findings moved every row to the naming rule. The dialog's own
+footer is the last surface still speaking syntax.
+
+#### What the reproduction found, 2026-08-12
+
+**The footer is not the last surface speaking syntax, and the entry says it is.** `selector_text`
+— *"the row's third line"* — builds `Download as: <name> — <whose choice> · Format selector:
+<selector>` through `describe_preset` (`ui/add_dialog.py`). **Every probed row prints the raw
+selector**, not just the footer. Verified by reading both call sites: `describe_preset` feeds the
+row's drawn line at `selector_text`, and the footer builds its own copy in
+`_update_selector_label`.
+
+**And the duplication is deliberate, with its reasoning recorded twice.** `_update_selector_label`'s
+docstring: *"`REQ-009` asks for a selector a user can learn the syntax from and then write their
+own, which means it has to be selectable text they can copy — and a delegate paints pixels, not
+selectable text. The row draws its own selector so a mixed batch can be read at a glance; this is
+where the one in hand can be taken away."* `T118-R8` was reported **twice** against that line.
+
+**So the criterion below cannot be met without overturning `REQ-009`'s reading and `T118-R8`'s
+design**, and that is a ruling rather than an implementation detail. Three shapes, none chosen:
+
+1. **Footer only.** The footer speaks the naming rule with the selector on its tooltip; the row's
+   third line keeps the selector. Smallest change, and it leaves the criterion *"no visible
+   surface prints selector syntax"* **unmet** — the entry would be amended to say so.
+2. **Both surfaces.** Row and footer speak the naming rule; the selector lives on a tooltip and in
+   the options editor. Meets the criterion as written, and is the one that overturns `T118-R8` —
+   a mixed batch would no longer be readable at a glance, which is what that finding was about.
+3. **Neither.** `REQ-009`'s *learn the syntax* is judged to outweigh the three findings that moved
+   other surfaces to the naming rule, and the task closes as refused with that recorded.
+
+**Nothing was built.** An unattended run is the wrong place to overturn a requirement's reading.
+
+#### Acceptance criteria
+
+*(Criterion 3 is the one in question; see above.)*
+
+- The footer line names what rows inherit **in the naming rule's words, through the same function
+  the rows use** — a second phrasing of the same fact is `T140-R3`'s defect and is not built
+- The **raw selector stays reachable** — a tooltip on the line, or the options editor — and this
+  entry records where it went
+- **No visible surface in the dialog prints selector syntax**; a test asserts the footer text for
+  a built-in preset
+- A screen reader hears the same words a sighted user reads — the accessible description carries
+  the friendly line, not the selector
+
+#### Out of scope
+
+- The selector's role in requests, presets, or `REQ-009`'s custom-selector escape hatch — this
+  changes one label, not what is downloaded
+
+### T-228 — A retry deadline stops firing under parallel load
+
+**Status:** **Cancelled — ruled a harness artefact 2026-08-13.** The maintainer closed it on the
+reachability measurement: **680 sessions** — concurrency 1 and 16, idle and saturated, plus 20
+independent managers — lost **no message**, so it is not reachable at supported product concurrency
+by anything measured. It needs the integration suite itself, at high worker count, on a saturated
+host.
+
+**The suspect is named rather than left implied**, which is what makes this a closure rather than a
+shrug: the suite kills workers *and process groups*, and `kill_this_group`'s blast radius depends on
+what shares a group. That is a harness question. **Reopening condition:** any observation of a lost
+`multiprocessing.Queue` message outside that harness — a user report, or a failure at supported
+concurrency — makes this a product defect again and it is refiled with the new evidence.
+
+**What closing costs, stated:** `-n 4` on integration stays unadopted, so the **214 seconds** it
+would save stay unsaved. The reviewer ruled against adopting it on three green runs, and closing
+this does not change that reasoning.
+
+*(Originally: Proposed — filed 2026-08-11 from `T-123`'s adoption run, reproduced at roughly one run
+in three under `pytest -n auto tests/integration/test_manager.py`. **The immediate causal chain was
+established 2026-08-12** (see below), but the first criterion remains open: it requires classifying
+the condition as test-only or product behavior, and that reachability has not been measured yet.
+**Owner:** Implementer
+**Priority:** Medium — it blocks the second half of `T-123`. Integration runs serially today, so
+nothing is red because of it; what it costs is **297 s of every CI run**, which `-n 4` would take
+to 83 s if this were fixed
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `tests/integration/test_manager.py::test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started`,
+`T-123`, `T118-R10`, `T-083`
+**Affected surfaces:** `tests/integration/test_manager.py`, and `downloader/manager.py` if the
+deadline turns out to be the product's rather than the test's
+**Risk:** Medium — the answer decides whether this is a test with no headroom or a retry that can
+genuinely be starved
+
+#### Scope
+
+Under parallel load the test fails on:
+
+```
+assert repository.jobs["job-network"].status is JobStatus.QUEUED
+  AssertionError: the retry's deadline never fired at all, so this proved nothing about the gate
+  assert <JobStatus.FAILED> is <JobStatus.QUEUED>
+```
+
+**The assertion's own message is the finding.** It already anticipates the deadline not firing and
+says that when it does not, the test proved nothing — so this is a test that knows it has no
+headroom and reports it honestly, which is more than most.
+
+**What is not yet established, and must not be assumed:** whether the deadline is the *test's*
+(a bound chosen for an unloaded machine, `T118-R10`'s defect class, which `T-083` also carries) or
+the *product's* (a retry that a busy machine can starve, which would be a real defect and a
+different task's shape). `T-123`'s own hazard list guessed the process tests and was right about
+one and wrong about the mechanism; this entry deliberately does not guess.
+
+#### The mechanism, established 2026-08-12 — and it is neither of the two shapes above
+
+**The causal chain is established; the first criterion is not yet met.** It asks for *test bound
+or product behaviour*, and the evidence below has not established which. Nothing is changed yet,
+which is correct while that classification remains open.
+
+**The reproduction, driven rather than inferred:** **50 runs** of `pytest -n auto
+tests/integration/test_manager.py` on a 20-core machine, in seven batches. **19 runs failed, 21
+failures in total.** The rate rises when the run is instrumented — file I/O on the retry path took
+it from roughly 1-in-3 to 6-in-8 — which is itself evidence: this is load-sensitive, not a fixed
+bound.
+
+**The entry's framing was too narrow in two ways.**
+
+*It is not one test.* The 21 failures landed on **twelve distinct tests** — and across the first
+20 runs **no test failed twice**, which is why a single-test entry was the wrong shape to look
+through:
+
+| Failing assertion | Test |
+|---|---|
+| Test | Times | Failing assertion |
+|---|---|---|
+| `test_a_network_failure_retries_itself_and_counts_the_attempt` | 5 | *"a network failure never retried itself"* |
+| `test_idle_is_not_announced_while_a_retry_is_waiting` | 3 | *"idle went out with an automatic retry still waiting"* |
+| `test_the_attempt_count_is_bounded_and_the_last_error_survives` | 2 | *"the automatic attempts never reached the bound and settled"* |
+| `test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started` | 2 | *"the retry's deadline never fired at all"* |
+| `test_an_automatic_retry_preserves_a_probe_as_a_probe` | 1 | *"the probe's automatic retry never ran"* |
+| `test_the_backoff_is_waited_rather_than_declared` | 1 | — |
+| `test_a_started_queue_stays_started_for_work_added_afterwards` | 2 | *"the first job never finished, so the queue never drained"* |
+| five others | 5 | shutdown-descendants, pump-idle, saturated-drain, paused-status, cancellation |
+
+**Fourteen of the 21 are one sentence: an automatic retry never happened.** The task this entry
+was filed against is only the fourth-most-frequent of them.
+
+*It is not a bound with no headroom.* `spin` is **wall-clock** (`tests/integration/conftest.py`),
+so the failures include a `timeout=120` and several `timeout=60` that genuinely elapsed. And the
+obvious explanation is ruled out by measurement: **time from `start()` to the child's failure is
+0.3–0.5 s in every sample taken under full load** (8 samples, max 0.518 s). The machine is not
+starving the children.
+
+**What is actually happening**, from instrumenting `_schedule_automatic_retry`,
+`_perform_due_retries`, the timer stop and `_fail_loudly`:
+
+- In a failing run, **no retry is ever scheduled for the failing job.** The trace records every
+  call to `_schedule_automatic_retry` *before* its `kind is not NETWORK` guard, and for the
+  failing job there is no such call at all — nor any `_retry_at` entry with the backoff that
+  test monkeypatches in. (`test_idle_is_not_announced_while_a_retry_is_waiting` uses **30 s**;
+  no 30-second deadline appears anywhere in a trace of the run that failed it.)
+- The job still reaches `FAILED` — the tests' preceding spin passes.
+- The route it takes is `_fail_loudly`. Captured directly:
+  `FAIL_LOUDLY job=job-NETWORK ended=True sentinel=True forced=False`, in the one worker process
+  whose test failed, while other workers scheduled their retries normally in the same run.
+
+**So: under load the child's outcome is not believed before the session is judged ended, the
+failure is recorded as `WORKER_CRASH` instead of the `NETWORK` the child reported, and
+`_schedule_automatic_retry` correctly declines** — its docstring says exactly why, that deriving
+retryability from `is_retryable` *"would put `WORKER_CRASH` into a loop on its own"*. The tests
+then wait out generous timeouts for a retry that will never come, and their messages
+(*"never fired"*, *"never retried itself"*) name the symptom rather than this cause.
+
+**The timer is not the problem, and that is worth recording because it was the obvious suspect.**
+Every `TIMER STOP` in every trace shows `retry_at={}` — the `T-083` guard that keeps the tick alive
+for a pending backoff holds under load in every instrumented run.
+
+#### Second round, 2026-08-12 — the earlier conclusion was half right, and the half that was wrong matters
+
+**The reviewer ruled that stopping before a source change was correct and stopping the
+investigation was not.** This is the continuation. **Still nothing changed in `src/`.**
+
+**The causal chain above named `_fail_loudly` and stopped there. Instrumenting what it is handed
+shows which of its two branches fires, and it is not the one the chain implied.**
+
+`_fail_loudly` covers two shapes of untrustworthy session: *a stream that broke the contract*
+(`session.violations`) and *a session that reported no outcome* (`outcome is None`). The first
+reading here was that a good `NETWORK` outcome had arrived and was then discarded because
+synthesising the sentinel records a violation — which `_end_the_stream` does, and which would have
+made this a misattribution of a perfectly good worker.
+
+**That is not what happens.** The record captured for the failing job:
+
+```
+FAIL_LOUDLY job=job-NETWORK
+  violations=['the worker exited (code 1) without sending its WorkerFinished sentinel; the parent
+               supplied one so the receiver could stop reading',
+              'a download session produced no outcome; a receiver cannot tell that from a crashed
+               worker (REQ-028)']
+  outcome=None  ended=True  sentinel_sent=True
+```
+
+**`outcome=None`.** Neither of the two messages the child sent arrived — not the `Failed(NETWORK)`
+outcome and not the `WorkerFinished` sentinel. Nothing was discarded, because nothing was
+received. The parent's behaviour from there is correct in every step: no outcome means it cannot
+tell a silent worker from a crashed one (`REQ-028`), so `WORKER_CRASH`, and `WORKER_CRASH` is
+deliberately not retried.
+
+**The child is two lines**, which is what makes this worth recording:
+
+```python
+queue.put(Failed(job_id=job_id, kind=named, message=f"failed as {named.value}"))
+queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+```
+
+`multiprocessing.Queue.put` is asynchronous — it buffers and a feeder thread writes to the pipe —
+so **both messages were lost between the child's `put` and the parent's pump**. That is a delivery
+question, not a scheduling one, and it is the thing that decides product-versus-test: a real
+worker uses the same queue.
+
+**What was ruled out along the way, each by measurement rather than argument:**
+
+| Hypothesis | Ruled out by |
+|---|---|
+| A tight test bound | `spin` is wall-clock; a `timeout=120` elapsed |
+| Starved child processes | Time from `start()` to failure is 0.3–0.5 s in every loaded sample |
+| The `T-083` timer guard failing | Every `TIMER STOP` in every trace shows `retry_at={}` |
+| A good outcome discarded by the synthesised-sentinel violation | `outcome=None` — it never arrived |
+
+#### Bounded reachability, measured 2026-08-12 — and it exonerates the product shape
+
+**First, a correction to a number this entry reported.** *"Roughly one run in three"* was measured
+while the machine was also running other batches, and in some of them the tracing overhead. On an
+**otherwise idle** host it does not reproduce at any worker count:
+
+| Workers | Runs | Failures |
+|---|---:|---:|
+| `-n 1` (serial) | 5 | **0** |
+| `-n 4` | 5 | **0** |
+| `-n 8` | 5 | **0** |
+| `-n 20` (= `-n auto` here) | 5 | **0** |
+
+**Twenty clean runs.** So *worker multiplication is not the trigger*, and an integration-worker cap
+— the branch the review offered — would not have prevented anything measured here.
+
+**Saturation is the trigger.** The same `-n 20`, with 20 busy loops pinning the 20 cores before
+pytest starts: **3 failures in 5 runs** (`test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind`,
+`test_shutdown_leaves_no_descendant_either`,
+`test_a_pump_that_will_not_stop_keeps_the_manager_from_claiming_it_is_idle`) — a third set of
+tests again, which is now the most consistent thing about this defect.
+
+**Then the question the task exists for: is it reachable at supported product concurrency?**
+Driven the way the application drives it — a real `DownloadManager`, real spawned children, the
+child that failed in the suite — and counting the recorded `ErrorKind` rather than a test's verdict:
+
+| Shape | Sessions | `WORKER_CRASH` |
+|---|---:|---:|
+| One manager, concurrency 1, **idle** host | 30 | **0** |
+| One manager, concurrency 1, **saturated** host (40 loops on 20 cores) | 30 | **0** |
+| One manager, **concurrency 16** — `CONCURRENCY_MAXIMUM`, the busiest the application can be — saturated host | **320** | **0** |
+| **20 independent processes**, one manager each, all spawning at once | **300** | **0** |
+
+**680 sessions across every shape the product can take, including a 2:1 oversubscribed host, and
+not one lost message.** The `Failed(NETWORK)` outcome arrived every time.
+
+**So the classification is: not reachable at supported product concurrency by any means measured
+here.** It needs the **integration suite itself**, at high worker count, on a saturated host.
+Spawning many children does not do it; saturation does not do it; the product's maximum
+concurrency does not do it. The suite plus saturation does.
+
+**The remaining suspect, named rather than guessed at:** `tests/integration/test_manager.py`
+contains tests that deliberately kill workers, kill *process groups* and check orphan reaping, and
+`process_tree.kill_this_group()` is exactly the kind of operation whose blast radius depends on
+what shares a group. Under saturation, timing decides what is alive when one of those fires. The
+scattered failures — twelve distinct tests, then three more — fit interference between concurrently
+running tests better than they fit any one test's bound. **That is the next measurement, and it is
+about the harness rather than `src/`.**
+
+*(What this does **not** establish: that the loss is impossible for a user. It establishes that
+680 sessions in every shape the application supports did not produce one, which is the evidence
+this task was asked for and is the opposite of the direction the first round pointed.)*
+
+#### What this means, stated as a question rather than a decision
+
+**This is a third shape the entry did not list**, and it is not clearly a test problem:
+
+- **If the misattribution is only reachable under absurd oversubscription**, it is an artefact of
+  `-n auto` spawning 20 workers that each spawn children, and the answer is a worker cap.
+- **If it is reachable on a loaded user machine**, it is a **user-visible defect**: a transient
+  network failure recorded as a crash stops retrying, silently, and `REQ-018`'s automatic retry is
+  the thing that does not happen. That is a defect entry of its own, which this task's third
+  criterion already anticipates.
+
+**Which of those it is has not been established. Reviewer ruling, 2026-08-12:** stopping before a
+source change was correct; stopping the investigation was early. This is an empirical reachability
+question, not yet a product choice for the maintainer. Continue through the condition inside
+`_fail_loudly`'s caller that decides a session ended without a believable outcome, first under
+bounded xdist worker counts and then under a single application instance with controlled host
+load. Establish whether a supported user configuration can enter the same path. **`T-056`'s
+`still_running` question may be the same seam from the other side.**
+
+*(Method note: the manager was instrumented on a throwaway working copy and restored; the probe
+test used to take the measurements was deleted. `git status` is clean of both, and the serial run
+is **154 passed, exit 0** — this task changed nothing.)*
+
+#### Acceptance criteria
+
+- **The mechanism is established first** — test bound or product behaviour — with the reproduction
+  driven rather than inferred, and the answer recorded here before anything is changed
+- If it is the test's bound: the bound is derived from something observable rather than raised
+  until it stops failing, and **the test still fails when the gate it guards is mutated away** —
+  a deadline made generous enough to pass everywhere is a test deleted
+- If it is the product's: a defect entry of its own, and this task closes as the reproduction
+- **The fix is demonstrated under load**, not on an idle machine: `pytest -n auto
+  tests/integration/test_manager.py` repeated enough times to beat the one-in-three base rate
+  measured 2026-08-11
+- The same sweep names any sibling timed gate in `tests/integration/` with the same shape, or
+  records that there is none
+
+#### Out of scope
+
+- Adopting `-n` for `tests/integration` in CI. That is `T-123`'s, and it waits on this
+- `T-056` and the Windows process-liveness question, which is a different failure in a different
+  direction
+
+---
+
 ### T-230 — A spawned child still gets the developer's real directories
 
 **Status:** **Complete — Approved 2026-08-12.** Spawned children inherit the per-test config, data,
@@ -4029,7 +4516,23 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
-**Status:** Proposed — corrected 2026-08-12 from the retained run log. One of nine observed
+**Status:** **Proposed — the guard is authorised, 2026-08-13.** The maintainer ruled that the
+`tests/ui` view-leak guard this entry proposed should be **built**, which resolves the condition
+its fourth criterion was waiting on.
+
+#### The guard ruling — maintainer, 2026-08-13
+
+**Build it.** The entry conditioned the guard on product-versus-harness being established and then
+could not establish it: 60 runs did not reproduce the crash, so repetition is spent at worse than
+1-in-60. **The guard is itself the instrument that would establish it** — it fails at the test that
+leaks the view, by name, on an ordinary run, instead of waiting for a segfault to land somewhere
+else. `ai/TESTING.md` §13 already states the principle: the useful signal is the one at the cause.
+
+*(This is a ruling about the *order* of the criteria, not a waiver of any of them. The guard is the
+fourth criterion's harness-only branch, taken before the branch condition is proved, because
+proving the condition is what it is for.)*
+
+**Status of the original filing** — corrected 2026-08-12 from the retained run log. One of nine observed
 `-n auto` unit/UI runs ended when worker `gw7` segfaulted; eight sibling runs passed. **This was
 not an assertion failure, and one event in nine runs is a sample, not a measured rate.** Forty
 further repeated runs were started to reproduce and characterise it; their result is not yet
@@ -4175,259 +4678,6 @@ block the GUI thread, the pool can drain, and late work does not emit through a 
 
 ---
 
-### T-228 — A retry deadline stops firing under parallel load
-
-**Status:** Proposed — filed 2026-08-11 from `T-123`'s adoption run, reproduced at roughly one run
-in three under `pytest -n auto tests/integration/test_manager.py`. **The immediate causal chain was
-established 2026-08-12** (see below), but the first criterion remains open: it requires classifying
-the condition as test-only or product behavior, and that reachability has not been measured yet.
-**Owner:** Implementer
-**Priority:** Medium — it blocks the second half of `T-123`. Integration runs serially today, so
-nothing is red because of it; what it costs is **297 s of every CI run**, which `-n 4` would take
-to 83 s if this were fixed
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing
-**Relevant context:** `tests/integration/test_manager.py::test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started`,
-`T-123`, `T118-R10`, `T-083`
-**Affected surfaces:** `tests/integration/test_manager.py`, and `downloader/manager.py` if the
-deadline turns out to be the product's rather than the test's
-**Risk:** Medium — the answer decides whether this is a test with no headroom or a retry that can
-genuinely be starved
-
-#### Scope
-
-Under parallel load the test fails on:
-
-```
-assert repository.jobs["job-network"].status is JobStatus.QUEUED
-  AssertionError: the retry's deadline never fired at all, so this proved nothing about the gate
-  assert <JobStatus.FAILED> is <JobStatus.QUEUED>
-```
-
-**The assertion's own message is the finding.** It already anticipates the deadline not firing and
-says that when it does not, the test proved nothing — so this is a test that knows it has no
-headroom and reports it honestly, which is more than most.
-
-**What is not yet established, and must not be assumed:** whether the deadline is the *test's*
-(a bound chosen for an unloaded machine, `T118-R10`'s defect class, which `T-083` also carries) or
-the *product's* (a retry that a busy machine can starve, which would be a real defect and a
-different task's shape). `T-123`'s own hazard list guessed the process tests and was right about
-one and wrong about the mechanism; this entry deliberately does not guess.
-
-#### The mechanism, established 2026-08-12 — and it is neither of the two shapes above
-
-**The causal chain is established; the first criterion is not yet met.** It asks for *test bound
-or product behaviour*, and the evidence below has not established which. Nothing is changed yet,
-which is correct while that classification remains open.
-
-**The reproduction, driven rather than inferred:** **50 runs** of `pytest -n auto
-tests/integration/test_manager.py` on a 20-core machine, in seven batches. **19 runs failed, 21
-failures in total.** The rate rises when the run is instrumented — file I/O on the retry path took
-it from roughly 1-in-3 to 6-in-8 — which is itself evidence: this is load-sensitive, not a fixed
-bound.
-
-**The entry's framing was too narrow in two ways.**
-
-*It is not one test.* The 21 failures landed on **twelve distinct tests** — and across the first
-20 runs **no test failed twice**, which is why a single-test entry was the wrong shape to look
-through:
-
-| Failing assertion | Test |
-|---|---|
-| Test | Times | Failing assertion |
-|---|---|---|
-| `test_a_network_failure_retries_itself_and_counts_the_attempt` | 5 | *"a network failure never retried itself"* |
-| `test_idle_is_not_announced_while_a_retry_is_waiting` | 3 | *"idle went out with an automatic retry still waiting"* |
-| `test_the_attempt_count_is_bounded_and_the_last_error_survives` | 2 | *"the automatic attempts never reached the bound and settled"* |
-| `test_a_stopped_queue_parks_an_automatic_retry_until_it_is_started` | 2 | *"the retry's deadline never fired at all"* |
-| `test_an_automatic_retry_preserves_a_probe_as_a_probe` | 1 | *"the probe's automatic retry never ran"* |
-| `test_the_backoff_is_waited_rather_than_declared` | 1 | — |
-| `test_a_started_queue_stays_started_for_work_added_afterwards` | 2 | *"the first job never finished, so the queue never drained"* |
-| five others | 5 | shutdown-descendants, pump-idle, saturated-drain, paused-status, cancellation |
-
-**Fourteen of the 21 are one sentence: an automatic retry never happened.** The task this entry
-was filed against is only the fourth-most-frequent of them.
-
-*It is not a bound with no headroom.* `spin` is **wall-clock** (`tests/integration/conftest.py`),
-so the failures include a `timeout=120` and several `timeout=60` that genuinely elapsed. And the
-obvious explanation is ruled out by measurement: **time from `start()` to the child's failure is
-0.3–0.5 s in every sample taken under full load** (8 samples, max 0.518 s). The machine is not
-starving the children.
-
-**What is actually happening**, from instrumenting `_schedule_automatic_retry`,
-`_perform_due_retries`, the timer stop and `_fail_loudly`:
-
-- In a failing run, **no retry is ever scheduled for the failing job.** The trace records every
-  call to `_schedule_automatic_retry` *before* its `kind is not NETWORK` guard, and for the
-  failing job there is no such call at all — nor any `_retry_at` entry with the backoff that
-  test monkeypatches in. (`test_idle_is_not_announced_while_a_retry_is_waiting` uses **30 s**;
-  no 30-second deadline appears anywhere in a trace of the run that failed it.)
-- The job still reaches `FAILED` — the tests' preceding spin passes.
-- The route it takes is `_fail_loudly`. Captured directly:
-  `FAIL_LOUDLY job=job-NETWORK ended=True sentinel=True forced=False`, in the one worker process
-  whose test failed, while other workers scheduled their retries normally in the same run.
-
-**So: under load the child's outcome is not believed before the session is judged ended, the
-failure is recorded as `WORKER_CRASH` instead of the `NETWORK` the child reported, and
-`_schedule_automatic_retry` correctly declines** — its docstring says exactly why, that deriving
-retryability from `is_retryable` *"would put `WORKER_CRASH` into a loop on its own"*. The tests
-then wait out generous timeouts for a retry that will never come, and their messages
-(*"never fired"*, *"never retried itself"*) name the symptom rather than this cause.
-
-**The timer is not the problem, and that is worth recording because it was the obvious suspect.**
-Every `TIMER STOP` in every trace shows `retry_at={}` — the `T-083` guard that keeps the tick alive
-for a pending backoff holds under load in every instrumented run.
-
-#### Second round, 2026-08-12 — the earlier conclusion was half right, and the half that was wrong matters
-
-**The reviewer ruled that stopping before a source change was correct and stopping the
-investigation was not.** This is the continuation. **Still nothing changed in `src/`.**
-
-**The causal chain above named `_fail_loudly` and stopped there. Instrumenting what it is handed
-shows which of its two branches fires, and it is not the one the chain implied.**
-
-`_fail_loudly` covers two shapes of untrustworthy session: *a stream that broke the contract*
-(`session.violations`) and *a session that reported no outcome* (`outcome is None`). The first
-reading here was that a good `NETWORK` outcome had arrived and was then discarded because
-synthesising the sentinel records a violation — which `_end_the_stream` does, and which would have
-made this a misattribution of a perfectly good worker.
-
-**That is not what happens.** The record captured for the failing job:
-
-```
-FAIL_LOUDLY job=job-NETWORK
-  violations=['the worker exited (code 1) without sending its WorkerFinished sentinel; the parent
-               supplied one so the receiver could stop reading',
-              'a download session produced no outcome; a receiver cannot tell that from a crashed
-               worker (REQ-028)']
-  outcome=None  ended=True  sentinel_sent=True
-```
-
-**`outcome=None`.** Neither of the two messages the child sent arrived — not the `Failed(NETWORK)`
-outcome and not the `WorkerFinished` sentinel. Nothing was discarded, because nothing was
-received. The parent's behaviour from there is correct in every step: no outcome means it cannot
-tell a silent worker from a crashed one (`REQ-028`), so `WORKER_CRASH`, and `WORKER_CRASH` is
-deliberately not retried.
-
-**The child is two lines**, which is what makes this worth recording:
-
-```python
-queue.put(Failed(job_id=job_id, kind=named, message=f"failed as {named.value}"))
-queue.put(WorkerFinished(job_id=job_id, exit_code=1))
-```
-
-`multiprocessing.Queue.put` is asynchronous — it buffers and a feeder thread writes to the pipe —
-so **both messages were lost between the child's `put` and the parent's pump**. That is a delivery
-question, not a scheduling one, and it is the thing that decides product-versus-test: a real
-worker uses the same queue.
-
-**What was ruled out along the way, each by measurement rather than argument:**
-
-| Hypothesis | Ruled out by |
-|---|---|
-| A tight test bound | `spin` is wall-clock; a `timeout=120` elapsed |
-| Starved child processes | Time from `start()` to failure is 0.3–0.5 s in every loaded sample |
-| The `T-083` timer guard failing | Every `TIMER STOP` in every trace shows `retry_at={}` |
-| A good outcome discarded by the synthesised-sentinel violation | `outcome=None` — it never arrived |
-
-#### Bounded reachability, measured 2026-08-12 — and it exonerates the product shape
-
-**First, a correction to a number this entry reported.** *"Roughly one run in three"* was measured
-while the machine was also running other batches, and in some of them the tracing overhead. On an
-**otherwise idle** host it does not reproduce at any worker count:
-
-| Workers | Runs | Failures |
-|---|---:|---:|
-| `-n 1` (serial) | 5 | **0** |
-| `-n 4` | 5 | **0** |
-| `-n 8` | 5 | **0** |
-| `-n 20` (= `-n auto` here) | 5 | **0** |
-
-**Twenty clean runs.** So *worker multiplication is not the trigger*, and an integration-worker cap
-— the branch the review offered — would not have prevented anything measured here.
-
-**Saturation is the trigger.** The same `-n 20`, with 20 busy loops pinning the 20 cores before
-pytest starts: **3 failures in 5 runs** (`test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind`,
-`test_shutdown_leaves_no_descendant_either`,
-`test_a_pump_that_will_not_stop_keeps_the_manager_from_claiming_it_is_idle`) — a third set of
-tests again, which is now the most consistent thing about this defect.
-
-**Then the question the task exists for: is it reachable at supported product concurrency?**
-Driven the way the application drives it — a real `DownloadManager`, real spawned children, the
-child that failed in the suite — and counting the recorded `ErrorKind` rather than a test's verdict:
-
-| Shape | Sessions | `WORKER_CRASH` |
-|---|---:|---:|
-| One manager, concurrency 1, **idle** host | 30 | **0** |
-| One manager, concurrency 1, **saturated** host (40 loops on 20 cores) | 30 | **0** |
-| One manager, **concurrency 16** — `CONCURRENCY_MAXIMUM`, the busiest the application can be — saturated host | **320** | **0** |
-| **20 independent processes**, one manager each, all spawning at once | **300** | **0** |
-
-**680 sessions across every shape the product can take, including a 2:1 oversubscribed host, and
-not one lost message.** The `Failed(NETWORK)` outcome arrived every time.
-
-**So the classification is: not reachable at supported product concurrency by any means measured
-here.** It needs the **integration suite itself**, at high worker count, on a saturated host.
-Spawning many children does not do it; saturation does not do it; the product's maximum
-concurrency does not do it. The suite plus saturation does.
-
-**The remaining suspect, named rather than guessed at:** `tests/integration/test_manager.py`
-contains tests that deliberately kill workers, kill *process groups* and check orphan reaping, and
-`process_tree.kill_this_group()` is exactly the kind of operation whose blast radius depends on
-what shares a group. Under saturation, timing decides what is alive when one of those fires. The
-scattered failures — twelve distinct tests, then three more — fit interference between concurrently
-running tests better than they fit any one test's bound. **That is the next measurement, and it is
-about the harness rather than `src/`.**
-
-*(What this does **not** establish: that the loss is impossible for a user. It establishes that
-680 sessions in every shape the application supports did not produce one, which is the evidence
-this task was asked for and is the opposite of the direction the first round pointed.)*
-
-#### What this means, stated as a question rather than a decision
-
-**This is a third shape the entry did not list**, and it is not clearly a test problem:
-
-- **If the misattribution is only reachable under absurd oversubscription**, it is an artefact of
-  `-n auto` spawning 20 workers that each spawn children, and the answer is a worker cap.
-- **If it is reachable on a loaded user machine**, it is a **user-visible defect**: a transient
-  network failure recorded as a crash stops retrying, silently, and `REQ-018`'s automatic retry is
-  the thing that does not happen. That is a defect entry of its own, which this task's third
-  criterion already anticipates.
-
-**Which of those it is has not been established. Reviewer ruling, 2026-08-12:** stopping before a
-source change was correct; stopping the investigation was early. This is an empirical reachability
-question, not yet a product choice for the maintainer. Continue through the condition inside
-`_fail_loudly`'s caller that decides a session ended without a believable outcome, first under
-bounded xdist worker counts and then under a single application instance with controlled host
-load. Establish whether a supported user configuration can enter the same path. **`T-056`'s
-`still_running` question may be the same seam from the other side.**
-
-*(Method note: the manager was instrumented on a throwaway working copy and restored; the probe
-test used to take the measurements was deleted. `git status` is clean of both, and the serial run
-is **154 passed, exit 0** — this task changed nothing.)*
-
-#### Acceptance criteria
-
-- **The mechanism is established first** — test bound or product behaviour — with the reproduction
-  driven rather than inferred, and the answer recorded here before anything is changed
-- If it is the test's bound: the bound is derived from something observable rather than raised
-  until it stops failing, and **the test still fails when the gate it guards is mutated away** —
-  a deadline made generous enough to pass everywhere is a test deleted
-- If it is the product's: a defect entry of its own, and this task closes as the reproduction
-- **The fix is demonstrated under load**, not on an idle machine: `pytest -n auto
-  tests/integration/test_manager.py` repeated enough times to beat the one-in-three base rate
-  measured 2026-08-11
-- The same sweep names any sibling timed gate in `tests/integration/` with the same shape, or
-  records that there is none
-
-#### Out of scope
-
-- Adopting `-n` for `tests/integration` in CI. That is `T-123`'s, and it waits on this
-- `T-056` and the Windows process-liveness question, which is a different failure in a different
-  direction
-
----
-
 ### T-227 — Nothing gates the documents that say what is built
 
 **Status:** Proposed — filed 2026-08-11 after `T-195`'s sixth acceptance criterion was found unmet
@@ -4533,7 +4783,29 @@ nothing"** — the exact sequence that produced this task.
 
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
 
-**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Status:** **Proposed — unblocked 2026-08-13 by the maintainer's ruling below.** The entry's one
+open question is answered; nothing else stands between this and a build.
+
+#### The retry ruling — maintainer, 2026-08-13
+
+**"Retries" means yt-dlp's own `--retries`** — the per-fragment retries inside one attempt — **and
+the control must be labelled so it cannot be read as the other one.**
+
+**Why, recorded so the next reader does not re-derive it.** The job-level retry is already decided
+and already has behaviour: `REQ-015`/`REQ-018` keep a failure in the queue and offer a retry, and
+`core/errors.py` auto-retries `NETWORK` alone. A settings control over *that* would put two things
+in charge of one decision. It would also contradict a sentence now on screen — `T-201`'s error text
+tells the user a network failure *"retries by itself"* — and a control implying the user governs
+what the application already governs is `T-075`'s defect.
+
+**The alternative was offered and not taken:** build no retry control at all and record `REQ-023`'s
+*"retry policy"* as satisfied by the existing job-level policy. Cheaper, defensible, and rejected
+because `REQ-023` names the setting and a settings screen that silently drops one of its eight is
+the honesty problem `SETTINGS_STILL_TO_COME` exists to prevent.
+
+**What this obliges the build to do:** the label names the scope in the user's terms — retries
+*within* a download attempt — and the entry states the job-level retry as out of scope, which the
+existing out-of-scope list already does.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 4
@@ -4719,6 +4991,13 @@ it is not in the `ok`/`warn`/`stop` set.
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 
+**Carries one row by maintainer direction, 2026-08-13:** the **deferred panel mount**. `T-221` was
+closed on a real-display observation — the maintainer did not see the one-turn transient — and the
+maintainer directed that it be re-checked by hand in this pass rather than left as an open task.
+One observation on one machine is evidence about that machine; this run is where a second is taken
+deliberately, in front of the whole built window, and **recorded** in `ai/evidence/`. Both panel
+kinds, since `T-209`'s audit found both spend that turn at 190×26.
+
 **Status:** Proposed — filed 2026-08-09, owning the exit criterion the maintainer added the same
 day. The criterion had no owner in the map above, which is exactly the failure that map exists to
 surface.
@@ -4891,193 +5170,6 @@ under a stated precedence.
 
 
 ## Blocked
-
-### T-219 — The dialog footer speaks the naming rule, not the selector
-
-**Status:** **Blocked on a ruling — 2026-08-12.** Picked up in an authorized unattended run and
-**not built**: the entry's premise does not hold, and what it asks for overturns recorded design.
-See *What the reproduction found* below. The same-file dependency is otherwise clear —
-`T-203`'s chain is approved and `T-213` has landed.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** a maintainer ruling (below). The same-file hold behind the add-dialog chain is over
-**Relevant context:** `T126-R2`, `T140-R3`, `T-159` — three findings establishing that surfaces
-speak the naming rule, never raw selector syntax; `ui/format_text.py` (the rule),
-`ui/add_dialog.py` (the footer line under *Download as*)
-**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-The footer under *Download as* prints
-`Every row · Format selector: bestvideo[height<=1080][ext=mp4]+…` — yt-dlp syntax on the primary
-add surface, after three review findings moved every row to the naming rule. The dialog's own
-footer is the last surface still speaking syntax.
-
-#### What the reproduction found, 2026-08-12
-
-**The footer is not the last surface speaking syntax, and the entry says it is.** `selector_text`
-— *"the row's third line"* — builds `Download as: <name> — <whose choice> · Format selector:
-<selector>` through `describe_preset` (`ui/add_dialog.py`). **Every probed row prints the raw
-selector**, not just the footer. Verified by reading both call sites: `describe_preset` feeds the
-row's drawn line at `selector_text`, and the footer builds its own copy in
-`_update_selector_label`.
-
-**And the duplication is deliberate, with its reasoning recorded twice.** `_update_selector_label`'s
-docstring: *"`REQ-009` asks for a selector a user can learn the syntax from and then write their
-own, which means it has to be selectable text they can copy — and a delegate paints pixels, not
-selectable text. The row draws its own selector so a mixed batch can be read at a glance; this is
-where the one in hand can be taken away."* `T118-R8` was reported **twice** against that line.
-
-**So the criterion below cannot be met without overturning `REQ-009`'s reading and `T118-R8`'s
-design**, and that is a ruling rather than an implementation detail. Three shapes, none chosen:
-
-1. **Footer only.** The footer speaks the naming rule with the selector on its tooltip; the row's
-   third line keeps the selector. Smallest change, and it leaves the criterion *"no visible
-   surface prints selector syntax"* **unmet** — the entry would be amended to say so.
-2. **Both surfaces.** Row and footer speak the naming rule; the selector lives on a tooltip and in
-   the options editor. Meets the criterion as written, and is the one that overturns `T118-R8` —
-   a mixed batch would no longer be readable at a glance, which is what that finding was about.
-3. **Neither.** `REQ-009`'s *learn the syntax* is judged to outweigh the three findings that moved
-   other surfaces to the naming rule, and the task closes as refused with that recorded.
-
-**Nothing was built.** An unattended run is the wrong place to overturn a requirement's reading.
-
-#### Acceptance criteria
-
-*(Criterion 3 is the one in question; see above.)*
-
-- The footer line names what rows inherit **in the naming rule's words, through the same function
-  the rows use** — a second phrasing of the same fact is `T140-R3`'s defect and is not built
-- The **raw selector stays reachable** — a tooltip on the line, or the options editor — and this
-  entry records where it went
-- **No visible surface in the dialog prints selector syntax**; a test asserts the footer text for
-  a built-in preset
-- A screen reader hears the same words a sighted user reads — the accessible description carries
-  the friendly line, not the selector
-
-#### Out of scope
-
-- The selector's role in requests, presets, or `REQ-009`'s custom-selector escape hatch — this
-  changes one label, not what is downloaded
-
-### T-208 — Reproduce the multi-row missing-disclosure report
-
-**Status:** **Blocked — correction verified 2026-08-10; the disposition narrowed the same day
-and one choice remains.** One multi-row route was reproduced and fixed: removing a row above an
-open playlist with content below stranded its collapse control above the viewport. Codex
-independently verified the correction and its mutation at `d21a243`. **Asked directly whether
-remove-row-above was the observed gesture, the maintainer answered 2026-08-10:** *"I'm not sure
-what the missing arrow gesture was."* **Confirmation is therefore unavailable, not merely
-pending** — the original gesture cannot be elicited from anyone — and the report stays
-known-unverified exactly as the criteria require. What remains of `T208-R1` is one deliberate
-choice, and it is still the maintainer's: **close the report on this bounded, verified
-correction, or direct further multi-row probing** — noting that with no recollection to match,
-further probing has no oracle and can only fix routes on their own merits.
-
-Probe scripts drove a shown dialog through six multi-row gestures against one question — *what
-escape does the expanded playlist offer right now?* An expanded row's twisty is deliberately
-unpainted (`T-210`'s one-arrow rule), so "the arrow is lost" means exactly: role expanded, and the
-panel's collapse control absent or outside the viewport.
-
-| Gesture, picker open on the playlist | Result |
-|---|---|
-| A sibling re-probes (value refresh) | intact |
-| A sibling fails (value refresh) | intact |
-| A URL is added (structural remount) | intact |
-| **The row above is removed**, content below | **BROKEN — collapse at y=−63, permanent: 50 turns never recover it** |
-| A second playlist opened over the first | first closes; second mounts at its 190×26 minimum for **one turn**, healed by the deferred remount — now `T-221` |
-| The playlist row leaves `READY` | `T-204` §1, already fixed and guarded |
-
-**The break is scroll anchoring, and the negative findings matter as much**: not role admission
-(`EXPANDED_ROLE` answered `True` throughout), not row identity (the panel followed its row), not
-a stale mount (panel geometry equalled `visualRect` exactly). Removing a row above shrinks the
-scroll range and Qt keeps the *offset*, so the surviving row — panel and all — slides up until
-its top, **where the collapse control lives**, sits above the fold and stays there. Two rows
-alone heal by clamping; a third row below makes it permanent.
-
-**Fix**: `remount_panel` re-anchors the row's top into view (`PositionAtTop`) exactly when the
-remount finds it above the viewport — a reset that moved nothing does not move the view.
-**Regression**: `test_removing_a_row_above_keeps_the_open_panels_way_back_on_screen`, which also
-proves the close keeps a selection made before the removal. Codex independently removed the
-re-anchor and reproduced the collapse control at y=−63.
-
-**What is not claimed:** that this is the gesture behind *"with multiple items … the playlist
-loses the arrow"*, or the only one. The route existed, is fixed, and cannot come back; **the
-disposition on the report itself stays with the maintainer**, exactly as the criteria require.
-*(Was: In Review — one route reproduced and fixed; whether it was the report remained the
-maintainer's call. Before that: Ready — the original passing multi-row guard was not a
-reproduction.)*
-
-**Owner:** Implementer
-**Priority:** Medium — the reported end state traps the user in the panel, but the exact trigger
-remains unconfirmed
-**Phase:** Phase 4 — follow-up to T-204
-**Depends on:** maintainer disposition on `T208-R1`
-**Relevant context:** `T-204`, `T204-R3`, `T108-R2`, `ui/add_dialog.py` (`remount_panel`,
-`EXPANDED_ROLE`), `tests/ui/test_add_dialog.py`
-**Affected surfaces:** `ui/add_dialog.py` (`remount_panel`), `tests/ui/test_add_dialog.py`
-**Risk:** Medium — the report may be this geometry path or a distinct route, and assuming which
-one is how T-204 reached review without reproducing it
-
-#### Acceptance criteria
-
-- Recover or elicit the exact multi-row gesture sequence and reproduce it through the built dialog
-  *(partially met, and the elicitation half is closed as impossible: one route reproduced; the
-  maintainer stated 2026-08-10 they cannot recall the gesture, so it is unrecoverable)*
-- Establish whether the missing arrow comes from role admission, structural remounting, row
-  identity, or geometry; do not credit the current passing guard as reproduction evidence
-  *(met for the reproduced route: geometry — scroll anchoring)*
-- If the defect remains, add a regression that fails before its correction and proves the panel can
-  be closed without losing the playlist selection *(met and independently mutation-checked)*
-- If it cannot be reproduced, record the attempts and keep the report explicitly known-unverified;
-  closing the task requires a maintainer disposition, not an agent inference that it was T-204
-  *(still binding as `T208-R1`)*
-- Run the checks required by `ai/TESTING.md` §3 for whatever surfaces the investigation changes
-  *(met at submission and review)*
-
-#### Out of scope
-
-- The separate row/panel-overlap screenshot unless the reproduced trigger proves they are one defect
-
----
-
-
-### T-221 — Decide whether the deferred panel mount visibly flashes
-
-**Status:** **Blocked — needs the maintainer's real-display observation.** `T-209`'s audit proved
-every permanent state and surfaced one transient: both panel kinds spend the turn between index
-widget mount and deferred geometry at their 190×26 minimum. Offscreen tests can measure the turn
-but cannot establish whether a user sees a flash. `T209-R1` assigns the question here so T-209 can
-close without leaving an ownerless finding.
-**Owner:** Maintainer for observation → Implementer only if a correction is needed
-**Priority:** Low — the panel self-heals in one event-loop turn; no control or selection is lost
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** a real-display run of both panel openings
-**Relevant context:** `T-209`, `T108-R2`, `T107-R2`, `T-204`, `OPS-003`,
-`ui/add_dialog.py` (`_open_panel`, `_mount_panel`, `relayout_panel`)
-**Affected surfaces:** observation first; `ui/add_dialog.py` and its UI tests only if visible
-**Risk:** Medium if changed — the deferral prevents mounting an index widget while Qt is still
-closing the combo editor, the dead-editor ordering `T108-R2` established
-
-#### Acceptance criteria
-
-- On a real display, open both the playlist picker and the format table and record whether either
-  visibly flashes at 190×26 before filling the row
-- If no flash is visible, record the observation and close the task without source work
-- If it is visible, reproduce it with the strongest deterministic evidence available and correct
-  it without mounting under the live editor; both panel kinds, editor teardown and structural
-  reset survival remain green
-- Run the source gates and affected UI suites if source or tests change
-
-#### Out of scope
-
-- Reopening T-209's proved permanent value-refresh geometry
-- Reordering the `T108-R2` mount seam without a visible defect
-
----
-
 
 ### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
 
