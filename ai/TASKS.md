@@ -522,8 +522,8 @@ guard is what would be lost: a bound generous enough to pass everywhere is a tes
 records the publication:
 
 ```python
-partial.replace(self._path)      # the file is now on disk
-_note_publication(self._path)    # the generation counter moves
+partial.replace(self._path)  # the file is now on disk
+_note_publication(self._path)  # the generation counter moves
 ```
 
 The view's gate reads **`cache_generation`**, not the directory. The test waited on
