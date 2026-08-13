@@ -117,9 +117,12 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+## Complete
+
 ### T-230 — A spawned child still gets the developer's real directories
 
-**Status:** **In Review — built 2026-08-12.** Filed from `T123-R2`'s correction, measured rather than inferred.
+**Status:** **Complete — Approved 2026-08-12.** Spawned children inherit the per-test config, data,
+and cache roots; the full integration measurement leaves zero files in the sentinel roots.
 **Owner:** Implementer
 **Priority:** Medium — it is the remaining half of a rule `ai/TESTING.md` §5 states without
 qualification, and the half that is left is the one no in-process fixture can reach
@@ -224,14 +227,24 @@ two halves pointed at different roots, and the Windows overrides dropped.
 **`ai/TESTING.md` §5's in-process caveat is retired**, which the last criterion gates on it having
 stopped being true. What replaces it is the measurement and the three exclusions above.
 
+#### Review, 2026-08-12
+
+**Approved.** The environment export lives in the same autouse redirect that patches in-process
+consumers, carries both POSIX and Windows platformdirs variables, restores prior values, and names
+its explicit-`env` and downloads-directory limits. The required variable names are literal in the
+guard rather than derived from the production mapping. Independent verification ran all **404**
+integration tests with sentinel `XDG_*` roots: **404 passed, 0 files** left in those roots. The
+focused directory tests and the exact-head Windows full suite pass as well.
+
 ---
 
 ### T-220 — The toolbar and the run control: build and spec disagree
 
-**Status:** **In Review — the reading is done, 2026-08-12, and they agree.** Filed 2026-08-09 from the maintainer-approved UI review's closing note.
-**Half ruled 2026-08-12: option A, the grouped bar.** The maintainer chose it from rendered
-mockups after `UX-013` removed the concurrency control — *"lets go with option A given those
-mockups"*. **The label half is still open.**
+**Status:** **Complete — Approved 2026-08-12.** The requested reading confirms that build and
+`docs/UX_SPEC.md` §2.1 agree; neither side needs amendment.
+**Both halves were ruled 2026-08-12.** The maintainer chose option A, the grouped bar, from
+rendered mockups after `UX-013` removed the concurrency control — *"lets go with option A given
+those mockups"* — and chose `Start` / `Stop` for the label.
 
 #### The order, ruled — option A
 
@@ -275,18 +288,18 @@ screen-reader user who hears only the verb cannot tell whether the queue is runn
 
 **Two mutations fail their evidence**: the two states swapped, and the old `Start queue` restored.
 
-**Still owed here:** confirming the built bar against §2.1 once `T-234` removes the spinner. This
-task cannot close until then.
+**Still owed at that point:** confirming the built bar against §2.1 once `T-234` removed the
+spinner. The task could not close until then.
 
 **The blocker is released, 2026-08-12.** `T-234` landed, and the confirmation §2.1 asks for is
 `test_the_toolbar_carries_the_three_verbs_and_the_spacer_and_nothing_else` — every action on the
 bar, anonymous ones included, is `+ Add URLs`, the spacer, the run control, `Clear finished`.
 Which is *three verbs and nothing else*, the sentence `UX-013` wrote into the spec.
 
-**This entry is left `Proposed` rather than closed by the task that unblocked it.** The remaining
-work is a verdict on whether spec and build now agree, and `T-234` is in review itself — a task
-declaring its own follow-on satisfied, before anyone has looked at it, is the shape this
-project's reviews keep finding. What is owed here is now one reading, not one build.
+**This entry was left `Proposed` rather than closed by the task that unblocked it.** The remaining
+work was a verdict on whether spec and build agreed, and `T-234` was in review itself — a task
+declaring its own follow-on satisfied before anyone has looked at it is the shape this project's
+reviews keep finding. What was owed there was one reading, not one build.
 **Owner:** Implementer, with a Planner edit if the spec side wins
 **Priority:** Low — a two-line reconciliation, in whichever direction
 **Phase:** Phase 4 — polish, not a plan deliverable
@@ -360,11 +373,20 @@ either direction.** The spec side was not rewritten to match the build; the buil
 **Nothing was built here and nothing needed to be**, which is why this entry carries a reading
 rather than a diff. Its evidence is `T-234`'s and `T-235`'s tests, already green.
 
+#### Review, 2026-08-12
+
+**Approved.** Direct inspection confirms the bar is `+ Add URLs`, spacer, `Start`/`Stop`, and
+`Clear finished`; §2.1 requires the same three verbs and the same two run states. The spacer is
+the retained grouping furniture rather than a fourth verb, and the exhaustive toolbar-action test
+accounts for it explicitly. T-181's status and tooltip treatment is unchanged, and the Windows UI
+Automation evidence still observes both run-control states.
+
 ---
 
 ### T-229 — Prove theme isolation beyond the original T-225 leak
 
-**Status:** **In Review — built 2026-08-12.** Filed from the initial `T-225` review (`T225-R1`, `T225-R2`).
+**Status:** **Complete — Approved 2026-08-12.** Both previously unproved restoration fields now
+have an ordered between-test regression, and both named behaviors run under the shipped theme.
 **Owner:** Implementer
 **Priority:** Low — the original order defect is fixed and mutation-proved; this is evidence for
 the two restored theme fields that did not cause today's failures, plus product-state coverage for
@@ -433,22 +455,33 @@ assertion re-checks `indexAt` for the point it is about to send.
 
 **Not broadened into a whole-suite audit** — the fourth criterion. Two files touched, one added.
 
+#### Review, 2026-08-12
+
+**Approved.** The subprocess pins the dresser/reader order without making either test depend on
+that order for an ordinary pass; removing either palette or `_applied` restoration makes the
+reader fail on that field. The dressed playlist-panel test asserts the stylesheet's painted
+surface rather than importing the bare `autoFillBackground` contract, and the dressed keyboard
+test recomputes and validates its off-row point immediately before sending the event. The focused
+review slice passed **10/10**, including the isolation subprocess and both shipped-theme paths;
+the exact-head Windows full suite passed too.
+
 ---
 
 ### T-239 — A thumbnail-sweep regression fails on the runner and nowhere else
 
-**Status:** **In Review — diagnosed and fixed 2026-08-12**, the same day it was filed. The
-mechanism is a **test synchronisation defect**, reproduced deterministically; the product behaves
-as designed. `T-230`, `T-220` and `T-229` are cleared by name.
+**Status:** **Complete — Approved 2026-08-12.** The test now waits for the publication counter the
+product gate reads; the original `T179-R1` regression remains live. `T239-R1` is a Low,
+non-blocking STATUS wording correction.
 **Owner:** Implementer
 **Priority:** Medium — it reddened the `linux` job, which is a gate; but the test guards a real
 `T179-R1` race and a wrong "fix" here would retire that guard rather than the flake
 **Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
 **Depends on:** nothing
-**Relevant context:** `T-179`, `T179-R1`, `T-238` (a different failure of the same *kind* — a gate
-that is red on a runner and green everywhere else), `T-228`, `T118-R10` (timed gates with no
-headroom), `tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected`
-**Affected surfaces:** unknown. The test, `ui/queue_view.py`'s sweep scheduling, or neither
+**Relevant context:** `T-179`, `T179-R1`, `T-238` (a different intermittent native crash, not a
+runner-red/local-green event), `T-228`, `T118-R10` (timed gates with no headroom),
+`tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected`
+**Affected surfaces:** `tests/ui/test_queue_view.py`. The product sweep gate was investigated and
+left unchanged because it behaves as designed
 **Risk:** Medium — the assertion is `T179-R1`'s own regression, and `T-179`'s carried criterion is
 that a disk entry is removed when no job names it
 
@@ -513,8 +546,9 @@ guard is what would be lost: a bound generous enough to pass everywhere is a tes
 
 #### Out of scope
 
-- `T-238`'s segfault. Same *kind* of problem — red on a runner, green locally — and no evidence of
-  a shared mechanism; `T-238`'s own entry warns against exactly that folding
+- `T-238`'s segfault. It occurred in a local xdist worker and did not reproduce in sixty further
+  local runs; there is no evidence of a shared mechanism, and `T-238`'s own entry warns against
+  folding unrelated intermittent events together
 
 #### The mechanism, reproduced deterministically — 2026-08-12
 
@@ -566,9 +600,24 @@ Named rather than left under suspicion because they were the commits in flight. 
 `T-230`'s environment export cannot reach a test that spawns nothing and resolves its cache root
 from `tmp_path`.
 
----
+#### Review, 2026-08-12
 
-## Complete
+**Approved.** The pre-fix test observed the filesystem between `partial.replace()` and
+`_note_publication()`, then asked the view to act before the generation it gates on had changed.
+Waiting for `cache_generation(root)` to advance closes that synchronization hole and the following
+file assertion proves the publication record did not move ahead of the write. The 30-second bound
+is unchanged, and the submitted membership-only mutation still kills the regression. The focused
+test passed independently; workflow-dispatch run `31657727760` then passed all five jobs at a tree
+whose later changes are records only.
+
+**`T239-R1` — Low, non-blocking, STATUS only.** The current incident summary says format runs
+before everything and that run `31657367781` produced no Windows evidence. The run shows Win32
+types and the dedicated Windows desktop suite both passed before the format step; what format
+prevented was the Qt baseline and **full Windows suite**, so the T-239 test itself received no
+Windows execution. Correct that narrower statement when STATUS is synchronized. The loss of
+T-239's platform validation—and the need for dispatched run `31657727760`—is unchanged.
+
+---
 
 ### T-234 — The concurrency control leaves the toolbar
 
