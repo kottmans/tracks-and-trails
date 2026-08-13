@@ -117,6 +117,115 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-230 — A spawned child still gets the developer's real directories
+
+**Status:** **In Review — built 2026-08-12.** Filed from `T123-R2`'s correction, measured rather than inferred.
+**Owner:** Implementer
+**Priority:** Medium — it is the remaining half of a rule `ai/TESTING.md` §5 states without
+qualification, and the half that is left is the one no in-process fixture can reach
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing. `T123-R2`'s fixture is the in-process half and is built
+**Relevant context:** `tests/user_directories.py`, `tests/conftest.py`, `ai/TESTING.md` §5,
+`tests/ui/test_app_launch.py` (the one place that already does this correctly), `T123-R2`
+**Affected surfaces:** `tests/integration/**`, possibly a shared spawn helper
+**Risk:** Low — the tests pass today; what is wrong is where their children write
+
+#### Scope
+
+`T123-R2` built the autouse redirect that `ai/TESTING.md` §5 always required, and **the parallel
+slice now writes nothing to the real per-user directories: 241 job logs before, 0 after.** A
+monkeypatch lives in one interpreter, so the half it cannot reach is a test that *spawns* a
+process: the child resolves `platformdirs` for itself and gets the developer's real directories.
+
+**Measured 2026-08-12 with sentinel `XDG_*` roots**, same command CI runs:
+
+| Slice | Files left in the real per-user roots |
+|---|---|
+| `tests/unit` + `tests/ui`, `-n auto` | **0** |
+| `tests/integration`, serial | **62**, all `cache/tracksandtrails/jobs/*.log` |
+
+**`tests/ui/test_app_launch.py` already does this right** — it sets `XDG_*` for the application it
+launches, and its own comment explains why. So the shape of the answer exists; what is missing is
+that nine integration files spawn children and only one arranges the child's environment.
+
+**This is not a parallelism hazard and must not be filed as one.** Integration runs serially and
+the logs are uuid-named, so nothing collides. What it is: tests writing to the developer's machine,
+which §5 forbids in terms.
+
+#### Acceptance criteria
+
+- Every spawned child in `tests/integration/` resolves its per-user directories inside the test's
+  own `tmp_path`, **through one shared helper** rather than nine hand-rolled environments
+- **`XDG_*` is not sufficient on its own and the entry says so**: platformdirs consults those only
+  on POSIX, so the helper must carry whatever Windows needs, or record what it cannot cover and
+  which platform is therefore still writing where
+- **Measured the way this entry measures it** — sentinel roots, file count before and after, `0`
+  as the passing number — rather than by reading the code
+- A test fails if a new spawn site skips the helper, or the entry records why that cannot be
+  guarded and what is done instead
+- `ai/TESTING.md` §5's in-process caveat is removed only when it stops being true
+
+#### Out of scope
+
+- The in-process redirect, which is built and proved (`T123-R2`)
+- Making `tests/integration` parallel — `T-228` owns the blocker for that
+
+#### What was built, 2026-08-12
+
+**One export, not nine environments.** A spawned child inherits its parent's environment, so the
+fix belongs in `redirect()` — the helper the autouse fixture already calls for every test — rather
+than in the nine files that spawn. `_CHILD_ENVIRONMENT` exports `XDG_CACHE_HOME`,
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `WIN_PD_OVERRIDE_APPDATA` and `WIN_PD_OVERRIDE_LOCAL_APPDATA`,
+pointed at the same subdirectories the in-process patching answers with, and restored by the same
+`undo`.
+
+**Measured the way the entry measures it**, same command, sentinel `XDG_*` roots:
+
+| | Files left in the sentinel roots |
+|---|---|
+| Before | **62**, all `cache/tracksandtrails/jobs/*.log` |
+| After | **0** |
+
+`404 passed` both times, exit 0 — the redirect moved where the children write without changing what
+they do.
+
+**Both families are exported on both platforms**, which is the second criterion. `platformdirs`
+reads `XDG_*` only on POSIX and `WIN_PD_OVERRIDE_*` only on Windows; a conditional would be a
+second thing to keep true, and the inapplicable pair is inert. `T-131` is the round where setting
+one family passed on Linux and failed on the runner.
+
+**What it cannot cover, recorded rather than worked around** — the criterion asks for exactly this:
+
+- **A child given an explicit `env=` inherits nothing.** `tests/ui/test_app_launch.py` builds its
+  own environment and sets these variables itself; that stays correct and is not replaced.
+- **Windows collapses the split.** `platformdirs` resolves config, data and cache from
+  `LOCAL_APPDATA`, so two override variables cannot reproduce the cache/config/data separation
+  POSIX gets. A Windows child gets one root under `windows/`; a wrong write shows there as a wrong
+  *file* rather than a wrong *path*.
+- **Downloads have no POSIX variable.** `user_downloads_dir` comes from `~/.config/user-dirs.dirs`,
+  so a spawned child asking for it is still answered by the real machine. Nothing in `src/` asks a
+  *child* — `app.py` is the only consumer and it runs in the parent.
+
+**Two guards, and one of them was vacuous first.**
+`test_a_spawned_child_resolves_its_directories_inside_the_test` runs a real subprocess, because an
+in-process check would pass against the patching that was already there.
+`test_the_child_environment_and_the_patched_modules_name_the_same_root` pins that the two halves
+agree — a parent and worker disagreeing about where the cache is produces no crash, just two halves
+reading different disks.
+
+**Its first version iterated `_CHILD_ENVIRONMENT` to decide what to assert, so deleting the two
+Windows entries deleted the assertions about them and the mutant passed.** A guard proved against
+itself, which is the same trap as `T235-R1`'s imported expected name. The required variable names
+are now written out literally.
+
+**Three mutations, all killed:** the environment half removed entirely (the original defect), the
+two halves pointed at different roots, and the Windows overrides dropped.
+
+**`ai/TESTING.md` §5's in-process caveat is retired**, which the last criterion gates on it having
+stopped being true. What replaces it is the measurement and the three exclusions above.
+
+---
+
 ## Complete
 
 ### T-234 — The concurrency control leaves the toolbar
@@ -3325,61 +3434,6 @@ block the GUI thread, the pool can drain, and late work does not emit through a 
   intact; no timeout is raised to make the crash disappear
 - Repeated `pytest -n auto tests/unit tests/ui` runs after the correction materially exceed the
   pre-fix sample without another worker loss
-
----
-
-### T-230 — A spawned child still gets the developer's real directories
-
-**Status:** Proposed — filed 2026-08-12 from `T123-R2`'s correction, measured rather than inferred.
-**Owner:** Implementer
-**Priority:** Medium — it is the remaining half of a rule `ai/TESTING.md` §5 states without
-qualification, and the half that is left is the one no in-process fixture can reach
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing. `T123-R2`'s fixture is the in-process half and is built
-**Relevant context:** `tests/user_directories.py`, `tests/conftest.py`, `ai/TESTING.md` §5,
-`tests/ui/test_app_launch.py` (the one place that already does this correctly), `T123-R2`
-**Affected surfaces:** `tests/integration/**`, possibly a shared spawn helper
-**Risk:** Low — the tests pass today; what is wrong is where their children write
-
-#### Scope
-
-`T123-R2` built the autouse redirect that `ai/TESTING.md` §5 always required, and **the parallel
-slice now writes nothing to the real per-user directories: 241 job logs before, 0 after.** A
-monkeypatch lives in one interpreter, so the half it cannot reach is a test that *spawns* a
-process: the child resolves `platformdirs` for itself and gets the developer's real directories.
-
-**Measured 2026-08-12 with sentinel `XDG_*` roots**, same command CI runs:
-
-| Slice | Files left in the real per-user roots |
-|---|---|
-| `tests/unit` + `tests/ui`, `-n auto` | **0** |
-| `tests/integration`, serial | **62**, all `cache/tracksandtrails/jobs/*.log` |
-
-**`tests/ui/test_app_launch.py` already does this right** — it sets `XDG_*` for the application it
-launches, and its own comment explains why. So the shape of the answer exists; what is missing is
-that nine integration files spawn children and only one arranges the child's environment.
-
-**This is not a parallelism hazard and must not be filed as one.** Integration runs serially and
-the logs are uuid-named, so nothing collides. What it is: tests writing to the developer's machine,
-which §5 forbids in terms.
-
-#### Acceptance criteria
-
-- Every spawned child in `tests/integration/` resolves its per-user directories inside the test's
-  own `tmp_path`, **through one shared helper** rather than nine hand-rolled environments
-- **`XDG_*` is not sufficient on its own and the entry says so**: platformdirs consults those only
-  on POSIX, so the helper must carry whatever Windows needs, or record what it cannot cover and
-  which platform is therefore still writing where
-- **Measured the way this entry measures it** — sentinel roots, file count before and after, `0`
-  as the passing number — rather than by reading the code
-- A test fails if a new spawn site skips the helper, or the entry records why that cannot be
-  guarded and what is done instead
-- `ai/TESTING.md` §5's in-process caveat is removed only when it stops being true
-
-#### Out of scope
-
-- The in-process redirect, which is built and proved (`T123-R2`)
-- Making `tests/integration` parallel — `T-228` owns the blocker for that
 
 ---
 

@@ -14,15 +14,43 @@ POSIX, and the Windows job is the one platform this project keeps finding defect
 (`T146-R3`, `T146-R4`). Rebinding the name each module actually calls is the only spelling that
 holds on both.
 
-**What this does not cover, stated rather than implied.** A monkeypatch lives in one interpreter,
-so a test that *spawns* a process — a worker under `spawn`, or `python -m tracks_and_trails` —
-gives that child the real directories unless it passes explicit paths. `tests/ui/test_app_launch.py`
-already does exactly that, by setting `XDG_*` for the child it launches; this module is the
-in-process half and does not replace it.
+**The spawned half, added by `T-230`.** A monkeypatch lives in one interpreter, so a test that
+*spawns* a process — a worker under `spawn`, or `python -m tracks_and_trails` — used to give that
+child the real directories. Measured 2026-08-12 with sentinel roots: `tests/integration` left **62**
+files under the real `user_cache_dir`, all `cache/tracksandtrails/jobs/*.log`, from nine files that
+spawn children.
+
+**A child inherits its parent's environment, so the environment is where that half is fixed** —
+once, here, rather than in nine hand-rolled `env=` dictionaries. `redirect()` therefore sets the
+variables `platformdirs` consults *as well as* patching the module attributes; the two must agree,
+so both point at the same subdirectories of the same root.
+
+**Neither mechanism is sufficient alone, which is the whole reason both are here.** Module patching
+does not cross a process boundary. Environment variables do not reach a consumer that bound the
+function at import — and `platformdirs` reads `XDG_*` only on POSIX, which is why the Windows
+overrides are set too (`T-131` found that the hard way: `XDG_CONFIG_HOME` alone passed on Linux and
+failed on the runner).
+
+**What the environment half still cannot do, stated rather than implied:**
+
+- **A child given an explicit `env=` does not inherit anything.** `tests/ui/test_app_launch.py`
+  builds its own environment and sets these variables itself; that remains correct and is not
+  replaced.
+- **Windows collapses the split.** `platformdirs` resolves config, data and cache from
+  `LOCAL_APPDATA` there, so the two `WIN_PD_OVERRIDE_*` variables cannot reproduce the
+  cache/config/data separation this module gives POSIX. A Windows child gets one root under
+  `windows/`, and a test that writes to the wrong directory is visible there as a wrong *file*
+  rather than a wrong *path*.
+- **Downloads are not covered by an environment variable.** `platformdirs` resolves
+  `user_downloads_dir` from `~/.config/user-dirs.dirs` on POSIX, not from `XDG_DOWNLOAD_DIR`, so a
+  spawned child asking for the downloads directory is still answered by the real machine. Nothing
+  in `src/` asks a *child* for it — `app.py` is the only consumer and it runs in the parent — so
+  this is recorded rather than worked around.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -56,6 +84,24 @@ CONSUMERS: tuple[tuple[str, str], ...] = (
 )
 
 
+#: The environment variables a **spawned child** resolves its directories from, and which
+#: subdirectory of the per-test root each stands for (`T-230`).
+#:
+#: `XDG_*` is the POSIX half. `WIN_PD_OVERRIDE_*` is `platformdirs`' documented escape hatch on
+#: Windows, where folders come from `SHGetKnownFolderPath` through `ctypes` and setting `APPDATA`
+#: does nothing — `T-131` established that, and `tests/ui/test_app_launch.py` has carried the pair
+#: since. Both sets are exported on both platforms: the one that does not apply is inert, and a
+#: conditional here would be a second thing to keep true.
+_CHILD_ENVIRONMENT = {
+    "XDG_CACHE_HOME": "cache",
+    "XDG_CONFIG_HOME": "config",
+    "XDG_DATA_HOME": "data",
+    # One root, because Windows has one. See the module docstring.
+    "WIN_PD_OVERRIDE_APPDATA": "windows",
+    "WIN_PD_OVERRIDE_LOCAL_APPDATA": "windows",
+}
+
+
 def redirect(root: Path) -> Callable[[], None]:
     """Point every per-user directory inside `root`, and return the undo.
 
@@ -74,6 +120,7 @@ def redirect(root: Path) -> Callable[[], None]:
     binds the redirected function rather than the real one.
     """
     saved: list[tuple[object, str, object]] = []
+    saved_environment: list[tuple[str, str | None]] = []
 
     def patch(target: object, name: str, value: object) -> None:
         saved.append((target, name, getattr(target, name)))
@@ -101,8 +148,21 @@ def redirect(root: Path) -> Callable[[], None]:
         if hasattr(module, function_name):
             patch(module, function_name, getattr(platformdirs, function_name))
 
+    # **The spawned half** (`T-230`). A child inherits this, and nothing else in this function
+    # crosses a process boundary. Set after the in-process patching so both halves describe the
+    # same root, and restored by the same `undo` so a test that reads the environment sees exactly
+    # what it saw before.
+    for variable, subdirectory in _CHILD_ENVIRONMENT.items():
+        saved_environment.append((variable, os.environ.get(variable)))
+        os.environ[variable] = str(root / subdirectory)
+
     def undo() -> None:
         for target, name, original in reversed(saved):
             setattr(target, name, original)
+        for variable, original_value in reversed(saved_environment):
+            if original_value is None:
+                os.environ.pop(variable, None)
+            else:
+                os.environ[variable] = original_value
 
     return undo

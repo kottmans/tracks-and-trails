@@ -109,9 +109,18 @@ pytest --cov=tracks_and_trails --cov-report=term-missing
   `src/` with `ast`, so a module that starts importing a `platformdirs` directory fails a test
   instead of silently escaping the redirect.
 
-  **The redirect is in-process only.** A test that *spawns* a process gives the child the real
-  directories unless it passes explicit paths — `tests/ui/test_app_launch.py` sets `XDG_*` for the
-  application it launches, and that half is still the test's own job.
+  **The redirect covers spawned children too, since `T-230`.** It was in-process only, and that
+  half reached the real machine: `tests/integration` left **62** files under the real
+  `user_cache_dir`, all job logs, from nine files that spawn processes. A child inherits its
+  parent's environment, so `redirect()` now exports `XDG_*` **and** `WIN_PD_OVERRIDE_*` as well as
+  patching the module attributes — one place rather than nine `env=` dictionaries. Measured the
+  same way: **62 before, 0 after.**
+
+  **Two things it still does not cover, and both are deliberate.** A child given an explicit `env=`
+  inherits nothing, so `tests/ui/test_app_launch.py` continues to set these itself. And
+  `user_downloads_dir` has no environment variable on POSIX — `platformdirs` reads
+  `~/.config/user-dirs.dirs` — so a spawned child asking for the downloads folder is still answered
+  by the real machine; nothing in `src/` asks a child for it.
 
 ## 6. Mocking policy
 

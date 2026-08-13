@@ -7,6 +7,9 @@ is `tests/user_directories.py`; these are the tests that stop it from quietly st
 from __future__ import annotations
 
 import ast
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import platformdirs
@@ -87,3 +90,88 @@ def test_a_consumer_module_calls_the_redirected_function() -> None:
         f"core.paths.cache_directory() answered {paths.cache_directory()}, outside the per-test "
         "root — its own `user_cache_dir` binding is not redirected"
     )
+
+
+# --- T-230: the half a monkeypatch cannot reach ------------------------------------------------
+
+
+def test_a_spawned_child_resolves_its_directories_inside_the_test(tmp_path: Path) -> None:
+    """**The redirect reaches a process the test spawns**, which patching cannot (`T-230`).
+
+    Measured before this existed: `tests/integration` left **62** files under the real
+    `user_cache_dir`, all job logs, from nine files that spawn children. A child inherits its
+    parent's environment, so one export here covers all nine rather than nine `env=` dictionaries.
+
+    **Asserted through a real child**, because that is the boundary in question — an in-process
+    check would pass against the patching that was already there and prove nothing new. The child
+    imports `platformdirs` for itself, exactly as a spawned worker does.
+
+    The autouse `_per_user_directories` fixture has already run, so the environment under test is
+    the one every test gets; nothing here arranges it.
+    """
+    answer = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import platformdirs, sys; sys.stdout.write(platformdirs.user_cache_dir('x'))",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    resolved = Path(answer.stdout.strip())
+    assert str(resolved).startswith(str(tmp_path)), (
+        f"a spawned child resolved its cache directory to {resolved}, outside this test's "
+        f"{tmp_path}. It is writing to the developer's machine, which ai/TESTING.md §5 forbids"
+    )
+
+
+def test_the_child_environment_and_the_patched_modules_name_the_same_root(tmp_path: Path) -> None:
+    """The two halves must agree, or a child and its parent disagree about where anything is.
+
+    **The failure this prevents is not a crash.** A parent that writes its queue database to one
+    directory while its worker reads a cache from another produces a test that passes and an
+    application whose two halves are looking at different disks. Nothing raises.
+
+    Compared as *paths*, not as strings: `redirect` hands `platformdirs` a function returning
+    `root / subdirectory / appname`, and the environment gets `root / subdirectory`.
+
+    **The variable names are written out here, not read from `_CHILD_ENVIRONMENT`.** The first
+    version of this test iterated that dict, so deleting the two Windows entries deleted the
+    assertions about them and the mutant passed — a guard proved against itself. `platformdirs`
+    consults `XDG_*` only on POSIX and `WIN_PD_OVERRIDE_*` only on Windows, so **both families are
+    required**; `T-131` is the round where setting one of them passed on Linux and failed on the
+    runner.
+    """
+    assert set(user_directories._CHILD_ENVIRONMENT) == {
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "WIN_PD_OVERRIDE_APPDATA",
+        "WIN_PD_OVERRIDE_LOCAL_APPDATA",
+    }, (
+        "the child environment no longer exports both families. platformdirs reads XDG_* only on "
+        "POSIX and WIN_PD_OVERRIDE_* only on Windows, so dropping either leaves that platform's "
+        "spawned children writing to the real machine"
+    )
+
+    for variable, subdirectory in user_directories._CHILD_ENVIRONMENT.items():
+        exported = os.environ.get(variable)
+        assert exported is not None, f"{variable} is not exported, so a child cannot inherit it"
+        assert Path(exported).parent == tmp_path / "platform", (
+            f"{variable} points at {exported}, which is not under this test's redirect root"
+        )
+        assert Path(exported).name == subdirectory
+
+    # The POSIX three are the ones platformdirs reads here; each must match what the in-process
+    # patch answers for the same directory, or the halves have drifted apart.
+    for variable, function in (
+        ("XDG_CACHE_HOME", platformdirs.user_cache_dir),
+        ("XDG_CONFIG_HOME", platformdirs.user_config_dir),
+        ("XDG_DATA_HOME", platformdirs.user_data_dir),
+    ):
+        assert Path(function()) == Path(os.environ[variable]), (
+            f"{variable} and the patched {function.__name__} disagree: "
+            f"{os.environ[variable]} against {function()}"
+        )
