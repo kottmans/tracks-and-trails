@@ -5,6 +5,12 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**CI is green on all five jobs** — run `31657727760` at `fba1ee5`, raised by `workflow_dispatch`
+because the format correction touched only `paths-ignore`d prose. It is the first run in which
+`T-239`'s corrected test executed: `PASSED
+tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected`,
+**2726 passed** unit+UI and **404 passed** integration.
+
 **Last updated:** 2026-08-12 (unattended run) — **three more tasks are In Review**:
 `T-230` (a spawned child now gets the test's own directories — **62 files before, 0 after**),
 `T-220` (the reading: build and spec agree, no amendment needed either way) and `T-229` (the two
