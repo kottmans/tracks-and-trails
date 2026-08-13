@@ -226,6 +226,142 @@ stopped being true. What replaces it is the measurement and the three exclusions
 
 ---
 
+### T-220 — The toolbar and the run control: build and spec disagree
+
+**Status:** **In Review — the reading is done, 2026-08-12, and they agree.** Filed 2026-08-09 from the maintainer-approved UI review's closing note.
+**Half ruled 2026-08-12: option A, the grouped bar.** The maintainer chose it from rendered
+mockups after `UX-013` removed the concurrency control — *"lets go with option A given those
+mockups"*. **The label half is still open.**
+
+#### The order, ruled — option A
+
+`+ Add URLs`, then the spacer, then the run control and `Clear finished`. **Nothing is overturned
+by it**: §2.1's sequence holds, and `UX-005` row 7's separation of *what adds work* from *what acts
+on work already queued* holds with it. The rejected option was packing all three left, which would
+have needed row 7 amended — and the argument for it was that row 7's own example (`Clear finished`
+against the concurrency spinner) disappears with the spinner. **The ruling keeps the principle
+rather than retiring it with its example.**
+
+#### The label, ruled — `Start` / `Stop`
+
+**The spec's wording wins** (2026-08-12, *"lets just do start/stop"*). The run control reads
+`Start` while the queue is stopped and `Stop` while it runs, exactly as §2.1 has said since
+`UX-006`.
+
+**What the build's longer form had going for it, and why it loses:** the toolbar's habit is that a
+verb names the list it acts on, which is what `Clear finished` does. But the status bar already
+carries the noun — *"Queue stopped — 3 waiting"* — and with the concurrency control gone the bar is
+three verbs on a window that is a queue. The noun was earning its width when it sat beside a
+setting; it does not now.
+
+**Unchanged either way** (`UX-006`, `T-181`): one checkable action with two states, opening
+unchecked because the queue opens stopped, with the label following the state rather than naming a
+fixed verb. Only the spelling moved.
+
+**Both halves are now ruled**, so `T-220` is buildable: the label is its own work, and the order it
+confirms is `T-234`'s.
+
+#### What was built, 2026-08-12 — the label half
+
+`_describe_run_action` sets `&Start`/`&Stop`. **The label is the only thing that moved**: the
+status tips, the tooltips and the checkable-with-two-states shape (`UX-006`, `T-181`) are
+untouched, and the accessible description still names the *state* rather than the verb, because a
+screen-reader user who hears only the verb cannot tell whether the queue is running.
+
+**Four assertion sites updated**, found by sweeping rather than by the suite: `test_main_window.py`
+(three), `test_row_verb_wiring.py`'s menu-key probe, and `tests/integration/test_composition.py`
+(two) — the last is in a suite the unit/UI run does not cover, so a grep found it and a green
+`-n auto` would not have.
+
+**Two mutations fail their evidence**: the two states swapped, and the old `Start queue` restored.
+
+**Still owed here:** confirming the built bar against §2.1 once `T-234` removes the spinner. This
+task cannot close until then.
+
+**The blocker is released, 2026-08-12.** `T-234` landed, and the confirmation §2.1 asks for is
+`test_the_toolbar_carries_the_three_verbs_and_the_spacer_and_nothing_else` — every action on the
+bar, anonymous ones included, is `+ Add URLs`, the spacer, the run control, `Clear finished`.
+Which is *three verbs and nothing else*, the sentence `UX-013` wrote into the spec.
+
+**This entry is left `Proposed` rather than closed by the task that unblocked it.** The remaining
+work is a verdict on whether spec and build now agree, and `T-234` is in review itself — a task
+declaring its own follow-on satisfied, before anyone has looked at it, is the shape this
+project's reviews keep finding. What is owed here is now one reading, not one build.
+**Owner:** Implementer, with a Planner edit if the spec side wins
+**Priority:** Low — a two-line reconciliation, in whichever direction
+**Phase:** Phase 4 — polish, not a plan deliverable
+**Depends on:** nothing
+**Relevant context:** `docs/UX_SPEC.md` §2.1 (*"`+ Add URLs` first, as the primary action; the run
+control; `Clear finished`; and the `Concurrent downloads` control"*, and the run control *"reads
+`Start` … and `Stop`"*), `UX-006`, `T-181` (the status-line and tooltip treatment, untouched),
+`ui/main_window.py` (toolbar construction),
+`tests/ui/test_windows_accessibility.py` (names controls by hand — it moves when they do)
+**Affected surfaces:** `ui/main_window.py` and its tests, or `docs/UX_SPEC.md` §2.1
+**Risk:** Low
+
+#### Scope
+
+The built toolbar runs `+ Add URLs`, `Concurrent downloads`, then `Start queue` and
+`Clear finished` at the far right; §2.1 orders Add URLs, run control, Clear finished, concurrency,
+and names the control `Start`/`Stop`. By the spec's own §1, a disagreement is a defect in one of
+the two — this entry does not choose which.
+
+#### Acceptance criteria
+
+- **The toolbar and §2.1 agree**, in whichever direction the maintainer prefers, and the choice is
+  recorded here. If the build wins, the spec amendment is the Planner's edit, the way `UX-010`'s
+  was
+- The run control's label question is settled the same way — `Start`/`Stop` per the spec, or the
+  spec adopts `Start queue`/`Stop queue`
+- `T-181`'s status-bar statement and tooltip treatment are untouched
+- `tests/ui/test_windows_accessibility.py` still names every control, updated if any moved
+
+#### Out of scope
+
+- Adding or removing any toolbar control — nothing here changes membership. *(This read
+  *"`ARC-007`'s concurrency control stays until `T-146` decides its fate"*. `T-146` decided it
+  stayed **pending this ruling**, and this entry excluded membership — so each deferred to the
+  other and neither could act. **`UX-013` ended that on 2026-08-12**: the control leaves, and
+  `T-234` builds it. Waiting for `T-234` collapses most of what this task is choosing between,
+  because the spinner's position was the bulk of the disagreement.)*
+
+#### The reading, 2026-08-12 — build and spec agree
+
+**This task was never a build.** Its two halves were rulings — the label and the order — and both
+were taken: `&Start`/`&Stop` on 2026-08-12, and option A, the grouped bar, from rendered mockups.
+`T-234` then removed the concurrency control that made the order question hard, and `T-235` and
+`T-236` closed behind it. What was left was to look.
+
+**Read off the built window** rather than off the source:
+
+```
+actionAddUrls='&Add URLs...'  →  <spacer>  →  runQueueAction='&Start'  →  clearCompletedAction='&Clear finished'
+```
+
+**`docs/UX_SPEC.md` §2.1** asks for *"`+ Add URLs` first, as the primary action; the **run
+control**; and `Clear finished`. **Three verbs and nothing else.**"*, and the paragraph below it for
+a run control reading `Start` stopped and `Stop` running. **Every clause matches.**
+
+- `+ Add URLs` first and primary — the button's text is its action's `iconText`, `+ Add URLs`,
+  which is what both a user and the Windows accessibility tree see.
+- The run control reads `&Start` stopped. `T-235`'s Windows test observes `Start` and then `Stop`
+  through UI Automation, which is the strongest form this claim has.
+- `Clear finished` last.
+- **Nothing else.** The spacer is furniture rather than a verb — `UX-005` row 7 put it there to
+  divide what *adds* work from what *acts on work already queued* — and
+  `test_the_toolbar_carries_the_three_verbs_and_the_spacer_and_nothing_else` accounts for **every**
+  action on the bar, anonymous ones included, so a fourth thing appearing fails a test rather than
+  waiting for another reading.
+
+**So the disagreement this task was filed for no longer exists, and no amendment is needed in
+either direction.** The spec side was not rewritten to match the build; the build changed under
+`UX-013` until it matched a clause that has stood since the 2026-08-04 amendment.
+
+**Nothing was built here and nothing needed to be**, which is why this entry carries a reading
+rather than a diff. Its evidence is `T-234`'s and `T-235`'s tests, already green.
+
+---
+
 ## Complete
 
 ### T-234 — The concurrency control leaves the toolbar
@@ -4194,105 +4330,6 @@ run is the deliverable; the pass is only what it hopefully shows.
 - **The Windows half.** `OPS-003`: there is no Windows machine, so the run is Linux; the
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
-
-### T-220 — The toolbar and the run control: build and spec disagree
-
-**Status:** Proposed — filed 2026-08-09 from the maintainer-approved UI review's closing note.
-**Half ruled 2026-08-12: option A, the grouped bar.** The maintainer chose it from rendered
-mockups after `UX-013` removed the concurrency control — *"lets go with option A given those
-mockups"*. **The label half is still open.**
-
-#### The order, ruled — option A
-
-`+ Add URLs`, then the spacer, then the run control and `Clear finished`. **Nothing is overturned
-by it**: §2.1's sequence holds, and `UX-005` row 7's separation of *what adds work* from *what acts
-on work already queued* holds with it. The rejected option was packing all three left, which would
-have needed row 7 amended — and the argument for it was that row 7's own example (`Clear finished`
-against the concurrency spinner) disappears with the spinner. **The ruling keeps the principle
-rather than retiring it with its example.**
-
-#### The label, ruled — `Start` / `Stop`
-
-**The spec's wording wins** (2026-08-12, *"lets just do start/stop"*). The run control reads
-`Start` while the queue is stopped and `Stop` while it runs, exactly as §2.1 has said since
-`UX-006`.
-
-**What the build's longer form had going for it, and why it loses:** the toolbar's habit is that a
-verb names the list it acts on, which is what `Clear finished` does. But the status bar already
-carries the noun — *"Queue stopped — 3 waiting"* — and with the concurrency control gone the bar is
-three verbs on a window that is a queue. The noun was earning its width when it sat beside a
-setting; it does not now.
-
-**Unchanged either way** (`UX-006`, `T-181`): one checkable action with two states, opening
-unchecked because the queue opens stopped, with the label following the state rather than naming a
-fixed verb. Only the spelling moved.
-
-**Both halves are now ruled**, so `T-220` is buildable: the label is its own work, and the order it
-confirms is `T-234`'s.
-
-#### What was built, 2026-08-12 — the label half
-
-`_describe_run_action` sets `&Start`/`&Stop`. **The label is the only thing that moved**: the
-status tips, the tooltips and the checkable-with-two-states shape (`UX-006`, `T-181`) are
-untouched, and the accessible description still names the *state* rather than the verb, because a
-screen-reader user who hears only the verb cannot tell whether the queue is running.
-
-**Four assertion sites updated**, found by sweeping rather than by the suite: `test_main_window.py`
-(three), `test_row_verb_wiring.py`'s menu-key probe, and `tests/integration/test_composition.py`
-(two) — the last is in a suite the unit/UI run does not cover, so a grep found it and a green
-`-n auto` would not have.
-
-**Two mutations fail their evidence**: the two states swapped, and the old `Start queue` restored.
-
-**Still owed here:** confirming the built bar against §2.1 once `T-234` removes the spinner. This
-task cannot close until then.
-
-**The blocker is released, 2026-08-12.** `T-234` landed, and the confirmation §2.1 asks for is
-`test_the_toolbar_carries_the_three_verbs_and_the_spacer_and_nothing_else` — every action on the
-bar, anonymous ones included, is `+ Add URLs`, the spacer, the run control, `Clear finished`.
-Which is *three verbs and nothing else*, the sentence `UX-013` wrote into the spec.
-
-**This entry is left `Proposed` rather than closed by the task that unblocked it.** The remaining
-work is a verdict on whether spec and build now agree, and `T-234` is in review itself — a task
-declaring its own follow-on satisfied, before anyone has looked at it, is the shape this
-project's reviews keep finding. What is owed here is now one reading, not one build.
-**Owner:** Implementer, with a Planner edit if the spec side wins
-**Priority:** Low — a two-line reconciliation, in whichever direction
-**Phase:** Phase 4 — polish, not a plan deliverable
-**Depends on:** nothing
-**Relevant context:** `docs/UX_SPEC.md` §2.1 (*"`+ Add URLs` first, as the primary action; the run
-control; `Clear finished`; and the `Concurrent downloads` control"*, and the run control *"reads
-`Start` … and `Stop`"*), `UX-006`, `T-181` (the status-line and tooltip treatment, untouched),
-`ui/main_window.py` (toolbar construction),
-`tests/ui/test_windows_accessibility.py` (names controls by hand — it moves when they do)
-**Affected surfaces:** `ui/main_window.py` and its tests, or `docs/UX_SPEC.md` §2.1
-**Risk:** Low
-
-#### Scope
-
-The built toolbar runs `+ Add URLs`, `Concurrent downloads`, then `Start queue` and
-`Clear finished` at the far right; §2.1 orders Add URLs, run control, Clear finished, concurrency,
-and names the control `Start`/`Stop`. By the spec's own §1, a disagreement is a defect in one of
-the two — this entry does not choose which.
-
-#### Acceptance criteria
-
-- **The toolbar and §2.1 agree**, in whichever direction the maintainer prefers, and the choice is
-  recorded here. If the build wins, the spec amendment is the Planner's edit, the way `UX-010`'s
-  was
-- The run control's label question is settled the same way — `Start`/`Stop` per the spec, or the
-  spec adopts `Start queue`/`Stop queue`
-- `T-181`'s status-bar statement and tooltip treatment are untouched
-- `tests/ui/test_windows_accessibility.py` still names every control, updated if any moved
-
-#### Out of scope
-
-- Adding or removing any toolbar control — nothing here changes membership. *(This read
-  *"`ARC-007`'s concurrency control stays until `T-146` decides its fate"*. `T-146` decided it
-  stayed **pending this ruling**, and this entry excluded membership — so each deferred to the
-  other and neither could act. **`UX-013` ended that on 2026-08-12**: the control leaves, and
-  `T-234` builds it. Waiting for `T-234` collapses most of what this task is choosing between,
-  because the spinner's position was the bulk of the disagreement.)*
 
 ## Proposed — Phase 4.5
 
