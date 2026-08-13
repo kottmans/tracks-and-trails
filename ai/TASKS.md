@@ -119,28 +119,46 @@ this one returned four verdicts before approving.*
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
-**Status:** **In Review — the second round of corrections is built and awaits a verdict,
-2026-08-13.** The focused re-review returned **`T198-R1` and `T198-R4` Resolved**; **`T198-R2` Open
-pending its Windows frozen execution**; **`T198-R3` Open** — the guard checked once and did not
-exclude across the operation; and a new **`T198-R5` Open**, which this line is part of correcting.
+**Status:** **In Review — Changes requested a third time, 2026-08-13. One finding left on the
+product and one on a commit message.** The reviewer **Resolved `T198-R3`** — the full-operation
+exclusion closes the race, probes and automatic retries included — and **Resolved `T198-R5`**.
+**`T198-R1` and `T198-R4` were Resolved in the previous round.** **`T198-R2` remains High and
+Open**, untouched by that boundary and still owed its Windows frozen execution. **`T198-R6` is
+new, Low and blocking**, and is corrected below.
 
-**`T198-R3` and `T198-R5` are corrected here; only the Reviewer resolves them.** `T198-R3` is now a
-hold on the manager, held for the whole install or revert, that no start — including an automatic
-retry — can get past; `T198-R5` is these records saying what is true. **`T198-R2` remains Open and
-nothing about it changed**: its Windows frozen execution is still owed, and this is the head that
-should carry it.
+**`T198-R6` — a prohibited trailer in a commit of mine, caught before it was published.**
+`fb41895` ended with `Co-Authored-By: Claude Opus 5 …`, which `AGENTS.md` §7 and §13 forbid
+outright: **commit history names the human maintainer only.** The commit was amended to
+`3876d0e`, **carrying the identical tree `e26db35`** — so the reviewed code is unchanged and the
+verdict on it stands — and the message now also carries the `Task:`/`Review:` trailers §13
+requires, which it had been missing. **The same rule was broken once before** and that instance,
+`12dff92`, was already on `origin/main` where correcting it would mean rewriting published
+history; this one was caught while it was still local, which is the whole difference between a
+one-line amend and a filed task about a published exception.
 
-**`T198-R5` — I recorded dispositions that are not mine to make.** This entry said all four findings
+**What is owed now is CI, not code.** `T198-R2` needs a green **frozen-windows** job, the
+correction is unpushed only because the reviewer asked that one final head carry it, and this sync
+is that head's second commit.
+
+**`T198-R5` (Medium) — Resolved. I recorded dispositions that were not mine to make.** This entry
+said all four findings
 were *"Resolved"* and that *"the reviewer confirmed"* them, while `T198-R3` was demonstrably still
 open and `T198-R2` had no Windows evidence. **Only the Reviewer resolves a finding.** What an
 implementer may say is *corrected and awaiting a verdict*, and that is what the states below now
 say. The defect is not loose wording: a current-truth file asserting a gate has been cleared, when
 it has not, misstates the gate itself.
 
-**Reviewer dispositions, quoted rather than characterised:** criteria 1, 3, 5 and 6 met at
-`21be6a2`; criterion 2 **met** (`T198-R1` Resolved); criterion 4 **met on Linux, Windows pending**;
-*"stable code tree for active workers"* **not met** (`T198-R3`); *"current-truth review state"*
-**not met** (`T198-R5`).
+**Reviewer dispositions, quoted rather than characterised.** After the third pass: criteria 1, 3, 5
+and 6 met at `21be6a2`; criterion 2 **met** (`T198-R1` Resolved); criterion 4 **met on Linux,
+Windows pending** (`T198-R2` Open); *"stable code tree for active workers"* **met** — `T198-R3`
+**Resolved**, the reviewer's own words being that every worker-start route parks or stops filling
+while the hold is held, *"including probes and retries that become due during the operation"*; and
+*"current-truth review state"* **met** — `T198-R5` **Resolved**. `T198-R6` blocks the push of one
+commit and nothing else.
+
+*(The two lines above previously recorded the second pass, where R3 and R5 were **not met**. They
+are updated rather than annotated because this file is current truth; the round-by-round history
+is `ai/REVIEWS.md`'s.)*
 **Owner:** Implementer
 **Priority:** Medium — `C-002` says sites break constantly, and without this a broken site stays
 broken until the next release of this application
@@ -219,7 +237,8 @@ import — so the child raised `ImportError: cannot import name 'CHANNEL'`, fell
 and **reported the rejection**. `ARCHITECTURE.md` §6's *reported, never silently ignored* is what
 turned a silently wrong test into a visible one. Only the `__version__` line is replaced now.
 
-**`T198-R3` (Medium) — corrected a second time, as an exclusion. Awaiting a verdict.**
+**`T198-R3` (Medium) — Resolved on the third pass. It took two wrong shapes to get to an
+exclusion.**
 
 **A check is not an exclusion, and the re-review was right about both of my attempts.** The first
 argued that the Windows rename failure was the protection — it is not a gate: Python does not keep

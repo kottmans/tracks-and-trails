@@ -5,6 +5,18 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (third verdict) — **`T198-R3` and `T198-R5` are Resolved by the
+reviewer; `T198-R2` stays High and Open; `T198-R6` is new, Low and blocking, and is corrected.**
+The exclusion closes the race *"including probes and retries that become due during the
+operation"*. `T198-R6` is a prohibited `Co-Authored-By` trailer in `fb41895` — `AGENTS.md` §7 and
+§13 forbid naming an AI as author or co-author — **caught before publication, unlike `12dff92`
+which is already on `origin/main`.** The commit is amended to `3876d0e` with the **identical tree
+`e26db35`**, so nothing reviewed changed, and it now carries the `Task:`/`Review:` trailers §13
+requires. **The push follows, because `T198-R2`'s Windows frozen job is the only thing left and
+only a pushed head can run it.**
+
+*(The block below is the second correction and is left as written.)*
+
 **Last updated:** 2026-08-13 (second correction) — **`T198-R3` and `T198-R5` are corrected and
 await a verdict; `T198-R2` is untouched and still Open.** The exclusion moved to where the starts
 are: `DownloadManager` grants a **hold** only over a genuinely quiet queue — `active_job_ids()` now
@@ -138,6 +150,30 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-13 (third verdict): the exclusion is Resolved, and I signed a commit the way I am told not to
+
+**`T198-R3` and `T198-R5` are Resolved by the reviewer**, and the exclusion audit says what the
+correction had to earn: acquisition and every start decision happen on the GUI thread, so there is
+no event-loop gap between the empty-state check and the hold; and while the pool task runs,
+`start`, admission, the timer's fills, `start_queue`, **probes and automatic retries** all meet a
+guard. **`T198-R2` is unchanged and still Open** — that boundary touched neither the frozen probe
+nor its workflow step.
+
+**`T198-R6` is the one to record against myself, and it is a repeat.** `fb41895` ended with
+`Co-Authored-By: Claude Opus 5 …`. `AGENTS.md` §7 and §13 do not qualify this: **commit history
+names the human maintainer only**, no AI co-author trailers, no *generated with* footers. The same
+rule was broken once before in `12dff92`, which is on `origin/main` — where correcting it would
+mean rewriting published history, so it stands as a documented exception with a task about it.
+**The difference this time is only that the reviewer caught it before the push**, which turned the
+identical mistake from a filed task into an amend. The replacement is `3876d0e` and its tree is
+`e26db35`, byte-identical to the reviewed one; the message also gained the `Task:` and `Review:`
+trailers §13 requires and which it had been missing.
+
+**What this cost is worth naming: nothing, this time — and that is luck rather than process.**
+The rule is in `AGENTS.md`, the previous violation is written up in `ai/TASKS.md`, and I wrote the
+trailer anyway because it is my tooling's default. A rule that is only enforced by a reviewer's
+eye is one commit away from being published again.
 
 ## 2026-08-13 (second correction): the exclusion moved to where the starts are
 

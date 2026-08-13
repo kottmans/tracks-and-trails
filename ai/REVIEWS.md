@@ -15916,3 +15916,62 @@ authorization.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow, dependency, commit,
 push, handoff, roadmap, or other remote state was changed.
+
+## 2026-08-13 — T-198 exclusion correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction boundary:** `c758b2d..fb41895` — one commit. `90ee6f0`, T-201, and the earlier
+T-198 corrections are excluded except where their recorded finding states provide context.
+**Platforms verified:** Linux static and focused integration verification. The frozen workflow is
+unchanged in this boundary and remains unexecuted on Windows.
+**Verdict:** **Changes requested.** `T198-R3` and `T198-R5` are Resolved. `T198-R2` remains Open
+pending the required Windows frozen execution. One new pre-push metadata finding, `T198-R6`, must
+be corrected before this head is pushed.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused result |
+|---|---|---:|---|
+| **T198-R2** | **High** | **Yes** | **Still Open and untouched.** This boundary changes neither the frozen probe nor its workflow step. Linux evidence from the preceding pass stands; the required Windows frozen execution still needs CI. |
+| **T198-R3** | **Medium** | **Resolved** | `DownloadManager` now grants a non-reentrant hold only when sessions, reservations, waiting jobs, and scheduled retries are all absent. Every worker-start route parks or stops filling while held, including probes and retries that become due during the operation. `YtdlpService` acquires the hold before scheduling install/revert work and releases it on both success and failure; composition passes the manager itself. The composed regression deterministically presses Start while an install is blocked mid-flight, proves no worker spawns, and proves the parked download begins after release. The changed manager, service, and composition integration files pass independently. |
+| **T198-R5** | **Medium** | **Resolved** | At the reviewed head, `ai/TASKS.md` and `ai/STATUS.md` distinguish the Reviewer's resolved R1/R4 dispositions from the Implementer's corrected-and-awaiting-verdict state for R3/R5, and preserve R2 as Open pending Windows. They no longer claim an unissued reviewer disposition. |
+| **T198-R6** | **Low** | **Yes** | Commit `fb41895` ends with `Co-Authored-By: Claude Opus 5 (1M context)`, directly violating `AGENTS.md` §§7 and 13: AI tools must not be named as commit authors or co-authors. This is Low by shipped consequence but blocks this exact commit because it is an explicit repository hard rule. **Amend or replace the unpushed commit to remove the trailer; do not push `fb41895`.** The replacement may retain the identical tree, and the final R2 verification need only confirm that tree identity plus the corrected metadata before reading CI. |
+
+### Exclusion audit
+
+The hold closes the interval the preceding correction left open. Acquisition and every manager
+start decision occur on the GUI thread, so the empty-state check and setting the hold have no event
+loop gap between them. While the pool task runs, public `start`, admission, timer/slot fills,
+`start_queue`, probes, and automatic retries all meet a hold guard. The service releases before
+emitting the terminal result, so connected UI work sees the manager available again; a failed task
+uses the same release path. A busy second operation is rejected before acquisition and therefore
+cannot release the first operation's hold. Version refresh remains read-only and does not acquire
+or require the hold.
+
+The disclosed surviving `_start_when_free` mutation is not an uncovered behavior: removing that
+guard alone falls through to the separately guarded public `start` path. Removing the
+load-bearing `start` guard is caught, and removing both is caught. The duplicate guards protect
+distinct entry points while producing the same parked outcome.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and tracked state before reviewer record | **Passed:** local `main` at unpushed `fb41895`, five commits ahead of `origin/main`; tracked tree clean; ignored handoff outside the boundary. `git diff --check c758b2d..fb41895` passed. |
+| Static gates | **Passed:** `ruff check .`; `ruff format --check .` (**177 files**); `mypy src` (**55 source files**); bare `mypy` (**139 source/test files**); `mypy --platform win32 src` (**55 source files**). |
+| Changed integration surfaces | **238 passed** in `test_ytdlp_service.py`, `test_composition.py`, and `test_manager.py`, including the composed mid-install Start race and the manager/service lifetime regressions. |
+| Sandbox qualification | The first integration invocation produced **219 passes and 19 failures**, all at the same denied `socket(AF_INET)` setup used by localhost media fixtures. The permission-correct rerun passed all **238** tests; none of the initial failures reached product assertions. |
+| Start-path inspection | **Passed:** direct callers of `_start_or_report` are behind `_fill_free_slots` or `_start_when_free`, and `start` itself applies the hold. `active_job_ids()` includes `_retry_at`, matching the future-work state already included by `is_idle`. |
+| Commit provenance policy | **Failed — `T198-R6`.** `git show --format=fuller --no-patch fb41895` confirms the prohibited AI co-author trailer. |
+| Windows frozen update probe | **Not run.** Nothing has been pushed; `T198-R2` remains Open without inference from Linux. |
+
+### Next boundary
+
+Do not push `fb41895`. Remove the AI co-author trailer while preserving the reviewed tree, update
+the current-truth R3/R5 dispositions, then push the replacement head so both frozen jobs execute.
+The next focused pass is limited to `T198-R2`, the mechanical `T198-R6` correction/tree-identity
+check, and the disposition sync; the resolved exclusion does not need another code audit absent a
+tree change.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow, dependency, commit,
+push, handoff, roadmap, or other remote state was changed.
