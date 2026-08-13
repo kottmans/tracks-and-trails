@@ -26,9 +26,14 @@ skipped the sweep.
 **And then I reddened the job again myself.** The commit carrying that fix failed CI's **Format
 check** — not a test. `ci.yml` runs `ruff format --check .`, which formats Python **inside markdown
 code blocks**, and I had been running it over `src tests` all session; the snippet above had
-aligned inline comments. Format runs before Types and Tests, so **the test fix went unvalidated**
-in that run, and the correction touched only `ai/TASKS.md`, which is in `paths-ignore` — so a run
-had to be dispatched by hand rather than pushed.
+aligned inline comments.
+
+**It cost more than a re-push, and the expensive part is the Windows half.** Format runs before
+everything, so on `linux` the Types and Tests steps were skipped, and on `windows desktop` the **Qt
+baseline and Full suite** were skipped — the workflow's own header calls Windows evidence *"the
+scarce resource"*, and that run produced none. The test fix in the same commit therefore went
+**unvalidated on both platforms**. The correction touched only `ai/TASKS.md`, which is in
+`paths-ignore`, so no push could re-trigger it and a run had to be **dispatched by hand**.
 
 **Forced and confirmed:** a 0.3 s sleep between those statements fails the test 3 of 3 with the
 same message and the full 30-second timeout. The test now waits on `cache_generation` advancing,
