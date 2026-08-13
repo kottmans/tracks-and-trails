@@ -5,7 +5,16 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-13 — **`T-198` is In Review**, built in an authorized unattended run and
+**Last updated:** 2026-08-13 (review round one) — **`T-198` came back Changes requested with four
+findings, and three are corrected.** `T198-R1` (criterion 2 proved only a version query, and the
+synthetic wheel had no `YoutubeDL`), `T198-R3` (an update could replace a running worker's package
+tree) and `T198-R4` (the integration count is **415**, not 414) are **Resolved**. **`T198-R2` is
+open and is the only thing left**: neither frozen job performs install → resolve → revert, so
+criterion 4 is unmet rather than owed. **Corrections are committed and held; nothing is pushed.**
+
+*(The block below described the submission and is left as written.)*
+
+**Last updated:** 2026-08-13 — **`T-198` was In Review**, built in an authorized unattended run and
 **held unpushed**: yt-dlp's version is reported from a child's real import, an update installs a
 verified wheel into the directory workers already resolve, and reverting restores the baseline.
 **Five of its six criteria are met; the fourth is partly owed to CI**, because no frozen or Windows
@@ -147,6 +156,43 @@ product choice the entry does not take.
 `tests/unit` + `tests/ui` **2773 passed, 18 skipped**; `tests/integration` **414 passed**. Exit
 codes checked rather than summary lines read. **Nineteen mutations fail their evidence** — nine
 against the installer, nine against the screen and the wiring, one against composition.
+
+## 2026-08-13 (review round one): T-198's three corrections, and the one still open
+
+**The verdict was Changes requested and every finding was right.** `ai/REVIEWS.md` holds the record.
+Criteria 1, 3, 5 and 6 were confirmed at `21be6a2`.
+
+**`T198-R1` is the one worth recording against myself.** My criterion-2 evidence called
+`resolve_in_a_child` — which this task's *own docstrings* call a query with no session and no
+download — so it proved the reported version changed and nothing about the download that followed.
+That is the half the criterion exists for, and the entry itself names ignoring the update as the
+worst outcome available. **The synthetic wheel could not have run a download at all**: no
+`YoutubeDL`. A real download through the composed application now runs on a wheel built from the
+real yt-dlp with its version stamped.
+
+**And the first version of that fixture was broken, which the product caught.** Rewriting
+`version.py` wholesale dropped `CHANNEL`, so the child raised `ImportError`, fell back to the
+baseline and **reported the rejection** — `ARCHITECTURE.md` §6's *reported, never silently ignored*
+turning a silently-wrong test into a visible one. Only the version line is replaced now.
+
+**`T198-R3`: my reasoning was wrong in the way the finding says.** I had treated the Windows rename
+failure as the protection. It is not a gate — Python does not keep every imported source file open,
+and **the POSIX path succeeds by design**, so a running worker's later lazy imports come from
+whatever now sits at that path. Install and revert are refused while any worker could still use the
+tree, from `manager.active_job_ids`, re-read at each press. A version check is never refused:
+reading is not writing.
+
+**`T198-R4`: the count was 415.** I measured it before adding the last composition regression and
+never re-measured — a number true of an earlier tree, reported of this one.
+
+**Figures for the corrections:** ruff, format and all three mypy gates clean; `tests/unit` +
+`tests/ui` **2826 passed, 18 skipped**; `tests/integration` **420 passed**, exit codes checked.
+
+**`T198-R2` is open and criterion 4 is unmet, not owed.** Neither frozen job installs, resolves an
+installed copy in a spawned child, or reverts; `ai/TESTING.md`'s release-gate item 10 names the
+sequence independently. It needs a frozen probe doing download → extract → resolve → revert and a
+step invoking it in **both** frozen jobs. **Not attempted this session**, rather than attempted and
+abandoned.
 
 ## 2026-08-13 (second): T-201's words, and the two criteria left untouched
 

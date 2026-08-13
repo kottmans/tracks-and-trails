@@ -15794,3 +15794,64 @@ runner-red/local-green event.
 Complete and apply `T239-R1`'s narrower account of what the format failure prevented. The Reviewer
 changed only `ai/REVIEWS.md` and approved task/follow-up records in `ai/TASKS.md`; no reviewed
 source, test, workflow, dependency, commit, push, roadmap, or other remote state was changed.
+
+## 2026-08-13 — T-198 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-198`
+**Review boundary:** `1ac170b..21be6a2` — one commit and one task. Current `main` head
+`90ee6f0` and all of `T-201` are explicitly excluded.
+**Platforms verified:** Linux static/full-suite verification and a Linux frozen build at exact
+T-198 head `21be6a2`; GitHub Actions run `31707939680` at later head `90ee6f0` succeeded on all five
+jobs, including the full Windows suite and both frozen builds. Neither frozen job exercises the
+T-198 update path.
+**Verdict:** **Changes requested.** Criteria 1, 3, 5, and 6 are substantiated. Criterion 2 does
+not prove that a download after updating uses the installed copy, criterion 4 has no frozen
+update/revert execution, and a successful update or revert can replace files underneath a running
+download.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding and required correction |
+|---|---|---:|---|
+| **T198-R1** | **High** | **Yes** | Criterion 2 requires both a changed reported version **and a download afterwards running on the new copy**, through the worker. `test_installing_then_reverting_moves_the_reported_version_and_moves_it_back` only calls `resolve_in_a_child`; that target is explicitly a query with no session or download. Its synthetic wheel contains only `yt_dlp/__init__.py` and `version.py`, not even the `YoutubeDL` surface a session invokes. The test therefore passes if a real download ignores the update or cannot run with it. **Exercise a spawned download session after installation with an installed test package (or controlled real package) whose download path proves that copy ran.** |
+| **T198-R2** | **High** | **Yes** | Criterion 4 is unmet, as the submission acknowledges. The `frozen` workflow builds the artifact, probes its bundled baseline/extractors and database, then runs the generic spawn smoke; it never invokes `install_latest`, resolves an installed copy in a spawned child, or reverts it. Green Linux and Windows frozen jobs therefore do not prove the criterion, and `ai/TESTING.md` release-gate item 10 independently names the missing sequence: download, extract, resolve the new version, revert. **Add and run the frozen end-to-end probe on Linux and Windows; a build/smoke result alone is not the requested CI proof.** |
+| **T198-R3** | **Medium** | **Yes** | The update service has no knowledge of active manager sessions. Composition gives the service and manager the same mutable directory, while `_swap_into_place` renames/replaces it and `revert_to_baseline` renames/deletes it. An already-running worker using a user-managed copy can consequently resolve later lazy imports from the replacement version, or from a path the revert removed, producing a mixed-version failure. A Windows rename failure is not a gate: Python does not keep every imported source file or containing directory open, and the POSIX path succeeds by design. **Prevent install/revert while any worker can still use that tree, or adopt an immutable/versioned-directory scheme that keeps each active worker's copy intact.** |
+| **T198-R4** | **Low** | **No** | The task, STATUS, and handoff record **414 integration tests passed**, but the exact `21be6a2` tree collects and passes **415**. The green claim is independently restored below, so this is a count/provenance correction rather than a gate failure. **Correct the current-truth count when synchronizing the review verdict.** |
+
+### Acceptance results
+
+| Criterion | Reviewer result |
+|---|---|
+| 1. UI reports the version a worker imports | **Met.** The Settings field receives only a `Resolution` emitted after the spawned query calls the worker's `_import_ytdlp`; the baseline and user-managed paths are independently covered. |
+| 2. Update changes the report and the next download uses it | **Not met — `T198-R1`.** The report changes, but no download session follows. |
+| 3. Revert restores the baseline and its report | **Met in the source build.** The integrated install/revert test takes three readings from separate spawned children. Frozen coverage remains criterion 4. |
+| 4. Same behavior in the frozen artifact, including Windows CI proof | **Not met — `T198-R2`.** A review-only Linux probe narrows the risk by proving an external user copy wins resolution in the frozen parent, but it does not exercise the in-app updater, spawned resolver, download, or revert. |
+| 5. Failed update preserves and reports the working version | **Met for the driven failure classes.** The tests preserve a prior-tree sentinel across index, download, checksum, extraction, final-rename, and restore failures; user-facing failures are emitted through the service. |
+| 6. No token, credentialed index URL, or path reaches logs | **Met.** The raised-message sweep and resolution-field checks cover the new values; review found no logging of update inputs or exceptions. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and worktree before reviewer records | **Passed.** `git diff --check 1ac170b..21be6a2` is clean; tracked state was clean at `90ee6f0`, with the ignored handoff outside the review boundary. |
+| Exact-head isolation | **Passed.** `21be6a2` was exported to an isolated directory and all local commands resolved `tracks_and_trails` from that export; `90ee6f0`'s T-201 source/tests were not executed as reviewed changes. |
+| Static gates | **Passed:** `ruff check .`; `ruff format --check .` (**174 files already formatted**); `mypy src` (**53 source files**); bare `mypy --platform win32` (**136 source/test files**). |
+| Unit/UI suite | **Covered:** the isolated full run produced **2772 passed, 18 skipped** plus one existing loopback-socket test denied by the review sandbox; that exact test passed on its permission-correct rerun, giving **2773 passed, 18 skipped** across the two runs. |
+| Integration suite | **415 passed** in a permission-correct serial run at exact T-198 head. The initial sandboxed run's 49 local-socket/process failures were discarded as environment denials. |
+| Frozen Linux build | **Built successfully** at exact `21be6a2` with PyInstaller 6.22. With an isolated user-data root containing version `3000.1.1`, the artifact's probe reported that version from `user-managed copy (OPS-002)`; its intentional nonzero exit was the baseline-pin assertion rejecting the override. This proves precedence in the frozen parent, not criterion 4's workflow. |
+| Submitted GitHub Actions | **Run `31707939680` succeeded on all five jobs** at later head `90ee6f0`, including the full Windows suite and both frozen builds. The two frozen job definitions contain no update/revert step, so their success does not resolve `T198-R2`. |
+
+### Declared gaps and final synchronization
+
+The absent progress bar is not a finding: the task does not require byte progress, the operation is
+off the GUI thread, and the screen exposes a busy state. The disclosed live-download gap is
+`T198-R3`; whether the UI disables the buttons is a product choice, but keeping a running worker's
+code tree stable is a correctness requirement and cannot be left to platform rename behavior.
+
+T-198 remains In Review with three blocking findings. The focused correction should prove the
+post-update download, add the two-platform frozen update/revert gate, and close the active-worker
+race as one correction batch. `ai/TASKS.md` and `ai/STATUS.md` remain Implementer-owned and were not
+edited; both need the Changes requested verdict, the corrected integration count, and the finding
+states synchronized. The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow,
+dependency, commit, push, handoff, roadmap, or other remote state was changed.

@@ -119,9 +119,10 @@ this one returned four verdicts before approving.*
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
-**Status:** **In Review — built 2026-08-13**, in an authorized unattended run. Five of the six
-acceptance criteria are met and proved; **the fourth is partly owed to CI** and is stated as such
-below rather than claimed. Held unpushed on the maintainer's instruction.
+**Status:** **In Review — Changes requested 2026-08-13**, then corrected the same day.
+**`T198-R1`, `T198-R3` and `T198-R4` are Resolved; `T198-R2` is open and is the one thing left.**
+The reviewer confirmed criteria 1, 3, 5 and 6 at `21be6a2`; criterion 2 is now met by a real
+download, and criterion 4 still has no frozen update/revert execution.
 **Owner:** Implementer
 **Priority:** Medium — `C-002` says sites break constantly, and without this a broken site stays
 broken until the next release of this application
@@ -177,6 +178,58 @@ like it worked.
   `C-002` calls the volatile one needs its own decision
 - Updating **ffmpeg** — `T-199` owns ffmpeg, and `REQ-024` asks for detection and an override, not
   an installer
+
+#### Review round one — three findings corrected, one open
+
+**`T198-R1` (High) — Resolved. My criterion-2 evidence proved only half the criterion.**
+`test_installing_then_reverting_moves_the_reported_version_and_moves_it_back` called
+`resolve_in_a_child`, which this task's own docstrings call *a query with no session and no
+download* — so it would have passed if a real download ignored the update entirely, which is the
+failure this entry calls the worst available. **And the synthetic wheel could not have run one**: it
+held `__init__.py` and `version.py` and no `YoutubeDL` at all.
+
+`test_a_download_after_an_update_runs_on_the_installed_copy` now installs through the real updater
+and runs a **real download through the composed application**, whose workers are spawned children.
+The wheel is built from the *real* installed yt-dlp with its version stamped, so it genuinely
+downloads and the stamp identifies which copy ran; the job must reach `COMPLETED` with a file on
+disk, every `ResolutionReport` must carry the stamped version from a user-managed source, and none
+may carry a rejection.
+
+**The first version of that fixture was broken, and the product is what caught it.** Rewriting
+`version.py` wholesale dropped `CHANNEL`, `ORIGIN` and `UPDATE_HINT`, which yt-dlp's own modules
+import — so the child raised `ImportError: cannot import name 'CHANNEL'`, fell back to the baseline
+and **reported the rejection**. `ARCHITECTURE.md` §6's *reported, never silently ignored* is what
+turned a silently wrong test into a visible one. Only the `__version__` line is replaced now.
+
+**`T198-R3` (Medium) — Resolved, and my original reasoning was wrong in the way the finding says.**
+I had argued the Windows rename failure was the protection. It is not a gate: Python does not keep
+every imported source file open, and **the POSIX path succeeds by design** — so a worker that has
+already imported `yt_dlp` resolves its *later* lazy imports, and yt-dlp loads extractors on demand,
+from whatever now sits at that path. A revert makes that a missing import rather than a mixed one.
+
+`YtdlpService` now takes a `workers_active` predicate and **refuses install and revert while any
+worker could still use the tree**, re-reading it at each press rather than caching. Composition
+supplies `manager.active_job_ids` — running, reserved *and* waiting, which is the full set that
+could still start a child. **A version check is never refused**: reading is not writing, and
+`REQ-025` promises the version is always shown. Four regressions, including one that the guard is
+re-read rather than cached.
+
+**`T198-R4` (Low) — Resolved.** The count was **415**, not 414. The figure was measured before the
+last composition regression was added and never re-measured — a number that was true of an earlier
+tree, reported of this one. Corrected here and in `ai/STATUS.md`.
+
+**Figures for the corrections**, exit codes checked rather than summary lines read: `ruff check`,
+`ruff format --check .` and all three `mypy` gates clean; `tests/unit` + `tests/ui` **2826 passed,
+18 skipped**; `tests/integration` **420 passed**. *(420 rather than 415 because this round adds the
+post-update download and the four guard regressions.)*
+
+**`T198-R2` (High) — OPEN. Criterion 4 is still unmet and nothing here changes that.** The frozen
+workflow builds the artifact, probes its bundled baseline and runs the generic spawn smoke; it
+never installs, resolves an installed copy in a spawned child, or reverts. `ai/TESTING.md`'s
+release-gate item 10 names the missing sequence independently. **What it needs:** a frozen probe
+performing download → extract → resolve-in-a-child → revert, and a step invoking it in **both**
+frozen CI jobs, so Linux and Windows each execute it. Not built — it was not attempted rather than
+attempted and abandoned, and a build/smoke result is not the proof the criterion asks for.
 
 #### What was built — 2026-08-13
 
@@ -238,16 +291,17 @@ are equal; removing the manager's argument fails it.
 | # | Criterion | State |
 |---|---|---|
 | 1 | Version reported in the UI, read from the running environment | **Met** — a spawned child's import, asserted against the real baseline |
-| 2 | Updating changes the reported version, proved through the worker | **Met** — install, then a fresh child reports the installed version |
+| 2 | Updating changes the reported version, proved through the worker | **Met after `T198-R1`** — install through the real updater, then a **real download** through spawned workers reporting the stamped version |
 | 3 | Reverting restores the baseline | **Met** — the same test's third reading |
-| 4 | Works the same in the frozen artifact, or says why not | **Partly owed to CI.** The mechanism is identical by construction — the same user directory, resolved by the same `ytdlp_candidates` — and that reasoning is recorded above. **No frozen or Windows execution has happened**, and `OPS-003` means the Windows half needs a CI proof, not a Linux one |
+| 4 | Works the same in the frozen artifact, or says why not | **Not met — `T198-R2` is open.** The reviewer's Linux frozen build confirmed an external user copy wins resolution in the frozen *parent*, which narrows the risk; it exercises neither the updater, the spawned resolver, a download nor a revert |
 | 5 | A failed update leaves the working version in place and reports | **Met** — eight failure modes, each asserting the previous copy survives |
 | 6 | Nothing leaks a token, an index URL or a path into a log | **Met** — every raisable failure swept in one test, plus the resolution fields |
 
 **Gates, exit codes checked rather than summary lines read:** `ruff check` and `ruff format --check
 .` clean over the whole tree — **including markdown**, which is `T-239`'s lesson; `mypy src`, bare
 `mypy` (136 files) and `mypy --platform win32 src` all clean. `tests/unit` + `tests/ui`
-**2773 passed, 18 skipped**; `tests/integration` **414 passed**. **Nineteen mutations fail their
+**2773 passed, 18 skipped**; `tests/integration` **415 passed** *(recorded as 414 at submission —
+`T198-R4`)*. **Nineteen mutations fail their
 evidence** — nine against the installer, nine against the screen and the wiring, one against
 composition's directory.
 

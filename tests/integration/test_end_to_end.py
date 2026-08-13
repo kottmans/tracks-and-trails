@@ -26,13 +26,17 @@ that has only ever been driven by a graceful exit is recovery nobody has tested.
 
 import contextlib
 import functools
+import hashlib
+import io
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
 import threading
 import time
+import zipfile
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -2102,3 +2106,136 @@ def test_an_orderly_close_and_reopen_continues_the_download(
     finally:
         second.shutdown.begin()
         assert spin(lambda: second.shutdown.finished, timeout=120)
+
+
+def _stamped_ytdlp_wheel(version: str) -> bytes:
+    """A wheel built from the **real** installed yt-dlp, with its version stamped.
+
+    `T198-R1` asks for an installed package *"whose download path proves that copy ran"*. A
+    synthetic one cannot: the earlier fixture held only `__init__.py` and `version.py`, so it had
+    no `YoutubeDL` for a session to invoke and the test would have passed whether or not a real
+    download could use the update at all.
+
+    So this is the real tree with one file rewritten — it genuinely downloads, and the stamp is
+    what identifies which copy did it.
+    """
+    import yt_dlp
+
+    root = Path(yt_dlp.__file__).resolve().parent
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or "__pycache__" in path.parts:
+                continue
+            name = f"yt_dlp/{path.relative_to(root).as_posix()}"
+            if name == "yt_dlp/version.py":
+                # **Only the one line is replaced.** Rewriting the whole file wholesale was the
+                # first attempt and it produced a *broken* copy: real `version.py` also defines
+                # `CHANNEL`, `ORIGIN` and `UPDATE_HINT`, which yt-dlp's own modules import, so the
+                # child raised `ImportError: cannot import name 'CHANNEL'`, fell back to the
+                # baseline, and reported the rejection. The fallback behaving correctly is what
+                # made the fixture's mistake visible rather than silent.
+                original = path.read_text(encoding="utf-8")
+                archive.writestr(
+                    name,
+                    re.sub(
+                        r"^__version__ = .*$",
+                        f"__version__ = {version!r}",
+                        original,
+                        count=1,
+                        flags=re.MULTILINE,
+                    ),
+                )
+                continue
+            archive.write(path, name)
+        archive.writestr(f"yt_dlp-{version}.dist-info/METADATA", f"Version: {version}\n")
+    return buffer.getvalue()
+
+
+def test_a_download_after_an_update_runs_on_the_installed_copy(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    hls_media_url: Callable[[], str],
+) -> None:
+    """**`T198-R1`: criterion 2's second half — the download, not only the report.**
+
+    The submitted evidence proved that `resolve_in_a_child` reported a new version, and that target
+    is *explicitly a query with no session and no download*. It would have passed if a real
+    download ignored the update entirely — which is the failure `T-198` itself calls the worst
+    available, because it looks like it worked.
+
+    So this installs through the real updater and then runs a **real download through the composed
+    application**, whose workers are spawned children. The stamped version is what proves which
+    copy ran: it comes back on the `ResolutionReport` the session emits, and the job completes.
+    """
+    from tracks_and_trails.downloader.environment import user_ytdlp_directory
+    from tracks_and_trails.downloader.protocol import ResolutionReport
+    from tracks_and_trails.downloader.ytdlp_update import PYPI_INDEX, install_latest
+
+    stamped = "3000.1.1"
+    payload = _stamped_ytdlp_wheel(stamped)
+    url_of_wheel = f"https://files.pythonhosted.org/yt_dlp-{stamped}-py3-none-any.whl"
+    document = {
+        "info": {"version": stamped},
+        "urls": [
+            {
+                "packagetype": "bdist_wheel",
+                "filename": f"yt_dlp-{stamped}-py3-none-any.whl",
+                "url": url_of_wheel,
+                "digests": {"sha256": hashlib.sha256(payload).hexdigest()},
+            }
+        ],
+    }
+    responses = {PYPI_INDEX: json.dumps(document).encode(), url_of_wheel: payload}
+
+    @contextlib.contextmanager
+    def opener(requested: str) -> Iterator[io.BytesIO]:
+        yield io.BytesIO(responses[requested])
+
+    # The per-test data root (`T-230`) is what makes this safe: `user_ytdlp_directory()` resolves
+    # under this test's own roots, and it is the directory composition hands to both the manager
+    # and the update service.
+    directory = user_ytdlp_directory()
+    installed = install_latest(directory, opener)
+    assert installed.version == stamped
+
+    downloads = tmp_path / "downloads"
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=downloads,
+        geometry_file=tmp_path / "window.toml",
+        settings_file=tmp_path / "settings.toml",
+    )
+    resolutions: list[ResolutionReport] = []
+    composition.manager.resolution_reported.connect(resolutions.append)
+    composition.manager.start_queue()
+    try:
+        job_id = queue_one(composition, hls_media_url())
+
+        assert spin(
+            lambda: (
+                (stored := composition.store.get(job_id)) is not None
+                and stored.status is JobStatus.COMPLETED
+            ),
+            timeout=300,
+        ), f"the download never completed on the installed copy — {why(composition, job_id)}"
+
+        stored = composition.store.get(job_id)
+        assert stored is not None and stored.output_path is not None
+        assert Path(stored.output_path).is_file(), "the job completed without producing a file"
+
+        assert resolutions, "no worker reported which yt-dlp it resolved"
+        assert all(not report.rejected for report in resolutions), (
+            "the installed copy was rejected and the baseline ran instead: "
+            f"{[report.rejected for report in resolutions]}"
+        )
+        assert all(report.ytdlp_version == stamped for report in resolutions), (
+            "a session ran on a yt-dlp that was not the installed copy: "
+            f"{sorted({report.ytdlp_version for report in resolutions})}"
+        )
+        assert all("user-managed" in report.ytdlp_source for report in resolutions)
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=120)

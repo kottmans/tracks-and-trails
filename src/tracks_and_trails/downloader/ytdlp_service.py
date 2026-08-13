@@ -235,9 +235,25 @@ class YtdlpService(QObject):
         parent: QObject | None = None,
         *,
         entry_point: Callable[..., Any] | None = None,
+        workers_active: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__(parent)
         self._directory = user_ytdlp_directory() if directory is None else directory
+        #: Whether any worker could still be importing from the tree this writes (`T198-R3`).
+        #:
+        #: **Keeping a running worker's code tree stable is a correctness requirement**, and it
+        #: cannot be left to platform rename behaviour: on POSIX the rename succeeds by design, so
+        #: a worker that has already imported `yt_dlp` resolves its *later* lazy imports — yt-dlp
+        #: loads extractors on demand — from whatever now sits at that path. That is a
+        #: mixed-version import, and a revert makes it a missing one.
+        #:
+        #: The first version of this reasoned from `_swap_into_place` failing on Windows when the
+        #: directory is held open. That is not a gate: Python does not keep every imported source
+        #: file open, and the POSIX path never fails at all.
+        #:
+        #: Injected rather than read from a manager reference, so this class keeps knowing nothing
+        #: about queues; composition supplies `manager.active_job_ids`.
+        self._workers_active = workers_active
         #: The child a version query runs, injected for the reason `compose`'s is (`T-037`): the
         #: real one imports yt-dlp, so without this seam the pool path — the signals, the busy
         #: state, and the task's own lifetime — has no test that does not take seconds and a real
@@ -270,6 +286,20 @@ class YtdlpService(QObject):
     def _resolve(self) -> Resolution:
         return resolve_in_a_child(self._directory, entry_point=self._entry_point)
 
+    def _refuse_while_workers_run(self) -> bool:
+        """Whether a tree-changing operation must be declined right now (`T198-R3`).
+
+        Reads the predicate every time rather than caching: a queue that was idle when the screen
+        opened is not a queue that is idle when the button is pressed.
+        """
+        if self._workers_active is None or not self._workers_active():
+            return False
+        self.failed.emit(
+            "Downloads are running, and changing yt-dlp underneath them would break them. "
+            "Stop the queue and try again."
+        )
+        return True
+
     def install_latest_version(self) -> None:
         """Install the newest yt-dlp wheel, then re-ask a child what is now in use.
 
@@ -283,6 +313,8 @@ class YtdlpService(QObject):
             sink.installed.emit(release)
             sink.resolved.emit(self._resolve())
 
+        if self._refuse_while_workers_run():
+            return
         self._run(work)
 
     def revert(self) -> None:
@@ -293,6 +325,8 @@ class YtdlpService(QObject):
             sink.reverted.emit(removed)
             sink.resolved.emit(self._resolve())
 
+        if self._refuse_while_workers_run():
+            return
         self._run(work)
 
     def _run(self, work: Callable[[_Sink], None]) -> None:

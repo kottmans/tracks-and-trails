@@ -280,3 +280,97 @@ def test_a_second_operation_is_refused_while_one_is_running(qapp: Any, tmp_path:
     assert finished, (
         "the first query never finished, so the second was refused for the wrong reason"
     )
+
+
+def test_an_install_is_refused_while_workers_could_still_be_using_the_tree(
+    qapp: Any, tmp_path: Path
+) -> None:
+    """**`T198-R3`.** Keeping a running worker's code tree stable is a correctness requirement.
+
+    The first version of this reasoned from `_swap_into_place` failing on Windows when the
+    directory is held open — and that is not a gate. Python does not keep every imported source
+    file open, and on POSIX the rename **succeeds by design**, so a worker that has already
+    imported `yt_dlp` resolves its later lazy imports (yt-dlp loads extractors on demand) from
+    whatever now sits at that path. A revert makes that a missing import instead of a mixed one.
+
+    So the guard is a refusal, not a rename that might fail.
+    """
+    service = YtdlpService(
+        directory=tmp_path / "ytdlp",
+        entry_point=_reports_a_version,
+        workers_active=lambda: True,
+    )
+    problems: list[str] = []
+    service.failed.connect(problems.append)
+
+    service.install_latest_version()
+
+    assert problems and "Stop the queue" in problems[0]
+    assert service.busy is False, "a refused operation should not leave the screen disabled"
+
+
+def test_a_revert_is_refused_while_workers_could_still_be_using_the_tree(
+    qapp: Any, tmp_path: Path
+) -> None:
+    """Reverting *removes* the tree, which is the worse half of `T198-R3`."""
+    directory = tmp_path / "ytdlp"
+    (directory / "yt_dlp").mkdir(parents=True)
+    service = YtdlpService(
+        directory=directory, entry_point=_reports_a_version, workers_active=lambda: True
+    )
+    problems: list[str] = []
+    service.failed.connect(problems.append)
+
+    service.revert()
+
+    assert problems and "Stop the queue" in problems[0]
+    assert (directory / "yt_dlp").is_dir(), "the tree was removed underneath a running worker"
+
+
+def test_the_guard_is_re_read_rather_than_cached(qapp: Any, tmp_path: Path) -> None:
+    """A queue that was idle when the screen opened is not one that is idle when it is pressed."""
+    active = {"value": True}
+    service = YtdlpService(
+        directory=tmp_path / "ytdlp",
+        entry_point=_reports_a_version,
+        workers_active=lambda: active["value"],
+    )
+    problems: list[str] = []
+    finished: list[Any] = []
+    service.failed.connect(problems.append)
+    service.reported.connect(finished.append)
+
+    service.revert()
+    assert problems, "the first attempt should have been refused"
+
+    active["value"] = False
+    service.revert()
+
+    deadline = time.monotonic() + 30.0
+    while not finished and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    assert finished, "the second attempt was refused after the queue went idle"
+
+
+def test_a_version_check_is_never_refused(qapp: Any, tmp_path: Path) -> None:
+    """Reading is not writing. `refresh` spawns a child that imports; it changes no tree, so a
+    running queue is no reason to refuse the one thing `REQ-025` promises is always shown."""
+    service = YtdlpService(
+        directory=tmp_path / "ytdlp",
+        entry_point=_reports_a_version,
+        workers_active=lambda: True,
+    )
+    problems: list[str] = []
+    finished: list[Any] = []
+    service.failed.connect(problems.append)
+    service.reported.connect(finished.append)
+
+    service.refresh()
+
+    deadline = time.monotonic() + 30.0
+    while not finished and not problems and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    assert not problems, f"a read-only version check was refused: {problems}"
+    assert finished

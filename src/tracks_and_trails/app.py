@@ -981,7 +981,18 @@ def compose(
         # It writes and reads `environment.user_ytdlp_directory()`, which is the directory
         # `ytdlp_candidates` already resolves ahead of the bundled baseline, so an install lands
         # where a worker was already looking (`OPS-002`).
-        ytdlp=YtdlpService(directory=ytdlp_directory) if ytdlp_service is None else ytdlp_service,
+        ytdlp=(
+            YtdlpService(
+                directory=ytdlp_directory,
+                # `T198-R3`: an update must not replace the package tree a running worker is
+                # still lazily importing from. The manager is the only thing that knows, and
+                # `active_job_ids` is what it already answers with — running, reserved *and*
+                # waiting, which is the full set of jobs that could still start a child.
+                workers_active=lambda: bool(manager.active_job_ids()),
+            )
+            if ytdlp_service is None
+            else ytdlp_service
+        ),
         # *(A third protocol was passed here until 2026-08-06: read-only over the table `T-085`
         # wrote, for the History view that enumerated records. `REQ-020` is withdrawn, the table is
         # dropped by migration `0009`, and the argument went with them — `T-176`.)*
