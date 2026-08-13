@@ -96,6 +96,7 @@ from tracks_and_trails.downloader.protocol import (
     Stage,
     WorkerFinished,
 )
+from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.add_dialog import (
     STATE_TEXT,
     UNKNOWN_TEXT,
@@ -5091,6 +5092,131 @@ def test_the_two_doors_produce_the_same_actions(
         )
         assert CHOOSE_FORMATS_TEXT in by_context, (
             "neither door offered the format table for a ready single item"
+        )
+    finally:
+        dialog.hide()
+
+
+# --- T-229: the same two behaviours in the state `run()` actually ships ------------------------
+#
+# `T225-R2`: the two tests `T-225` recorded are asserted on a **bare** application, because that is
+# the state the leak broke them in. A shipped application always has a theme — `run()` applies one
+# before the window exists — so a bare assertion is a component contract rather than evidence about
+# what a user meets. These two run the same behaviours dressed, and the pair below is deliberately
+# not a copy: each keeps only the assertions a style sheet could plausibly change.
+
+
+def test_an_open_playlist_panel_survives_a_shipped_theme(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """The panel is styled by the sheet, so a dressed application is where its styling can fail.
+
+    **`rowPanel` and `autoFillBackground` are the two that matter.** Undressed, no sheet paints the
+    panel and the fallback fill is all there is; dressed, the sheet's `QWidget[rowPanel="true"]`
+    rule is what stops the delegate's row — thumbnail and all — showing through underneath. The
+    bare version of this assertion cannot tell those apart, because there is no sheet to match.
+
+    **A refresh straight after opening**, for `T204-R4`'s reason: the first fix restored geometry
+    inside the `dataChanged` emit, before Qt re-measured, so `visualRect` answered a stale
+    rectangle. A theme changes metrics, which is exactly when a stale rectangle would differ.
+    """
+    theme.apply(qapp, theme.LIGHT)
+    dialog, row = _staged_playlist(dialogs, managers, spin)
+    dialog.resize(900, 700)
+    dialog.show()
+    QApplication.processEvents()
+
+    panel = _open_the_picker(dialog, row)
+    QApplication.processEvents()
+    try:
+        opened_at = panel.geometry()
+        dialog.refresh()
+        QApplication.processEvents()
+
+        assert panel.geometry() == opened_at, (
+            f"under a shipped theme a refresh moved the panel from {opened_at} to "
+            f"{panel.geometry()}"
+        )
+        assert panel.isVisible() and panel.height() > 0, (
+            "the panel vanished when it was refreshed under a shipped theme"
+        )
+        assert panel.property("rowPanel") is True, (
+            "the panel is not styled by the rowPanel role, so with a sheet applied nothing paints "
+            "its background and the delegate's row shows through underneath"
+        )
+
+        # **Opacity is asserted by what is painted, not by `autoFillBackground`** — and the first
+        # version of this test asserted the latter and failed. `theme.py`'s own rule says why:
+        # *"`setAutoFillBackground` does not do this when a stylesheet is set"*, so under a shipped
+        # theme the flag is `False` and the sheet's `background: {surface}` is what makes the panel
+        # opaque. The bare test's `autoFillBackground` assertion is the **undressed** component
+        # contract and stays there; it is not evidence about this state (`T225-R2`).
+        #
+        # The colour is read from the theme rather than written down, for `T-141`'s reason.
+        painted = panel.grab().toImage().pixelColor(panel.width() // 2, 2)
+        assert painted.name().upper() == theme.LIGHT.surface.upper(), (
+            f"the panel paints {painted.name()} where the sheet says {theme.LIGHT.surface}. It is "
+            "not opaque, so the delegate's row — thumbnail and all — shows through underneath"
+        )
+    finally:
+        dialog.hide()
+
+
+def test_the_menu_key_reaches_the_current_row_under_a_shipped_theme(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """`T203-R3`'s keyboard door, dressed — where the metrics it depends on are the real ones.
+
+    **The off-row probe is computed at the moment it is sent**, which is the point of running this
+    dressed at all (`T225-R2`). A sheet changes row heights and paddings, so a probe position
+    calculated against undressed metrics could land *on* a row once a theme is applied — and the
+    test would then be asserting the pointer route while its name promised the keyboard one. The
+    assertion below fails rather than drifting: it re-checks `indexAt` for the point it is about to
+    send.
+    """
+    theme.apply(qapp, theme.LIGHT)
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, PLAYLIST)
+    listing = staging_list(dialog)
+    dialog.show()
+    try:
+        qapp.processEvents()
+        current = dialog.model.index(1, 0)
+        listing.selectionModel().setCurrentIndex(
+            current, QItemSelectionModel.SelectionFlag.NoUpdate
+        )
+
+        viewport = listing.viewport()
+        last = listing.visualRect(dialog.model.index(dialog.model.rowCount() - 1, 0))
+        off_any_row = QPoint(1, max(last.bottom() + 2, viewport.height() + 2))
+        assert not listing.indexAt(off_any_row).isValid(), (
+            "the probe landed on a row once a theme was applied, so this would assert the mouse "
+            "route rather than the keyboard one — the case this test exists to catch"
+        )
+
+        QApplication.sendEvent(
+            viewport,
+            QContextMenuEvent(
+                QContextMenuEvent.Reason.Keyboard, off_any_row, viewport.mapToGlobal(off_any_row)
+            ),
+        )
+        qapp.processEvents()
+
+        menu = _popped_menu(listing)
+        offered = [action.text() for action in menu.actions() if not action.isSeparator()]
+        assert CHOOSE_FORMATS_TEXT not in offered, (
+            "the format table is offered, so the fallback resolved row 0 rather than the current "
+            "row — under a theme, which is the state a user is in"
+        )
+        anchor = viewport.mapFromGlobal(menu.pos())
+        assert listing.visualRect(current).contains(anchor), (
+            f"the menu popped at viewport {anchor}, not on the current row "
+            f"{listing.visualRect(current)} — a keyboard opening placed off its row"
         )
     finally:
         dialog.hide()

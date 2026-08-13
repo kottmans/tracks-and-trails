@@ -362,6 +362,79 @@ rather than a diff. Its evidence is `T-234`'s and `T-235`'s tests, already green
 
 ---
 
+### T-229 — Prove theme isolation beyond the original T-225 leak
+
+**Status:** **In Review — built 2026-08-12.** Filed from the initial `T-225` review (`T225-R1`, `T225-R2`).
+**Owner:** Implementer
+**Priority:** Low — the original order defect is fixed and mutation-proved; this is evidence for
+the two restored theme fields that did not cause today's failures, plus product-state coverage for
+two assertions that currently run only on a bare application
+**Phase:** Phase 4 — test hardening. **Not a plan deliverable.**
+**Depends on:** `T-225`
+**Relevant context:** `tests/ui/conftest.py::_undressed_afterwards`,
+`tests/ui/test_add_dialog.py::test_an_open_playlist_shows_entries_and_a_way_back`,
+`tests/ui/test_add_dialog.py::test_the_menu_key_reaches_the_current_rows_menu`,
+`ui/row_delegate.py`'s use of `theme.applied()`
+**Affected surfaces:** `tests/ui/`
+**Risk:** Low — the fixture restores the complete known state correctly; the gap is that only its
+style-sheet half and the undressed widget state are asserted today
+
+#### Scope and acceptance criteria
+
+- Add evidence that removing palette restoration or `_applied` restoration fails for the field
+  removed; do not merely inspect the helper that performs the restoration
+- Exercise the playlist panel and keyboard-menu behavior under an applied shipped theme. Compute
+  an off-row probe at the moment it is sent so a metric change cannot silently turn the keyboard
+  route back into the pointer route
+- Keep the bare-application fallback assertion if it remains a useful component contract, but do
+  not present it as evidence for the state `run()` ships
+- Do not broaden this into a whole-suite state-isolation audit
+
+#### What was built, 2026-08-12
+
+**`T225-R1` — the two restored fields now have evidence.** `tests/ui/test_theme_restoration.py` is
+a pair: one test dresses the shared application and deliberately leaves it dressed, the next reads
+the palette, `theme.applied()` and the sheet back. The defect lives *between* tests, so a single
+test cannot see it. `test_suite_isolation.py` runs the pair **in that order in a subprocess**,
+because the default `-n auto` distribution hands individual tests to whichever worker is free.
+
+**Each test is honest alone**: the baseline is captured by a module-scoped fixture before either
+runs, so the reader passes in any order. What the pinned order adds is the ability to *fail* — a
+test that only passes when its neighbour ran first would carry the hidden dependency this file is
+about.
+
+**Mutation, both fields separately:** removing the palette restoration fails the reader on the
+palette assertion; removing `theme._applied` fails it on that one. **Both, every time.**
+
+**What the rest of the suite does under those mutants is the more interesting number.** With
+`_applied` unrestored, `tests/unit` + `tests/ui` at `-n auto` is **green**. With the *palette*
+unrestored it was green in **three runs of four** — the fourth failed something else. That is this
+task's subject from the other side: whether a leak is noticed depends on which worker collects
+which test, so a green suite is evidence about the distribution rather than about the fixture.
+**It is why the regression pins the order rather than trusting the suite to notice.**
+
+**`T225-R2` — the two behaviours now run in the state `run()` ships**, as
+`test_an_open_playlist_panel_survives_a_shipped_theme` and
+`test_the_menu_key_reaches_the_current_row_under_a_shipped_theme`. Neither is a copy; each keeps
+only the assertions a style sheet could plausibly change.
+
+**And running one of them dressed immediately found that a bare assertion does not transfer.** The
+themed panel test first asserted `autoFillBackground()`, as the bare one does, **and failed**:
+under a sheet the flag is `False`. `theme.py`'s own rule says why — *"`setAutoFillBackground` does
+not do this when a stylesheet is set"* — so opacity comes from `background: {surface}`. The themed
+test now samples the painted pixel and compares it to `theme.LIGHT.surface` **read from the theme**,
+and removing that rule kills it. The bare `autoFillBackground` assertion stays where it is as the
+**undressed component contract**, which is exactly the split the third criterion asks for.
+
+**The off-row probe is computed at the moment it is sent**, which is why the keyboard test is worth
+running dressed at all: a theme changes row heights, so a probe calculated against undressed metrics
+could land *on* a row and turn the keyboard route silently back into the pointer route. The
+assertion re-checks `indexAt` for the point it is about to send.
+
+**Not broadened into a whole-suite audit** — the fourth criterion. Two files touched, one added.
+
+---
+
 ## Complete
 
 ### T-234 — The concurrency control leaves the toolbar
@@ -3823,36 +3896,6 @@ is **154 passed, exit 0** — this task changed nothing.)*
 - Adopting `-n` for `tests/integration` in CI. That is `T-123`'s, and it waits on this
 - `T-056` and the Windows process-liveness question, which is a different failure in a different
   direction
-
----
-
-### T-229 — Prove theme isolation beyond the original T-225 leak
-
-**Status:** Proposed — filed 2026-08-11 from the initial `T-225` review (`T225-R1`, `T225-R2`).
-**Owner:** Implementer
-**Priority:** Low — the original order defect is fixed and mutation-proved; this is evidence for
-the two restored theme fields that did not cause today's failures, plus product-state coverage for
-two assertions that currently run only on a bare application
-**Phase:** Phase 4 — test hardening. **Not a plan deliverable.**
-**Depends on:** `T-225`
-**Relevant context:** `tests/ui/conftest.py::_undressed_afterwards`,
-`tests/ui/test_add_dialog.py::test_an_open_playlist_shows_entries_and_a_way_back`,
-`tests/ui/test_add_dialog.py::test_the_menu_key_reaches_the_current_rows_menu`,
-`ui/row_delegate.py`'s use of `theme.applied()`
-**Affected surfaces:** `tests/ui/`
-**Risk:** Low — the fixture restores the complete known state correctly; the gap is that only its
-style-sheet half and the undressed widget state are asserted today
-
-#### Scope and acceptance criteria
-
-- Add evidence that removing palette restoration or `_applied` restoration fails for the field
-  removed; do not merely inspect the helper that performs the restoration
-- Exercise the playlist panel and keyboard-menu behavior under an applied shipped theme. Compute
-  an off-row probe at the moment it is sent so a metric change cannot silently turn the keyboard
-  route back into the pointer route
-- Keep the bare-application fallback assertion if it remains a useful component contract, but do
-  not present it as evidence for the state `run()` ships
-- Do not broaden this into a whole-suite state-isolation audit
 
 ---
 
