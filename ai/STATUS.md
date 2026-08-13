@@ -5,13 +5,16 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-12 (approvals) — **`T-233`, `T-234`, `T-235`, `T-236` and `T-237` are
-Complete**, all approved; `T234-R1`, `T235-R1` and `T237-R1` are Resolved. **`T-238` is High**: the
-one-in-nine parallel-UI event is a **native crash**, not a test failure — `gw7` segfaulted before
-any assertion fired, and the stack points toward Qt/PySide object destruction. Identity with
-`T-074`/`T-128` is unproven and the `T-228` comparison is withdrawn. **`T-228` stays Proposed with
-its reachability measured**: 680 sessions across every shape the product can take, on a saturated
-host, lost **no** messages, so it is not reachable at supported concurrency by any means measured.
+**Last updated:** 2026-08-12 (unattended run) — **three more tasks are In Review**:
+`T-230` (a spawned child now gets the test's own directories — **62 files before, 0 after**),
+`T-220` (the reading: build and spec agree, no amendment needed either way) and `T-229` (the two
+theme fields nothing proved, plus both behaviours run dressed). Earlier the same day, `T-233`,
+`T-234`, `T-235`, `T-236` and `T-237` were all approved **Complete**. **`T-238` is High** — a
+native worker segfault, not a test failure — and **60 runs have not reproduced it**. **`T-228`
+stays Proposed** with 680 sessions showing it unreachable at supported concurrency.
+
+**Two decisions are what stop more unattended work**: whether to build `T-238`'s leak guard, and
+which retry `T-196`'s setting means.
 
 **Last verified against repository:** 2026-08-12 for the block above — commit hashes and the
 CI conclusion read from `git log` and `gh run view`, task states from `ai/TASKS.md` after the
