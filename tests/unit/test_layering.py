@@ -564,6 +564,10 @@ QT_FREE_UI: Final = frozenset(
         "ui/row_verbs.py",
         "ui/playlist_selection.py",
         "ui/grouping.py",
+        # `T-201`: a table of sentences, and its own docstring says so. Held here for the same
+        # reason as `format_text.py` beside it — the words a user reads should be assertable
+        # without a display.
+        "ui/error_text.py",
     }
 )
 
@@ -571,7 +575,7 @@ QT_FREE_UI: Final = frozenset(
 def qt_reached_from(rel_path: str) -> list[str]:
     """Every module reachable from `rel_path` by internal imports that pulls Qt in.
 
-    **Direct roots are not the property these seven modules promise, and that was `T214-R2`.** The
+    **Direct roots are not the property these modules promise, and that was `T214-R2`.** The
     first version asked only whether `PySide6` appeared in the file itself — so a listed module
     could `from tracks_and_trails.ui import theme`, become Qt-dependent the moment it is imported,
     and still pass, because its one direct root was `tracks_and_trails`. What the list claims is
@@ -606,7 +610,7 @@ def qt_reached_from(rel_path: str) -> list[str]:
 
 @pytest.mark.parametrize("rel_path", sorted(QT_FREE_UI))
 def test_the_deliberately_qt_free_ui_modules_stay_qt_free(rel_path: str) -> None:
-    """Seven modules promise this in their own docstrings; now something checks.
+    """Eight modules promise this in their own docstrings; now something checks.
 
     They are not merely Qt-free by accident — being Qt-free is what makes them unit-testable
     headless and what would make moving them into `core/` a straightforward change if the Planner

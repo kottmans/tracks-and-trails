@@ -14,6 +14,11 @@ execution has happened and `OPS-003` says the Windows half needs a CI proof rath
 evidence rather than by review — one of them a vacuous assertion of mine. Gates green locally:
 **2773 passed, 18 skipped** unit+UI and **414 passed** integration, exit codes checked.
 
+**`T-201` is In Progress, and deliberately not submitted**: the twelve error classes now have
+words a user can read — including the three with no honest action, which is the substance rather
+than a gap — but **two of its six criteria are untouched**, both in the queue row. It sits under
+`## Ready`, not `## In Review`.
+
 *(The block below is 2026-08-12's and is left as written.)*
 
 **Last updated:** 2026-08-12 (approvals) — **`T-230`, `T-220`, `T-229` and `T-239` are Complete**,
@@ -142,6 +147,38 @@ product choice the entry does not take.
 `tests/unit` + `tests/ui` **2773 passed, 18 skipped**; `tests/integration` **414 passed**. Exit
 codes checked rather than summary lines read. **Nineteen mutations fail their evidence** — nine
 against the installer, nine against the screen and the wiring, one against composition.
+
+## 2026-08-13 (second): T-201's words, and the two criteria left untouched
+
+**Partly built, committed, and not offered for review.** The task is **In Progress** under
+`## Ready`. `ui/error_text.py` gives every `ErrorKind` a plain-words statement of what failed and
+either a next step or nothing; `describe_failure` puts the extractor's own message last and
+verbatim; `ui/job_detail.py` stops rendering `geo_restricted` above it.
+
+**The three with no honest action are the deliverable.** `DRM_PROTECTED` offers nothing because
+`REQ-EXCL-001` means there must never be a way. **`GEO_RESTRICTED` suggests no workaround at all** —
+which meets the criterion *and* leaves the `SEC-003`-against-`REQ-EXCL-002` ruling open in both
+directions, since phrasing it as though a proxy were unavailable would take the ruling by
+implication. **No `SEC-` decision was needed and none was invented.** `CANCELLED` is not presented
+as a failure.
+
+**Two assertions of mine were wrong and the tests caught them.** One forbade a kind's identifier
+appearing in its own headline — but *"You cancelled this download"* is the right sentence for
+`cancelled`. The other required every headline to start upper-case, which is wrong for `ffmpeg`.
+A third failure was the test being right: *"The connection failed"* does not say what failed, and
+the text was lengthened rather than the threshold lowered.
+
+**The layering guard caught the new module, which is the guard working.** `ui/error_text.py` imports
+no Qt deliberately, so `T-214`'s held list is eight rather than seven.
+
+**What is left, named rather than left to be found:** the reason on the failed row itself, and a
+terminal failure suppressing the byte line — both in `ui/row_delegate.py`'s second line, and both
+untouched. **No mutation evidence yet**: the words carry 48 tests, and the mutations that would
+matter are against a row that does not render this.
+
+**Figures:** ruff, format over the whole tree and all three mypy gates clean; `tests/unit` +
+`tests/ui` **2826 passed, 18 skipped**, exit code checked. Integration was not re-run — nothing
+here touches the worker, the manager or composition.
 
 ## 2026-08-12 (second review round): T-236 approved; T-235 and T-237 corrected; T-238 filed
 

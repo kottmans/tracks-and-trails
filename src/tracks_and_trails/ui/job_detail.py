@@ -99,6 +99,7 @@ from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
+from tracks_and_trails.ui.error_text import describe_failure
 from tracks_and_trails.ui.log_view import LogView, build_log_view
 
 #: The stated maximum repaint rate: ten a second. Comfortably inside `NFR-001`'s ~100 ms
@@ -769,7 +770,13 @@ class JobProgressView(QWidget):
             self._error.setVisible(True)
         elif failure is not None and self._status is JobStatus.FAILED:
             kind, message = failure
-            self._error.setText(f"{kind.value}\n{message}" if kind is not None else message)
+            # **The class in plain words, then the extractor's own message, verbatim** (`NFR-006`,
+            # `T-201`). This was `f"{kind.value}\n{message}"` — the database identifier, so a user
+            # read `geo_restricted` above a sentence with nothing saying what had happened or
+            # whether anything could be done. `ui/error_text.py` owns the words; the message is
+            # appended rather than replaced, because paraphrasing it destroys the only
+            # information the user can act on (`core/errors.py`).
+            self._error.setText(describe_failure(kind, message) if kind is not None else message)
             self._error.setVisible(True)
         else:
             self._error.setVisible(False)
