@@ -6,11 +6,12 @@
 **Maintainer:** Sean Kottman
 **Status:** Active
 **Last updated:** 2026-08-13 (review round one) — **`T-198` came back Changes requested with four
-findings, and three are corrected.** `T198-R1` (criterion 2 proved only a version query, and the
+findings, and **all four are corrected**. `T198-R1` (criterion 2 proved only a version query, and the
 synthetic wheel had no `YoutubeDL`), `T198-R3` (an update could replace a running worker's package
-tree) and `T198-R4` (the integration count is **415**, not 414) are **Resolved**. **`T198-R2` is
-open and is the only thing left**: neither frozen job performs install → resolve → revert, so
-criterion 4 is unmet rather than owed. **Corrections are committed and held; nothing is pushed.**
+tree) and `T198-R4` (the integration count is **415**, not 414) are Resolved, and so is **`T198-R2`**: a new
+`--ytdlp-update-probe` runs install → resolve-in-a-child → revert **inside a locally built frozen
+artifact**, exit 0, with a CI step on both frozen platforms. **The Windows execution is owed to
+CI.** Corrections are committed and held; nothing is pushed.
 
 *(The block below described the submission and is left as written.)*
 
@@ -186,13 +187,22 @@ reading is not writing.
 never re-measured — a number true of an earlier tree, reported of this one.
 
 **Figures for the corrections:** ruff, format and all three mypy gates clean; `tests/unit` +
-`tests/ui` **2826 passed, 18 skipped**; `tests/integration` **420 passed**, exit codes checked.
+`tests/ui` **2830 passed, 18 skipped**; `tests/integration` **420 passed**, exit codes checked.
 
-**`T198-R2` is open and criterion 4 is unmet, not owed.** Neither frozen job installs, resolves an
-installed copy in a spawned child, or reverts; `ai/TESTING.md`'s release-gate item 10 names the
-sequence independently. It needs a frozen probe doing download → extract → resolve → revert and a
-step invoking it in **both** frozen jobs. **Not attempted this session**, rather than attempted and
-abandoned.
+**`T198-R2` is corrected too, and it is verified rather than reasoned.** `--ytdlp-update-probe`
+runs install → resolve **in a spawned child** → revert inside the artifact, and a step in the frozen
+job invokes it on both platforms. A local PyInstaller 6.22.0 build **exits 0** reporting
+`2026.07.04 → 9000.1.1 → 2026.07.04`, the middle one from `user-managed copy (OPS-002)`; the two
+pre-existing frozen probes still pass against the same artifact, and two mutations fail it —
+installing where nothing resolves, and skipping the revert.
+
+**The resolver moved rather than being copied.** `_freeze_probe.py` imports no Qt (`ARC-002`) and
+`ytdlp_service.py` does, so `resolve_in_a_child` now lives in `downloader/ytdlp_resolution.py`. A
+second spawn-and-read in the probe would have meant the frozen gate proving a copy of the resolver.
+
+**What it does not prove is stated in the probe itself:** that a *download* runs on the installed
+copy — that is criterion 2, and it is proved against a real yt-dlp elsewhere. **The Windows
+execution is owed to CI** (`OPS-003`); the step exists and runs on both frozen platforms.
 
 ## 2026-08-13 (second): T-201's words, and the two criteria left untouched
 

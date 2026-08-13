@@ -974,6 +974,25 @@ jobs:
           [ -f "$BIN" ] || BIN=dist/tracks-and-trails/tracks-and-trails.exe
           "$BIN" --database-probe 2>&1 | tee "reports/database-probe.txt"
 
+      - name: Verify an in-app yt-dlp update works inside the frozen artifact
+        # T198-R2. The steps above build the artifact, probe its bundled baseline and run the
+        # generic spawn smoke — none of them ever invokes the updater, resolves an installed
+        # copy in a spawned child, or reverts. Two green frozen jobs therefore said nothing
+        # about T-198's criterion 4, and ai/TESTING.md's release-gate item 10 names the missing
+        # sequence independently: download, extract, resolve the new version, revert.
+        #
+        # This runs that sequence inside the artifact, on both platforms, through the same
+        # install_latest / resolve_in_a_child / revert_to_baseline the button calls. The index
+        # is served from memory: a gate must not depend on PyPI being reachable, and what is
+        # being proved is where the install lands, not that HTTP works.
+        #
+        # It does not prove a download runs on the installed copy — that is criterion 2, proved
+        # against a real yt-dlp and a real transfer in tests/integration/test_end_to_end.py.
+        run: |
+          BIN=dist/tracks-and-trails/tracks-and-trails
+          [ -f "$BIN" ] || BIN=dist/tracks-and-trails/tracks-and-trails.exe
+          "$BIN" --ytdlp-update-probe 2>&1 | tee "reports/ytdlp-update-probe.txt"
+
       - name: Smoke-test the frozen artifact
         # Asserts: launches, spawns a child, exchanges one message, exits zero, runs exactly
         # one top-level application process, and leaves no orphan behind.

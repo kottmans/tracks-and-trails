@@ -75,6 +75,8 @@ usage: tracks-and-trails [--version] [--help] [--spawn-probe] [--ytdlp-probe]
   --help, -h     print this message and exit
   --spawn-probe  self-test the process model and exit (T-020)
   --ytdlp-probe  self-test the bundled yt-dlp and exit (T-033)
+  --ytdlp-update-probe
+                 self-test the in-app update path and exit (T-198)
 
 Run with no arguments to open the application window.
 """
@@ -111,6 +113,12 @@ def run(argv: Sequence[str]) -> int:
         from tracks_and_trails._freeze_probe import run_database_probe
 
         return run_database_probe()
+    # Before Qt for the same reason, and `T198-R2`'s gate: a frozen artifact where an in-app
+    # update lands somewhere no worker reads must be diagnosable without a display.
+    if "--ytdlp-update-probe" in args:
+        from tracks_and_trails._freeze_probe import run_ytdlp_update_probe
+
+        return run_ytdlp_update_probe()
     if args:
         print(USAGE.format(version=__version__), end="")
         return 2

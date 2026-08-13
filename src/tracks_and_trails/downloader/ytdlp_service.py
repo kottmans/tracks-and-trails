@@ -29,18 +29,18 @@ finding rather than a preference: a `QThreadPool` owned by a widget blocks the G
 alive; when the screen goes away Qt severs the connections and a late result goes nowhere.
 """
 
-import multiprocessing
-import queue as queue_module
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
-from tracks_and_trails.downloader import worker
 from tracks_and_trails.downloader.environment import user_ytdlp_directory
-from tracks_and_trails.downloader.protocol import ResolutionReport, WorkerFinished
+from tracks_and_trails.downloader.ytdlp_resolution import (
+    Resolution,
+    ResolutionUnavailableError,
+    resolve_in_a_child,
+)
 from tracks_and_trails.downloader.ytdlp_update import (
     Release,
     UpdateError,
@@ -48,11 +48,6 @@ from tracks_and_trails.downloader.ytdlp_update import (
     latest_release,
     revert_to_baseline,
 )
-
-#: How long to wait for a child to import yt-dlp and answer. Generous: `spawn` re-imports the
-#: interpreter and yt-dlp is a large package, so a slow machine under load can take seconds. A
-#: query that has not answered by now is one the user should be told about rather than waited on.
-RESOLUTION_TIMEOUT_SECONDS: Final = 90.0
 
 #: One thread. These tasks are seconds-long, network- or process-bound, and there is never a
 #: reason to run two at once — the second would be asking the same question or fighting the first
@@ -69,104 +64,6 @@ def _pool() -> QThreadPool:
         _SHARED_POOL = QThreadPool()
         _SHARED_POOL.setMaxThreadCount(_POOL_THREADS)
     return _SHARED_POOL
-
-
-class ResolutionUnavailableError(Exception):
-    """No child could say which yt-dlp is in use, with a reason fit to show a user."""
-
-
-@dataclass(frozen=True, slots=True)
-class Resolution:
-    """Which yt-dlp a worker imported, and where it came from.
-
-    `source` is a label such as `"bundled baseline"` or `"user-managed copy (OPS-002)"`, never a
-    path (`NFR-007`) — `environment.YtdlpCandidate` carries the same distinction for the same
-    reason.
-
-    `rejected` is why an earlier candidate was not used. `ARCHITECTURE.md` §6 requires a rejected
-    override to be **reported, never silently ignored**, and a user who installed a copy that
-    does not import needs to be told that rather than left reading a baseline version and
-    wondering why their update did nothing.
-    """
-
-    version: str
-    source: str
-    rejected: tuple[str, ...] = ()
-
-    @property
-    def is_user_managed(self) -> bool:
-        """Whether this came from the user's own copy rather than the shipped baseline.
-
-        Read from the resolved `source` rather than by asking the filesystem whether the
-        directory exists: a directory that exists but does not import is **not** what is in use,
-        and the button that offers to remove it should say so from the same fact the version
-        came from.
-        """
-        return "user-managed" in self.source
-
-
-def resolve_in_a_child(
-    directory: Path | None = None,
-    *,
-    entry_point: Callable[..., Any] | None = None,
-    timeout: float = RESOLUTION_TIMEOUT_SECONDS,
-) -> Resolution:
-    """Spawn a child, have it import yt-dlp, and return what it reported.
-
-    Blocking, and deliberately not called from the GUI thread — `YtdlpService` is what puts it on
-    the pool. Kept separate from that class so the mechanism is testable without a Qt event loop.
-
-    `spawn` for the reason `ARC-002` gives: forking a process that has created a `QApplication`
-    is unsafe, and one start method everywhere means both platforms exercise the same path.
-    """
-    target = worker.spawn_resolution if entry_point is None else entry_point
-    context = multiprocessing.get_context("spawn")
-    message_queue: Any = context.Queue()
-    child = context.Process(
-        target=target,
-        args=(message_queue,),
-        kwargs={"user_ytdlp_directory": directory},
-        daemon=True,
-    )
-    report: ResolutionReport | None = None
-    started = False
-    try:
-        child.start()
-        started = True
-        while True:
-            try:
-                message = message_queue.get(timeout=timeout)
-            except queue_module.Empty:
-                raise ResolutionUnavailableError(
-                    "Checking the yt-dlp version took too long and was stopped."
-                ) from None
-            if isinstance(message, ResolutionReport):
-                report = message
-            if isinstance(message, WorkerFinished):
-                break
-    finally:
-        # The child is short-lived and daemonic, but leaving it unjoined would leak a zombie per
-        # query on POSIX. `terminate` covers the child that answered and then hung on exit.
-        #
-        # **Guarded on `started`**: a spawn that fails — an unpicklable target is the way a test
-        # reaches this — leaves a `Process` that `join` refuses with *"can only join a started
-        # process"*, and that secondary error would replace the real one on its way out.
-        if started:
-            if child.is_alive():
-                child.terminate()
-            child.join(timeout=5.0)
-        message_queue.close()
-
-    if report is None:
-        raise ResolutionUnavailableError(
-            "No usable yt-dlp could be loaded. The application cannot download until this is "
-            "resolved; reverting to the bundled version is the first thing to try."
-        )
-    return Resolution(
-        version=report.ytdlp_version,
-        source=report.ytdlp_source,
-        rejected=tuple(report.rejected),
-    )
 
 
 class _Sink(QObject):

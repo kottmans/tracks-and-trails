@@ -331,3 +331,135 @@ def run_database_probe() -> int:
 
     print("database        ok")
     return 0
+
+
+#: The version the update probe installs. Not a plausible yt-dlp release: a probe that asserted a
+#: real-looking number could be satisfied by the baseline leaking through.
+_PROBE_YTDLP_VERSION = "9000.1.1"
+
+
+def _probe_wheel(version: str) -> bytes:
+    """A minimal but genuinely importable yt-dlp, as a wheel.
+
+    **Minimal is the honest scope here, and the boundary is worth stating.** This probe proves the
+    *update path* inside the frozen artifact — install lands where a frozen worker resolves, and
+    revert restores the baseline — which is the sequence `ai/TESTING.md`'s release gate names. It
+    does **not** prove a download runs on the installed copy: that is criterion 2, and
+    `tests/integration/test_end_to_end.py` proves it against a real yt-dlp and a real transfer
+    (`T198-R1`). A frozen probe cannot reach a site, and a package thin enough to ship inside one
+    could not run a download anyway — so claiming it would be the vacuous half of `T198-R1` again.
+
+    `__init__` imports `.version` because that is how the real package exposes
+    `yt_dlp.version.__version__`; a copy without it imports and then fails on the attribute.
+    """
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "yt_dlp/__init__.py", "from . import version\n__version__ = version.__version__\n"
+        )
+        archive.writestr("yt_dlp/version.py", f"__version__ = {version!r}\nCHANNEL = 'probe'\n")
+        archive.writestr(f"yt_dlp-{version}.dist-info/METADATA", f"Version: {version}\n")
+    return buffer.getvalue()
+
+
+def run_ytdlp_update_probe() -> int:
+    """Install, resolve in a spawned child, revert, resolve again — inside the artifact.
+
+    **`T198-R2`.** The frozen jobs built the artifact, probed its bundled baseline and ran the
+    generic spawn smoke; none of them ever invoked the updater, resolved an installed copy in a
+    spawned child, or reverted. Two green frozen jobs therefore said nothing about criterion 4,
+    and `ai/TESTING.md`'s release-gate item 10 names the missing sequence independently.
+
+    Everything here is the production path: `install_latest` is what the button calls,
+    `resolve_in_a_child` spawns `worker.spawn_resolution`, and `revert_to_baseline` is what the
+    revert does. The only substitutions are the *index* — served from memory, because a CI runner
+    must not depend on PyPI for a gate — and a temporary user directory, because a probe must not
+    write into the real one.
+
+    No Qt: `resolve_in_a_child` lives in `downloader/ytdlp_resolution.py` precisely so this module
+    can use it and a spawned child still inherits none (`ARC-002`).
+    """
+    import contextlib
+    import hashlib
+    import io
+    import json
+    import tempfile
+
+    from tracks_and_trails.downloader.environment import (
+        BASELINE_YTDLP_VERSION,
+        normalise_version,
+    )
+    from tracks_and_trails.downloader.ytdlp_resolution import resolve_in_a_child
+    from tracks_and_trails.downloader.ytdlp_update import (
+        PYPI_INDEX,
+        install_latest,
+        revert_to_baseline,
+    )
+
+    payload = _probe_wheel(_PROBE_YTDLP_VERSION)
+    wheel_url = f"https://files.pythonhosted.org/yt_dlp-{_PROBE_YTDLP_VERSION}-py3-none-any.whl"
+    document = {
+        "info": {"version": _PROBE_YTDLP_VERSION},
+        "urls": [
+            {
+                "packagetype": "bdist_wheel",
+                "filename": f"yt_dlp-{_PROBE_YTDLP_VERSION}-py3-none-any.whl",
+                "url": wheel_url,
+                "digests": {"sha256": hashlib.sha256(payload).hexdigest()},
+            }
+        ],
+    }
+    responses = {PYPI_INDEX: json.dumps(document).encode(), wheel_url: payload}
+
+    @contextlib.contextmanager
+    def opener(requested: str) -> Any:
+        yield io.BytesIO(responses[requested])
+
+    with tempfile.TemporaryDirectory(prefix="tt-update-probe-") as workspace:
+        directory = Path(workspace) / "ytdlp"
+
+        before = resolve_in_a_child(directory)
+        print(f"before install  {before.version} — {before.source}")
+        if normalise_version(before.version) != normalise_version(BASELINE_YTDLP_VERSION):
+            print(
+                f"FAIL: the artifact resolves {before.version}, not the pinned baseline "
+                f"{BASELINE_YTDLP_VERSION}",
+                file=sys.stderr,
+            )
+            return 1
+
+        installed = install_latest(directory, opener)
+        print(f"installed       {installed.version}")
+
+        after = resolve_in_a_child(directory)
+        print(f"after install   {after.version} — {after.source}")
+        if after.version != _PROBE_YTDLP_VERSION or not after.is_user_managed:
+            print(
+                "FAIL: a spawned child did not resolve the installed copy — an update inside the "
+                f"frozen artifact lands where nothing reads it (got {after.version!r} from "
+                f"{after.source!r}; rejected={after.rejected})",
+                file=sys.stderr,
+            )
+            return 1
+
+        if not revert_to_baseline(directory):
+            print("FAIL: revert reported nothing to remove", file=sys.stderr)
+            return 1
+
+        restored = resolve_in_a_child(directory)
+        print(f"after revert    {restored.version} — {restored.source}")
+        if normalise_version(restored.version) != normalise_version(BASELINE_YTDLP_VERSION):
+            print(
+                f"FAIL: reverting did not restore the baseline (got {restored.version})",
+                file=sys.stderr,
+            )
+            return 1
+        if restored.is_user_managed:
+            print("FAIL: the reverted copy is still being resolved", file=sys.stderr)
+            return 1
+
+    print("OK: install, resolve in a child, and revert all work in the frozen artifact")
+    return 0

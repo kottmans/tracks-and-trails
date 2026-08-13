@@ -119,10 +119,11 @@ this one returned four verdicts before approving.*
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
-**Status:** **In Review — Changes requested 2026-08-13**, then corrected the same day.
-**`T198-R1`, `T198-R3` and `T198-R4` are Resolved; `T198-R2` is open and is the one thing left.**
-The reviewer confirmed criteria 1, 3, 5 and 6 at `21be6a2`; criterion 2 is now met by a real
-download, and criterion 4 still has no frozen update/revert execution.
+**Status:** **In Review — Changes requested 2026-08-13, all four findings corrected the same day.**
+`T198-R1`, `T198-R2`, `T198-R3` and `T198-R4` are **Resolved**. The reviewer confirmed criteria 1,
+3, 5 and 6 at `21be6a2`; criterion 2 is now met by a real download on the installed copy, and
+criterion 4 by a frozen probe that runs install → resolve → revert inside the artifact — **verified
+on Linux against a real PyInstaller build; the Windows execution is owed to CI.**
 **Owner:** Implementer
 **Priority:** Medium — `C-002` says sites break constantly, and without this a broken site stays
 broken until the next release of this application
@@ -219,17 +220,43 @@ last composition regression was added and never re-measured — a number that wa
 tree, reported of this one. Corrected here and in `ai/STATUS.md`.
 
 **Figures for the corrections**, exit codes checked rather than summary lines read: `ruff check`,
-`ruff format --check .` and all three `mypy` gates clean; `tests/unit` + `tests/ui` **2826 passed,
+`ruff format --check .` and all three `mypy` gates clean; `tests/unit` + `tests/ui` **2830 passed,
 18 skipped**; `tests/integration` **420 passed**. *(420 rather than 415 because this round adds the
-post-update download and the four guard regressions.)*
+post-update download and the four guard regressions; the unit count rises again with the layering
+cases for `downloader/ytdlp_resolution.py`.)*
 
-**`T198-R2` (High) — OPEN. Criterion 4 is still unmet and nothing here changes that.** The frozen
-workflow builds the artifact, probes its bundled baseline and runs the generic spawn smoke; it
-never installs, resolves an installed copy in a spawned child, or reverts. `ai/TESTING.md`'s
-release-gate item 10 names the missing sequence independently. **What it needs:** a frozen probe
-performing download → extract → resolve-in-a-child → revert, and a step invoking it in **both**
-frozen CI jobs, so Linux and Windows each execute it. Not built — it was not attempted rather than
-attempted and abandoned, and a build/smoke result is not the proof the criterion asks for.
+**`T198-R2` (High) — Resolved on Linux; the Windows half is with CI.** `--ytdlp-update-probe`
+runs the sequence `ai/TESTING.md`'s release-gate item 10 names — install, resolve **in a spawned
+child**, revert, resolve again — inside the artifact, and a step in the frozen job invokes it on
+both platforms of that matrix.
+
+**Everything in it is the production path.** `install_latest` is what the button calls,
+`resolve_in_a_child` spawns `worker.spawn_resolution`, `revert_to_baseline` is what the revert
+does. Two substitutions, both stated in the probe: the index is served **from memory**, because a
+gate must not depend on PyPI being reachable and what is being proved is where the install lands;
+and the user directory is a temporary one, because a probe must not write into the real one.
+
+**The resolver moved rather than being copied.** `_freeze_probe.py` imports no Qt — a spawned child
+must inherit none (`ARC-002`) — and `ytdlp_service.py` imports it at module scope, so
+`resolve_in_a_child`, `Resolution` and `ResolutionUnavailableError` now live in
+`downloader/ytdlp_resolution.py` and the service imports them back. **A second spawn-and-read
+inside the probe would have meant the frozen gate proving a copy of the resolver rather than the
+resolver.**
+
+**Verified, not reasoned:** PyInstaller 6.22.0, artifact built locally, and
+`./dist/tracks-and-trails/tracks-and-trails --ytdlp-update-probe` **exits 0** reporting
+`2026.07.04 → 9000.1.1 → 2026.07.04`, the middle one from `user-managed copy (OPS-002)`. The two
+pre-existing frozen probes still exit 0 against the same artifact. **Two mutations fail it**:
+installing into a directory nothing resolves, and skipping the revert.
+
+**What it does not prove, said here rather than left to be read into it:** that a *download* runs
+on the installed copy. That is criterion 2, proved against a real yt-dlp and a real transfer in
+`tests/integration/test_end_to_end.py` (`T198-R1`). A frozen probe cannot reach a site, and the
+package small enough to ship inside one could not run a download — claiming otherwise would be
+`T198-R1`'s vacuous half a second time.
+
+**The Windows execution has not happened here and is owed to CI**, per `OPS-003`. The step exists
+and runs on both matrix platforms; what remains is a green frozen-windows job at the pushed head.
 
 #### What was built — 2026-08-13
 
@@ -293,7 +320,7 @@ are equal; removing the manager's argument fails it.
 | 1 | Version reported in the UI, read from the running environment | **Met** — a spawned child's import, asserted against the real baseline |
 | 2 | Updating changes the reported version, proved through the worker | **Met after `T198-R1`** — install through the real updater, then a **real download** through spawned workers reporting the stamped version |
 | 3 | Reverting restores the baseline | **Met** — the same test's third reading |
-| 4 | Works the same in the frozen artifact, or says why not | **Not met — `T198-R2` is open.** The reviewer's Linux frozen build confirmed an external user copy wins resolution in the frozen *parent*, which narrows the risk; it exercises neither the updater, the spawned resolver, a download nor a revert |
+| 4 | Works the same in the frozen artifact, or says why not | **Met on Linux, Windows owed to CI.** `--ytdlp-update-probe` runs install → resolve-in-a-child → revert inside a locally built artifact and exits 0; the CI step runs it on both frozen platforms |
 | 5 | A failed update leaves the working version in place and reports | **Met** — eight failure modes, each asserting the previous copy survives |
 | 6 | Nothing leaks a token, an index URL or a path into a log | **Met** — every raisable failure swept in one test, plus the resolution fields |
 
