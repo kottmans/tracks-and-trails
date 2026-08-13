@@ -16098,3 +16098,55 @@ cannot move to Complete while those unchanged criteria still say they are unmet.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-13 — T-238 focused guard correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-238`
+**Original implementation:** `2c504564296135d5475ab06e1aee7edf87dc27dc`, replaced while
+unpushed by `31a400f04a1c0c5d5a5ed2ecc1b722d198389078`
+**Correction boundary:** `31a400f04a1c0c5d5a5ed2ecc1b722d198389078..9e5feae0cae5902a81bc501d4c2c8c44f0959596`
+**Approved guard head:** `9e5feae0cae5902a81bc501d4c2c8c44f0959596`
+**Platforms verified:** Linux, Qt offscreen. No Windows, CI, or post-guard soak is claimed.
+**Verdict:** **The bounded guard and its correction are Approved at `9e5feae`.** `T238-R1`,
+`T238-R2`, and `T238-R3` are Resolved. **T-238 itself remains open against retained criterion 4**
+under the maintainer's recorded ruling; this approval puts the diagnostic instrument in the tree
+and does not infer product-versus-harness from a green suite.
+
+### Finding dispositions
+
+| ID | Severity | Final state | Focused evidence |
+|---|---|---|---|
+| **T238-R1** | **Medium** | **Resolved** | `_carries_a_deletion.py` supplies the ordered real-conftest pair the finding requested. Its first node leaves both defect classes the orphan assertion cannot see: a parented tree held only by a Python reference cycle, and a `DeferredDelete` posted from a fixture finalizer for a still-parented view while its parent is retained. The second node inspects `QApplication.allWidgets()` before processing events. Independently removing the entire drain, only `gc.collect()`, or only `sendPostedEvents(None, DeferredDelete)` fails only the outer carry-over regression; removing only the orphan assertion passes that regression and fails only the outer leaked-view regression. Reversing `drain → assertion` deterministically made the helper subprocess die with `SIGSEGV` (`returncode -11`) while the outer carry-over regression failed, directly proving the documented order is load-bearing. Restoring the order returns both regressions to green. |
+| **T238-R2** | **High** | **Resolved by explicit maintainer disposition** | Criterion 6 is replaced, not waived: the four discriminating statement-level mutations now stand where a non-discriminating 61-plus-run clean soak did. Criterion 4 is retained unchanged in substance and explicitly keeps T-238 open; the records do not call the guard a diagnosis or infer the branch condition. This is exactly the maintainer scope/evidence choice the finding required. |
+| **T238-R3** | **Low** | **Resolved** | The original and amended implementation commits both have tree `8854b5c657ccb3f0536ff2d006f6639f4a3060e7`; `git diff 2c50456 31a400f` is empty. The replacement subject is 45 characters and its body excluding the subject is 138 words. It retains the `Task:` and `Refs:` trailers and contains no AI authorship trailer. The correction commit's subject is 39 characters and carries `Task:` and `Review:` trailers. |
+
+### Independent focused verification
+
+| Check | Result |
+|---|---|
+| Baseline outer regressions and original crash-site node | **Passed:** the carry-over regression, leaked-view regression, and untouched `test_deleting_a_closed_store_neither_waits_nor_is_emitted_through` all passed in 0.51 s. |
+| Ordered helper wiring | **Passed:** both explicitly named helper nodes passed in one process. Fixture tracing confirmed `_post_a_deletion_after_the_test` finalizes before `_no_orphaned_views`, whose drain runs before the following node is set up. |
+| Whole-drain mutation | **Killed:** carry-over outer regression failed; leaked-view outer regression passed. The second helper node saw both `t238-cycle-root` and `t238-pending-view`. |
+| `gc.collect()` mutation | **Killed:** carry-over outer regression failed; leaked-view outer regression passed. The second helper node saw `t238-cycle-root` while the pending view had been deleted. |
+| `sendPostedEvents` mutation | **Killed:** carry-over outer regression failed; leaked-view outer regression passed. The cyclic tree was gone and the second helper node saw `t238-pending-view`. |
+| Orphan-assertion mutation | **Killed by the correct target:** carry-over outer regression passed; leaked-view outer regression failed because its deliberately bad subprocess passed. This confirms the mutation is aimed at the regression rather than the bait. |
+| Order mutation | **Killed:** `assert_no_orphaned_views → settle_deferred_deletions` made the helper subprocess terminate with `SIGSEGV` (`-11`); the outer carry-over regression failed. The correct order passed immediately after byte-identical restoration. |
+| Repeatability | **Passed:** both outer guard regressions passed together in 20 separate invocations, 40 tests total. |
+| Wider focused slice | **Passed:** `test_suite_isolation.py`, `test_qt_lifecycle.py`, and the original thumbnail-store lifetime node: **6 passed in 1.81 s**. |
+| Static gates | **Passed:** `ruff check` and `ruff format --check` over the five T-238 harness files; configured bare `mypy`, **141 files**. |
+| Submitted wider evidence | Implementer reports `ruff` clean over 179 files, bare `mypy` clean over 141, unit/UI **2832 passed, 18 skipped**, and integration **430 passed**. The focused re-review did not repeat those full suites and does not promote them to independent results. |
+| Boundary and scope | **Passed:** `git diff --check a62b940..9e5feae`; two local commits ahead of `origin/main`; no `src/`, dependency, original timeout, or original thumbnail-store-test path changes. The worktree was restored clean after every reviewer mutation. |
+
+### Readiness and remaining task state
+
+`9e5feae` is approved to push as the exact guard head. No open review finding remains on the
+bounded harness change, and integration remains correctly outside its wiring. T-238 does **not**
+move to Complete: product-versus-harness remains unestablished under criterion 4. Its task entry
+should leave `## In Review` during the routine post-verdict sync and move to `## Ready`, matching
+the existing unresolved-intermittent treatment used by T-074, while recording the guard approval
+at `9e5feae` and the three Resolved findings. `ai/STATUS.md` likewise needs only that post-verdict
+state sync; no additional implementation or review pass is required.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.

@@ -5,6 +5,17 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (T-238 approved) — **the guard is Approved at `9e5feae`; all three
+findings Resolved; `T-238` moves to `## Ready` and stays open against criterion 4.** The review
+reproduced a segfault — **not the original one, which 60 runs never reached, but its mechanism**:
+running the orphan scan *before* the drain kills the subprocess with **SIGSEGV (-11) every time**,
+because enumerating live widgets while deletions are queued walks a list Qt is about to change.
+**The order of those two calls is load-bearing and nothing in my evidence had established that**;
+the conftest and `tests/qt_lifecycle.py` now say so. `## In Review` is empty; `9e5feae` is
+approved to push.
+
+*(The block below is the correction round and is left as written.)*
+
 **Last updated:** 2026-08-13 (T-238 corrected) — **three blocking findings, all corrected, and
 two criteria dispositioned by the maintainer.** `T238-R1` was right and is the one I would have
 missed: the leaked-view regression proved the *assertion* half only, and the drain — the half that
@@ -187,6 +198,25 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-13 (T-238 approved): the review reproduced the mechanism I could not
+
+**Approved at `9e5feae`, three findings Resolved, and `T-238` moves to `## Ready` still open
+against criterion 4** — the guard is a harness deliverable, and product-versus-harness is not a
+thing a green suite can establish.
+
+**The verification produced the fact this whole investigation was missing.** Sixty runs never
+reproduced the original segfault. The reviewer swapped the fixture's two calls — orphan scan
+first, drain second — and the helper subprocess died with **SIGSEGV (-11), deterministically**.
+Enumerating live widgets while deletions are still queued walks a list Qt is about to change.
+**So the order of two adjacent lines is load-bearing**, which none of my mutations tested and
+which nothing in the code said. It says it now, in both the conftest and `tests/qt_lifecycle.py`,
+because that is precisely the pair somebody tidies.
+
+**What that does and does not mean.** It reproduces the *mechanism* — a deletion executing at the
+wrong moment kills the process — and not the original crash, whose culprit is still unidentified.
+Criterion 4 stays open on that distinction rather than being closed by a resemblance, which is the
+same discipline the entry has held since the stack was first read.
 
 ## 2026-08-13 (T-238 review): the half I proved was not the half that mattered
 

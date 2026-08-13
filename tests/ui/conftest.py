@@ -80,6 +80,12 @@ def _no_orphaned_timers() -> Iterator[None]:
 # and if that object owns a live timer Qt warns, which is `_no_orphaned_timers`' subject rather
 # than this one's. Fixtures finalise in reverse order of setup, so this one — declared later —
 # runs first and any warning it provokes is still checked.
+#
+# **The two calls inside this fixture are ordered, and the order is load-bearing — measured, not
+# reasoned.** The reviewer swapped them so the assertion ran before the drain, and the helper
+# subprocess died with **SIGSEGV (-11), deterministically**. That is the closest thing this
+# investigation has to a reproduction: scanning live widgets while deletions are still queued
+# walks a list Qt is about to change. Drain first, then look.
 
 
 @pytest.fixture(autouse=True)

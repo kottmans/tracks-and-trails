@@ -76,6 +76,12 @@ to chance: `settle_deferred_deletions()` collects and drains **at the test bound
 thread**, so a deletion cannot carry into a later test's bytecode; `assert_no_orphaned_views()`
 then fails the test that left an ownerless view behind.
 
+**In that order, and the order is the one measured fact in this whole investigation.** The review
+swapped the two calls so the scan ran first, and the helper subprocess died with **SIGSEGV (-11),
+deterministically** — enumerating live widgets while deletions are still queued walks a list Qt is
+about to change under it. Sixty runs never reproduced the original crash; reversing these two
+lines reproduces *a* segfault every time.
+
 **What this does not claim.** It does not reproduce the segfault — 60 runs did not — and it does
 not prove the crash was a harness defect rather than a product one. It removes the carry-over the
 retained stack shows, and it names a leak at its cause instead of at its consequence
