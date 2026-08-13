@@ -3498,6 +3498,77 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-239 — A thumbnail-sweep regression fails on the runner and nowhere else
+
+**Status:** Proposed — filed 2026-08-12 from CI run `31655610375`. **Observed once. Not
+attributed**, and deliberately not attributed to the change it landed beside.
+**Owner:** Implementer
+**Priority:** Medium — it reddened the `linux` job, which is a gate; but the test guards a real
+`T179-R1` race and a wrong "fix" here would retire that guard rather than the flake
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `T-179`, `T179-R1`, `T-238` (a different failure of the same *kind* — a gate
+that is red on a runner and green everywhere else), `T-228`, `T118-R10` (timed gates with no
+headroom), `tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected`
+**Affected surfaces:** unknown. The test, `ui/queue_view.py`'s sweep scheduling, or neither
+**Risk:** Medium — the assertion is `T179-R1`'s own regression, and `T-179`'s carried criterion is
+that a disk entry is removed when no job names it
+
+#### What happened
+
+`linux` failed at `93a6f95`:
+
+```
+FAILED tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected
+AssertionError: a picture written after its job's removal sweep survived a later reorder;
+unchanged membership suppressed every subsequent scan, which is T179-R1
+```
+
+The failing line is `assert spin_until(qapp, lambda: not late.exists())` — a **wall-clock** wait,
+`timeout=30`.
+
+#### What is established, and what is not
+
+**Established:**
+
+- It passes **in isolation** locally.
+- `pytest -n auto tests/unit tests/ui` passed **12 of 12** local runs at that commit — **six idle
+  and six with the host saturated** (20 busy loops on 20 cores), which is the recipe that
+  reproduces `T-228`'s class at 3-in-5.
+- The test's cache root is `tmp_path / "cache"`, an explicit path. Nothing in it resolves through
+  `platformdirs`.
+- **`T-230` cannot reach it by any mechanism found.** That change only exports environment
+  variables, and nothing in `src/` reads `XDG_*` or `WIN_PD_OVERRIDE_*` — the only environment reads
+  are `PROBE_LOG_ENV` and `PATH`. It affects **spawned children**; this test spawns nothing and uses
+  a `QThreadPool`.
+
+**Not established, and this is the part that matters:** *why it failed.* The three points above are
+evidence that `T-230` is an unlikely cause; they are not a cause of their own. A 30-second
+wall-clock wait failing is either a runner slow enough to miss it — the `T118-R10` class — or the
+sweep genuinely not being scheduled, which would be `T179-R1` reopening.
+
+**Do not resolve this by raising the timeout.** `T-228`'s first criterion says why, and `T-179`'s
+guard is what would be lost: a bound generous enough to pass everywhere is a test deleted.
+
+#### Acceptance criteria
+
+- The failing assertion is reproduced, or the entry records how many runs under what conditions
+  failed to reproduce it and the search is called off explicitly rather than left open
+- The mechanism is established as **runner timing** or as **the sweep not being scheduled**; the
+  second is a product defect and gets its own entry with a deterministic regression
+- If it is timing: the bound is derived from something observable rather than raised until it
+  passes, and the test **still fails** when the membership-only gate `T179-R1` reported is
+  reintroduced
+- `T-230`, `T-220` and `T-229` are cleared or implicated by name, rather than left under suspicion
+  because they were the commits in flight
+
+#### Out of scope
+
+- `T-238`'s segfault. Same *kind* of problem — red on a runner, green locally — and no evidence of
+  a shared mechanism; `T-238`'s own entry warns against exactly that folding
+
+---
+
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
 **Status:** Proposed — corrected 2026-08-12 from the retained run log. One of nine observed
