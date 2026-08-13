@@ -120,3 +120,47 @@ def test_the_palette_and_the_applied_theme_are_restored_between_tests() -> None:
         "the pair did not both run, so this no longer asserts anything about the order between "
         f"them.\n\n{finished.stdout}\n{finished.stderr}"
     )
+
+
+# --- T-238: a leaked view fails its own test, rather than a later one -------------------------
+
+#: The deliberately bad test. **Not collected by the suite** — `python_files` is `test_*.py` and
+#: this file is not — so it runs only when named directly, which is what the regression below does.
+LEAKS_A_VIEW = "tests/ui/_leaks_a_view.py::test_leaks_a_view"
+
+
+def test_a_test_that_leaks_a_view_is_the_test_that_fails() -> None:
+    """`T-238`'s guard, proved by leaking a view rather than by reading the check.
+
+    **The crash this exists for named the wrong test.** An `-n auto` worker died in
+    `~QAbstractItemView` reached from `_Py_HandlePending`, inside a test whose file constructs no
+    view at all: a deferred deletion executing at an arbitrary bytecode boundary. Sixty runs did
+    not reproduce it, so what is asserted here is not the segfault — it is that a leak now fails
+    **where it happens**, which is `ai/TESTING.md` §13's rule and the maintainer's reason for
+    authorising the guard.
+
+    **The subprocess runs the real wiring**, not a copy of it: `_leaks_a_view.py` sits under
+    `tests/ui/`, so `conftest.py`'s autouse fixture, the boundary drain and the orphan check all
+    apply in the order the conftest gives them.
+
+    **Two assertions, because a guard that silently stops guarding is the failure mode this file
+    already exists for** (`T-225`, `T214-R1`): the run must fail, *and* it must fail with the
+    orphan message. A renamed node id, a moved fixture, or a guard reduced to a no-op would
+    otherwise leave a collection error looking like success.
+    """
+    finished = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", LEAKS_A_VIEW],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        timeout=600,
+    )
+
+    assert finished.returncode != 0, (
+        "a test that leaves an item view alive with no owner passed. The guard that names the "
+        f"leaking test is gone, so the next leak is found wherever it lands.\n\n{finished.stdout}"
+    )
+    assert "alive with no parent" in finished.stdout, (
+        "the run failed for some other reason than the view leak, so this asserts nothing about "
+        f"the guard.\n\n{finished.stdout}\n{finished.stderr}"
+    )

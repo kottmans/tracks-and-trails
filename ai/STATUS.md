@@ -5,6 +5,19 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (T-238 built) — **the authorised view-leak guard is built and
+`T-238` is In Review.** `tests/ui` now collects and drains deferred deletions **at every test
+boundary** and fails any test that leaves an item view with no owner. **The predicate was chosen
+by measurement**: the obvious rule — no view outlives its test — fails 802 of 839 tests, because a
+parented view is owned; *ownerless* views number **zero** in a correct suite. **431 tests were
+leaving objects to be collected later — 15 457 widgets, 1 001 of them views** — and those
+destructions used to run inside whichever test came next, which is exactly the stack the crash
+retained. **Two of six criteria remain unmet and are named in the entry**: the segfault is still
+not reproduced, and product-versus-harness is still not established. Cost: `tests/ui`
+106.65 s → 121.50 s.
+
+*(The block below is `T-198`'s approval and is left as written.)*
+
 **Last updated:** 2026-08-13 (approved) — **`T-198` is Complete, approved at `7b20c60`.** All six
 criteria met, **`T198-R1` through `T198-R6` all Resolved**, over four review passes. The approval
 rests on CI run `31726615968`, green on all five jobs, in which **both frozen artifacts** printed
@@ -163,6 +176,39 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-13 (T-238): the guard is built, and measuring it changed what it guards
+
+**The entry proposed the wrong predicate and the measurement is what caught it.** *"After every
+test, assert no `QAbstractItemView` is awaiting deferred deletion"* — the closest observable form
+of that, *no view created by this test is still alive*, **fails 802 of 839 `tests/ui` tests**. Not
+because the suite leaks: a view parented into a widget tree is **owned** and dies with its owner,
+so that rule is about Qt parenting rather than about lifetime. Two narrower predicates return
+**zero** across the whole suite — a view alive with no parent, and a view alive whose wrapper is
+otherwise unreferenced — and the first is now the rule.
+
+**The number that justifies the other half is the one I did not expect.** At their teardown, **431
+of 839 tests had objects awaiting collection or deletion: 15 457 widgets, 1 001 of them views.**
+Every one of those destructions used to run at some later arbitrary bytecode boundary — inside
+another test. That is precisely the shape of the retained stack, where `~QAbstractItemView` ran
+under `_Py_HandlePending` inside a file that constructs no view. Collecting and draining at the
+boundary does not fix any failing assertion; it removes the carry-over.
+
+**And that is the thing to be honest about: no existing test fails without the drain.** The suite
+is green with and without it, so it is a change nothing would notice being deleted — recorded in
+the entry for that reason. What *is* proved is the assertion: `tests/ui/_leaks_a_view.py` leaks one
+deliberately, and stashing the conftest wiring fails that regression and nothing else.
+
+**Two criteria remain unmet and the entry says so rather than rounding up.** The segfault is not
+reproduced — 60 runs — and product-versus-harness is not established. The maintainer's ruling took
+the guard *before* that branch condition on purpose, because the guard is the instrument that would
+establish it. **Cost, measured: `tests/ui` 106.65 s → 121.50 s, +13.9%.**
+
+**`tests/integration` was measured too and left alone on purpose.** Zero of its 430 tests would
+trip the predicate and the suite passes with the drain (+5%), so extending the guard is available
+and safe — but the crash was in the parallel unit/UI command, and widening a change on the day it
+is built is how a small correction becomes a large one. The measurement is in the entry so the
+choice is somebody's to take rather than a boundary I drew by hand.
 
 ## 2026-08-13 (approved): T-198 is Complete, after four passes
 

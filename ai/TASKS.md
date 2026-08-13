@@ -117,6 +117,232 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
+
+**Status:** **In Review — the authorised guard is built, 2026-08-13.** Awaiting a verdict. **Two
+of the six criteria remain unmet and are named below rather than left to be discovered**: the
+segfault is still not reproduced, and product-versus-harness is still not established. The guard
+is what the maintainer's ruling asked for and what the entry proposed; it is not a diagnosis.
+
+#### What was built — 2026-08-13
+
+**Measurement chose the predicate, and the obvious one was wrong.** *"After every test, assert no
+`QAbstractItemView` is awaiting deferred deletion"* is what the entry proposed, and the closest
+thing to it that can be observed — *no view created by this test is still alive* — **fails 802 of
+839 `tests/ui` tests**. That is not a leak rate: a view parented into a widget tree is **owned**,
+and dies with its owner. Two narrower predicates over the same suite return **zero**: a view alive
+with *no parent*, and a view alive whose wrapper is otherwise unreferenced. **So what no correct
+test produces is an ownerless view**, and that is what `assert_no_orphaned_views` forbids.
+
+**The hazard the stack actually shows is *when*, not *what*.** `_Py_HandlePending` means the
+deletion ran at an arbitrary bytecode boundary — inside whatever test was executing, which is why
+xdist blamed a file that constructs no view in 2600 lines. So the guard has two halves, and only
+one is an assertion:
+
+- **`settle_deferred_deletions(app)`** — `gc.collect()` then
+  `sendPostedEvents(None, DeferredDelete)`, at every `tests/ui` test boundary, on the main thread.
+  **Measured: 431 of 839 tests had objects awaiting collection or deletion at that point, totalling
+  15 457 widgets, 1 001 of them views.** Those destructions were previously running inside later
+  tests. **This half fixes no failing assertion and is not load-bearing for any existing test** —
+  the suite is green with and without it — which is stated here because a change that nothing
+  fails without is exactly the kind that gets deleted later as dead weight.
+- **`assert_no_orphaned_views(app)`** — fails the test that leaves a view with no parent, naming
+  it. `tests/ui/_leaks_a_view.py` leaks one deliberately and
+  `test_a_test_that_leaks_a_view_is_the_test_that_fails` runs it in a subprocess and requires both
+  a non-zero exit *and* the orphan message, so a guard reduced to a no-op cannot pass it.
+
+**Mutation-checked by removing the wiring**: with `tests/ui/conftest.py` stashed, that regression
+fails and **nothing else does** — which is the honest measure of the guard's reach today.
+
+**Cost, measured rather than estimated: `tests/ui` goes from 106.65 s to 121.50 s**, +14.9 s or
+**+13.9%**, almost all of it `gc.collect()` per test. Paid deliberately: the alternative is a
+native crash attributed to the wrong test, which cost this entry sixty runs and two days.
+
+**Deliberately not extended to `tests/integration`, and that is a decision with a measurement
+under it rather than a boundary drawn by hand.** The same predicate was run over that suite:
+**0 of 430 tests would trip it**, and the whole suite passes with the drain applied at every
+boundary, costing 268.34 s → 281.79 s (**+5%**). So extending it is available and safe whenever
+somebody wants it. It is not done here because the crash was in the parallel unit/UI command and
+the ruling authorised that guard; widening the blast radius of a change on the same day it is
+built is how a small correction becomes a large one.
+
+#### The guard ruling — maintainer, 2026-08-13
+
+**Build it.** The entry conditioned the guard on product-versus-harness being established and then
+could not establish it: 60 runs did not reproduce the crash, so repetition is spent at worse than
+1-in-60. **The guard is itself the instrument that would establish it** — it fails at the test that
+leaks the view, by name, on an ordinary run, instead of waiting for a segfault to land somewhere
+else. `ai/TESTING.md` §13 already states the principle: the useful signal is the one at the cause.
+
+*(This is a ruling about the *order* of the criteria, not a waiver of any of them. The guard is the
+fourth criterion's harness-only branch, taken before the branch condition is proved, because
+proving the condition is what it is for.)*
+
+**Status of the original filing** — corrected 2026-08-12 from the retained run log. One of nine observed
+`-n auto` unit/UI runs ended when worker `gw7` segfaulted; eight sibling runs passed. **This was
+not an assertion failure, and one event in nine runs is a sample, not a measured rate.** Forty
+further repeated runs were started to reproduce and characterise it; their result is not yet
+recorded here.
+**Owner:** Implementer
+**Priority:** High — this is a native process crash in the supported parallel test command, not a
+timing assertion, and its Qt/PySide lifetime stack belongs to the evidence class that made T-074
+and T-128 high-value investigations. One observation does not yet establish product reachability.
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `T118-R13`, `T-074`, `T-128`, `T-123`,
+`tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through`,
+`ui/thumbnails.py` (`ThumbnailStore.close`, `_Sink`, the shared `QThreadPool`)
+**Affected surfaces:** unknown until the faulting object's lifetime is identified. The active test,
+Qt test fixtures/teardown, and `ui/thumbnails.py` are candidates, not conclusions
+**Risk:** High to gate integrity and potentially Medium to the product — a worker process is lost;
+whether supported application behavior can reach the same native fault is unverified
+
+#### What the retained run actually says
+
+xdist reported:
+
+```
+[gw7] node down: Not properly terminated
+worker 'gw7' crashed while running
+  'tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through'
+```
+
+Immediately before that, Python's fault handler reported **`Fatal Python error: Segmentation
+fault`**. The current Python frame was inside `occupy_pool()` at `store.pool.start(_Blocker(gate))`,
+before the test reached any of its three assertions. The C stack passes through
+`QObject::disconnectImpl`, `QAbstractItemView` destruction, and Shiboken's
+`BindingManager::runDeletionInMainThread`.
+
+That stack makes Qt/PySide object lifetime and deferred destruction a concrete lead. It does **not**
+identify the faulting object, establish that the thumbnail store caused the crash, distinguish an
+object left by an earlier test from one created here, or prove identity with T-074/T-128. A native
+Qt crash is the shared finding class; a shared cause remains to be demonstrated.
+
+#### The 40 runs, and what the retained stack narrows it to — 2026-08-12
+
+**40 of 40 `-n auto` unit/UI runs passed. Zero crashes, zero failures.** On an otherwise idle
+machine, against one observation in nine.
+
+**That is a result, not a null.** The original run happened while the machine was also running
+other pytest batches — the same contamination that made `T-228`'s *"one in three"* wrong. **The
+one-in-nine figure is not a rate**, and this entry's Status already says so; 40 idle runs now say
+it from the other side. Whatever this is, **idle repetition of the supported command does not reach
+it**, so the next attempt should reproduce under deliberate host load, as `T-228`'s did.
+
+**The raw stack is retained** at `ai/evidence/T238-SEGFAULT-gw7.txt` — `ai/evidence/README.md`'s
+test is *"could I get it back"*, and 40 runs say no. Trimmed to the crash; the warnings summary is
+not evidence.
+
+**What the C stack narrows, read rather than skimmed:**
+
+```
+_Py_HandlePending
+  → Shiboken::BindingManager::runDeletionInMainThread
+    → QAbstractItemView::~QAbstractItemView
+      → QObject::disconnectImpl        ← faults here
+```
+
+Two things follow, and only two:
+
+- **The faulting object is a `QAbstractItemView`.** `tests/ui/test_row_delegate.py` imports
+  `QApplication` and `QStyleOptionViewItem` from `QtWidgets` and **nothing else** — no view class —
+  and constructs no view anywhere in its 2600 lines. `ThumbnailStore` is a `QObject`, not a view.
+  **So the destroyed object was not created by the test xdist named**, which is exactly the
+  attribution trap this entry warned about: *"while running"* names the active node.
+- **It ran at `_Py_HandlePending`** — a deferred deletion executing at an arbitrary bytecode
+  boundary, here inside `occupy_pool`'s `store.pool.start(...)`. That is why the Python frame points
+  at this test while the destructor belongs to something else.
+
+**What it does not establish**, and must not be written as though it did: which object, which test
+created it, whether `thumbnails.py` is implicated at all, or identity with `T-074`/`T-128`. A
+`QAbstractItemView` destructor under Shiboken deferred deletion is the same *class* of stack as
+`T-128`'s — a QObject destroyed at a moment nobody chose — and `T-128` was a **harness** defect. That
+is a lead, not a conclusion, and the third criterion below forbids treating resemblance as cause.
+
+**The search is therefore narrower than the entry assumed**: not "what is wrong with this test", but
+**which earlier test in the same worker leaves a view whose deletion is still pending**. The
+`qt_lifecycle` orphan-timer guard (`T-128`, `tests/integration/conftest.py`) is the existing shape
+of an answer — a per-test check that fails at the cause rather than at the crash — and `tests/ui`
+has no equivalent for *views*.
+
+#### Reproduction is not a viable strategy at this rate — 60 runs, 2026-08-12
+
+| Conditions | Runs | Crashes |
+|---|---:|---:|
+| `-n auto` unit/UI, idle machine | 40 | **0** |
+| `-n auto` unit/UI, host saturated (20 busy loops on 20 cores) | 12 | **0** |
+| `-n auto` unit/UI **while an `-n auto` integration batch runs beside it** | 8 | **0** |
+
+**Sixty runs, no reproduction — including the third row, which is the closest reconstruction of the
+original conditions available.** The observation happened while other pytest batches were running,
+so that shape was tried deliberately rather than as an afterthought.
+
+**The second row also refutes a recommendation this entry made two paragraphs earlier.** Having
+watched saturation reproduce `T-228` at 3-in-5, I wrote that the next attempt should reproduce under
+deliberate host load. It does not. Different defect, different lever — the same mistake as comparing
+this to `T-228` in the first place, made a second time in a smaller way.
+
+**So repetition is the wrong instrument here.** At worse than 1-in-60 the cost of catching it again
+is unbounded, and the retained stack already says more than another crash would: the object is a
+view, and the test it was blamed on never makes one.
+
+**What is worth building instead, proposed rather than done:** a `tests/ui` guard in the shape of
+`qt_lifecycle.fail_on_orphaned_timers()` — *after every test, assert no `QAbstractItemView` is
+awaiting deferred deletion* — which fails **at the test that leaked the view**, by name, on the
+first ordinary run, instead of waiting for a segfault to land somewhere else. That would satisfy the
+fourth criterion's *"a guard that fails before a worker dies"*, and `ai/TESTING.md` §13 already
+states the principle: the useful signal is the one at the cause.
+
+**Not built here**, because the fourth criterion is conditioned on product-versus-harness being
+established and it is not. This is the Implementer proposing the next step, not taking it.
+
+#### Scope
+
+Reproduce and diagnose the **worker SIGSEGV** under the supported parallel unit/UI command. Capture
+the test order and teardown state around the crash, because xdist's *"while running"* attribution
+names the active node, not necessarily the object whose deferred deletion faulted.
+
+Do not fold it into T-228: that task concerns `multiprocessing.Queue` delivery in spawned
+integration workers. No assertion timed out here, so changing the interaction budget or pool-drain
+deadline is not a candidate correction. Preserve the three existing contracts: deletion does not
+block the GUI thread, the pool can drain, and late work does not emit through a deleted `QObject`.
+
+#### Acceptance criteria
+
+- Reproduction evidence records the process signal/exit, Python and native stacks, explicit xdist
+  worker count, and the tests immediately preceding the active node; raw failing logs are retained
+- Serial, isolated, module-order, and explicit xdist-count runs distinguish a defect in this test
+  from deferred destruction or contamination left by another test
+- The faulting object and lifetime edge are identified before claiming identity with T-074 or
+  T-128; stack resemblance alone is not a cause
+- Product behavior versus test-harness behavior is established. A product-reachable fault gets a
+  deterministic regression; a harness-only fault gets a guard that fails before a worker dies
+- The original responsiveness, pool-drain, and no-emission-through-deleted-object assertions stay
+  intact; no timeout is raised to make the crash disappear
+- Repeated `pytest -n auto tests/unit tests/ui` runs after the correction materially exceed the
+  pre-fix sample without another worker loss
+
+#### Where each criterion stands — 2026-08-13
+
+| # | Criterion | State |
+|---|---|---|
+| 1 | Reproduction evidence, raw logs retained | **Met for the one observation** — `ai/evidence/T238-SEGFAULT-gw7.txt`. **Not reproduced since**, in 60 runs |
+| 2 | Serial/isolated/module-order runs distinguish this test from contamination | **Met, and it is what redirected the search.** The named test's file constructs no view; the faulting object came from elsewhere in the worker |
+| 3 | The faulting object and lifetime edge identified before claiming identity with `T-074`/`T-128` | **Half met.** The *class* is identified — a `QAbstractItemView` destroyed under Shiboken's cross-thread deletion queue — and the specific object is **not**. No identity with either task is claimed |
+| 4 | Product versus harness established; harness-only gets a guard that fails before a worker dies | **The guard is built; the branch condition is still unproved.** The maintainer ruled the order deliberately: the guard is the instrument that would establish it |
+| 5 | The three original assertions stay intact; no timeout raised | **Met** — `test_deleting_a_closed_store_neither_waits_nor_is_emitted_through` is untouched, and `INTERACTION_BUDGET_SECONDS` is unchanged |
+| 6 | Repeated `-n auto` runs materially exceed the pre-fix sample | **Not met.** The pre-fix sample is 60 runs without a crash, so "materially exceed" is not a number this can pass cheaply, and no soak has been run since |
+
+**Criterion 6 is the one to press on, and it is worth saying what it would take.** The baseline is
+already 60 clean runs, so a post-guard soak that beats it is a large machine commitment
+(`ai/TESTING.md` §: a host performing a measurement is committed for the duration) for a result
+that would still not distinguish *the guard worked* from *the crash was always this rare*. The
+guard's own regression is the evidence that it fires; a soak would be evidence about frequency.
+
+---
+
+---
+
 ## Complete
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
@@ -4697,169 +4923,6 @@ which it merely reports.
 
 ---
 
-### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
-
-**Status:** **Proposed — the guard is authorised, 2026-08-13.** The maintainer ruled that the
-`tests/ui` view-leak guard this entry proposed should be **built**, which resolves the condition
-its fourth criterion was waiting on.
-
-#### The guard ruling — maintainer, 2026-08-13
-
-**Build it.** The entry conditioned the guard on product-versus-harness being established and then
-could not establish it: 60 runs did not reproduce the crash, so repetition is spent at worse than
-1-in-60. **The guard is itself the instrument that would establish it** — it fails at the test that
-leaks the view, by name, on an ordinary run, instead of waiting for a segfault to land somewhere
-else. `ai/TESTING.md` §13 already states the principle: the useful signal is the one at the cause.
-
-*(This is a ruling about the *order* of the criteria, not a waiver of any of them. The guard is the
-fourth criterion's harness-only branch, taken before the branch condition is proved, because
-proving the condition is what it is for.)*
-
-**Status of the original filing** — corrected 2026-08-12 from the retained run log. One of nine observed
-`-n auto` unit/UI runs ended when worker `gw7` segfaulted; eight sibling runs passed. **This was
-not an assertion failure, and one event in nine runs is a sample, not a measured rate.** Forty
-further repeated runs were started to reproduce and characterise it; their result is not yet
-recorded here.
-**Owner:** Implementer
-**Priority:** High — this is a native process crash in the supported parallel test command, not a
-timing assertion, and its Qt/PySide lifetime stack belongs to the evidence class that made T-074
-and T-128 high-value investigations. One observation does not yet establish product reachability.
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing
-**Relevant context:** `T118-R13`, `T-074`, `T-128`, `T-123`,
-`tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through`,
-`ui/thumbnails.py` (`ThumbnailStore.close`, `_Sink`, the shared `QThreadPool`)
-**Affected surfaces:** unknown until the faulting object's lifetime is identified. The active test,
-Qt test fixtures/teardown, and `ui/thumbnails.py` are candidates, not conclusions
-**Risk:** High to gate integrity and potentially Medium to the product — a worker process is lost;
-whether supported application behavior can reach the same native fault is unverified
-
-#### What the retained run actually says
-
-xdist reported:
-
-```
-[gw7] node down: Not properly terminated
-worker 'gw7' crashed while running
-  'tests/ui/test_row_delegate.py::test_deleting_a_closed_store_neither_waits_nor_is_emitted_through'
-```
-
-Immediately before that, Python's fault handler reported **`Fatal Python error: Segmentation
-fault`**. The current Python frame was inside `occupy_pool()` at `store.pool.start(_Blocker(gate))`,
-before the test reached any of its three assertions. The C stack passes through
-`QObject::disconnectImpl`, `QAbstractItemView` destruction, and Shiboken's
-`BindingManager::runDeletionInMainThread`.
-
-That stack makes Qt/PySide object lifetime and deferred destruction a concrete lead. It does **not**
-identify the faulting object, establish that the thumbnail store caused the crash, distinguish an
-object left by an earlier test from one created here, or prove identity with T-074/T-128. A native
-Qt crash is the shared finding class; a shared cause remains to be demonstrated.
-
-#### The 40 runs, and what the retained stack narrows it to — 2026-08-12
-
-**40 of 40 `-n auto` unit/UI runs passed. Zero crashes, zero failures.** On an otherwise idle
-machine, against one observation in nine.
-
-**That is a result, not a null.** The original run happened while the machine was also running
-other pytest batches — the same contamination that made `T-228`'s *"one in three"* wrong. **The
-one-in-nine figure is not a rate**, and this entry's Status already says so; 40 idle runs now say
-it from the other side. Whatever this is, **idle repetition of the supported command does not reach
-it**, so the next attempt should reproduce under deliberate host load, as `T-228`'s did.
-
-**The raw stack is retained** at `ai/evidence/T238-SEGFAULT-gw7.txt` — `ai/evidence/README.md`'s
-test is *"could I get it back"*, and 40 runs say no. Trimmed to the crash; the warnings summary is
-not evidence.
-
-**What the C stack narrows, read rather than skimmed:**
-
-```
-_Py_HandlePending
-  → Shiboken::BindingManager::runDeletionInMainThread
-    → QAbstractItemView::~QAbstractItemView
-      → QObject::disconnectImpl        ← faults here
-```
-
-Two things follow, and only two:
-
-- **The faulting object is a `QAbstractItemView`.** `tests/ui/test_row_delegate.py` imports
-  `QApplication` and `QStyleOptionViewItem` from `QtWidgets` and **nothing else** — no view class —
-  and constructs no view anywhere in its 2600 lines. `ThumbnailStore` is a `QObject`, not a view.
-  **So the destroyed object was not created by the test xdist named**, which is exactly the
-  attribution trap this entry warned about: *"while running"* names the active node.
-- **It ran at `_Py_HandlePending`** — a deferred deletion executing at an arbitrary bytecode
-  boundary, here inside `occupy_pool`'s `store.pool.start(...)`. That is why the Python frame points
-  at this test while the destructor belongs to something else.
-
-**What it does not establish**, and must not be written as though it did: which object, which test
-created it, whether `thumbnails.py` is implicated at all, or identity with `T-074`/`T-128`. A
-`QAbstractItemView` destructor under Shiboken deferred deletion is the same *class* of stack as
-`T-128`'s — a QObject destroyed at a moment nobody chose — and `T-128` was a **harness** defect. That
-is a lead, not a conclusion, and the third criterion below forbids treating resemblance as cause.
-
-**The search is therefore narrower than the entry assumed**: not "what is wrong with this test", but
-**which earlier test in the same worker leaves a view whose deletion is still pending**. The
-`qt_lifecycle` orphan-timer guard (`T-128`, `tests/integration/conftest.py`) is the existing shape
-of an answer — a per-test check that fails at the cause rather than at the crash — and `tests/ui`
-has no equivalent for *views*.
-
-#### Reproduction is not a viable strategy at this rate — 60 runs, 2026-08-12
-
-| Conditions | Runs | Crashes |
-|---|---:|---:|
-| `-n auto` unit/UI, idle machine | 40 | **0** |
-| `-n auto` unit/UI, host saturated (20 busy loops on 20 cores) | 12 | **0** |
-| `-n auto` unit/UI **while an `-n auto` integration batch runs beside it** | 8 | **0** |
-
-**Sixty runs, no reproduction — including the third row, which is the closest reconstruction of the
-original conditions available.** The observation happened while other pytest batches were running,
-so that shape was tried deliberately rather than as an afterthought.
-
-**The second row also refutes a recommendation this entry made two paragraphs earlier.** Having
-watched saturation reproduce `T-228` at 3-in-5, I wrote that the next attempt should reproduce under
-deliberate host load. It does not. Different defect, different lever — the same mistake as comparing
-this to `T-228` in the first place, made a second time in a smaller way.
-
-**So repetition is the wrong instrument here.** At worse than 1-in-60 the cost of catching it again
-is unbounded, and the retained stack already says more than another crash would: the object is a
-view, and the test it was blamed on never makes one.
-
-**What is worth building instead, proposed rather than done:** a `tests/ui` guard in the shape of
-`qt_lifecycle.fail_on_orphaned_timers()` — *after every test, assert no `QAbstractItemView` is
-awaiting deferred deletion* — which fails **at the test that leaked the view**, by name, on the
-first ordinary run, instead of waiting for a segfault to land somewhere else. That would satisfy the
-fourth criterion's *"a guard that fails before a worker dies"*, and `ai/TESTING.md` §13 already
-states the principle: the useful signal is the one at the cause.
-
-**Not built here**, because the fourth criterion is conditioned on product-versus-harness being
-established and it is not. This is the Implementer proposing the next step, not taking it.
-
-#### Scope
-
-Reproduce and diagnose the **worker SIGSEGV** under the supported parallel unit/UI command. Capture
-the test order and teardown state around the crash, because xdist's *"while running"* attribution
-names the active node, not necessarily the object whose deferred deletion faulted.
-
-Do not fold it into T-228: that task concerns `multiprocessing.Queue` delivery in spawned
-integration workers. No assertion timed out here, so changing the interaction budget or pool-drain
-deadline is not a candidate correction. Preserve the three existing contracts: deletion does not
-block the GUI thread, the pool can drain, and late work does not emit through a deleted `QObject`.
-
-#### Acceptance criteria
-
-- Reproduction evidence records the process signal/exit, Python and native stacks, explicit xdist
-  worker count, and the tests immediately preceding the active node; raw failing logs are retained
-- Serial, isolated, module-order, and explicit xdist-count runs distinguish a defect in this test
-  from deferred destruction or contamination left by another test
-- The faulting object and lifetime edge are identified before claiming identity with T-074 or
-  T-128; stack resemblance alone is not a cause
-- Product behavior versus test-harness behavior is established. A product-reachable fault gets a
-  deterministic regression; a harness-only fault gets a guard that fails before a worker dies
-- The original responsiveness, pool-drain, and no-emission-through-deleted-object assertions stay
-  intact; no timeout is raised to make the crash disappear
-- Repeated `pytest -n auto tests/unit tests/ui` runs after the correction materially exceed the
-  pre-fix sample without another worker loss
-
----
 
 ### T-227 — Nothing gates the documents that say what is built
 

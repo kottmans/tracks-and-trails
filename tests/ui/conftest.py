@@ -63,6 +63,32 @@ def _no_orphaned_timers() -> Iterator[None]:
     qt_lifecycle.assert_no_orphaned_timers()
 
 
+# --- `T-238`: a widget tree is collected here, not inside somebody else's test ------------------
+#
+# An `-n auto` worker died with `SIGSEGV` in `~QAbstractItemView`, reached from
+# `_Py_HandlePending` — a deferred deletion running at an arbitrary bytecode boundary — inside a
+# test whose file constructs no view at all. Sixty runs did not reproduce it, so the maintainer
+# authorised the guard instead: the useful signal is the one at the cause (`ai/TESTING.md` §13).
+#
+# **Two halves, and only the second is an assertion.** Collecting and draining at the boundary is
+# what stops a deletion carrying into a later test; the orphan check is what names a test that
+# leaves a view without an owner. `tests/qt_lifecycle.py` records the measurements that chose
+# `parentless` as the predicate — 802 of 839 tests leave a view *alive*, and none leaves one
+# unparented, so the obvious rule would have failed a correct suite.
+#
+# **Ordered after the timer check on purpose**: a collection here can run a `QObject`'s destructor,
+# and if that object owns a live timer Qt warns, which is `_no_orphaned_timers`' subject rather
+# than this one's. Fixtures finalise in reverse order of setup, so this one — declared later —
+# runs first and any warning it provokes is still checked.
+
+
+@pytest.fixture(autouse=True)
+def _no_orphaned_views(qapp: QApplication) -> Iterator[None]:
+    yield
+    qt_lifecycle.settle_deferred_deletions(qapp)
+    qt_lifecycle.assert_no_orphaned_views(qapp)
+
+
 # --- `T-225`: the application's dressing is global, so dressing it dresses every later test -----
 #
 # `theme.apply` changes three things on the one `QApplication` the session shares — the style

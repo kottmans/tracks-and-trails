@@ -41,15 +41,55 @@ teardowns polled it and then dropped the manager inside that window.
 **The application is not on this path**: `app.py` waits for the `idle` *signal*, which is emitted
 only after `_timer.stop()`. Nothing in `src/` reads `is_idle` at all. This is a harness defect, and
 `has_settled` is the question the harness should have been asking.
+
+## The second lifetime hazard: a widget tree collected at a moment nobody chose (`T-238`)
+
+An `-n auto` unit/UI worker died with `SIGSEGV` inside a test that creates no view at all:
+
+```
+_Py_HandlePending
+  → Shiboken::BindingManager::runDeletionInMainThread
+    → QAbstractItemView::~QAbstractItemView
+      → QObject::disconnectImpl        ← faults here
+```
+
+**`_Py_HandlePending` is the whole story.** Shiboken queues a C++ deletion when the wrapper's last
+reference is dropped somewhere it cannot delete directly, and that queue is drained at an arbitrary
+bytecode boundary — so the destructor runs inside *whichever test happens to be executing*, which
+is why xdist blamed a test whose file imports no view class in 2600 lines.
+
+**Two measurements decided the shape of the guard below**, over the whole `tests/ui` suite:
+
+| Predicate at teardown | Tests tripping it |
+|---|---|
+| a view created by this test is still alive | **802 of 839** |
+| …and it has no parent | **0** |
+| …and its wrapper is otherwise unreferenced | **0** |
+
+So the obvious rule — *no view outlives its test* — is not a lifetime rule at all: it would fail
+96% of a correct suite, because a view parented into a widget tree is **owned** and dies with its
+owner. What no correct test produces is a view that is alive with **no owner**, which is the shape
+of a tree whose root has already gone.
+
+That leaves the real hazard as *when* the owner is collected, and the answer is to stop leaving it
+to chance: `settle_deferred_deletions()` collects and drains **at the test boundary, on the main
+thread**, so a deletion cannot carry into a later test's bytecode; `assert_no_orphaned_views()`
+then fails the test that left an ownerless view behind.
+
+**What this does not claim.** It does not reproduce the segfault — 60 runs did not — and it does
+not prove the crash was a harness defect rather than a product one. It removes the carry-over the
+retained stack shows, and it names a leak at its cause instead of at its consequence
+(`ai/TESTING.md` §13).
 """
 
 from __future__ import annotations
 
+import gc
 import time
 from collections.abc import Callable, Iterable
 from typing import Any, Final, Protocol
 
-from PySide6.QtCore import QCoreApplication, QTimer, qInstallMessageHandler
+from PySide6.QtCore import QCoreApplication, QEvent, QTimer, qInstallMessageHandler
 
 #: What Qt says when a QObject owning a live timer is destroyed from the wrong thread.
 #:
@@ -178,4 +218,79 @@ def assert_no_orphaned_timers() -> None:
         "A QObject owning a live timer was destroyed from a thread that does not own it, so the "
         "dispatcher still holds a pointer to freed memory and will follow it on the next tick. "
         "See tests/qt_lifecycle.py."
+    )
+
+
+# --- `T-238`: a widget tree must not be collected inside somebody else's test -------------------
+
+
+def settle_deferred_deletions(app: QCoreApplication) -> None:
+    """Collect wrappers and run every pending deletion **here**, on the main thread.
+
+    Two steps, and they are not interchangeable:
+
+    1. `gc.collect()` finalises wrappers whose only remaining reference was a cycle. A widget tree
+       kept alive by one — a window holding a view that holds a delegate that holds the window — is
+       freed at whatever allocation happens to trip the collector otherwise, and that is a bytecode
+       boundary in a later test.
+    2. `sendPostedEvents(None, DeferredDelete)` runs the deletions `deleteLater()` posted. Qt
+       delivers those only from an event loop, and a headless test that never spins one leaves them
+       queued for whoever spins one next.
+
+    **Called at the end of every UI test rather than at the end of the session**, because the point
+    is the boundary: after this returns, no later test can inherit a deletion of an object it never
+    created. `T-238`'s retained stack is exactly that inheritance — a `~QAbstractItemView` running
+    at `_Py_HandlePending` inside a test whose file constructs no view.
+
+    **`app` is passed rather than fetched** so this cannot silently do nothing in a process that
+    has no application object; every caller is a Qt conftest that already has one.
+    """
+    gc.collect()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def orphaned_views(app: QCoreApplication) -> list[str]:
+    """Every live item view with no parent — a tree whose owner has gone, described for a message.
+
+    **Parentless is the predicate, and it was chosen by measurement rather than by taste.** Over
+    `tests/ui`, 802 of 839 tests leave a view alive at teardown and **none** leaves one without a
+    parent: a parented view is owned, and dies with its owner. So "alive" describes a correct
+    suite and "alive with no owner" describes the shape this exists to catch — a view whose tree
+    root was collected while it was not.
+
+    Widgets are asked for through `QApplication.allWidgets()` — public API, and the same source the
+    measurement used — rather than by walking `gc.get_objects()`, which would also return wrappers
+    for C++ objects that are already gone.
+    """
+    from PySide6.QtWidgets import QAbstractItemView, QApplication
+
+    if not isinstance(app, QApplication):
+        # A `QCoreApplication` process has no widgets at all, which is the honest answer rather
+        # than an import-time refusal: `tests/integration` shares this module and has no display.
+        return []
+    return [
+        f"{type(view).__name__}({view.objectName() or 'unnamed'})"
+        for view in QApplication.allWidgets()
+        if isinstance(view, QAbstractItemView) and view.parent() is None
+    ]
+
+
+def assert_no_orphaned_views(app: QCoreApplication) -> None:
+    """Fail the test that left an item view alive with no owner (`T-238`).
+
+    **This is the guard the maintainer authorised, and its own entry says what it is worth**: it
+    does not reproduce the segfault and does not prove the fault was the harness's. It fails at the
+    test that produced the condition, on an ordinary run, instead of leaving a deletion to execute
+    inside an unrelated test — which is the attribution problem the crash arrived with, and
+    `ai/TESTING.md` §13's rule about intermittents.
+    """
+    orphans = orphaned_views(app)
+    if not orphans:
+        return
+    raise AssertionError(
+        f"this test left {len(orphans)} item view(s) alive with no parent: {orphans}. "
+        "A view whose owner has been collected is destroyed on its own, at whatever bytecode "
+        "boundary Python's collector reaches next — which may be inside another test, and is the "
+        "shape of T-238's SIGSEGV (~QAbstractItemView under runDeletionInMainThread). Give it a "
+        "parent, or delete it before the test ends. See tests/qt_lifecycle.py."
     )
