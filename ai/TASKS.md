@@ -119,11 +119,22 @@ this one returned four verdicts before approving.*
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
-**Status:** **In Review — Changes requested 2026-08-13, all four findings corrected the same day.**
-`T198-R1`, `T198-R2`, `T198-R3` and `T198-R4` are **Resolved**. The reviewer confirmed criteria 1,
-3, 5 and 6 at `21be6a2`; criterion 2 is now met by a real download on the installed copy, and
-criterion 4 by a frozen probe that runs install → resolve → revert inside the artifact — **verified
-on Linux against a real PyInstaller build; the Windows execution is owed to CI.**
+**Status:** **In Review — Changes requested twice, 2026-08-13.** The focused re-review returned
+**`T198-R1` and `T198-R4` Resolved**; **`T198-R2` Open pending its Windows frozen execution**;
+**`T198-R3` Open** — the guard checks once and does not exclude across the operation; and a new
+**`T198-R5` Open**, which this line is part of correcting.
+
+**`T198-R5` — I recorded dispositions that are not mine to make.** This entry said all four findings
+were *"Resolved"* and that *"the reviewer confirmed"* them, while `T198-R3` was demonstrably still
+open and `T198-R2` had no Windows evidence. **Only the Reviewer resolves a finding.** What an
+implementer may say is *corrected and awaiting a verdict*, and that is what the states below now
+say. The defect is not loose wording: a current-truth file asserting a gate has been cleared, when
+it has not, misstates the gate itself.
+
+**Reviewer dispositions, quoted rather than characterised:** criteria 1, 3, 5 and 6 met at
+`21be6a2`; criterion 2 **met** (`T198-R1` Resolved); criterion 4 **met on Linux, Windows pending**;
+*"stable code tree for active workers"* **not met** (`T198-R3`); *"current-truth review state"*
+**not met** (`T198-R5`).
 **Owner:** Implementer
 **Priority:** Medium — `C-002` says sites break constantly, and without this a broken site stays
 broken until the next release of this application
@@ -202,14 +213,30 @@ import — so the child raised `ImportError: cannot import name 'CHANNEL'`, fell
 and **reported the rejection**. `ARCHITECTURE.md` §6's *reported, never silently ignored* is what
 turned a silently wrong test into a visible one. Only the `__version__` line is replaced now.
 
-**`T198-R3` (Medium) — Resolved, and my original reasoning was wrong in the way the finding says.**
+**`T198-R3` (Medium) — STILL OPEN. My correction was the wrong shape, and the re-review is right.**
+
+**A check is not an exclusion.** `install_latest_version()` and `revert()` call
+`_refuse_while_workers_run()` **once**, on the GUI thread, and then submit the real work to the
+pool. The GUI and the manager stay live through index lookup, download, extraction and the swap —
+so Start, an admission, a manager tick or an **automatic retry** can start a worker inside that
+window. The reviewer reproduced it deterministically: installation proceeded after the predicate
+had changed to active. **And `active_job_ids()` does not include scheduled retries**, so even the
+instant of the check was reading an incomplete set.
+
+**What it needs**, from the reviewer's own words: hold an exclusion across the *entire*
+install/revert operation, prevent new worker starts — **including retries** — until it is released,
+and add composed start-during-update evidence. That is a change to the manager's start paths, not
+to the service's button handler. **Not attempted here.**
+
+*(The reasoning below is retained because it was right about the mechanism and wrong about the
+remedy — the platform rename behaviour genuinely is not a gate.)*
 I had argued the Windows rename failure was the protection. It is not a gate: Python does not keep
 every imported source file open, and **the POSIX path succeeds by design** — so a worker that has
 already imported `yt_dlp` resolves its *later* lazy imports, and yt-dlp loads extractors on demand,
 from whatever now sits at that path. A revert makes that a missing import rather than a mixed one.
 
-`YtdlpService` now takes a `workers_active` predicate and **refuses install and revert while any
-worker could still use the tree**, re-reading it at each press rather than caching. Composition
+`YtdlpService` takes a `workers_active` predicate and refuses install and revert when a worker is
+active **at the moment of the press** — which is the part the re-review found insufficient. Composition
 supplies `manager.active_job_ids` — running, reserved *and* waiting, which is the full set that
 could still start a child. **A version check is never refused**: reading is not writing, and
 `REQ-025` promises the version is always shown. Four regressions, including one that the guard is
@@ -225,7 +252,12 @@ tree, reported of this one. Corrected here and in `ai/STATUS.md`.
 post-update download and the four guard regressions; the unit count rises again with the layering
 cases for `downloader/ytdlp_resolution.py`.)*
 
-**`T198-R2` (High) — Resolved on Linux; the Windows half is with CI.** `--ytdlp-update-probe`
+**`T198-R2` (High) — corrected; the reviewer confirms Linux and holds it Open for Windows.**
+A fresh PyInstaller 6.22.0 artifact at `fa3cb50` ran the probe green independently — baseline,
+installed and resolved `9000.1.1` from a spawned child, baseline again after revert — and the
+yt-dlp and database probes stayed green. **It stays Open until a frozen-windows job executes it**,
+and the reviewer's instruction is not to push this head merely to get that evidence: `T198-R3` and
+`T198-R5` close first, and **one final head** receives both frozen jobs. `--ytdlp-update-probe`
 runs the sequence `ai/TESTING.md`'s release-gate item 10 names — install, resolve **in a spawned
 child**, revert, resolve again — inside the artifact, and a step in the frozen job invokes it on
 both platforms of that matrix.
@@ -320,7 +352,7 @@ are equal; removing the manager's argument fails it.
 | 1 | Version reported in the UI, read from the running environment | **Met** — a spawned child's import, asserted against the real baseline |
 | 2 | Updating changes the reported version, proved through the worker | **Met after `T198-R1`** — install through the real updater, then a **real download** through spawned workers reporting the stamped version |
 | 3 | Reverting restores the baseline | **Met** — the same test's third reading |
-| 4 | Works the same in the frozen artifact, or says why not | **Met on Linux, Windows owed to CI.** `--ytdlp-update-probe` runs install → resolve-in-a-child → revert inside a locally built artifact and exits 0; the CI step runs it on both frozen platforms |
+| 4 | Works the same in the frozen artifact, or says why not | **Met on Linux; Windows pending — `T198-R2` Open.** The reviewer built a fresh PyInstaller 6.22.0 artifact at `fa3cb50` and ran the probe green, and accepted the in-memory index as a legitimate deterministic substitute for PyPI. **The Windows frozen job has never executed it** |
 | 5 | A failed update leaves the working version in place and reports | **Met** — eight failure modes, each asserting the previous copy survives |
 | 6 | Nothing leaks a token, an index URL or a path into a log | **Met** — every raisable failure swept in one test, plus the resolution fields |
 

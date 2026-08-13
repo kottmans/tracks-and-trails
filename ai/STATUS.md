@@ -5,6 +5,17 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (re-review) — **`T-198` came back Changes requested a second time,
+and one of the findings is about these records.** The reviewer resolved `T198-R1` and `T198-R4`;
+**`T198-R2` stays Open pending a Windows frozen execution**, **`T198-R3` stays Open** because a
+check at button-press time is not an exclusion across the operation, and **`T198-R5` is new**: this
+file and `ai/TASKS.md` said all four findings were *Resolved*, which is **the Reviewer's
+disposition to make and was false for two of them**. Corrected below. **Do not push** — the
+reviewer's instruction is to close `T198-R3` and `T198-R5` first so one final head receives both
+frozen jobs.
+
+*(The rulings block below is unaffected and stands.)*
+
 **Last updated:** 2026-08-13 (rulings) — **every open ruling is taken and nothing is blocked on a
 decision.** `T-196` means yt-dlp's `--retries`; `T-238`'s guard is authorised; `T-219` is Cancelled
 (refused), `T-208` Complete, `T-228` Cancelled as a harness artefact, `P-29` ratified as built, and
@@ -165,6 +176,38 @@ product choice the entry does not take.
 `tests/unit` + `tests/ui` **2773 passed, 18 skipped**; `tests/integration` **414 passed**. Exit
 codes checked rather than summary lines read. **Nineteen mutations fail their evidence** — nine
 against the installer, nine against the screen and the wiring, one against composition.
+
+## 2026-08-13 (re-review): a check is not an exclusion, and I recorded a verdict that was not mine
+
+**`T198-R5` is the one to record against myself.** `ai/TASKS.md` and this file both said all four
+findings were **Resolved**, and that *"the reviewer confirmed"* them. **Only the Reviewer resolves a
+finding**, `T198-R3` was demonstrably still open, and `T198-R2` had no Windows evidence. An
+implementer may say *corrected and awaiting a verdict*; saying *Resolved* asserts a gate has been
+cleared when it has not, which misstates the gate rather than merely reading loosely. Both files now
+carry the reviewer's dispositions and nothing else.
+
+**`T198-R3` is still open and my correction was the wrong shape.** `_refuse_while_workers_run()` is
+called **once**, on the GUI thread, and then the real work goes to the pool. The GUI and the manager
+stay live through index lookup, download, extraction and the swap — so Start, an admission, a
+manager tick or an **automatic retry** can start a worker inside that window. The reviewer
+reproduced it deterministically. **And `active_job_ids()` omits scheduled retries**, so even the
+instant of the check read an incomplete set. What it needs is an exclusion held across the whole
+operation and enforced on the manager's start paths, retries included — **not attempted this
+session.**
+
+**`T198-R1` and `T198-R4` are Resolved by the reviewer.** The composed real-download regression
+passed independently, and 415 is correctly identified as the reviewed-head count.
+
+**`T198-R2` is corrected and confirmed on Linux, and stays Open.** A fresh PyInstaller 6.22.0
+artifact at `fa3cb50` ran the update probe green — baseline, `9000.1.1` resolved from a spawned
+child, baseline again after revert — with the yt-dlp and database probes still green, and the
+in-memory index accepted as a legitimate deterministic substitute for PyPI. **The Windows frozen job
+has never run it**, and the instruction is explicitly *not* to push this head merely to get that
+evidence.
+
+**One thing the review noticed that was already fine:** it saw uncommitted edits in `ai/TASKS.md`
+mid-review and left them untouched. Those were this session's rulings pass, uncommitted while the
+review ran and committed at `59686fe`. Nothing was lost and nothing of the reviewer's was disturbed.
 
 ## 2026-08-13 (rulings): six answered, and the blocked queue is empty
 
