@@ -3542,10 +3542,19 @@ The failing line is `assert spin_until(qapp, lambda: not late.exists())` — a *
   are `PROBE_LOG_ENV` and `PATH`. It affects **spawned children**; this test spawns nothing and uses
   a `QThreadPool`.
 
-**Not established, and this is the part that matters:** *why it failed.* The three points above are
-evidence that `T-230` is an unlikely cause; they are not a cause of their own. A 30-second
-wall-clock wait failing is either a runner slow enough to miss it — the `T118-R10` class — or the
-sweep genuinely not being scheduled, which would be `T179-R1` reopening.
+**Not established, and this is the part that matters:** *why it failed.* The points above are
+evidence that `T-230` is an unlikely cause; they are not a cause of their own.
+
+**The margin is measured, and it moves the suspicion off "the runner was slow".** The bound is
+**30 seconds**. Running the test with `spin_until`'s budget cut to **0.25 s** — 120× tighter — it
+passed **10 of 10**, and at 1 s likewise 10 of 10. So the sweep normally completes in under a
+quarter of a second.
+
+A runner would have to be **two orders of magnitude** slower than this machine for the
+`T118-R10` reading to hold, and the `linux` job's own wall time does not support that. That makes
+the second branch the live one: **the sweep was not scheduled at all**, which is `T179-R1`
+reopening and a product concern rather than a test bound. *Stated as where the evidence points,
+not as a finding — one observation and a margin measurement are not a mechanism.*
 
 **Do not resolve this by raising the timeout.** `T-228`'s first criterion says why, and `T-179`'s
 guard is what would be lost: a bound generous enough to pass everywhere is a test deleted.
@@ -3555,7 +3564,9 @@ guard is what would be lost: a bound generous enough to pass everywhere is a tes
 - The failing assertion is reproduced, or the entry records how many runs under what conditions
   failed to reproduce it and the search is called off explicitly rather than left open
 - The mechanism is established as **runner timing** or as **the sweep not being scheduled**; the
-  second is a product defect and gets its own entry with a deterministic regression
+  second is a product defect and gets its own entry with a deterministic regression. **The margin
+  measurement above is the reason to start with the second** — a 0.25 s budget passes 10 of 10
+  against a 30 s bound
 - If it is timing: the bound is derived from something observable rather than raised until it
   passes, and the test **still fails** when the membership-only gate `T179-R1` reported is
   reintroduced
