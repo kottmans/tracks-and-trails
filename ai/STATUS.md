@@ -5,24 +5,26 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-12 (approvals) — **`T-230`, `T-220`, `T-229` and `T-239` are Complete**,
+all four approved, with one Low non-blocking finding, `T239-R1`, corrected below. They were built
+unattended earlier the same day: `T-230` (a spawned child now gets the test's own directories —
+**62 files before, 0 after**), `T-220` (the reading: build and spec agree, no amendment needed
+either way), `T-229` (the two theme fields nothing proved, plus both behaviours run dressed) and
+`T-239` (a CI red, diagnosed to a two-statement publication window and fixed without touching the
+timeout). Earlier still, `T-233`, `T-234`, `T-235`, `T-236` and `T-237` were approved **Complete**.
+
 **CI is green on all five jobs** — run `31657727760` at `fba1ee5`, raised by `workflow_dispatch`
 because the format correction touched only `paths-ignore`d prose. It is the first run in which
 `T-239`'s corrected test executed: `PASSED
 tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected`,
-**2726 passed** unit+UI and **404 passed** integration.
-
-**Last updated:** 2026-08-12 (unattended run) — **three more tasks are In Review**:
-`T-230` (a spawned child now gets the test's own directories — **62 files before, 0 after**),
-`T-220` (the reading: build and spec agree, no amendment needed either way) and `T-229` (the two
-theme fields nothing proved, plus both behaviours run dressed). Earlier the same day, `T-233`,
-`T-234`, `T-235`, `T-236` and `T-237` were all approved **Complete**. **`T-238` is High** — a
+**2726 passed** unit+UI and **404 passed** integration. **`T-238` is High** — a
 native worker segfault, not a test failure — and **60 runs have not reproduced it**. **`T-228`
 stays Proposed** with 680 sessions showing it unreachable at supported concurrency.
 
 **Two decisions are what stop more unattended work**: whether to build `T-238`'s leak guard, and
 which retry `T-196`'s setting means.
 
-**The red `linux` job is diagnosed and fixed — `T-239`, In Review.** It failed on
+**The red `linux` job is diagnosed and fixed — `T-239`, now Complete.** It failed on
 `test_a_picture_written_after_its_removal_sweep_is_still_collected`, and the mechanism is a **test
 synchronisation defect**: `_SweepTask` writes the picture and *then* records the publication, the
 view's gate reads the publication counter, and the test waited on the **file** — returning inside
@@ -34,12 +36,19 @@ check** — not a test. `ci.yml` runs `ruff format --check .`, which formats Pyt
 code blocks**, and I had been running it over `src tests` all session; the snippet above had
 aligned inline comments.
 
-**It cost more than a re-push, and the expensive part is the Windows half.** Format runs before
-everything, so on `linux` the Types and Tests steps were skipped, and on `windows desktop` the **Qt
-baseline and Full suite** were skipped — the workflow's own header calls Windows evidence *"the
-scarce resource"*, and that run produced none. The test fix in the same commit therefore went
-**unvalidated on both platforms**. The correction touched only `ai/TASKS.md`, which is in
-`paths-ignore`, so no push could re-trigger it and a run had to be **dispatched by hand**.
+**What it cost, corrected — `T239-R1`.** Format runs before the test steps, so on `linux` Types and
+Tests were skipped, and on `windows desktop` the **Qt baseline and Full suite** were skipped. **The
+Windows job was not empty**, which is what this paragraph claimed: `Types under the Windows
+platform` and the **`Windows desktop suite` both passed** before Format check ran. What was
+actually lost is narrower and still the point — **`T-239`'s own test had no Windows execution**
+until run `31657727760`, because that test lives in the Full suite.
+
+*(The claim was **"that run produced none"**. I had read the job's steps through a filter that
+selected only failures and skips, and then described what the job produced — the same shape as
+reporting a truncated `grep` as absence. The step list shows nine successes before the failure.)*
+
+The correction touched only `ai/TASKS.md`, which is in `paths-ignore`, so no push could re-trigger
+CI and a run had to be **dispatched by hand**.
 
 **Forced and confirmed:** a 0.3 s sleep between those statements fails the test 3 of 3 with the
 same message and the full 30-second timeout. The test now waits on `cache_generation` advancing,
