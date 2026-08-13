@@ -23,6 +23,13 @@ view's gate reads the publication counter, and the test waited on the **file** �
 the two-statement window. The reorder then read a generation that had not moved and **correctly**
 skipped the sweep.
 
+**And then I reddened the job again myself.** The commit carrying that fix failed CI's **Format
+check** — not a test. `ci.yml` runs `ruff format --check .`, which formats Python **inside markdown
+code blocks**, and I had been running it over `src tests` all session; the snippet above had
+aligned inline comments. Format runs before Types and Tests, so **the test fix went unvalidated**
+in that run, and the correction touched only `ai/TASKS.md`, which is in `paths-ignore` — so a run
+had to be dispatched by hand rather than pushed.
+
 **Forced and confirmed:** a 0.3 s sleep between those statements fails the test 3 of 3 with the
 same message and the full 30-second timeout. The test now waits on `cache_generation` advancing,
 and with `T179-R1`'s defect reintroduced it **still fails** — the race is gone, the regression
