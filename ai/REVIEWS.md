@@ -16150,3 +16150,76 @@ state sync; no additional implementation or review pass is required.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-13 — T-196 network options review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-196`
+**Base:** `b3a63e70f19c4175ce7a50195470b1283fe35c33`
+**Head:** `24ed437c4aa4aac750bfb61fd5753295c07580b3` — one local, unpushed commit
+**Platforms verified:** Linux, Qt offscreen. No Windows, CI, frozen build, or external network
+execution is claimed.
+**Verdict:** **Changes requested.** The queue-time binding is the correct reading of
+`ARCHITECTURE.md` §8 and `DAT-003`; the retry key reaches yt-dlp correctly; and the ordinary
+settings/model/adapter paths pass. Approval is blocked by one Critical credential-exposure path
+and four Medium findings against redaction, displayed state, required evidence, and the retry
+control's stated scope.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T196-R1** | **Critical** | **Yes** | Proxy entry / credential boundary | `SettingsDialog` writes every validator-accepted `textChanged` prefix. A real `QTest.keyClicks("http://alice:hunter2@proxy.invalid:8080")` left the final userinfo form refused but handed `NetworkOptions(proxy="http://alice:hunter2")` to the writer immediately beforehand. `urlsplit` reads that prefix as host plus port and `_require_credential_free_proxy` never consults `parsed.port`; composition then applies and saves every handed value. Thus manually entering a credentialed proxy can put the complete username/password prefix in `settings.toml`, and the next queued request can persist it in the jobs row, despite the task's structural no-credential claim. Checking for a numeric port alone is insufficient: a numeric password has the same intermediate shape. This is credential exposure and is Critical by `AGENTS.md` §10. | Separate live refusal feedback from committing the field: no intermediate keystroke may reach the writer. Drive the real composed screen with `QTest.keyClicks`, including a numeric password, and assert the prior/no proxy remains in memory, on disk, and on a newly queued request after the final userinfo form is refused. Audit the promised `scheme://host[:port]` grammar too, but do not treat port validation alone as this correction. | **Open** |
+| **T196-R2** | **Medium** | **Yes** | Startup proxy redaction | `_proxy_literals`' address-shaped split fails in both directions. For `[network] proxy = "localhost"`, `secrets` is empty but `_proxy_from` appends `_require_credential_free_proxy`'s exception, which quotes `'localhost'`; the same reason is logged by composition and the real redactor leaves the literal intact. That directly contradicts the task criterion and the recorded residual that the refusal is unquoted. Conversely, invalid `proxy = "http://"` is registered through `SettingsFile.secrets` and `remember_a_path`; an ordinary `http://other.invalid/x` log line then becomes `<redacted>other.invalid/x`. The current bare-value test asserts only `secrets == ()`, so it passes while its own unquoted premise is false, and there is no legitimate-content assertion for refused proxy registration. | Make refused-proxy diagnostics safe without registering arbitrary invalid address fragments; continue exact registration for a proxy that can actually reach yt-dlp. Add composed-formatter evidence for accepted, credentialed-refused, bare-refused, and short/malformed address-shaped values, with both secret absence and ordinary URL legibility asserted. | **Open** |
+| **T196-R3** | **Medium** | **Yes** | Rate-limit display truth | The settings layer deliberately accepts every positive byte rate, including the documented legitimate example of 500 B/s. `_rate_limit_shown()` floors bytes to whole KiB and the spin box spells zero as **No limit**. A screen built with `NetworkOptions(rate_limit_bytes=500)` therefore held and later applied `500`, while its control reported value `0` and text `No limit`. This is not the disclosed harmless rounding case: the UI says throttling is absent while downloads are capped at 500 B/s. | Represent the sub-KiB state honestly, or define and report a minimum the UI can represent; do not silently rewrite the hand edit on an unrelated control change. Cover 1, 500, 1023, 1024, and a non-multiple above 1024 through load, screen, an unrelated edit, and the resulting request. | **Open** |
+| **T196-R4** | **Medium** | **Yes** | Acceptance gate / live wiring | The required *screen → persisted settings → queued request → adapter options* crossing for proxy and rate limit is not gated. A reviewer mutation changed `choose_network` to retain only `NetworkOptions(retries=options.retries)`, dropping every live proxy and rate-limit choice. All four composition tests selected by `-k 'network or proxy'` still passed. The one live apply/save test changes only retries; startup tests cover already-stored values; the runtime-proxy test proves only registration. Production is correct at this head, but the claimed criterion gate is false-green. | Add one composed user-route regression that changes proxy and rate limit on the screen, proves both persisted, builds/reads the newly queued request, and asks the adapter for `proxy` and `ratelimit`. Mutation-check dropping each value at composition separately. | **Open** |
+| **T196-R5** | **Medium** | **Yes** | Retry meaning / current truth | The named yt-dlp key is correct, but the user-facing scope and task record are not. Against pinned yt-dlp 2026.07.04, `--retries` is consumed by `downloader/http.py`; `--fragment-retries` is a distinct option consumed by `downloader/fragment.py`. The task entry records that correct distinction, then elsewhere calls `--retries` *per-fragment*, and the control says only *Retries within one download attempt*. Fragment retries are also within one attempt, so setting this control to zero still leaves fragmented HLS/DASH pieces retrying under their separate default while the label implies otherwise. This does not require changing the maintainer's chosen `--retries` mapping; it requires stating that choice accurately. | Correct the contradictory current-truth wording and make the visible and accessible control text distinguish ordinary/file HTTP retries from retries of individual stream fragments, while leaving `--fragment-retries` itself to `T-183`. Keep the adapter assertion on the exact `retries` key. | **Open** |
+
+### Review judgments requested in the handoff
+
+**Queue-time binding is accepted.** `ARCHITECTURE.md` §8 says settings are frozen into the
+`DownloadRequest` at job creation. `DAT-003`'s cookie-file amendment is a security-motivated,
+explicit exception because that path is forbidden from the model; it is not the pattern for these
+three model fields. The implementation correctly stamps playlist children, preserves the values
+across retargeting, and reads a live settings value only when the request is built.
+
+**The startup-redaction sanity check is non-vacuous for the credentialed URL it uses.** Before
+composition, the ordinary URL rule removes userinfo but leaves `proxy.invalid`; after startup
+registration, the host is gone. The test therefore proves the registration it claims for that
+shape. `T196-R2` is a different boundary: the classifier around other refused values is unsound.
+
+**Removing the empty “still to come” label is acceptable.** `T-146` requires the implemented and
+remaining settings to be recorded so the screen does not overclaim. With all eight present,
+`docs/DEVELOPMENT.md` carries the complete table and an absent empty label makes no false statement.
+
+**The `load()` construction path held.** The coercers reduce the TOML types they can receive to a
+constructible `NetworkOptions`, and the focused hostile-table and settings suite passed. This is
+bounded evidence rather than a proof over arbitrary parser behavior, but no escaping settings
+shape was established in this review.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and tracked state before this record | **Passed:** local `main` at unpushed `24ed437`, one commit ahead of `origin/main`; tracked tree clean; ignored handoff outside the commit. `git diff --check b3a63e7..24ed437` passed. The subject is within the hard cap, the message carries `Task:` / `Refs:` trailers, and no AI authorship trailer is present. |
+| Static gates | **Passed:** `ruff check .`; `ruff format --check .` (**179 files**); `mypy src` (**55 source files**); bare `mypy` and `mypy --platform win32` (**141 source/test files** each). |
+| Focused unit files | **583 passed, 1 skipped** in `test_models.py`, `test_settings.py`, `test_presets.py`, and `test_ytdlp_adapter.py`. The first sandboxed run produced 582 passes, 1 skip, and one setup failure because loopback socket creation was denied; the permission-correct rerun passed, and no external network was used. |
+| Focused UI | **35 passed** in all of `test_settings_dialog.py` plus the two network-default request tests in `test_add_dialog.py`. |
+| Focused composition, restored head | **4 passed, 63 deselected** for `test_composition.py -k 'network or proxy'`. |
+| Credential-entry probe | **Reproduced `T196-R1`:** final field `http://alice:hunter2@proxy.invalid:8080`; final form never chosen; last chosen value `http://alice:hunter2`. |
+| Redaction probes | **Reproduced `T196-R2`:** bare `localhost` remained in the formatted settings reason with `secrets == ()`; invalid `http://` produced `secrets == ('http://',)` and removed that prefix from an unrelated ordinary URL. |
+| Sub-KiB display probe | **Reproduced `T196-R3`:** stored/in-force rate `500`; spin-box value `0`; displayed text `No limit`. |
+| Composition mutation | **Survived:** retaining retries while dropping live proxy/rate choices in `choose_network` left all four focused composition tests green. The mutation was restored exactly; `git diff -- app.py` was empty afterward. |
+| Full suites and Windows runtime | **Not repeated by the Reviewer.** The Implementer reports 2899 passed / 18 skipped unit+UI and 434 passed integration plus clean Windows-platform mypy; this review neither contradicts nor promotes those to independent results. |
+
+### Correction boundary
+
+Keep the head unpushed. Address all five blocking findings in one correction batch, with the
+Critical entry path reproduced through the real composed keyboard route and the sibling proxy
+shapes audited before return. `T196-R4`'s crossing should end at adapter options rather than at a
+stored object. Because `T196-R1` is Critical, independent focused correction and verification
+continues until it is resolved regardless of the ordinary pass budget; no approval can be issued
+while any of these findings remains open.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.
