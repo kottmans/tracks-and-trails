@@ -5,6 +5,17 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (T-238 corrected) — **three blocking findings, all corrected, and
+two criteria dispositioned by the maintainer.** `T238-R1` was right and is the one I would have
+missed: the leaked-view regression proved the *assertion* half only, and the drain — the half that
+stops a carry-over — had no evidence of its own. It has one now: an **ordered pair** leaving two
+things the orphan check cannot see, and **four mutations each failing exactly one regression**.
+`T238-R2`: **criterion 6 is formally replaced** by that mutation evidence, and **criterion 4 is
+retained**, so `T-238` stays open with the guard in the tree. `T238-R3`: the 61-character subject
+is amended to 45, tree `8854b5c6` intact.
+
+*(The block below is the guard's first submission and is left as written.)*
+
 **Last updated:** 2026-08-13 (T-238 built) — **the authorised view-leak guard is built and
 `T-238` is In Review.** `tests/ui` now collects and drains deferred deletions **at every test
 boundary** and fails any test that leaves an item view with no owner. **The predicate was chosen
@@ -176,6 +187,34 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-13 (T-238 review): the half I proved was not the half that mattered
+
+**`T238-R1` is the finding worth recording against myself.** I mutation-checked the guard by
+stashing the whole conftest, which fails one regression and looks like proof — and conflates two
+operations. The reviewer separated them: the leaked-view regression **still fails** with the drain
+reduced to a no-op, so the drain, which is the half that actually prevents a carry-over into a
+later test, had no evidence at all. Worse, neither shape it exists for is *visible* to a
+parentless-view check: a cyclic parentless view is collected **during** the drain, and a parented
+one dies with its root.
+
+**The fix is an ordered pair, and the order is the assertion.** One test leaves a tree held only
+by a reference cycle and a `deleteLater()` posted on a still-parented view from a finalizer; the
+next asserts, before spinning anything, that neither survived. Four mutations now fail in exactly
+one place each — drain, `gc.collect()`, `sendPostedEvents`, orphan assertion — so neither half can
+be deleted while the suite stays green.
+
+**And a smaller lesson inside it:** my first mutation table reported the orphan mutation as
+*survived*, because I ran the deliberately-bad node directly and it passed. Passing is precisely
+what its outer regression detects. **A mutation has to be aimed at the regression, not at the
+bait.**
+
+**Two criteria were dispositioned rather than rounded off.** Criterion 6 is **replaced** by that
+mutation evidence — a soak beating 60 clean runs commits a machine for a night to produce a number
+that cannot separate *the guard worked* from *the crash was always this rare*. Criterion 4 is
+**retained**, so `T-238` stays open with the guard in the tree; if it ever fires on a real test,
+that is the evidence. `T238-R3` — a 61-character subject against a hard cap of 60 — is amended to
+45 with the tree preserved.
 
 ## 2026-08-13 (T-238): the guard is built, and measuring it changed what it guards
 

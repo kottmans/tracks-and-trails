@@ -164,3 +164,54 @@ def test_a_test_that_leaks_a_view_is_the_test_that_fails() -> None:
         "the run failed for some other reason than the view leak, so this asserts nothing about "
         f"the guard.\n\n{finished.stdout}\n{finished.stderr}"
     )
+
+
+# --- T238-R1: the drain half, proved without the orphan assertion ------------------------------
+
+#: The ordered pair in `tests/ui/_carries_a_deletion.py`. **Order is the assertion**: the first
+#: leaves two carry-overs behind, the second is what sees them, and running either alone proves
+#: nothing.
+CARRIES_A_DELETION = (
+    "tests/ui/_carries_a_deletion.py::test_leaves_a_deletion_pending",
+    "tests/ui/_carries_a_deletion.py::test_the_boundary_left_nothing_behind",
+)
+
+
+def test_a_pending_deletion_does_not_reach_the_next_test() -> None:
+    """`T238-R1`: the drain is load-bearing, and this is what fails when it is not.
+
+    **The finding, stated plainly:** the leaked-view regression above proves
+    `assert_no_orphaned_views` and nothing else — it still fails with `settle_deferred_deletions`
+    reduced to a no-op, so the half that stops an unreachable tree or a posted `DeferredDelete`
+    reaching a later test had no evidence of its own. Neither carry-over here is visible to the
+    orphan assertion: one is a tree whose view is *parented*, the other a deletion that has been
+    posted and not delivered.
+
+    **Mutation-checked statement by statement** (2026-08-13), against this regression:
+
+    | Removed from the conftest or the helper | Result |
+    |---|---|
+    | the whole `settle_deferred_deletions(qapp)` call | **fails** |
+    | `gc.collect()` alone | **fails** |
+    | `sendPostedEvents(None, DeferredDelete)` alone | **fails** |
+    | `assert_no_orphaned_views(qapp)` alone | passes — and the leaked-view regression fails |
+
+    The last row is the point of having both: each regression fails for exactly one half, so
+    neither half can be deleted on the grounds that the suite stays green.
+    """
+    finished = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", *CARRIES_A_DELETION],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        timeout=600,
+    )
+
+    assert finished.returncode == 0, (
+        "a widget tree or a posted deletion from one test was still alive at the start of the "
+        f"next. The boundary drain is gone, so T-238's carry-over is back.\n\n{finished.stdout}"
+    )
+    assert "2 passed" in finished.stdout, (
+        "the ordered pair did not both run, so this asserts nothing about what one test leaves "
+        f"for the next.\n\n{finished.stdout}\n{finished.stderr}"
+    )

@@ -16033,3 +16033,68 @@ This is not another implementation or review pass.
 The Reviewer's edit is only `ai/REVIEWS.md`; the concurrent Implementer edit to `ai/TASKS.md` is
 preserved. No source, test, workflow, dependency, commit, push, handoff, roadmap, or other remote
 state was changed by the Reviewer.
+
+## 2026-08-13 — T-238 authorised view-leak guard review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-238`
+**Base:** `a62b9400b9ac112456b48975cb94c1d988c05978`
+**Head:** `2c504564296135d5475ab06e1aee7edf87dc27dc` — one local, unpushed commit
+**Platforms verified:** Linux, Qt offscreen. No Windows or CI execution was requested or inferred.
+**Verdict:** **Changes requested.** The UI suite is green and the boundary is correctly limited to
+the UI harness, but the carry-over drain is not proved by the new regression, two unchanged T-238
+acceptance criteria remain unmet, and the unpushed commit subject exceeds the repository's hard
+length cap.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T238-R1** | **Medium** | **Yes** | Drain validity / mutation evidence | `tests/ui/conftest.py` has two load-bearing operations: `settle_deferred_deletions(qapp)` and then `assert_no_orphaned_views(qapp)`. The new subprocess regression holds one parentless `QListView` in a module global, so it proves only the second operation: it still fails with the orphan message if `settle_deferred_deletions` is reduced to a no-op. The submission explicitly confirms the converse too — the whole existing suite remains green when only the drain is absent. Stashing the entire conftest conflates the two operations and therefore does not mutation-check the drain. This matters because the drain, not the parentless-view assertion, is the part intended to prevent an unreachable widget tree or queued `DeferredDelete` from carrying into later test bytecode. A reviewer probe made a self-cyclic parentless `QListView`; it was visible before `settle_deferred_deletions`, collected during that call, and absent when `assert_no_orphaned_views` would inspect. A parented view likewise died with its root and never existed as a live parentless child. The current regression therefore does not prove the change's central carry-over claim and would not stop that half being deleted later. | Add a deterministic ordered subprocess pair that exercises the real autouse-fixture wiring and fails when **only** `settle_deferred_deletions` is removed. One viable shape is a fixture finalizer that calls `deleteLater()` on a still-parented view after pytest-qt's ordinary event drain, followed by a second node that asserts the held wrapper was invalidated before its own body. Mutation-check the drain alone, the assertion alone, and their order. | **Open** |
+| **T238-R2** | **High** | **Yes** | Acceptance / readiness | T-238's own table says criterion 4 is still unproved (product versus harness is not established) and criterion 6 is not met (no post-correction `-n auto` sample materially exceeds the 60 clean pre-correction runs). The maintainer's guard ruling explicitly changed their order and explicitly said it was **not a waiver**. Under `AGENTS.md` §10, an unmet stated acceptance criterion blocks approval; candidly recording the gap does not close it. | Keep T-238 open. Do **not** spend a night on the current criterion 6 by default: 61+ clean runs would measure frequency and would not distinguish an effective guard from the already-observed rarity. The maintainer must either retain that criterion and authorize/pay for the soak, or explicitly replace it with bounded, discriminating guard evidence such as R1's mutation. Criterion 4 likewise remains open until the guard catches a real culprit or another investigation establishes the branch condition; the Reviewer cannot infer that result from a green suite. | **Open — maintainer scope/evidence decision required** |
+| **T238-R3** | **Low** | **Yes** | Commit metadata | The unpushed subject `Fail the test that leaks a view, not the one that inherits it` is **61 characters**. `AGENTS.md` §13 sets a hard cap of 60 (and a target of 50). The body is also 250 words against the section's approximately 150-word budget. This is Low by shipped consequence but blocks this exact local commit because the subject violates an explicit repository hard rule while amendment is still free. | Amend the unpushed commit to an imperative subject no longer than 50 characters and compact the body. Preserve tree `8854b5c657ccb3f0536ff2d006f6639f4a3060e7`; the focused re-review can then verify tree identity and the corrected message without reopening the implementation. | **Open** |
+
+### Review judgments requested in the handoff
+
+**Do not extend the fixture to `tests/integration` in T-238.** The observed crash occurred under
+the unit/UI command, the new functions are wired only into `tests/ui`, and the submitted
+integration measurement found zero predicate hits at a further five-percent suite cost. That is a
+reasonable boundary, not missing coverage. A future integration observation can justify its own
+one-line adoption with evidence from that suite.
+
+**Do not run the 61-plus-run soak merely to make the table green.** It is non-discriminating for
+this change: a clean result cannot say whether the guard removed the fault or whether the one
+observed crash was always rarer than the sample. That judgment does not silently erase criterion
+6; it means the maintainer should change the criterion deliberately if deterministic guard
+evidence is what T-238 is now meant to deliver.
+
+**The narrower parentless predicate is acceptable as an additional test-hygiene invariant, but it
+is not evidence for the full retained-stack mechanism.** A Qt child is destroyed with its parent;
+an unreachable cyclic tree is collected before the post-drain scan. The load-bearing mitigation
+for those cases is deterministic main-thread collection and event delivery, which is why T238-R1
+requires evidence for that half in its own right.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and tracked state | **Passed.** `main` is one commit ahead of `origin/main`; `a62b940..2c50456` is exactly one commit. Before this review record the tracked tree was clean. The range changes `ai/STATUS.md`, `ai/TASKS.md`, and four test-harness files; no `src/` path, dependency, existing test timeout, or original thumbnail-store assertion changes. `git diff --check` passed. |
+| Focused guard and original-crash node | **Passed:** all four outer tests passed in 1.60 s, including `test_a_test_that_leaks_a_view_is_the_test_that_fails` and `test_deleting_a_closed_store_neither_waits_nor_is_emitted_through`. |
+| Deliberately leaking helper | **Failed as intended:** the named helper's body passed and its teardown errored with `this test left 1 item view(s) alive with no parent`. This verifies the installed assertion and diagnostic. |
+| Fixture ordering | **Observed at this head:** `_undressed_afterwards` tears down first, then `_no_orphaned_views`, then `_no_orphaned_timers`. A warning caused by the collection/drain therefore remains visible to the timer assertion. |
+| Full UI suite | **Passed:** 837 passed, 3 skipped, 13 warnings in 121.99 s. The warnings are existing PySide disconnect and `QMouseEvent` deprecation warnings; no orphan assertion fired. |
+| Lifecycle probes | **Exposed R1:** a self-cyclic parentless `QListView` was live and listed before the drain, then its weak reference was dead and the orphan list empty afterward. A held child view became invalid when its root's deferred deletion was drained and never appeared as parentless. |
+| Static checks | **Passed:** `ruff check` on the four changed Python files; `ruff format --check` on the same four; bare `mypy` reports no issues in 140 source/test files. A non-project invocation naming the four files directly produced the expected package-context `import-untyped` error for `tracks_and_trails.ui`; the configured bare gate is the passing result. |
+| Commit policy | **Failed:** subject length 61, producing T238-R3. The commit has the required `Task:` trailer, no AI authorship trailer, and a tree confined to the declared boundary. |
+
+### Readiness and next pass
+
+The guard direction and the decision not to widen it to integration are accepted. The implementation
+head is not approved. Correct T238-R1 in one batch, amend the unpushed commit for T238-R3, and have
+the maintainer explicitly disposition criterion 6 rather than running a non-discriminating soak by
+default. The focused correction re-review will inspect only the drain regression/mutations, the
+commit tree identity and message, and the current-truth disposition of criteria 4 and 6. T-238
+cannot move to Complete while those unchanged criteria still say they are unmet.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.

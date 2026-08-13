@@ -119,10 +119,30 @@ this one returned four verdicts before approving.*
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
-**Status:** **In Review — the authorised guard is built, 2026-08-13.** Awaiting a verdict. **Two
-of the six criteria remain unmet and are named below rather than left to be discovered**: the
-segfault is still not reproduced, and product-versus-harness is still not established. The guard
-is what the maintainer's ruling asked for and what the entry proposed; it is not a diagnosis.
+**Status:** **In Review — the guard is built and three findings are corrected, 2026-08-13.**
+`T238-R1`, `T238-R2` and `T238-R3` all came back blocking; all three are answered below.
+**`T-238` stays open against criterion 4** — product-versus-harness — **by maintainer ruling**,
+with the guard remaining in the tree while it does.
+
+#### The criterion-6 ruling — maintainer, 2026-08-13
+
+**Criterion 6 is replaced, deliberately and on the record.** It asked that repeated `-n auto` runs
+*"materially exceed the pre-fix sample"*, and the pre-fix sample is **60 clean runs**: a larger
+clean sample cannot distinguish *the guard worked* from *the crash was always this rare*, which
+the reviewer states as plainly as this entry does. **In its place stands `T238-R1`'s evidence** —
+each half of the guard fails its own regression under mutation, and neither can be deleted while
+the suite stays green.
+
+*(Recorded as a replacement rather than a waiver, which is `T198-R5`'s lesson in a different
+costume: a criterion that quietly stops being met is a gate that has been moved without anybody
+saying so.)*
+
+#### The criterion-4 ruling — maintainer, 2026-08-13
+
+**`T-238` stays open, and the guard stays in.** Product-versus-harness is not established and
+cannot be inferred from a green suite. If the guard ever fires on a real test, that *is* the
+evidence criterion 4 asks for and the task closes on it; until then the entry stays open rather
+than being closed on the deliverable it happened to produce.
 
 #### What was built — 2026-08-13
 
@@ -143,16 +163,42 @@ one is an assertion:
   `sendPostedEvents(None, DeferredDelete)`, at every `tests/ui` test boundary, on the main thread.
   **Measured: 431 of 839 tests had objects awaiting collection or deletion at that point, totalling
   15 457 widgets, 1 001 of them views.** Those destructions were previously running inside later
-  tests. **This half fixes no failing assertion and is not load-bearing for any existing test** —
-  the suite is green with and without it — which is stated here because a change that nothing
-  fails without is exactly the kind that gets deleted later as dead weight.
+  tests. **It fixes no *pre-existing* failing assertion** — the suite was green with and without
+  it — which is why `T238-R1` was right that it needed evidence of its own, and now has it below.
 - **`assert_no_orphaned_views(app)`** — fails the test that leaves a view with no parent, naming
   it. `tests/ui/_leaks_a_view.py` leaks one deliberately and
   `test_a_test_that_leaks_a_view_is_the_test_that_fails` runs it in a subprocess and requires both
   a non-zero exit *and* the orphan message, so a guard reduced to a no-op cannot pass it.
 
-**Mutation-checked by removing the wiring**: with `tests/ui/conftest.py` stashed, that regression
-fails and **nothing else does** — which is the honest measure of the guard's reach today.
+#### `T238-R1` — the drain had no evidence of its own. It has now.
+
+**The finding is right and it is the one I would have missed.** The leaked-view regression proves
+the *assertion* and nothing else: it still fails with `settle_deferred_deletions` reduced to a
+no-op, and stashing the whole conftest conflates the two halves. Neither shape the drain exists
+for is visible to a parentless-view check — the reviewer's own probe makes the point, a cyclic
+parentless view being collected *during* the drain and a parented one dying with its root.
+
+**`tests/ui/_carries_a_deletion.py` is an ordered pair, and the order is the assertion.** The
+first test leaves two carry-overs that the orphan check cannot see — a widget tree held only by a
+reference cycle, and a `deleteLater()` posted on a **still-parented** view from a fixture
+finalizer, after pytest-qt's own drain. The second asserts, **before spinning anything**, that
+neither is alive; spinning first would deliver the deletion itself and pass against a conftest
+that does nothing.
+
+**Mutated statement by statement, against the regressions rather than against the bad tests:**
+
+| Removed | Which regression fails |
+|---|---|
+| the whole `settle_deferred_deletions(qapp)` call | `test_a_pending_deletion_does_not_reach_the_next_test` |
+| `gc.collect()` alone | the same one |
+| `sendPostedEvents(None, DeferredDelete)` alone | the same one |
+| `assert_no_orphaned_views(qapp)` alone | `test_a_test_that_leaks_a_view_is_the_test_that_fails` |
+
+**Each half now fails exactly one regression and the other half's stays green**, which is what
+makes either one deletable-with-a-test-failing rather than deletable-in-silence. *(The first
+version of this measurement ran the deliberately-bad node ids directly and reported the orphan
+mutation as "survived" — the bad test **passing** is precisely what its outer regression detects,
+so the mutation has to be aimed at the regression, not at the bait.)*
 
 **Cost, measured rather than estimated: `tests/ui` goes from 106.65 s to 121.50 s**, +14.9 s or
 **+13.9%**, almost all of it `gc.collect()` per test. Paid deliberately: the alternative is a
@@ -329,15 +375,16 @@ block the GUI thread, the pool can drain, and late work does not emit through a 
 | 1 | Reproduction evidence, raw logs retained | **Met for the one observation** — `ai/evidence/T238-SEGFAULT-gw7.txt`. **Not reproduced since**, in 60 runs |
 | 2 | Serial/isolated/module-order runs distinguish this test from contamination | **Met, and it is what redirected the search.** The named test's file constructs no view; the faulting object came from elsewhere in the worker |
 | 3 | The faulting object and lifetime edge identified before claiming identity with `T-074`/`T-128` | **Half met.** The *class* is identified — a `QAbstractItemView` destroyed under Shiboken's cross-thread deletion queue — and the specific object is **not**. No identity with either task is claimed |
-| 4 | Product versus harness established; harness-only gets a guard that fails before a worker dies | **The guard is built; the branch condition is still unproved.** The maintainer ruled the order deliberately: the guard is the instrument that would establish it |
+| 4 | Product versus harness established; harness-only gets a guard that fails before a worker dies | **Open, and `T-238` stays open with it** (maintainer, 2026-08-13). The guard is built and the branch condition is unproved; it cannot be inferred from a green suite. If the guard ever fires on a real test, that is this criterion's evidence |
 | 5 | The three original assertions stay intact; no timeout raised | **Met** — `test_deleting_a_closed_store_neither_waits_nor_is_emitted_through` is untouched, and `INTERACTION_BUDGET_SECONDS` is unchanged |
-| 6 | Repeated `-n auto` runs materially exceed the pre-fix sample | **Not met.** The pre-fix sample is 60 runs without a crash, so "materially exceed" is not a number this can pass cheaply, and no soak has been run since |
+| 6 | ~~Repeated `-n auto` runs materially exceed the pre-fix sample~~ → **each half of the guard is mutation-checked independently** | **Replaced by maintainer ruling, 2026-08-13, and met as replaced.** Four mutations, four failures, each in exactly one regression — see `T238-R1` |
 
-**Criterion 6 is the one to press on, and it is worth saying what it would take.** The baseline is
-already 60 clean runs, so a post-guard soak that beats it is a large machine commitment
-(`ai/TESTING.md` §: a host performing a measurement is committed for the duration) for a result
-that would still not distinguish *the guard worked* from *the crash was always this rare*. The
-guard's own regression is the evidence that it fires; a soak would be evidence about frequency.
+**Two criteria moved, and neither moved quietly.** Criterion 6 was **replaced** — a soak beating
+60 clean runs is a machine committed for a night (`ai/TESTING.md`: a host performing a measurement
+is committed for the duration) to produce a number that cannot tell *the guard worked* from *the
+crash was always this rare*; the mutation evidence discriminates and costs seconds. Criterion 4 is
+**retained and open**, which is what keeps this entry from closing on the deliverable it happened
+to produce rather than on the question it was filed to answer.
 
 ---
 
