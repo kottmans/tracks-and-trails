@@ -435,6 +435,139 @@ assertion re-checks `indexAt` for the point it is about to send.
 
 ---
 
+### T-239 — A thumbnail-sweep regression fails on the runner and nowhere else
+
+**Status:** **In Review — diagnosed and fixed 2026-08-12**, the same day it was filed. The
+mechanism is a **test synchronisation defect**, reproduced deterministically; the product behaves
+as designed. `T-230`, `T-220` and `T-229` are cleared by name.
+**Owner:** Implementer
+**Priority:** Medium — it reddened the `linux` job, which is a gate; but the test guards a real
+`T179-R1` race and a wrong "fix" here would retire that guard rather than the flake
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `T-179`, `T179-R1`, `T-238` (a different failure of the same *kind* — a gate
+that is red on a runner and green everywhere else), `T-228`, `T118-R10` (timed gates with no
+headroom), `tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected`
+**Affected surfaces:** unknown. The test, `ui/queue_view.py`'s sweep scheduling, or neither
+**Risk:** Medium — the assertion is `T179-R1`'s own regression, and `T-179`'s carried criterion is
+that a disk entry is removed when no job names it
+
+#### What happened
+
+`linux` failed at `93a6f95`:
+
+```
+FAILED tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected
+AssertionError: a picture written after its job's removal sweep survived a later reorder;
+unchanged membership suppressed every subsequent scan, which is T179-R1
+```
+
+The failing line is `assert spin_until(qapp, lambda: not late.exists())` — a **wall-clock** wait,
+`timeout=30`.
+
+#### What is established, and what is not
+
+**Established:**
+
+- It passes **in isolation** locally.
+- `pytest -n auto tests/unit tests/ui` passed **12 of 12** local runs at that commit — **six idle
+  and six with the host saturated** (20 busy loops on 20 cores), which is the recipe that
+  reproduces `T-228`'s class at 3-in-5.
+- The test's cache root is `tmp_path / "cache"`, an explicit path. Nothing in it resolves through
+  `platformdirs`.
+- **`T-230` cannot reach it by any mechanism found.** That change only exports environment
+  variables, and nothing in `src/` reads `XDG_*` or `WIN_PD_OVERRIDE_*` — the only environment reads
+  are `PROBE_LOG_ENV` and `PATH`. It affects **spawned children**; this test spawns nothing and uses
+  a `QThreadPool`.
+
+**Not established, and this is the part that matters:** *why it failed.* The points above are
+evidence that `T-230` is an unlikely cause; they are not a cause of their own.
+
+**The margin is measured, and it moves the suspicion off "the runner was slow".** The bound is
+**30 seconds**. Running the test with `spin_until`'s budget cut to **0.25 s** — 120× tighter — it
+passed **10 of 10**, and at 1 s likewise 10 of 10. So the sweep normally completes in under a
+quarter of a second.
+
+A runner would have to be **two orders of magnitude** slower than this machine for the
+`T118-R10` reading to hold, and the `linux` job's own wall time does not support that. That makes
+the second branch the live one: **the sweep was not scheduled at all**, which is `T179-R1`
+reopening and a product concern rather than a test bound. *Stated as where the evidence points,
+not as a finding — one observation and a margin measurement are not a mechanism.*
+
+**Do not resolve this by raising the timeout.** `T-228`'s first criterion says why, and `T-179`'s
+guard is what would be lost: a bound generous enough to pass everywhere is a test deleted.
+
+#### Acceptance criteria
+
+- The failing assertion is reproduced, or the entry records how many runs under what conditions
+  failed to reproduce it and the search is called off explicitly rather than left open
+- The mechanism is established as **runner timing** or as **the sweep not being scheduled**; the
+  second is a product defect and gets its own entry with a deterministic regression. **The margin
+  measurement above is the reason to start with the second** — a 0.25 s budget passes 10 of 10
+  against a 30 s bound
+- If it is timing: the bound is derived from something observable rather than raised until it
+  passes, and the test **still fails** when the membership-only gate `T179-R1` reported is
+  reintroduced
+- `T-230`, `T-220` and `T-229` are cleared or implicated by name, rather than left under suspicion
+  because they were the commits in flight
+
+#### Out of scope
+
+- `T-238`'s segfault. Same *kind* of problem — red on a runner, green locally — and no evidence of
+  a shared mechanism; `T-238`'s own entry warns against exactly that folding
+
+#### The mechanism, reproduced deterministically — 2026-08-12
+
+**The test waited for the wrong thing.** `_SweepTask`'s decode writes the picture and *then*
+records the publication:
+
+```python
+partial.replace(self._path)      # the file is now on disk
+_note_publication(self._path)    # the generation counter moves
+```
+
+The view's gate reads **`cache_generation`**, not the directory. The test waited on
+`late.exists()`, which returns in the window **between those two statements** — so the reorder that
+follows read a generation that had not moved, found membership unchanged, and **correctly skipped
+the sweep**. The file survived and the 30-second assertion failed.
+
+**Forced and confirmed:** a `0.3 s` sleep between the two statements fails the test **3 of 3**,
+with the same message and the full 30-second timeout — the CI failure exactly.
+
+**Which corrects the reading this entry carried an hour earlier.** It said the evidence pointed at
+*"the sweep was not scheduled at all, which is `T179-R1` reopening and a product concern"*. Half
+right: the sweep was not scheduled, and that was **correct behaviour** — nothing had been published
+as far as the product could tell. The defect is the test's synchronisation point, not the gate.
+`T-179`'s accepted docstring already says the window exists and that the next reset closes it.
+
+**Why nothing local found it.** The window is two statements — microseconds — so it needs a
+scheduler to land inside it. `-n auto` unit/UI passed **12 of 12** here, six of those with the host
+saturated, and the margin measurement showed a **0.25 s** budget passing 10 of 10 against the 30 s
+bound. **The `linux` job re-run at the same commit `93a6f95` passed**, which is what an
+intermittent window predicts.
+
+#### The correction
+
+The test now waits for the **publication** — `cache_generation(root)` advancing past the value it
+recorded before the write — and then asserts the file is on disk. That is the observable the
+product actually gates on, so the test and the code agree about what "published" means.
+
+**The guard is intact, which is the criterion that matters here.** With `T179-R1`'s defect
+reintroduced — the gate reduced to `if live == self._swept_for:`, ignoring the generation — the
+test **still fails**. The fix removes the race without removing the regression.
+
+**And the criterion the entry wrote against itself is honoured:** the timeout was not raised. It is
+untouched at 30 s.
+
+#### `T-230`, `T-220` and `T-229` are cleared
+
+Named rather than left under suspicion because they were the commits in flight. The mechanism is in
+`_SweepTask`'s publication ordering against the test's wait, which none of them touches — and
+`T-230`'s environment export cannot reach a test that spawns nothing and resolves its cache root
+from `tmp_path`.
+
+---
+
 ## Complete
 
 ### T-234 — The concurrency control leaves the toolbar
@@ -3497,88 +3630,6 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
-
-### T-239 — A thumbnail-sweep regression fails on the runner and nowhere else
-
-**Status:** Proposed — filed 2026-08-12 from CI run `31655610375`. **Observed once. Not
-attributed**, and deliberately not attributed to the change it landed beside.
-**Owner:** Implementer
-**Priority:** Medium — it reddened the `linux` job, which is a gate; but the test guards a real
-`T179-R1` race and a wrong "fix" here would retire that guard rather than the flake
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing
-**Relevant context:** `T-179`, `T179-R1`, `T-238` (a different failure of the same *kind* — a gate
-that is red on a runner and green everywhere else), `T-228`, `T118-R10` (timed gates with no
-headroom), `tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected`
-**Affected surfaces:** unknown. The test, `ui/queue_view.py`'s sweep scheduling, or neither
-**Risk:** Medium — the assertion is `T179-R1`'s own regression, and `T-179`'s carried criterion is
-that a disk entry is removed when no job names it
-
-#### What happened
-
-`linux` failed at `93a6f95`:
-
-```
-FAILED tests/ui/test_queue_view.py::test_a_picture_written_after_its_removal_sweep_is_still_collected
-AssertionError: a picture written after its job's removal sweep survived a later reorder;
-unchanged membership suppressed every subsequent scan, which is T179-R1
-```
-
-The failing line is `assert spin_until(qapp, lambda: not late.exists())` — a **wall-clock** wait,
-`timeout=30`.
-
-#### What is established, and what is not
-
-**Established:**
-
-- It passes **in isolation** locally.
-- `pytest -n auto tests/unit tests/ui` passed **12 of 12** local runs at that commit — **six idle
-  and six with the host saturated** (20 busy loops on 20 cores), which is the recipe that
-  reproduces `T-228`'s class at 3-in-5.
-- The test's cache root is `tmp_path / "cache"`, an explicit path. Nothing in it resolves through
-  `platformdirs`.
-- **`T-230` cannot reach it by any mechanism found.** That change only exports environment
-  variables, and nothing in `src/` reads `XDG_*` or `WIN_PD_OVERRIDE_*` — the only environment reads
-  are `PROBE_LOG_ENV` and `PATH`. It affects **spawned children**; this test spawns nothing and uses
-  a `QThreadPool`.
-
-**Not established, and this is the part that matters:** *why it failed.* The points above are
-evidence that `T-230` is an unlikely cause; they are not a cause of their own.
-
-**The margin is measured, and it moves the suspicion off "the runner was slow".** The bound is
-**30 seconds**. Running the test with `spin_until`'s budget cut to **0.25 s** — 120× tighter — it
-passed **10 of 10**, and at 1 s likewise 10 of 10. So the sweep normally completes in under a
-quarter of a second.
-
-A runner would have to be **two orders of magnitude** slower than this machine for the
-`T118-R10` reading to hold, and the `linux` job's own wall time does not support that. That makes
-the second branch the live one: **the sweep was not scheduled at all**, which is `T179-R1`
-reopening and a product concern rather than a test bound. *Stated as where the evidence points,
-not as a finding — one observation and a margin measurement are not a mechanism.*
-
-**Do not resolve this by raising the timeout.** `T-228`'s first criterion says why, and `T-179`'s
-guard is what would be lost: a bound generous enough to pass everywhere is a test deleted.
-
-#### Acceptance criteria
-
-- The failing assertion is reproduced, or the entry records how many runs under what conditions
-  failed to reproduce it and the search is called off explicitly rather than left open
-- The mechanism is established as **runner timing** or as **the sweep not being scheduled**; the
-  second is a product defect and gets its own entry with a deterministic regression. **The margin
-  measurement above is the reason to start with the second** — a 0.25 s budget passes 10 of 10
-  against a 30 s bound
-- If it is timing: the bound is derived from something observable rather than raised until it
-  passes, and the test **still fails** when the membership-only gate `T179-R1` reported is
-  reintroduced
-- `T-230`, `T-220` and `T-229` are cleared or implicated by name, rather than left under suspicion
-  because they were the commits in flight
-
-#### Out of scope
-
-- `T-238`'s segfault. Same *kind* of problem — red on a runner, green locally — and no evidence of
-  a shared mechanism; `T-238`'s own entry warns against exactly that folding
-
----
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 

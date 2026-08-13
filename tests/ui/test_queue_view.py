@@ -81,7 +81,7 @@ from tracks_and_trails.ui.row_delegate import (
     SegmentState,
 )
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
-from tracks_and_trails.ui.thumbnails import ThumbnailStore
+from tracks_and_trails.ui.thumbnails import ThumbnailStore, cache_generation
 
 #: What every surface must call a default MP3 download (`T-156`).
 #:
@@ -2633,8 +2633,23 @@ def test_a_picture_written_after_its_removal_sweep_is_still_collected(
     )
     late = thumbnail_cache_path(gone, root)
     try:
+        # **Wait for the publication, not for the file** (`T-239`). `_SweepTask`'s decode writes
+        # the picture and *then* records the publication, and the view's gate reads that record —
+        # `cache_generation` — not the directory. Waiting on `late.exists()` therefore returns in
+        # the window between the two statements, and the reorder below then reads a generation
+        # that has not moved yet, finds membership unchanged, and skips the sweep. The file
+        # survives and this test fails on the assertion after the block, 30 seconds later.
+        #
+        # **That is what reddened CI run `31655610375` and nothing else reproduced it**: locally
+        # the window is microseconds, and a 0.25 s spin budget passes 10 of 10 against the 30 s
+        # bound. Forcing the window — a 0.3 s sleep before `_note_publication` — fails this test
+        # 3 of 3 with the same message, which is how it was identified.
+        published = cache_generation(root)
         dialogs_store.pixmap(gone)
-        assert spin_until(qapp, late.exists), "the second store never published its picture"
+        assert spin_until(qapp, lambda: cache_generation(root) > published), (
+            "the second store never published its picture"
+        )
+        assert late.exists(), "the publication was recorded but the file is not on disk"
         manager.queue_reordered.emit(("job-keeps",))
     finally:
         dialogs_store.close()
