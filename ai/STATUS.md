@@ -16,12 +16,18 @@ stays Proposed** with 680 sessions showing it unreachable at supported concurren
 **Two decisions are what stop more unattended work**: whether to build `T-238`'s leak guard, and
 which retry `T-196`'s setting means.
 
-**CI is not green.** Run `31655610375`'s `linux` job failed at `93a6f95` on
-`test_a_picture_written_after_its_removal_sweep_is_still_collected` — a `T-179` regression guard,
-failing on a 30-second wall-clock wait. **Filed as `T-239` and not attributed.** `T-230` cannot
-reach it by any mechanism found — nothing in `src/` reads the variables it exports — and the suite
-passed **12 of 12** locally at that commit, six of them with the host saturated. That is evidence
-against `T-230`, not a cause of its own.
+**The red `linux` job is diagnosed and fixed — `T-239`, In Review.** It failed on
+`test_a_picture_written_after_its_removal_sweep_is_still_collected`, and the mechanism is a **test
+synchronisation defect**: `_SweepTask` writes the picture and *then* records the publication, the
+view's gate reads the publication counter, and the test waited on the **file** — returning inside
+the two-statement window. The reorder then read a generation that had not moved and **correctly**
+skipped the sweep.
+
+**Forced and confirmed:** a 0.3 s sleep between those statements fails the test 3 of 3 with the
+same message and the full 30-second timeout. The test now waits on `cache_generation` advancing,
+and with `T179-R1`'s defect reintroduced it **still fails** — the race is gone, the regression
+guard is not, and the timeout was never raised. The `linux` re-run at the same commit passed, which
+is what a microsecond window predicts. **`T-230`, `T-220` and `T-229` are cleared by name.**
 
 **Last verified against repository:** 2026-08-12 for the block above — commit hashes and the
 CI conclusion read from `git log` and `gh run view`, task states from `ai/TASKS.md` after the
