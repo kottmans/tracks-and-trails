@@ -5,6 +5,17 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 — **`T-198` is In Review**, built in an authorized unattended run and
+**held unpushed**: yt-dlp's version is reported from a child's real import, an update installs a
+verified wheel into the directory workers already resolve, and reverting restores the baseline.
+**Five of its six criteria are met; the fourth is partly owed to CI**, because no frozen or Windows
+execution has happened and `OPS-003` says the Windows half needs a CI proof rather than a Linux one.
+**Nineteen mutations fail their evidence**, and three defects inside this work were found by that
+evidence rather than by review — one of them a vacuous assertion of mine. Gates green locally:
+**2773 passed, 18 skipped** unit+UI and **414 passed** integration, exit codes checked.
+
+*(The block below is 2026-08-12's and is left as written.)*
+
 **Last updated:** 2026-08-12 (approvals) — **`T-230`, `T-220`, `T-229` and `T-239` are Complete**,
 all four approved, with one Low non-blocking finding, `T239-R1`, corrected below. They were built
 unattended earlier the same day: `T-230` (a spawned child now gets the test's own directories —
@@ -80,6 +91,57 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-13: T-198 built — the version in use, an update, and the way back
+
+**One task, one commit, held unpushed** on the maintainer's instruction. `## In Review` holds
+`T-198` alone.
+
+**The resolution half already existed, and that reshaped the task.** `T-012` and `T-035` had built
+the candidate order, the `sys.path` prepend, the fallback and the `ResolutionReport`; `OPS-002` had
+already ruled the mechanism — *wheel extraction, not pip*, into
+`user_data_dir/tracksandtrails/ytdlp/`. **So the entry's central worry answers itself**: an update
+that lands where the frozen build does not read is avoided by installing into the one directory a
+worker was already resolving, which is the same path in a source checkout and a frozen artifact.
+
+**The version is never computed anywhere it could be wrong.** Not from `BASELINE_YTDLP_VERSION`,
+not from a `.dist-info` name, not from the installer's own return value — each can be right about a
+build and wrong about the machine. `install_latest` returns what it *wrote*; the screen shows what a
+spawned child *imported*, re-asked after every install and every revert.
+
+**Three defects in this work were found by its own evidence.** A mutant replacing the atomic swap
+with *delete-then-move* **survived every test**, because every failure they drive happens before the
+swap — forcing the final rename to fail then exposed a real one: the restore could itself fail and
+escape as a bare `OSError` nobody had written for a user. And the composition regression raised
+`RuntimeError: Signal source has been deleted` from a pool thread: `QThreadPool.start` takes the C++
+runnable but not the Python object, so a task could be collected mid-run. **`T118-R13` again —
+parentless is right, unreferenced is not.**
+
+**A vacuous assertion of mine is the one worth recording against myself.**
+`test_the_wheel_is_chosen_and_the_sdist_is_not` passed with the `packagetype` check deleted: the
+fixture's sdist is named `.tar.gz`, so the *filename* check rejected it and my assertion was
+satisfied by a rule it was not testing. The same mutant also showed the index's `filename` being
+joined onto a path; the download is staged under a fixed name now, so that surface is gone rather
+than guarded.
+
+**One agreement was coincidence and is now structural.** The manager and the update service each
+defaulted to `user_ytdlp_directory()` independently — two places that must match, with nothing
+failing the day one moved. Composition names it once and hands it to both; removing the manager's
+argument fails a regression.
+
+**What is owed, stated rather than implied:** criterion four. The frozen and Windows behaviour is
+identical *by construction* and that reasoning is written down — but **it has not executed**, on
+either. Nothing here has been near a frozen artifact or a Windows runner, and `OPS-003` is explicit
+that a Windows claim needs a CI proof. **Also not built, and it needs a ruling:** nothing refuses an
+update while downloads are running. The install reports and recovers if the directory is busy, which
+is the Windows failure mode, but whether the action should be disabled with the queue running is a
+product choice the entry does not take.
+
+**Figures:** `ruff check` and `ruff format --check .` clean over the whole tree including markdown
+(`T-239`'s lesson); `mypy src`, bare `mypy` (136 files) and `mypy --platform win32 src` all clean;
+`tests/unit` + `tests/ui` **2773 passed, 18 skipped**; `tests/integration` **414 passed**. Exit
+codes checked rather than summary lines read. **Nineteen mutations fail their evidence** — nine
+against the installer, nine against the screen and the wiring, one against composition.
 
 ## 2026-08-12 (second review round): T-236 approved; T-235 and T-237 corrected; T-238 filed
 

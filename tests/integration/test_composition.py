@@ -69,6 +69,7 @@ from tracks_and_trails.downloader.protocol import (
     Succeeded,
     WorkerFinished,
 )
+from tracks_and_trails.downloader.ytdlp_service import Resolution, YtdlpService
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui import theme as ui_theme
@@ -85,9 +86,39 @@ from tracks_and_trails.ui.settings_dialog import (
     DEFAULT_PRESET_NAME,
     OUTPUT_TEMPLATE_NAME,
     OUTPUT_TEMPLATE_NOTE_NAME,
+    YTDLP_REVERT_NAME,
+    YTDLP_UPDATE_NAME,
+    YTDLP_VERSION_NAME,
     SettingsDialog,
 )
 from tracks_and_trails.ui.staging import RowState
+
+
+class QuietYtdlp(YtdlpService):
+    """A yt-dlp service that records what it was asked and spawns nothing (`T-198`).
+
+    The real one answers `refresh()` by spawning a child and importing yt-dlp, which takes
+    seconds — and `open_settings` calls it every time. Every composition test that opens the
+    screen would pay for that, for an answer none of them is about.
+
+    **It is a subclass rather than a stand-in object** so the signals, the busy state and the
+    guard against two operations at once are the production ones; only the three methods that
+    touch a process or the network are replaced.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(directory=Path("/nonexistent-in-tests"))
+        self.asked: list[str] = []
+
+    def refresh(self) -> None:
+        self.asked.append("refresh")
+
+    def install_latest_version(self) -> None:
+        self.asked.append("install")
+
+    def revert(self) -> None:
+        self.asked.append("revert")
+
 
 # --- children the composed application spawns -------------------------------------------------
 
@@ -215,6 +246,8 @@ def composed(
         # Same reason as `geometry_file`: without it these tests read and write the real
         # `user_config_dir`, which `ai/TESTING.md` §5 forbids (`T-078`).
         overrides.setdefault("settings_file", tmp_path / "settings.toml")
+        # See `QuietYtdlp`: the real service spawns a child on every `open_settings`.
+        overrides.setdefault("ytdlp_service", QuietYtdlp())
         composition = application.compose(qapp, **overrides)
         built.append(composition)
         return composition
@@ -938,6 +971,87 @@ def test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager(
     assert composition.manager._ffmpeg_override == composition.ffmpeg.path, (
         "ffmpeg was located and then not handed to the manager, so no worker would ever see it"
     )
+
+
+def test_the_settings_screen_composition_opens_can_actually_update_ytdlp(
+    composed: Callable[..., application.Composition],
+) -> None:
+    """`T-198`: the screen opened by the real application has a route behind both actions.
+
+    **This is the `T195-R4` shape, deliberately.** That finding was a test asserting the *store*
+    and submitted as proof of the *wiring*, while the wiring was broken exactly as the review
+    said. A `SettingsDialog` built by hand always has whatever callbacks the test passes it; only
+    the screen `compose()` opens can say whether composition passed any.
+    """
+    composition = composed()
+
+    screen = composition.window.open_settings()
+    assert screen is not None
+
+    update = screen.findChild(QPushButton, YTDLP_UPDATE_NAME)
+    assert update is not None, "the composed settings screen has no yt-dlp update control"
+    assert update.isEnabled(), "composition opened the screen with nothing behind the update"
+    service = composition.window._ytdlp
+    assert isinstance(service, QuietYtdlp)
+    assert service.asked == ["refresh"], (
+        "opening the screen did not ask which yt-dlp is in use, so it would show nothing"
+    )
+
+
+def test_a_reported_resolution_reaches_the_open_settings_screen(
+    composed: Callable[..., application.Composition],
+) -> None:
+    """The service answers on a signal; the window must carry it to whichever screen is open.
+
+    Driven by emitting on the real service rather than by calling the window's slot, because what
+    is being asserted is that composition *connected* it — a slot that exists and is wired to
+    nothing passes every test that calls it directly.
+    """
+    composition = composed()
+    screen = composition.window.open_settings()
+    assert screen is not None
+    service = composition.window._ytdlp
+    assert service is not None, "composition built no yt-dlp service"
+
+    service.reported.emit(
+        Resolution(version="2026.9.1", source="user-managed copy (OPS-002)", rejected=())
+    )
+
+    shown = screen.findChild(QLabel, YTDLP_VERSION_NAME)
+    assert shown is not None
+    assert "2026.9.1" in shown.text(), "a reported version never reached the open screen"
+    revert = screen.findChild(QPushButton, YTDLP_REVERT_NAME)
+    assert revert is not None and revert.isEnabled(), (
+        "the screen was told a user copy is in use and still offers no way back"
+    )
+
+
+def test_the_updater_writes_where_the_manager_tells_workers_to_look(
+    composed: Callable[..., application.Composition],
+) -> None:
+    """**The named worst outcome, guarded** (`T-198`).
+
+    An update that lands somewhere the worker does not read reports a new version and changes
+    nothing about the download that follows — it looks like it worked. Both sides used to reach
+    `user_ytdlp_directory()` on their own, which is agreement by coincidence: two defaults that
+    must match are two places to drift, and nothing would have failed the day one moved.
+
+    Composition now names the directory once and hands it to both, and this is the assertion that
+    keeps it that way. The real service is used here rather than `QuietYtdlp`, because what is
+    being compared is the directory composition chose — and the stub deliberately carries a
+    different one.
+    """
+    from tracks_and_trails.downloader.environment import user_ytdlp_directory
+    from tracks_and_trails.downloader.ytdlp_service import YtdlpService
+
+    composition = composed(ytdlp_service=None)
+    service = composition.window._ytdlp
+    assert isinstance(service, YtdlpService)
+
+    assert service.directory == composition.manager._user_ytdlp_directory, (
+        "an update would be installed where no worker resolves it"
+    )
+    assert service.directory == user_ytdlp_directory()
 
 
 # --- 4. shutdown (`T013-R2`, `T038-R2`, `ARC-005`) --------------------------------------------

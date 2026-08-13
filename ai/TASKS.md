@@ -117,6 +117,147 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-198 — Report the yt-dlp version, update it in place, and be able to go back
+
+**Status:** **In Review — built 2026-08-13**, in an authorized unattended run. Five of the six
+acceptance criteria are met and proved; **the fourth is partly owed to CI** and is stated as such
+below rather than claimed. Held unpushed on the maintainer's instruction.
+**Owner:** Implementer
+**Priority:** Medium — `C-002` says sites break constantly, and without this a broken site stays
+broken until the next release of this application
+**Phase:** Phase 4
+**Depends on:** `T-033`, which bundles the pinned baseline into the frozen artifact and whose entry
+already names this task's half as *"the in-app update action (`OPS-002`, Phase 4)"*.
+**Relevant context:** `REQ-025`, `OPS-002`, `C-002`, `T-033`, `T-012` (yt-dlp in a spawned worker),
+`T-035` (environment resolution), `downloader/worker.py`
+**Affected surfaces:** a version/update surface in the settings dialog or `Help`, the environment
+resolution path, packaging
+**Risk:** **Medium–High**, and it is a *packaging* risk rather than a UI one — an update that lands
+somewhere the frozen build does not read is an update that silently does nothing
+
+#### Scope
+
+`OPS-002` is accepted and states the shape: **ship a pinned baseline the user can update in
+place.** `T-033` built the baseline half. This task builds the reporting and the update, and the
+part `OPS-002`'s own title implies but nobody has built — **getting back**.
+
+**The revert is a plan exit criterion, not a nicety.** §Phase 4 reads: *"Updating yt-dlp in-app
+changes the reported version and **reverting restores the baseline**."* An update route with no way
+back turns `C-002` around: today a broken site waits for a release; with a one-way update, a bad
+yt-dlp release breaks the application until the *next* yt-dlp release. **The baseline is the thing
+that makes updating safe**, which is why `T-033` bundled it.
+
+**Where an updated yt-dlp lives is the real question**, and it differs between a source checkout and
+a frozen build. `T-012` runs yt-dlp in a spawned worker and `T-035` resolves the environment; an
+update that writes next to the source but is read from the frozen bundle produces a reported version
+that changes and a behaviour that does not — **the worst outcome available here**, because it looks
+like it worked.
+
+#### Acceptance criteria
+
+- The version in use is **reported in the UI**, and it is the version the **worker actually
+  imports** — read from the running environment, not from a pinned constant or a packaging manifest
+- Updating **changes the reported version**, and a download afterwards runs on the new one — proved
+  through the worker, not the parent process
+- **Reverting restores the baseline**, and the reported version returns to it. This is the criterion
+  most likely to be built last and dropped
+- The update **works the same way in the frozen artifact**, or the frozen build states plainly that
+  it cannot update and why. `OPS-003` means the Windows half is CI-only, so a claim that it works
+  there needs a CI proof, not a Linux one
+- A failed update — no network, a refused index, a corrupt download — **leaves the working version
+  in place** and reports. A half-updated yt-dlp is a broken application
+- Nothing about the update path writes a token, an index URL with credentials, or a path into a
+  log (`NFR-007`, and `T-197`'s gate is what proves it)
+
+#### Out of scope
+
+- Updating **Tracks & Trails itself**. `REQ-025` is explicit: *"without reinstalling Tracks &
+  Trails"* — this updates yt-dlp only
+- Automatic or background updates. Nothing asks for them, and an unattended update of the component
+  `C-002` calls the volatile one needs its own decision
+- Updating **ffmpeg** — `T-199` owns ffmpeg, and `REQ-024` asks for detection and an override, not
+  an installer
+
+#### What was built — 2026-08-13
+
+**The resolution half already existed, and that is the finding that shaped the task.** `T-012` and
+`T-035` had built candidate resolution, the `sys.path` prepend, the fallback and the
+`ResolutionReport`; `OPS-002` had already decided the mechanism — *wheel extraction, not pip*, into
+`user_data_dir/tracksandtrails/ytdlp/`. **So the entry's central worry answers itself**: an update
+that lands where the frozen build does not read is avoided by installing into **the one directory a
+worker was already resolving**, which is the same path in a source checkout and a frozen artifact.
+Nothing new resolves anything.
+
+**Three modules, and the split is the layering rule.** `downloader/ytdlp_update.py` fetches,
+verifies and installs; it never imports yt-dlp and never reports a version.
+`downloader/ytdlp_service.py` spawns the child that does, and runs both on a pool.
+`worker.report_resolution` is that child — **a query, not a session**: no job, no outcome, no
+cancellation, so putting it through `SessionValidator` would mean modelling a question as a unit of
+work whose central rule it cannot satisfy.
+
+**The version is never computed anywhere it could be wrong.** It is not read from
+`BASELINE_YTDLP_VERSION`, not from a `.dist-info` directory name, and not from the installer's own
+return value — each can be right about a build and wrong about the machine. `install_latest` returns
+what it *wrote*; the screen shows what a child *imported*, re-asked after every install and every
+revert.
+
+**Nothing is disturbed until everything is verified.** Download, checksum and extraction all happen
+in a staging directory beside the live one; installing is then two renames with the old tree kept
+until the new one is in place. **Eight failure modes are driven and each asserts a sentinel file
+from the previous copy is still there** — a test that only checked the exception would pass against
+an implementation that deletes the directory and then fails.
+
+**Two defects in this work were found by its own evidence, and both are recorded rather than
+smoothed.** A mutant replacing the atomic swap with *delete-then-move* **survived every test**,
+because every failure they drive happens before the swap — so the destructive step was never
+reached and the two implementations were indistinguishable. Forcing the final rename to fail
+exposed a second, real one: the *restore* could itself fail and escape as a bare `OSError` nobody
+had written for a user. It has its own sentence and its own recovery now.
+
+**A second survivor was a vacuous assertion of mine.** `test_the_wheel_is_chosen_and_the_sdist_is_not`
+passed with the `packagetype` check deleted, because the fixture's sdist is named `.tar.gz` and the
+*filename* check rejected it — the assertion was satisfied by a rule it was not testing. Both fields
+are load-bearing now, each with an input only it rejects. The same mutant also exposed that the
+index's `filename` was being joined onto a path; the download is staged under a fixed name, so that
+surface is removed rather than guarded.
+
+**And the composition regression found a third, in the async path.** `QThreadPool.start` takes the
+C++ runnable but not the Python object, so a task whose only reference was the argument to `start()`
+could be collected mid-run and emit through a deleted `_Sink` — `RuntimeError: Signal source has
+been deleted`, raised on a pool thread with no handler. This is `T118-R13` again: **parentless is
+right, unreferenced is not.** The service holds the running task; an injected `entry_point` makes
+that path testable in under a second instead of not at all.
+
+**One agreement was coincidence and is now structural.** The manager and the service each defaulted
+to `user_ytdlp_directory()` independently — two places that must match, with nothing failing the day
+one moved. Composition names the directory once and hands it to both, and a regression asserts they
+are equal; removing the manager's argument fails it.
+
+**Criteria, honestly:**
+
+| # | Criterion | State |
+|---|---|---|
+| 1 | Version reported in the UI, read from the running environment | **Met** — a spawned child's import, asserted against the real baseline |
+| 2 | Updating changes the reported version, proved through the worker | **Met** — install, then a fresh child reports the installed version |
+| 3 | Reverting restores the baseline | **Met** — the same test's third reading |
+| 4 | Works the same in the frozen artifact, or says why not | **Partly owed to CI.** The mechanism is identical by construction — the same user directory, resolved by the same `ytdlp_candidates` — and that reasoning is recorded above. **No frozen or Windows execution has happened**, and `OPS-003` means the Windows half needs a CI proof, not a Linux one |
+| 5 | A failed update leaves the working version in place and reports | **Met** — eight failure modes, each asserting the previous copy survives |
+| 6 | Nothing leaks a token, an index URL or a path into a log | **Met** — every raisable failure swept in one test, plus the resolution fields |
+
+**Gates, exit codes checked rather than summary lines read:** `ruff check` and `ruff format --check
+.` clean over the whole tree — **including markdown**, which is `T-239`'s lesson; `mypy src`, bare
+`mypy` (136 files) and `mypy --platform win32 src` all clean. `tests/unit` + `tests/ui`
+**2773 passed, 18 skipped**; `tests/integration` **414 passed**. **Nineteen mutations fail their
+evidence** — nine against the installer, nine against the screen and the wiring, one against
+composition's directory.
+
+**Not built, deliberately:** a progress bar for the download. The wheel is ~3 MB and the button
+already says `Working…`; a progress surface for a three-second transfer is a second state to keep
+true. **Not built, and it needs a ruling:** nothing refuses an update while downloads are running.
+The install reports and recovers if the directory is busy — which is the Windows failure mode — but
+whether the action should be disabled with the queue running is a product choice this entry does not
+take.
+
 ## Complete
 
 ### T-230 — A spawned child still gets the developer's real directories
@@ -4241,65 +4382,6 @@ this task must not land a stored proxy without it.
   `T-203` is arguing per-row controls *down* rather than up
 - yt-dlp's wider network surface — `--socket-timeout`, `--source-address`, `--impersonate` and the
   rest belong to Phase 4.5's audit (`T-183`), and `SEC-003` already excluded `--impersonate`
-
-### T-198 — Report the yt-dlp version, update it in place, and be able to go back
-
-**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
-**Owner:** Implementer
-**Priority:** Medium — `C-002` says sites break constantly, and without this a broken site stays
-broken until the next release of this application
-**Phase:** Phase 4
-**Depends on:** `T-033`, which bundles the pinned baseline into the frozen artifact and whose entry
-already names this task's half as *"the in-app update action (`OPS-002`, Phase 4)"*.
-**Relevant context:** `REQ-025`, `OPS-002`, `C-002`, `T-033`, `T-012` (yt-dlp in a spawned worker),
-`T-035` (environment resolution), `downloader/worker.py`
-**Affected surfaces:** a version/update surface in the settings dialog or `Help`, the environment
-resolution path, packaging
-**Risk:** **Medium–High**, and it is a *packaging* risk rather than a UI one — an update that lands
-somewhere the frozen build does not read is an update that silently does nothing
-
-#### Scope
-
-`OPS-002` is accepted and states the shape: **ship a pinned baseline the user can update in
-place.** `T-033` built the baseline half. This task builds the reporting and the update, and the
-part `OPS-002`'s own title implies but nobody has built — **getting back**.
-
-**The revert is a plan exit criterion, not a nicety.** §Phase 4 reads: *"Updating yt-dlp in-app
-changes the reported version and **reverting restores the baseline**."* An update route with no way
-back turns `C-002` around: today a broken site waits for a release; with a one-way update, a bad
-yt-dlp release breaks the application until the *next* yt-dlp release. **The baseline is the thing
-that makes updating safe**, which is why `T-033` bundled it.
-
-**Where an updated yt-dlp lives is the real question**, and it differs between a source checkout and
-a frozen build. `T-012` runs yt-dlp in a spawned worker and `T-035` resolves the environment; an
-update that writes next to the source but is read from the frozen bundle produces a reported version
-that changes and a behaviour that does not — **the worst outcome available here**, because it looks
-like it worked.
-
-#### Acceptance criteria
-
-- The version in use is **reported in the UI**, and it is the version the **worker actually
-  imports** — read from the running environment, not from a pinned constant or a packaging manifest
-- Updating **changes the reported version**, and a download afterwards runs on the new one — proved
-  through the worker, not the parent process
-- **Reverting restores the baseline**, and the reported version returns to it. This is the criterion
-  most likely to be built last and dropped
-- The update **works the same way in the frozen artifact**, or the frozen build states plainly that
-  it cannot update and why. `OPS-003` means the Windows half is CI-only, so a claim that it works
-  there needs a CI proof, not a Linux one
-- A failed update — no network, a refused index, a corrupt download — **leaves the working version
-  in place** and reports. A half-updated yt-dlp is a broken application
-- Nothing about the update path writes a token, an index URL with credentials, or a path into a
-  log (`NFR-007`, and `T-197`'s gate is what proves it)
-
-#### Out of scope
-
-- Updating **Tracks & Trails itself**. `REQ-025` is explicit: *"without reinstalling Tracks &
-  Trails"* — this updates yt-dlp only
-- Automatic or background updates. Nothing asks for them, and an unattended update of the component
-  `C-002` calls the volatile one needs its own decision
-- Updating **ffmpeg** — `T-199` owns ffmpeg, and `REQ-024` asks for detection and an override, not
-  an installer
 
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 

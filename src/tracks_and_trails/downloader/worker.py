@@ -903,6 +903,69 @@ def spawn_session(
     )
 
 
+#: The `job_id` a resolution query carries (`REQ-025`).
+#:
+#: It names no job, because a version query is not one — it asks the *environment* what it would
+#: import, and nothing is queued, downloaded or recorded. `_Message` requires a non-empty id, so
+#: this is a fixed label rather than a fabricated job id that a reader could mistake for one in
+#: the queue.
+RESOLUTION_QUERY_ID: Final = "ytdlp-resolution"
+
+
+def report_resolution(queue: MessageSink, *, user_ytdlp_directory: Path | None = None) -> int:
+    """Import yt-dlp, report which copy it was, and stop. No session and no download.
+
+    **This exists because the version shown to a user has to be one that was imported**
+    (`REQ-025`, `OPS-002`: *"The resolved version is always shown in the UI"*). Every other route
+    to that number is a claim about the environment rather than a reading of it — a pinned
+    constant, a `.dist-info` directory name, a packaging manifest — and each can be right about a
+    build and wrong about the machine. `ARCHITECTURE.md` §6 permits the import here and nowhere
+    the GUI can reach, so the answer comes back through the same `ResolutionReport` a real
+    session emits.
+
+    **A query rather than a session, deliberately.** It has no job, no outcome and no
+    cancellation, so putting it through `SessionValidator` would mean modelling a question as a
+    unit of work whose central rule — exactly one outcome — it cannot satisfy. The parent reads
+    two messages and is done.
+
+    Emits `ResolutionReport` then `WorkerFinished`, in that order and always, so a parent blocked
+    on the queue is released whether the import worked or not. An import that fails every
+    candidate is reported as the failure it is: there is no version, and the sentinel still
+    arrives.
+    """
+    exit_code = 0
+    try:
+        resolved = _import_ytdlp(ytdlp_candidates(user_ytdlp_directory))
+        queue.put(
+            ResolutionReport(
+                job_id=RESOLUTION_QUERY_ID,
+                ytdlp_version=resolved.version,
+                ytdlp_source=resolved.source,
+                rejected=resolved.rejected,
+            )
+        )
+    # Bare `BaseException`: the sentinel must reach the parent whatever happened, including a
+    # `KeyboardInterrupt` or a `SystemExit` raised inside the import.
+    except BaseException:
+        exit_code = 1
+    finally:
+        queue.put(WorkerFinished(job_id=RESOLUTION_QUERY_ID, exit_code=exit_code))
+    return exit_code
+
+
+def spawn_resolution(queue: MessageSink, *, user_ytdlp_directory: Path | None = None) -> None:
+    """The `multiprocessing` entry point for a version query.
+
+    **Containment is not required here and its absence is not a refusal** (`T019-R3`). That rule
+    exists because a *download* spawns `ffmpeg`, and an uncontained download can leave a process
+    writing to disk after the user cancelled. This child imports a module and exits: it starts no
+    descendant, so there is none to escape. Refusing would mean a user on a machine where
+    containment is unavailable cannot see which yt-dlp they are running — which is the one thing
+    `REQ-025` promises them.
+    """
+    raise SystemExit(report_resolution(queue, user_ytdlp_directory=user_ytdlp_directory))
+
+
 def _drm_failure(job_id: str, request: DownloadRequest, context: dict[str, str]) -> Failed:
     """`REQ-EXCL-001`, `SEC-001`. Fail, and do not look for another way in.
 

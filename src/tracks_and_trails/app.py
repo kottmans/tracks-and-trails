@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from tracks_and_trails.core.job_state import JobStatus
     from tracks_and_trails.downloader.environment import FfmpegReport
     from tracks_and_trails.downloader.manager import DownloadManager
+    from tracks_and_trails.downloader.ytdlp_service import YtdlpService
     from tracks_and_trails.persistence.repositories import JobRepository
     from tracks_and_trails.persistence.store import PersistentJobStore
     from tracks_and_trails.persistence.writer import QueueWriter
@@ -314,6 +315,10 @@ def compose(
     settings_file: Path | None = None,
     cache_directory: Path | None = None,
     entry_point: Callable[..., None] | None = None,
+    #: The yt-dlp version/update service (`T-198`). Injected for the same reason `entry_point`
+    #: is: the real one spawns a child and imports yt-dlp to answer, which every composition
+    #: test would otherwise pay for on every `open_settings`.
+    ytdlp_service: YtdlpService | None = None,
 ) -> Composition:
     """Build the object graph and wire it up, then admit what the last run left queued.
 
@@ -337,8 +342,9 @@ def compose(
     from tracks_and_trails.core import settings as app_settings
     from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.downloader import worker
-    from tracks_and_trails.downloader.environment import find_ffmpeg
+    from tracks_and_trails.downloader.environment import find_ffmpeg, user_ytdlp_directory
     from tracks_and_trails.downloader.manager import DownloadManager
+    from tracks_and_trails.downloader.ytdlp_service import YtdlpService
     from tracks_and_trails.persistence import db
     from tracks_and_trails.persistence.repositories import JobRepository
     from tracks_and_trails.persistence.store import PersistentJobStore
@@ -468,6 +474,12 @@ def compose(
     if downloads is None:
         downloads = default_output_directory()
     downloads.mkdir(parents=True, exist_ok=True)
+    # **One directory, named once and given to both** (`T-198`, `OPS-002`). The manager passes it
+    # to every worker and the service installs into it. Both would otherwise default to
+    # `user_ytdlp_directory()` independently — two places that must agree, which is the shape this
+    # project keeps finding broken — and if they ever disagreed an update would land somewhere no
+    # worker looks, reporting a new version while every download went on using the old one.
+    ytdlp_directory = user_ytdlp_directory()
     manager = DownloadManager(
         store,
         # History is no longer a second injected sink (`T050-R1`, `T050-R2`): a completion is an
@@ -477,6 +489,7 @@ def compose(
         concurrency=settings.concurrency,
         ffmpeg_override=ffmpeg.path,
         entry_point=entry_point if entry_point is not None else worker.spawn_session,
+        user_ytdlp_directory=ytdlp_directory,
     )
 
     # **The cookies file reaches workers, never the model** (`REQ-026`, `T-197`, `DAT-003`). Set on
@@ -961,6 +974,14 @@ def compose(
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
         queue=store,
+        # **yt-dlp's version and the two actions on it** (`REQ-025`, `T-198`). Built here rather
+        # than by the window because it spawns children and reaches the network — the window is
+        # handed the finished thing, exactly as it is handed the manager.
+        #
+        # It writes and reads `environment.user_ytdlp_directory()`, which is the directory
+        # `ytdlp_candidates` already resolves ahead of the bundled baseline, so an install lands
+        # where a worker was already looking (`OPS-002`).
+        ytdlp=YtdlpService(directory=ytdlp_directory) if ytdlp_service is None else ytdlp_service,
         # *(A third protocol was passed here until 2026-08-06: read-only over the table `T-085`
         # wrote, for the History view that enumerated records. `REQ-020` is withdrawn, the table is
         # dropped by migration `0009`, and the argument went with them — `T-176`.)*

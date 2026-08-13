@@ -50,6 +50,7 @@ from tracks_and_trails.core.models import MediaInfo, Preset
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.downloader.ytdlp_service import YtdlpService
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
 from tracks_and_trails.ui.job_detail import JobReader
@@ -357,6 +358,9 @@ class MainWindow(QMainWindow):
         shipped_template: str = "",
         on_default_preset_chosen: Callable[[str], None] | None = None,
         on_output_template_chosen: Callable[[str], None] | None = None,
+        #: yt-dlp's version and the two actions `REQ-025` asks for (`T-198`). Injected because
+        #: it spawns children and reaches the network, neither of which a window owns.
+        ytdlp: YtdlpService | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -391,6 +395,15 @@ class MainWindow(QMainWindow):
         self._shipped_template = shipped_template
         self._on_default_preset_chosen = on_default_preset_chosen
         self._on_output_template_chosen = on_output_template_chosen
+        self._ytdlp = ytdlp
+        if ytdlp is not None:
+            # Connected once, on the window rather than on the screen: the screen is rebuilt every
+            # time Settings is opened, and a service that outlives it must not be holding
+            # connections to a dialog Qt has destroyed (`T118-R13`'s shape). The window forwards
+            # to whichever screen is open, or to none.
+            ytdlp.reported.connect(self._on_ytdlp_reported)
+            ytdlp.failed.connect(self._on_ytdlp_failed)
+            ytdlp.busy_changed.connect(self._on_ytdlp_busy)
         #: The cache root both thumbnail stores write under (`T-180`). Composition derives it from
         #: the database so two permitted instances stop sweeping each other's pictures; this window
         #: only carries it to the two widgets that fetch, and never learns what a database is.
@@ -1411,15 +1424,46 @@ class MainWindow(QMainWindow):
             on_default_preset_chosen=self._on_default_preset_chosen,
             on_output_template_chosen=self._on_output_template_chosen,
             refuse_template=self._refuse_template,
+            on_ytdlp_update=None if self._ytdlp is None else self._ytdlp.install_latest_version,
+            on_ytdlp_revert=None if self._ytdlp is None else self._ytdlp.revert,
             parent=self,
         )
         self._settings_dialog = dialog
         dialog.finished.connect(self._forget_settings_dialog)
         dialog.open()
+        if self._ytdlp is not None:
+            # **Asked every time the screen opens, never cached.** A version read at startup is a
+            # version that stops being true the moment an update lands — and this screen is where
+            # the user does that. The answer arrives on a signal, so the screen shows
+            # `YTDLP_VERSION_UNKNOWN` until it does rather than a number nobody read (`REQ-025`).
+            self._ytdlp.refresh()
         return dialog
 
     def _forget_settings_dialog(self) -> None:
         self._settings_dialog = None
+
+    def _on_ytdlp_reported(self, resolution: object) -> None:
+        """Pass a worker's answer to the open screen, if one is open."""
+        dialog = self._settings_dialog
+        if dialog is None:
+            return
+        dialog.show_ytdlp(
+            getattr(resolution, "version", ""),
+            getattr(resolution, "source", ""),
+            is_user_managed=bool(getattr(resolution, "is_user_managed", False)),
+            rejected=tuple(getattr(resolution, "rejected", ())),
+        )
+
+    def _on_ytdlp_failed(self, reason: str) -> None:
+        dialog = self._settings_dialog
+        if dialog is not None:
+            dialog.show_ytdlp_problem(reason)
+
+    def _on_ytdlp_busy(self, busy: bool) -> None:
+        # Positional `bool` because this is connected to `busy_changed(bool)`.
+        dialog = self._settings_dialog
+        if dialog is not None:
+            dialog.show_ytdlp_busy(busy)
 
     def _theme_chosen(self, name: str) -> None:
         """Remember what the screen picked, so reopening it shows the theme in force."""

@@ -78,6 +78,13 @@ __all__ = [
     "STEP_DOWN_LABEL",
     "STEP_UP_LABEL",
     "THEME_LABELS",
+    "YTDLP_NOTE_NAME",
+    "YTDLP_REVERT_LABEL",
+    "YTDLP_REVERT_NAME",
+    "YTDLP_UPDATE_NAME",
+    "YTDLP_VERSION_NAME",
+    "YTDLP_VERSION_UNKNOWN",
+    "YTDLP_WORKING_LABEL",
     "SettingsDialog",
 ]
 
@@ -131,6 +138,26 @@ STEP_UP_LABEL: Final = "+"
 #: back to looking like text.
 STEP_BUTTON_PROPERTY: Final = "stepButton"
 
+#: Object names for the yt-dlp section, so tests and composition reach a control without walking
+#: the layout (`T-198`).
+YTDLP_VERSION_NAME: Final = "ytdlpVersion"
+YTDLP_NOTE_NAME: Final = "ytdlpNote"
+YTDLP_UPDATE_NAME: Final = "ytdlpUpdate"
+YTDLP_REVERT_NAME: Final = "ytdlpRevert"
+
+#: Shown before a child has answered. **Not a version and not a guess** (`REQ-025`): the number
+#: comes from a worker's import, which takes a moment, and inventing a placeholder that looks like
+#: a version is how a screen ends up reporting one nobody read.
+YTDLP_VERSION_UNKNOWN: Final = "Checking…"
+
+#: What the revert button says. Names the destination rather than the gesture: *Revert* asks the
+#: user to remember what they reverted to, and the bundled baseline is the thing they get.
+YTDLP_REVERT_LABEL: Final = "Use the bundled version"
+
+#: What the update button says while an operation is running, so the screen's own state says why
+#: nothing is responding rather than leaving a dead-looking button (`NFR-006`'s spirit).
+YTDLP_WORKING_LABEL: Final = "Working…"
+
 #: The screen's own statement of what it does not yet cover (`T-146`).
 #:
 #: **`REQ-023` names eight settings and this screen has seven.** A settings screen that shows only
@@ -169,6 +196,8 @@ class SettingsDialog(QDialog):
         on_default_preset_chosen: Callable[[str], None] | None = None,
         on_output_template_chosen: Callable[[str], None] | None = None,
         refuse_template: Callable[[str], str | None] | None = None,
+        on_ytdlp_update: Callable[[], None] | None = None,
+        on_ytdlp_revert: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -211,6 +240,11 @@ class SettingsDialog(QDialog):
         #: passes.
         self._refuse_template = refuse_template
         self._on_output_template_chosen = on_output_template_chosen
+        self._on_ytdlp_update = on_ytdlp_update
+        self._on_ytdlp_revert = on_ytdlp_revert
+        #: Whether the yt-dlp in use came from the user's own copy, so reverting means something.
+        #: Held here rather than read back off the button — see `show_ytdlp`.
+        self._ytdlp_is_user_managed = False
 
         self.setObjectName("settingsDialog")
         self.setWindowTitle("Settings")
@@ -222,6 +256,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._build_ffmpeg_section())
         layout.addWidget(self._build_appearance_section())
         layout.addWidget(self._build_queue_section())
+        layout.addWidget(self._build_ytdlp_section())
 
         remaining = QLabel(SETTINGS_STILL_TO_COME, self)
         remaining.setObjectName("settingsRemaining")
@@ -775,6 +810,136 @@ class SettingsDialog(QDialog):
         explanation.setWordWrap(True)
         layout.addWidget(explanation)
         return box
+
+    def _build_ytdlp_section(self) -> QWidget:
+        """The version in use, and the two actions `REQ-025` asks for (`T-198`, `OPS-002`).
+
+        **The version is displayed, never computed here.** It arrives through `show_ytdlp` from a
+        child process that imported yt-dlp, because the promise is to report *what is running* —
+        and a screen that derives a number from a pin or a folder name reports what ought to be
+        running instead. Until that answer arrives the field says so rather than showing a
+        plausible placeholder.
+
+        **Both actions are offered together and disabled together.** Updating and reverting are
+        the same operation in opposite directions, and while either is in flight neither may
+        start: they write the same directory.
+        """
+        box = QGroupBox("yt-dlp", self)
+        box.setObjectName("ytdlpSection")
+        layout = QVBoxLayout(box)
+
+        explanation = QLabel(
+            "Sites change constantly, and yt-dlp is what keeps up with them. Updating affects "
+            "downloads only — Tracks & Trails itself is not changed.",
+            box,
+        )
+        explanation.setObjectName("ytdlpExplanation")
+        explanation.setTextFormat(Qt.TextFormat.PlainText)
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+
+        row = QHBoxLayout()
+        label = QLabel("Version in use", box)
+        label.setObjectName("ytdlpVersionLabel")
+        row.addWidget(label)
+
+        self._ytdlp_version = QLabel(YTDLP_VERSION_UNKNOWN, box)
+        self._ytdlp_version.setObjectName(YTDLP_VERSION_NAME)
+        self._ytdlp_version.setTextFormat(Qt.TextFormat.PlainText)
+        # Selectable because the first thing a bug report needs is this number, and retyping a
+        # version from a screenshot is how a report ends up describing a different release.
+        self._ytdlp_version.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        row.addWidget(self._ytdlp_version)
+        row.addStretch(1)
+        layout.addLayout(row)
+
+        buttons = QHBoxLayout()
+        self._ytdlp_update = QPushButton("Update to the latest version", box)
+        self._ytdlp_update.setObjectName(YTDLP_UPDATE_NAME)
+        self._ytdlp_update.setAccessibleName("Update yt-dlp to the latest version")
+        self._ytdlp_update.clicked.connect(self._start_ytdlp_update)
+        buttons.addWidget(self._ytdlp_update)
+
+        self._ytdlp_revert = QPushButton(YTDLP_REVERT_LABEL, box)
+        self._ytdlp_revert.setObjectName(YTDLP_REVERT_NAME)
+        self._ytdlp_revert.setAccessibleName("Go back to the bundled yt-dlp version")
+        self._ytdlp_revert.clicked.connect(self._start_ytdlp_revert)
+        buttons.addWidget(self._ytdlp_revert)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
+
+        self._ytdlp_note = QLabel("", box)
+        self._ytdlp_note.setObjectName(YTDLP_NOTE_NAME)
+        self._ytdlp_note.setTextFormat(Qt.TextFormat.PlainText)
+        self._ytdlp_note.setWordWrap(True)
+        layout.addWidget(self._ytdlp_note)
+
+        # Nothing to revert *to* until a resolution says a user copy is in use, and nothing to
+        # update until composition has supplied a route. Both are re-decided by `show_ytdlp`.
+        self._ytdlp_update.setEnabled(self._on_ytdlp_update is not None)
+        self._ytdlp_revert.setEnabled(False)
+        return box
+
+    def _start_ytdlp_update(self) -> None:
+        if self._on_ytdlp_update is not None:
+            self._on_ytdlp_update()
+
+    def _start_ytdlp_revert(self) -> None:
+        if self._on_ytdlp_revert is not None:
+            self._on_ytdlp_revert()
+
+    def show_ytdlp(
+        self,
+        version: str,
+        source: str,
+        *,
+        is_user_managed: bool,
+        rejected: Sequence[str] = (),
+    ) -> None:
+        """Report which yt-dlp a worker imported (`REQ-025`).
+
+        **`is_user_managed` decides whether reverting is offered**, and it comes from the
+        resolution rather than from whether the directory exists. A copy that is present but does
+        not import is not in use, and offering *"use the bundled version"* as though it were would
+        describe the wrong state — while a rejected copy still needs saying, which is what
+        `rejected` is for (`ARCHITECTURE.md` §6: reported, never silently ignored).
+        """
+        self._ytdlp_version.setText(f"{version} — {source}" if source else version)
+        # **Held rather than read back off the button.** `show_ytdlp_busy` disables both controls
+        # while an operation runs, so asking the widget afterwards whether reverting is available
+        # returns *"no"* because it was just switched off — and the button never comes back. The
+        # resolution is the fact; the widget is a rendering of it.
+        self._ytdlp_is_user_managed = is_user_managed
+        self._ytdlp_revert.setEnabled(is_user_managed and self._on_ytdlp_revert is not None)
+        self._ytdlp_note.setText(
+            "An installed copy could not be used, so the bundled version is running: "
+            + "; ".join(rejected)
+            if rejected
+            else ""
+        )
+
+    def show_ytdlp_problem(self, reason: str) -> None:
+        """Say why the last update, revert or check did not happen.
+
+        The reason is passed through as written: `ytdlp_update` composes these sentences for a
+        user and they carry no path or URL (`NFR-007`), so rewording here would only risk
+        replacing an accurate one with a generic one — the failure `NFR-006` names.
+        """
+        self._ytdlp_note.setText(reason)
+
+    def show_ytdlp_busy(self, busy: bool) -> None:
+        """Disable both actions while either is running, and say the screen is not stuck.
+
+        A positional `bool` because this mirrors the service's `busy_changed(bool)` signal, which
+        is what composition connects it to.
+        """
+        self._ytdlp_update.setEnabled(not busy and self._on_ytdlp_update is not None)
+        self._ytdlp_revert.setEnabled(
+            not busy and self._ytdlp_is_user_managed and self._on_ytdlp_revert is not None
+        )
+        self._ytdlp_update.setText(YTDLP_WORKING_LABEL if busy else "Update to the latest version")
+        if busy:
+            self._ytdlp_note.setText("")
 
     def _step_button(self, parent: QWidget, label: str, announced: str) -> QToolButton:
         """One of the concurrency control's step buttons (`UX-005` row 11, `T-141`, `T-236`).
