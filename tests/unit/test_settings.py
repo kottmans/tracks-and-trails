@@ -15,11 +15,13 @@ from pathlib import Path
 import pytest
 
 from tracks_and_trails.core import presets as preset_registry
-from tracks_and_trails.core.models import AudioCodec, MediaKind, Preset
+from tracks_and_trails.core.models import AudioCodec, MediaKind, NetworkOptions, Preset
 from tracks_and_trails.core.settings import (
     CONCURRENCY_DEFAULT,
     CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
+    RATE_LIMIT_MAXIMUM_BYTES,
+    RETRIES_MAXIMUM,
     THEME_DEFAULT,
     THEME_NAMES,
     Settings,
@@ -42,6 +44,7 @@ from tracks_and_trails.core.settings import (
     with_cookie_file,
     with_download_directory,
     with_ffmpeg_location,
+    with_network_options,
     with_theme,
 )
 
@@ -336,12 +339,17 @@ def test_a_file_that_omits_the_value_reports_nothing(tmp_path: Path) -> None:
     Three shapes of the same promise: an empty file, one with no `[queue]` table, and one whose
     `[queue]` table simply has no `concurrency` line. A user who took the header at its word and
     deleted the line must not then be told their file is broken.
+
+    *(The fourth case named `[network]` until `T-196`, as a table this application does not read.
+    It reads it now — `REQ-023`'s network options — so the case moved to one that is genuinely
+    unknown. A future settings table will do the same to `[extra]`, and that is the case working:
+    the point is a table nothing here claims, not a particular name.)*
     """
     for name, body in (
         ("empty", ""),
         ("no table", "# just a comment\n"),
         ("table without the key", "[queue]\n"),
-        ("a different table", "[network]\nproxy = 'http://localhost'\n"),
+        ("a different table", "[extra]\nsomething = 'unread'\n"),
     ):
         answer = load(write(tmp_path, body))
         assert answer.settings == Settings(), name
@@ -1614,3 +1622,266 @@ def test_a_rejected_browser_source_is_registered_as_a_secret_too(tmp_path: Path)
     assert "/home/alice/session.txt" in read.secrets, (
         f"the profile the refusal quotes back was not offered: {read.secrets}"
     )
+
+
+# --- network options (T-196) ----------------------------------------------------------------
+
+
+def test_the_network_options_survive_a_write_and_a_read(tmp_path: Path) -> None:
+    """All three, through the file this application writes rather than a hand-made one.
+
+    **The round trip is the criterion**: *"both persist"*. Asserted as whole objects, so a value
+    that survives in a different unit — the rate limit is the one that could — fails here rather
+    than downstream, and a field added to `NetworkOptions` and forgotten in `save()` fails too.
+    """
+    options = NetworkOptions(proxy="http://proxy.invalid:8080", rate_limit_bytes=524288, retries=3)
+    target = tmp_path / "settings.toml"
+
+    assert save(with_network_options(Settings(), options), target) is None
+    read = load(target)
+
+    assert read.problem is None, read.problem
+    assert read.settings.network == options
+
+
+def test_a_file_saying_nothing_about_the_network_is_silent_and_means_nothing_chosen(
+    tmp_path: Path,
+) -> None:
+    """`save()`'s header promises every value falls back to its default, so absence is not a fault.
+
+    And the three defaults are the ones the requirement implies: no proxy, no limit, and the
+    downloader's own retry count — **not** zero retries, which is a different instruction.
+    """
+    read = load(write(tmp_path, "[queue]\nconcurrency = 3\n"))
+
+    assert read.problem is None
+    assert read.settings.network == NetworkOptions()
+    assert read.settings.network.retries is None, "absence was read as a chosen retry count"
+
+
+def test_an_unset_network_writes_no_table_at_all(tmp_path: Path) -> None:
+    """An empty `[network]` header is a section that says nothing, so it is not written.
+
+    Read back as well as inspected, because the point is not the bytes: a file that omits the
+    table must load as the same settings that wrote it.
+    """
+    target = tmp_path / "settings.toml"
+    assert save(Settings(), target) is None
+
+    assert "[network]" not in target.read_text(encoding="utf-8")
+    assert load(target).settings.network == NetworkOptions()
+
+
+def test_a_proxy_carrying_a_credential_is_refused_and_never_named_in_the_report(
+    tmp_path: Path,
+) -> None:
+    """**`T-196`'s third criterion, at the `ARC-008` sink that quotes offending values.**
+
+    Every other setting on this surface names what it discarded, because naming it is how a user
+    finds the line to fix. A proxy is the one `REQ-023` value that can carry a password, and this
+    reason is written into `SettingsProblem.reason` — which composition logs. So the report says
+    *what* was wrong without repeating the value, and the literal is offered for registration as
+    well: two independent defences, because `T197-R1` needed three corrections to get one right.
+    """
+    proxy = "http://me:hunter2@proxy.invalid:8080"
+    read = load(write(tmp_path, f'[network]\nproxy = "{proxy}"\n'))
+
+    assert read.settings.network.proxy is None, "a proxy carrying a credential was stored"
+    assert read.problem is not None
+    assert proxy not in read.problem.reason, (
+        f"the ARC-008 report quotes the credential it refused: {read.problem.reason!r}"
+    )
+    assert "hunter2" not in read.problem.reason
+    assert proxy in read.secrets, "the refused proxy was not offered for redaction"
+
+
+def test_an_accepted_proxy_is_registered_as_a_secret(tmp_path: Path) -> None:
+    """`NFR-007`. yt-dlp's own verbose output prints `Proxy map:`, and that reaches the job log.
+
+    The accepted value is the one that will actually appear in a diagnostic, so it is registered
+    exactly as the refused one is — `T197-R1`'s lesson was that protecting only one of the two is
+    protecting the one that leaks less.
+    """
+    read = load(write(tmp_path, '[network]\nproxy = "http://proxy.invalid:8080"\n'))
+
+    assert read.problem is None
+    assert read.settings.network.proxy == "http://proxy.invalid:8080"
+    assert "http://proxy.invalid:8080" in read.secrets
+
+
+def test_a_proxy_that_is_not_address_shaped_is_refused_without_being_registered(
+    tmp_path: Path,
+) -> None:
+    """**`T197-R6`'s rule, applied before it can bite again.**
+
+    Registration replaces a substring wherever it later appears, so registering a bare word makes
+    that word unreadable in every subsequent line — which is what a valid `browser = "edge"` did.
+    A value with neither a scheme nor userinfo is not an address and carries no credential, so it
+    is refused and left alone. The cost is stated in `_proxy_literals` rather than hidden here.
+    """
+    read = load(write(tmp_path, '[network]\nproxy = "localhost"\n'))
+
+    assert read.settings.network.proxy is None
+    assert read.problem is not None
+    assert read.secrets == (), f"a bare word was registered as a secret: {read.secrets}"
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "'fast'", "1.5", "true"])
+def test_a_rate_limit_that_is_not_a_speed_reports_rather_than_meaning_unlimited(
+    tmp_path: Path, bad: str
+) -> None:
+    """**`T-196`'s fifth criterion.** Read as *no limit*, these remove a limit somebody asked for.
+
+    `0` is the one that matters most and the one truthiness gets wrong: `if rate_limit_bytes:` in
+    the adapter reads it as unset, so a stored zero would have downloaded at full speed with
+    nothing said. Reported, and the value discarded, is what `ARC-008` requires of a discard.
+    """
+    read = load(write(tmp_path, f"[network]\nrate_limit_bytes = {bad}\n"))
+
+    assert read.settings.network.rate_limit_bytes is None
+    assert read.problem is not None and "rate_limit_bytes" in read.problem.reason, (
+        f"{bad} was discarded without a report: {read.problem}"
+    )
+
+
+@pytest.mark.parametrize("bad", ["-1", "'often'", "1.5", "true"])
+def test_a_retry_count_that_is_not_a_count_reports(tmp_path: Path, bad: str) -> None:
+    """Same rule, one key over — with `0` deliberately absent from the list below."""
+    read = load(write(tmp_path, f"[network]\nretries = {bad}\n"))
+
+    assert read.settings.network.retries is None
+    assert read.problem is not None and "retries" in read.problem.reason
+
+
+def test_zero_retries_is_stored_as_asked_and_reports_nothing(tmp_path: Path) -> None:
+    """**The asymmetry with the rate limit, asserted so it cannot be tidied away.**
+
+    Zero bytes per second is not a speed; zero retries is an instruction. A later reader
+    "simplifying" the two into one rule breaks this test rather than a download.
+    """
+    read = load(write(tmp_path, "[network]\nretries = 0\n"))
+
+    assert read.problem is None, read.problem
+    assert read.settings.network.retries == 0
+
+
+def test_values_beyond_what_this_application_holds_are_clamped_and_reported(
+    tmp_path: Path,
+) -> None:
+    """Clamped rather than discarded — the intent is *a lot* — and reported, unlike concurrency.
+
+    The difference from `_concurrency_from`'s silent clamp is what the clamp costs: 30 downloads
+    at once becomes 16 and still downloads what was asked for, where a rate limit the screen
+    cannot display would leave the user reading a number that is not the one in force.
+    """
+    read = load(
+        write(
+            tmp_path,
+            f"[network]\nrate_limit_bytes = {RATE_LIMIT_MAXIMUM_BYTES + 1}\n"
+            f"retries = {RETRIES_MAXIMUM + 1}\n",
+        )
+    )
+
+    assert read.settings.network.rate_limit_bytes == RATE_LIMIT_MAXIMUM_BYTES
+    assert read.settings.network.retries == RETRIES_MAXIMUM
+    assert read.problem is not None
+    assert "rate_limit_bytes" in read.problem.reason and "retries" in read.problem.reason
+
+
+def test_each_network_key_is_read_independently(tmp_path: Path) -> None:
+    """A typo in one must not cost the user the other two (`load()`'s rule for `[queue]`).
+
+    Three reasons are reported together rather than the first one found, for the same reason a
+    broken `[queue]` does not hide a broken preset: `ARC-008` asks what was *discarded*, not what
+    the file's worst line was.
+    """
+    read = load(
+        write(
+            tmp_path,
+            '[network]\nproxy = "http://proxy.invalid:8080"\nrate_limit_bytes = 0\nretries = 5\n',
+        )
+    )
+
+    assert read.settings.network.proxy == "http://proxy.invalid:8080", "a bad rate cost the proxy"
+    assert read.settings.network.retries == 5, "a bad rate cost the retry count"
+    assert read.settings.network.rate_limit_bytes is None
+    assert read.problem is not None
+
+
+def test_a_network_section_that_is_not_a_section_is_reported(tmp_path: Path) -> None:
+    """The shape every other table on this surface is checked for, and for its reason."""
+    read = load(write(tmp_path, 'network = "http://proxy.invalid:8080"\n'))
+
+    assert read.settings.network == NetworkOptions()
+    assert read.problem is not None and "[network]" in read.problem.reason
+
+
+def test_a_broken_network_section_does_not_cost_the_other_settings(tmp_path: Path) -> None:
+    """The independence rule read the other way: the neighbours survive a bad `[network]`."""
+    read = load(write(tmp_path, "[queue]\nconcurrency = 5\n[network]\nrate_limit_bytes = 0\n"))
+
+    assert read.settings.concurrency == 5
+    assert read.settings.network.rate_limit_bytes is None
+    assert read.problem is not None
+
+
+def test_with_network_options_bounds_what_a_caller_hands_over(tmp_path: Path) -> None:
+    """`with_concurrency`'s rule: the bound applies wherever the value changes.
+
+    A control cannot reach these numbers, and that is not the argument — `ARC-007` puts the bound
+    on the *value* precisely so it does not depend on which widget is in front of it.
+    """
+    bounded = with_network_options(
+        Settings(),
+        NetworkOptions(rate_limit_bytes=RATE_LIMIT_MAXIMUM_BYTES * 2, retries=RETRIES_MAXIMUM + 40),
+    )
+
+    assert bounded.network.rate_limit_bytes == RATE_LIMIT_MAXIMUM_BYTES
+    assert bounded.network.retries == RETRIES_MAXIMUM
+    # And a value inside the bounds is untouched, so this is a bound rather than a rewrite.
+    kept = with_network_options(Settings(), NetworkOptions(rate_limit_bytes=1024, retries=0))
+    assert kept.network == NetworkOptions(rate_limit_bytes=1024, retries=0)
+
+
+def test_settings_refuse_a_network_value_the_file_would_have_been_clamped_to(
+    tmp_path: Path,
+) -> None:
+    """A file is not a caller (`_concurrency_from`'s distinction, one setting over).
+
+    `load()` clamps and reports, because a hand-edited file is not a programming error. A caller
+    constructing `Settings` directly with an out-of-range value has a bug, and this is where it
+    surfaces instead of at the next screen that tries to display it.
+    """
+    with pytest.raises(ValueError, match="rate_limit_bytes"):
+        Settings(network=NetworkOptions(rate_limit_bytes=RATE_LIMIT_MAXIMUM_BYTES + 1))
+    with pytest.raises(ValueError, match="retries"):
+        Settings(network=NetworkOptions(retries=RETRIES_MAXIMUM + 1))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "[network]\nproxy = 0\nrate_limit_bytes = 'x'\nretries = -9\n",
+        "[network]\nproxy = ''\nrate_limit_bytes = 0\nretries = 0\n",
+        "[network]\nproxy = ['http://a.invalid']\n",
+        "[network]\nproxy = 'http://u:p@h.invalid'\nrate_limit_bytes = 1e9\n",
+        "[network]\nrate_limit_bytes = 9223372036854775807\nretries = 9999999\n",
+        "[network]\nproxy = '   '\n",
+    ],
+)
+def test_a_hostile_network_table_never_stops_the_application_starting(
+    tmp_path: Path, body: str
+) -> None:
+    """`load()`'s never-raises contract, held against the one table that validates through a model.
+
+    **This coupling is worth a test of its own.** `_network_from` constructs a `NetworkOptions`,
+    and that model *raises* — for a credential, for a zero rate limit, for a negative count. So
+    every coercer above it has to answer with something constructible, and a future edit that
+    relaxes one of them would turn a hand-edited settings file into an application that will not
+    start. That is `T102-R1`'s defect exactly: a check that can raise, on the startup path,
+    behind a function that promises it does not.
+    """
+    read = load(write(tmp_path, body))
+
+    assert isinstance(read.settings.network, NetworkOptions)
+    assert read.settings.concurrency == CONCURRENCY_DEFAULT

@@ -5,6 +5,26 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (T-196 built) — **the last of `REQ-023`'s eight settings is built and
+`T-196` is In Review**, committed as one commit on `main` and **held unpushed**: pushing wakes the
+reviewer, and the handoff goes first. Proxy, per-download speed limit and yt-dlp's own
+`--retries` are on the Settings screen, in `[network]` in `settings.toml`, and on the request —
+**bound when a job is queued, which is `ARCHITECTURE.md` §8 applied rather than chosen**: the
+cookie file is late-bound only because `DAT-003` denies it a place on the model, and copying that
+route here would have been an architecture change wearing an implementer's clothes.
+**A settings proxy carrying a credential is unrepresentable**, through `T-014`'s own function
+rather than a second validator, and the stored literal is registered as a secret by the same
+`SettingsFile.secrets` route `T-197` built. **Twelve mutations each turned their evidence red**;
+**one survived the first pass** — the startup redaction test proved only that `redact`'s URL rule
+strips *userinfo*, which happens with nothing registered at all, so it now names the host.
+**The screen's *"still to come"* sentence is empty and its label is no longer built**, and
+`docs/DEVELOPMENT.md`, `docs/UX_SPEC.md` and `T-227`'s entry say so. Gates green:
+**2899 passed, 18 skipped** unit+UI and **434 passed** integration, with `ruff`, `ruff format`,
+`mypy src`, bare `mypy` and `mypy --platform win32` all clean — exit codes checked, not summary
+lines (`T195-R7`).
+
+*(The block below is `T-238`'s approval and is left as written.)*
+
 **Last updated:** 2026-08-13 (T-238 approved) — **the guard is Approved at `9e5feae`; all three
 findings Resolved; `T-238` moves to `## Ready` and stays open against criterion 4.** The review
 reproduced a segfault — **not the original one, which 60 runs never reached, but its mechanism**:

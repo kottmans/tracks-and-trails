@@ -1,12 +1,16 @@
 """The Settings screen (`REQ-023`, built by `T-146`).
 
-**Seven of `REQ-023`'s eight settings, and the screen says which.** The requirement names default
-download directory, default preset, concurrency limit, output template, ffmpeg location, network
-options, cookie source and theme. This screen holds all but **network options**, which is `T-196`'s
-— the download directory, theme and concurrency limit from `T-146`, the ffmpeg location from
-`T-199`, the cookie source from `T-197`, and the default preset and output template from `T-195`.
+**All eight of `REQ-023`'s settings, since `T-196`.** The requirement names default download
+directory, default preset, concurrency limit, output template, ffmpeg location, network options,
+cookie source and theme — the download directory, theme and concurrency limit from `T-146`, the
+ffmpeg location from `T-199`, the cookie source from `T-197`, the default preset and output
+template from `T-195`, and the network options from `T-196`.
+
 `SETTINGS_STILL_TO_COME` is shown on the screen itself so it never claims coverage it does not
-have — `T-146`'s own criterion, and the failure mode a settings screen has by default.
+have — `T-146`'s own criterion, and the failure mode a settings screen has by default. **It is
+empty now, and the label is not built**, which is that criterion satisfied rather than retired:
+the sentence has shrunk with every task that landed one of the eight, and this is where it runs
+out. Anything `REQ-023` gains later puts it back.
 
 *(A module of this name existed until 2026-08-06 holding one control, `Clear download records`. It
 went with `REQ-020`. Nothing of it survives here but the shape of the menu route, which was worth
@@ -37,6 +41,7 @@ reasoning, as the manager's `entry_point`.
 """
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import Final
@@ -60,19 +65,29 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tracks_and_trails.core.models import BROWSER_NAMES
+from tracks_and_trails.core.models import BROWSER_NAMES, NetworkOptions, proxy_refusal
 from tracks_and_trails.core.output_template import unsupported_refusal
 from tracks_and_trails.core.settings import (
     CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
+    RATE_LIMIT_MAXIMUM_BYTES,
+    RETRIES_MAXIMUM,
     THEME_NAMES,
 )
 
 __all__ = [
     "COOKIES_EXPLANATION",
     "DEFAULT_DIRECTORY_NOTE",
+    "DEFAULT_RETRIES_LABEL",
     "FFMPEG_ON_PATH_NOTE",
+    "NETWORK_EXPLANATION",
     "NO_COOKIES_NOTE",
+    "NO_RATE_LIMIT_LABEL",
+    "PROXY_NAME",
+    "PROXY_NOTE_NAME",
+    "RATE_LIMIT_NAME",
+    "RATE_LIMIT_STEP_BYTES",
+    "RETRIES_NAME",
     "SETTINGS_STILL_TO_COME",
     "STEP_BUTTON_PROPERTY",
     "STEP_DOWN_LABEL",
@@ -120,6 +135,57 @@ NO_COOKIES_NOTE: Final = "No cookies file - downloads are not signed in"
 #: not tell a user what the application is doing instead.
 FFMPEG_ON_PATH_NOTE: Final = "Looked for on PATH"
 
+#: Object names for the network section, so tests and composition reach a control without walking
+#: the layout (`T-196`).
+PROXY_NAME: Final = "networkProxy"
+PROXY_NOTE_NAME: Final = "networkProxyNote"
+RATE_LIMIT_NAME: Final = "networkRateLimit"
+RETRIES_NAME: Final = "networkRetries"
+
+#: What the network section says about when its settings take effect, and about what the rate
+#: limit actually limits.
+#:
+#: **Both halves are things a user would otherwise have to discover.** `ARCHITECTURE.md` §8 freezes
+#: settings into a job when it is queued, so these three bind at *paste* time — the opposite of the
+#: cookies file one section up, which is late-bound and whose explanation says so for the same
+#: reason. And yt-dlp's `ratelimit` binds one session while every download here is its own process
+#: (`ARC-002`), so three at once can use three times the number in the box.
+NETWORK_EXPLANATION: Final = (
+    "These apply to downloads you add from now on. Anything already in the queue keeps what it "
+    "was added with.\n"
+    "The speed limit applies to each download on its own, so several at once can add up."
+)
+
+#: What the rate-limit spin box reads at zero (`UX-005` §5: a control says what it does).
+#:
+#: **Zero is the control's way of saying "no limit", and the file's way of saying nothing.** The
+#: setting is stored as an absent key, never as a `0` — `core/settings.py` reports a stored zero
+#: rather than reading it as unlimited, because there it is a hand-edit that removes a limit
+#: somebody asked for. Here the word is on screen next to the number, so there is nothing to
+#: misread.
+NO_RATE_LIMIT_LABEL: Final = "No limit"
+
+#: What the retries spin box reads below zero, where "nobody chose" lives.
+#:
+#: **A sentinel is needed because `0` is a real answer here** — *do not retry inside the attempt* —
+#: so the usual trick of treating zero as unset would silently turn that into yt-dlp's default of
+#: ten. `-1` is never stored: it is `None`, spelled in the one vocabulary a `QSpinBox` has.
+#:
+#: The application's own default is deliberately not named as a number. yt-dlp owns it, this
+#: module does not import yt-dlp, and a copy of it here would be wrong the day it changes.
+DEFAULT_RETRIES_LABEL: Final = "The downloader's own"
+
+#: The rate limit is offered in KiB/s and stored in bytes per second.
+#:
+#: **The conversion lives here and nowhere else.** `settings.toml`, `NetworkOptions` and yt-dlp's
+#: `ratelimit` all speak bytes, because that is what the machinery takes; KiB/s is what a person
+#: means. One direction of one conversion in one widget is the smallest surface that can hold both.
+#:
+#: A stored value that is not a whole number of KiB — a hand-edit, or a file from another tool —
+#: is **displayed** rounded down and is *not* rewritten: the box only writes when the user moves
+#: it, so an unrelated change elsewhere on the screen cannot quietly re-round a limit they set.
+RATE_LIMIT_STEP_BYTES: Final = 1024
+
 #: What the concurrency control's step buttons read (`UX-005` row 11, `T-141`, `T-236`).
 #:
 #: A true minus sign rather than a hyphen: at this size a hyphen reads as a dash in a sentence,
@@ -160,11 +226,16 @@ YTDLP_WORKING_LABEL: Final = "Working…"
 
 #: The screen's own statement of what it does not yet cover (`T-146`).
 #:
-#: **`REQ-023` names eight settings and this screen has seven.** A settings screen that shows only
-#: what it implements reads as complete, and the one absence is owned by a filed task (`T-196`) —
-#: so the honest thing is to say so where the user is looking rather than only in a document they
-#: will not read.
-SETTINGS_STILL_TO_COME: Final = "Still to come: network options."
+#: **`REQ-023` names eight settings and this screen now has all eight**, so it is empty and the
+#: label that carried it is not built (`T-196`). A settings screen that shows only what it
+#: implements reads as complete; this one *is* complete, and an empty string says that without a
+#: sentence claiming it — a screen announcing "nothing is missing" is a claim that goes stale the
+#: moment something is, while an absent label is simply the shape of a covered requirement.
+#:
+#: **The constant stays, and so does the mechanism.** Adding a setting to `REQ-023` without
+#: building it puts the name back here and the label back on the screen, which is the only
+#: behaviour `T-146`'s criterion actually asks for.
+SETTINGS_STILL_TO_COME: Final = ""
 
 
 class SettingsDialog(QDialog):
@@ -185,6 +256,8 @@ class SettingsDialog(QDialog):
         cookie_browser: str | None = None,
         on_cookie_file_chosen: Callable[[Path | None], None] | None = None,
         on_cookie_browser_chosen: Callable[[str | None], None] | None = None,
+        network: NetworkOptions | None = None,
+        on_network_chosen: Callable[[NetworkOptions], None] | None = None,
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
@@ -214,6 +287,11 @@ class SettingsDialog(QDialog):
         self._cookie_browser = cookie_browser
         self._on_cookie_file_chosen = on_cookie_file_chosen
         self._on_cookie_browser_chosen = on_cookie_browser_chosen
+        #: The network options in force. Held whole rather than as three values, so a change to
+        #: one control writes the other two back exactly as they were — a screen that rebuilt the
+        #: trio from its own widgets would re-round a hand-edited rate limit on an unrelated edit.
+        self._network = network if network is not None else NetworkOptions()
+        self._on_network_chosen = on_network_chosen
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
         self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
@@ -253,16 +331,22 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._build_downloads_section())
         layout.addWidget(self._build_naming_section())
         layout.addWidget(self._build_cookies_section())
+        layout.addWidget(self._build_network_section())
         layout.addWidget(self._build_ffmpeg_section())
         layout.addWidget(self._build_appearance_section())
         layout.addWidget(self._build_queue_section())
         layout.addWidget(self._build_ytdlp_section())
 
-        remaining = QLabel(SETTINGS_STILL_TO_COME, self)
-        remaining.setObjectName("settingsRemaining")
-        remaining.setTextFormat(Qt.TextFormat.PlainText)
-        remaining.setWordWrap(True)
-        layout.addWidget(remaining)
+        if SETTINGS_STILL_TO_COME:
+            # **Built only when there is something to say** (`T-196`). An empty label is not
+            # nothing: it is a widget in the layout, a stop for a screen reader walking the
+            # dialog, and a line of space where the user reads a claim about coverage. With every
+            # `REQ-023` setting built there is no claim to make.
+            remaining = QLabel(SETTINGS_STILL_TO_COME, self)
+            remaining.setObjectName("settingsRemaining")
+            remaining.setTextFormat(Qt.TextFormat.PlainText)
+            remaining.setWordWrap(True)
+            layout.addWidget(remaining)
         layout.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
@@ -632,6 +716,165 @@ class SettingsDialog(QDialog):
     def show_cookie_file(self, path: Path | None) -> None:
         """The file half, kept for callers that only have one (`T-197`)."""
         self.show_cookie_source(path, None if path is not None else self._cookie_browser)
+
+    # --- network ------------------------------------------------------------------------
+
+    def _build_network_section(self) -> QWidget:
+        """Proxy, speed limit and retries — `REQ-023`'s network options (`T-196`)."""
+        box = QGroupBox("Network", self)
+        box.setObjectName("networkSection")
+        layout = QVBoxLayout(box)
+
+        explanation = QLabel(NETWORK_EXPLANATION, box)
+        explanation.setObjectName("networkExplanation")
+        explanation.setTextFormat(Qt.TextFormat.PlainText)
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+
+        proxy_label = QLabel("Proxy", box)
+        proxy_label.setObjectName("networkProxyLabel")
+        layout.addWidget(proxy_label)
+
+        self._proxy_field = QLineEdit(box)
+        self._proxy_field.setObjectName(PROXY_NAME)
+        self._proxy_field.setAccessibleName("Proxy")
+        self._proxy_field.setText(self._network.proxy or "")
+        # The placeholder is what an empty box *means*, not an example to be mistaken for a value
+        # in force — the same job `DEFAULT_DIRECTORY_NOTE` and `FFMPEG_ON_PATH_NOTE` do for their
+        # settings. The accepted form is in the note under it, where a refusal will appear too.
+        self._proxy_field.setPlaceholderText("No proxy")
+        self._proxy_field.setEnabled(self._on_network_chosen is not None)
+        # **Checked as it is typed, written only when it is usable** — the template field's rule
+        # one section up (`P-23`, `T-112`), and here it is also the credential rule: a proxy
+        # carrying a password must never be stored, so the refusal has to happen before the write
+        # rather than beside it.
+        self._proxy_field.textChanged.connect(self._on_proxy_text)
+        layout.addWidget(self._proxy_field)
+
+        self._proxy_note = QLabel(box)
+        self._proxy_note.setObjectName(PROXY_NOTE_NAME)
+        # A refusal quotes the value the user typed, which is their own text (`T016-R6`) — and may
+        # be a credential, so it is never given rich-text treatment.
+        self._proxy_note.setTextFormat(Qt.TextFormat.PlainText)
+        self._proxy_note.setWordWrap(True)
+        layout.addWidget(self._proxy_note)
+
+        rate_row = QHBoxLayout()
+        rate_label = QLabel("Speed limit for each download", box)
+        rate_label.setObjectName("networkRateLimitLabel")
+        rate_row.addWidget(rate_label)
+
+        self._rate_limit = QSpinBox(box)
+        self._rate_limit.setObjectName(RATE_LIMIT_NAME)
+        self._rate_limit.setAccessibleName("Speed limit for each download, in KiB per second")
+        # **The bound is the settings layer's**, read from it rather than restated here — the rule
+        # `REQ-013`'s concurrency range already follows, and the reason `RATE_LIMIT_MAXIMUM_BYTES`
+        # exists at all is that a stored value has to be displayable by this control.
+        self._rate_limit.setRange(0, RATE_LIMIT_MAXIMUM_BYTES // RATE_LIMIT_STEP_BYTES)
+        self._rate_limit.setSuffix(" KiB/s")
+        self._rate_limit.setSpecialValueText(NO_RATE_LIMIT_LABEL)
+        self._rate_limit.setValue(self._rate_limit_shown())
+        self._rate_limit.setEnabled(self._on_network_chosen is not None)
+        self._rate_limit.valueChanged.connect(self._on_rate_limit_value)
+        rate_row.addWidget(self._rate_limit)
+        rate_row.addStretch(1)
+        layout.addLayout(rate_row)
+
+        retries_row = QHBoxLayout()
+        retries_label = QLabel("Retries within one download attempt", box)
+        retries_label.setObjectName("networkRetriesLabel")
+        retries_label.setWordWrap(True)
+        retries_row.addWidget(retries_label)
+
+        self._retries = QSpinBox(box)
+        self._retries.setObjectName(RETRIES_NAME)
+        # **The name says which retry this is** (`T-196`, ruled 2026-08-13). A queued download
+        # that fails is offered again by the queue itself (`REQ-015`, `REQ-018`) and a network
+        # failure retries by itself — none of that is this control, and a label reading only
+        # "Retries" would be a control that looks like it governs what the application already
+        # governs, which is `T-075`'s defect.
+        self._retries.setAccessibleName("Retries within one download attempt")
+        self._retries.setRange(-1, RETRIES_MAXIMUM)
+        self._retries.setSpecialValueText(DEFAULT_RETRIES_LABEL)
+        self._retries.setValue(self._network.retries if self._network.retries is not None else -1)
+        self._retries.setEnabled(self._on_network_chosen is not None)
+        self._retries.valueChanged.connect(self._on_retries_value)
+        retries_row.addWidget(self._retries)
+        retries_row.addStretch(1)
+        layout.addLayout(retries_row)
+
+        return box
+
+    def _rate_limit_shown(self) -> int:
+        """The stored limit as whole KiB/s, or `0` for none — see `RATE_LIMIT_STEP_BYTES`."""
+        stored = self._network.rate_limit_bytes
+        return 0 if stored is None else stored // RATE_LIMIT_STEP_BYTES
+
+    def _on_proxy_text(self, text: str) -> None:
+        """Refuse at edit time, with the reason, and do not store what was refused.
+
+        **The refusal is `core.models.proxy_refusal`**, which is the rule `DownloadRequest` is
+        held to (`T-014`) rather than a second opinion about proxies living in a widget. A screen
+        that decided this for itself could accept a credential the model would refuse, and the
+        first anyone would hear of it is a `ValueError` from composition — or worse, a password
+        written to `settings.toml`.
+        """
+        value = text.strip() or None
+        refusal = proxy_refusal(value)
+        self._proxy_note.setText(refusal or "")
+        if refusal is None:
+            self._remember_network(replace(self._network, proxy=value))
+
+    def _on_rate_limit_value(self, kib: int) -> None:
+        """Zero is *no limit*, which is stored as no value at all — see `NO_RATE_LIMIT_LABEL`."""
+        self._remember_network(
+            replace(
+                self._network,
+                rate_limit_bytes=None if kib == 0 else kib * RATE_LIMIT_STEP_BYTES,
+            )
+        )
+
+    def _on_retries_value(self, count: int) -> None:
+        """`-1` is *nobody chose*; `0` is a real answer — see `DEFAULT_RETRIES_LABEL`."""
+        self._remember_network(replace(self._network, retries=None if count < 0 else count))
+
+    def _remember_network(self, options: NetworkOptions) -> None:
+        """Hold what changed and hand it to composition, which owns the file (`ARC-007`).
+
+        Held here as well as sent because the next control to change builds its value from this
+        one: without it, setting a speed limit and then a retry count would write the retry count
+        against the network options as they were when the screen opened, and silently drop the
+        limit. That is `T195-R1`'s defect — a second edit built from the original state.
+        """
+        self._network = options
+        if self._on_network_chosen is not None:
+            self._on_network_chosen(options)
+
+    def show_network_options(self, options: NetworkOptions) -> None:
+        """Show the network options in force, without echoing them back through the writer.
+
+        `show_concurrency`'s rule: composition may store something other than what this screen
+        emitted — `with_network_options` bounds what it is given — and a screen showing a value
+        that is not in force is a screen that will write it back.
+        """
+        self._network = options
+        blocked = self._proxy_field.blockSignals(True)
+        try:
+            # Only when it differs, so a redisplay does not move the caret of somebody typing.
+            if self._proxy_field.text() != (options.proxy or ""):
+                self._proxy_field.setText(options.proxy or "")
+                self._proxy_note.setText("")
+        finally:
+            self._proxy_field.blockSignals(blocked)
+        for control, value in (
+            (self._rate_limit, self._rate_limit_shown()),
+            (self._retries, options.retries if options.retries is not None else -1),
+        ):
+            blocked = control.blockSignals(True)
+            try:
+                control.setValue(value)
+            finally:
+                control.blockSignals(blocked)
 
     # --- ffmpeg -------------------------------------------------------------------------
 

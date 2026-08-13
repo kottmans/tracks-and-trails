@@ -59,7 +59,7 @@ from tracks_and_trails.core import presets as core_presets
 from tracks_and_trails.core import settings as core_settings
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo
+from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions
 from tracks_and_trails.core.paths import thumbnail_cache_path
 from tracks_and_trails.downloader.protocol import (
     Failed,
@@ -87,6 +87,9 @@ from tracks_and_trails.ui.settings_dialog import (
     DEFAULT_PRESET_NAME,
     OUTPUT_TEMPLATE_NAME,
     OUTPUT_TEMPLATE_NOTE_NAME,
+    PROXY_NAME,
+    RATE_LIMIT_NAME,
+    RETRIES_NAME,
     YTDLP_REVERT_NAME,
     YTDLP_UPDATE_NAME,
     YTDLP_VERSION_NAME,
@@ -3459,3 +3462,161 @@ def test_pointing_settings_at_ffmpeg_reaches_the_preset_manager(
         "the Preset Manager still says this preset will fail for want of ffmpeg, after Settings "
         "accepted a real one — it was built with the startup answer (T-226)"
     )
+
+
+# --- network options (T-196) ----------------------------------------------------------------
+
+
+def test_the_stored_network_options_reach_the_screen_and_the_next_request(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T-196`'s first criterion, through `compose` rather than through the units.**
+
+    Two halves that have to hold together, and each has been the broken one on this surface
+    before: the Settings screen opens on the stored value (`T195-R5`), and the value a *request*
+    inherits is the one in force (`T-075`, `T195-R1`). A test that asserted only the store would
+    be the shape `T-109` was submitted with.
+    """
+    settings_file = tmp_path / "settings.toml"
+    stored = NetworkOptions(proxy="http://proxy.invalid:8080", rate_limit_bytes=8192, retries=2)
+    assert (
+        core_settings.save(
+            core_settings.with_network_options(core_settings.Settings(), stored), settings_file
+        )
+        is None
+    )
+
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    read_default = composition.window._default_network
+    assert read_default is not None, "composition wired nothing for a new request to inherit"
+    assert read_default() == stored
+
+    screen = _settings_screen(composition)
+    try:
+        proxy = screen.findChild(QLineEdit, PROXY_NAME)
+        rate = screen.findChild(QSpinBox, RATE_LIMIT_NAME)
+        retries = screen.findChild(QSpinBox, RETRIES_NAME)
+        assert proxy is not None and rate is not None and retries is not None
+        assert proxy.text() == "http://proxy.invalid:8080"
+        assert rate.value() == 8, "the stored limit is not what the screen opened on"
+        assert retries.value() == 2
+    finally:
+        screen.close()
+        QApplication.processEvents()
+
+
+def test_a_network_option_chosen_on_the_screen_is_applied_and_saved(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """Applied *and* saved, in that order, and neither is optional (`choose_concurrency`'s rule).
+
+    Applying without saving makes the setting forget itself at the next launch; saving without
+    applying makes it appear to do nothing until a restart, which is `T-075`. Driven through the
+    screen's own control, so what is asserted is the route a user takes.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    screen = _settings_screen(composition)
+    try:
+        retries = screen.findChild(QSpinBox, RETRIES_NAME)
+        assert retries is not None
+        retries.setValue(0)
+        QApplication.processEvents()
+    finally:
+        screen.close()
+        QApplication.processEvents()
+
+    read_default = composition.window._default_network
+    assert read_default is not None
+    assert read_default().retries == 0, (
+        "the next request would still inherit the downloader's own retry count"
+    )
+    assert core_settings.load(settings_file).settings.network.retries == 0, (
+        "the choice was applied to this session only"
+    )
+
+
+def test_a_stored_proxy_is_redacted_by_the_assembled_application(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """**`T-196`'s third criterion**, asked of the sink rather than of the intention.
+
+    A proxy is the one `REQ-023` setting that can carry a credential, and `settings.toml` is a new
+    place for it to live. `redact`'s shape rules take the *userinfo* out of a bare
+    `user:pass@host` and leave the address — and yt-dlp's own verbose output names the proxy in
+    full — so the literal is registered, exactly as a cookie path is.
+
+    Through `compose`, for `test_a_short_cookie_path_is_redacted_by_the_assembled_application`'s
+    reason: a unit test that registered the value itself would agree with the intended wiring
+    rather than read the real one, which is this project's most-recorded defect.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text(
+        '[network]\nproxy = "http://me:hunter2@proxy.invalid:8080"\n', encoding="utf-8"
+    )
+
+    # The refused value, which is the one `T197-R1` found leaking: it is discarded from the
+    # settings and its text goes into the `ARC-008` reason composition logs.
+    refused = "http://me:hunter2@proxy.invalid:8080"
+    line = f"settings: could not use {refused}"
+
+    app_logging.forget_the_secrets()
+    try:
+        # **The assertion has to be about the host, and this is why** (`T197-R1`'s own trap, which
+        # this test fell into once: a mutation removing the registration left it green). `redact`'s
+        # URL rule already takes the *userinfo* out of a well-formed URL, so asserting that the
+        # whole literal is absent proves only that the password went — which happens with nothing
+        # registered at all. What registering buys is the address, and the sanity check below is
+        # what makes the assertion after it mean something.
+        assert "proxy.invalid" in app_logging.redact(line), (
+            "the shape rules already remove the address, so this test cannot show what "
+            "registering the literal buys"
+        )
+
+        composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+        assert "proxy.invalid" not in app_logging.redact(line), (
+            f"a refused proxy survived redaction: {app_logging.redact(line)!r}"
+        )
+        assert composition.window._default_network is not None
+        assert composition.window._default_network().proxy is None, "it was refused and stored"
+    finally:
+        app_logging.forget_the_secrets()
+
+
+def test_a_proxy_chosen_at_runtime_is_redacted_too(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """The second route into the same leak, and it needs its own test (`T197-R1`'s lesson).
+
+    A proxy arrives two ways — read from `settings.toml` at startup, and typed into the screen
+    while the application runs — through different code. A mutation reverting only one of them
+    left every existing test green when this happened to the cookie path, twice.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    app_logging.forget_the_secrets()
+    try:
+        screen = _settings_screen(composition)
+        try:
+            proxy = screen.findChild(QLineEdit, PROXY_NAME)
+            assert proxy is not None
+            proxy.setText("http://proxy.invalid:8080")
+            QApplication.processEvents()
+        finally:
+            screen.close()
+            QApplication.processEvents()
+
+        line = "yt-dlp: Proxy map: {'all': 'http://proxy.invalid:8080'}"
+        assert "proxy.invalid:8080" not in app_logging.redact(line), (
+            f"a proxy chosen at runtime was not registered: {app_logging.redact(line)!r}"
+        )
+    finally:
+        app_logging.forget_the_secrets()

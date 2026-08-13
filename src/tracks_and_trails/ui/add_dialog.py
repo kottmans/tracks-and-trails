@@ -127,6 +127,7 @@ from tracks_and_trails.core.models import (
     DownloadRequest,
     Job,
     MediaInfo,
+    NetworkOptions,
     Preset,
 )
 from tracks_and_trails.core.output_template import OutputPreview
@@ -1267,6 +1268,7 @@ class AddUrlDialog(QDialog):
         resolve_delay_ms: int = DEFAULT_RESOLVE_DELAY_MS,
         ffmpeg_available: bool = True,
         default_cookie_browser: Callable[[], str | None] | None = None,
+        default_network: Callable[[], NetworkOptions] | None = None,
         queued_urls: QueuedUrls | None = None,
         save_preset: PresetSink | None = None,
         manage_presets: Callable[[], object] | None = None,
@@ -1348,6 +1350,10 @@ class AddUrlDialog(QDialog):
         #: The cookies *file* is the opposite and binds when a worker starts, because it may not
         #: live on the model at all.
         self._default_cookie_browser = default_cookie_browser
+        #: The network options a request inherits (`REQ-023`, `T-196`). A callable rather than a
+        #: value, for the reason `presets` is one: this dialog outlives any single answer, and
+        #: the Settings screen can be used while it is open.
+        self._default_network = default_network
         #: The one row that is open, by identity (`T-108`, `T-110`). At most one, and at most one
         #: panel on it: two open tables would be two answers to *"which formats are we looking
         #: at"*, and the list would spend most of its height on them. The playlist picker shares
@@ -1786,7 +1792,7 @@ class AddUrlDialog(QDialog):
             if isinstance(media, MediaInfo)
             else MediaInfo(url=row.url, title=row.url, is_playlist=False)
         )
-        request = self._with_default_cookie_browser(
+        request = self._with_settings_defaults(
             preset_registry.to_request(
                 preset_registry.with_output_template(self.preset_for(row), template or " "),
                 url=row.url,
@@ -2810,7 +2816,7 @@ class AddUrlDialog(QDialog):
                 # **Every entry, not only the pasted line** (`T197-R4`). A playlist expands into
                 # children built here, and stamping the default in `_request_for` alone left every
                 # one of them unauthenticated — the case a user most often has cookies *for*.
-                request=self._with_default_cookie_browser(
+                request=self._with_settings_defaults(
                     preset_registry.to_request(
                         self.preset_for(row),
                         url=entry.url,
@@ -2881,7 +2887,44 @@ class AddUrlDialog(QDialog):
             output_directory=str(self._output_directory),
             default_output_template=self._default_output_template,
         )
-        return self._with_default_cookie_browser(request)
+        return self._with_settings_defaults(request)
+
+    def _with_settings_defaults(self, request: DownloadRequest) -> DownloadRequest:
+        """The settings a request inherits at queue time (`ARCHITECTURE.md` §8).
+
+        **One entry point for the whole freeze**, so a second settings-level default cannot be
+        added to one of the three request-building routes and forgotten on the other two —
+        `T197-R4` is that finding: the cookie browser was stamped in `_request_for` alone, and
+        every child of an expanded playlist went out unauthenticated.
+        """
+        return self._with_default_network(self._with_default_cookie_browser(request))
+
+    def _with_default_network(self, request: DownloadRequest) -> DownloadRequest:
+        """Fill in the Settings network options where the request states none (`T-196`).
+
+        **Applied at construction, which is what binding at queue time means** — the same
+        sentence as the cookie browser below, and the same reason: `ARCHITECTURE.md` §8 freezes
+        settings into the job, so a change afterwards belongs to the *next* download rather than
+        to this one.
+
+        **A value already on the request wins**, field by field. Nothing sets one today — a preset
+        cannot carry these — but `REQ-031`'s per-job escape hatch is where one would come from,
+        and a global default that overwrote a deliberate per-job answer would be the defect
+        `_with_default_cookie_browser` states one method down.
+        """
+        if self._default_network is None:
+            return request
+        options = self._default_network()
+        return replace(
+            request,
+            proxy=request.proxy if request.proxy is not None else options.proxy,
+            rate_limit_bytes=(
+                request.rate_limit_bytes
+                if request.rate_limit_bytes is not None
+                else options.rate_limit_bytes
+            ),
+            retries=request.retries if request.retries is not None else options.retries,
+        )
 
     def _with_default_cookie_browser(self, request: DownloadRequest) -> DownloadRequest:
         """Fill in the Settings browser where the preset named none (`REQ-026`, `T197-R4`).

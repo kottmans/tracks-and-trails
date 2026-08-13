@@ -1482,3 +1482,54 @@ def test_no_cookie_file_means_no_cookiefile_option() -> None:
     options = adapter.build_options(request_for(), "o.%(ext)s")
 
     assert "cookiefile" not in options
+
+
+# --- network options reaching a real download (T-196) ---------------------------------------
+
+
+@pytest.mark.parametrize("probe_only", [False, True])
+def test_the_network_options_reach_the_options_yt_dlp_is_given(probe_only: bool) -> None:
+    """**`T-196`'s first criterion**, asserted through what the adapter builds.
+
+    Not against the stored value: `T-109` and `T195-R1` are both findings where a test asserted
+    the *store* and was submitted as proof of the wiring, while the wiring was broken. The keys
+    below are yt-dlp's own — `proxy`, `ratelimit` and `retries` — read from its source rather than
+    recalled (`downloader/http.py` takes `retries`; `downloader/common.py` takes `ratelimit`).
+
+    **Both phases**, because a proxy is exactly what `T012-R5` was about: connection settings
+    applied only after the probe meant a URL needing the proxy failed while being read.
+    """
+    options = adapter.build_options(
+        request_for(proxy="http://proxy.invalid:8080", rate_limit_bytes=524288, retries=2),
+        "o.%(ext)s",
+        probe_only=probe_only,
+    )
+
+    assert options["proxy"] == "http://proxy.invalid:8080"
+    assert options["ratelimit"] == 524288
+    assert options["retries"] == 2
+
+
+def test_a_request_that_asks_for_no_retries_gets_none_rather_than_the_default() -> None:
+    """**`0` is not falsy here, and truthiness is the bug this asserts against** (`T-196`).
+
+    A `retries=0` dropped by an `if request.retries:` becomes yt-dlp's own default of ten — the
+    user asked not to retry and got the opposite, silently. The rate limit above may be read by
+    truthiness because zero bytes per second is not a thing anyone means; this may not.
+    """
+    options = adapter.build_options(request_for(retries=0), "o.%(ext)s")
+
+    assert options["retries"] == 0
+
+
+def test_a_request_that_says_nothing_about_the_network_leaves_the_keys_out() -> None:
+    """Absent is absent: yt-dlp applies its own defaults rather than being handed `None`.
+
+    This is what makes *"the downloader's own"* a real answer on the settings screen instead of a
+    number this project would have to copy and keep in step.
+    """
+    options = adapter.build_options(request_for(), "o.%(ext)s")
+
+    assert "proxy" not in options
+    assert "ratelimit" not in options
+    assert "retries" not in options

@@ -46,7 +46,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails import __version__
 from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import REORDERABLE
-from tracks_and_trails.core.models import MediaInfo, Preset
+from tracks_and_trails.core.models import MediaInfo, NetworkOptions, Preset
 from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
@@ -345,6 +345,12 @@ class MainWindow(QMainWindow):
         default_cookie_browser: Callable[[], str | None] | None = None,
         on_cookie_file_chosen: Callable[[Path | None], None] | None = None,
         on_cookie_browser_chosen: Callable[[str | None], None] | None = None,
+        #: `T-196`: the network options in force, the writer behind them, and — read through a
+        #: callable, for `default_cookie_browser`'s reason — the ones a *new* request inherits.
+        #: A snapshot could not reach the next add dialog after a change in Settings.
+        network: NetworkOptions | None = None,
+        default_network: Callable[[], NetworkOptions] | None = None,
+        on_network_chosen: Callable[[NetworkOptions], None] | None = None,
         ffmpeg_location: Path | None = None,
         ffmpeg_summary: str = "",
         on_ffmpeg_location_chosen: Callable[[Path | None], None] | None = None,
@@ -383,6 +389,13 @@ class MainWindow(QMainWindow):
         self._default_cookie_browser = default_cookie_browser
         self._on_cookie_file_chosen = on_cookie_file_chosen
         self._on_cookie_browser_chosen = on_cookie_browser_chosen
+        #: `T-196`: the network options the Settings screen opens on, the writer behind it, and
+        #: the source a new request reads. Held on the window rather than only on the screen for
+        #: `show_download_directory`'s reason — these bind into the job when it is queued
+        #: (`ARCHITECTURE.md` §8), so the add dialog is what has to see a change.
+        self._network = network if network is not None else NetworkOptions()
+        self._default_network = default_network
+        self._on_network_chosen = on_network_chosen
         self._ffmpeg_location = ffmpeg_location
         self._ffmpeg_summary = ffmpeg_summary
         self._on_ffmpeg_location_chosen = on_ffmpeg_location_chosen
@@ -892,6 +905,9 @@ class MainWindow(QMainWindow):
             jobs=self._jobs,
             output_directory=self._output_directory,
             default_cookie_browser=self._default_cookie_browser,
+            # `T-196`: the network options a request inherits, read when the request is built
+            # rather than when this dialog opened — the settings screen can be used while it is up.
+            default_network=self._default_network,
             # `P-13`: the merge mode is drawn only where a merge could actually run (`REQ-024`).
             ffmpeg_available=self._ffmpeg_available,
             # `REQ-022`, `T-114`: what the queue holds now, read from the rows the table already
@@ -1409,6 +1425,12 @@ class MainWindow(QMainWindow):
             cookie_browser=self._cookie_browser,
             on_cookie_file_chosen=self._on_cookie_file_chosen,
             on_cookie_browser_chosen=self._on_cookie_browser_chosen,
+            network=self._network,
+            # **`None` when composition wired no writer**, so the screen disables the controls
+            # rather than accepting typing it cannot store — the rule the template field follows
+            # one section up. Routed through this window when there *is* one, so the value it
+            # holds for the next add dialog follows the change (`T-196`).
+            on_network_chosen=None if self._on_network_chosen is None else self._network_chosen,
             ffmpeg_location=self._ffmpeg_location,
             ffmpeg_summary=self._ffmpeg_summary,
             on_ffmpeg_location_chosen=self._on_ffmpeg_location_chosen,
@@ -1464,6 +1486,25 @@ class MainWindow(QMainWindow):
         dialog = self._settings_dialog
         if dialog is not None:
             dialog.show_ytdlp_busy(busy)
+
+    def _network_chosen(self, options: NetworkOptions) -> None:
+        """Remember what the screen picked, so the next paste inherits it (`T-196`).
+
+        **The window holds it, not just the screen**, for `show_download_directory`'s reason: this
+        is what a new request is built with, so a change that only reached the settings screen
+        would be a setting that appeared to work and moved nothing until a restart — `T-075`'s
+        shape. Composition still owns the file and can bound the value; `show_network_options`
+        brings its answer back.
+        """
+        self._network = options
+        if self._on_network_chosen is not None:
+            self._on_network_chosen(options)
+
+    def show_network_options(self, options: NetworkOptions) -> None:
+        """The network options in force, from composition (`T-196`)."""
+        self._network = options
+        if self._settings_dialog is not None:
+            self._settings_dialog.show_network_options(options)
 
     def _theme_chosen(self, name: str) -> None:
         """Remember what the screen picked, so reopening it shows the theme in force."""

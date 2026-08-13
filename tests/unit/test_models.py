@@ -23,9 +23,11 @@ from tracks_and_trails.core.models import (
     Job,
     MediaInfo,
     MediaKind,
+    NetworkOptions,
     PlaylistEntry,
     Preset,
     parse_browser_specification,
+    proxy_refusal,
 )
 
 
@@ -267,6 +269,10 @@ def valid_kwargs(request_: DownloadRequest) -> dict[type, dict[str, object]]:
             "output_template": "%(title)s.%(ext)s",
         },
         Job: {"id": "j", "url": "https://example.com/x", "request": request_},
+        # Every field optional (`T-196`): the empty value is *no proxy, no limit, and yt-dlp's
+        # own retry count*, which is what a settings file that says nothing about the network
+        # means.
+        NetworkOptions: {},
     }
 
 
@@ -380,6 +386,15 @@ def numeric_fields(model: type) -> set[str]:
     return result
 
 
+#: Models with **no** required field, and why that is the design (`T-196`).
+#:
+#: The sweep below refuses a model with nothing to sweep, because that is how a vacuous audit
+#: looks from the inside. `NetworkOptions` is a genuine exception rather than an oversight: all
+#: three of its fields mean *nobody chose*, and a settings file that says nothing about the
+#: network is the ordinary case, not a broken one. Empty and valid is the whole point of it.
+ALL_OPTIONAL = {NetworkOptions}
+
+
 @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
 def test_fields_that_cannot_be_none_reject_none(request_: DownloadRequest, model: type) -> None:
     """`T041-R6`. Nullability, derived from each model's own annotations.
@@ -394,6 +409,15 @@ def test_fields_that_cannot_be_none_reject_none(request_: DownloadRequest, model
     """
     optional = optional_fields(model)
     required = [n for n in field_names(model) if n not in optional]
+    if model in ALL_OPTIONAL:
+        # **The exemption is asserted, not assumed** (`T-196`). A model listed here that gains a
+        # required field fails *this* line rather than quietly leaving the sweep exempt — which
+        # is the same trap as the vacuous `None` case the docstring above records.
+        assert not required, (
+            f"{model.__name__} is listed as all-optional and now requires {required}; take it "
+            "out of ALL_OPTIONAL so the sweep covers it"
+        )
+        return
     assert required, f"{model.__name__} has no required fields; the sweep would be vacuous"
 
     for name in required:
@@ -812,3 +836,121 @@ def test_a_profile_that_could_become_a_path_is_refused(refused: str) -> None:
 def test_a_real_profile_name_is_still_accepted(accepted: str) -> None:
     """The other direction: a check that refuses everything protects nothing anyone can use."""
     assert parse_browser_specification(accepted)[0] in BROWSER_NAMES
+
+
+# --- network options (T-196) ----------------------------------------------------------------
+
+
+def test_a_settings_proxy_is_held_to_the_rule_a_job_is_held_to() -> None:
+    """**`T-196`'s second criterion.** A proxy carrying userinfo is refused *at entry*.
+
+    `T-014` made a credential unrepresentable on `DownloadRequest` because a job is persisted and
+    crosses a process boundary. A settings-level proxy is a new way for the same string to enter
+    the system — `settings.toml` is a second sink, and one the screen writes without anybody
+    typing a job — so it is refused by the same function rather than by a second rule that would
+    have to be kept in step.
+    """
+    with pytest.raises(ValueError, match="credentials"):
+        NetworkOptions(proxy="http://me:hunter2@proxy.invalid:8080")
+
+    # And the refusal is `DownloadRequest`'s own, word for word, which is what "the same rule"
+    # has to mean if it is to stay true as that rule changes.
+    with pytest.raises(ValueError) as on_the_model:
+        DownloadRequest(
+            url="https://example.com/x",
+            output_directory="/downloads",
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+            proxy="http://me:hunter2@proxy.invalid:8080",
+        )
+    with pytest.raises(ValueError) as on_the_setting:
+        NetworkOptions(proxy="http://me:hunter2@proxy.invalid:8080")
+    assert str(on_the_setting.value) == str(on_the_model.value)
+
+
+@pytest.mark.parametrize(
+    "refused",
+    [
+        "proxy.invalid:8080",  # no scheme: the form that carried three credential shapes in
+        "//proxy.invalid:8080",  # scheme-relative, which has no unambiguous parse
+        "http://me:hunter2@proxy.invalid:8080",
+        "http://proxy.invalid:8080/path",
+        "http://proxy.invalid:8080?q=1",
+    ],
+)
+def test_proxy_refusal_answers_for_every_shape_the_model_rejects(refused: str) -> None:
+    """The question form of the rule, which is what a screen can show (`T-196`).
+
+    A screen cannot catch a `ValueError` it never provokes: it has to decide *before* storing
+    whether the text in the box is usable. `proxy_refusal` is that decision, and it is the same
+    implementation — so a value it accepts constructs, and one it refuses does not.
+    """
+    assert proxy_refusal(refused) is not None
+    with pytest.raises(ValueError):
+        NetworkOptions(proxy=refused)
+
+
+@pytest.mark.parametrize("accepted", ["http://proxy.invalid:8080", "socks5://127.0.0.1:1080"])
+def test_proxy_refusal_accepts_what_the_model_accepts(accepted: str) -> None:
+    """The other direction: a check that refuses everything protects nothing anyone can use."""
+    assert proxy_refusal(accepted) is None
+    assert NetworkOptions(proxy=accepted).proxy == accepted
+
+
+def test_no_proxy_at_all_is_a_valid_answer() -> None:
+    assert proxy_refusal(None) is None
+    assert NetworkOptions().proxy is None
+
+
+def test_a_rate_limit_of_zero_is_not_a_speed() -> None:
+    """**`T-196`.** Zero bytes per second would stop every download; *no limit* is `None`.
+
+    Made unrepresentable rather than filtered, so no reader has to decide what a stored `0` meant.
+    `core/settings.py` reports a file saying `0` and falls back to `None` — it never constructs
+    this value, which is what makes the report the only path.
+    """
+    with pytest.raises(ValueError, match="cannot be 0"):
+        NetworkOptions(rate_limit_bytes=0)
+    with pytest.raises(ValueError):
+        NetworkOptions(rate_limit_bytes=-1)
+    assert NetworkOptions(rate_limit_bytes=1).rate_limit_bytes == 1
+
+
+def test_zero_retries_is_a_real_answer_and_none_is_a_different_one() -> None:
+    """**The distinction the ruling turns on** (`T-196`, 2026-08-13).
+
+    `0` says *do not retry inside the attempt*. `None` says *nobody chose*, and yt-dlp's own
+    default applies. Collapsing them — which truthiness does — turns "never retry" into "retry
+    ten times", silently, in the direction the user did not ask for.
+    """
+    assert NetworkOptions(retries=0).retries == 0
+    assert NetworkOptions().retries is None
+    assert NetworkOptions(retries=0) != NetworkOptions()
+    with pytest.raises(ValueError):
+        NetworkOptions(retries=-1)
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, "3"])
+def test_a_retry_count_that_is_not_a_whole_number_is_refused(bad: object) -> None:
+    """`bool` included, because it is an `int` subclass — `retries=True` would pass as `1`."""
+    with pytest.raises(TypeError):
+        NetworkOptions(retries=bad)  # type: ignore[arg-type]
+
+
+def test_a_request_carries_the_retry_count_it_was_queued_with() -> None:
+    """`ARCHITECTURE.md` §8: settings are frozen into the request at job-creation time.
+
+    The field exists on the request rather than travelling to the worker as a session argument —
+    which is what `cookie_file` does, and only because `DAT-003` forbids it a place on the model.
+    Nothing forbids these, so the ordinary rule applies and a queued job keeps its own answer.
+    """
+    request = DownloadRequest(
+        url="https://example.com/x",
+        output_directory="/downloads",
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+        retries=0,
+    )
+    assert request.retries == 0
+    with pytest.raises(ValueError):
+        dataclasses.replace(request, retries=-2)

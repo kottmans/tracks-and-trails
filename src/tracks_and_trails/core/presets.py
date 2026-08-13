@@ -581,10 +581,17 @@ def with_connection_of(request: DownloadRequest, source: DownloadRequest) -> Dow
 
     The fields carried are the ones `format_choice_of` already treats as *not about the format*:
     they describe the user's network rather than the download.
+
+    **`retries` is carried for the same reason** (`T-196`): it is a network setting bound when the
+    job was queued (`ARCHITECTURE.md` §8), so changing a row's format must not silently hand it
+    back to yt-dlp's default. A field added to `NetworkOptions` and not listed here fails
+    `tests/unit/test_presets.py::test_every_network_option_survives_a_retarget`, which derives the
+    set from that dataclass rather than restating it.
     """
     return replace(
         request,
         cookies_from_browser=source.cookies_from_browser,
         proxy=source.proxy,
         rate_limit_bytes=source.rate_limit_bytes,
+        retries=source.retries,
     )

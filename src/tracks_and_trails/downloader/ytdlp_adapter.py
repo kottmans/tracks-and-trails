@@ -621,6 +621,18 @@ def build_options(
         options["proxy"] = request.proxy
     if request.rate_limit_bytes:
         options["ratelimit"] = request.rate_limit_bytes
+    if request.retries is not None:
+        # **`is not None`, not truthiness** (`T-196`). `retries=0` is a user asking not to retry
+        # inside the attempt, and the two lines above can read a zero as *unset* because a rate
+        # limit of zero bytes per second is not a thing anyone means. Here it is: dropped by
+        # truthiness, "never retry" would silently become yt-dlp's own default of ten.
+        #
+        # **This is `--retries`, and it is deliberately not `--fragment-retries`** — measured
+        # against yt-dlp 2026.07.04, where `downloader/http.py` reads `retries` and
+        # `downloader/fragment.py` reads `fragment_retries`. The maintainer's 2026-08-13 ruling
+        # names `--retries`; the rest of yt-dlp's network surface, this one included, belongs to
+        # `T-183`'s audit rather than to a setting that would have to explain the difference.
+        options["retries"] = request.retries
     if request.cookies_from_browser:
         # **The four-tuple yt-dlp parses, not the string the user typed** (`T197-R2`). Its
         # `_parse_browser_specification(browser_name, profile, keyring, container)` refuses an

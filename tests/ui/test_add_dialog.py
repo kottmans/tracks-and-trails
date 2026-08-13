@@ -79,6 +79,7 @@ from tracks_and_trails.core.models import (
     Job,
     MediaInfo,
     MediaKind,
+    NetworkOptions,
     PlaylistEntry,
     Preset,
 )
@@ -5628,3 +5629,62 @@ def test_removing_a_playlist_row_says_how_much_it_takes(
         )
     finally:
         dialog.close()
+
+
+def test_a_queued_request_inherits_the_settings_network_options(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """**`T-196`, and `ARCHITECTURE.md` §8's settings freeze.**
+
+    The network options are read into the request when the job is created, so a change made
+    afterwards belongs to the *next* download rather than to this one — which is the opposite of
+    the cookies *file*, late-bound only because `DAT-003` forbids it a place on the model.
+
+    Asserted on the job the dialog would commit, and on every entry of an expanded playlist:
+    `T197-R4` is the finding that a default stamped in the pasted line's builder alone left every
+    child of a playlist without it.
+    """
+    options = NetworkOptions(proxy="http://proxy.invalid:8080", rate_limit_bytes=4096, retries=1)
+    dialog, _ = resolved(dialogs, managers, spin, PLAYLIST, default_network=lambda: options)
+    row = dialog.rows[0]
+
+    jobs = dialog._durable_jobs(row)
+
+    assert len(jobs) > 1, (
+        f"{len(jobs)} job(s) — this playlist did not expand, so nothing is asserted"
+    )
+    wrong = [
+        job.url
+        for job in jobs
+        if (job.request.proxy, job.request.rate_limit_bytes, job.request.retries)
+        != (options.proxy, options.rate_limit_bytes, options.retries)
+    ]
+    assert not wrong, (
+        f"{len(wrong)} queued requests did not inherit the network options: {wrong[:3]}"
+    )
+
+
+def test_the_network_options_are_read_when_the_request_is_built(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """A callable, not a snapshot — the Settings screen can be used while this dialog is open.
+
+    `presets` and `default_cookie_browser` are callables for this reason and this is the third:
+    a value captured when the dialog opened would queue downloads against a limit the user has
+    since changed, with nothing on either screen saying so.
+    """
+    in_force = [NetworkOptions(retries=1)]
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, default_network=lambda: in_force[0])
+    row = dialog.rows[0]
+
+    first = dialog._durable_jobs(row)[0].request.retries
+    in_force[0] = NetworkOptions(retries=5)
+    second = dialog._durable_jobs(row)[0].request.retries
+
+    assert (first, second) == (1, 5), (
+        f"the dialog read the network options once and reused them: {first}, {second}"
+    )

@@ -117,6 +117,149 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
+
+**Status:** **In Review — built 2026-08-13.** `ruff`, `ruff format`, `mypy src`, bare `mypy` and
+`mypy --platform win32` clean; **2899 passed, 18 skipped** unit+UI and **434 passed** integration,
+exit codes checked (`T195-R7`). **Committed as one commit and held unpushed** — a commit cannot
+name its own head, so the exact review boundary travels with the handoff rather than being written
+here where it could only be wrong. Every
+criterion is met and each is bound by evidence a mutation kills; the design decision the build had
+to take, and the four residuals it leaves, are recorded below.
+
+#### What was built, and the one decision the entry left open
+
+**The three options travel on the `DownloadRequest`, bound when the job is queued.** That is
+`ARCHITECTURE.md` §8 — *"settings are read at job-creation time into the `DownloadRequest` and
+frozen there"* — applied rather than chosen: `proxy` and `rate_limit_bytes` were already fields,
+`retries` is added beside them, and `to_request`'s own docstring already named *"a proxy, a rate
+limit"* as the settings a preset does not fix.
+
+**The alternative was the cookie file's route, and it was rejected as an architecture change.**
+`cookie_file` reaches a worker as a session argument and therefore binds late, which the entry's
+neighbours might suggest copying. It is late-bound **because `DAT-003` forbids it a place on the
+model** — a decision about cookie paths, not a general pattern — and taking it here would mean a
+setting that reached jobs already queued, contradicting §8 for values §8 covers. Doing that needs
+an amendment, not an implementer's preference. The consequence is on screen: *"These apply to
+downloads you add from now on. Anything already in the queue keeps what it was added with."*
+
+**A `NetworkOptions` value object holds the trio** (`core/models.py`), so `Settings` gains one
+field, the file gains one `[network]` table, and the screen hands over one value. It validates
+through `_require_credential_free_proxy` — `T-014`'s own function — so **a settings proxy carrying
+a credential is unrepresentable**, exactly as a job's is, and `proxy_refusal` is that rule asked as
+a question because a screen needs a reason rather than an exception.
+
+| Criterion | Where it is met | What kills the evidence |
+|---|---|---|
+| Rate limit and proxy set, persist, reach a download | `build_options`, asserted through the options built for **both** phases | truthiness on `retries`; a dropped key |
+| A userinfo proxy refused at entry by `T-014`'s rule | `NetworkOptions.__post_init__`, `proxy_refusal` on the screen | storing the value while showing the refusal |
+| A stored proxy never reaches a log | `_proxy_literals` → `SettingsFile.secrets` → composition; and the refusal does not quote it | removing either registration route |
+| The retry setting names which retry it is | label *and* accessible name say *within one download attempt* | a label reading only "Retries" |
+| Zero/negative/non-numeric rate limit reports | `_rate_limit_from`, and `NetworkOptions` refuses `0` outright | `raw <= 0` weakened to `raw < 0` |
+| The settings-implemented record gains these three | `SETTINGS_STILL_TO_COME` is empty and its label unbuilt; `docs/DEVELOPMENT.md` and `docs/UX_SPEC.md` updated | building the label anyway |
+
+**Twelve mutations were applied and each turned its evidence red**, bytecode cleared between them.
+**One survived the first pass and is worth recording**: removing the proxy registration left the
+startup redaction test green, because `redact`'s URL rule already strips *userinfo* — so asserting
+that the whole literal was absent proved only that the password had gone, which happens with
+nothing registered at all. The assertion now names the **host**, with a sanity check that the shape
+rules leave it. That is `T197-R1`'s trap reproduced and caught by mutation rather than by review.
+
+#### Residuals, stated rather than found later
+
+- **The rate limit is per download**, because yt-dlp's `ratelimit` binds one session and every
+  download is its own process. Three at once can use three times the number in the box; the screen
+  says so rather than claiming a total it cannot enforce.
+- **The screen offers KiB/s and the file stores bytes per second.** A hand-edited value that is not
+  a whole number of KiB displays rounded down; it is not rewritten unless the user moves that
+  control, so an unrelated edit cannot silently re-round it.
+- **`--fragment-retries` is not this setting.** Measured against yt-dlp 2026.07.04:
+  `downloader/http.py` reads `retries` and `downloader/fragment.py` reads `fragment_retries`. The
+  ruling names `--retries`, so that is what is built; the fragment count belongs to `T-183`'s audit
+  of the wider network surface with the rest of it.
+- **A proxy value that is neither scheme- nor userinfo-shaped is refused and *not* registered as a
+  secret.** Registering a bare word makes it unreadable everywhere it later appears — `T197-R6`,
+  where a valid `browser = "edge"` ate the word *edge*. Such a value carries no credential, and the
+  refusal does not quote it.
+
+*(It was `Proposed` until this build, unblocked earlier the same day by the ruling below — which
+was the entry's one open question and the phase's critical path.)*
+
+#### The retry ruling — maintainer, 2026-08-13
+
+**"Retries" means yt-dlp's own `--retries`** — the per-fragment retries inside one attempt — **and
+the control must be labelled so it cannot be read as the other one.**
+
+**Why, recorded so the next reader does not re-derive it.** The job-level retry is already decided
+and already has behaviour: `REQ-015`/`REQ-018` keep a failure in the queue and offer a retry, and
+`core/errors.py` auto-retries `NETWORK` alone. A settings control over *that* would put two things
+in charge of one decision. It would also contradict a sentence now on screen — `T-201`'s error text
+tells the user a network failure *"retries by itself"* — and a control implying the user governs
+what the application already governs is `T-075`'s defect.
+
+**The alternative was offered and not taken:** build no retry control at all and record `REQ-023`'s
+*"retry policy"* as satisfied by the existing job-level policy. Cheaper, defensible, and rejected
+because `REQ-023` names the setting and a settings screen that silently drops one of its eight is
+the honesty problem `SETTINGS_STILL_TO_COME` exists to prevent.
+
+**What this obliges the build to do:** the label names the scope in the user's terms — retries
+*within* a download attempt — and the entry states the job-level retry as out of scope, which the
+existing out-of-scope list already does.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 4
+**Depends on:** `T-146` for the screen.
+**Relevant context:** `REQ-023`, `REQ-026`, `NFR-007`, `T-014`, `core/models.py`
+(`_require_credential_free_proxy`, `DownloadRequest.proxy`, `DownloadRequest.rate_limit_bytes`),
+`downloader/ytdlp_adapter.py` §618–621, `core/logging.py` §128–129, `core/settings.py`
+**Affected surfaces:** `core/settings.py`, the settings dialog, `core/models.py` if retries become
+a request field, `downloader/ytdlp_adapter.py`
+**Risk:** **Medium–High, and the risk is redaction, not networking.** A proxy is the one setting in
+`REQ-023` that can carry a credential into a log
+
+#### Scope
+
+**Two of the three already work; this is mostly a surface.** `DownloadRequest` carries `proxy` and
+`rate_limit_bytes`, and `ytdlp_adapter.py` maps them onto yt-dlp's `proxy` and `ratelimit`. What is
+missing is a place to set them and a value that persists.
+
+**Retries is the one that does not exist.** No `retries` field is on `DownloadRequest` and nothing
+maps one. `REQ-023` names it, so it is in scope — and it needs a decision this entry does not take:
+whether "retry policy" means yt-dlp's own `--retries` (per-fragment, inside one attempt) or this
+application's job-level retry from `REQ-015`/`REQ-018`. **They are different things with the same
+name**, and a settings control that says "Retries" while setting the other one is `T-075`'s defect:
+a control that looks like a choice and changes something else. **Name which one before building it.**
+
+**The proxy is the hazard, and it is already half-defended.** `T-014` made `DownloadRequest` refuse
+a proxy carrying userinfo, and `core/logging.py` carries a rule specifically for
+`user:pass@proxy.invalid:8080` because the URL rule anchors on `://` and walked straight past it.
+**A settings-level proxy is a new way for that string to enter the system** — it becomes persisted
+state in `settings.toml`, which no redaction rule covers today. `T-197` owns the redaction gate;
+this task must not land a stored proxy without it.
+
+#### Acceptance criteria
+
+- The screen sets **rate limit** and **proxy**, both persist, and both reach a real download —
+  asserted through the options the adapter builds, not against the stored value
+- **A proxy carrying userinfo is refused at entry**, with the reason, by the same rule `T-014` put on
+  `DownloadRequest` — not a second validator on the dialog
+- **A stored proxy never reaches a log**, including `settings.toml` read failures and `ARC-008`
+  reports that quote the offending value. This is the case `NFR-007` does not yet cover, and it is
+  the acceptance criterion most likely to be skipped
+- **The retry setting names which retry it is** — yt-dlp's fragment retries or the job-level retry —
+  in the control's own label and in the entry, and the other one is stated as out of scope
+- A rate limit of zero, negative, or non-numeric **reports under `ARC-008`** rather than being
+  coerced into "unlimited", which would silently remove a limit the user asked for
+- The settings-implemented record (`T-146`, extended by `T-195`) gains these three
+
+#### Out of scope
+
+- Cookie source — `T-197`, which is where the redaction gate is built
+- Per-job network overrides. `REQ-023` asks for settings; nothing asks for per-row proxies, and
+  `T-203` is arguing per-row controls *down* rather than up
+- yt-dlp's wider network surface — `--socket-timeout`, `--source-address`, `--impersonate` and the
+  rest belong to Phase 4.5's audit (`T-183`), and `SEC-003` already excluded `--impersonate`
+
 ## Complete
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
@@ -5085,87 +5228,15 @@ nothing"** — the exact sequence that produced this task.
 - `T-196`'s network options. When they land they will be this gate's first real exercise, and that
   is a reason to have it before then rather than to fold the two together
 
+  *(**They landed first, on 2026-08-13.** `T-196` updated `docs/DEVELOPMENT.md`, `docs/UX_SPEC.md`
+  and the screen's own sentence by hand, and nothing checked that it had — which is this task
+  exactly, and is now a worked example rather than a hypothetical one. It also changes what the
+  gate has to express: with every `REQ-023` setting built, the honest statement is an **empty**
+  sentence and an unbuilt label, so a gate that only checks "each unbuilt setting is named" passes
+  trivially today and must also catch the reverse — a setting removed from the screen, or added to
+  `REQ-023`, with the documents left saying eight.)*
+
 ---
-
-### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
-
-**Status:** **Proposed — unblocked 2026-08-13 by the maintainer's ruling below.** The entry's one
-open question is answered; nothing else stands between this and a build.
-
-#### The retry ruling — maintainer, 2026-08-13
-
-**"Retries" means yt-dlp's own `--retries`** — the per-fragment retries inside one attempt — **and
-the control must be labelled so it cannot be read as the other one.**
-
-**Why, recorded so the next reader does not re-derive it.** The job-level retry is already decided
-and already has behaviour: `REQ-015`/`REQ-018` keep a failure in the queue and offer a retry, and
-`core/errors.py` auto-retries `NETWORK` alone. A settings control over *that* would put two things
-in charge of one decision. It would also contradict a sentence now on screen — `T-201`'s error text
-tells the user a network failure *"retries by itself"* — and a control implying the user governs
-what the application already governs is `T-075`'s defect.
-
-**The alternative was offered and not taken:** build no retry control at all and record `REQ-023`'s
-*"retry policy"* as satisfied by the existing job-level policy. Cheaper, defensible, and rejected
-because `REQ-023` names the setting and a settings screen that silently drops one of its eight is
-the honesty problem `SETTINGS_STILL_TO_COME` exists to prevent.
-
-**What this obliges the build to do:** the label names the scope in the user's terms — retries
-*within* a download attempt — and the entry states the job-level retry as out of scope, which the
-existing out-of-scope list already does.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 4
-**Depends on:** `T-146` for the screen.
-**Relevant context:** `REQ-023`, `REQ-026`, `NFR-007`, `T-014`, `core/models.py`
-(`_require_credential_free_proxy`, `DownloadRequest.proxy`, `DownloadRequest.rate_limit_bytes`),
-`downloader/ytdlp_adapter.py` §618–621, `core/logging.py` §128–129, `core/settings.py`
-**Affected surfaces:** `core/settings.py`, the settings dialog, `core/models.py` if retries become
-a request field, `downloader/ytdlp_adapter.py`
-**Risk:** **Medium–High, and the risk is redaction, not networking.** A proxy is the one setting in
-`REQ-023` that can carry a credential into a log
-
-#### Scope
-
-**Two of the three already work; this is mostly a surface.** `DownloadRequest` carries `proxy` and
-`rate_limit_bytes`, and `ytdlp_adapter.py` maps them onto yt-dlp's `proxy` and `ratelimit`. What is
-missing is a place to set them and a value that persists.
-
-**Retries is the one that does not exist.** No `retries` field is on `DownloadRequest` and nothing
-maps one. `REQ-023` names it, so it is in scope — and it needs a decision this entry does not take:
-whether "retry policy" means yt-dlp's own `--retries` (per-fragment, inside one attempt) or this
-application's job-level retry from `REQ-015`/`REQ-018`. **They are different things with the same
-name**, and a settings control that says "Retries" while setting the other one is `T-075`'s defect:
-a control that looks like a choice and changes something else. **Name which one before building it.**
-
-**The proxy is the hazard, and it is already half-defended.** `T-014` made `DownloadRequest` refuse
-a proxy carrying userinfo, and `core/logging.py` carries a rule specifically for
-`user:pass@proxy.invalid:8080` because the URL rule anchors on `://` and walked straight past it.
-**A settings-level proxy is a new way for that string to enter the system** — it becomes persisted
-state in `settings.toml`, which no redaction rule covers today. `T-197` owns the redaction gate;
-this task must not land a stored proxy without it.
-
-#### Acceptance criteria
-
-- The screen sets **rate limit** and **proxy**, both persist, and both reach a real download —
-  asserted through the options the adapter builds, not against the stored value
-- **A proxy carrying userinfo is refused at entry**, with the reason, by the same rule `T-014` put on
-  `DownloadRequest` — not a second validator on the dialog
-- **A stored proxy never reaches a log**, including `settings.toml` read failures and `ARC-008`
-  reports that quote the offending value. This is the case `NFR-007` does not yet cover, and it is
-  the acceptance criterion most likely to be skipped
-- **The retry setting names which retry it is** — yt-dlp's fragment retries or the job-level retry —
-  in the control's own label and in the entry, and the other one is stated as out of scope
-- A rate limit of zero, negative, or non-numeric **reports under `ARC-008`** rather than being
-  coerced into "unlimited", which would silently remove a limit the user asked for
-- The settings-implemented record (`T-146`, extended by `T-195`) gains these three
-
-#### Out of scope
-
-- Cookie source — `T-197`, which is where the redaction gate is built
-- Per-job network overrides. `REQ-023` asks for settings; nothing asks for per-row proxies, and
-  `T-203` is arguing per-row controls *down* rather than up
-- yt-dlp's wider network surface — `--socket-timeout`, `--source-address`, `--impersonate` and the
-  rest belong to Phase 4.5's audit (`T-183`), and `SEC-003` already excluded `--impersonate`
 
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 

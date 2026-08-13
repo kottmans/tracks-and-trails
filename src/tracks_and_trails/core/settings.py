@@ -50,7 +50,7 @@ deleted rather than amended, because it described behaviour that no longer exist
 import os
 import tomllib
 from contextlib import suppress
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Final
 
@@ -59,9 +59,11 @@ from platformdirs import user_config_dir
 from tracks_and_trails.core.models import (
     AudioCodec,
     MediaKind,
+    NetworkOptions,
     Preset,
     looks_like_a_path,
     parse_browser_specification,
+    proxy_refusal,
 )
 from tracks_and_trails.core.paths import APP_SLUG
 
@@ -114,6 +116,40 @@ _LOCATION_KEY: Final = "location"
 _COOKIES_TABLE: Final = "cookies"
 _COOKIE_FILE_KEY: Final = "file"
 _COOKIE_BROWSER_KEY: Final = "browser"
+
+#: `T-196`'s keys: the three network options `REQ-023` names (rate limit, proxy, retries). Their
+#: own table, like every setting that is not a queue setting.
+#:
+#: **The rate limit is stored in bytes per second**, which is the unit `DownloadRequest` and
+#: yt-dlp's `ratelimit` both use, and the key says so. The screen offers KiB/s because that is the
+#: number a person means; the file keeps the unit the machinery speaks, so there is exactly one
+#: conversion and it is in the widget.
+_NETWORK_TABLE: Final = "network"
+_PROXY_KEY: Final = "proxy"
+_RATE_LIMIT_KEY: Final = "rate_limit_bytes"
+_RETRIES_KEY: Final = "retries"
+
+#: The largest rate limit this application will hold (`T-196`).
+#:
+#: **It exists so the screen cannot lie, not to model a network.** A limit is honoured verbatim
+#: however small — 500 bytes per second is a legitimate thing to ask for — so there is no useful
+#: floor and no typo a ceiling could catch in the harmful direction. What a ceiling does buy is
+#: that every storable value fits the control that displays it: `QSpinBox` is bounded by a signed
+#: 32-bit integer, so a file holding more than this could not be shown, and a screen showing a
+#: smaller number than the file is the disagreement `T199-R2` and `T195-R5` are both about.
+#:
+#: Above it, `load()` clamps **and reports** — unlike the concurrency clamp, which is silent,
+#: because there the clamped value is still evidently what the user meant and here it is 2 TiB/s
+#: against a number nobody typed on purpose.
+RATE_LIMIT_MAXIMUM_BYTES: Final = (2**31 - 1) * 1024
+
+#: The most retries a settings file may ask for inside one attempt (`T-196`).
+#:
+#: `CONCURRENCY_MAXIMUM`'s reasoning: a catcher for an extra digit rather than a measurement.
+#: yt-dlp's own default is 10 and each retry is a fresh request against a server that has already
+#: failed, so a hundred is generous for any real intent and low enough that `1000` does not
+#: survive. Clamped and reported, like the rate limit above.
+RETRIES_MAXIMUM: Final = 100
 
 #: The first line every cookies jar this application can use carries (`T197-R5`).
 #:
@@ -189,7 +225,7 @@ class Settings:
 
     Phase 2 landed this with one field — the concurrency limit. Phase 4's `REQ-023` screen added
     the rest on top of it rather than replacing it, which is what `ARC-007` said it would.
-    **Network options are the one `REQ-023` setting with no field here yet** (`T-196`).
+    **`T-196` was the last of the eight**, so every setting `REQ-023` names now has a field here.
     """
 
     concurrency: int = CONCURRENCY_DEFAULT
@@ -271,6 +307,22 @@ class Settings:
     #: deciding whether a binary can run is two answers that can disagree.
     ffmpeg_location: Path | None = None
 
+    #: Rate limit, proxy and retries — `REQ-023`'s network options (`T-196`).
+    #:
+    #: **One field, because they are one setting in the requirement and one table in the file.**
+    #: `NetworkOptions` validates them, so a `Settings` carrying a proxy with a password in it
+    #: cannot be constructed at all (`T-014`'s rule, reached through the model).
+    #:
+    #: **Read into a `DownloadRequest` when a job is queued, not handed to a running worker.**
+    #: That is `ARCHITECTURE.md` §8's settings freeze, and it is the opposite of `cookie_file`
+    #: two fields up — which is late-bound *because* `DAT-003` forbids it a place on the model.
+    #: These three have fields there, so the ordinary rule applies and a queued job keeps what it
+    #: was queued with.
+    #: `default_factory` rather than a shared instance: `NetworkOptions` is frozen, so one
+    #: instance would be safe — but `RUF009` refuses the call either way, and a factory says
+    #: *each Settings gets its own* without anyone having to check the frozen-ness first.
+    network: NetworkOptions = field(default_factory=NetworkOptions)
+
     def __post_init__(self) -> None:
         # A `Settings` built in code is held to the bound; a file is not. `load()` corrects what it
         # reads because a malformed file is not a programming error, and a caller passing 0 is.
@@ -305,6 +357,29 @@ class Settings:
                 f"{CONCURRENCY_MAXIMUM} (`ARC-007`). Each concurrent download is a spawned "
                 "worker process, so a caller asking for more than this has a bug rather than a "
                 "preference — a file asking for it is clamped instead."
+            )
+        if not isinstance(self.network, NetworkOptions):
+            raise TypeError(
+                f"Settings.network must be a NetworkOptions, not a {type(self.network).__name__}"
+            )
+        # **The ceilings are the settings layer's, not the model's** (`T-196`). `NetworkOptions`
+        # validates what a network option *is* — a credential-free proxy, a positive rate, a
+        # non-negative count — and those hold wherever one is built, including on a request. What
+        # a *stored* value may be is policy this module owns, exactly as `CONCURRENCY_MAXIMUM` is,
+        # and `load()` clamps a file rather than raising at it for the same reason.
+        if (
+            self.network.rate_limit_bytes is not None
+            and self.network.rate_limit_bytes > RATE_LIMIT_MAXIMUM_BYTES
+        ):
+            raise ValueError(
+                f"Settings.network.rate_limit_bytes is {self.network.rate_limit_bytes}; the "
+                f"ceiling is {RATE_LIMIT_MAXIMUM_BYTES}, which is what the settings screen can "
+                "display. A file asking for more is clamped and reported instead."
+            )
+        if self.network.retries is not None and self.network.retries > RETRIES_MAXIMUM:
+            raise ValueError(
+                f"Settings.network.retries is {self.network.retries}; the ceiling is "
+                f"{RETRIES_MAXIMUM}. A file asking for more is clamped and reported instead."
             )
 
 
@@ -568,6 +643,37 @@ def _spellings_of(raw: str) -> tuple[str, ...]:
     return tuple(spellings)
 
 
+def _proxy_literals(network_table: dict[str, Any]) -> tuple[str, ...]:
+    """The stored proxy, when it is shaped like one, so no log can print it (`T-196`).
+
+    **`NFR-007` and `REQ-026` both point here.** A proxy is the one `REQ-023` setting that can
+    carry a credential, and the literal reaches two sinks this module does not control: an
+    `ARC-008` report composition logs, and yt-dlp's own diagnostics — which dump `params:` and a
+    `Proxy map:` when verbose, as `core/logging.py` records having measured. Registering the exact
+    string covers both, and covers the **refused** value as well as the accepted one, which is
+    `T197-R1`'s lesson: the value most certain to be quoted was the one nothing had registered.
+
+    **Only a proxy-shaped value is registered, and that asymmetry is `T197-R6`'s.** Registration
+    replaces a substring everywhere it later appears, so a hand-edited `proxy = "yes"` would make
+    the word *yes* unreadable in every subsequent line — the gate's own legitimate-content rule
+    broken by the machinery meant to serve it. A scheme or userinfo is what makes a value an
+    address rather than a word; nothing else is specific enough to register safely.
+
+    **The residual, stated:** a junk value with neither — `proxy = "localhost"` — is not
+    registered. It is refused, it is not quoted by the refusal, and it carries no credential,
+    because a credential needs the `@` this rule keys on.
+    """
+    raw = network_table.get(_PROXY_KEY)
+    if not isinstance(raw, str) or not raw.strip():
+        return ()
+    value = raw.strip()
+    if "://" not in value and "@" not in value:
+        return ()
+    # Both spellings, for `_sensitive_literals`' reason one function down: the file's own text and
+    # the stripped form, because either may be the one that appears in a later line.
+    return tuple(dict.fromkeys((raw, value)))
+
+
 def _sensitive_literals(cookies_table: dict[str, Any]) -> tuple[str, ...]:
     """Every literal the cookie keys held that a reason might quote, valid or not (`T197-R1`).
 
@@ -670,6 +776,121 @@ def _cookie_file_from(raw: Any) -> tuple[Path | None, str | None]:
     return Path(raw).expanduser().absolute(), None
 
 
+def _proxy_from(raw: Any) -> tuple[str | None, str | None]:
+    """Coerce a stored proxy. **Never raises**, and reports what it discards (`T-196`).
+
+    Refused by `proxy_refusal` — `DownloadRequest`'s own grammar — so a proxy the model would
+    reject cannot arrive through the file and be silently honoured, and one it would accept
+    cannot be refused here. `_output_template_from` is the same shape against the template
+    validator, and `T199-R3` is the finding that says why two checks of one value is one too many.
+
+    **A refused proxy falls back to none rather than to a repaired version.** The commonest
+    refusal is userinfo — `http://me:hunter2@proxy.invalid:8080` — and stripping the credential to
+    salvage the host would be this module quietly editing a credential it was told about, when
+    what it owes the user is to say the value was not used.
+    """
+    if raw is None:
+        return None, None
+    if not isinstance(raw, str):
+        return None, (
+            f"{_NETWORK_TABLE}.{_PROXY_KEY} is {raw!r}, which is not a proxy address. No proxy "
+            "will be used."
+        )
+    if not raw.strip():
+        # Deliberately silent, as every emptied value here is: clearing the box is how a user
+        # asks for no proxy, and `save()`'s header promises deleting the line is safe.
+        return None, None
+    refusal = proxy_refusal(raw.strip())
+    if refusal is not None:
+        # **The reason does not quote the value** — the one reason on this whole surface that
+        # does not. Every other setting names what it discarded because naming it is how the user
+        # finds it; a proxy is the one `REQ-023` value that can carry a password, and this
+        # sentence is written into `SettingsProblem.reason`, which composition logs (`T197-R1`'s
+        # route). The literal is registered as a secret as well — see `_sensitive_literals` — and
+        # this is the belt to that pair of braces.
+        return None, (
+            f"The proxy in your settings cannot be used, so no proxy will be used.\n{refusal}"
+        )
+    return raw.strip(), None
+
+
+def _rate_limit_from(raw: Any) -> tuple[int | None, str | None]:
+    """Coerce a stored rate limit, in bytes per second. **Never raises** (`T-196`).
+
+    **Nothing here becomes "unlimited" quietly**, which is this task's own criterion: zero, a
+    negative, a float and a string all *report* and then fall back to no limit, because every one
+    of them is a user who asked for a limit and would otherwise get full speed with nothing said.
+    That is the opposite treatment from `_concurrency_from`'s silent clamp, and the difference is
+    what the wrong value costs — a clamped concurrency still downloads what was asked for.
+
+    **Above the ceiling is clamped and reported.** The value is kept as a limit, because the
+    evident intent is *a very large one*, and the report says the number in force is not the
+    number stored. `RATE_LIMIT_MAXIMUM_BYTES` records why there is a ceiling at all.
+    """
+    if raw is None:
+        return None, None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return None, (
+            f"{_NETWORK_TABLE}.{_RATE_LIMIT_KEY} is {raw!r}, which is not a whole number of bytes "
+            "per second. Downloads will not be limited."
+        )
+    if raw <= 0:
+        return None, (
+            f"{_NETWORK_TABLE}.{_RATE_LIMIT_KEY} is {raw}, which is not a speed. Downloads will "
+            "not be limited — delete the line to ask for that deliberately."
+        )
+    if raw > RATE_LIMIT_MAXIMUM_BYTES:
+        return RATE_LIMIT_MAXIMUM_BYTES, (
+            f"{_NETWORK_TABLE}.{_RATE_LIMIT_KEY} is {raw}, which is higher than this application "
+            f"holds. {RATE_LIMIT_MAXIMUM_BYTES} bytes per second is in use."
+        )
+    return raw, None
+
+
+def _retries_from(raw: Any) -> tuple[int | None, str | None]:
+    """Coerce a stored retry count. **Never raises** (`T-196`).
+
+    `_rate_limit_from`'s shape with one difference that is the whole point: **zero is valid
+    here**. It says *do not retry inside the attempt*, which is a real answer, where zero bytes
+    per second is not a real speed. Absent means yt-dlp's own default, which this module
+    deliberately does not know — writing 10 here would be a second copy of a library's default,
+    and a wrong one the day it changes.
+    """
+    if raw is None:
+        return None, None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return None, (
+            f"{_NETWORK_TABLE}.{_RETRIES_KEY} is {raw!r}, which is not a whole number. The "
+            "downloader's own retry count is in use."
+        )
+    if raw < 0:
+        return None, (
+            f"{_NETWORK_TABLE}.{_RETRIES_KEY} is {raw}, which is not a number of retries. The "
+            "downloader's own retry count is in use."
+        )
+    if raw > RETRIES_MAXIMUM:
+        return RETRIES_MAXIMUM, (
+            f"{_NETWORK_TABLE}.{_RETRIES_KEY} is {raw}, which is more than this application "
+            f"holds. {RETRIES_MAXIMUM} is in use."
+        )
+    return raw, None
+
+
+def _network_from(table: dict[str, Any]) -> tuple[NetworkOptions, str | None]:
+    """The `[network]` table as one value, and everything it had to discard (`T-196`).
+
+    **The three are read independently**, for the reason `load()` reads `[queue]` and
+    `[[preset]]` independently: a rate limit somebody typed as `"1M"` must not cost the user
+    their proxy, and every reason that applies is reported rather than the first one found.
+    """
+    proxy, proxy_reason = _proxy_from(table.get(_PROXY_KEY))
+    rate_limit, rate_reason = _rate_limit_from(table.get(_RATE_LIMIT_KEY))
+    retries, retries_reason = _retries_from(table.get(_RETRIES_KEY))
+    reasons = [reason for reason in (proxy_reason, rate_reason, retries_reason) if reason]
+    options = NetworkOptions(proxy=proxy, rate_limit_bytes=rate_limit, retries=retries)
+    return options, ("\n".join(reasons) if reasons else None)
+
+
 def _theme_from(raw: Any) -> tuple[str, str | None]:
     """Coerce a stored theme name. **Never raises.**
 
@@ -747,7 +968,9 @@ class SettingsFile:
     #:
     #: Carried as data for `SettingsProblem`'s reason: `core/**` may not decide logging policy, so
     #: it says which strings are sensitive and composition registers them before it writes
-    #: anything. `T-196`'s stored proxy will arrive through the same field.
+    #: anything. **`T-196`'s stored proxy arrives through this field too**, which is what that
+    #: sentence promised when it said it would — see `_proxy_literals` for what is and is not
+    #: registered, and why a value that is not address-shaped is deliberately left alone.
     secrets: tuple[str, ...] = ()
 
 
@@ -845,8 +1068,10 @@ def load(path: Path | None = None) -> SettingsFile:
         cookie_browser = None
     ffmpeg_table, ffmpeg_reason = _section_of(document, _FFMPEG_TABLE)
     ffmpeg_location, location_reason = _ffmpeg_location_from(ffmpeg_table.get(_LOCATION_KEY))
+    network_table, network_table_reason = _section_of(document, _NETWORK_TABLE)
+    network, network_reason = _network_from(network_table)
 
-    sensitive = _sensitive_literals(cookies_table)
+    sensitive = _proxy_literals(network_table) + _sensitive_literals(cookies_table)
 
     def answer(concurrency: int, reason: str | None = None) -> SettingsFile:
         parts = [
@@ -866,6 +1091,8 @@ def load(path: Path | None = None) -> SettingsFile:
                 cookie_reason,
                 browser_reason,
                 both_reason,
+                network_table_reason,
+                network_reason,
             )
             if part
         ]
@@ -879,6 +1106,7 @@ def load(path: Path | None = None) -> SettingsFile:
             ffmpeg_location=ffmpeg_location,
             cookie_file=cookie_file,
             cookie_browser=cookie_browser,
+            network=network,
         )
         if not parts:
             return SettingsFile(settings, secrets=sensitive)
@@ -1408,6 +1636,41 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             if settings.ffmpeg_location is not None
             else ""
         )
+        # **Only the keys that are set** (`T-196`), like every optional value above: an absent key
+        # is how each of these says *nobody chose*, and `load()` reads absence silently. Written
+        # as one table because they are one setting, and the table header is emitted only when it
+        # would have a member — an empty `[network]` is a section that says nothing.
+        network_pairs = [
+            (
+                _PROXY_KEY,
+                None if settings.network.proxy is None else _toml_string(settings.network.proxy),
+            ),
+            (
+                _RATE_LIMIT_KEY,
+                None
+                if settings.network.rate_limit_bytes is None
+                else str(settings.network.rate_limit_bytes),
+            ),
+            (
+                _RETRIES_KEY,
+                None if settings.network.retries is None else str(settings.network.retries),
+            ),
+        ]
+        network_comments = {
+            _PROXY_KEY: "# A proxy, as scheme://host[:port]. It may not carry a username or "
+            "password.",
+            _RATE_LIMIT_KEY: "# The most each download may use, in bytes per second. Delete the "
+            "line for no limit.",
+            _RETRIES_KEY: "# How many times the downloader retries inside one attempt. Delete "
+            "the line for its own default.",
+        }
+        written = [(key, value) for key, value in network_pairs if value is not None]
+        network_lines = (
+            f"\n\n[{_NETWORK_TABLE}]\n"
+            + "".join(f"{network_comments[key]}\n{key} = {value}\n" for key, value in written)
+            if written
+            else ""
+        )
         appearance_lines = (
             f"\n\n[{_APPEARANCE_TABLE}]\n"
             f"# The window's palette: {' or '.join(THEME_NAMES)}.\n"
@@ -1426,6 +1689,7 @@ def save(settings: Settings, path: Path | None = None) -> str | None:
             f"{downloads_lines}"
             f"{cookie_lines}"
             f"{ffmpeg_lines}"
+            f"{network_lines}"
             f"{appearance_lines}" + "".join(_preset_lines(preset) for preset in settings.presets),
             encoding="utf-8",
         )
@@ -1491,6 +1755,28 @@ def with_ffmpeg_location(settings: Settings, location: Path | None) -> Settings:
     that meaning lives in one place, exactly as `with_download_directory` holds its own.
     """
     return replace(settings, ffmpeg_location=location)
+
+
+def with_network_options(settings: Settings, options: NetworkOptions) -> Settings:
+    """`settings` using `options` for the network, bounded at both ends (`REQ-023`, `T-196`).
+
+    `with_concurrency`'s shape and its reason: the bounds apply wherever the value changes, not
+    only where it is read, so a caller handing over more than this module holds gets what the
+    file would have got. A proxy needs no bound here — `NetworkOptions` refused an unusable one
+    before this was called, because there is no valid `NetworkOptions` carrying a credential.
+    """
+    return replace(
+        settings,
+        network=replace(
+            options,
+            rate_limit_bytes=(
+                None
+                if options.rate_limit_bytes is None
+                else min(options.rate_limit_bytes, RATE_LIMIT_MAXIMUM_BYTES)
+            ),
+            retries=None if options.retries is None else min(options.retries, RETRIES_MAXIMUM),
+        ),
+    )
 
 
 def with_theme(settings: Settings, name: str) -> Settings:

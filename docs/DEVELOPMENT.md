@@ -327,10 +327,11 @@ packaging/        PyInstaller spec and the frozen smoke test (T-020)
 
 ## Which `REQ-023` settings the screen actually holds
 
-`REQ-023` names eight settings. **Settings → Settings… holds seven** — three from `T-146`, the
-ffmpeg location from `T-199`, the cookie source from `T-197`, and the default preset and output
-template from `T-195`; **network options are the one that remains**, filed as `T-196`, and the
-screen says so itself rather than reading as complete.
+`REQ-023` names eight settings. **Settings → Settings… holds all eight** — three from `T-146`, the
+ffmpeg location from `T-199`, the cookie source from `T-197`, the default preset and output
+template from `T-195`, and the network options from `T-196`, which was the last. The screen's own
+*"still to come"* sentence is therefore empty and its label is not built; adding a ninth setting to
+`REQ-023` without building it puts both back, which is the whole of what that mechanism promises.
 
 **A cookie path is the one setting with a decision attached.** `DAT-003` (amended 2026-08-10) puts
 it in `settings.toml` and in a worker's arguments and **nowhere else** — never on
@@ -338,6 +339,14 @@ it in `settings.toml` and in a worker's arguments and **nowhere else** — never
 queued job cannot carry it, so it authenticates with whatever is set when its worker starts.
 `cookies_from_browser` is the other half and binds when the job is queued, because it is a preset
 field.
+
+**The network options bind at queue time, like everything that is not the cookie file.**
+`ARCHITECTURE.md` §8 freezes settings into the `DownloadRequest` when a job is created, and the
+proxy, rate limit and retry count all have fields there — so a change reaches downloads added from
+then on, and anything already in the queue keeps what it was added with. The screen says so, and
+`T-196`'s two exceptions to a plain read are worth knowing: **zero retries is a real answer** while
+absence means yt-dlp's own count, and **a stored rate limit of `0` is reported rather than read as
+"no limit"**, because it would otherwise silently remove a limit somebody asked for.
 
 | Setting | Where it is | Stored as |
 |---|---|---|
@@ -347,7 +356,7 @@ field.
 | Default preset | Settings screen **and** the preset manager — two controls, **one writer** | `default_preset` (bare key, above the first table) |
 | Output template | Settings screen | `output_template` (bare key, above the first table); absent means the shipped template |
 | ffmpeg location | Settings screen | `[ffmpeg] location` |
-| Network options (rate limit, proxy, retries) | not built — `T-196` | — |
+| Network options (rate limit, proxy, retries) | Settings screen | `[network] proxy`, `rate_limit_bytes` (bytes per second), `retries` |
 | Cookie source | Settings screen | `[cookies] file`, plus `cookies_from_browser` per preset |
 
 **The concurrency control is in one place** (`UX-013`, built by `T-234`). Its home is one value in

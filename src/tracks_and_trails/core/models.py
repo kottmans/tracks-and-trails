@@ -350,6 +350,26 @@ def _require_credential_free_proxy(value: str | None) -> None:
         )
 
 
+def proxy_refusal(value: str | None) -> str | None:
+    """Why `value` cannot be used as a proxy, or `None` (`T-196`).
+
+    **The same rule `DownloadRequest` is held to, asked as a question instead of an exception.**
+    `T-196`'s criterion is explicit that a settings-level proxy is refused *"by the same rule
+    `T-014` put on `DownloadRequest` — not a second validator on the dialog"*, and the settings
+    screen needs a reason to show rather than an exception to catch. So this is the one grammar,
+    read the other way round: anything this returns `None` for is a value the model accepts, and
+    anything it refuses the model would refuse too, because there is only one implementation.
+
+    `unusable_ffmpeg_reason` and `unusable_cookie_file_reason` are the same shape one layer up
+    (`T199-R3`): two routes to one setting must not be able to answer differently.
+    """
+    try:
+        _require_credential_free_proxy(value)
+    except ValueError as refusal:
+        return str(refusal)
+    return None
+
+
 def _require_optional_datetime(owner: str, name: str, value: object) -> None:
     if value is not None and not isinstance(value, datetime):
         _fail(owner, name, value, "a datetime or None")
@@ -763,6 +783,60 @@ class MediaInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class NetworkOptions:
+    """The three network settings `REQ-023` names, as one value (`T-196`).
+
+    **A value object rather than three loose fields**, because they are set together, stored
+    together under one `[network]` table, and travel together onto a request. Loose fields would
+    make every one of those three places a list to keep in step.
+
+    **It lives here rather than in `core/settings.py`** for the reason `ARC-007` gives about the
+    concurrency limit: what the settings layer holds is a *value*, and the value's shape is a
+    model. `Settings` composes this; nothing here reads TOML.
+
+    **Every field is validated by the rule its `DownloadRequest` twin is validated by**, and the
+    proxy is the one that matters: `_require_credential_free_proxy` is `T-014`'s, so a proxy
+    carrying a password is as unrepresentable in a *setting* as it already is in a job. That is
+    what `T-196`'s second criterion asks for, and it is why the settings screen refuses through
+    `proxy_refusal` instead of growing a validator of its own.
+
+    **`None` means "nobody chose" in all three cases**, which is not the same as a zero: no
+    proxy, no rate limit, and yt-dlp's own retry count. See `DownloadRequest.retries` for why
+    zero retries and no answer have to stay distinguishable.
+    """
+
+    #: `scheme://host[:port]`, credential-free, or `None`.
+    proxy: str | None = None
+
+    #: Bytes per second, **per download**, or `None` for no limit. Per download rather than in
+    #: total because yt-dlp's `ratelimit` binds one session and every download here is its own
+    #: worker process (`ARC-002`) — so several at once add up, and the screen says so rather than
+    #: this claiming a total it cannot enforce.
+    #:
+    #: **Zero is refused rather than read as "no limit"**, which is what `None` is for. A stored
+    #: `0` is a hand-edit that removes a limit the user asked for, and `T-196`'s criterion is
+    #: explicit that it must be reported rather than coerced; making it unrepresentable here is
+    #: what stops the coercion happening anywhere else.
+    rate_limit_bytes: int | None = None
+
+    #: Retries **inside one download attempt**, or `None` for yt-dlp's own default. Not the
+    #: job-level retry — see `DownloadRequest.retries`, which this is copied onto.
+    retries: int | None = None
+
+    def __post_init__(self) -> None:
+        _require_optional_text("NetworkOptions", "proxy", self.proxy)
+        _require_credential_free_proxy(self.proxy)
+        _require_optional_count("NetworkOptions", "rate_limit_bytes", self.rate_limit_bytes)
+        if self.rate_limit_bytes == 0:
+            raise ValueError(
+                "NetworkOptions.rate_limit_bytes cannot be 0: a limit of zero bytes per second "
+                "would stop every download, and 'no limit' is None. A file saying 0 is reported "
+                "and falls back to None (T-196)."
+            )
+        _require_optional_count("NetworkOptions", "retries", self.retries)
+
+
+@dataclass(frozen=True, slots=True)
 class DownloadRequest:
     """The resolved intent for one download, frozen at job-creation time.
 
@@ -831,6 +905,22 @@ class DownloadRequest:
     #: (`NFR-007`), which is why a proxy URL may safely live in the model.
     proxy: str | None = None
     rate_limit_bytes: int | None = None
+
+    #: How many times yt-dlp retries **inside one download attempt**, or `None` for its own
+    #: default (`REQ-023`, `T-196`, ruled by the maintainer 2026-08-13).
+    #:
+    #: **This is yt-dlp's `--retries`, and it is not the job-level retry.** `REQ-015`/`REQ-018`
+    #: keep a failed job in the queue and offer it again, and `core/errors.py` auto-retries a
+    #: `NETWORK` failure by itself — that policy is already decided and has no setting, because
+    #: two things in charge of one decision is `T-075`'s defect. This number is what happens
+    #: *within* a single attempt, before the job has failed at all.
+    #:
+    #: **`0` is a real value and `None` is not zero.** Zero says *do not retry inside the
+    #: attempt*; `None` says *nobody chose*, and `build_options` then omits the key so yt-dlp
+    #: applies whatever its own default is. Reading them through truthiness — which is how
+    #: `rate_limit_bytes` is read one field up, where zero and unset genuinely mean the same
+    #: thing — would silently turn "never retry" into "retry ten times".
+    retries: int | None = None
     #: Which browser's cookies to use — a **browser name**, and since `T-197` by construction
     #: rather than by intent (`REQ-026`, `DAT-003`).
     #:
@@ -881,6 +971,7 @@ class DownloadRequest:
         _require_optional_text("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
         _require_browser_name("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
         _require_optional_count("DownloadRequest", "rate_limit_bytes", self.rate_limit_bytes)
+        _require_optional_count("DownloadRequest", "retries", self.retries)
 
 
 @dataclass(frozen=True, slots=True)

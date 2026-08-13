@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core import settings as core_settings
+from tracks_and_trails.core.models import NetworkOptions
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.preset_manager import (
     DEFAULT_MARK,
@@ -41,9 +42,16 @@ from tracks_and_trails.ui.preset_manager import (
 from tracks_and_trails.ui.settings_dialog import (
     DEFAULT_DIRECTORY_NOTE,
     DEFAULT_PRESET_NAME,
+    DEFAULT_RETRIES_LABEL,
     NO_COOKIES_NOTE,
+    NO_RATE_LIMIT_LABEL,
     OUTPUT_TEMPLATE_NAME,
     OUTPUT_TEMPLATE_NOTE_NAME,
+    PROXY_NAME,
+    PROXY_NOTE_NAME,
+    RATE_LIMIT_NAME,
+    RATE_LIMIT_STEP_BYTES,
+    RETRIES_NAME,
     SETTINGS_STILL_TO_COME,
     STEP_DOWN_LABEL,
     STEP_UP_LABEL,
@@ -108,29 +116,35 @@ def test_the_screen_says_which_settings_it_does_not_cover(
 ) -> None:
     """**`T-146`'s honesty criterion**, on the screen rather than only in a document.
 
-    `REQ-023` names eight settings and this screen builds seven of them since `T-195`. A settings
-    screen showing only what it implements reads as complete, so the remaining absences are stated
-    where the user is looking — and each of them is owned by a filed task.
+    `REQ-023` names eight settings and this screen builds **all eight** since `T-196`. A settings
+    screen showing only what it implements reads as complete, so any absence is stated where the
+    user is looking — and there is none left to state.
+
+    **The sentence shrinking to nothing is this test working, not being weakened.** Each task that
+    landed one of the eight took its name out (`T-199` the ffmpeg location, `T-197` the cookie
+    source, `T-195` two more), and `T-196` took the last. What is asserted now is the pair that
+    has to hold together: nothing is named as missing, **and** the label carrying the sentence is
+    not built — an empty label is still a line of the dialog and still a stop for a screen reader.
     """
     screen, _ = screens()
-    remaining = control(screen, QLabel, "settingsRemaining")
 
-    assert remaining.text() == SETTINGS_STILL_TO_COME
-    # `T-199` built the ffmpeg location, so it left this list — which is this test working, not a
-    # weakening of it: the sentence must shrink as the screen grows, or it becomes the stale
-    # coverage claim the criterion exists to prevent.
+    assert SETTINGS_STILL_TO_COME == "", (
+        "every REQ-023 setting is built, so the screen has nothing to say is still to come: "
+        f"{SETTINGS_STILL_TO_COME!r}"
+    )
+    assert screen.findChild(QLabel, "settingsRemaining") is None, (
+        "the still-to-come label is built with nothing in it, which is a claim about coverage "
+        "made in whitespace"
+    )
     for built, by in (
         ("ffmpeg", "T-199"),
         ("cookie", "T-197"),
         ("default preset", "T-195"),
         ("output template", "T-195"),
+        ("network", "T-196"),
     ):
         assert built not in SETTINGS_STILL_TO_COME.lower(), (
             f"the screen still says {built} is to come, but {by} built it"
-        )
-    for absent in ("network",):
-        assert absent in SETTINGS_STILL_TO_COME.lower(), (
-            f"{absent!r} is not built and the screen does not say so: {SETTINGS_STILL_TO_COME!r}"
         )
 
 
@@ -696,3 +710,213 @@ def test_a_screen_with_nothing_behind_a_control_says_so_rather_than_drawing_it_d
     assert not control(screen, QComboBox, DEFAULT_PRESET_NAME).isEnabled()
     assert control(screen, QLabel, "defaultPresetNote").text()
     assert not control(screen, QLineEdit, OUTPUT_TEMPLATE_NAME).isEnabled()
+
+
+# --- network options (T-196) ----------------------------------------------------------------
+
+
+def test_the_screen_offers_the_three_network_options_it_holds(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """The controls open showing what is in force, in the units a person reads them in.
+
+    The rate limit is stored in bytes because that is what yt-dlp and the model take, and offered
+    in KiB/s because that is what somebody means — so the conversion is asserted at the boundary
+    where it happens rather than trusted.
+    """
+    screen, _ = screens(
+        network=NetworkOptions(
+            proxy="http://proxy.invalid:8080", rate_limit_bytes=512 * 1024, retries=4
+        ),
+        on_network_chosen=lambda _options: None,
+    )
+
+    assert control(screen, QLineEdit, PROXY_NAME).text() == "http://proxy.invalid:8080"
+    assert control(screen, QSpinBox, RATE_LIMIT_NAME).value() == 512
+    assert control(screen, QSpinBox, RETRIES_NAME).value() == 4
+
+
+def test_an_unset_network_reads_as_no_limit_and_the_downloaders_own_retries(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**Neither absence is drawn as a bare zero**, which would be a different instruction.
+
+    `0` on the retry box means *never retry inside the attempt*; the screen has to be able to say
+    *nobody chose* as well, so the sentinel is below the range and reads as words. The rate limit
+    can use zero for *no limit* because zero bytes per second is not a speed anyone means — and
+    the words are on screen either way, so there is nothing to misread.
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+
+    rate = control(screen, QSpinBox, RATE_LIMIT_NAME)
+    retries = control(screen, QSpinBox, RETRIES_NAME)
+
+    assert rate.value() == 0
+    assert rate.text() == NO_RATE_LIMIT_LABEL
+    assert retries.value() == -1
+    assert retries.text() == DEFAULT_RETRIES_LABEL
+    assert control(screen, QLineEdit, PROXY_NAME).text() == ""
+
+
+def test_typing_a_proxy_stores_it(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+
+    control(screen, QLineEdit, PROXY_NAME).setText("http://proxy.invalid:3128")
+
+    assert chosen and chosen[-1].proxy == "http://proxy.invalid:3128"
+    assert control(screen, QLabel, PROXY_NOTE_NAME).text() == ""
+
+
+def test_a_proxy_carrying_a_credential_is_refused_with_the_reason_and_not_stored(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`T-196`'s second criterion, at the screen.**
+
+    Refused *before* the write, not beside it: this is the one setting on the screen that can
+    carry a password, and storing it while showing an error would put the credential in
+    `settings.toml` — the failure `T-112` and `T195-R2` both name one setting over, with more at
+    stake here than a template that does not render.
+
+    The refusal is `core.models.proxy_refusal`, so the screen cannot come to disagree with the
+    model about what a usable proxy is (`T199-R3`).
+    """
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+
+    control(screen, QLineEdit, PROXY_NAME).setText("http://me:hunter2@proxy.invalid:8080")
+
+    assert not [options for options in chosen if options.proxy is not None], (
+        f"a proxy carrying a credential was handed to composition: {chosen}"
+    )
+    assert control(screen, QLabel, PROXY_NOTE_NAME).text(), "it was refused without saying why"
+
+
+def test_emptying_the_proxy_box_clears_the_setting(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """An empty box is *no proxy* — a value, not a refusal, so no error is shown for it."""
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(
+        network=NetworkOptions(proxy="http://proxy.invalid:8080"), on_network_chosen=chosen.append
+    )
+
+    control(screen, QLineEdit, PROXY_NAME).setText("")
+
+    assert chosen and chosen[-1].proxy is None
+    assert control(screen, QLabel, PROXY_NOTE_NAME).text() == ""
+
+
+def test_a_speed_limit_is_stored_in_bytes_and_cleared_by_asking_for_none(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+    rate = control(screen, QSpinBox, RATE_LIMIT_NAME)
+
+    rate.setValue(256)
+    assert chosen[-1].rate_limit_bytes == 256 * RATE_LIMIT_STEP_BYTES
+
+    rate.setValue(0)
+    assert chosen[-1].rate_limit_bytes is None, "'No limit' was stored as a limit of zero"
+
+
+def test_a_retry_count_of_zero_is_stored_and_the_sentinel_is_not(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """The pair that has to stay distinguishable, driven through the control (`T-196`)."""
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+    retries = control(screen, QSpinBox, RETRIES_NAME)
+
+    retries.setValue(0)
+    assert chosen[-1].retries == 0, "'never retry' was stored as 'nobody chose'"
+
+    retries.setValue(-1)
+    assert chosen[-1].retries is None, "the sentinel was stored as a retry count"
+
+
+def test_changing_one_network_control_keeps_what_the_others_hold(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`T195-R1`'s defect, in the shape this screen could have reproduced.**
+
+    Three controls edit one stored value, so each change has to be built from the value in force
+    rather than from the one the screen opened with — otherwise setting a proxy and then a retry
+    count writes the retry count against the original network options and silently drops the
+    proxy. Asserted across two edits, because one cannot show it.
+    """
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(
+        network=NetworkOptions(rate_limit_bytes=1024), on_network_chosen=chosen.append
+    )
+
+    control(screen, QLineEdit, PROXY_NAME).setText("http://proxy.invalid:8080")
+    control(screen, QSpinBox, RETRIES_NAME).setValue(2)
+
+    assert chosen[-1] == NetworkOptions(
+        proxy="http://proxy.invalid:8080", rate_limit_bytes=1024, retries=2
+    )
+
+
+def test_the_screen_follows_the_options_composition_settled_on(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """`show_concurrency`'s rule: what is displayed is what is in force, not what was emitted.
+
+    `with_network_options` bounds what it is given, so the answer can differ from the request —
+    and a screen showing a number that is not in force is a screen that will write it back.
+    Shown without echoing, or every change would become a round trip.
+    """
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+
+    screen.show_network_options(NetworkOptions(proxy="http://proxy.invalid:9", retries=1))
+
+    assert control(screen, QLineEdit, PROXY_NAME).text() == "http://proxy.invalid:9"
+    assert control(screen, QSpinBox, RETRIES_NAME).value() == 1
+    assert chosen == [], f"showing the value in force wrote it back: {chosen}"
+
+
+def test_the_retry_control_says_which_retry_it_governs(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**The ruling's own obligation** (`T-196`, maintainer 2026-08-13).
+
+    *"The label names the scope in the user's terms — retries within a download attempt."* A
+    control reading only *Retries* would look like it governs the queue's own retry — which
+    `REQ-015`/`REQ-018` already govern, and which `T-201`'s error text tells the user happens by
+    itself. That is `T-075`: a control that looks like a choice and changes something else.
+
+    Asserted on the visible label **and** the accessible name, because a screen-reader user gets
+    only the second (`NFR-005`).
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+
+    visible = control(screen, QLabel, "networkRetriesLabel").text().lower()
+    announced = control(screen, QSpinBox, RETRIES_NAME).accessibleName().lower()
+
+    for reading, where in ((visible, "the label"), (announced, "the accessible name")):
+        assert "retries" in reading, f"{where} does not say what the control is"
+        assert "attempt" in reading, (
+            f"{where} says only {reading!r}, which reads as the queue's own retry"
+        )
+
+
+def test_the_network_section_says_when_its_settings_take_effect(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """These bind when a job is queued (`ARCHITECTURE.md` §8) — the opposite of the cookies file.
+
+    A user who sets a speed limit with a full queue and sees nothing change has been told
+    nothing; the cookies section states its own (late) binding for the same reason, and the two
+    sections genuinely differ, so neither sentence can be dropped as boilerplate.
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+
+    said = control(screen, QLabel, "networkExplanation").text().lower()
+
+    assert "already in the queue" in said, f"the binding is not stated: {said!r}"
+    assert "each download" in said, "the limit's per-download scope is not stated"

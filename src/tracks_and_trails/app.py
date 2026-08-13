@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING, Any
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core import settings as settings_module
-from tracks_and_trails.core.models import Preset
+from tracks_and_trails.core.models import NetworkOptions, Preset
 from tracks_and_trails.core.presets import DEFAULT_OUTPUT_TEMPLATE, needs_ffmpeg
 from tracks_and_trails.core.settings import Settings as AppSettings
 
@@ -683,6 +683,47 @@ def compose(
                 # for a bare relative name so the floor does not drop it (`T197-R1`).
                 app_logging.remember_a_path(str(Path(path).expanduser().absolute()))
 
+    def remember_proxy(value: str | None) -> None:
+        """Register a supplied proxy so it never survives into a log (`NFR-007`, `T-196`).
+
+        `remember_cookie_path`'s shape, and the same argument one setting over: the shape rules in
+        `redact` catch a *credential* — `_BARE_USERINFO` — and leave the address, while yt-dlp's
+        own verbose output dumps `params:` and a `Proxy map:` that name it in full. Knowing beats
+        guessing, and this is a value the application is holding.
+
+        **Only when it is address-shaped**, which is `_proxy_literals`' rule in `core/settings.py`
+        and is stated there: registering a bare word would replace it everywhere it later appears,
+        which is `T197-R6` — a valid `browser = "edge"` made the word *edge* unreadable.
+        `remember_a_secret` rather than `remember_a_path`: a proxy is not a filesystem path, and
+        the four-byte floor is exactly the protection a non-path literal wants.
+        """
+        if value and ("://" in value or "@" in value):
+            app_logging.remember_a_secret(value)
+
+    def choose_network(options: NetworkOptions) -> None:
+        """Set the proxy, speed limit and retry count (`REQ-023`, `T-196`).
+
+        **The screen has already refused an unusable proxy**, through `proxy_refusal` — the rule
+        `DownloadRequest` is held to — so what arrives here is a `NetworkOptions` that exists,
+        which is to say one carrying no credential. There is no second validator, on purpose
+        (`T199-R3`: two routes to one setting that answer differently is the defect).
+
+        Registered before it is stored, for `choose_cookie_file`'s reason: the value can reach a
+        log, and the moment it is held is the moment to say so.
+
+        **Applied before it is saved** (`T195-R1`): `held.settings` is what the next add dialog
+        reads, so advancing it *is* the application. Nothing is handed to the manager — these
+        bind into the request when a job is queued (`ARCHITECTURE.md` §8), which is the opposite
+        of the cookies file above and is the ordinary rule rather than the exception.
+        """
+        remember_proxy(options.proxy)
+        chosen = app_settings.with_network_options(held.settings, options)
+        held.settings = chosen
+        # The bounded value, not the one that arrived: `with_network_options` may have lowered it,
+        # and a screen showing a number that is not in force is a screen that will write it back.
+        window.show_network_options(chosen.network)
+        remember(chosen, "the network options")
+
     def choose_default_preset(name: str) -> None:
         """Set the preset a new paste inherits, from the settings screen (`REQ-023`, `T-195`).
 
@@ -963,6 +1004,12 @@ def compose(
         default_cookie_browser=lambda: held.settings.cookie_browser,
         on_cookie_file_chosen=choose_cookie_file,
         on_cookie_browser_chosen=choose_cookie_browser,
+        # `T-196`: what the Settings screen opens on, what a new request inherits, and the writer.
+        # The inheritance is a callable for `default_cookie_browser`'s reason one line up — a
+        # change made in Settings has to reach the *next* paste, which a snapshot cannot do.
+        network=settings.network,
+        default_network=lambda: held.settings.network,
+        on_network_chosen=choose_network,
         ffmpeg_location=settings.ffmpeg_location,
         ffmpeg_summary=ffmpeg.summary(),
         on_ffmpeg_location_chosen=choose_ffmpeg_location,

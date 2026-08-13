@@ -20,7 +20,13 @@ from typing import Any, Final
 import pytest
 
 from tracks_and_trails.core import presets
-from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind, Preset
+from tracks_and_trails.core.models import (
+    AudioCodec,
+    DownloadRequest,
+    MediaKind,
+    NetworkOptions,
+    Preset,
+)
 
 URL = "https://example.com/watch?v=abc"
 DIRECTORY = "/downloads"
@@ -752,3 +758,40 @@ def test_retargeting_keeps_the_connection_the_job_was_queued_with() -> None:
     # And the format really did change, so this is not asserting that nothing happened.
     assert kept.media_kind is presets.AUDIO_MP3.media_kind
     assert kept.media_kind is not queued.media_kind
+
+
+def test_every_network_option_survives_a_retarget() -> None:
+    """**`T-196`.** The trio is derived from `NetworkOptions`, not restated here.
+
+    `with_connection_of` lists the fields it carries, and a list is a place to forget one — which
+    is what `T197-R4` was, one field earlier. So the expectation comes from the dataclass that
+    defines what a network option *is*: add a fourth and forget the carry, and this fails rather
+    than a user's proxy quietly disappearing when they change a row's format.
+
+    Each field is given a value distinguishable from the default, so a carry that dropped one
+    cannot pass by both sides being `None`.
+    """
+    samples: dict[str, Any] = {
+        "proxy": "http://proxy.invalid:8080",
+        "rate_limit_bytes": 4096,
+        "retries": 7,
+    }
+    carried = {field.name for field in fields(NetworkOptions)}
+    assert carried == set(samples), (
+        f"NetworkOptions has {sorted(carried)}; this test only has values for {sorted(samples)}"
+    )
+
+    queued = request_for(presets.BEST_VIDEO, **samples)
+    rebuilt = presets.to_request(
+        presets.AUDIO_MP3, url=queued.url, output_directory=queued.output_directory
+    )
+    assert all(getattr(rebuilt, name) is None for name in samples), (
+        "sanity: a request rebuilt from a preset carries no network options"
+    )
+
+    kept = presets.with_connection_of(rebuilt, queued)
+
+    dropped = {
+        name: getattr(kept, name) for name, value in samples.items() if getattr(kept, name) != value
+    }
+    assert not dropped, f"a retarget dropped network options the job was queued with: {dropped}"
