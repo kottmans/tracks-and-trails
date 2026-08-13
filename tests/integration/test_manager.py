@@ -6914,3 +6914,232 @@ def test_requires_ffmpeg_touches_no_network_and_starts_no_worker(
 
     after = {child.pid for child in psutil.Process(os.getpid()).children(recursive=True)}
     assert after <= existing_children, "asking about a preset spawned a process"
+
+
+# --- T198-R3: the exclusion held while yt-dlp's package tree changes ------------------------
+
+
+def test_the_hold_is_refused_while_a_session_is_running(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """A hold is quiescence or nothing (`T198-R3`).
+
+    Granting one over a live session would be the same defect the finding names, moved one layer
+    down: the caller would take `True` as permission to replace the very tree that worker is
+    still lazily importing extractors from.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=4 * 1024 * 1024, chunk_delay=0.02)
+    repository.add(make_job("job-1", url, tmp_path))
+
+    download = DownloadManager(repository)
+    download.start_queue()
+    try:
+        download.start("job-1")
+        assert spin(lambda: bool(download._sessions), timeout=60), "nothing ever started"
+
+        assert download.hold_worker_starts("installing yt-dlp") is False, (
+            "the tree was declared quiet while a worker was running in it"
+        )
+        assert not download.starts_are_held
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_the_hold_is_refused_while_an_automatic_retry_is_counting_down(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The set the previous correction was reading was incomplete** (`T198-R3` re-review).
+
+    `active_job_ids()` counted sessions, reservations and waiting jobs, and not `_retry_at` —
+    while `is_idle` had counted retries all along. So a queue whose only remaining work was a
+    backoff answered "nothing is active", the install was allowed, and the deadline fired into
+    the middle of it. Nobody presses anything to cause that start, which is what makes it the
+    one the update cannot see coming.
+
+    The backoff is shortened so the *rule* is measured rather than the wall clock, and the
+    assertions are made while the job is durably `FAILED` with a deadline pending — the exact
+    state the omission made invisible.
+    """
+    quick_backoff(monkeypatch, seconds=30.0)
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    download.start_queue()
+    try:
+        download.start("job-NETWORK")
+        assert spin(lambda: job_row(repository, "job-NETWORK").status is JobStatus.FAILED, 60)
+        # The session outlives its outcome; without waiting for the release, what refuses the
+        # hold would be the dying original rather than the scheduled retry.
+        assert spin(lambda: not download._sessions and not download._reserved, timeout=60)
+
+        assert not download.is_idle, "the retry was never scheduled, so this proves nothing"
+        assert download.active_job_ids() == ("job-NETWORK",), (
+            "a job counting down to an automatic retry is not reported as active, so a caller "
+            "about to replace the yt-dlp tree is told the queue is empty"
+        )
+        assert download.hold_worker_starts("installing yt-dlp") is False
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_nothing_starts_while_the_hold_is_held_and_everything_parked_starts_after(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """The hold covers **every** way a worker can begin, and releasing runs what it parked.
+
+    Four doors, and the previous correction guarded none of them because it never held anything:
+    `start()` on a running queue, `admit()`, a `Start` pressed during the operation, and the
+    tick's fill. A probe is deliberately included — the stopped-queue gate exempts one because
+    reading a URL moves no bytes, and this hold is not about bytes: a probe session is a spawned
+    child importing `yt_dlp` from the tree being replaced.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=4 * 1024 * 1024, chunk_delay=0.02)
+    for position, job_id in enumerate(("job-1", "job-2", "job-probe")):
+        repository.add(replace(make_job(job_id, url, tmp_path), queue_position=position))
+
+    download = DownloadManager(repository, concurrency=3)
+    download.start_queue()
+    try:
+        assert download.hold_worker_starts("installing yt-dlp") is True, (
+            "an idle queue refused a hold"
+        )
+        # Read into a local, then asserted: mypy narrows a property across asserts, so asserting
+        # the opposite of it later types the rest of the test as unreachable and stops it being a
+        # gate. The same idiom `test_a_manager_starts_stopped_and_runs_nothing_until_it_is_started`
+        # uses on `is_running`, and `ci.yml`'s typed-tests step is what catches it.
+        taken = download.starts_are_held
+        assert taken
+
+        download.start("job-1")
+        download.admit("job-2")
+        download.start("job-probe", kind=SessionKind.PROBE)
+        # Stopping and starting the queue during the operation is the press the reviewer
+        # reproduced: it fills every free slot immediately, which is exactly what must not
+        # happen while the tree is being written.
+        download.stop_queue()
+        download.start_queue()
+
+        # **Long enough that a queue without the hold would have started all three**, which is
+        # what makes this a negative worth asserting rather than one about a slow manager. The
+        # tick's own fill runs several times inside this window.
+        assert not spin(lambda: bool(download._sessions), timeout=3), (
+            f"the hold did not stop {sorted(download._sessions)} from spawning into a tree that "
+            "was being replaced"
+        )
+        assert set(download.active_job_ids()) == {"job-1", "job-2", "job-probe"}, (
+            "the hold dropped the work instead of parking it"
+        )
+
+        download.release_worker_starts()
+        released = download.starts_are_held
+        assert not released
+        # **Asserted before the loop is spun, on purpose.** Releasing fills the free slots *in
+        # the call*, for the reason `start_queue` and `set_concurrency` do — a tick is up to
+        # `poll_interval_ms` away, and someone who pressed Start during an update should not
+        # watch their queue sit still afterwards. Spinning first would pass against a release
+        # that merely left the work for whichever tick happened next, which is how the mutation
+        # that removes the fill survived the first version of this test.
+        assert set(download._sessions) | set(download._reserved), (
+            "releasing the hold left the parked work for the next tick instead of starting it"
+        )
+        assert spin(lambda: len(download._sessions) == 3, timeout=60), (
+            f"releasing the hold did not start what it parked: {sorted(download._sessions)}"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_retry_that_comes_due_during_the_hold_waits_for_the_release(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The start nobody presses (`T198-R3` re-review).
+
+    A backoff set before the operation began expires inside it, on the manager's own tick. The
+    hold is taken while the job is `FAILED` and its deadline has *not* yet fired — the queue is
+    quiet by every measure the caller can see — and the deadline then arrives mid-operation.
+
+    Deterministic rather than timed: the hold is taken before the backoff can expire, and the
+    wait afterwards outlives it several times over.
+    """
+    quick_backoff(monkeypatch, seconds=1.0)
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    download.start_queue()
+    try:
+        download.start("job-NETWORK")
+        assert spin(lambda: job_row(repository, "job-NETWORK").status is JobStatus.FAILED, 60)
+        assert spin(lambda: not download._sessions and not download._reserved, timeout=60)
+
+        # The queue must be *quiet* for the hold to be granted, so the retry is cleared out of
+        # the way of the acquisition and put back afterwards: what is under test is a deadline
+        # that fires during the operation, not one that blocks it from starting.
+        pending = dict(download._retry_at)
+        download._retry_at.clear()
+        assert download.hold_worker_starts("installing yt-dlp") is True
+        download._retry_at.update(pending)
+
+        assert not spin(lambda: bool(download._sessions), timeout=4), (
+            "an automatic retry started a worker in the middle of a yt-dlp update; its backoff "
+            "was set before the update began and nobody pressed anything to cause it"
+        )
+        assert job_row(repository, "job-NETWORK").status is JobStatus.QUEUED, (
+            "the retry's deadline never fired at all, so this proved nothing about the hold"
+        )
+
+        download.release_worker_starts()
+        assert spin(lambda: bool(download._sessions), timeout=60), (
+            "releasing the hold never ran the retry it had parked"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_second_hold_is_refused_while_one_is_held(tmp_path: Path) -> None:
+    """Two holders would mean the first one's exclusion ends when the second one finishes."""
+    download = DownloadManager(FakeRepository())
+    try:
+        assert download.hold_worker_starts("installing yt-dlp") is True
+        assert download.hold_worker_starts("reverting yt-dlp") is False
+        assert download.starts_are_held
+    finally:
+        download.release_worker_starts()
+        download.shutdown()
+
+
+def test_releasing_the_hold_releases_only_the_hold(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """A stopped queue is still stopped when an update finishes (`UX-001`, `UX-006`).
+
+    `release_worker_starts()` fills free slots, and a fill that ignored the run gate would turn
+    a yt-dlp update into a way of starting a queue the user had deliberately stopped.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=4 * 1024 * 1024, chunk_delay=0.02)
+    repository.add(make_job("job-1", url, tmp_path))
+
+    download = DownloadManager(repository)
+    try:
+        assert download.hold_worker_starts("installing yt-dlp") is True
+        download.start("job-1")
+        download.release_worker_starts()
+
+        assert not spin(lambda: bool(download._sessions), timeout=3), (
+            "finishing a yt-dlp update started a queue the user had never started"
+        )
+        assert download.active_job_ids() == ("job-1",), "the parked job was dropped"
+
+        download.start_queue()
+        assert spin(lambda: bool(download._sessions), timeout=60), (
+            "Start did not run what the update had parked"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)

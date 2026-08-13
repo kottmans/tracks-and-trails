@@ -273,6 +273,12 @@ class Composition:
     app: Any
     window: MainWindow
     manager: DownloadManager
+    #: yt-dlp's version service, holding this manager's workers for the length of an install or a
+    #: revert (`T-198`, `T198-R3`). Held here for the reason this class exists: *the manager is
+    #: the service's exclusion* is a claim about the object graph, and a graph nothing can reach
+    #: is a graph nothing can check. It was reachable only as a private attribute of the window,
+    #: so the one wiring that keeps a running worker's code tree stable had no assertion on it.
+    ytdlp: YtdlpService
     store: PersistentJobStore
     writer: QueueWriter
     connection: sqlite3.Connection
@@ -904,6 +910,29 @@ def compose(
             "adopted the shared thumbnail cache into this database's partition (T-180)"
         )
 
+    # **yt-dlp's version and the two actions on it** (`REQ-025`, `T-198`), built here rather than
+    # by the window because it spawns children and reaches the network — the window is handed the
+    # finished thing, exactly as it is handed the manager.
+    #
+    # It writes and reads `environment.user_ytdlp_directory()`, which is the directory
+    # `ytdlp_candidates` already resolves ahead of the bundled baseline, so an install lands where
+    # a worker was already looking (`OPS-002`).
+    #
+    # **The manager is the exclusion, and that wiring is the correctness half of `T198-R3`.** An
+    # install or a revert replaces or deletes the package tree a worker imports from, and on POSIX
+    # that succeeds by design — a worker already inside `yt_dlp` resolves its later lazy imports
+    # from whatever now sits at that path. So the service takes a hold on the manager for the whole
+    # operation, and the manager starts no worker — no admission, no Start, no tick, no automatic
+    # retry — until it is released. Passed whole rather than as a lambda: `DownloadManager`
+    # satisfies `WorkerExclusion` structurally, and an adapter here would be a third thing to get
+    # wrong. **A predicate was what the previous correction passed**, and asking a question at the
+    # moment of the press protected the press rather than the operation.
+    ytdlp = (
+        YtdlpService(directory=ytdlp_directory, exclusion=manager)
+        if ytdlp_service is None
+        else ytdlp_service
+    )
+
     window = MainWindow(
         geometry_file,
         manager=manager,
@@ -982,25 +1011,8 @@ def compose(
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
         queue=store,
-        # **yt-dlp's version and the two actions on it** (`REQ-025`, `T-198`). Built here rather
-        # than by the window because it spawns children and reaches the network — the window is
-        # handed the finished thing, exactly as it is handed the manager.
-        #
-        # It writes and reads `environment.user_ytdlp_directory()`, which is the directory
-        # `ytdlp_candidates` already resolves ahead of the bundled baseline, so an install lands
-        # where a worker was already looking (`OPS-002`).
-        ytdlp=(
-            YtdlpService(
-                directory=ytdlp_directory,
-                # `T198-R3`: an update must not replace the package tree a running worker is
-                # still lazily importing from. The manager is the only thing that knows, and
-                # `active_job_ids` is what it already answers with — running, reserved *and*
-                # waiting, which is the full set of jobs that could still start a child.
-                workers_active=lambda: bool(manager.active_job_ids()),
-            )
-            if ytdlp_service is None
-            else ytdlp_service
-        ),
+        # Built above, with the manager as its exclusion (`REQ-025`, `T-198`, `T198-R3`).
+        ytdlp=ytdlp,
         # *(A third protocol was passed here until 2026-08-06: read-only over the table `T-085`
         # wrote, for the History view that enumerated records. `REQ-020` is withdrawn, the table is
         # dropped by migration `0009`, and the argument went with them — `T-176`.)*
@@ -1114,6 +1126,7 @@ def compose(
         app=app,
         window=window,
         manager=manager,
+        ytdlp=ytdlp,
         store=store,
         writer=writer,
         connection=connection,

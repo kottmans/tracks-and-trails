@@ -119,10 +119,16 @@ this one returned four verdicts before approving.*
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
-**Status:** **In Review — Changes requested twice, 2026-08-13.** The focused re-review returned
-**`T198-R1` and `T198-R4` Resolved**; **`T198-R2` Open pending its Windows frozen execution**;
-**`T198-R3` Open** — the guard checks once and does not exclude across the operation; and a new
-**`T198-R5` Open**, which this line is part of correcting.
+**Status:** **In Review — the second round of corrections is built and awaits a verdict,
+2026-08-13.** The focused re-review returned **`T198-R1` and `T198-R4` Resolved**; **`T198-R2` Open
+pending its Windows frozen execution**; **`T198-R3` Open** — the guard checked once and did not
+exclude across the operation; and a new **`T198-R5` Open**, which this line is part of correcting.
+
+**`T198-R3` and `T198-R5` are corrected here; only the Reviewer resolves them.** `T198-R3` is now a
+hold on the manager, held for the whole install or revert, that no start — including an automatic
+retry — can get past; `T198-R5` is these records saying what is true. **`T198-R2` remains Open and
+nothing about it changed**: its Windows frozen execution is still owed, and this is the head that
+should carry it.
 
 **`T198-R5` — I recorded dispositions that are not mine to make.** This entry said all four findings
 were *"Resolved"* and that *"the reviewer confirmed"* them, while `T198-R3` was demonstrably still
@@ -213,44 +219,76 @@ import — so the child raised `ImportError: cannot import name 'CHANNEL'`, fell
 and **reported the rejection**. `ARCHITECTURE.md` §6's *reported, never silently ignored* is what
 turned a silently wrong test into a visible one. Only the `__version__` line is replaced now.
 
-**`T198-R3` (Medium) — STILL OPEN. My correction was the wrong shape, and the re-review is right.**
+**`T198-R3` (Medium) — corrected a second time, as an exclusion. Awaiting a verdict.**
 
-**A check is not an exclusion.** `install_latest_version()` and `revert()` call
-`_refuse_while_workers_run()` **once**, on the GUI thread, and then submit the real work to the
-pool. The GUI and the manager stay live through index lookup, download, extraction and the swap —
-so Start, an admission, a manager tick or an **automatic retry** can start a worker inside that
-window. The reviewer reproduced it deterministically: installation proceeded after the predicate
-had changed to active. **And `active_job_ids()` does not include scheduled retries**, so even the
-instant of the check was reading an incomplete set.
+**A check is not an exclusion, and the re-review was right about both of my attempts.** The first
+argued that the Windows rename failure was the protection — it is not a gate: Python does not keep
+every imported source file open, and **the POSIX path succeeds by design**, so a worker that has
+already imported `yt_dlp` resolves its *later* lazy imports, extractors included, from whatever now
+sits at that path. The second asked a `workers_active()` predicate **once**, on the GUI thread, and
+then submitted the real work to the pool: index lookup, download, extraction and the swap all ran
+with the queue live behind them, so Start, an admission, a tick or an **automatic retry** could
+spawn a worker inside the window. The reviewer reproduced exactly that. **And `active_job_ids()`
+did not include scheduled retries**, so even the instant of the check read an incomplete set.
 
-**What it needs**, from the reviewer's own words: hold an exclusion across the *entire*
-install/revert operation, prevent new worker starts — **including retries** — until it is released,
-and add composed start-during-update evidence. That is a change to the manager's start paths, not
-to the service's button handler. **Not attempted here.**
+**What is there now is a hold with a lifetime, and it lives on the manager.**
+`DownloadManager.hold_worker_starts(reason)` grants only when `active_job_ids()` is empty and then
+**stops every start until `release_worker_starts()`** — `start()`, `admit()`, `_start_when_free`
+and the tick's `_fill_free_slots` all park instead of spawning. **A probe is not exempt**: the
+stopped-queue gate lets one through because reading a URL moves no bytes, and this hold is not
+about bytes — a probe session is a child importing `yt_dlp` from the tree being replaced. Releasing
+fills the free slots immediately, so the work the hold parked runs at once rather than on the next
+tick, and it releases **only** this hold: a queue the user had stopped is still stopped afterwards.
 
-*(The reasoning below is retained because it was right about the mechanism and wrong about the
-remedy — the platform rename behaviour genuinely is not a gate.)*
-I had argued the Windows rename failure was the protection. It is not a gate: Python does not keep
-every imported source file open, and **the POSIX path succeeds by design** — so a worker that has
-already imported `yt_dlp` resolves its *later* lazy imports, and yt-dlp loads extractors on demand,
-from whatever now sits at that path. A revert makes that a missing import rather than a mixed one.
+**`active_job_ids()` now counts `_retry_at`**, which `is_idle` had counted all along. The two
+disagreed about the same state, and the disagreement was load-bearing: the caller asking *"is
+anything going to start a child"* is the one about to replace the tree those children import from,
+and a queue whose only remaining work was a backoff answered *"no"*.
 
-`YtdlpService` takes a `workers_active` predicate and refuses install and revert when a worker is
-active **at the moment of the press** — which is the part the re-review found insufficient. Composition
-supplies `manager.active_job_ids` — running, reserved *and* waiting, which is the full set that
-could still start a child. **A version check is never refused**: reading is not writing, and
-`REQ-025` promises the version is always shown. Four regressions, including one that the guard is
-re-read rather than cached.
+**The service holds for the whole operation.** `YtdlpService` takes a `WorkerExclusion` — two
+methods, so it still knows nothing about queues — and takes the hold **before** anything is
+scheduled, releasing it in the two places every outcome arrives at. **Failure releases too**: an
+install that raises and leaves the queue permanently unable to start would be a worse defect than
+the one the hold prevents. **Busy is checked before the hold**, so a second operation refused while
+the first runs cannot give away the first one's exclusion. **A version check never holds and is
+never refused**: reading is not writing, and `REQ-025` promises the version is always shown.
+
+**Composition passes the manager itself**, which `DownloadManager` satisfies structurally — an
+adapter would be a third thing to get wrong — and `Composition` now carries the service, because
+*the manager is the service's exclusion* is a claim about the object graph and it was reachable
+only as a private attribute of the window.
+
+**The evidence is the start-during-update case, driven on the composed application.** A durable row
+is queued, composition's own service begins an install that blocks on an event the test owns, and
+**the user's own Start is pressed while it is provably mid-flight**: no child is spawned, the press
+is parked rather than dropped, and the download runs once the install finishes. Six manager
+regressions cover the hold itself — refused over a running session, refused over a counting-down
+retry, four doors held at once, a retry that comes due *inside* the operation, a second hold
+refused, and a release that does not start a stopped queue.
 
 **`T198-R4` (Low) — Resolved.** The count was **415**, not 414. The figure was measured before the
 last composition regression was added and never re-measured — a number that was true of an earlier
 tree, reported of this one. Corrected here and in `ai/STATUS.md`.
 
-**Figures for the corrections**, exit codes checked rather than summary lines read: `ruff check`,
-`ruff format --check .` and all three `mypy` gates clean; `tests/unit` + `tests/ui` **2830 passed,
-18 skipped**; `tests/integration` **420 passed**. *(420 rather than 415 because this round adds the
-post-update download and the four guard regressions; the unit count rises again with the layering
-cases for `downloader/ytdlp_resolution.py`.)*
+**Figures for the second correction (`T198-R3`, `T198-R5`)**, exit codes checked rather than
+summary lines read: `ruff check .`, `ruff format --check .` (**177 files**), `mypy src` (**55**),
+bare `mypy` (**139**) and `mypy --platform win32 src` all clean; `tests/unit` + `tests/ui`
+**2830 passed, 18 skipped**; `tests/integration` **430 passed** — 420 plus this round's ten: six
+manager regressions on the hold, three more on the service's lifetime, and the composed
+start-during-update case.
+
+**Ten mutations, nine of which fail their evidence.** The two that survived the first sweep are
+worth the space. **The release-time fill survived** because the tick would have started the parked
+work a moment later, so the test now asserts the session exists *before* the loop is spun — a
+release that merely leaves the work for the next tick fails it. **`_start_when_free`'s hold guard
+survives alone and always will**: the start falls through to `start()`'s guard and is parked there
+instead. Removing `start()`'s alone is caught, removing **both** is caught, and neither is
+individually load-bearing — the same measurement `T-181` recorded for the stopped-queue gate, now
+written in the docstring so nobody deletes one on the grounds that the suite stays green.
+
+*(Round one's figures, for comparison: `tests/integration` **420 passed** — 415 plus that round's
+post-update download and four guard regressions, with the unit count rising for the layering cases
+`downloader/ytdlp_resolution.py` brought.)*
 
 **`T198-R2` (High) — corrected; the reviewer confirms Linux and holds it Open for Windows.**
 A fresh PyInstaller 6.22.0 artifact at `fa3cb50` ran the probe green independently — baseline,
@@ -353,7 +391,7 @@ are equal; removing the manager's argument fails it.
 | 2 | Updating changes the reported version, proved through the worker | **Met after `T198-R1`** — install through the real updater, then a **real download** through spawned workers reporting the stamped version |
 | 3 | Reverting restores the baseline | **Met** — the same test's third reading |
 | 4 | Works the same in the frozen artifact, or says why not | **Met on Linux; Windows pending — `T198-R2` Open.** The reviewer built a fresh PyInstaller 6.22.0 artifact at `fa3cb50` and ran the probe green, and accepted the in-memory index as a legitimate deterministic substitute for PyPI. **The Windows frozen job has never executed it** |
-| 5 | A failed update leaves the working version in place and reports | **Met** — eight failure modes, each asserting the previous copy survives |
+| 5 | A failed update leaves the working version in place and reports | **Met** — eight failure modes, each asserting the previous copy survives; a failure also hands the workers back (`T198-R3`) |
 | 6 | Nothing leaks a token, an index URL or a path into a log | **Met** — every raisable failure swept in one test, plus the resolution fields |
 
 **Gates, exit codes checked rather than summary lines read:** `ruff check` and `ruff format --check
@@ -366,10 +404,11 @@ composition's directory.
 
 **Not built, deliberately:** a progress bar for the download. The wheel is ~3 MB and the button
 already says `Working…`; a progress surface for a three-second transfer is a second state to keep
-true. **Not built, and it needs a ruling:** nothing refuses an update while downloads are running.
-The install reports and recovers if the directory is busy — which is the Windows failure mode — but
-whether the action should be disabled with the queue running is a product choice this entry does not
-take.
+true. **Not built, and it still needs a ruling:** whether the update *buttons* should be disabled
+while the queue is running. `T198-R3` closed the correctness half — the manager holds every start
+for the length of the operation, and an update attempted over live work is refused with the reason
+— but whether the screen should also grey the action out before it is pressed is the product choice
+the reviewer's record calls a product choice, and this entry does not take it.
 
 ## Complete
 

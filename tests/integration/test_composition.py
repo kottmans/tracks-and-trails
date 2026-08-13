@@ -31,6 +31,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Iterator
 from io import StringIO
@@ -1042,16 +1043,128 @@ def test_the_updater_writes_where_the_manager_tells_workers_to_look(
     different one.
     """
     from tracks_and_trails.downloader.environment import user_ytdlp_directory
-    from tracks_and_trails.downloader.ytdlp_service import YtdlpService
 
     composition = composed(ytdlp_service=None)
-    service = composition.window._ytdlp
-    assert isinstance(service, YtdlpService)
+    service = composition.ytdlp
 
+    assert service is composition.window._ytdlp, "the window was handed a different service"
     assert service.directory == composition.manager._user_ytdlp_directory, (
         "an update would be installed where no worker resolves it"
     )
     assert service.directory == user_ytdlp_directory()
+
+
+def test_a_start_during_an_update_spawns_nothing_until_the_update_has_finished(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**`T198-R3`, at the seam the finding is about: the composed manager and service.**
+
+    An install replaces the yt-dlp package tree a worker imports from, and on POSIX that
+    replacement succeeds by design — a worker already inside `yt_dlp` resolves its *later* lazy
+    imports, extractors included, from whatever now sits at that path. So the whole operation has
+    to exclude worker starts, not merely begin with a question about them.
+
+    The previous correction asked `workers_active()` once on the GUI thread and then submitted
+    the real work to a pool, leaving seconds in which the GUI stayed live. The reviewer
+    reproduced exactly that: the predicate went from false to true between the guard and the
+    work, and the install proceeded regardless. **Here the press is the user's own Start**, made
+    while the install is provably mid-flight, and the assertion is that no child is spawned until
+    it ends.
+
+    **Deterministic rather than timed.** The install blocks on an event this test owns, so the
+    window it asserts inside is one the test opens and closes rather than one it hopes to catch;
+    the negative is then given three seconds, which is many times what an unheld queue needs to
+    spawn — the same shape `test_an_offline_launch_leaves_the_durable_queue_held` uses.
+
+    **Everything else is the production path**: composition's own service, composition's own
+    manager, the real hold. Two substitutions, both offline: the wheel is not fetched — this is
+    not about installing — and the version is not re-asked from a spawned child, because the
+    child would import the tree this test never writes.
+    """
+    from tracks_and_trails.downloader import ytdlp_service as ytdlp_service_module
+    from tracks_and_trails.downloader.ytdlp_update import Release
+
+    database = tmp_path / "update-during-start.sqlite3"
+    connection = db.connect(database)
+    request = DownloadRequest(
+        url="https://composed.invalid/queued-before-the-update",
+        output_directory=str(tmp_path / "downloads"),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+    JobRepository(connection).append(
+        [Job(id="queued-1", url=request.url, request=request, queue_position=0)]
+    )
+    connection.close()
+
+    release = Release(
+        version="9000.1.1",
+        url="https://files.invalid/yt_dlp-9000.1.1-py3-none-any.whl",
+        digest="0" * 64,
+        filename="yt_dlp-9000.1.1-py3-none-any.whl",
+    )
+    installing = threading.Event()
+    let_it_finish = threading.Event()
+
+    def install(directory: Path, *, release: Release) -> Release:
+        installing.set()
+        assert let_it_finish.wait(timeout=60.0), "the test never released the install"
+        return release
+
+    monkeypatch.setattr(ytdlp_service_module, "latest_release", lambda: release)
+    monkeypatch.setattr(ytdlp_service_module, "install_latest", install)
+    monkeypatch.setattr(
+        ytdlp_service_module,
+        "resolve_in_a_child",
+        lambda directory, **_: Resolution(version="9000.1.1", source="user-managed copy (OPS-002)"),
+    )
+
+    composition = composed(
+        database=database, entry_point=child_probing_then_waiting, ytdlp_service=None
+    )
+    manager = composition.manager
+    reported: list[Any] = []
+    problems: list[str] = []
+    composition.ytdlp.reported.connect(reported.append)
+    composition.ytdlp.failed.connect(problems.append)
+
+    try:
+        composition.ytdlp.install_latest_version()
+        assert spin(installing.is_set, timeout=60), "the install never began"
+        assert not problems, f"the install was refused on an idle queue: {problems}"
+        # Read into a local for the reason `concurrency_control`'s callers do: mypy narrows a
+        # property across asserts, so asserting the opposite later types the rest of this test
+        # as unreachable and it stops being a gate.
+        holding = manager.starts_are_held
+        assert holding, (
+            "the composed service is not holding the composed manager; an install is running "
+            "against a queue that is free to spawn workers into the tree it is replacing"
+        )
+
+        # The press. Start on a stopped queue fills every free slot immediately — which is the
+        # whole point of `start_queue` and exactly what must not happen here.
+        manager.start_queue()
+
+        assert not spin(lambda: bool(manager._sessions), timeout=3), (
+            f"a worker ({sorted(manager._sessions)}) was spawned in the middle of a yt-dlp "
+            "install; it would import extractors from a directory being replaced under it"
+        )
+        assert manager.active_job_ids() == ("queued-1",), (
+            "the Start was dropped rather than parked, so the user's press is lost"
+        )
+    finally:
+        let_it_finish.set()
+
+    assert spin(lambda: bool(reported), timeout=60), f"the install never finished: {problems}"
+    assert not problems, f"the install failed: {problems}"
+    handed_back = manager.starts_are_held
+    assert not handed_back, "the finished install kept the workers held"
+    assert spin(lambda: shown_status(composition, "queued-1") is JobStatus.RUNNING, timeout=60), (
+        "the download the update had parked never ran afterwards"
+    )
 
 
 # --- 4. shutdown (`T013-R2`, `T038-R2`, `ARC-005`) --------------------------------------------

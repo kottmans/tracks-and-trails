@@ -16,6 +16,7 @@ here is the *resolution*, not the download.
 import hashlib
 import io
 import json
+import threading
 import time
 import zipfile
 from collections.abc import Iterator
@@ -26,6 +27,7 @@ from typing import IO, Any
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from tracks_and_trails.downloader import ytdlp_service as service_module
 from tracks_and_trails.downloader.environment import (
     BASELINE_YTDLP_VERSION,
     normalise_version,
@@ -33,6 +35,7 @@ from tracks_and_trails.downloader.environment import (
 from tracks_and_trails.downloader.ytdlp_service import (
     Resolution,
     ResolutionUnavailableError,
+    UpdateError,
     YtdlpService,
     resolve_in_a_child,
 )
@@ -282,6 +285,42 @@ def test_a_second_operation_is_refused_while_one_is_running(qapp: Any, tmp_path:
     )
 
 
+class RecordingExclusion:
+    """A stand-in for whatever owns the workers, recording the hold's **lifetime** (`T198-R3`).
+
+    Not a manager: what these tests are about is when the service takes the hold and when it
+    gives it back, which is a claim about this class and not about queues.
+    `test_composition.py`'s start-during-update regression drives the real manager, and
+    `test_manager.py` proves the hold actually stops a start.
+    """
+
+    def __init__(self, *, grants: bool = True) -> None:
+        self.grants = grants
+        self.held = False
+        self.events: list[str] = []
+
+    def hold_worker_starts(self, reason: str) -> bool:
+        self.events.append(f"hold:{reason}")
+        if not self.grants:
+            return False
+        assert not self.held, "the hold was taken twice; a second holder would release the first"
+        self.held = True
+        return True
+
+    def release_worker_starts(self) -> None:
+        self.events.append("release")
+        self.held = False
+
+
+def _settles(finished: list[Any], problems: list[str]) -> bool:
+    """Spin the loop until the service has ended its operation one way or the other."""
+    deadline = time.monotonic() + 30.0
+    while not finished and not problems and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    return bool(finished or problems)
+
+
 def test_an_install_is_refused_while_workers_could_still_be_using_the_tree(
     qapp: Any, tmp_path: Path
 ) -> None:
@@ -293,12 +332,14 @@ def test_an_install_is_refused_while_workers_could_still_be_using_the_tree(
     imported `yt_dlp` resolves its later lazy imports (yt-dlp loads extractors on demand) from
     whatever now sits at that path. A revert makes that a missing import instead of a mixed one.
 
-    So the guard is a refusal, not a rename that might fail.
+    So the guard is a refusal, not a rename that might fail — and a refusal to *hold*, not an
+    answer to a question asked once.
     """
+    exclusion = RecordingExclusion(grants=False)
     service = YtdlpService(
         directory=tmp_path / "ytdlp",
         entry_point=_reports_a_version,
-        workers_active=lambda: True,
+        exclusion=exclusion,
     )
     problems: list[str] = []
     service.failed.connect(problems.append)
@@ -307,6 +348,9 @@ def test_an_install_is_refused_while_workers_could_still_be_using_the_tree(
 
     assert problems and "Stop the queue" in problems[0]
     assert service.busy is False, "a refused operation should not leave the screen disabled"
+    assert exclusion.events == ["hold:installing yt-dlp"], (
+        f"a hold that was never granted was released anyway: {exclusion.events}"
+    )
 
 
 def test_a_revert_is_refused_while_workers_could_still_be_using_the_tree(
@@ -316,7 +360,9 @@ def test_a_revert_is_refused_while_workers_could_still_be_using_the_tree(
     directory = tmp_path / "ytdlp"
     (directory / "yt_dlp").mkdir(parents=True)
     service = YtdlpService(
-        directory=directory, entry_point=_reports_a_version, workers_active=lambda: True
+        directory=directory,
+        entry_point=_reports_a_version,
+        exclusion=RecordingExclusion(grants=False),
     )
     problems: list[str] = []
     service.failed.connect(problems.append)
@@ -327,13 +373,11 @@ def test_a_revert_is_refused_while_workers_could_still_be_using_the_tree(
     assert (directory / "yt_dlp").is_dir(), "the tree was removed underneath a running worker"
 
 
-def test_the_guard_is_re_read_rather_than_cached(qapp: Any, tmp_path: Path) -> None:
+def test_the_hold_is_asked_for_again_rather_than_remembered(qapp: Any, tmp_path: Path) -> None:
     """A queue that was idle when the screen opened is not one that is idle when it is pressed."""
-    active = {"value": True}
+    exclusion = RecordingExclusion(grants=False)
     service = YtdlpService(
-        directory=tmp_path / "ytdlp",
-        entry_point=_reports_a_version,
-        workers_active=lambda: active["value"],
+        directory=tmp_path / "ytdlp", entry_point=_reports_a_version, exclusion=exclusion
     )
     problems: list[str] = []
     finished: list[Any] = []
@@ -343,23 +387,137 @@ def test_the_guard_is_re_read_rather_than_cached(qapp: Any, tmp_path: Path) -> N
     service.revert()
     assert problems, "the first attempt should have been refused"
 
-    active["value"] = False
+    exclusion.grants = True
     service.revert()
 
-    deadline = time.monotonic() + 30.0
-    while not finished and time.monotonic() < deadline:
-        QApplication.processEvents()
-        time.sleep(0.01)
-    assert finished, "the second attempt was refused after the queue went idle"
+    assert _settles(finished, problems[1:]), "the second attempt never settled"
+    assert finished, f"the second attempt was refused after the queue went idle: {problems}"
 
 
-def test_a_version_check_is_never_refused(qapp: Any, tmp_path: Path) -> None:
+def test_the_workers_are_held_for_the_whole_operation_and_handed_back_at_its_end(
+    qapp: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The finding, stated as an interval rather than an instant** (`T198-R3` re-review).
+
+    The previous correction asked a `workers_active()` predicate once, on the GUI thread, and
+    then submitted the real work to the pool — so the index lookup, the download, the extraction
+    and the swap all ran with the queue live behind them. What is asserted here is that the tree
+    is still held **while the operation's own body is executing**, which is the window a start
+    would land in, and released only once the whole thing — including the re-resolution that
+    follows it — has finished.
+
+    The observation is taken inside the patched operation, on the pool thread, because that is
+    the only place that can distinguish "held around the call" from "held for the operation".
+    """
+    exclusion = RecordingExclusion()
+    during: list[bool] = []
+
+    def slow_revert(directory: Path) -> bool:
+        during.append(exclusion.held)
+        return True
+
+    monkeypatch.setattr(service_module, "revert_to_baseline", slow_revert)
+    service = YtdlpService(
+        directory=tmp_path / "ytdlp", entry_point=_reports_a_version, exclusion=exclusion
+    )
+    problems: list[str] = []
+    finished: list[Any] = []
+    service.failed.connect(problems.append)
+    service.reported.connect(finished.append)
+
+    service.revert()
+    assert exclusion.held, "the hold was not taken before the work was scheduled"
+
+    assert _settles(finished, problems), "the operation never settled"
+    assert not problems, f"the operation failed instead: {problems}"
+    assert during == [True], (
+        "the tree was not held while the operation ran; a worker starting here would import "
+        "from a directory being replaced"
+    )
+    assert exclusion.events == ["hold:reverting yt-dlp", "release"]
+    assert not exclusion.held, "the workers were never handed back"
+
+
+def test_an_operation_that_fails_hands_the_workers_back(
+    qapp: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A queue that can never start again is a worse defect than the one the hold prevents.
+
+    Every escape from `_Task.run` arrives at one place, and it is the same place a success
+    arrives at, so this holds for a failed download, a bad digest and an unwritable directory
+    alike.
+    """
+    exclusion = RecordingExclusion()
+
+    def unusable(directory: Path) -> bool:
+        raise UpdateError("the wheel could not be read")
+
+    monkeypatch.setattr(service_module, "revert_to_baseline", unusable)
+    service = YtdlpService(
+        directory=tmp_path / "ytdlp", entry_point=_reports_a_version, exclusion=exclusion
+    )
+    problems: list[str] = []
+    finished: list[Any] = []
+    service.failed.connect(problems.append)
+    service.reported.connect(finished.append)
+
+    service.revert()
+    assert _settles(finished, problems), "the failure never arrived"
+
+    assert problems == ["the wheel could not be read"]
+    assert exclusion.events == ["hold:reverting yt-dlp", "release"]
+    assert not exclusion.held, "a failed operation left the queue unable to start anything"
+    assert service.busy is False
+
+
+def test_a_second_operation_cannot_release_the_first_ones_hold(
+    qapp: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The busy check comes **before** the hold, and this is what that ordering is for.
+
+    A revert refused while an install is running must not hand back the workers the install is
+    relying on. Ordered the other way round, the refusal would release a hold it never took and
+    the install would finish its swap against a queue that had started again.
+    """
+    exclusion = RecordingExclusion()
+    let_it_finish = threading.Event()
+
+    def waits(directory: Path) -> bool:
+        assert let_it_finish.wait(timeout=30.0), "the test never released the blocked operation"
+        return True
+
+    monkeypatch.setattr(service_module, "revert_to_baseline", waits)
+    service = YtdlpService(
+        directory=tmp_path / "ytdlp", entry_point=_reports_a_version, exclusion=exclusion
+    )
+    problems: list[str] = []
+    finished: list[Any] = []
+    service.failed.connect(problems.append)
+    service.reported.connect(finished.append)
+
+    try:
+        service.revert()
+        service.revert()
+
+        assert problems == ["Another yt-dlp operation is still running."]
+        assert exclusion.held, "the refused second operation gave away the first one's hold"
+        assert exclusion.events == ["hold:reverting yt-dlp"]
+    finally:
+        let_it_finish.set()
+
+    assert _settles(finished, problems[1:]), "the first operation never finished"
+    assert not exclusion.held, "the first operation kept the workers after finishing"
+
+
+def test_a_version_check_never_holds_the_workers(qapp: Any, tmp_path: Path) -> None:
     """Reading is not writing. `refresh` spawns a child that imports; it changes no tree, so a
-    running queue is no reason to refuse the one thing `REQ-025` promises is always shown."""
+    running queue is no reason to refuse the one thing `REQ-025` promises is always shown — and
+    no reason to stop the queue starting anything while it is answered."""
+    exclusion = RecordingExclusion(grants=False)
     service = YtdlpService(
         directory=tmp_path / "ytdlp",
         entry_point=_reports_a_version,
-        workers_active=lambda: True,
+        exclusion=exclusion,
     )
     problems: list[str] = []
     finished: list[Any] = []
@@ -368,9 +526,7 @@ def test_a_version_check_is_never_refused(qapp: Any, tmp_path: Path) -> None:
 
     service.refresh()
 
-    deadline = time.monotonic() + 30.0
-    while not finished and not problems and time.monotonic() < deadline:
-        QApplication.processEvents()
-        time.sleep(0.01)
+    assert _settles(finished, problems), "the version check never settled"
     assert not problems, f"a read-only version check was refused: {problems}"
     assert finished
+    assert exclusion.events == [], "a version check held the workers"

@@ -623,6 +623,17 @@ class DownloadManager(QObject):
         #: flight, and a boolean cleared by the first callback reopens the admission window while
         #: the second is still running.
         self._reorders_in_flight = 0
+        #: Why no worker may start, while something is changing the tree they import from
+        #: (`T198-R3`). `None` means nothing is held.
+        #:
+        #: **A hold, not a check.** The first correction asked the manager a question at the moment
+        #: the button was pressed and then let an install run for seconds against a live queue, so
+        #: a Start, an admission, a tick or an **automatic retry** could spawn a worker inside the
+        #: window. Held state is the only shape that covers an interval rather than an instant.
+        #:
+        #: A string rather than a flag because a refusal is a sentence somebody reads, and because
+        #: a holder that cannot say who it is cannot be diagnosed from a log.
+        self._starts_held_for: str | None = None
         self._shutting_down = False
         self._shutdown_deadline: float | None = None
         # The log listener's ending, which `idle` now waits on (`T038-R2`). Three states rather
@@ -731,6 +742,67 @@ class DownloadManager(QObject):
         # so a stop/start cycle does not re-admit what is already running.
         self._admit_held_for_start()
         self._fill_free_slots()
+
+    # --- the exclusion held while yt-dlp's tree changes (`T198-R3`) ----------------------
+
+    @property
+    def starts_are_held(self) -> bool:
+        """Whether a tree-changing operation currently forbids every worker start."""
+        return self._starts_held_for is not None
+
+    def hold_worker_starts(self, reason: str) -> bool:
+        """Take the tree quiet, and keep it quiet until `release_worker_starts()` (`T198-R3`).
+
+        **The caller of this is whatever is about to replace or delete the yt-dlp package tree a
+        worker imports from.** On POSIX that replacement succeeds by design, so a worker that has
+        already imported `yt_dlp` resolves its *later* lazy imports — yt-dlp loads extractors on
+        demand — from whatever now sits at that path. That is a mixed-version import, and a revert
+        makes it a missing one. Platform rename behaviour is not a gate; this is.
+
+        `True` means two things, and both of them are required for the operation to be safe:
+
+        1. **Nothing is active now.** `active_job_ids()` is empty — no session, no reservation, no
+           job waiting for a slot, and no automatic retry counting down.
+        2. **Nothing will become active** until the hold is released. Every path that spawns a
+           worker parks instead: `start()`, `admit()`, `_start_when_free`, the tick's fill, and a
+           retry whose backoff expires mid-operation.
+
+        `False` means the caller must not touch the tree. **It is a refusal, not a wait**: the
+        operation belongs to a button somebody pressed, and blocking the GUI thread until a queue
+        drains is the freeze `NFR-001` forbids.
+
+        **Not re-entrant.** A second holder would release the first one's exclusion when it
+        finished, which is exactly the interval this exists to protect.
+
+        Read every time rather than answered from a cached predicate: a queue that was idle when
+        the settings screen opened is not a queue that is idle when the button is pressed.
+        """
+        if self._starts_held_for is not None or self.active_job_ids():
+            return False
+        self._starts_held_for = reason
+        return True
+
+    def release_worker_starts(self) -> None:
+        """Let workers start again, and start whatever the hold parked (`T198-R3`).
+
+        **Called on success *and* on failure**, which is why the service that takes the hold
+        releases it from the one place both outcomes reach. An install that raises and leaves the
+        queue permanently unable to start is a worse defect than the one the hold prevents.
+
+        Filling here rather than waiting for a tick, for `start_queue`'s reason: a tick is up to
+        `poll_interval_ms` away, and a user who pressed Start during an update should not watch
+        their queue sit still afterwards. `_fill_free_slots` re-applies the stopped-queue gate and
+        the reorder barrier, so releasing this hold releases *only* this hold.
+
+        Idempotent: releasing a hold nobody took is not an error, and a caller that has already
+        been told its operation failed should not have to remember whether it got as far as
+        holding.
+        """
+        if self._starts_held_for is None:
+            return
+        self._starts_held_for = None
+        if not self._shutting_down:
+            self._fill_free_slots()
 
     # --- removal (`UX-001`) -------------------------------------------------------------
 
@@ -979,12 +1051,12 @@ class DownloadManager(QObject):
         return self._gave_up_on_logging
 
     def active_job_ids(self) -> tuple[str, ...]:
-        """Every job this manager is holding: running, reserved, **or waiting for a slot**.
+        """Every job this manager is holding: running, reserved, waiting, **or retrying**.
 
-        Sorted so the answer does not depend on which of the three collections an id happens to be
-        in — a caller that saw a job appear, vanish, and reappear as its start became a session
-        would be watching bookkeeping rather than the job (`T016-R3`). A set first, so an id that
-        is briefly in two collections is reported once.
+        Sorted so the answer does not depend on which of the collections an id happens to be in — a
+        caller that saw a job appear, vanish, and reappear as its start became a session would be
+        watching bookkeeping rather than the job (`T016-R3`). A set first, so an id that is briefly
+        in two collections is reported once.
 
         Waiting jobs count because this manager has **accepted** them (`T078-R1`). They are the
         same commitment a reservation is, one step earlier: nobody else will start them, they are
@@ -992,10 +1064,21 @@ class DownloadManager(QObject):
         question the waiting list is part of the answer to. Leaving them out made the method
         contradict its own first sentence.
 
-        **This is not the occupancy count.** A waiting job holds no slot, so capacity and the
-        diagnostics about capacity use `_occupant_ids()` instead.
+        **A job counting down to an automatic retry counts for the same reason** (`T198-R3`).
+        `is_idle` has always included `_retry_at` — it is work this manager will begin, on a
+        deadline it set itself — and this method did not, so the two disagreed about the same
+        state. That disagreement was load-bearing rather than untidy: the caller that asks "is
+        anything going to start a child" is the one about to replace the package tree those
+        children import from, and a queue whose only remaining work was a backoff answered "no".
+
+        **This is not the occupancy count.** A waiting or retrying job holds no slot, so capacity
+        and the diagnostics about capacity use `_occupant_ids()` instead.
         """
-        return tuple(sorted(set(self._sessions) | set(self._reserved) | set(self._waiting)))
+        return tuple(
+            sorted(
+                set(self._sessions) | set(self._reserved) | set(self._waiting) | set(self._retry_at)
+            )
+        )
 
     def _occupant_ids(self, kind: SessionKind | None = None) -> tuple[str, ...]:
         """The jobs holding a slot — running sessions and reservations, never waiting jobs.
@@ -1390,7 +1473,16 @@ class DownloadManager(QObject):
         # **The PROBE exemption is explicit and applies to both rules.** A metadata probe is not
         # queue work waiting for a slot — it neither depends on `queue_position` nor changes it —
         # and refusing it silently hangs the add dialog on "Probing ...".
-        if kind is SessionKind.DOWNLOAD and (not self._running or self._reorders_in_flight):
+        #
+        # **The hold is the third rule, and it exempts nothing** (`T198-R3`). The stopped-queue
+        # gate lets a probe through because reading a URL moves no bytes; the hold is not about
+        # bytes. A probe session is a spawned child that imports `yt_dlp` from the very tree the
+        # holder is replacing, so a probe started here is precisely the mixed-version import the
+        # hold exists to prevent. Parked rather than refused, for the gate's reason: the intent is
+        # good, only the moment is wrong, and `release_worker_starts()` fills from the same list.
+        if self._starts_held_for is not None or (
+            kind is SessionKind.DOWNLOAD and (not self._running or self._reorders_in_flight)
+        ):
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
             self._intended_kind[job_id] = kind
@@ -1982,8 +2074,13 @@ class DownloadManager(QObject):
         other lane with two: a probe sitting behind three running downloads would wait for a
         download to finish, which is the delay `UX-003` exists to remove. It now takes the next
         job *that can start*, and ends when no waiting job can.
+
+        **Nothing is filled while a tree change holds the starts** (`T198-R3`). This is the path
+        the tick, `set_concurrency` and `start_queue` share, so one guard here covers all three —
+        and `release_worker_starts()` calls it, which is what makes the parked work run the moment
+        the update ends rather than on whichever tick happens next.
         """
-        if self._shutting_down or self._reorders_in_flight:
+        if self._shutting_down or self._reorders_in_flight or self._starts_held_for is not None:
             return
         while True:
             job_id = self._next_startable()
@@ -2054,11 +2151,26 @@ class DownloadManager(QObject):
         mutated each in turn and the suite stayed green either way; only removing both let a
         stopped queue run a retry. Neither is redundant — they cover different entry points — but
         neither is individually load-bearing, and a test cannot prove one of them alone.
+
+        **A held tree parks it too, and here that covers the retry** (`T198-R3`). This is the path
+        `_perform_due_retries` takes when a backoff expires, which is the one start an update
+        cannot see coming: nobody pressed anything, and the deadline was set before the update
+        began. Parking it keeps the job accepted — it is still in `active_job_ids()` — and
+        `release_worker_starts()` runs it when the tree is stable again.
+
+        **The hold's two guards behave exactly like the gate's, and that was measured rather than
+        assumed.** Removing this one alone changes nothing observable: the start falls through to
+        `_start_or_report`, meets `start()`'s hold guard, and is parked there instead. Removing
+        `start()`'s alone is caught. **Only removing both lets a worker spawn into an update** —
+        so this line is defence in depth at a second entry point, not the load-bearing one, and a
+        test cannot prove it by itself. Said here because the same sentence about the gate above
+        is what stopped somebody deleting *that* pair on the grounds that the suite stayed green.
         """
         if self._shutting_down:
             return
         if (
-            self._gate_blocks(kind)
+            self._starts_held_for is not None
+            or self._gate_blocks(kind)
             or self._reorders_in_flight
             or self._holds(job_id)
             or not self._has_capacity(kind)

@@ -31,7 +31,7 @@ alive; when the screen goes away Qt severs the connections and a late result goe
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
@@ -64,6 +64,30 @@ def _pool() -> QThreadPool:
         _SHARED_POOL = QThreadPool()
         _SHARED_POOL.setMaxThreadCount(_POOL_THREADS)
     return _SHARED_POOL
+
+
+class WorkerExclusion(Protocol):
+    """Whatever owns the workers, seen through the two calls an update needs (`T198-R3`).
+
+    **A hold with a lifetime, not a question with an answer.** The first correction injected a
+    `workers_active()` predicate and asked it once, on the GUI thread, before submitting the real
+    work to the pool — so index lookup, download, extraction and the swap all ran with the queue
+    live behind them, and a Start, an admission, a tick or an automatic retry could spawn a worker
+    into the middle of it. A predicate can only describe an instant; an operation occupies an
+    interval, and the interval is what has to be protected.
+
+    Two methods rather than a manager reference, so this module still knows nothing about queues,
+    statuses or slots. `DownloadManager` satisfies it structurally and composition passes it
+    directly — nothing adapts, so there is no adapter to be wired wrongly.
+    """
+
+    def hold_worker_starts(self, reason: str) -> bool:
+        """Stop every worker start until released. `False` if work is active and it cannot."""
+        ...
+
+    def release_worker_starts(self) -> None:
+        """Let workers start again, and start whatever the hold parked."""
+        ...
 
 
 class _Sink(QObject):
@@ -132,11 +156,12 @@ class YtdlpService(QObject):
         parent: QObject | None = None,
         *,
         entry_point: Callable[..., Any] | None = None,
-        workers_active: Callable[[], bool] | None = None,
+        exclusion: WorkerExclusion | None = None,
     ) -> None:
         super().__init__(parent)
         self._directory = user_ytdlp_directory() if directory is None else directory
-        #: Whether any worker could still be importing from the tree this writes (`T198-R3`).
+        #: Who to ask for the tree to be left alone, for as long as this is writing it
+        #: (`T198-R3`).
         #:
         #: **Keeping a running worker's code tree stable is a correctness requirement**, and it
         #: cannot be left to platform rename behaviour: on POSIX the rename succeeds by design, so
@@ -144,13 +169,18 @@ class YtdlpService(QObject):
         #: loads extractors on demand — from whatever now sits at that path. That is a
         #: mixed-version import, and a revert makes it a missing one.
         #:
-        #: The first version of this reasoned from `_swap_into_place` failing on Windows when the
-        #: directory is held open. That is not a gate: Python does not keep every imported source
-        #: file open, and the POSIX path never fails at all.
+        #: Two corrections landed here before this one, and both were the wrong shape. The first
+        #: reasoned from `_swap_into_place` failing on Windows when the directory is held open —
+        #: not a gate, because Python does not keep every imported source file open and the POSIX
+        #: path never fails at all. The second asked a `workers_active()` predicate once and then
+        #: ran for seconds anyway, which protects the press and not the operation.
         #:
-        #: Injected rather than read from a manager reference, so this class keeps knowing nothing
-        #: about queues; composition supplies `manager.active_job_ids`.
-        self._workers_active = workers_active
+        #: `None` means nothing owns any workers — a service constructed on its own — and then
+        #: there is no tree anybody else is importing from to protect.
+        self._exclusion = exclusion
+        #: Whether *this* service currently holds the exclusion, so it is released exactly once
+        #: and only by the holder.
+        self._holding = False
         #: The child a version query runs, injected for the reason `compose`'s is (`T-037`): the
         #: real one imports yt-dlp, so without this seam the pool path — the signals, the busy
         #: state, and the task's own lifetime — has no test that does not take seconds and a real
@@ -183,20 +213,6 @@ class YtdlpService(QObject):
     def _resolve(self) -> Resolution:
         return resolve_in_a_child(self._directory, entry_point=self._entry_point)
 
-    def _refuse_while_workers_run(self) -> bool:
-        """Whether a tree-changing operation must be declined right now (`T198-R3`).
-
-        Reads the predicate every time rather than caching: a queue that was idle when the screen
-        opened is not a queue that is idle when the button is pressed.
-        """
-        if self._workers_active is None or not self._workers_active():
-            return False
-        self.failed.emit(
-            "Downloads are running, and changing yt-dlp underneath them would break them. "
-            "Stop the queue and try again."
-        )
-        return True
-
     def install_latest_version(self) -> None:
         """Install the newest yt-dlp wheel, then re-ask a child what is now in use.
 
@@ -210,9 +226,7 @@ class YtdlpService(QObject):
             sink.installed.emit(release)
             sink.resolved.emit(self._resolve())
 
-        if self._refuse_while_workers_run():
-            return
-        self._run(work)
+        self._run_holding_the_tree(work, "installing yt-dlp")
 
     def revert(self) -> None:
         """Remove the user-managed copy, then re-ask a child what is now in use."""
@@ -222,9 +236,43 @@ class YtdlpService(QObject):
             sink.reverted.emit(removed)
             sink.resolved.emit(self._resolve())
 
-        if self._refuse_while_workers_run():
+        self._run_holding_the_tree(work, "reverting yt-dlp")
+
+    def _run_holding_the_tree(self, work: Callable[[_Sink], None], reason: str) -> None:
+        """Run a tree-changing operation with every worker start held for its whole length.
+
+        **The hold is taken here, before anything is scheduled, and released in `_on_resolved`
+        and `_on_failed`** — the two places every outcome arrives at. That ordering is the
+        finding: the work runs on a pool thread for seconds while the GUI thread stays live, so
+        anything shorter than the whole operation leaves an interval in which a worker can start
+        against a tree that is being replaced.
+
+        **Busy is checked before the hold**, so a refused second operation cannot release the
+        first one's exclusion. Nothing is taken that this does not go on to release.
+
+        A refusal to hold is reported in the user's terms and leaves nothing busy: the screen must
+        not be left disabled for an operation that never started.
+        """
+        if self._busy:
+            self.failed.emit("Another yt-dlp operation is still running.")
             return
+        if self._exclusion is not None:
+            if not self._exclusion.hold_worker_starts(reason):
+                self.failed.emit(
+                    "Downloads are running, and changing yt-dlp underneath them would break "
+                    "them. Stop the queue and try again."
+                )
+                return
+            self._holding = True
         self._run(work)
+
+    def _release_the_tree(self) -> None:
+        """Hand the workers back, once and only if this service is what is holding them."""
+        if not self._holding:
+            return
+        self._holding = False
+        if self._exclusion is not None:
+            self._exclusion.release_worker_starts()
 
     def _run(self, work: Callable[[_Sink], None]) -> None:
         if self._busy:
@@ -242,11 +290,19 @@ class YtdlpService(QObject):
 
     def _on_resolved(self, resolution: object) -> None:
         self._running = None
+        # Released before the signal, not after: a slot connected to `reported` runs inside this
+        # call, and the queue should already be free by the time the screen has been told the
+        # operation ended.
+        self._release_the_tree()
         self._set_busy(False)
         self.reported.emit(resolution)
 
     def _on_failed(self, reason: str) -> None:
         self._running = None
+        # **Failure releases too** (`T198-R3`). Every escape from `_Task.run` lands here, so an
+        # install that raised — no network, a bad digest, a directory it could not write — gives
+        # the workers back rather than leaving the queue permanently unable to start.
+        self._release_the_tree()
         self._set_busy(False)
         self.failed.emit(reason)
 
@@ -261,6 +317,7 @@ __all__ = [
     "Resolution",
     "ResolutionUnavailableError",
     "UpdateError",
+    "WorkerExclusion",
     "YtdlpService",
     "resolve_in_a_child",
 ]

@@ -5,6 +5,19 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (second correction) — **`T198-R3` and `T198-R5` are corrected and
+await a verdict; `T198-R2` is untouched and still Open.** The exclusion moved to where the starts
+are: `DownloadManager` grants a **hold** only over a genuinely quiet queue — `active_job_ids()` now
+counts scheduled retries, which `is_idle` had counted all along — and then parks every start,
+**probes and automatic retries included**, until the install or revert releases it. `YtdlpService`
+takes that hold before it schedules anything and gives it back on success *and* on failure;
+composition passes the manager itself. The evidence is the case the reviewer reproduced: on the
+composed application, **Start pressed while an install is provably mid-flight spawns nothing**, and
+the parked download runs the moment the install ends. **Still not pushed** — the next head is the
+one that should collect `T198-R2`'s Windows frozen run.
+
+*(The block below is the re-review round and is left as written.)*
+
 **Last updated:** 2026-08-13 (re-review) — **`T-198` came back Changes requested a second time,
 and one of the findings is about these records.** The reviewer resolved `T198-R1` and `T198-R4`;
 **`T198-R2` stays Open pending a Windows frozen execution**, **`T198-R3` stays Open** because a
@@ -125,6 +138,44 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-13 (second correction): the exclusion moved to where the starts are
+
+**`T198-R3` is corrected as a hold, and the difference from last time is that it has a lifetime.**
+The manager grants `hold_worker_starts(reason)` only over a genuinely quiet queue and then parks
+every start until it is released — `start()`, `admit()`, `_start_when_free` and the tick's fill.
+**A probe is not exempt**, though the stopped-queue gate exempts one: that gate is about bytes
+moving, and a probe is a child importing `yt_dlp` from the tree being replaced. The service takes
+the hold before it schedules anything and releases it on success *and* on failure, because a queue
+left permanently unable to start would be a worse defect than the one being prevented.
+
+**`active_job_ids()` was reading an incomplete set, and `is_idle` had the right answer all along.**
+It counted sessions, reservations and waiting jobs but not `_retry_at`, so a queue whose only
+remaining work was a backoff reported itself empty to the one caller that most needed the truth —
+the one about to replace the package tree those retries would import from. The two accountings now
+agree.
+
+**The evidence is the reviewer's own scenario, on the composed application.** A durable row is
+queued, composition's service begins an install that blocks on an event the test owns, and **Start
+is pressed while it is provably mid-flight**: nothing spawns, the press is parked rather than
+dropped, and the download runs the moment the install finishes. Removing the exclusion from
+composition fails it. Six manager regressions cover the hold itself, including a retry whose
+backoff comes due *inside* the operation — the one start nobody presses.
+
+**What has not changed:** `T198-R2` is still Open and still owed a Windows frozen execution, and
+nothing is pushed. **What is still not taken:** whether the update *buttons* should be greyed out
+while the queue runs. That is the product choice the reviewer's record calls one; the correctness
+half is closed.
+
+**Figures**, exit codes checked rather than summary lines read: `ruff check .`, `ruff format
+--check .` (177 files), `mypy src` (55), bare `mypy` (139) and `mypy --platform win32 src` all
+clean; `tests/unit` + `tests/ui` **2830 passed, 18 skipped**; `tests/integration` **430 passed**
+(420 plus this round's ten). **Ten mutations, nine of which fail their evidence** — and the tenth
+is recorded rather than papered over: `_start_when_free`'s hold guard cannot fail alone, because
+the start falls through to `start()`'s and is parked there. Removing either alone or both is
+covered, and the docstring says which is which, the way `T-181` did for the stopped-queue gate.
+**One survivor was a real gap and is now closed**: the release-time fill, which the tick would
+have covered a moment later, is asserted before the loop is spun.
 
 ## 2026-08-13: T-198 built — the version in use, an update, and the way back
 
