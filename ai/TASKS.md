@@ -117,16 +117,27 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+## Complete
+
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
-**Status:** **In Review — Changes requested a third time, 2026-08-13. One finding left on the
-product and one on a commit message.** The reviewer **Resolved `T198-R3`** — the full-operation
-exclusion closes the race, probes and automatic retries included — and **Resolved `T198-R5`**.
-**`T198-R1` and `T198-R4` were Resolved in the previous round.** **`T198-R2` remains High and
-Open**, untouched by that boundary and still owed its Windows frozen execution. **`T198-R6` is
-new, Low and blocking**, and is corrected below.
+**Status:** **Complete — approved at `7b20c60`, 2026-08-13.** All six acceptance criteria are met
+and **`T198-R1` through `T198-R6` are all Resolved**, over four review passes. The approval rests
+on CI run `31726615968`, green on all five jobs, in which **both frozen artifacts** printed
+`2026.07.04` baseline → `9000.1.1` resolved from a user-managed copy in a spawned child →
+`2026.07.04` baseline after revert. No follow-up is required by the review.
 
-**`T198-R6` — a prohibited trailer in a commit of mine, caught before it was published.**
+**What the four passes cost is the part worth keeping.** Two Highs and a Medium were all the same
+kind of error — *evidence that did not prove what it claimed*. `T198-R1`: a criterion about a
+download after an update, proved with a version query and a wheel containing no `YoutubeDL`.
+`T198-R2`: a frozen claim with no frozen execution. `T198-R3`: a race closed twice with the wrong
+shape — first by trusting a platform rename to fail, then by asking a predicate once and running
+for seconds anyway. And `T198-R5`, which is the one to remember: **I wrote "Resolved" in these
+records, which is the Reviewer's word.** Three of those were found by the reviewer rather than by
+my own gates.
+
+**`T198-R6` (Low) — Resolved. A prohibited trailer in a commit of mine, caught before it was
+published.**
 `fb41895` ended with `Co-Authored-By: Claude Opus 5 …`, which `AGENTS.md` §7 and §13 forbid
 outright: **commit history names the human maintainer only.** The commit was amended to
 `3876d0e`, **carrying the identical tree `e26db35`** — so the reviewed code is unchanged and the
@@ -136,9 +147,30 @@ requires, which it had been missing. **The same rule was broken once before** an
 history; this one was caught while it was still local, which is the whole difference between a
 one-line amend and a filed task about a published exception.
 
-**What is owed now is CI, not code.** `T198-R2` needs a green **frozen-windows** job, the
-correction is unpushed only because the reviewer asked that one final head carry it, and this sync
-is that head's second commit.
+**And it broke a criterion that was supposed to be standing.** `T-065` closed in 2026-07-28 with
+*"no later commit carries an AI authorship trailer"* — a criterion nothing enforces, which is why
+it has now been broken. The reviewer calls that **a real enforcement gap and explicitly not a
+`T-198` blocker**, so it is filed as **`T-240`** rather than fixed here.
+
+**`T198-R2` (High) — Resolved on the Windows execution it was open for.** The replacement head
+`7b20c60` was pushed and **run `31726615968` succeeded on all five jobs**, including
+**frozen windows** — the platform `OPS-003` says this claim needs. The step *"Verify an in-app
+yt-dlp update works inside the frozen artifact"* ran `--ytdlp-update-probe` inside the Windows
+artifact and printed the sequence `ai/TESTING.md`'s release-gate item 10 names:
+
+```
+before install  2026.07.04 — bundled baseline
+installed       9000.1.1
+after install   9000.1.1 — user-managed copy (OPS-002)
+after revert    2026.07.04 — bundled baseline
+```
+
+**Windows is where this could most plausibly have failed** — `_swap_into_place` renames a
+directory that a running process may hold open — and it did not: the install landed where the
+frozen build resolves, a **spawned child** imported it, and the revert put the baseline back.
+`frozen linux` printed the same four lines in the same run — the reviewer timed them at
+**4 min 55 s** and **32 s** respectively. The Windows desktop job also ran the full suite, **3247
+passed, 29 skipped**, at the same head.
 
 **`T198-R5` (Medium) — Resolved. I recorded dispositions that were not mine to make.** This entry
 said all four findings
@@ -148,17 +180,17 @@ implementer may say is *corrected and awaiting a verdict*, and that is what the 
 say. The defect is not loose wording: a current-truth file asserting a gate has been cleared, when
 it has not, misstates the gate itself.
 
-**Reviewer dispositions, quoted rather than characterised.** After the third pass: criteria 1, 3, 5
-and 6 met at `21be6a2`; criterion 2 **met** (`T198-R1` Resolved); criterion 4 **met on Linux,
-Windows pending** (`T198-R2` Open); *"stable code tree for active workers"* **met** — `T198-R3`
-**Resolved**, the reviewer's own words being that every worker-start route parks or stops filling
-while the hold is held, *"including probes and retries that become due during the operation"*; and
-*"current-truth review state"* **met** — `T198-R5` **Resolved**. `T198-R6` blocks the push of one
-commit and nothing else.
+**The final dispositions, quoted rather than characterised: all six criteria met, all six findings
+Resolved, approved at `7b20c60`.** Criterion 4 is *"met — both frozen jobs execute and pass the
+install → child resolve → revert probe at the approval head"*; the exclusion is *"every
+worker-start route parks or stops filling while held, including probes and retries that become due
+during the operation"*; and the `T198-R3` tree identity was checked rather than taken on my word —
+the withdrawn and replacement commits *"both resolve to tree `e26db35…`; their tree diff is
+empty"*.
 
-*(The two lines above previously recorded the second pass, where R3 and R5 were **not met**. They
-are updated rather than annotated because this file is current truth; the round-by-round history
-is `ai/REVIEWS.md`'s.)*
+*(This block recorded each earlier pass in turn, including one where R3 and R5 were **not met**.
+It is rewritten rather than annotated because this file is current truth; the round-by-round
+history is `ai/REVIEWS.md`'s, and there are four passes of it.)*
 **Owner:** Implementer
 **Priority:** Medium — `C-002` says sites break constantly, and without this a broken site stays
 broken until the next release of this application
@@ -409,7 +441,7 @@ are equal; removing the manager's argument fails it.
 | 1 | Version reported in the UI, read from the running environment | **Met** — a spawned child's import, asserted against the real baseline |
 | 2 | Updating changes the reported version, proved through the worker | **Met after `T198-R1`** — install through the real updater, then a **real download** through spawned workers reporting the stamped version |
 | 3 | Reverting restores the baseline | **Met** — the same test's third reading |
-| 4 | Works the same in the frozen artifact, or says why not | **Met on Linux; Windows pending — `T198-R2` Open.** The reviewer built a fresh PyInstaller 6.22.0 artifact at `fa3cb50` and ran the probe green, and accepted the in-memory index as a legitimate deterministic substitute for PyPI. **The Windows frozen job has never executed it** |
+| 4 | Works the same in the frozen artifact, or says why not | **Met — `T198-R2` Resolved.** The reviewer built a fresh PyInstaller 6.22.0 artifact at `fa3cb50` and ran the probe green on Linux, accepting the in-memory index as a deterministic substitute for PyPI; **run `31726615968` at `7b20c60` then ran it green on `frozen windows` and `frozen linux`**, install → spawned-child resolution → revert, inside the artifact |
 | 5 | A failed update leaves the working version in place and reports | **Met** — eight failure modes, each asserting the previous copy survives; a failure also hands the workers back (`T198-R3`) |
 | 6 | Nothing leaks a token, an index URL or a path into a log | **Met** — every raisable failure swept in one test, plus the resolution fields |
 
@@ -428,8 +460,6 @@ while the queue is running. `T198-R3` closed the correctness half — the manage
 for the length of the operation, and an update attempted over live work is refused with the reason
 — but whether the screen should also grey the action out before it is pressed is the product choice
 the reviewer's record calls a product choice, and this entry does not take it.
-
-## Complete
 
 ### T-208 — Reproduce the multi-row missing-disclosure report
 
@@ -4603,6 +4633,69 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
+
+### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
+
+**Status:** Proposed — filed 2026-08-13 from `T198-R6`, which the reviewer called *"a real
+enforcement gap"* while explicitly holding that it *"does not remain a `T-198` blocker"*.
+**Owner:** Implementer
+**Priority:** Low — no product behaviour is affected. It is a provenance rule, and the cost lands
+on the record rather than on a user
+**Phase:** Phase 4 (maintenance; not a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `AGENTS.md` §7 and §13, `T-065`, `T198-R6`, published commit `12dff92`
+**Affected surfaces:** a local git hook or a CI step; `AGENTS.md` if the check is to be named there
+**Risk:** Low, with one real trap named below
+
+#### Scope
+
+**`AGENTS.md` §7 and §13 say commit history names the human maintainer only** — no
+`Co-Authored-By:` for an AI tool, no *"generated with"* footer — and §13 additionally requires a
+`Task:` trailer. **Nothing checks either.**
+
+**The rule has been broken twice by the same mechanism**, and the second time is what makes this
+worth filing rather than remembering:
+
+- `12dff92` (2026-07-28) reached `origin/main`. `T-065` closed it by **preserving the exception**
+  rather than rewriting published history, and left a standing criterion: *"no later commit
+  carries an AI authorship trailer."*
+- `fb41895` (2026-08-13) carried the identical trailer, and **also omitted the `Task:` trailer** —
+  the same two defects `T-065`'s entry names together. It was caught by the reviewer before the
+  push and amended to `3876d0e` with an identical tree, so it cost one amend.
+
+**The standing criterion is not a mechanism.** It is a sentence in a Complete task, and the only
+thing that has ever enforced it is a reviewer reading commit metadata. The tooling that writes
+these messages appends the trailer by default, so the failure recurs by construction rather than
+by carelessness — which is the argument for a gate rather than for more care.
+
+#### Acceptance criteria
+
+- A commit carrying an AI authorship trailer or a *"generated with"* footer **fails a check**,
+  and the check names the offending line
+- A commit with no `Task:` trailer fails the same check, or is explicitly exempted where §13
+  permits — *"omit only for work no task covers"* has to survive
+- The check runs somewhere it cannot be skipped by forgetting: a hook that is installed by the
+  documented setup step, a CI step over the pushed range, or both
+- **It is proved by a deliberately bad commit**, made and discarded in a scratch clone, rather
+  than by reading the script
+- `12dff92` stays exactly as it is; `T-065`'s decision is not reopened
+
+#### The trap
+
+**A CI step over the pushed range is the useful half, and it fires after the push.** By then the
+history exists, which is precisely the state `T-065` had to preserve rather than fix. A local hook
+catches it while amending is still free but can be bypassed with `--no-verify` and does not exist
+in a fresh clone. Whichever is built, the entry should say plainly which failure it prevents and
+which it merely reports.
+
+#### Out of scope
+
+- Rewriting `12dff92` or any published history. `T-065` decided that, and `AGENTS.md` forbids
+  force-pushing without confirmation
+- Enforcing the rest of §13 — the subject line's mood, the 72-column wrap, the ~150-word budget.
+  Those are judgement, and a gate that argues about prose is a gate people learn to skip
+
+---
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 

@@ -5,6 +5,16 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (approved) — **`T-198` is Complete, approved at `7b20c60`.** All six
+criteria met, **`T198-R1` through `T198-R6` all Resolved**, over four review passes. The approval
+rests on CI run `31726615968`, green on all five jobs, in which **both frozen artifacts** printed
+`2026.07.04` → `9000.1.1` from a user-managed copy resolved in a spawned child → `2026.07.04`.
+**`## In Review` is empty.** One thing is filed rather than fixed: **`T-240`**, because
+`T198-R6`'s trailer rule is enforced by nothing but a reviewer's eye and has now been broken
+twice. One local commit is unpushed — this sync.
+
+*(The block below is the third verdict and is left as written.)*
+
 **Last updated:** 2026-08-13 (third verdict) — **`T198-R3` and `T198-R5` are Resolved by the
 reviewer; `T198-R2` stays High and Open; `T198-R6` is new, Low and blocking, and is corrected.**
 The exclusion closes the race *"including probes and retries that become due during the
@@ -12,8 +22,11 @@ operation"*. `T198-R6` is a prohibited `Co-Authored-By` trailer in `fb41895` —
 §13 forbid naming an AI as author or co-author — **caught before publication, unlike `12dff92`
 which is already on `origin/main`.** The commit is amended to `3876d0e` with the **identical tree
 `e26db35`**, so nothing reviewed changed, and it now carries the `Task:`/`Review:` trailers §13
-requires. **The push follows, because `T198-R2`'s Windows frozen job is the only thing left and
-only a pushed head can run it.**
+requires. **The head `7b20c60` was then pushed, and run `31726615968` came back green on all five
+jobs — `frozen windows` included.** That job ran `--ytdlp-update-probe` inside the Windows
+artifact: baseline `2026.07.04`, `9000.1.1` from a user-managed copy resolved in a spawned child,
+baseline again after revert. **That is the evidence `T198-R2` was open for**; whether it closes the
+finding is the Reviewer's call, not mine.
 
 *(The block below is the second correction and is left as written.)*
 
@@ -150,6 +163,34 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-13 (approved): T-198 is Complete, after four passes
+
+**Approved at `7b20c60`: all six criteria met, all six findings Resolved.** Both frozen artifacts
+ran the update probe green — Windows in 4 min 55 s, Linux in 32 s — and the Windows desktop job
+ran the full suite, **3247 passed, 29 skipped**, at the same head. The reviewer checked the R3 tree
+identity rather than taking my word for it: the withdrawn and replacement commits *"both resolve to
+tree `e26db35…`; their tree diff is empty."*
+
+**Four passes, and what they cost is the record worth keeping.** Two Highs and a Medium were the
+same kind of error — **evidence that did not prove what it claimed.** A criterion about a download
+after an update, proved with a version query and a wheel that contained no `YoutubeDL`. A frozen
+claim with no frozen execution. A race closed twice with the wrong shape: first by trusting a
+platform rename to fail, then by asking a predicate once and running for seconds anyway. Plus
+`T198-R5`, where I wrote *Resolved* in these files, which is the Reviewer's word. **My own gates
+were green for all of it.**
+
+**What this phase should take from it**: three of the six findings were about proof rather than
+product, and the two that were about product were found because the proof was examined. The
+mutation discipline caught real defects inside this task — the atomic-swap mutant, the vacuous
+wheel assertion — and it did not catch the ones above, because a mutation tests the code against
+its tests, not the tests against the criterion.
+
+**`T-240` is filed, not built.** `T198-R6`'s trailer rule is enforced by nothing: `T-065` closed
+the first violation in July with a standing criterion — *"no later commit carries an AI authorship
+trailer"* — and a sentence in a Complete task stopped nothing. The tooling that writes these
+messages appends it by default, so it recurs by construction. The reviewer called it a real
+enforcement gap and explicitly not a `T-198` blocker, which is exactly a filed task.
 
 ## 2026-08-13 (third verdict): the exclusion is Resolved, and I signed a commit the way I am told not to
 

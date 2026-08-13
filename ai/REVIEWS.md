@@ -15975,3 +15975,61 @@ tree change.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, workflow, dependency, commit,
 push, handoff, roadmap, or other remote state was changed.
+
+## 2026-08-13 — T-198 final frozen-evidence verification
+
+**Reviewer:** Codex (Reviewer)
+**Approval head:** `7b20c60` on `main` and `origin/main`.
+**Final verification boundary:** `c758b2d..7b20c60` — current R3 correction `3876d0e` and the
+records-only sync `7b20c60`. T-201 remains excluded. The R2 probe implementation remains the
+already reviewed `fa3cb50`; this pass verifies its missing Windows execution.
+**Platforms verified:** Linux and Windows through GitHub Actions run `31726615968`, plus the
+Linux focused evidence recorded in the preceding passes.
+**Verdict:** **Approved at `7b20c60`.** All six acceptance criteria are met and every finding
+`T198-R1` through `T198-R6` is Resolved. No follow-up is required by this review.
+
+### Final finding dispositions
+
+| ID | Severity | Final state | Evidence |
+|---|---|---|---|
+| **T198-R1** | **High** | **Resolved** | The preceding correction pass independently verified a real composed download after installing a stamped real yt-dlp wheel, including a completed job, output file, installed version in every session report, and no fallback rejection. |
+| **T198-R2** | **High** | **Resolved** | Run `31726615968` executed `--ytdlp-update-probe` successfully in both freshly built frozen artifacts. Linux and Windows each printed `2026.07.04` bundled baseline → installed/resolved `9000.1.1` user-managed copy in a child → `2026.07.04` bundled baseline after revert, followed by the explicit success line. This supplies the Windows frozen execution the criterion and `OPS-003` required. The separate R1 download proof remains the download half; this probe is correctly limited to install, child resolution, and revert. |
+| **T198-R3** | **Medium** | **Resolved** | The full-operation manager/service exclusion was approved in the preceding pass. Current commit `3876d0e` has tree `e26db351f829004c3e4e1cc811f00fab45869320`, byte-identical to the reviewed correction tree, so no code or test moved after that verdict. |
+| **T198-R4** | **Low** | **Resolved** | The reviewed-head count was corrected from 414 to 415 without attributing later-tree counts to the original head. |
+| **T198-R5** | **Medium** | **Resolved** | `7b20c60` records the Reviewer's R3/R5 resolutions while preserving R2 as Open until this CI result. The final completion state now needs the ordinary post-verdict current-truth sync described below. |
+| **T198-R6** | **Low** | **Resolved** | The prohibited AI co-author trailer was removed by replacing the unpushed commit with `3876d0e`; its message names only the human maintainer and carries `Task: T-198`, `Review: T198-R3`, and requirement references. No commit message in `90ee6f0..7b20c60` contains a co-author trailer. The replacement tree is identical to the reviewed tree. |
+
+### Acceptance result
+
+| Criterion | Final result |
+|---|---|
+| 1. Report the version a worker imports | **Met.** Reported from the worker's spawned-child resolution path. |
+| 2. Update changes the report and the next download uses it | **Met.** R1's real composed download completes through the installed copy. |
+| 3. Revert restores the bundled baseline and report | **Met.** Source and both frozen probes return to `2026.07.04` bundled baseline. |
+| 4. Same behavior in the frozen artifact, including Windows CI | **Met.** Both frozen jobs execute and pass the install → child resolve → revert probe at the approval head. |
+| 5. Failed update preserves and reports the working version | **Met.** The driven failure classes preserve the old tree and report the failure. |
+| 6. No token, credentialed URL, or path reaches logs | **Met.** The submitted value/message sweeps remain green; final CI exposed none of those values. |
+
+### Independent final verification
+
+| Check | Result |
+|---|---|
+| Exact head and publication | **Passed:** clean tracked tree before reviewer/current-truth edits; `HEAD == origin/main == 7b20c60`. |
+| R3 tree identity | **Passed:** the withdrawn and replacement R3 commits both resolve to tree `e26db351f829004c3e4e1cc811f00fab45869320`; their tree diff is empty. |
+| Commit-message policy | **Passed:** `3876d0e` contains the required task/review/reference trailers and no AI attribution; the complete pushed range contains no co-author trailer. |
+| Frozen Linux | **Passed in 32 s.** The in-app update step printed baseline `2026.07.04`, installed/child-resolved `9000.1.1` user-managed, and baseline `2026.07.04` after revert. |
+| Frozen Windows | **Passed in 4 min 55 s.** It printed the same three-state sequence and explicit probe success. This is the evidence that resolves R2. |
+| Linux job | **Passed:** lint; format; mypy source (**55 files**); mypy including tests (**139 files**); **2830 passed, 18 skipped** unit/UI; **430 passed** integration. |
+| Windows desktop job | **Passed in 20 min 51 s:** Win32 mypy (**139 files**); dedicated desktop slice **32 passed, 3278 deselected**; lint; format; Qt baseline; full suite **3247 passed, 29 skipped, 34 deselected**; crash-dump check. |
+| Whole CI run | **Passed:** all five jobs in run `31726615968` at exact head `7b20c60`. The standing STARBASE annotations describe surrendered runner coverage and are not T-198 failures. |
+
+### Completion synchronization owed
+
+`ai/TASKS.md` was updated concurrently during this verification to carry the completed CI evidence
+without taking the Reviewer's disposition. It and `ai/STATUS.md` now need the routine post-verdict
+sync: move T-198 to Complete, record R2 and R6 Resolved, and cite run `31726615968` at `7b20c60`.
+This is not another implementation or review pass.
+
+The Reviewer's edit is only `ai/REVIEWS.md`; the concurrent Implementer edit to `ai/TASKS.md` is
+preserved. No source, test, workflow, dependency, commit, push, handoff, roadmap, or other remote
+state was changed by the Reviewer.
