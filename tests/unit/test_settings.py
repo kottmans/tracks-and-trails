@@ -21,6 +21,7 @@ from tracks_and_trails.core.settings import (
     CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
     RATE_LIMIT_MAXIMUM_BYTES,
+    RATE_LIMIT_MINIMUM_BYTES,
     RETRIES_MAXIMUM,
     THEME_DEFAULT,
     THEME_NAMES,
@@ -1885,3 +1886,116 @@ def test_a_hostile_network_table_never_stops_the_application_starting(
 
     assert isinstance(read.settings.network, NetworkOptions)
     assert read.settings.concurrency == CONCURRENCY_DEFAULT
+
+
+@pytest.mark.parametrize("stored", [1, 500, 1023])
+def test_a_rate_limit_finer_than_the_screen_can_show_is_raised_and_reported(
+    tmp_path: Path, stored: int
+) -> None:
+    """**`T196-R3`, and it was a live defect rather than a rounding nicety.**
+
+    `500` is a legal byte rate. Stored verbatim, the Settings screen floored it to `0` KiB/s and
+    spelled zero as *No limit* — so downloads were capped at 500 B/s while the screen said they
+    were not. A limit the user cannot see is worse than one they cannot set, so the settings layer
+    holds no rate the screen cannot display, and says when it has moved one.
+    """
+    read = load(write(tmp_path, f"[network]\nrate_limit_bytes = {stored}\n"))
+
+    assert read.settings.network.rate_limit_bytes == RATE_LIMIT_MINIMUM_BYTES
+    assert read.problem is not None and str(stored) in read.problem.reason, (
+        f"{stored} was raised to the floor without saying so: {read.problem}"
+    )
+
+
+@pytest.mark.parametrize("stored", [1024, 1500, 524288])
+def test_a_rate_limit_the_screen_can_show_is_kept_exactly(tmp_path: Path, stored: int) -> None:
+    """The other side of the floor, including a value that is **not** a whole number of KiB.
+
+    `1500` is kept as `1500` — the screen rounds it down for display and does not write it back,
+    which is the disclosed residual. Clamping it to a whole KiB here would be this module editing
+    a hand-edit nobody asked it to touch.
+    """
+    read = load(write(tmp_path, f"[network]\nrate_limit_bytes = {stored}\n"))
+
+    assert read.problem is None, read.problem
+    assert read.settings.network.rate_limit_bytes == stored
+
+
+def test_settings_refuse_a_rate_limit_the_screen_could_not_show(tmp_path: Path) -> None:
+    """A file is clamped; a caller has a bug (`_concurrency_from`'s distinction).
+
+    `Settings` holding 500 B/s is a `Settings` the screen would report as *No limit*, so it is
+    made unrepresentable — the move `T-014` made for a proxy credential, one setting over.
+    """
+    with pytest.raises(ValueError, match="rate_limit_bytes"):
+        Settings(network=NetworkOptions(rate_limit_bytes=RATE_LIMIT_MINIMUM_BYTES - 1))
+    assert (
+        with_network_options(
+            Settings(), NetworkOptions(rate_limit_bytes=1)
+        ).network.rate_limit_bytes
+        == RATE_LIMIT_MINIMUM_BYTES
+    ), "a caller handing over a sub-KiB rate got it stored rather than bounded"
+
+
+@pytest.mark.parametrize(
+    ("stored", "registered"),
+    [
+        # Usable: it reaches yt-dlp, whose verbose output names it in `Proxy map:`.
+        ("http://proxy.invalid:8080", True),
+        # Refused, and the one string that must never appear anywhere.
+        ("http://alice:hunter2@proxy.invalid:8080", True),
+        # Refused fragments. Neither can reach yt-dlp, and registering either damages ordinary
+        # content: `http://` is in every URL, `localhost` is in ordinary prose (`T196-R2`).
+        ("http://", False),
+        ("localhost", False),
+    ],
+)
+def test_only_a_proxy_that_could_leak_is_registered(
+    tmp_path: Path, stored: str, registered: bool
+) -> None:
+    """**`T196-R2`.** The classifier was wrong in both directions and this pins both.
+
+    The rule was *anything containing `://` or `@`*. It registered the invalid fragment `http://`,
+    after which every ordinary URL in the log came back as `<redacted>other.invalid/x`; and it
+    left `localhost` unregistered while the `ARC-008` reason still quoted it, so the refusal that
+    was supposed to keep a proxy out of the log was the thing putting it there.
+    """
+    read = load(write(tmp_path, f'[network]\nproxy = "{stored}"\n'))
+
+    assert (stored in read.secrets) is registered, (
+        f"{stored!r} registration is {stored in read.secrets}, expected {registered}: "
+        f"{read.secrets}"
+    )
+
+
+@pytest.mark.parametrize(
+    "refused", ["localhost", "http://", "proxy.invalid:8080", "http://alice:hunter2@proxy.invalid"]
+)
+def test_a_refused_proxy_is_never_quoted_back(tmp_path: Path, refused: str) -> None:
+    """**`T196-R2`'s first direction.** The reason must name the *rule*, never the value.
+
+    It appended `proxy_refusal`'s text, and two of that function's branches quote the value —
+    *"must be scheme://host[:port], not 'localhost'"*. So the sentence written to keep a proxy out
+    of the log was the one putting it there, while the comment above it claimed the opposite.
+    """
+    read = load(write(tmp_path, f'[network]\nproxy = "{refused}"\n'))
+
+    assert read.problem is not None
+    assert refused not in read.problem.reason, (
+        f"the report quotes the refused proxy: {read.problem.reason!r}"
+    )
+    assert "port" in read.problem.reason, "and it no longer says what a proxy must be"
+
+
+def test_a_half_typed_credential_is_not_a_valid_proxy(tmp_path: Path) -> None:
+    """**`T196-R1`'s grammar half.** `http://alice:hunter2` is not `scheme://host[:port]`.
+
+    `urlsplit` only raises for a non-numeric port when the port is *asked* for, so nothing
+    consulted it and `hunter2` passed as one. This closes the grammar the validator's own
+    docstring promises; it does **not** close the entry path, because `http://alice:12345` is a
+    numeric password and a legal `host:port` — the screen's commit-on-finish is what closes that.
+    """
+    read = load(write(tmp_path, '[network]\nproxy = "http://alice:hunter2"\n'))
+
+    assert read.settings.network.proxy is None
+    assert read.problem is not None

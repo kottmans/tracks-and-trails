@@ -153,7 +153,9 @@ RETRIES_NAME: Final = "networkRetries"
 NETWORK_EXPLANATION: Final = (
     "These apply to downloads you add from now on. Anything already in the queue keeps what it "
     "was added with.\n"
-    "The speed limit applies to each download on its own, so several at once can add up."
+    "The speed limit applies to each download on its own, so several at once can add up.\n"
+    "Retries here are of the file transfer. Streams delivered in small pieces retry those pieces "
+    "on a count of their own, which this does not change."
 )
 
 #: What the rate-limit spin box reads at zero (`UX-005` §5: a control says what it does).
@@ -184,6 +186,12 @@ DEFAULT_RETRIES_LABEL: Final = "The downloader's own"
 #: A stored value that is not a whole number of KiB — a hand-edit, or a file from another tool —
 #: is **displayed** rounded down and is *not* rewritten: the box only writes when the user moves
 #: it, so an unrelated change elsewhere on the screen cannot quietly re-round a limit they set.
+#:
+#: **Rounding down can no longer reach zero**, which is what made it a defect rather than a
+#: nicety (`T196-R3`): `500` displayed as *No limit* while downloads were capped at 500 B/s.
+#: `RATE_LIMIT_MINIMUM_BYTES` is that hole closed at the value — the settings layer holds no rate
+#: this control cannot show — so the residual is now bounded to *"1500 B/s reads as 1 KiB/s"*,
+#: which understates a limit by less than the limit itself and never denies one.
 RATE_LIMIT_STEP_BYTES: Final = 1024
 
 #: What the concurrency control's step buttons read (`UX-005` row 11, `T-141`, `T-236`).
@@ -353,6 +361,17 @@ class SettingsDialog(QDialog):
         buttons.setObjectName("settingsButtons")
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        # **No button on this screen answers to Return** (`T196-R1`, found while building its
+        # evidence). A `QPushButton` in a dialog is `autoDefault` by default, so Return anywhere —
+        # including in a text field — activates the first one, which here is *Choose folder…* and
+        # opens a **native modal file picker**. That made Return in the proxy box open a folder
+        # chooser instead of finishing the edit, and it was already true of the template field.
+        #
+        # Safe because this screen has no default action to lose: every control applies as it is
+        # changed (see the module docstring), and `Close` is reached by Esc and by clicking it.
+        for button in self.findChildren(QPushButton):
+            button.setAutoDefault(False)
 
     # --- downloads ----------------------------------------------------------------------
 
@@ -744,11 +763,21 @@ class SettingsDialog(QDialog):
         # settings. The accepted form is in the note under it, where a refusal will appear too.
         self._proxy_field.setPlaceholderText("No proxy")
         self._proxy_field.setEnabled(self._on_network_chosen is not None)
-        # **Checked as it is typed, written only when it is usable** — the template field's rule
-        # one section up (`P-23`, `T-112`), and here it is also the credential rule: a proxy
-        # carrying a password must never be stored, so the refusal has to happen before the write
-        # rather than beside it.
-        self._proxy_field.textChanged.connect(self._on_proxy_text)
+        # **Checked as it is typed; written only when the edit is finished** (`T196-R1`, Critical).
+        #
+        # The template field one section up writes on `textChanged`, and copying that here put a
+        # password in `settings.toml`. Typing `http://alice:hunter2@proxy.invalid:8080` passes
+        # through the prefix `http://alice:hunter2` — which is a *valid* proxy by any grammar,
+        # because `alice` is a host and `hunter2` is where a port goes — and that prefix was
+        # committed and saved one keystroke before the `@` arrived and the value was refused.
+        #
+        # **No grammar can close this, and that is why the fix is the connection rather than the
+        # validator.** `http://alice:12345` is a numeric password and a legal `host:port`; the two
+        # are the same string. So a keystroke shows a refusal and nothing else, and the value is
+        # committed when the user has finished with the field — `editingFinished` covers Return
+        # and focus leaving, and `done` covers the dialog being closed while it still has focus.
+        self._proxy_field.textChanged.connect(self._show_proxy_refusal)
+        self._proxy_field.editingFinished.connect(self._commit_proxy)
         layout.addWidget(self._proxy_field)
 
         self._proxy_note = QLabel(box)
@@ -781,19 +810,22 @@ class SettingsDialog(QDialog):
         layout.addLayout(rate_row)
 
         retries_row = QHBoxLayout()
-        retries_label = QLabel("Retries within one download attempt", box)
+        retries_label = QLabel("Retries of the file transfer, within one attempt", box)
         retries_label.setObjectName("networkRetriesLabel")
         retries_label.setWordWrap(True)
         retries_row.addWidget(retries_label)
 
         self._retries = QSpinBox(box)
         self._retries.setObjectName(RETRIES_NAME)
-        # **The name says which retry this is** (`T-196`, ruled 2026-08-13). A queued download
-        # that fails is offered again by the queue itself (`REQ-015`, `REQ-018`) and a network
-        # failure retries by itself — none of that is this control, and a label reading only
-        # "Retries" would be a control that looks like it governs what the application already
-        # governs, which is `T-075`'s defect.
-        self._retries.setAccessibleName("Retries within one download attempt")
+        # **The name says which retry this is, and there are three** (`T-196`, ruled 2026-08-13;
+        # sharpened by `T196-R5`). A queued download that fails is offered again by the queue
+        # itself (`REQ-015`, `REQ-018`) and a network failure retries by itself — that is the
+        # first, and it has no control because two things governing one decision is `T-075`. This
+        # is the second: yt-dlp's `--retries`, the file transfer's own, inside one attempt. The
+        # third is `--fragment-retries`, which covers the pieces of a segmented stream, is *also*
+        # inside one attempt, and is **not** this setting — so "within one attempt" alone did not
+        # separate them, and a user setting this to zero would still see pieces retrying.
+        self._retries.setAccessibleName("Retries of the file transfer, within one attempt")
         self._retries.setRange(-1, RETRIES_MAXIMUM)
         self._retries.setSpecialValueText(DEFAULT_RETRIES_LABEL)
         self._retries.setValue(self._network.retries if self._network.retries is not None else -1)
@@ -810,19 +842,36 @@ class SettingsDialog(QDialog):
         stored = self._network.rate_limit_bytes
         return 0 if stored is None else stored // RATE_LIMIT_STEP_BYTES
 
-    def _on_proxy_text(self, text: str) -> None:
-        """Refuse at edit time, with the reason, and do not store what was refused.
+    def _show_proxy_refusal(self, text: str) -> None:
+        """Say whether what is in the box could be used. **Writes nothing** (`T196-R1`).
+
+        Live feedback and committing are two jobs, and joining them is what put a password on
+        disk: every accepted intermediate prefix was written. This half runs on every keystroke
+        and touches only the note beside the field.
 
         **The refusal is `core.models.proxy_refusal`**, which is the rule `DownloadRequest` is
-        held to (`T-014`) rather than a second opinion about proxies living in a widget. A screen
-        that decided this for itself could accept a credential the model would refuse, and the
-        first anyone would hear of it is a `ValueError` from composition — or worse, a password
-        written to `settings.toml`.
+        held to (`T-014`) rather than a second opinion about proxies living in a widget.
         """
-        value = text.strip() or None
-        refusal = proxy_refusal(value)
-        self._proxy_note.setText(refusal or "")
-        if refusal is None:
+        self._proxy_note.setText(proxy_refusal(text.strip() or None) or "")
+
+    def _commit_proxy(self) -> None:
+        """Hand over the finished proxy, or leave what is in force untouched (`T196-R1`).
+
+        Called when the user leaves the field or presses Return, and once more from `done` — a
+        dialog closed while the box still has focus would otherwise drop an edit the user made.
+        Committing twice is harmless: the second call sees the value it already stored, and
+        `_remember_network` hands composition the same object again.
+
+        **A refused value stores nothing at all** — not a truncation, not a repaired version. The
+        field keeps showing what was typed, with the reason under it, and the proxy in force stays
+        the one that was there.
+        """
+        if self._on_network_chosen is None:
+            return
+        value = self._proxy_field.text().strip() or None
+        if proxy_refusal(value) is not None:
+            return
+        if value != self._network.proxy:
             self._remember_network(replace(self._network, proxy=value))
 
     def _on_rate_limit_value(self, kib: int) -> None:
@@ -850,6 +899,17 @@ class SettingsDialog(QDialog):
         if self._on_network_chosen is not None:
             self._on_network_chosen(options)
 
+    def done(self, result: int) -> None:
+        """Close the screen, committing a proxy edit that never lost focus (`T196-R1`).
+
+        `editingFinished` fires on Return and on focus leaving the field — which covers clicking
+        `Close`, because the button takes focus first. It does **not** fire for `Esc`, or for a
+        window closed while the box still holds focus, and an edit silently discarded there would
+        be the same class of surprise as one silently stored.
+        """
+        self._commit_proxy()
+        super().done(result)
+
     def show_network_options(self, options: NetworkOptions) -> None:
         """Show the network options in force, without echoing them back through the writer.
 
@@ -861,7 +921,7 @@ class SettingsDialog(QDialog):
         blocked = self._proxy_field.blockSignals(True)
         try:
             # Only when it differs, so a redisplay does not move the caret of somebody typing.
-            if self._proxy_field.text() != (options.proxy or ""):
+            if self._proxy_field.text().strip() != (options.proxy or ""):
                 self._proxy_field.setText(options.proxy or "")
                 self._proxy_note.setText("")
         finally:

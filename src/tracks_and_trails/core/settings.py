@@ -129,18 +129,31 @@ _PROXY_KEY: Final = "proxy"
 _RATE_LIMIT_KEY: Final = "rate_limit_bytes"
 _RETRIES_KEY: Final = "retries"
 
-#: The largest rate limit this application will hold (`T-196`).
+#: The band of rate limits this application will hold, in bytes per second (`T-196`).
 #:
-#: **It exists so the screen cannot lie, not to model a network.** A limit is honoured verbatim
-#: however small — 500 bytes per second is a legitimate thing to ask for — so there is no useful
-#: floor and no typo a ceiling could catch in the harmful direction. What a ceiling does buy is
-#: that every storable value fits the control that displays it: `QSpinBox` is bounded by a signed
-#: 32-bit integer, so a file holding more than this could not be shown, and a screen showing a
-#: smaller number than the file is the disagreement `T199-R2` and `T195-R5` are both about.
+#: **Both ends exist so the screen cannot lie, not to model a network.** The Settings screen is the
+#: only editor and it counts whole KiB/s, so a value it cannot represent is a value it would
+#: misreport — and `T199-R2` and `T195-R5` are both findings about a screen and a worker
+#: disagreeing about what is in force.
 #:
-#: Above it, `load()` clamps **and reports** — unlike the concurrency clamp, which is silent,
-#: because there the clamped value is still evidently what the user meant and here it is 2 TiB/s
-#: against a number nobody typed on purpose.
+#: **The floor is `T196-R3` and it was a real defect, not a rounding nicety.** `500` is a
+#: perfectly legal byte rate; stored, it floored to `0` KiB/s and the control spelled zero as
+#: **No limit** — so downloads were capped at 500 B/s while the screen said they were not. A
+#: limit the user cannot see is worse than one they cannot set, so the smallest limit this
+#: application holds is the smallest one it can show.
+#:
+#: **The ceiling is a display bound too**: `QSpinBox` counts in a signed 32-bit integer, so a file
+#: holding more KiB/s than that could not be displayed at all.
+#:
+#: Outside the band, `load()` clamps **and reports** — unlike the concurrency clamp, which is
+#: silent. There the clamped value is still evidently what the user meant; here it is a limit that
+#: is not the one they wrote, in a direction they can feel.
+#:
+#: **What this gives up, stated:** a limit finer than 1 KiB/s cannot be set or stored. Anyone who
+#: wants one is asking for a throttle two orders of magnitude below a dial-up modem, and the
+#: alternative — a control counting single bytes up to 2 TiB/s — is unusable for the case everyone
+#: actually has.
+RATE_LIMIT_MINIMUM_BYTES: Final = 1024
 RATE_LIMIT_MAXIMUM_BYTES: Final = (2**31 - 1) * 1024
 
 #: The most retries a settings file may ask for inside one attempt (`T-196`).
@@ -367,14 +380,18 @@ class Settings:
         # non-negative count — and those hold wherever one is built, including on a request. What
         # a *stored* value may be is policy this module owns, exactly as `CONCURRENCY_MAXIMUM` is,
         # and `load()` clamps a file rather than raising at it for the same reason.
-        if (
-            self.network.rate_limit_bytes is not None
-            and self.network.rate_limit_bytes > RATE_LIMIT_MAXIMUM_BYTES
+        if self.network.rate_limit_bytes is not None and not (
+            RATE_LIMIT_MINIMUM_BYTES <= self.network.rate_limit_bytes <= RATE_LIMIT_MAXIMUM_BYTES
         ):
+            # **Both ends, since `T196-R3`.** A `Settings` holding 500 B/s is a `Settings` the
+            # screen would report as *No limit* while downloads crawled, so it is not a value this
+            # layer may hold at all — the same move `T-014` made for a proxy credential, one
+            # setting over. A *file* saying it is clamped and reported; a caller has a bug.
             raise ValueError(
-                f"Settings.network.rate_limit_bytes is {self.network.rate_limit_bytes}; the "
-                f"ceiling is {RATE_LIMIT_MAXIMUM_BYTES}, which is what the settings screen can "
-                "display. A file asking for more is clamped and reported instead."
+                f"Settings.network.rate_limit_bytes is {self.network.rate_limit_bytes}; it must "
+                f"be between {RATE_LIMIT_MINIMUM_BYTES} and {RATE_LIMIT_MAXIMUM_BYTES}, which is "
+                "the band the settings screen can display. A file outside it is clamped and "
+                "reported instead."
             )
         if self.network.retries is not None and self.network.retries > RETRIES_MAXIMUM:
             raise ValueError(
@@ -643,8 +660,44 @@ def _spellings_of(raw: str) -> tuple[str, ...]:
     return tuple(spellings)
 
 
+def registrable_proxy(value: str | None) -> str | None:
+    """`value` if it must be redacted wherever it later appears, else `None` (`T196-R2`).
+
+    **Public, because two routes hold a proxy and must classify it identically** — the stored one
+    read here, and one typed into the Settings screen while the application runs (`T199-R3`'s
+    rule; `T197-R1` is the finding that protecting one route is protecting the one that leaks
+    less).
+
+    Two kinds of value qualify, and the boundary is *"can this string reach a log at all"*:
+
+    - **A proxy that is usable**, because it reaches yt-dlp — whose verbose output dumps `params:`
+      and a `Proxy map:` naming it, as `core/logging.py` records having measured.
+    - **A proxy carrying userinfo**, which is refused everywhere and is exactly the string that
+      must never appear anywhere. Refused *and* registered is not a contradiction: the refusal
+      keeps it out of the settings, the registration keeps it out of the log.
+
+    **Nothing else, and that is `T196-R2`'s correction.** The first version registered anything
+    containing `://` or `@`, so an invalid `proxy = "http://"` became a registered literal and
+    every ordinary URL in the log came back as `<redacted>other.invalid/x`. A value that is
+    neither usable nor credential-bearing is a fragment: it cannot reach yt-dlp, the `ARC-008`
+    reason no longer quotes it, and registering it can only damage legitimate content —
+    `T197-R6`'s rule, which this had broken in the other direction.
+    """
+    if not value or not value.strip():
+        return None
+    candidate = value.strip()
+    if proxy_refusal(candidate) is None:
+        return candidate
+    # **Any `@`, not `urlsplit`'s userinfo.** A scheme-less `alice:hunter2@proxy.invalid` parses
+    # with an empty netloc — the credential lands in the *path* — so the precise reading is the
+    # one that misses the shape most likely to be hand-written. The cost of the blunt rule is
+    # registering a long refused fragment that happens to contain an `@`, which is specific enough
+    # to be harmless.
+    return candidate if "@" in candidate else None
+
+
 def _proxy_literals(network_table: dict[str, Any]) -> tuple[str, ...]:
-    """The stored proxy, when it is shaped like one, so no log can print it (`T-196`).
+    """The stored proxy, when it must be redacted, so no log can print it (`T-196`).
 
     **`NFR-007` and `REQ-026` both point here.** A proxy is the one `REQ-023` setting that can
     carry a credential, and the literal reaches two sinks this module does not control: an
@@ -653,25 +706,22 @@ def _proxy_literals(network_table: dict[str, Any]) -> tuple[str, ...]:
     string covers both, and covers the **refused** value as well as the accepted one, which is
     `T197-R1`'s lesson: the value most certain to be quoted was the one nothing had registered.
 
-    **Only a proxy-shaped value is registered, and that asymmetry is `T197-R6`'s.** Registration
-    replaces a substring everywhere it later appears, so a hand-edited `proxy = "yes"` would make
-    the word *yes* unreadable in every subsequent line — the gate's own legitimate-content rule
-    broken by the machinery meant to serve it. A scheme or userinfo is what makes a value an
-    address rather than a word; nothing else is specific enough to register safely.
-
-    **The residual, stated:** a junk value with neither — `proxy = "localhost"` — is not
-    registered. It is refused, it is not quoted by the refusal, and it carries no credential,
-    because a credential needs the `@` this rule keys on.
+    **What qualifies is `registrable_proxy`'s to decide**, and it is public because the runtime
+    route has to agree with this one. The rule that used to live here — *anything with `://` or
+    `@`* — was wrong in both directions (`T196-R2`): it registered the fragment `http://`, which
+    made every ordinary URL in the log unreadable, and it left a refused `localhost` unregistered
+    while the reason still quoted it. The reason quotes nothing now, and only a value that can
+    reach yt-dlp or that carries a credential is registered.
     """
     raw = network_table.get(_PROXY_KEY)
-    if not isinstance(raw, str) or not raw.strip():
+    if not isinstance(raw, str):
         return ()
-    value = raw.strip()
-    if "://" not in value and "@" not in value:
+    registrable = registrable_proxy(raw)
+    if registrable is None:
         return ()
     # Both spellings, for `_sensitive_literals`' reason one function down: the file's own text and
     # the stripped form, because either may be the one that appears in a later line.
-    return tuple(dict.fromkeys((raw, value)))
+    return tuple(dict.fromkeys((raw, registrable)))
 
 
 def _sensitive_literals(cookies_table: dict[str, Any]) -> tuple[str, ...]:
@@ -800,16 +850,27 @@ def _proxy_from(raw: Any) -> tuple[str | None, str | None]:
         # Deliberately silent, as every emptied value here is: clearing the box is how a user
         # asks for no proxy, and `save()`'s header promises deleting the line is safe.
         return None, None
-    refusal = proxy_refusal(raw.strip())
-    if refusal is not None:
-        # **The reason does not quote the value** — the one reason on this whole surface that
-        # does not. Every other setting names what it discarded because naming it is how the user
-        # finds it; a proxy is the one `REQ-023` value that can carry a password, and this
-        # sentence is written into `SettingsProblem.reason`, which composition logs (`T197-R1`'s
-        # route). The literal is registered as a secret as well — see `_sensitive_literals` — and
-        # this is the belt to that pair of braces.
+    if proxy_refusal(raw.strip()) is not None:
+        # **The reason quotes nothing at all** — not the value, and not the model's refusal, which
+        # is the correction `T196-R2` required. Every other setting names what it discarded because
+        # naming it is how the user finds it; a proxy is the one `REQ-023` value that can carry a
+        # password, and this sentence is written into `SettingsProblem.reason`, which composition
+        # logs (`T197-R1`'s route).
+        #
+        # **Appending `proxy_refusal`'s text was the leak.** Two of that function's four branches
+        # quote the value — *"must be scheme://host[:port], not 'localhost'"* — so a refused proxy
+        # reached the log through the sentence written to keep it out, while this comment claimed
+        # the opposite. The value-free wording below says what a proxy must look like instead,
+        # which is the part a user can act on; the key names itself, so nothing is lost but the
+        # echo.
+        # **No worked example, deliberately.** One read *"for example http://proxy.example:8080"*,
+        # which is helpful and contains `http://` — so a file whose refused value *is* `http://`
+        # produced a reason containing that value, and the property this sentence exists to have
+        # became untestable by the only check available: is the value a substring of the report.
         return None, (
-            f"The proxy in your settings cannot be used, so no proxy will be used.\n{refusal}"
+            f"The proxy in your settings cannot be used, so no proxy will be used. It must be a "
+            f"scheme, then host and optional port, and must carry no username, password, path or "
+            f"query. See {_NETWORK_TABLE}.{_PROXY_KEY}."
         )
     return raw.strip(), None
 
@@ -823,9 +884,11 @@ def _rate_limit_from(raw: Any) -> tuple[int | None, str | None]:
     That is the opposite treatment from `_concurrency_from`'s silent clamp, and the difference is
     what the wrong value costs — a clamped concurrency still downloads what was asked for.
 
-    **Above the ceiling is clamped and reported.** The value is kept as a limit, because the
-    evident intent is *a very large one*, and the report says the number in force is not the
-    number stored. `RATE_LIMIT_MAXIMUM_BYTES` records why there is a ceiling at all.
+    **Outside the band is clamped and reported, at both ends** (`T196-R3`). The value is kept as a
+    limit, because the evident intent is *a limit*, and the report says the number in force is not
+    the number stored. Below the floor is the end that mattered: `500` used to be stored verbatim
+    and displayed as **No limit**, so the screen denied a throttle that was running.
+    `RATE_LIMIT_MINIMUM_BYTES` records why the band exists and what it gives up.
     """
     if raw is None:
         return None, None
@@ -838,6 +901,11 @@ def _rate_limit_from(raw: Any) -> tuple[int | None, str | None]:
         return None, (
             f"{_NETWORK_TABLE}.{_RATE_LIMIT_KEY} is {raw}, which is not a speed. Downloads will "
             "not be limited — delete the line to ask for that deliberately."
+        )
+    if raw < RATE_LIMIT_MINIMUM_BYTES:
+        return RATE_LIMIT_MINIMUM_BYTES, (
+            f"{_NETWORK_TABLE}.{_RATE_LIMIT_KEY} is {raw}, which is slower than this application "
+            f"can show. {RATE_LIMIT_MINIMUM_BYTES} bytes per second is in use."
         )
     if raw > RATE_LIMIT_MAXIMUM_BYTES:
         return RATE_LIMIT_MAXIMUM_BYTES, (
@@ -1764,6 +1832,9 @@ def with_network_options(settings: Settings, options: NetworkOptions) -> Setting
     only where it is read, so a caller handing over more than this module holds gets what the
     file would have got. A proxy needs no bound here — `NetworkOptions` refused an unusable one
     before this was called, because there is no valid `NetworkOptions` carrying a credential.
+
+    **The rate limit is bounded at both ends** (`T196-R3`): below the floor is a limit the screen
+    would spell as *No limit*, which is the one state a settings screen may never be in.
     """
     return replace(
         settings,
@@ -1772,7 +1843,10 @@ def with_network_options(settings: Settings, options: NetworkOptions) -> Setting
             rate_limit_bytes=(
                 None
                 if options.rate_limit_bytes is None
-                else min(options.rate_limit_bytes, RATE_LIMIT_MAXIMUM_BYTES)
+                else min(
+                    max(options.rate_limit_bytes, RATE_LIMIT_MINIMUM_BYTES),
+                    RATE_LIMIT_MAXIMUM_BYTES,
+                )
             ),
             retries=None if options.retries is None else min(options.retries, RETRIES_MAXIMUM),
         ),

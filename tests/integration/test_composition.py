@@ -40,6 +40,7 @@ from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QMetaMethod, QObject, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -61,6 +62,7 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, NetworkOptions
 from tracks_and_trails.core.paths import thumbnail_cache_path
+from tracks_and_trails.downloader import ytdlp_adapter as adapter
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Probed,
@@ -3617,6 +3619,185 @@ def test_a_proxy_chosen_at_runtime_is_redacted_too(
         line = "yt-dlp: Proxy map: {'all': 'http://proxy.invalid:8080'}"
         assert "proxy.invalid:8080" not in app_logging.redact(line), (
             f"a proxy chosen at runtime was not registered: {app_logging.redact(line)!r}"
+        )
+    finally:
+        app_logging.forget_the_secrets()
+
+
+def test_a_proxy_and_a_rate_limit_set_on_the_screen_reach_the_options_yt_dlp_gets(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`T196-R4`.** The whole crossing, in one regression: screen → file → request → options.
+
+    The gate this task claimed was false-green. A reviewer mutation that kept only the retry count
+    in `choose_network` — dropping every live proxy and rate-limit choice — passed every focused
+    composition test: the one live apply/save test changed only retries, the startup tests read
+    already-stored values, and the runtime-proxy test proved registration alone.
+
+    So this ends where the criterion says it ends — *"asserted through the options the adapter
+    builds, not against the stored value"* — and it starts at the two controls a user touches.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    screen = _settings_screen(composition)
+    try:
+        proxy = screen.findChild(QLineEdit, PROXY_NAME)
+        rate = screen.findChild(QSpinBox, RATE_LIMIT_NAME)
+        assert proxy is not None and rate is not None
+        QTest.keyClicks(proxy, "http://proxy.invalid:8080")
+        QTest.keyClick(proxy, Qt.Key.Key_Return)
+        rate.setValue(512)
+        QApplication.processEvents()
+    finally:
+        screen.close()
+        QApplication.processEvents()
+
+    stored = core_settings.load(settings_file).settings.network
+    assert stored.proxy == "http://proxy.invalid:8080", f"the proxy was not persisted: {stored}"
+    assert stored.rate_limit_bytes == 512 * 1024, f"the rate limit was not persisted: {stored}"
+
+    dialog = composition.window.open_add_dialog()
+    assert dialog is not None
+    try:
+        type_urls(dialog, "https://composed.invalid/network-options")
+        dialog.resolve()
+        assert spin(lambda: bool(dialog.rows) and dialog.rows[0].committable, timeout=60), (
+            f"the URL never resolved: {dialog.status_text()}"
+        )
+        # The dialog's own single request builder — the one every committed job goes through
+        # (`T-075`, `UX-004`) — rather than a second construction this test invented.
+        built = dialog._request_for(dialog.rows[0])
+    finally:
+        dialog.close()
+        QApplication.processEvents()
+
+    assert built.proxy == "http://proxy.invalid:8080", (
+        f"a job built after the choice carries {built.proxy!r}: the setting is stored and does "
+        "not run, which is T-075's shape"
+    )
+    assert built.rate_limit_bytes == 512 * 1024
+
+    options = adapter.build_options(built, "o.%(ext)s")
+    assert options["proxy"] == "http://proxy.invalid:8080"
+    assert options["ratelimit"] == 512 * 1024
+
+
+def test_no_keystroke_of_a_credentialed_proxy_reaches_the_file_or_a_job(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**`T196-R1`, Critical, on the composed application and through the real keyboard.**
+
+    Typing `http://alice:12345@proxy.invalid:8080` passes through `http://alice:12345`, which is a
+    legal `scheme://host:port` — a numeric password is indistinguishable from a port, so no
+    grammar can refuse it. The screen used to write every accepted keystroke, so composition
+    applied and **saved** that prefix, and the next queued request would have carried it into the
+    jobs row. Asserted in all three places the credential could have come to rest.
+    """
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+    screen = _settings_screen(composition)
+    try:
+        proxy = screen.findChild(QLineEdit, PROXY_NAME)
+        assert proxy is not None
+        QTest.keyClicks(proxy, "http://alice:12345@proxy.invalid:8080")
+        QTest.keyClick(proxy, Qt.Key.Key_Return)
+        QApplication.processEvents()
+    finally:
+        screen.close()
+        QApplication.processEvents()
+
+    in_memory = composition.window._default_network
+    assert in_memory is not None
+    assert in_memory().proxy is None, f"a credential is in force in memory: {in_memory().proxy!r}"
+
+    on_disk = settings_file.read_text(encoding="utf-8") if settings_file.exists() else ""
+    assert "alice" not in on_disk and "12345" not in on_disk, (
+        f"a credential reached settings.toml:\n{on_disk}"
+    )
+
+    dialog = composition.window.open_add_dialog()
+    assert dialog is not None
+    try:
+        type_urls(dialog, "https://composed.invalid/no-credential")
+        dialog.resolve()
+        assert spin(lambda: bool(dialog.rows) and dialog.rows[0].committable, timeout=60), (
+            f"the URL never resolved: {dialog.status_text()}"
+        )
+        built = dialog._request_for(dialog.rows[0])
+    finally:
+        dialog.close()
+        QApplication.processEvents()
+
+    assert built.proxy is None, f"a queued request carries {built.proxy!r}"
+
+
+@pytest.mark.parametrize(
+    ("stored", "redacted"),
+    [
+        ("http://proxy.invalid:8080", True),
+        ("http://alice:hunter2@proxy.invalid:8080", True),
+        ("http://", False),
+        ("localhost", False),
+    ],
+)
+def test_what_a_stored_proxy_costs_the_log_is_bounded_at_both_ends(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+    stored: str,
+    redacted: bool,
+) -> None:
+    """**`T196-R2`, through the composed application and the real formatter.**
+
+    Two failures, in opposite directions, from one classifier that keyed on `://` or `@`:
+
+    - `proxy = "http://"` was **registered**, so an ordinary `http://other.invalid/x` in any later
+      line came back as `<redacted>other.invalid/x` — the log damaged by the machinery meant to
+      protect it, which is `T197-R6` in the other direction.
+    - `proxy = "localhost"` was **not** registered while the `ARC-008` reason still quoted it, so
+      the value reached the log through the sentence written to keep it out.
+
+    Both halves are asserted for every shape: the value is gone when it could leak, and ordinary
+    content stays legible when it could not.
+    """
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text(f'[network]\nproxy = "{stored}"\n', encoding="utf-8")
+
+    app_logging.forget_the_secrets()
+    try:
+        composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+
+        # The two lines a stored proxy can actually reach: the `ARC-008` reason composition logs
+        # — read from `load()`, which is where composition gets the string it logs — and yt-dlp's
+        # own verbose dump, which names the proxy in full.
+        problem = core_settings.load(settings_file).problem
+        if problem is None:
+            assert redacted and stored == "http://proxy.invalid:8080", (
+                f"{stored!r} was accepted without a report and should not have been"
+            )
+        else:
+            assert stored not in app_logging.redact(problem.reason), (
+                f"the settings report names the refused proxy: "
+                f"{app_logging.redact(problem.reason)!r}"
+            )
+        if redacted:
+            yt_dlp_line = f"yt-dlp: Proxy map: {{'all': '{stored}'}}"
+            assert stored not in app_logging.redact(yt_dlp_line), (
+                f"a proxy that could reach a log survives the formatter: "
+                f"{app_logging.redact(yt_dlp_line)!r}"
+            )
+
+        # And the other direction, which is the half that has no natural alarm: ordinary content
+        # must stay readable. `http://other.invalid/x` shares its prefix with one of the values
+        # above, and `localhost` is an ordinary word in a diagnostic.
+        ordinary = "downloading http://other.invalid/x through localhost"
+        assert app_logging.redact(ordinary) == ordinary, (
+            f"registering {stored!r} damaged an unrelated line: {app_logging.redact(ordinary)!r}"
         )
     finally:
         app_logging.forget_the_secrets()

@@ -348,6 +348,29 @@ def _require_credential_free_proxy(value: str | None) -> None:
             f"DownloadRequest.proxy must be scheme://host[:port] with no path, query or "
             f"fragment, not {value!r}."
         )
+    try:
+        # **The port is the half of the promised grammar nothing checked** (`T196-R1`). `urlsplit`
+        # puts everything after the colon in `port` and only raises when it is *asked* for it, so
+        # `http://alice:hunter2` parsed as a host and a port called `hunter2` and was accepted as
+        # a valid proxy — which is a username and a password wearing the shape of an address.
+        #
+        # **This does not on its own keep a credential out**, and must not be read as though it
+        # did: `http://alice:12345` is a numeric password and a legal `host:port`, and nothing in
+        # a grammar can tell those apart. What closes that is where the value is *committed* —
+        # `ui/settings_dialog.py` writes on a finished edit rather than on every keystroke — and
+        # this branch is the narrower thing it says it is: the grammar this function's own
+        # docstring promises, enforced.
+        #
+        # **Neither this refusal nor the one it comes from quotes the value**, unlike the three
+        # branches above. This is the branch a half-typed credential lands in, the message travels
+        # into `ARC-008` reports — and `urlsplit`'s own `ValueError` names the offending "port",
+        # which here *is* the password. So it is caught and discarded rather than wrapped.
+        _ = parsed.port
+    except ValueError:
+        raise ValueError(
+            "DownloadRequest.proxy must be scheme://host[:port], and the text after the last "
+            "colon is not a port number."
+        ) from None
 
 
 def proxy_refusal(value: str | None) -> str | None:

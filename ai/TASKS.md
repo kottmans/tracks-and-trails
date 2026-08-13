@@ -119,13 +119,71 @@ this one returned four verdicts before approving.*
 
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
 
-**Status:** **In Review — built 2026-08-13.** `ruff`, `ruff format`, `mypy src`, bare `mypy` and
-`mypy --platform win32` clean; **2899 passed, 18 skipped** unit+UI and **434 passed** integration,
-exit codes checked (`T195-R7`). **Committed as one commit and held unpushed** — a commit cannot
-name its own head, so the exact review boundary travels with the handoff rather than being written
-here where it could only be wrong. Every
-criterion is met and each is bound by evidence a mutation kills; the design decision the build had
-to take, and the four residuals it leaves, are recorded below.
+**Status:** **In Review — corrected 2026-08-13, awaiting re-review.** Review round one returned
+**Changes requested** with one Critical and four Medium findings, **all five corrected in one
+batch** and recorded below; the Reviewer marks them Resolved, not me. `ruff`, `ruff format`,
+`mypy src`, bare `mypy` and `mypy --platform win32` clean; **2923 passed, 18 skipped** unit+UI and
+**440 passed** integration, exit codes checked (`T195-R7`). **Twenty mutations, none surviving.**
+
+#### Round one: five findings, all corrected
+
+- **`T196-R1` — Critical, corrected.** The screen wrote the proxy on `textChanged`, so typing
+  `http://alice:hunter2@proxy.invalid:8080` handed composition the prefix `http://alice:hunter2` —
+  a username and a password — one keystroke before the `@` arrived and the value was refused.
+  Composition applies and saves whatever it is handed, so the credential reached `settings.toml`
+  and would have reached the next queued request.
+
+  **The correction is when the field is committed, not what it accepts**, and that distinction is
+  the finding's own: `http://alice:12345` is a numeric password *and* a legal `host:port`, so no
+  grammar can tell them apart. Live refusal and committing are now two connections —
+  `textChanged` only writes the note; `editingFinished` and `done` commit. **The grammar was
+  audited as well and was genuinely weak**: `urlsplit` only raises for a non-numeric port when the
+  port is *asked* for, and nothing asked, so `hunter2` had been passing as a port. That is fixed
+  too and is explicitly not the correction.
+
+  **One thing the evidence found on the way**: Return in the proxy box activated the dialog's
+  `autoDefault` button — *Choose folder…* — and opened a native modal instead of finishing the
+  edit. The commit-on-finish route depends on Return working, so every `QPushButton` on this
+  screen is `setAutoDefault(False)`. It was already true of the template field.
+- **`T196-R2` — Medium, corrected, wrong in both directions.** The `ARC-008` reason appended
+  `proxy_refusal`'s text, and two of that function's branches quote the value — so a refused
+  `localhost` reached the log through the sentence written to keep it out, while the comment above
+  it claimed the opposite. The reason now quotes nothing, names the rule, and **carries no worked
+  example**: one read *"for example http://proxy.example:8080"*, which made the property
+  untestable for a value that is itself `http://`.
+
+  Conversely `_proxy_literals` registered anything containing `://`, so an invalid `proxy =
+  "http://"` became a secret and every ordinary URL in the log came back as
+  `<redacted>other.invalid/x`. Registration is now `registrable_proxy` — public, so the stored and
+  runtime routes cannot disagree (`T199-R3`) — and admits only a proxy that is **usable** (it
+  reaches yt-dlp) or **carries userinfo** (it must never appear). Evidence asserts both halves for
+  four shapes: the value gone where it could leak, and ordinary content legible where it could not.
+- **`T196-R3` — Medium, corrected.** `500` B/s is a legal rate; stored, it floored to `0` KiB/s
+  and the control spelled zero as *No limit*, so the screen denied a throttle that was running.
+  **The settings layer now holds no rate the screen cannot show**: `RATE_LIMIT_MINIMUM_BYTES`, with
+  `load()` raising and reporting a smaller one and `Settings` refusing to hold it at all. The
+  residual is bounded to *1500 B/s reads as 1 KiB/s* — understating a limit rather than denying
+  one — and an unrelated edit still does not rewrite it.
+- **`T196-R4` — Medium, corrected.** The reviewer's mutation — keep only `retries` in
+  `choose_network` — passed every focused composition test, so the claimed crossing was
+  false-green. There is now one composed regression that sets **proxy and rate limit through the
+  screen's own controls**, proves both in `settings.toml`, builds the next request through the add
+  dialog's own builder, and asks the **adapter** for `proxy` and `ratelimit`. The reviewer's exact
+  mutation is in the sweep and fails it.
+- **`T196-R5` — Medium, corrected.** The mapping was right and the words were not.
+  **`--fragment-retries` is also "within one attempt"**, so the label did not separate the two, and
+  a user setting this to zero would still watch fragments retry. The control now reads *Retries of
+  the file transfer, within one attempt* — visible label and accessible name — the section says
+  segmented streams retry on a count of their own, and the entry's contradictory *per-fragment*
+  phrasing is corrected below rather than left standing beside the accurate one.
+
+*(The build record below is round one's and is left as written, except where a correction above
+supersedes it — the four residuals in particular: the second is now bounded by a floor, and the
+fourth's classifier is `registrable_proxy`.)*
+
+**Status of the build:** **built 2026-08-13.** Every criterion is met and each is bound by
+evidence a mutation kills; the design decision the build had to take, and the four residuals it
+leaves, are recorded below.
 
 #### What was built, and the one decision the entry left open
 
@@ -190,6 +248,14 @@ was the entry's one open question and the phase's critical path.)*
 **"Retries" means yt-dlp's own `--retries`** — the per-fragment retries inside one attempt — **and
 the control must be labelled so it cannot be read as the other one.**
 
+*(**The choice stands; the parenthetical is inaccurate and is corrected rather than quietly
+reworded** — `T196-R5`, measured against the pinned yt-dlp 2026.07.04. `--retries` is consumed by
+`downloader/http.py` and is the **file transfer's** own retry; `--fragment-retries` is a separate
+option consumed by `downloader/fragment.py` and is the per-fragment one. Both are inside one
+attempt, which is why *"inside one attempt"* alone does not name this control — and why the
+label says **of the file transfer**. `--fragment-retries` remains unbuilt and belongs to `T-183`,
+so this changes nothing the ruling decided: the named key, `--retries`, is what is built.)*
+
 **Why, recorded so the next reader does not re-derive it.** The job-level retry is already decided
 and already has behaviour: `REQ-015`/`REQ-018` keep a failure in the queue and offer a retry, and
 `core/errors.py` auto-retries `NETWORK` alone. A settings control over *that* would put two things
@@ -225,7 +291,9 @@ missing is a place to set them and a value that persists.
 
 **Retries is the one that does not exist.** No `retries` field is on `DownloadRequest` and nothing
 maps one. `REQ-023` names it, so it is in scope — and it needs a decision this entry does not take:
-whether "retry policy" means yt-dlp's own `--retries` (per-fragment, inside one attempt) or this
+whether "retry policy" means yt-dlp's own `--retries` (the file transfer's own, inside one
+attempt — see the ruling's correction above; this said *per-fragment*, which is a different
+option) or this
 application's job-level retry from `REQ-015`/`REQ-018`. **They are different things with the same
 name**, and a settings control that says "Retries" while setting the other one is `T-075`'s defect:
 a control that looks like a choice and changes something else. **Name which one before building it.**

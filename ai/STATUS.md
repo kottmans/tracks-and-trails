@@ -5,6 +5,31 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (T-196 corrected) — **`T-196` came back Changes requested with one
+Critical and four Medium findings, and all five are corrected in one batch.** The Critical is the
+one worth keeping: the screen wrote the proxy on every keystroke, so typing a credentialed proxy
+handed composition `http://alice:hunter2` — a complete username and password — one keystroke
+before the `@` arrived and the value was refused, and composition saved it. **No grammar can close
+that**, because `http://alice:12345` is a numeric password *and* a legal `host:port`; what closes
+it is committing on a finished edit rather than on a keystroke. The grammar was weak too and is
+fixed beside it, and a third defect surfaced while building the evidence — **Return in the proxy
+box was opening a native folder picker**, because a `QPushButton` in a dialog is `autoDefault`.
+
+**Two of the four Mediums were my redaction classifier wrong in both directions** (`T196-R2`): the
+`ARC-008` reason quoted the refused value it was written to withhold, and an invalid `http://` was
+registered as a secret, making every ordinary URL in the log unreadable. **One was a display lie**
+— 500 B/s in force, *No limit* on screen — closed by holding no rate the screen cannot show.
+**One was my gate being false-green**: the reviewer's own mutation, dropping every live proxy and
+rate choice, passed all four focused composition tests. There is a composed regression to the
+adapter's options now, and that mutation is in the sweep. **Twenty mutations, none surviving.**
+Gates green: **2923 passed, 18 skipped** unit+UI and **440 passed** integration, `ruff`, `ruff
+format`, `mypy src`, bare `mypy` and `mypy --platform win32` clean, exit codes checked. **The
+findings are corrected and awaiting re-review — the Reviewer marks them Resolved, not me.**
+
+*(The block below is the first submission and is left as written, except that the retry control's
+wording has since changed: `--retries` is the **file transfer's** own retry, and
+`--fragment-retries` — a separate option, also inside one attempt — is `T-183`'s. `T196-R5`.)*
+
 **Last updated:** 2026-08-13 (T-196 built) — **the last of `REQ-023`'s eight settings is built and
 `T-196` is In Review**, committed as one commit on `main` and **held unpushed**: pushing wakes the
 reviewer, and the handoff goes first. Proxy, per-download speed limit and yt-dlp's own

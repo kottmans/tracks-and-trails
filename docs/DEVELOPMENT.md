@@ -344,9 +344,22 @@ field.
 `ARCHITECTURE.md` §8 freezes settings into the `DownloadRequest` when a job is created, and the
 proxy, rate limit and retry count all have fields there — so a change reaches downloads added from
 then on, and anything already in the queue keeps what it was added with. The screen says so, and
-`T-196`'s two exceptions to a plain read are worth knowing: **zero retries is a real answer** while
-absence means yt-dlp's own count, and **a stored rate limit of `0` is reported rather than read as
-"no limit"**, because it would otherwise silently remove a limit somebody asked for.
+`T-196`'s exceptions to a plain read are worth knowing:
+
+- **Zero retries is a real answer** — *do not retry inside the attempt* — while an absent key means
+  yt-dlp's own count. The retry this sets is `--retries`, the **file transfer's** own;
+  `--fragment-retries`, which covers the pieces of a segmented stream, is a separate option nothing
+  here sets and belongs to `T-183` (`T196-R5`).
+- **A stored rate limit outside `RATE_LIMIT_MINIMUM_BYTES..RATE_LIMIT_MAXIMUM_BYTES` is reported**,
+  and `0` or a negative is reported and dropped rather than read as *no limit* — it would otherwise
+  silently remove a limit somebody asked for. The floor exists because the screen counts whole
+  KiB/s: 500 B/s displayed as *No limit* while downloads were capped at it (`T196-R3`).
+- **A proxy is never quoted back.** The `ARC-008` reason names the rule, not the value, and the
+  literal is registered for redaction only when it is usable or carries userinfo — registering a
+  fragment like `http://` makes every URL in the log unreadable (`T196-R2`).
+- **The proxy field commits when the edit is finished, never per keystroke.** Typing a credentialed
+  proxy passes through prefixes that are valid addresses — `http://alice:12345` is a legal
+  `host:port` — and committing those wrote a password to `settings.toml` (`T196-R1`, Critical).
 
 | Setting | Where it is | Stored as |
 |---|---|---|

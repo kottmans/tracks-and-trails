@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -758,16 +759,90 @@ def test_an_unset_network_reads_as_no_limit_and_the_downloaders_own_retries(
     assert control(screen, QLineEdit, PROXY_NAME).text() == ""
 
 
+def type_a_proxy(screen: SettingsDialog, text: str) -> QLineEdit:
+    """Type `text` into the proxy field the way a user does, and finish the edit (`T196-R1`).
+
+    **`QTest.keyClicks`, not `setText`.** The finding is about what happens *between* keystrokes:
+    every accepted prefix used to be written, so a test that assigned the whole string at once
+    could never see it. `editingFinished` is then raised the way Return raises it — the screen
+    commits there rather than on `textChanged`.
+    """
+    field: QLineEdit = control(screen, QLineEdit, PROXY_NAME)
+    field.clear()
+    QTest.keyClicks(field, text)
+    return field
+
+
 def test_typing_a_proxy_stores_it(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
 ) -> None:
     chosen: list[NetworkOptions] = []
     screen, _ = screens(on_network_chosen=chosen.append)
 
-    control(screen, QLineEdit, PROXY_NAME).setText("http://proxy.invalid:3128")
+    field = type_a_proxy(screen, "http://proxy.invalid:3128")
+    QTest.keyClick(field, Qt.Key.Key_Return)
 
     assert chosen and chosen[-1].proxy == "http://proxy.invalid:3128"
     assert control(screen, QLabel, PROXY_NOTE_NAME).text() == ""
+
+
+@pytest.mark.parametrize(
+    ("typed", "label"),
+    [
+        ("http://alice:hunter2@proxy.invalid:8080", "a word for a password"),
+        # **The one a grammar cannot catch** (`T196-R1`). `http://alice:12345` is a legal
+        # `host:port`, so the prefix this passes through is indistinguishable from a valid proxy —
+        # which is why the correction is *when* the field is committed, not what it accepts.
+        ("http://alice:12345@proxy.invalid:8080", "a numeric password"),
+    ],
+)
+def test_no_keystroke_of_a_credentialed_proxy_ever_reaches_the_writer(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    typed: str,
+    label: str,
+) -> None:
+    """**`T196-R1`, Critical.** Typing a credentialed proxy must store nothing at any point.
+
+    The screen wrote on `textChanged`, so typing `http://alice:hunter2@proxy.invalid:8080` handed
+    composition `http://alice:hunter2` — a complete username and password — one keystroke before
+    the `@` arrived and the value was refused. Composition applies and saves everything handed to
+    it, so the credential reached `settings.toml` and would have reached the next queued request.
+
+    Asserted over **every** value handed over, not the last one: the defect is an intermediate.
+    """
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+
+    field = type_a_proxy(screen, typed)
+    QTest.keyClick(field, Qt.Key.Key_Return)
+    screen.done(0)
+
+    assert not [options for options in chosen if options.proxy is not None], (
+        f"{label}: these values reached the writer while typing {typed!r}: "
+        f"{[options.proxy for options in chosen]}"
+    )
+    assert control(screen, QLabel, PROXY_NOTE_NAME).text(), "it was refused without saying why"
+
+
+def test_a_proxy_edit_left_unfinished_is_committed_when_the_screen_closes(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """The other half of `T196-R1`'s correction: not committing must not mean losing.
+
+    `editingFinished` covers Return and focus leaving the field — clicking `Close` included, since
+    the button takes focus first. `Esc`, and a window closed while the box still holds focus, do
+    not raise it, and an edit silently discarded there is the same surprise as one silently
+    stored.
+    """
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(on_network_chosen=chosen.append)
+
+    type_a_proxy(screen, "http://proxy.invalid:3128")
+    assert chosen == [], "the value was committed while it was still being typed"
+
+    screen.done(0)
+
+    assert chosen and chosen[-1].proxy == "http://proxy.invalid:3128"
 
 
 def test_a_proxy_carrying_a_credential_is_refused_with_the_reason_and_not_stored(
@@ -786,7 +861,8 @@ def test_a_proxy_carrying_a_credential_is_refused_with_the_reason_and_not_stored
     chosen: list[NetworkOptions] = []
     screen, _ = screens(on_network_chosen=chosen.append)
 
-    control(screen, QLineEdit, PROXY_NAME).setText("http://me:hunter2@proxy.invalid:8080")
+    field = type_a_proxy(screen, "http://me:hunter2@proxy.invalid:8080")
+    QTest.keyClick(field, Qt.Key.Key_Return)
 
     assert not [options for options in chosen if options.proxy is not None], (
         f"a proxy carrying a credential was handed to composition: {chosen}"
@@ -803,7 +879,8 @@ def test_emptying_the_proxy_box_clears_the_setting(
         network=NetworkOptions(proxy="http://proxy.invalid:8080"), on_network_chosen=chosen.append
     )
 
-    control(screen, QLineEdit, PROXY_NAME).setText("")
+    field = type_a_proxy(screen, "")
+    QTest.keyClick(field, Qt.Key.Key_Return)
 
     assert chosen and chosen[-1].proxy is None
     assert control(screen, QLabel, PROXY_NOTE_NAME).text() == ""
@@ -853,7 +930,8 @@ def test_changing_one_network_control_keeps_what_the_others_hold(
         network=NetworkOptions(rate_limit_bytes=1024), on_network_chosen=chosen.append
     )
 
-    control(screen, QLineEdit, PROXY_NAME).setText("http://proxy.invalid:8080")
+    field = type_a_proxy(screen, "http://proxy.invalid:8080")
+    QTest.keyClick(field, Qt.Key.Key_Return)
     control(screen, QSpinBox, RETRIES_NAME).setValue(2)
 
     assert chosen[-1] == NetworkOptions(
@@ -903,6 +981,19 @@ def test_the_retry_control_says_which_retry_it_governs(
         assert "attempt" in reading, (
             f"{where} says only {reading!r}, which reads as the queue's own retry"
         )
+        # **`T196-R5`: "within one attempt" separates two of the three retries, not all three.**
+        # `--fragment-retries` is *also* within one attempt and is a different option this control
+        # does not set, so a user setting this to zero would still watch fragments retry. The text
+        # has to name what is being retried, not only when.
+        assert "file transfer" in reading, (
+            f"{where} says {reading!r}, which does not distinguish the file transfer's own "
+            "retries from the separate count for the pieces of a segmented stream"
+        )
+
+    said = control(screen, QLabel, "networkExplanation").text().lower()
+    assert "pieces" in said, (
+        f"the section does not say that segmented streams retry on a count of their own: {said!r}"
+    )
 
 
 def test_the_network_section_says_when_its_settings_take_effect(
@@ -920,3 +1011,91 @@ def test_the_network_section_says_when_its_settings_take_effect(
 
     assert "already in the queue" in said, f"the binding is not stated: {said!r}"
     assert "each download" in said, "the limit's per-download scope is not stated"
+
+
+@pytest.mark.parametrize(
+    ("stored", "shown"),
+    [
+        (core_settings.RATE_LIMIT_MINIMUM_BYTES, 1),
+        (1500, 1),
+        (524288, 512),
+    ],
+)
+def test_a_limit_in_force_is_never_displayed_as_no_limit(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]], stored: int, shown: int
+) -> None:
+    """**`T196-R3`.** Whatever the settings layer can hold, this control can show as a limit.
+
+    The floor is what makes that true — `500` used to floor to `0` KiB/s and read *No limit* while
+    downloads were capped at 500 B/s. `1500` is the residual that remains: it reads as 1 KiB/s,
+    which understates the limit rather than denying it, and is not written back.
+    """
+    screen, _ = screens(
+        network=NetworkOptions(rate_limit_bytes=stored), on_network_chosen=lambda _options: None
+    )
+
+    rate = control(screen, QSpinBox, RATE_LIMIT_NAME)
+
+    assert rate.value() == shown
+    assert rate.text() != NO_RATE_LIMIT_LABEL, (
+        f"{stored} bytes per second is in force and the screen says {rate.text()!r}"
+    )
+
+
+def test_an_unrelated_edit_does_not_rewrite_a_rate_limit_the_box_rounds(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """The disclosed residual, bounded: displayed rounding must not become stored rounding.
+
+    A stored `1500` reads as 1 KiB/s. Changing the retry count must hand back `1500`, not the
+    `1024` the box happens to be showing — otherwise an unrelated control silently edits a limit
+    the user set by hand.
+    """
+    chosen: list[NetworkOptions] = []
+    screen, _ = screens(
+        network=NetworkOptions(rate_limit_bytes=1500), on_network_chosen=chosen.append
+    )
+
+    control(screen, QSpinBox, RETRIES_NAME).setValue(3)
+
+    assert chosen[-1] == NetworkOptions(rate_limit_bytes=1500, retries=3), (
+        f"an unrelated edit rewrote the rate limit: {chosen[-1]}"
+    )
+
+
+def test_return_in_the_proxy_field_finishes_the_edit_and_opens_nothing(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**Found while building `T196-R1`'s evidence, and it made that correction incomplete.**
+
+    A `QPushButton` in a dialog is `autoDefault`, so Return in any field activated the first one —
+    *Choose folder…*, which opens a **native modal file picker** that no headless test can
+    dismiss. The commit-on-finish correction relies on Return being a natural way to finish an
+    edit, so a Return that opens a folder chooser instead is that correction with a hole in it.
+
+    Asserted through the injected picker seam: if the button fired, `choose_directory` ran.
+    """
+    picked: list[Path] = []
+    chosen: list[NetworkOptions] = []
+
+    def refuse_to_pick(start: Path) -> Path | None:
+        """Record that the picker was reached, and answer as a cancelled one does.
+
+        A named function rather than a lambda: recording *and* returning needs two statements,
+        and `append(...) or None` is an expression `mypy` reads as always-false.
+        """
+        picked.append(start)
+        return None
+
+    screen, _ = screens(choose_directory=refuse_to_pick, on_network_chosen=chosen.append)
+    # **Shown, because `autoDefault` is only consulted by a dialog that is up.** A screen built and
+    # never shown swallows Return, so this test passed with the correction removed until it did
+    # this — the vacuity the injected picker exists to make visible rather than hide.
+    screen.show()
+    QApplication.processEvents()
+
+    field = type_a_proxy(screen, "http://proxy.invalid:3128")
+    QTest.keyClick(field, Qt.Key.Key_Return)
+
+    assert picked == [], "Return in the proxy field opened the folder picker"
+    assert chosen and chosen[-1].proxy == "http://proxy.invalid:3128"

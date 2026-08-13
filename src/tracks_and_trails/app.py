@@ -691,14 +691,16 @@ def compose(
         own verbose output dumps `params:` and a `Proxy map:` that name it in full. Knowing beats
         guessing, and this is a value the application is holding.
 
-        **Only when it is address-shaped**, which is `_proxy_literals`' rule in `core/settings.py`
-        and is stated there: registering a bare word would replace it everywhere it later appears,
-        which is `T197-R6` — a valid `browser = "edge"` made the word *edge* unreadable.
+        **Which values qualify is `registrable_proxy`'s to decide**, not this function's — the
+        stored route and this one must classify identically, which is `T199-R3`'s rule and the
+        reason that predicate is public. It had been spelled out here as *"anything with `://` or
+        `@`"*, and `T196-R2` found that wrong in both directions: it registered the fragment
+        `http://` and made every ordinary URL in the log unreadable.
+
         `remember_a_secret` rather than `remember_a_path`: a proxy is not a filesystem path, and
         the four-byte floor is exactly the protection a non-path literal wants.
         """
-        if value and ("://" in value or "@" in value):
-            app_logging.remember_a_secret(value)
+        app_logging.remember_a_secret(app_settings.registrable_proxy(value))
 
     def choose_network(options: NetworkOptions) -> None:
         """Set the proxy, speed limit and retry count (`REQ-023`, `T-196`).
