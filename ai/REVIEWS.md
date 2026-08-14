@@ -16561,3 +16561,36 @@ verification open until that finding is resolved.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-14 — T-242 corrections focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-242`
+**Base:** `cd52ed59ee4e4453b0d0b03dc32fce1fa3c51760`
+**Head:** `68cd1c6604b385401928c7217638fa354def4e3c` — the local, unpushed correction
+**Platforms verified:** Linux, Qt offscreen. No real-display or real multi-monitor execution is
+claimed.
+**Verdict:** **Approved at `68cd1c6`.** `T242-R1` and `T242-R2` are Resolved; no blocking finding
+remains.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T242-R1** | **Medium** | **Yes** | **Resolved** | `_room_on_screen()` now takes `self.screen()` first and uses `QApplication.primaryScreen()` only when no associated display exists. The deterministic regression supplies dimensions the offscreen primary cannot produce and asserts the exact associated-display result. Replacing `self.screen()` with `primaryScreen()` in an isolated archive makes that regression fail with `752x752` instead of `1318x652`. |
+| **T242-R2** | **Medium** | **Yes** | **Resolved** | Both dated captures are present and linked from the task entry. Visual inspection found the light and dark Settings screens complete at 620×700 with a vertical scroll region, fixed Close button, and no visibly clipped label. The committed generator reproduced both themes at 620×700 and reported `clipped=0` for each. This remains offscreen evidence, exactly as the entry states. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | **Passed:** `cd52ed5..68cd1c6` passes `git diff --check`; metadata has a 43-character subject, human-only authorship, and the required `Task:` / `Review:` trailers. |
+| Exact-head focused suite | **49 passed** in `tests/ui/test_settings_dialog.py`, from a `git archive` of `68cd1c6`. |
+| Display-choice mutation | **Caught:** substituting the primary screen for the associated screen produces **1 failed, 48 deselected** at the exact-dimension regression. |
+| Screenshot generator | **Passed:** a fresh run wrote light and dark 620×700 PNGs and reported `clipped=0` for each. |
+| Visual inspection | **Passed at the claimed offscreen confidence level:** both committed captures were inspected at original resolution. No real-display or transient-window claim is inferred. |
+| Static gates | **Passed:** the shared correction static results recorded in the T-201 focused review above. |
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
+`T-242` out of `## In Review` without another review pass.
