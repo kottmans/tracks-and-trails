@@ -16492,3 +16492,72 @@ should be corrected in the next coordination sync.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-14 — T-201 corrections focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-201`
+**Base:** `68cd1c6604b385401928c7217638fa354def4e3c`
+**Head:** `78b2fa694a5115e8e39d9e557629a1f3a2c10cb8` — the local, unpushed correction
+**Platforms verified:** Linux, Qt offscreen. No Windows runtime, CI, real display, frozen build,
+or external network execution is claimed.
+**Verdict:** **Blocked.** `T201-R1` is Resolved. `T201-R2` remains Open because the new exhausted
+wording is not reached through the widget's live event path. `T201-R3` remains Open and High;
+option C is the Reviewer's recommendation, but changing the accepted row anatomy still requires
+the maintainer's explicit ruling.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T201-R1** | **Medium** | **Yes** | **Resolved** | `_failure_detail()` now joins `splitlines()` and leaves repeated spaces, tabs, carriage-return boundaries, and surrounding whitespace intact. All six submitted cases pass. Restoring the original unrestricted `split()` in an isolated `78b2fa6` archive makes four of the six cases fail, including the reviewer's mixed payload. |
+| **T201-R2** | **Medium** | **Yes** | **Open** | The table and pure formatter now have honest exhausted wording, but `JobProgressView` snapshots `_retries_spent` only in `_load()`. Automatic retries increment `Job.attempts` after construction; `_on_job_changed()` updates only `_status`, and `_on_job_failed()` redraws without reloading the job. A deterministic signal-path probe constructed the view at `attempts=0`, advanced the stored failed job to `attempts == AUTOMATIC_RETRY_LIMIT`, emitted `job_changed` then `job_failed`, and still rendered *“This retries by itself a few times”* rather than *“The automatic retries are used up.”* The correction therefore does not reach even the isolated surface it targets. Read the current attempts on the failure/status path (without inventing a second counter) and add a widget-path regression for the exact event order. |
+| **T201-R3** | **High** | **Yes** | **Open** | No reachable surface was added, as the correction record accurately states. The two captures confirm that option A materially elides yt-dlp's own ffmpeg remedy. The queue remains the only composed failure surface and still omits every actionable next step. |
+
+### Layout recommendation for T201-R3
+
+**Recommend option C: one additional text line on failed rows only, pending maintainer
+ratification.** It is the only option that keeps all three facts the product has promised: what
+failed, yt-dlp's own diagnostic, and what the user can do.
+
+- **A is rejected by the supplied measurement.** At 1180 px the next step consumes the width that
+  preserved `--ffmpeg-location`; the extractor message becomes `--ff…`, directly worsening the
+  `NFR-006` content the task is meant to protect.
+- **B is rejected as the default ruling.** `UX-005` §6 deliberately made the format plain text
+  after start because the row is the only remaining place to learn what the job ran as. A failed
+  row also offers Retry, so deleting the format there removes relevant context about what will be
+  attempted again.
+- **C has a contained, already-precedented cost.** The list already disables uniform item sizing,
+  and `RowDelegate.sizeHint()` already adds a line only when a playlist child has extra format
+  state to say. A failed-only action line follows that established rule: spend height only where
+  the row has additional information. Its implementation must derive paint and size from the same
+  role, move the selector/progress/verb geometry coherently, and include the same action text in
+  the row's accessible description.
+
+This is a Reviewer recommendation, not an accepted product decision. `UX-005`'s own history
+distinguishes a reviewer recommendation from maintainer ratification; no current `[T]` clause is
+changed by this review entry.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Correction boundary | **Passed:** `68cd1c6..78b2fa6` and its constituent files pass `git diff --check`; the 46-character subject, human-only authorship, and `Task:` / `Review:` trailers satisfy repository metadata policy. |
+| Exact-head T-201 slice | **260 passed with 4 existing PySide disconnect warnings** in `test_error_text.py`, `test_job_detail.py`, and `test_queue_view.py`, from a `git archive` of `78b2fa6` with `PYTHONPATH` bound to that archive. The green suite does not resolve R2 because it never advances attempts after constructing the widget. |
+| R1 mutation | **Caught:** restoring unrestricted `split()` produces **4 failed, 2 passed, 109 deselected** in the six-case row-message regression. |
+| R2 live-event probe | **Reproduced the defect:** a view loaded at attempt zero, followed by a repository row at the retry limit and the manager's `job_changed` / `job_failed` signal order, rendered the in-progress auto-retry promise and not the exhausted wording. |
+| R3 visual evidence | **Inspected at original resolution:** `today` contains no next step; `option-a` truncates the ffmpeg diagnostic's own remedy. No claim is made for unrendered B or C. |
+| Shared focused slice | **318 passed with the same 4 warnings** across settings records, Settings, error text, job detail, and queue view. |
+| Static gates | **Passed:** `ruff check` and `ruff format --check` on the nine changed Python files; `mypy src` (**55 files**), bare `mypy`, and `mypy --platform win32` (**142 files** each). The stale `.venv/bin/mypy` launcher failed first; the authoritative module invocations through `.venv/bin/python -m mypy` passed. |
+| Implementer's wider gates | **Not repeated.** The Implementer reports **2972 passed / 18 skipped** unit+UI and **440 passed** integration at this head; this focused review neither contradicts nor promotes those figures to independent results. |
+
+### Remaining correction boundary
+
+The maintainer must ratify a reachable layout; the Reviewer recommends C. Correct R2 through the
+actual event path in the same batch, and gate R3 from the composed queue for representative
+actionable, no-action, exhausted-network, and long-diagnostic cases. Although this is the ordinary
+focused re-review, R3 is High, so `AGENTS.md` §10 keeps focused correction and independent
+verification open until that finding is resolved.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.
