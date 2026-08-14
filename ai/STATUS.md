@@ -5,9 +5,9 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-14 (T-244 corrected) — **`T-244` is in review, corrected once.** The task
-commit is **`c1b4ab0`**; the correction for round one's two findings is an uncommitted diff on top
-of it, and `origin/main` is still at `ebe4159`. An expanded playlist entry drew none of the verbs it
+**Last updated:** 2026-08-14 (T-244 in review) — **`T-244` is in review, corrected twice.** The task
+is **`c1b4ab0`**, its first correction **`30aaf42`**. **Nothing in this task is pushed**;
+`origin/main` is at `ebe4159`. An expanded playlist entry drew none of the verbs it
 offered, at every width: `sizeHint` shortened a child to `CHILD_TEXT_LINES` while `_verb_rects`
 went on measuring every row's last line from the top-level `TEXT_LINES`, so the baseline landed
 below the child's own body and the layout returned an empty list. **`_text_lines` is the one answer
@@ -23,6 +23,14 @@ missed it by pairing a *queued* row's three verbs with a fraction, a combination
 produces and one where the overflow is needed anyway. **A probe that invents its inputs can agree
 with the assumption that built it.** The gate is driven from the composed model now and asserts its
 own preconditions. **Seven mutations, none surviving; three survived a first version of the tests.**
+
+**And a rule this file now follows, because breaking it cost two review rounds** (`T244-R2`):
+**never describe the commit state of the diff that carries the description.** *"The correction is an
+uncommitted diff"* was written into the correction, so committing it — the very next step, and the
+one `AGENTS.md` §7 now requires — made it false. Twice, one layer apart, each time with the SHA
+dutifully updated and the self-referential shape left in place. **Name commits that already exist,
+and state the push separately**: a SHA stays true once written, and pushing is a deliberate act with
+its own update, not something the act of writing triggers.
 
 *(The snapshot below is the four-approval sync's and stands.)*
 

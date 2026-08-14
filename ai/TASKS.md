@@ -123,8 +123,11 @@ this one returned four verdicts before approving.*
 re-review; the defect reproduces at the review base and is not caused by `T201-R3`, so it was
 carried rather than reopening that task. Round one returned **Changes requested** with `T244-R1`
 (the phantom bar reserve, which I had wrongly measured as unobservable) and `T244-R2` (a stale
-`ai/STATUS.md` claim), **both corrected**. **Seven mutations, none surviving** — and three of the seven
-survived a first version of the tests, including the one `T244-R1` had to find for me.
+`ai/STATUS.md` claim). `T244-R1` is **Resolved**; `T244-R2` outlived its first correction and is
+corrected again here, under the maintainer's authorization of a third, documentation-only pass —
+`AGENTS.md` §10's budget was exhausted with it still open. **Seven mutations, none surviving** —
+and three of the seven survived a first version of the tests, including the one `T244-R1` had to
+find for me.
 **Owner:** Implementer
 **Priority:** Medium — an expanded entry loses its own Retry and Remove controls, but the playlist
 header still offers Retry failed and group removal as workarounds
@@ -214,6 +217,27 @@ can agree with the assumption that built it; this one did.
 The gate is driven from the composed model for that reason, sweeps 150–300 px, and asserts the
 preconditions it depends on — that a running entry still offers exactly `Cancel` and still carries a
 fraction — so it fails loudly rather than quietly stopping measuring anything.
+
+#### `T244-R2` — corrected on the third attempt, because the first two fixed the SHA and not the shape
+
+`ai/STATUS.md` described this task's disposition and got the commit state wrong **twice**: first
+calling it *"an uncommitted tree at `ebe4159`"* after it had been committed at `c1b4ab0`, then —
+in the correction for that very finding — calling the correction *"an uncommitted diff"* after
+committing it at `30aaf42`. The Reviewer's words for the second are the accurate ones: *the same
+state error one layer later*.
+
+**Updating the SHA was never the fix, and that is why it recurred.** The sentence was **inside the
+diff it described**. Committing it is the next step and, since 2026-08-14, the step `AGENTS.md` §7
+*requires* — so the claim was false by construction the moment the rule it was written under was
+followed. A self-referential statement about commit state cannot survive its own commit.
+
+**The rule this closes on:** *never describe the commit state of the diff that carries the
+description.* Name commits that already exist, since a SHA stays true once written, and state the
+push separately — pushing is a deliberate act with its own update rather than something the act of
+writing triggers. Recorded in `ai/STATUS.md` where the mistake was made, not only here.
+
+**No source or test change.** This finding was documentation-only in all three rounds; the
+`T244-R1` correction is the last change to reach `src/` or `tests/`.
 
 ## Complete
 
