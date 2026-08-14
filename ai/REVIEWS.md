@@ -16594,3 +16594,32 @@ remains.
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
 `T-242` out of `## In Review` without another review pass.
+
+## 2026-08-14 — T-227 correction focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-227`
+**Base:** `d7c9b7b2bffdb457f623ccaad3b1f4395f9a9a83`
+**Head:** `cd52ed59ee4e4453b0d0b03dc32fce1fa3c51760` — the local, unpushed correction
+**Platforms verified:** Linux. No browser-hosted Markdown renderer, Windows, CI, or frozen build is
+claimed.
+**Verdict:** **Approved at `cd52ed5`.** `T227-R1` is Resolved; no blocking finding remains.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T227-R1** | **Medium** | **Yes** | **Resolved** | The UX count marker is now inline between words and spaces, so it no longer begins a CommonMark raw-HTML block or interrupts the paragraph. The new structural guard rejects the exact malformed shape. Moving the marker back to column one with prose after it in an isolated archive produces **1 failed, 1 passed, 7 deselected**. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | **Passed:** `d7c9b7b..cd52ed5` passes `git diff --check`; metadata has a 48-character subject, human-only authorship, and `Task:` / `Review:` trailers. |
+| Exact-head focused suite | **9 passed** in `tests/ui/test_settings_records.py`, from a `git archive` of `cd52ed5`. |
+| Placement mutation | **Caught:** restoring the original start-of-line marker makes the UX-spec parameter fail and reports the offending line. |
+| Runtime/static gates | No runtime source changed. The changed test is included in the shared correction `ruff` and formatting pass recorded above. |
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
+`T-227` out of `## In Review` without another review pass.
