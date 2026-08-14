@@ -5648,8 +5648,10 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ### T-244 — Expanded playlist entries offer verbs the delegate never draws
 
-**Status:** Proposed — filed by the `T-201` second-correction re-review. The defect reproduces at
-the review base and is not caused by `T201-R3`; it is carried rather than reopening that task.
+**Status:** **Built 2026-08-14, ready for review.** Filed by the `T-201` second-correction
+re-review; the defect reproduces at the review base and is not caused by `T201-R3`, so it was
+carried rather than reopening that task. **Six mutations, none surviving** — and two of the six
+survived the first version of the tests, which is what produced the shape of the ones below.
 **Owner:** Implementer
 **Priority:** Medium — an expanded entry loses its own Retry and Remove controls, but the playlist
 header still offers Retry failed and group removal as workarounds
@@ -5689,6 +5691,43 @@ calculation rather than making T-201 absorb adjacent playlist geometry.
 
 - Changing which verbs playlist entries or headers offer
 - Changing `T201-R3`'s action text or the ratified failed-row line
+
+#### What was built
+
+**`_text_lines(index)` is now the only answer to how many lines a row draws**, and `sizeHint`,
+`_paint_text` and `_verb_rects` all ask it. That is the whole defect: those three derived the
+number separately, and the verb layout kept measuring every row from the top-level `TEXT_LINES`
+while `sizeHint` had shortened a child to `CHILD_TEXT_LINES`. The baseline landed **below the
+child's own body**, `height` clamped to zero, and the layout returned an empty list — **not a
+clipped control, which a user can at least see: no control.** Reproduced through the composed queue
+before anything was touched: four entries, every one offering verbs, every one drawing none.
+
+**The verbs share the child's last line rather than being given one.** A child that grew a line for
+its buttons would undo the trade `UX-005` row 9c made, in the case — a sixteen-item playlist — with
+least room to waste. So whatever text lands on the last line yields its right-hand end instead, via
+one `room_on` helper. **An ordinary row is untouched by that**, deliberately: its last line is the
+bar's and the verbs' already, so `room_on` returns the full width for every line it draws.
+`T-166` is the record of narrowing a line the verbs do *not* occupy, and `T118-R8` of narrowing the
+one line that must never give.
+
+**Heights are unchanged** — 46 px for a two-line entry and 63 px for one carrying `T201-R3`'s
+action line, before and after.
+
+#### Two mutations survived the first tests, and that is the part worth keeping
+
+The first regressions caught the missing verbs and nothing else. **Weakening the yielding rule left
+every test green**, because the strip comparison only ever varied the *detail* — so the format and
+action paths were free to draw underneath the buttons. The test is parametrised by *which role
+lands on the last line* now, which is a different line in each of the four child shapes.
+
+**And one intended change turned out to be unobservable, which is recorded rather than claimed.**
+`_bar_reserve` read `PROGRESS_ROLE` for a child, reserving `MIN_FRACTION_BAR` of the last line for a
+bar `_paint_text` never draws. Guarding it changes **no layout at any width**: swept 150 to 600 px
+against all three child verb sets, a child with a fraction and one without place their verbs
+identically — the reserve is capped below the overflow's own width on a narrow row and unneeded on a
+wide one. The guard stays, because a function reserving space for something the painter will not
+draw is wrong in a way that only stays harmless by accident. **No mutation is claimed for it**, and
+the vacuous test that "covered" it was deleted rather than kept green.
 
 ### T-243 — An interrupted row says the same thing twice, in two voices
 

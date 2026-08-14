@@ -82,6 +82,7 @@ from tracks_and_trails.ui.row_delegate import (
     RowDelegate,
     SegmentState,
     _merge,
+    _text_lines,
     minimum_row_width,
     segment_blocks,
     segment_span,
@@ -1950,6 +1951,214 @@ def test_the_verbs_are_hit_tested_on_the_line_they_are_drawn_on(qapp: QApplicati
         f"the verbs on a row with an action are hit-tested at y={tops[0]} and on one without at "
         f"y={tops[1]}, which is not one line apart — the buttons and the action share a line"
     )
+
+
+# --- an expanded playlist entry keeps its own verbs (T-244) -----------------------------------
+
+
+def a_playlist_child(extra: dict[int, Any] | None = None) -> dict[int, Any]:
+    """One entry of an opened playlist, with the verbs its state permits.
+
+    `DEPTH_ROLE` is what makes it a child, and it is the whole of the defect: the row is *sized*
+    from the child anatomy and its verbs were *placed* from the parent's.
+    """
+    row: dict[int, Any] = {
+        HEADLINE_ROLE: "01 Prelude of Light",
+        DETAIL_ROLE: "Trail Sounds · 4:12 · The connection to the site failed",
+        HUE_ROLE: 0,
+        DEPTH_ROLE: 1,
+        JOB_ID_ROLE: "entry-1",
+        VERBS_ROLE: [Verb.RETRY, Verb.REMOVE],
+    }
+    row.update(extra or {})
+    return row
+
+
+#: The four shapes a child row comes in, which is every combination of its two optional lines.
+CHILD_SHAPES: Final = [
+    ("two lines", {}),
+    ("a format of its own", {SELECTOR_ROLE: FORMAT_LINE}),
+    ("an action line", {ACTION_ROLE: ACTION_TEXT}),
+    ("both", {SELECTOR_ROLE: FORMAT_LINE, ACTION_ROLE: ACTION_TEXT}),
+]
+
+
+@pytest.mark.parametrize(("shape", "extra"), CHILD_SHAPES, ids=[s for s, _ in CHILD_SHAPES])
+def test_an_expanded_playlist_child_draws_the_verbs_it_offers(
+    qapp: QApplication, shape: str, extra: dict[int, Any]
+) -> None:
+    """**`T-244`.** An entry offered `Retry` and `Remove` and drew neither — at every width.
+
+    Not a clipped control, which a user can at least see: **no control**. `_verb_rects` measured
+    every row's last line from the top-level `TEXT_LINES` while `sizeHint` shortened a child to
+    `CHILD_TEXT_LINES`, so the baseline landed below the child's own body, the height clamped to
+    zero and the layout returned an empty list. The playlist header's own verbs were fine
+    throughout, which is why nothing looked broken from the outside.
+
+    **Swept, for `SWEEP_WIDTHS`' own reason**: a collision that appears over a range and vanishes
+    again is not caught by rendering one width. **And all four child shapes**, because the child
+    anatomy has two optional lines and the last line is a different one in each.
+    """
+    row = a_playlist_child(extra)
+    offered = set(row[VERBS_ROLE])
+    delegate = RowDelegate()
+
+    for width in SWEEP_WIDTHS:
+        model = RowsModel([row])
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, width, 0)
+        option.fontMetrics = QFontMetrics(option.font)
+        option.rect = QRect(0, 0, width, delegate.sizeHint(option, model.index(0, 0)).height())
+
+        body, area = delegate._verb_area(option, model.index(0, 0))
+        placed = delegate._verb_rects(option.fontMetrics, area, body, model.index(0, 0))
+        drawn = {verb for verb, _ in placed if verb is not None}
+        overflowed = bool(placed) and any(verb is None for verb, _ in placed)
+
+        assert drawn or overflowed, (
+            f"at {width}px a child with {shape} offers {sorted(v.value for v in offered)} and "
+            "draws nothing at all — not even the overflow that would make them reachable"
+        )
+        assert drawn <= offered, (
+            f"at {width}px the row drew {sorted(v.value for v in drawn - offered)}, which the "
+            "model never offered"
+        )
+        for verb, rect in placed:
+            assert body.top() <= rect.top() and rect.bottom() <= body.bottom(), (
+                f"at {width}px the {verb} button on a child with {shape} is laid out at "
+                f"{rect.top()}..{rect.bottom()} against a body of {body.top()}..{body.bottom()}, "
+                "so it is drawn clipped or outside the row"
+            )
+
+
+@pytest.mark.parametrize(("shape", "extra"), CHILD_SHAPES, ids=[s for s, _ in CHILD_SHAPES])
+def test_a_child_row_is_not_made_taller_by_carrying_verbs(
+    qapp: QApplication, shape: str, extra: dict[int, Any]
+) -> None:
+    """The fix spends no height, which is `UX-005` row 9c's economy and the reason for it.
+
+    An entry that grew a line for its buttons would undo the trade row 9c made — a sixteen-item
+    playlist is exactly where there is least room to waste. The verbs share the row's last line
+    instead, and the text on that line yields its right-hand end to them.
+    """
+    delegate = RowDelegate()
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, RENDER_WIDTH, 0)
+    option.fontMetrics = QFontMetrics(option.font)
+
+    with_verbs = RowsModel([a_playlist_child(extra)])
+    without = RowsModel([a_playlist_child({**extra, VERBS_ROLE: []})])
+
+    tall = delegate.sizeHint(option, with_verbs.index(0, 0)).height()
+    short = delegate.sizeHint(option, without.index(0, 0)).height()
+
+    assert tall == short, (
+        f"a child with {shape} is {tall}px when it carries verbs and {short}px when it does not, "
+        "so the buttons are being paid for in height row 9c bought"
+    )
+
+
+def child_strip(row: dict[int, Any], *, width: int = RENDER_WIDTH) -> QImage:
+    """The part of a child's last line the buttons occupy, cropped from the painted row.
+
+    Only the buttons are drawn there, so two rows whose *text* differs must produce an identical
+    strip — and if the text runs on under them, they will not.
+    """
+    delegate = RowDelegate()
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, width, 0)
+    option.fontMetrics = QFontMetrics(option.font)
+    line = option.fontMetrics.height()
+    model = RowsModel([row])
+    height = delegate.sizeHint(option, model.index(0, 0)).height()
+    option.rect = QRect(0, 0, width, height)
+
+    body, area = delegate._verb_area(option, model.index(0, 0))
+    placed = delegate._verb_rects(option.fontMetrics, area, body, model.index(0, 0))
+    assert placed, "no verb was laid out, so there is no strip to compare"
+    left = min(rect.left() for _verb, rect in placed) - VERB_GAP
+    top = PADDING + (_text_lines(model.index(0, 0)) - 1) * line
+
+    image = paint_rows(model, delegate, 0, width=width, height=height)
+    return image.copy(QRect(left, top, width - left, line))
+
+
+#: For each child shape, the role whose text lands on that shape's **last** line.
+#:
+#: The mapping is the point of the parametrisation rather than a convenience: which line is last
+#: differs per shape, and a test that only ever varied the detail would leave the format and action
+#: paths free to draw underneath the buttons. One did, and survived a mutation until this said so.
+LAST_LINE_ROLE: Final = [
+    ("two lines", {}, DETAIL_ROLE),
+    ("a format of its own", {ACTION_ROLE: ""}, SELECTOR_ROLE),
+    ("an action line", {SELECTOR_ROLE: ""}, ACTION_ROLE),
+    ("both", {ACTION_ROLE: ACTION_TEXT}, SELECTOR_ROLE),
+]
+
+
+@pytest.mark.parametrize(
+    ("shape", "extra", "role"), LAST_LINE_ROLE, ids=[s for s, _, _ in LAST_LINE_ROLE]
+)
+def test_a_child_row_does_not_draw_its_last_line_under_the_buttons(
+    qapp: QApplication, shape: str, extra: dict[int, Any], role: int
+) -> None:
+    """Row 9c leaves an entry two lines, so one of them is also the buttons' line.
+
+    A top-level row has a spare line for its verbs; a child does not, and giving it one would spend
+    the height row 9c bought. So the text yields its right-hand end instead — and this is the half
+    a layout can get right while still drawing a sentence underneath three buttons.
+
+    **Asserted as: the buttons' own strip is identical whatever the text says.** Nothing but the
+    verbs is drawn there, so a long string and a short one must be pixel-identical across it. It
+    cannot pass by both being blank, because the buttons are in the strip; and the two rows keep
+    the same line count, so they are the same height and the strip is the same band.
+
+    **Per shape, because the last line is a different one in each** — the detail, the format line,
+    or the action.
+    """
+    long_text = "a long line that runs the whole width and then some more " * 3
+    loud = a_playlist_child({**extra, role: long_text})
+    quiet = a_playlist_child({**extra, role: "x"})
+
+    assert child_strip(loud) == child_strip(quiet), (
+        f"on a child with {shape} the last line is drawn underneath its own buttons — the text "
+        "did not give up the width the verbs occupy, so the two overlap"
+    )
+
+
+def test_a_child_verb_is_triggered_where_it_is_drawn(qapp: QApplication) -> None:
+    """Paint and click resolve through one rectangle — asserted, not inherited (`T-244`).
+
+    `editorEvent` and `_paint_verbs` both call `_verb_rects`, so they agree by construction — and
+    *"by construction"* is what `T118-R12` and `T-160` were both told before a control turned out
+    to be drawn where nobody clicked. This drives a real click at the centre of the rectangle the
+    layout reports and asserts the signal names that verb.
+
+    **Release, not press**: a verb fires on the way up, and the press is consumed only by the `⋮`
+    zone (`T224-R1`). Driving the press alone found nothing here, which is the test being wrong
+    about the control rather than the control being wrong.
+    """
+    delegate = RowDelegate()
+    model = RowsModel([a_playlist_child()])
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, RENDER_WIDTH, 0)
+    option.fontMetrics = QFontMetrics(option.font)
+    option.rect = QRect(0, 0, RENDER_WIDTH, delegate.sizeHint(option, model.index(0, 0)).height())
+
+    body, area = delegate._verb_area(option, model.index(0, 0))
+    placed = delegate._verb_rects(option.fontMetrics, area, body, model.index(0, 0))
+    assert placed, "no verb was laid out, so this proves nothing about clicking one"
+
+    fired: list[tuple[str, Any]] = []
+    delegate.verb_triggered.connect(lambda job_id, verb: fired.append((job_id, verb)))
+    for verb, rect in placed:
+        fired.clear()
+        _press(delegate, model, option, rect.center())
+        _release(delegate, model, option, rect.center())
+        assert fired == [("entry-1", verb)], (
+            f"clicking the centre of the {verb} button on a playlist entry produced {fired}; the "
+            "rectangle it is drawn in is not the rectangle the click resolves"
+        )
 
 
 def a_staging_row(extra: dict[int, Any] | None = None) -> dict[int, Any]:

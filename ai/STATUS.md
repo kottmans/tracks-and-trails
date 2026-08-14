@@ -5,8 +5,19 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-14 (four approvals synced) — **`## In Review` is empty and Phase 4 has no
-build deliverable left.** `T-201` (`da9e0a7`, committed and **unpushed**), `T-242` (`68cd1c6`),
+**Last updated:** 2026-08-14 (T-244 built) — **`T-244` is built and awaiting review**, in an
+uncommitted tree on `main` at `ebe4159`. An expanded playlist entry drew none of the verbs it
+offered, at every width: `sizeHint` shortened a child to `CHILD_TEXT_LINES` while `_verb_rects`
+went on measuring every row's last line from the top-level `TEXT_LINES`, so the baseline landed
+below the child's own body and the layout returned an empty list. **`_text_lines` is the one answer
+now**, asked by the size, the paint and the verb layout alike. The verbs share the child's last
+line rather than being given one, so row 9c's heights are unchanged — 46 px and 63 px, before and
+after. **Six mutations, none surviving; two of them survived the first version of the tests**, and
+one intended change turned out to be unobservable and is recorded as such rather than claimed.
+
+*(The snapshot below is the four-approval sync's and stands.)*
+
+**`## In Review` is empty and Phase 4 has no build deliverable left.** `T-201` (`da9e0a7`, committed and **unpushed**), `T-242` (`68cd1c6`),
 `T-227` (`cd52ed5`) and `T-241` (`d7c9b7b`) are all Approved and moved to `## Complete`; the review
 records are on `main` at `cd87b1e`. **Seven of the phase's eight plan deliverables are in** — the
 error-surface pass closed with `T-201` — and the eighth is the accessibility pass, `T-200`, which

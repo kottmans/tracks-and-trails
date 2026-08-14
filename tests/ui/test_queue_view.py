@@ -69,6 +69,7 @@ from tracks_and_trails.ui.row_delegate import (
     EXPANDED_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
+    JOB_ID_ROLE,
     PRESET_CHOICES_ROLE,
     PRESET_PLACEHOLDER_ROLE,
     PRESET_ROLE,
@@ -3860,6 +3861,82 @@ def test_a_screen_reader_hears_what_the_user_can_do_as_well(
     assert next_step_for(ErrorKind.FFMPEG_MISSING) in spoken, (
         f"the drawn row says what to do and the spoken row does not: {spoken!r}"
     )
+
+
+# --- an expanded playlist entry keeps its own verbs (T-244) -----------------------------------
+
+
+def test_an_expanded_playlist_entry_draws_every_verb_the_model_offers(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**`T-244`, from the composed queue** — the surface the defect was found on.
+
+    A model that offers a control and a delegate that draws none of it is one application
+    disagreeing with itself, and neither half is wrong on its own: `verbs_for` correctly gives a
+    failed entry `Retry` and `Remove`, and the delegate correctly refuses to place a button below
+    the row's body. The disagreement was about **how tall the row is**, and only the composed pair
+    can show it — which is why this is here and not only beside the delegate's own tests.
+
+    **Every child state in one playlist**, because the child anatomy differs by state: a failed
+    entry carries the action line `T201-R3` added, a completed one does not, and a queued one
+    offers three verbs rather than two.
+    """
+    states = [
+        (JobStatus.FAILED, {"error_kind": ErrorKind.NETWORK, "error_message": "ERROR: timed out"}),
+        (JobStatus.COMPLETED, {}),
+        (JobStatus.QUEUED, {}),
+    ]
+    for position, (status, extra) in enumerate(states):
+        queue.add(
+            make_job(
+                f"entry-{position}",
+                tmp_path,
+                status=status,
+                queue_position=position,
+                playlist_id="pl-1",
+                playlist_index=position,
+                playlist_title="Trail Sounds",
+                **extra,
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+    view.model.toggle_group("pl-1")
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+
+    children = [
+        row
+        for row in range(view.model.rowCount())
+        if view.model.data(view.model.index(row, JOB_COLUMN), DEPTH_ROLE)
+    ]
+    assert len(children) == len(states), (
+        f"the opened playlist shows {len(children)} entries, not {len(states)}"
+    )
+
+    for row in children:
+        index = view.model.index(row, JOB_COLUMN)
+        offered = {Verb(value) for value in view.model.data(index, VERBS_ROLE) or ()}
+        assert offered, f"row {row} offers no verbs, so it cannot show this"
+
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, 1180, 0)
+        option.font = view.table.font()
+        option.fontMetrics = QFontMetrics(option.font)
+        option.rect = QRect(0, 0, 1180, delegate.sizeHint(option, index).height())
+
+        body, area = delegate._verb_area(option, index)
+        placed = delegate._verb_rects(option.fontMetrics, area, body, index)
+        drawn = {verb for verb, _ in placed if verb is not None}
+        dropped = set(delegate.overflowing(str(view.model.data(index, JOB_ID_ROLE))))
+
+        assert drawn == offered, (
+            f"entry row {row} offers {sorted(v.value for v in offered)} and draws "
+            f"{sorted(v.value for v in drawn)} at 1180 px — wide enough for all of them"
+        )
+        assert not dropped, f"entry row {row} dropped {sorted(v.value for v in dropped)} at 1180 px"
 
 
 # --- a row that moved no bytes states none (T-241) --------------------------------------------

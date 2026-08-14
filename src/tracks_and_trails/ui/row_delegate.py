@@ -567,6 +567,28 @@ def _action_lines(index: QModelIndex | _PersistentIndex) -> int:
     return 1 if _text(index, ACTION_ROLE) else 0
 
 
+def _text_lines(index: QModelIndex | _PersistentIndex) -> int:
+    """How many lines of text this row draws — **the one answer the whole row is built from**.
+
+    `sizeHint` measures it, `_paint_text` lays out against it, and `_verb_rects` puts the buttons on
+    the last of them. That is the point of it being a function: those three used to derive the
+    number separately, and `T-244` is what the disagreement cost. `sizeHint` shortened a playlist
+    entry to `CHILD_TEXT_LINES` while the verb layout went on measuring every row from the
+    top-level `TEXT_LINES` — so a child's last line was computed *below its own body*, the layout
+    returned no rectangles at all, and **an expanded entry offered `Retry` and `Remove` and drew
+    neither**. Not a clipped control, which is visible: no control.
+
+    The conditional lines are conditional for the reason `UX-005` row 9c gives — height goes where
+    the row has something more to say, and nowhere else. An entry states a format only when it
+    differs from its group (`T-157`), and any row states a next step only when the failure has an
+    honest one (`T201-R3`).
+    """
+    action = _action_lines(index)
+    if _depth(index) > 0:
+        return CHILD_TEXT_LINES + (1 if _text(index, SELECTOR_ROLE) else 0) + action
+    return TEXT_LINES + action
+
+
 def _segments(index: QModelIndex | _PersistentIndex) -> tuple[SegmentState, ...]:
     """The group's per-entry states, or empty for a row that is not a group (`T-140`)."""
     raw = index.data(SEGMENTS_ROLE)
@@ -793,17 +815,14 @@ class RowDelegate(QStyledItemDelegate):
             # The height comes from the panel's own `sizeHint` — see `FORMAT_PANEL_HEIGHT_ROLE` for
             # why it is asked for rather than assumed.
             return QSize(option.rect.width(), open_panel)
-        action = _action_lines(index)
+        # **Three lines when the entry has a format of its own to state** (`T-157`), two otherwise.
+        # `UX-005`'s amendment spends the line exactly where there is something to say, so a
+        # uniform playlist — every playlist until somebody retargets a part-done one — is drawn at
+        # the height row 9c bought. `_text_lines` is that rule, and it is the same call the paint
+        # and the verb layout make (`T-244`).
+        text = _text_lines(index) * option.fontMetrics.height() + 2 * PADDING
         if _depth(index) > 0:
-            # **Three lines when the entry has a format of its own to state** (`T-157`), two
-            # otherwise. `UX-005`'s amendment spends the line exactly where there is something to
-            # say, so a uniform playlist — every playlist until somebody retargets a part-done one
-            # — is drawn at the height row 9c bought.
-            speaks = bool(_text(index, SELECTOR_ROLE))
-            lines = CHILD_TEXT_LINES + (1 if speaks else 0) + action
-            text = lines * option.fontMetrics.height() + 2 * PADDING
             return QSize(option.rect.width(), max(CHILD_THUMBNAIL[1] + 2 * PADDING, text))
-        text = (TEXT_LINES + action) * option.fontMetrics.height() + 2 * PADDING
         return QSize(option.rect.width(), max(ROW_HEIGHT, text))
 
     def paint(
@@ -1039,11 +1058,13 @@ class RowDelegate(QStyledItemDelegate):
             return []
 
         line = metrics.height()
-        # **The last line, whichever line that is** (`T201-R3`). A failed row with an action to
-        # offer is one line taller, and the buttons move down with it: laid out against a fixed
-        # `TEXT_LINES` they would have been drawn over the action's own line, which is
-        # `T-140`'s clipped child row arriving from the verb side.
-        top = area.top() + (TEXT_LINES + _action_lines(index) - 1) * line
+        # **The row's own last line, whichever line that is** (`T201-R3`, `T-244`). A failed row
+        # with an action to offer is one line taller and the buttons move down with it; a playlist
+        # entry is *shorter* and they have to move up. Both come from `_text_lines`, because the
+        # two anatomies were derived separately here and in `sizeHint` — and the child case put
+        # this baseline below the row's own body, so `height` clamped to zero and every entry
+        # silently drew no verbs at all.
+        top = area.top() + (_text_lines(index) - 1) * line
         height = min(line, max(body.bottom() - top, 0))
         if height <= 0:
             return []
@@ -1110,6 +1131,21 @@ class RowDelegate(QStyledItemDelegate):
         the freed width on eight wider blocks instead of surrendering it, which is more of `T-164`
         rather than less.
         """
+        # **A playlist entry keeps nothing, because it draws no bar** (`T-244`). `_paint_text`
+        # returns at the child branch before it reaches the bar — row 9c's two lines have no room
+        # for one — while this went on reading `PROGRESS_ROLE`, which a child answers like any
+        # other row.
+        #
+        # **This is an agreement between two functions, not a fix, and the difference is measured
+        # rather than assumed.** It changes no layout at any width: swept 150 to 600 px against all
+        # three child verb sets, a child with a fraction and one without place their verbs
+        # identically. The reserve is squeezed out at both ends — `_bar_line` caps it below the
+        # overflow's own width on a narrow row, and a wide row has room the verbs never needed. So
+        # **no mutation is claimed for this branch**; it is here because a function that reads a
+        # role in order to reserve space for something the painter will not draw is wrong in a way
+        # that only stays harmless by accident.
+        if _depth(index) > 0:
+            return 0
         room = self._bar_line(metrics, area, index)
         entries = len(_segments(index))
         if entries:
@@ -1658,6 +1694,23 @@ class RowDelegate(QStyledItemDelegate):
         metrics = painter.fontMetrics()
         line = metrics.height()
 
+        # **Whatever text lands on the last line yields its right-hand end to the verbs**
+        # (`UX-005` §4, `T-244`). On an ordinary row the last line is the selector's and the bar's,
+        # and both already give way — so this changes nothing there, which is deliberate: `T-166`
+        # is the record of narrowing a line the verbs do *not* occupy, and `T118-R8` of narrowing
+        # the one line that must not give.
+        #
+        # **A playlist entry is where it bites.** Row 9c leaves it two lines, so its last line is
+        # the *detail* — and buttons drawn over an elided sentence is the collision this avoids
+        # without spending the height row 9c bought. Which line that is comes from `_text_lines`,
+        # so the text and the buttons cannot hold different opinions about it.
+        lines = _text_lines(index)
+
+        def room_on(row_line: int) -> int:
+            if verbs_left is None or row_line != lines - 1:
+                return area.width()
+            return max(verbs_left - area.left(), 0)
+
         state = _text(index, STATE_ROLE)
         # **The chip's words are the model's, not this delegate's** (`T-130`, `T130-R3`). Drawn
         # first so the headline knows how much width is left, and right-aligned on the title's own
@@ -1700,10 +1753,11 @@ class RowDelegate(QStyledItemDelegate):
         parts = (detail,) if chipped and state == chip_text else (detail, state)
         second = " — ".join(part for part in parts if part)
         painter.setPen(muted)
+        detail_room = room_on(1)
         painter.drawText(
-            QRect(area.left(), area.top() + line, area.width(), line),
+            QRect(area.left(), area.top() + line, detail_room, line),
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            metrics.elidedText(second, Qt.TextElideMode.ElideRight, area.width()),
+            metrics.elidedText(second, Qt.TextElideMode.ElideRight, detail_room),
         )
 
         # **What the user can do about it, on a line of its own** (`ACTION_ROLE`, `T201-R3`, ruled
@@ -1723,10 +1777,11 @@ class RowDelegate(QStyledItemDelegate):
         action = _text(index, ACTION_ROLE)
         action_lines = _action_lines(index)
         if action:
+            action_room = room_on(2)
             painter.drawText(
-                QRect(area.left(), area.top() + 2 * line, area.width(), line),
+                QRect(area.left(), area.top() + 2 * line, action_room, line),
                 int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-                metrics.elidedText(action, Qt.TextElideMode.ElideRight, area.width()),
+                metrics.elidedText(action, Qt.TextElideMode.ElideRight, action_room),
             )
 
         # **A child row draws two lines, not four** (`UX-005` row 9c, `T-140` corrected).
@@ -1743,10 +1798,11 @@ class RowDelegate(QStyledItemDelegate):
             # a line is spent only where there is something to say.
             own = _text(index, SELECTOR_ROLE)
             if own:
+                own_room = room_on(2 + action_lines)
                 painter.drawText(
-                    QRect(area.left(), area.top() + (2 + action_lines) * line, area.width(), line),
+                    QRect(area.left(), area.top() + (2 + action_lines) * line, own_room, line),
                     int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
-                    metrics.elidedText(own, Qt.TextElideMode.ElideRight, area.width()),
+                    metrics.elidedText(own, Qt.TextElideMode.ElideRight, own_room),
                 )
             return
 
