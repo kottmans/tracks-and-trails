@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -1262,4 +1262,71 @@ def test_the_screen_opens_no_taller_than_the_display(
     assert screen.height() > sections.sizeHint().height() // 2, (
         f"it opens at {screen.height()}px against sections wanting "
         f"{sections.sizeHint().height()}px — that is the scroll area's own hint, not the content's"
+    )
+
+
+class _Display:
+    """A stand-in for one physical display, with the working area it offers.
+
+    **A stub rather than a second monitor**, because the offscreen platform has exactly one screen
+    and this project does not have a two-monitor runner. What is under test is the *choice* — which
+    display's room the dialog reads — and that choice is deterministic and worth pinning even
+    though the multi-monitor rendering behind it is not verified anywhere (`T242-R1`).
+    """
+
+    def __init__(self, width: int, height: int) -> None:
+        self._room = QRect(0, 0, width, height)
+
+    def availableGeometry(self) -> QRect:  # noqa: N802 — Qt's own spelling, matched deliberately
+        return self._room
+
+
+def test_the_dialog_is_bounded_by_the_display_it_is_on_not_the_primary_one(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**`T242-R1`.** The dialog is parented to the main window and follows it between displays.
+
+    This asked `QApplication.primaryScreen()` while its own call site claimed *"the screen it is
+    on"*. On a two-monitor desk those differ: a main window on a 768-high secondary display would
+    open Settings against the 1080-high primary's room — **recreating the off-screen dialog this
+    task exists to remove, at exactly the working area the acceptance criterion names.**
+
+    The smaller room is given to the *associated* display deliberately, so a fallback to the
+    primary cannot pass this by accident.
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+    # Dimensions the *primary* display cannot produce, so a fallback cannot satisfy this by
+    # accident — which is exactly how the first version of this assertion passed against the
+    # mutation it was written to catch: it asked only that the room be *small enough*, and the
+    # offscreen primary is smaller still.
+    associated = _Display(1366, 700)
+
+    screen.screen = lambda: associated  # type: ignore[method-assign, assignment, return-value]
+    room = screen._room_on_screen()
+
+    primary = QApplication.primaryScreen().availableGeometry()
+    assert (room.width(), room.height()) == (1366 - 48, 700 - 48), (
+        f"the dialog sized itself {room.width()}x{room.height()} against an associated display of "
+        f"1366x700 — it is reading the primary display, which offers "
+        f"{primary.width()}x{primary.height()}"
+    )
+
+
+def test_the_primary_display_is_the_fallback_when_there_is_no_associated_one(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """A widget never shown has no associated screen, which is every offscreen construction.
+
+    So the fallback is not a headless curiosity — it is the path most of this suite takes, and a
+    correction that removed it would leave the dialog sizing itself against nothing.
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+
+    screen.screen = lambda: None  # type: ignore[method-assign, assignment, return-value]
+    room = screen._room_on_screen()
+
+    primary = QApplication.primaryScreen().availableGeometry().size()
+    assert room.height() == primary.height() - 48, (
+        f"with no associated display the dialog sized itself to {room.height()}px against a "
+        f"{primary.height()}px primary"
     )

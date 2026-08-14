@@ -531,9 +531,11 @@ class SettingsDialog(QDialog):
     def _room_on_screen(self) -> QSize:
         """How much of the display this dialog may take, in pixels (`T-242`).
 
-        **`availableGeometry`, not the raw screen size**, because a panel or a dock is height this
-        window will never get — and a dialog that opens taller than the working area is the state
-        the scroll area exists to survive rather than one to open in.
+        **The dialog's own screen, and `availableGeometry` rather than the raw size.** Its own,
+        because a dialog is parented to the main window and follows it onto whichever display that
+        is — `T242-R1` is this reading the primary display instead. Available, because a panel or
+        a dock is height this window will never get, and a dialog that opens taller than the
+        working area is the state the scroll area exists to survive rather than one to open in.
 
         Reduced a little further: a dialog exactly as tall as the working area sits under its own
         title bar, whose height is the window manager's and not knowable here.
@@ -542,12 +544,26 @@ class SettingsDialog(QDialog):
         headless run — because guessing small there would make every such test measure a scroll
         bar rather than the layout.
         """
+        # **The display this dialog is *on*, not the primary one** (`T242-R1`). This asked
+        # `primaryScreen()` while its own call site claimed *"the screen it is on"*, and on a
+        # two-monitor desk those are different answers: a main window on a 768-high secondary
+        # display would open Settings against the 1080-high primary's room — recreating the
+        # off-screen dialog this task exists to remove, at exactly the working area the acceptance
+        # criterion names.
+        #
         # **Annotated optional because the stub over-promises.** PySide6 types both `screen()` and
         # `primaryScreen()` as always answering; `primaryScreen()` genuinely returns `None` on a
         # platform with no screen at all, and a crash in the settings screen because a stub said
         # it could not happen is not a trade worth taking. Written as an annotation rather than a
         # `cast` so the guard below stays reachable to `mypy` and the reason stays readable.
-        screen: QScreen | None = QApplication.primaryScreen()
+        # `screen()` is typed as always answering and is `None` on a widget that has never been
+        # shown on any display, which is every offscreen construction — so the fallback is reached
+        # in tests as well as in the headless case, and the annotation is what keeps both visible
+        # to `mypy`.
+        associated: QScreen | None = self.screen()
+        screen: QScreen | None = (
+            associated if associated is not None else QApplication.primaryScreen()
+        )
         if screen is None:
             return QSize(_NO_SCREEN_WIDTH, _NO_SCREEN_HEIGHT)
         room = screen.availableGeometry().size()
