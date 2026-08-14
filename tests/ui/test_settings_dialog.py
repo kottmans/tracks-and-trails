@@ -21,13 +21,16 @@ from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
     QComboBox,
+    QDialogButtonBox,
     QLabel,
     QLineEdit,
     QListWidget,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSpinBox,
     QToolButton,
+    QWidget,
 )
 
 from tracks_and_trails.core import presets as preset_registry
@@ -53,9 +56,11 @@ from tracks_and_trails.ui.settings_dialog import (
     RATE_LIMIT_NAME,
     RATE_LIMIT_STEP_BYTES,
     RETRIES_NAME,
+    SETTINGS_SCROLL_NAME,
     SETTINGS_STILL_TO_COME,
     STEP_DOWN_LABEL,
     STEP_UP_LABEL,
+    YTDLP_REVERT_NAME,
     SettingsDialog,
 )
 
@@ -1099,3 +1104,162 @@ def test_return_in_the_proxy_field_finishes_the_edit_and_opens_nothing(
 
     assert picked == [], "Return in the proxy field opened the folder picker"
     assert chosen and chosen[-1].proxy == "http://proxy.invalid:3128"
+
+
+# --- the screen fits the screen (T-242) ------------------------------------------------------
+
+
+def wrapped_labels(screen: SettingsDialog) -> list[QLabel]:
+    """Every label on the screen with words in it."""
+    return [label for label in screen.findChildren(QLabel) if label.text().strip()]
+
+
+def short_by(label: QLabel) -> int:
+    """How many pixels this label is drawn shorter than the text in it needs, or 0."""
+    needs = label.heightForWidth(label.width()) if label.wordWrap() else label.sizeHint().height()
+    return max(0, needs - label.height())
+
+
+@pytest.mark.parametrize(
+    ("width", "height"),
+    [
+        (1366, 700),  # the smallest laptop working area this project has claimed anywhere
+        (1024, 620),  # smaller still, to prove the scroll area rather than the slack
+        (1180, 900),
+    ],
+)
+def test_no_label_is_drawn_shorter_than_the_words_in_it(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]], width: int, height: int
+) -> None:
+    """**`T-242`.** The screen asked for 1407 pixels of height and the display has about a thousand.
+
+    What gave way was the wrapped explanatory text — measured before the fix, at the dialog's own
+    `sizeHint`: `cookiesExplanation` got **23** pixels of the **51** it needs, `networkExplanation`
+    **38** of **85**. So the sentence saying a cookies file *"does not unlock anything your account
+    cannot already reach"* was cut in half, and so was the one naming which retry the retry control
+    governs — the sentence a whole review round was spent getting right (`T196-R5`).
+
+    **Asserted by measurement, not by eye**: `heightForWidth` against the height each label was
+    actually given, at three window sizes. A picture cannot fail a build.
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+    screen.resize(width, height)
+    screen.show()
+    QApplication.processEvents()
+
+    clipped = {
+        label.objectName() or label.text()[:40]: (label.height(), short_by(label))
+        for label in wrapped_labels(screen)
+        if short_by(label)
+    }
+
+    assert not clipped, (
+        f"at {width}x{height} these labels are drawn shorter than their text needs "
+        f"(height, short by): {clipped}"
+    )
+
+
+def test_the_sections_scroll_and_the_way_out_does_not(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**The button box is outside the scroll area** (`T-242`), so `Close` is never scrolled off.
+
+    The other half of the same choice: a screen that scrolls its own exit is one a user can lose
+    their way out of, and this screen applies every change as it is made — so leaving is the one
+    action it must never hide.
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+    screen.resize(700, 420)  # deliberately far shorter than the sections need
+    screen.show()
+    QApplication.processEvents()
+
+    scroll = control(screen, QScrollArea, SETTINGS_SCROLL_NAME)
+    buttons = control(screen, QDialogButtonBox, "settingsButtons")
+
+    assert scroll.verticalScrollBar().maximum() > 0, (
+        "the sections do not scroll at a height far shorter than they need, so either the scroll "
+        "area is not doing its job or this test is no longer squeezing anything"
+    )
+    assert not scroll.isAncestorOf(buttons), (
+        "the way out of the screen is inside the scrolling part"
+    )
+    assert buttons.visibleRegion().boundingRect().height() > 0, "Close is not on screen"
+
+    # **And it scrolls one way only.** A scroll area that keeps its contents at their hint width
+    # buys the vertical room back by scrolling sideways — which is this task's clipping moved
+    # rather than fixed, because a wrapped label's height is a function of the width it is given.
+    # Asserted at a width narrower than the sections ask for, which is where the two differ.
+    screen.resize(480, 420)
+    QApplication.processEvents()
+    sections = control(screen, QWidget, "settingsSections")
+    assert sections.width() <= scroll.viewport().width(), (
+        f"the sections are {sections.width()}px wide in a {scroll.viewport().width()}px viewport, "
+        "so the screen scrolls sideways rather than wrapping"
+    )
+
+
+def test_a_control_below_the_fold_is_scrolled_to_when_it_takes_focus(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """**The keyboard route through a scrolling screen, stated because `T-200` inherits it.**
+
+    A scroll area that did not follow focus would leave a keyboard user editing a control they
+    cannot see — which is `NFR-005`'s promise broken by the fix for `T-242` rather than by the
+    defect it replaced. Asserted on the last control on the screen, which is the one furthest
+    below the fold.
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+    screen.resize(700, 420)
+    screen.show()
+    QApplication.processEvents()
+
+    scroll = control(screen, QScrollArea, SETTINGS_SCROLL_NAME)
+    revert = control(screen, QPushButton, YTDLP_REVERT_NAME)
+    assert revert.visibleRegion().boundingRect().height() == 0, (
+        "the last control is already on screen at this size, so this test proves nothing"
+    )
+    assert scroll.verticalScrollBar().value() == 0, "sanity: the screen has not scrolled yet"
+
+    # **Tabbed, not `setFocus`.** The gesture is the assertion here: `setFocus` alone does not
+    # scroll, which is how the defect was found — Qt scrolls when the *scroll area* resolves the
+    # focus move, and in a dialog the dialog owns the tab chain.
+    off_screen = []
+    for _ in range(60):
+        QTest.keyClick(screen, Qt.Key.Key_Tab)
+        QApplication.processEvents()
+        # `focusWidget()` is typed as always answering, so the `is not None` guard mypy would
+        # otherwise call redundant is left out rather than written and suppressed.
+        focused = screen.focusWidget()
+        if focused.visibleRegion().boundingRect().height() == 0:
+            off_screen.append(focused.objectName() or type(focused).__name__)
+        if focused is revert:
+            break
+
+    assert not off_screen, (
+        f"{len(off_screen)} controls took keyboard focus while off screen — a keyboard user would "
+        f"be editing something they cannot see: {sorted(set(off_screen))[:6]}"
+    )
+    assert scroll.verticalScrollBar().value() > 0, "the view never followed the keyboard at all"
+
+
+def test_the_screen_opens_no_taller_than_the_display(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+) -> None:
+    """It opens at the height its **contents** want, bounded by the room there is (`T-242`).
+
+    Both halves matter and neither is the dialog's own `sizeHint`: a scroll area asks for very
+    little — **463** pixels, measured — so sizing to the hint would open a screen that scrolls
+    from the first section, and sizing to the contents alone would open one taller than the
+    display, which is what this task was filed about.
+    """
+    screen, _ = screens(on_network_chosen=lambda _options: None)
+    room = QApplication.primaryScreen().availableGeometry().size()
+
+    assert screen.height() <= room.height(), (
+        f"the screen opens {screen.height()}px tall on a {room.height()}px display"
+    )
+    sections = control(screen, QWidget, "settingsSections")
+    assert screen.height() > sections.sizeHint().height() // 2, (
+        f"it opens at {screen.height()}px against sections wanting "
+        f"{sections.sizeHint().height()}px — that is the scroll area's own hint, not the content's"
+    )

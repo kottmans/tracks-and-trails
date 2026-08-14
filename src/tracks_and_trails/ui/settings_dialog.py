@@ -41,24 +41,29 @@ reasoning, as the manager's `entry_point`.
 """
 
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import Final
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QScreen
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -134,6 +139,32 @@ NO_COOKIES_NOTE: Final = "No cookies file - downloads are not signed in"
 #: Shown where the path would be when none is set. Names the mechanism, because *"not set"* does
 #: not tell a user what the application is doing instead.
 FFMPEG_ON_PATH_NOTE: Final = "Looked for on PATH"
+
+#: The scrolling region the sections live in, by name, so a test can ask what it did (`T-242`).
+SETTINGS_SCROLL_NAME: Final = "settingsScroll"
+
+#: What the dialog assumes it may take when there is no screen to ask — a headless run, an
+#: offscreen test (`T-242`).
+#:
+#: **Generous on purpose.** Guessing small here would make every offscreen test measure a scroll
+#: bar rather than the layout underneath it, which is the opposite of what those tests are for.
+_NO_SCREEN_WIDTH: Final = 1024
+_NO_SCREEN_HEIGHT: Final = 2048
+
+#: The layout's own margins and spacing around the button row, added when sizing the dialog to
+#: its contents. A measured constant rather than a walk of the layout's metrics: what it buys is
+#: that the last section is not half-hidden behind `Close` on a screen with room for both.
+_BUTTON_ROW_ROOM: Final = 24
+
+#: How much room a control keeps around it when focus scrolls it into view (`T-242`).
+#:
+#: Without it a control lands hard against the viewport edge, where the group box's own frame
+#: reads as though the control were cut off — which is the impression this task exists to remove.
+_FOCUS_MARGIN: Final = 24
+
+#: Height and width given back to the window manager: a dialog exactly as tall as the working
+#: area sits under its own title bar, and that bar's height is not knowable from here.
+_WINDOW_CHROME: Final = 48
 
 #: Object names for the network section, so tests and composition reach a control without walking
 #: the layout (`T-196`).
@@ -335,32 +366,85 @@ class SettingsDialog(QDialog):
         self.setObjectName("settingsDialog")
         self.setWindowTitle("Settings")
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(self._build_downloads_section())
-        layout.addWidget(self._build_naming_section())
-        layout.addWidget(self._build_cookies_section())
-        layout.addWidget(self._build_network_section())
-        layout.addWidget(self._build_ffmpeg_section())
-        layout.addWidget(self._build_appearance_section())
-        layout.addWidget(self._build_queue_section())
-        layout.addWidget(self._build_ytdlp_section())
+        # **The sections scroll; `Close` does not** (`T-242`). Eight settings ask for 1407 pixels
+        # of height, and a 1080p display has about a thousand to give — so without this the whole
+        # screen is compressed and what gives way is the wrapped explanatory text. Measured, at the
+        # screen's own `sizeHint`: the cookies sentence got 23 pixels of the 51 it needs, and the
+        # network one 38 of 85, which cut *"does not unlock anything your account cannot already
+        # reach"* and the sentence naming which retry the retry control governs in half.
+        #
+        # **The button box stays outside**, so the way out of the screen is never scrolled off.
+        sections = QWidget(self)
+        sections.setObjectName("settingsSections")
+        inner = QVBoxLayout(sections)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.addWidget(self._build_downloads_section())
+        inner.addWidget(self._build_naming_section())
+        inner.addWidget(self._build_cookies_section())
+        inner.addWidget(self._build_network_section())
+        inner.addWidget(self._build_ffmpeg_section())
+        inner.addWidget(self._build_appearance_section())
+        inner.addWidget(self._build_queue_section())
+        inner.addWidget(self._build_ytdlp_section())
 
         if SETTINGS_STILL_TO_COME:
             # **Built only when there is something to say** (`T-196`). An empty label is not
             # nothing: it is a widget in the layout, a stop for a screen reader walking the
             # dialog, and a line of space where the user reads a claim about coverage. With every
             # `REQ-023` setting built there is no claim to make.
-            remaining = QLabel(SETTINGS_STILL_TO_COME, self)
+            remaining = QLabel(SETTINGS_STILL_TO_COME, sections)
             remaining.setObjectName("settingsRemaining")
             remaining.setTextFormat(Qt.TextFormat.PlainText)
             remaining.setWordWrap(True)
-            layout.addWidget(remaining)
-        layout.addStretch(1)
+            inner.addWidget(remaining)
+        inner.addStretch(1)
+
+        scroll = QScrollArea(self)
+        scroll.setObjectName(SETTINGS_SCROLL_NAME)
+        # **Resizable, so the sections take the width and give back the height they need.** A
+        # non-resizable scroll area would keep the container at its `sizeHint` width and scroll
+        # sideways, and a wrapped label's height depends on the width it is given — so the
+        # horizontal scroll bar would be buying back the very clipping this exists to remove.
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(sections)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(scroll)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
         buttons.setObjectName("settingsButtons")
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        # **Opens at the height its contents want, and no taller than the screen it is on**
+        # (`T-242`). Both halves are needed and neither is the dialog's own `sizeHint`: a scroll
+        # area asks for very little — 463 pixels, measured — so sizing to the hint would open a
+        # screen that scrolls from the first section, and sizing to the contents alone would open
+        # one taller than the display, which is the state this task was filed about.
+        wanted = QSize(
+            sections.sizeHint().width() + scroll.verticalScrollBar().sizeHint().width(),
+            sections.sizeHint().height() + buttons.sizeHint().height() + _BUTTON_ROW_ROOM,
+        )
+        self.resize(wanted.boundedTo(self._room_on_screen()))
+
+        #: The scrolling region and what it holds, kept so focus can be followed into view.
+        self._scroll = scroll
+        self._sections = sections
+        # **Focus has to drag the view with it, and Qt does not do it here** (`T-242`, measured).
+        # `QScrollArea` scrolls to a widget when *it* resolves the focus move, and in a dialog the
+        # dialog owns the tab chain — so tabbing through this screen left **31 of 40 tab stops
+        # focused while invisible** and the scroll bar never moved off zero. That is a worse defect
+        # than the clipping this task set out to fix, and it is exactly the shape `T-200` audits.
+        #
+        # Application-wide because focus arrives from everywhere — Tab, Shift-Tab, a click, a
+        # mnemonic — and one signal covers every route rather than the routes anybody listed.
+        # `instance()` is typed as the *core* application, which has no focus to change — so the
+        # narrowing is the check rather than an assertion dressed as one.
+        application = QApplication.instance()
+        if isinstance(application, QApplication):
+            application.focusChanged.connect(self._follow_focus)
 
         # **No button on this screen answers to Return** (`T196-R1`, found while building its
         # evidence). A `QPushButton` in a dialog is `autoDefault` by default, so Return anywhere —
@@ -372,6 +456,45 @@ class SettingsDialog(QDialog):
         # changed (see the module docstring), and `Close` is reached by Esc and by clicking it.
         for button in self.findChildren(QPushButton):
             button.setAutoDefault(False)
+
+    def _follow_focus(self, _old: QWidget | None, new: QWidget | None) -> None:
+        """Scroll a control into view when it takes focus (`T-242`, `NFR-005`).
+
+        **Only for controls inside the scrolling region**, because this listens to the whole
+        application: focus moving in the main window behind an open Settings screen must not
+        scroll this one.
+
+        `ensureWidgetVisible`'s margins are what stop a control landing hard against the edge of
+        the viewport, where a group box's own frame reads as though the control were cut off.
+        """
+        if new is None or not self._sections.isAncestorOf(new):
+            return
+        self._scroll.ensureWidgetVisible(new, _FOCUS_MARGIN, _FOCUS_MARGIN)
+
+    def _room_on_screen(self) -> QSize:
+        """How much of the display this dialog may take, in pixels (`T-242`).
+
+        **`availableGeometry`, not the raw screen size**, because a panel or a dock is height this
+        window will never get — and a dialog that opens taller than the working area is the state
+        the scroll area exists to survive rather than one to open in.
+
+        Reduced a little further: a dialog exactly as tall as the working area sits under its own
+        title bar, whose height is the window manager's and not knowable here.
+
+        Falls back to a generous constant where there is no screen at all — an offscreen test, a
+        headless run — because guessing small there would make every such test measure a scroll
+        bar rather than the layout.
+        """
+        # **Annotated optional because the stub over-promises.** PySide6 types both `screen()` and
+        # `primaryScreen()` as always answering; `primaryScreen()` genuinely returns `None` on a
+        # platform with no screen at all, and a crash in the settings screen because a stub said
+        # it could not happen is not a trade worth taking. Written as an annotation rather than a
+        # `cast` so the guard below stays reachable to `mypy` and the reason stays readable.
+        screen: QScreen | None = QApplication.primaryScreen()
+        if screen is None:
+            return QSize(_NO_SCREEN_WIDTH, _NO_SCREEN_HEIGHT)
+        room = screen.availableGeometry().size()
+        return QSize(room.width() - _WINDOW_CHROME, room.height() - _WINDOW_CHROME)
 
     # --- downloads ----------------------------------------------------------------------
 
@@ -906,8 +1029,18 @@ class SettingsDialog(QDialog):
         `Close`, because the button takes focus first. It does **not** fire for `Esc`, or for a
         window closed while the box still holds focus, and an edit silently discarded there would
         be the same class of surprise as one silently stored.
+
+        **And the application-wide focus connection goes here** (`T-242`). It is the one thing on
+        this screen that outlives the screen if nobody takes it down: `focusChanged` belongs to the
+        `QApplication`, so a closed dialog left connected keeps being asked to scroll a viewport
+        that is no longer on screen. `T-238` is this project's record of what deferred Qt teardown
+        costs when nothing is explicit about it.
         """
         self._commit_proxy()
+        application = QApplication.instance()
+        if isinstance(application, QApplication):
+            with suppress(RuntimeError):
+                application.focusChanged.disconnect(self._follow_focus)
         super().done(result)
 
     def show_network_options(self, options: NetworkOptions) -> None:

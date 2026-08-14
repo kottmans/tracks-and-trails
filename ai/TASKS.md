@@ -269,6 +269,107 @@ draws after a real worker fails.
 - Retry *policy* — `T-196` owns the setting, `REQ-015`/`REQ-018` own the behaviour
 - The per-job log view itself, built by `T-084`. This task presents errors; the log stays verbatim
 
+### T-242 — The Settings screen is taller than the screen, and clips its own explanations
+
+**Status:** **In Review — built 2026-08-14**, in an authorized overnight run. A scroll area was
+chosen; **the keyboard route it changes is built and gated**, because the measurement that matters
+here was found while evidencing it — see below. Six mutations, none surviving.
+**Owner:** Implementer
+**Priority:** **Medium–High** — it is visible on every normal display, it costs the user the
+sentences that explain the settings most likely to be misread, and **`T-200` audits this screen**:
+a keyboard pass over a dialog that cannot show its own content would be auditing the wrong shape
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/settings_dialog.py`, `T-146` (the screen), `T-196` (the section that
+pushed it over), `T-197` (`COOKIES_EXPLANATION`), `UX-005` §5
+**Affected surfaces:** `ui/settings_dialog.py`, `tests/ui/test_settings_dialog.py`
+**Risk:** Low to fix, and the measurement is the part to keep
+
+#### Scope
+
+**Measured, not eyeballed.** The screen's own `sizeHint` is **594 × 1407**. A 1080p display has
+roughly a thousand usable pixels of height, so the dialog is compressed by about a third whatever
+the window manager does — and what gives way is the wrapped explanatory text:
+
+| Label | Height it gets | Height it needs |
+|---|---|---|
+| `cookiesExplanation` | 23 px | **51 px** |
+| `networkExplanation` | 38 px | **85 px** |
+| `networkRetriesLabel` | 37 px | **51 px** |
+
+So the sentence saying a cookies file *"does not unlock anything your account cannot already
+reach"* is cut in half, and so is the one saying which retry the retry control governs — the
+sentence `T196-R5` spent a review round getting right.
+
+**Two candidate shapes, neither chosen here.** A `QScrollArea` around the sections is the ordinary
+answer and keeps every section at its natural height; collapsing the explanations into a smaller
+type or into per-control tooltips is the other, and it trades honesty for height, which is the
+trade `UX-005` §5 usually refuses. **The choice affects `T-200`**, because a scroll area changes
+the keyboard route through the screen — so it belongs before that pass, not after.
+
+#### What was built — 2026-08-14
+
+**A `QScrollArea` around the sections, with the button box outside it.** The sections were the
+thing that could not fit; `Close` is the one control a user must never have to scroll to find, and
+this screen applies every change as it is made, so leaving is the whole of the exit.
+
+**The dialog opens at its *contents'* height, bounded by the working area.** Neither half is the
+dialog's own `sizeHint` and that is worth recording: a scroll area asks for very little — **463
+pixels**, measured — so sizing to the hint opens a screen that scrolls from the first section,
+while sizing to the contents alone opens one taller than the display, which is the defect. It now
+opens at **586 × 752** on an 800-pixel-tall screen, with nothing clipped.
+
+#### The finding that justifies doing this before `T-200`
+
+**A scroll area alone would have handed `T-200` a worse defect than the one it fixed.** Measured by
+tabbing through the built screen: **31 of 40 tab stops took focus while off screen, and the scroll
+bar never moved off zero.**
+
+`QScrollArea` scrolls to a widget when **it** resolves the focus move; in a dialog the *dialog*
+owns the tab chain, so nothing asked the viewport to follow. A keyboard user would have been
+editing controls they could not see — `NFR-005`'s promise broken by the fix rather than by the
+defect. The screen now listens to the application's own `focusChanged` and calls
+`ensureWidgetVisible` for anything inside the scrolling region; **0 of 40** stops are off screen
+after it, and the connection is taken down in `done()` for `T-238`'s reason.
+
+**`setFocus` alone still does not scroll, and the test says so.** The gesture is the assertion:
+the first version of that regression used `setFocus` and passed against a screen that never
+scrolled, which is how the defect was found at all.
+
+#### Mutations, 2026-08-14 — six, none surviving
+
+| Mutation | What goes red |
+|---|---|
+| The sections are not in a scroll area | the way-out regression |
+| `setWidgetResizable(False)` | the sideways-scroll assertion — a wrapped label's height is a function of its width, so a screen that scrolls sideways is this clipping moved rather than fixed |
+| Focus no longer drags the view | the tab-through regression |
+| Opens at the scroll area's own hint | the opening-size regression |
+| Opens at the contents' height, unbounded | the same regression, other end |
+| `Close` moved inside the scroll | the way-out regression |
+
+*(One of these was **retargeted rather than accepted**: `setWidgetResizable(False)` left the
+label-height gate green, because a non-resizable area keeps its contents at their hint width and
+the labels wrap fine there — it buys the room back sideways instead. The assertion that binds it
+is about the viewport, not the labels, and a mutation pointed at the wrong test is not evidence.)*
+
+#### Acceptance criteria
+
+- **No label on this screen is drawn shorter than the height it asks for**, at the smallest window
+  size the screen supports, asserted by comparing `heightForWidth` against the drawn height rather
+  than by looking at a picture
+- The whole screen is reachable at a 1366 × 768 working area — the smallest laptop the project
+  has claimed to support anywhere — with every control operable
+- **Whatever is chosen, the keyboard route is stated**, because `T-200` inherits it — **met, and
+  it was not free**: see the finding above
+- A screenshot of the fixed screen is attached to the entry, both themes — **rendered from the
+  composed application at 620 × 700, both themes, zero labels clipped**. Offscreen, so it says
+  nothing about a real display; that is `T-212`'s
+
+#### Out of scope
+
+- Re-wording any explanation to make it fit. The sentences are the ones the reviews settled
+- Other dialogs. The add dialog and the preset manager are their own shapes
+
 ## Complete
 
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
@@ -5243,58 +5344,6 @@ and what it should not carry is progress that stopped meaning anything.
 
 - Any other row state. `COMPLETED` and `FAILED` have their branches and their arguments
 - The columns, the chip, and the accessible text
-
-### T-242 — The Settings screen is taller than the screen, and clips its own explanations
-
-**Status:** Proposed — filed 2026-08-14 from a rendered walkthrough of the composed application,
-taken before `T-200` and `T-202` on the maintainer's direction so that rework is found first.
-**Owner:** Implementer
-**Priority:** **Medium–High** — it is visible on every normal display, it costs the user the
-sentences that explain the settings most likely to be misread, and **`T-200` audits this screen**:
-a keyboard pass over a dialog that cannot show its own content would be auditing the wrong shape
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/settings_dialog.py`, `T-146` (the screen), `T-196` (the section that
-pushed it over), `T-197` (`COOKIES_EXPLANATION`), `UX-005` §5
-**Affected surfaces:** `ui/settings_dialog.py`, `tests/ui/test_settings_dialog.py`
-**Risk:** Low to fix, and the measurement is the part to keep
-
-#### Scope
-
-**Measured, not eyeballed.** The screen's own `sizeHint` is **594 × 1407**. A 1080p display has
-roughly a thousand usable pixels of height, so the dialog is compressed by about a third whatever
-the window manager does — and what gives way is the wrapped explanatory text:
-
-| Label | Height it gets | Height it needs |
-|---|---|---|
-| `cookiesExplanation` | 23 px | **51 px** |
-| `networkExplanation` | 38 px | **85 px** |
-| `networkRetriesLabel` | 37 px | **51 px** |
-
-So the sentence saying a cookies file *"does not unlock anything your account cannot already
-reach"* is cut in half, and so is the one saying which retry the retry control governs — the
-sentence `T196-R5` spent a review round getting right.
-
-**Two candidate shapes, neither chosen here.** A `QScrollArea` around the sections is the ordinary
-answer and keeps every section at its natural height; collapsing the explanations into a smaller
-type or into per-control tooltips is the other, and it trades honesty for height, which is the
-trade `UX-005` §5 usually refuses. **The choice affects `T-200`**, because a scroll area changes
-the keyboard route through the screen — so it belongs before that pass, not after.
-
-#### Acceptance criteria
-
-- **No label on this screen is drawn shorter than the height it asks for**, at the smallest window
-  size the screen supports, asserted by comparing `heightForWidth` against the drawn height rather
-  than by looking at a picture
-- The whole screen is reachable at a 1366 × 768 working area — the smallest laptop the project
-  has claimed to support anywhere — with every control operable
-- **Whatever is chosen, the keyboard route is stated**, because `T-200` inherits it
-- A screenshot of the fixed screen is attached to the entry, both themes
-
-#### Out of scope
-
-- Re-wording any explanation to make it fit. The sentences are the ones the reviews settled
-- Other dialogs. The add dialog and the preset manager are their own shapes
 
 ### T-243 — An interrupted row says the same thing twice, in two voices
 
