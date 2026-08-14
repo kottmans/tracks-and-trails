@@ -16737,3 +16737,46 @@ redesign.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
 dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
+
+## 2026-08-14 — T-244 correction focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-244`
+**Correction boundary:** `5c171d31f22f896f463feb80900de03065150a8f..`
+`30aaf42b48d1ce0cc655c8957b940e365be17e06` — one local, unpushed correction commit.
+**Platforms verified:** Linux, Qt offscreen. No Windows runtime, CI, real display, frozen build, or
+external network execution is claimed.
+**Verdict:** **Blocked.** `T244-R1` is Resolved. `T244-R2` remains Open because the corrected
+current-truth snapshot again calls committed work uncommitted. The ordinary initial-plus-focused
+review budget is now exhausted with only a blocking Medium finding left, so `AGENTS.md` §10
+requires the maintainer to authorize another documentation-only pass, accept the documented risk,
+change scope, or carry it into a named follow-up.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T244-R1** | **Medium** | **Yes** | **Resolved** | The new composed regression builds two running playlist entries through `QueueModel`, asserts the exact production preconditions—`[Cancel]` and a non-empty fraction—and sweeps 150 through 300 px. The submitted guard keeps direct `Cancel` throughout. Restoring the old child progress reserve at exact `30aaf42` makes the test fail immediately at 150 px with `[None]` (overflow-only) instead of `[Cancel]`. The source comment, task entry and status snapshot now record the observable 150–204 px band, the invalid queued-plus-fraction probe and the seventh mutation honestly. |
+| **T244-R2** | **Medium** | **Yes** | **Open** | The old false claim—“an uncommitted tree on main at `ebe4159`”—is gone, and `STATUS.md` correctly identifies `c1b4ab0` as the original task commit and `ebe4159` as `origin/main`. But its replacement says the correction “is an uncommitted diff on top of it.” The correction is committed at `30aaf42`, so the same present-tense state error recurs one layer later. This is exactly why the initial review recommended saying only that the correction is committed and awaiting re-review, without trying to self-name a commit that did not exist while its own contents were being written. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed:** `5c171d3..30aaf42` is one four-file correction commit, **+202/−101**, and passes `git diff --check`. The 41-character imperative subject, human-only authorship, `Task: T-244` and `Review: T244-R1, T244-R2` trailers satisfy repository policy. Nothing is pushed. |
+| Corrected focused gates | **Passed:** the composed running-child regression and `T-227`'s task-placement regression both pass at `30aaf42`. T-244 now sits under `## In Review`, matching its status. |
+| R1 mutation | **Caught independently:** deleting the child guard from `_bar_reserve()` at an exact-head archive produces **1 failed, 122 deselected**; the failure is `[None]` versus `[Cancel]` at 150 px. |
+| Static gates | **Passed:** focused `ruff check` and `ruff format --check`; `mypy src` (**55 files**), bare `mypy` and `mypy --platform win32` (**142 files** each). |
+| Wider suites | **Not repeated.** The Implementer reports **2997 passed / 18 skipped** unit+UI and **440 passed** integration. |
+| T-201 evidence | **Not repeated in this correction pass.** The Implementer reports the prior PNG remains byte-identical; R1's correction changes no production behavior. |
+
+### Remaining boundary
+
+No source or test correction remains. If the maintainer authorizes one more documentation-only
+pass, rewrite the top `STATUS.md` snapshot to say the T-244 correction is **committed and awaiting
+focused re-review**, without describing it as uncommitted or trying to embed its own SHA. Then
+commit that current-truth correction, update the untracked handoff with the exact new boundary, and
+request the authorized pass. Do not push meanwhile.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
+dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
