@@ -5,8 +5,8 @@
 **Owner:** Claude Code (Documentation Maintainer role).
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-27
-**Last reviewed:** 2026-07-27
+**Last updated:** 2026-08-14
+**Last reviewed:** 2026-08-14
 **Update when:** Agent responsibilities, roles, ownership, validation gates, or repository-wide rules change.
 **Does not contain:** Product requirements, architecture detail, current progress, review history.
 
@@ -199,11 +199,17 @@ scales an SVG down to its container by default, which shrinks text as the graph 
   or repository protection that prevents direct work on `main`.
 - If a task begins on a non-`main` branch, do not switch, merge, rebase, or delete it without
   explicit instruction; report the branch in the handoff.
-- Do **not** commit or push unless explicitly instructed.
-- **One commit per task.** When a commit is instructed, each task gets its own — never one
-  commit spanning several tasks, and never a session-sized batch. A commit whose message has
-  to enumerate three unrelated tasks is one that cannot be reverted, reviewed, or bisected
-  against any of them.
+- **Commit when a task is complete, or when instructed.** Completion is the trigger: the work is
+  built, its `§8` gates have been run and read, and it is ready to be reviewed. Waiting to be told
+  each time is not caution — it leaves green work that cannot be reviewed by SHA, bisected, or
+  reverted, and it makes the next task start on a base nobody has recorded.
+  *(This read "do not commit or push unless explicitly instructed", which was the rule until
+  2026-08-14. The maintainer's instruction that day replaced its first half and kept the second.)*
+- **Do not push unless explicitly instructed.** This half is unchanged and is the one that matters:
+  a commit is local and revisable, a push is not, and it is what starts CI.
+- **One commit per task.** Each task gets its own — never one commit spanning several tasks, and
+  never a session-sized batch. A commit whose message has to enumerate three unrelated tasks is one
+  that cannot be reverted, reviewed, or bisected against any of them.
   - This holds even when the tasks were built in one sitting and share a working tree, which
     is the usual case in serial mode. Stage that task's files and commit before starting the
     next one.
