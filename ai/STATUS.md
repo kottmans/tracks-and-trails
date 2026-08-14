@@ -5,6 +5,34 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (T-196 re-reviewed: Blocked) — **four of the five findings are
+Resolved and the fifth is held open by two sentences of prose.** `T196-R1` through `T196-R4` are
+marked Resolved by the Reviewer, each independently re-tested and mutation-verified — including the
+Critical's numeric-password route and the reviewer's own `choose_network` mutation, which now fails
+the regression it used to pass. **`T196-R5` stays Open, and correctly.** The built label, its
+accessible name and the section explaining segmented streams were all accepted; what was not
+corrected with them were **two current-truth records still carrying the superseded meaning** —
+`ai/STATUS.md`'s own ruling bullet calling `--retries` *per-fragment*, and `ai/TASKS.md`'s
+acceptance criterion still offering *"fragment retries or job-level retry"* as the choice. **A
+criterion that demands the control name which retry it is was itself naming the wrong one.**
+
+**Both are corrected here, in place and annotated**, and **no implementation or test change was
+requested or made** — the source, the tests and the gates are untouched at `c09badd`. **There are
+three things, not two:** file-transfer `--retries` (built), per-fragment `--fragment-retries`
+(unbuilt, `T-183`) and this application's job-level retry (`REQ-015`/`REQ-018`).
+
+**The lesson is the sweep's boundary, and this project already had the precedent.** The correction
+searched the *task entry* for the contradictory phrasing and stopped there; `T-186` established
+that a prose sweep runs over the whole current-truth surface. One `grep` for *per-fragment* across
+`ai/` and `docs/` finds all four sites at once.
+
+**What happens next is the maintainer's to decide, not the implementer's** (`AGENTS.md` §10). The
+focused correction pass is spent, so a documentation-only re-review must be **authorised**, or the
+risk accepted, the scope changed, or the residue carried to a named follow-up. **`T-196` is not
+Approved and is not claimed to be.**
+
+*(The block below is the correction round and is left as written.)*
+
 **Last updated:** 2026-08-13 (T-196 corrected) — **`T-196` came back Changes requested with one
 Critical and four Medium findings, and all five are corrected in one batch.** The Critical is the
 one worth keeping: the screen wrote the proxy on every keystroke, so typing a credentialed proxy
@@ -501,11 +529,18 @@ review ran and committed at `59686fe`. Nothing was lost and nothing of the revie
 
 **The maintainer took every open ruling on the board.** What was blocked on a decision no longer is.
 
-- **`T-196` — "retries" means yt-dlp's own `--retries`**, per-fragment, inside one attempt, and the
-  control must be labelled so it cannot be read as the job-level one. **This was the critical
-  path**: `T-196` → `T-200` (two exit criteria) → `T-212` → the phase exit. The job-level retry is
-  already governed by `REQ-015`/`REQ-018`, and a second control over it would contradict a sentence
-  `T-201` just put on screen — that a network failure *"retries by itself"*. The cheaper
+- **`T-196` — "retries" means yt-dlp's own `--retries`**, the **file transfer's** own retry, inside
+  one attempt, and the control must be labelled so it cannot be read as the job-level one.
+  *(**This said *per-fragment* until 2026-08-13 and it was wrong** — `T196-R5`, found in the
+  focused re-review after the built label had already been corrected. Measured against the pinned
+  yt-dlp 2026.07.04, `downloader/http.py` reads `retries` and `downloader/fragment.py` reads
+  `fragment_retries`: **three things, not two** — file-transfer `--retries`, per-fragment
+  `--fragment-retries` (unbuilt, `T-183`), and this application's job-level retry from
+  `REQ-015`/`REQ-018`. **The ruling's choice of key is unchanged**; only the words describing it
+  were wrong, which is why this is corrected in place rather than reopened.)* **This was the
+  critical path**: `T-196` → `T-200` (two exit criteria) → `T-212` → the phase exit. The job-level
+  retry is already governed by `REQ-015`/`REQ-018`, and a second control over it would contradict a
+  sentence `T-201` just put on screen — that a network failure *"retries by itself"*. The cheaper
   alternative — build no control and call `REQ-023`'s retry policy satisfied — was offered and not
   taken.
 - **`T-238` — build the leak guard.** The entry conditioned it on product-versus-harness being

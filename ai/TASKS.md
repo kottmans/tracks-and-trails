@@ -119,11 +119,22 @@ this one returned four verdicts before approving.*
 
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
 
-**Status:** **In Review — corrected 2026-08-13, awaiting re-review.** Review round one returned
-**Changes requested** with one Critical and four Medium findings, **all five corrected in one
-batch** and recorded below; the Reviewer marks them Resolved, not me. `ruff`, `ruff format`,
-`mypy src`, bare `mypy` and `mypy --platform win32` clean; **2923 passed, 18 skipped** unit+UI and
-**440 passed** integration, exit codes checked (`T195-R7`). **Twenty mutations, none surviving.**
+**Status:** **In Review — Blocked at the focused re-review, 2026-08-13, and the block is two
+sentences of prose.** `T196-R1` through `T196-R4` are **Resolved**, marked so by the Reviewer and
+each independently mutation-verified. **`T196-R5` stays Open**: the label, the accessible name and
+the section were correct, but `ai/STATUS.md` still called `--retries` *per-fragment* and this
+entry's own acceptance criterion still framed the choice as *fragment retries or job-level retry*.
+**Both are corrected here, and no implementation or test change was requested or made.**
+
+**A further verdict needs the maintainer, not another submission** (`AGENTS.md` §10): the focused
+correction pass is spent, so a documentation-only re-review has to be authorised, the risk accepted,
+the scope changed, or the residue carried to a named follow-up. **That disposition is the
+maintainer's and is not taken here.**
+
+Round one returned **Changes requested** with one Critical and four Medium findings, **all five
+corrected in one batch** and recorded below. `ruff`, `ruff format`, `mypy src`, bare `mypy` and
+`mypy --platform win32` clean; **2923 passed, 18 skipped** unit+UI and **440 passed** integration,
+exit codes checked (`T195-R7`). **Twenty mutations, none surviving.**
 
 #### Round one: five findings, all corrected
 
@@ -176,6 +187,20 @@ batch** and recorded below; the Reviewer marks them Resolved, not me. `ruff`, `r
   the file transfer, within one attempt* — visible label and accessible name — the section says
   segmented streams retry on a count of their own, and the entry's contradictory *per-fragment*
   phrasing is corrected below rather than left standing beside the accurate one.
+
+  **Still Open after the focused re-review, and the finding was right to stay open.** The
+  product text was accepted; **two current-truth records were not corrected with it** —
+  `ai/STATUS.md`'s ruling bullet still said *per-fragment*, and **this entry's own acceptance
+  criterion** still offered *"yt-dlp's fragment retries or the job-level retry"*. The criterion
+  demanding the control name which retry it is was itself naming the wrong one. **Both are
+  corrected now**, and both are annotated in place rather than reworded, so the superseded reading
+  cannot come back as though it had never been asserted.
+
+  **What this cost is worth recording:** the correction searched *the entry* for the contradictory
+  phrasing and stopped there, while `T-186` is this project's precedent that a prose sweep is over
+  the whole current-truth surface. Grepping `per-fragment` across `ai/` and `docs/` finds all four
+  sites in one pass — the two that were already right and the two that were not. **A sweep bounded
+  by the file the correction is being written in is not a sweep.**
 
 *(The build record below is round one's and is left as written, except where a correction above
 supersedes it — the four residuals in particular: the second is now bounded by a floor, and the
@@ -245,8 +270,9 @@ was the entry's one open question and the phase's critical path.)*
 
 #### The retry ruling — maintainer, 2026-08-13
 
-**"Retries" means yt-dlp's own `--retries`** — the per-fragment retries inside one attempt — **and
-the control must be labelled so it cannot be read as the other one.**
+**"Retries" means yt-dlp's own `--retries`** — the per-fragment retries inside one attempt
+[**inaccurate as recorded; corrected immediately below** — `T196-R5`] — **and the control must be
+labelled so it cannot be read as the other one.**
 
 *(**The choice stands; the parenthetical is inaccurate and is corrected rather than quietly
 reworded** — `T196-R5`, measured against the pinned yt-dlp 2026.07.04. `--retries` is consumed by
@@ -314,8 +340,16 @@ this task must not land a stored proxy without it.
 - **A stored proxy never reaches a log**, including `settings.toml` read failures and `ARC-008`
   reports that quote the offending value. This is the case `NFR-007` does not yet cover, and it is
   the acceptance criterion most likely to be skipped
-- **The retry setting names which retry it is** — yt-dlp's fragment retries or the job-level retry —
-  in the control's own label and in the entry, and the other one is stated as out of scope
+- **The retry setting names which retry it is** — yt-dlp's own `--retries`, the **file transfer's**
+  retry inside one attempt, as against **`--fragment-retries`**, the per-fragment count of a
+  segmented stream (also inside one attempt, unbuilt, `T-183`), and the application's **job-level**
+  retry from `REQ-015`/`REQ-018` — in the control's own label and in the entry, and the other two
+  are stated as out of scope
+  *(**Amended 2026-08-13, `T196-R5`.** This offered a two-way choice — *"yt-dlp's fragment retries
+  or the job-level retry"* — which named the wrong yt-dlp option: `--retries` is **not** the
+  per-fragment one, so a criterion demanding the control name which retry it is was itself naming
+  the wrong one. **What the criterion asks is unchanged** and the built label meets it; the
+  enumeration it asks against is corrected.)*
 - A rate limit of zero, negative, or non-numeric **reports under `ARC-008`** rather than being
   coerced into "unlimited", which would silently remove a limit the user asked for
 - The settings-implemented record (`T-146`, extended by `T-195`) gains these three
