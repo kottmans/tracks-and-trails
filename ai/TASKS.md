@@ -119,12 +119,15 @@ this one returned four verdicts before approving.*
 
 ### T-201 — The error-surface pass: twelve classes, and the two with nothing to suggest
 
-**Status:** **In Review — corrected 2026-08-14, and one finding is Blocked on a ruling that is
-the maintainer's.** Round one returned **Changes requested** with `T201-R1` (Medium), `T201-R2`
-(Medium) and `T201-R3` (**High**). **R1 and R2 are corrected**, with five mutations of their own.
-**R3 cannot be corrected by an implementer**, and the reviewer says so in its own recommendation:
-*"if the row anatomy cannot carry both, obtain the required layout ruling instead of treating the
-unreachable widget as delivery."* The ruling is set out below with the options rendered.
+**Status:** **In Review — approved for commit 2026-08-14**, second correction. Round one returned
+**Changes requested** with `T201-R1` (Medium), `T201-R2` (Medium) and `T201-R3` (**High**). The
+first focused re-review resolved `R1` and **reopened `R2`**: the corrected wording was not reachable
+through the widget's live event path. `R3` stayed open pending a ruling only the maintainer could
+take. **The maintainer ratified option C on 2026-08-14** — recorded as an amendment to `UX-005`,
+which is where a row-anatomy ruling lives. The second focused re-review **resolved both**, with
+**nine mutations** across them; `T201-R4` was found beside them and is **pre-existing and
+non-blocking**, filed as `T-244`. The routine post-verdict sync moves this entry once the commit
+exists.
 
 #### `T201-R1` — corrected: only line separators are touched
 
@@ -136,40 +139,67 @@ It is `splitlines()` now, which knows exactly what a line can end with — `\r\n
 passes every other character through. Six parametrised cases: double space, tab, CRLF, CR,
 surrounding whitespace, and the reviewer's own mixed string.
 
-#### `T201-R2` — corrected: the last network failure stops promising a retry
+#### `T201-R2` — corrected twice, and the first correction is why
 
 `AUTOMATIC_RETRY_LIMIT` is three, and the manager announces every failure **before** deciding
 whether to schedule another — so the fourth rendered *"This one retries by itself"* at exactly the
-moment none remained. `ErrorPresentation` gained `exhausted_next_step`, `next_step_for` an
-`exhausted` flag, and `JobProgressView` reads `job.attempts >= AUTOMATIC_RETRY_LIMIT` rather than
-counting again. **Eleven of the twelve say the same thing either way**, because nothing else is
+moment none remained. `ErrorPresentation` gained `exhausted_next_step` and `next_step_for` an
+`exhausted` flag. **Eleven of the twelve say the same thing either way**, because nothing else is
 retried automatically — asserted, so a hedge cannot be added to a kind that has no such state.
 
-#### `T201-R3` — **High, and it needs a layout ruling. Nothing is built for it.**
+**The first correction read the counter once and cached it, which meant it never fired.** `_load`
+runs during construction, and a view is opened on a job that has not failed yet, so the answer it
+stored was *"retries remain"* — and nothing re-read it: `_on_job_changed` writes only the status and
+`_on_job_failed` redraws without touching the row. The re-review reproduced it deterministically
+through the manager's own signals. It is `_retries_are_spent()` now, asked on the render path;
+the field it writes is a cache for the one case that cannot answer, a job no longer in the
+repository. **A widget-path regression drives `job_changed` → `job_failed` in the manager's own
+order** — the sequence the pure formatter's test could never exercise, because it never advances an
+attempt after a widget exists.
 
-**The finding is right and the diagnosis is worse than it looks.** `describe_failure` supplies the
-next step only to `JobProgressView`, and **nothing in the product constructs that view** — `UX-005`
-§2 removed the detail pane, `main_window._build_body` passes no selection callback, and composition
-says in as many words that nothing follows a job into one. So the only reachable failure surface is
-the queue row, and the row deliberately carries the headline and the extractor's message **without**
-the next step. A user is told what failed and never told what to do.
+**Two stale docstrings said the counter is never incremented**, in `job_detail` and `queue_view`.
+True at `T079-R1`; `T-083` made `with_another_attempt` run on the automatic retry edge. Both are
+corrected in place — that claim is the premise the defect was reasoned from, and both methods'
+conclusions still hold for a different reason: an automatic retry spends an attempt and a manual
+one does not, so the status marks boundaries the counter does not.
 
-**Three places it could live. Two need a ruling and the third the reviewer has already refused.**
+#### `T201-R3` — **ratified as option C on 2026-08-14, and built**
 
-| | Where | What it costs |
-|---|---|---|
-| **A** | A third clause on the row's second line — `headline · next step · message` | **Measured, not argued**: at 1180 px the ffmpeg row's message elides from `…--ffmpeg-location` to `…--ff…`. The extractor's own words are what gets cut, which is what `NFR-006` protects most. The reviewer names this one and refuses it |
-| **B** | The next step **replaces the format line** on a failed row | Overturns `UX-005` §6's *"plain format text once a download starts"* for one row state. Defensible — nothing is downloading — but §6 is a `[T]` clause and this is not an implementer's to reinterpret |
-| **C** | A **third text line**, failed rows only | Changes the row anatomy `UX-005` §3 states and `T-119` built: a new line, a new row height, and every measurement in `row_delegate` that depends on both |
+**The finding was right and the diagnosis was worse than it looked.** `describe_failure` supplied
+the next step only to `JobProgressView`, and **nothing in the product constructs that view** —
+`UX-005` §2 removed the detail pane, `main_window._build_body` passes no selection callback, and
+composition says in as many words that nothing follows a job into one. So the only reachable failure
+surface was the queue row, which carried the headline and the extractor's message **without** the
+next step. A user was told what failed and never told what to do.
 
-**Rendered rather than described**, from the real delegate against three failure kinds:
-`ai/evidence/2026-08-14-T201-next-step-today.png` (as built, no next step anywhere) and
-`ai/evidence/2026-08-14-T201-next-step-option-a.png` (A, with the elision visible). B and C are not
-rendered: B needs a `[T]` clause overturned before it is worth drawing, and C is delegate work.
+**Three places it could live; the maintainer ruled the third.**
 
-**What is not in doubt:** the text itself is written, tested and correct for all twelve kinds; what
-is missing is a surface. **This is the criterion the task exists for**, so it stays open — and no
-mutation evidence can close it, because nothing is built.
+| | Where | What it costs | Ruling |
+|---|---|---|---|
+| **A** | A third clause on the row's second line — `headline · next step · message` | **Measured, not argued**: at 1180 px the ffmpeg row's message elides from `…--ffmpeg-location` to `…--ff…`. The extractor's own words are what gets cut, which is what `NFR-006` protects most | **Rejected** |
+| **B** | The next step **replaces the format line** on a failed row | Overturns `UX-005` §6's *"plain format text once a download starts"* for one row state, on the row that offers Retry — so it deletes what will be attempted again | **Rejected** |
+| **C** | A **third text line**, failed rows only | A new line, a new row height, and every measurement in `row_delegate` that depends on both. Follows the conditional height `T-157` already spends on a child row with a format of its own | **Ratified 2026-08-14**, recorded at `UX-005` |
+
+**What was built.** `ACTION_ROLE` carries the step; `QueueModel._failure_action` answers it, empty
+for every row that has not failed and for every failure with nothing honest to suggest.
+`_action_lines` is the one place the question *"is there a line here"* is answered, so `sizeHint`,
+`_paint_text` and `_verb_rects` cannot disagree — which is the hazard `T-140`'s clipped child row
+records. The selector, the progress bar and the verbs move down with the line rather than under it,
+and the same text reaches the row's accessible description: `NFR-005` does not allow a fact to be
+added for the eye alone.
+
+**Gated from the composed queue** for the four cases the correction boundary names — actionable, no
+honest action, network before and after the automatic retries are spent, and the long diagnostic —
+plus three delegate-level geometry gates. **Nine mutations**, each caught by the test that names it:
+`sizeHint` ignoring the line, the selector not moving, the bar not moving, the verbs not moving, the
+model not answering the role, option A's composition restored, the exhausted flag dropped, the
+spoken row losing the step, and a hopeful sentence added to `GEO_RESTRICTED`.
+
+**Rendered, all three options now**: `ai/evidence/2026-08-14-T201-next-step-today.png` (as built
+before this, no next step anywhere), `-option-a.png` (A, with the elision visible) and
+`-option-c.png` (the ruled layout, at the head that built it).
+`tools/failed_row_screenshot.py` regenerates the last of those; A cannot be regenerated without
+patching the rejected option back in, which is why it stays a file.
 
 *(The build record below is round one's and stands, except that the message transformation is now
 line separators only — see `T201-R1` above.)*

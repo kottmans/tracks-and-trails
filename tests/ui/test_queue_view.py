@@ -38,7 +38,7 @@ from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.core.paths import cache_root_for, thumbnail_cache_path
 from tracks_and_trails.core.presets import AUDIO_MP3, BEST_VIDEO, MP3_QUALITY, to_request
-from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.downloader.manager import AUTOMATIC_RETRY_LIMIT, DownloadManager
 from tracks_and_trails.downloader.protocol import (
     Progress,
     SessionKind,
@@ -46,7 +46,7 @@ from tracks_and_trails.downloader.protocol import (
     Succeeded,
     WorkerFinished,
 )
-from tracks_and_trails.ui.error_text import headline_for
+from tracks_and_trails.ui.error_text import headline_for, next_step_for
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, describe_bar
 from tracks_and_trails.ui.queue_view import (
     CHIP_TEXT,
@@ -63,6 +63,7 @@ from tracks_and_trails.ui.queue_view import (
     QueueView,
 )
 from tracks_and_trails.ui.row_delegate import (
+    ACTION_ROLE,
     DEPTH_ROLE,
     DETAIL_ROLE,
     EXPANDED_ROLE,
@@ -3652,6 +3653,212 @@ def test_a_screen_reader_hears_why_the_row_failed(
     assert "0 B of Unknown" in spoken, (
         "the byte count left the drawn line and the spoken row as well, so criterion 4 took "
         f"something away rather than moving it: {spoken!r}"
+    )
+
+
+# --- and what the user can do about it (T-201 criterion 1, T201-R3, ruled 2026-08-14) ---------
+#
+# `NFR-006` asks for three facts and the row carried two. The third had a written, tested table and
+# no reachable surface: `describe_failure` composed it for `JobProgressView`, and nothing in the
+# product constructs that widget. The maintainer ruled option C — one more text line, failed rows
+# only — over appending it to the reason's line (which elides the extractor's own remedy) and over
+# taking the format line (which is a `[T]` clause). These gate the composed queue, which is the
+# surface a user actually meets.
+
+
+def action_of(view: QueueView, row: int = 0) -> str:
+    """What the row at `row` offers as a next step, as the delegate would read it."""
+    drawn = view.model.data(view.model.index(row, JOB_COLUMN), ACTION_ROLE)
+    assert isinstance(drawn, str)
+    return drawn
+
+
+def test_a_failed_row_says_what_the_user_can_do_on_a_line_of_its_own(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**`T-201`, criterion 1** — the third fact reaches the row (`T201-R3`).
+
+    All three of `NFR-006`'s facts are asserted together, because the finding is precisely that two
+    of them arriving is not the requirement: a user was told what failed and why, and never told
+    what to do.
+
+    **And the step is not on the reason's line**, which is the ruling rather than an implementation
+    detail. Sharing that line puts the class, the extractor's message and the step through one
+    elision, and the extractor's is the one that loses — measured, and asserted for a real width
+    below.
+    """
+    message = "ERROR: ffprobe and ffmpeg not found. Please install or provide the path"
+    view, detail = a_failed_row(
+        queue, views, managers, tmp_path, kind=ErrorKind.FFMPEG_MISSING, message=message
+    )
+    action = action_of(view)
+
+    assert headline_for(ErrorKind.FFMPEG_MISSING) in detail, "what failed is missing"
+    assert message in detail, "why it failed is missing, and it is the extractor's own sentence"
+    assert action == next_step_for(ErrorKind.FFMPEG_MISSING), (
+        f"the row offers no next step, or not the one the table writes: {action!r}"
+    )
+    assert action not in detail, (
+        f"the step was appended to the reason's line after all: {detail!r}. That is option A, and "
+        "the measurement that refused it is the extractor's message being what gets elided"
+    )
+
+
+@pytest.mark.parametrize("kind", [ErrorKind.DRM_PROTECTED, ErrorKind.GEO_RESTRICTED])
+def test_a_failure_with_no_honest_action_offers_none_and_costs_no_height(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+    kind: ErrorKind,
+    qapp: QApplication,
+) -> None:
+    """**The empty answer is the deliverable, not a gap** (`T-201` scope, `REQ-EXCL-001/002`).
+
+    `DRM_PROTECTED` has nothing to suggest and must not, and `GEO_RESTRICTED`'s only suggestion is
+    a ruling nobody has taken. A row that grew a line to hold an encouraging sentence would be the
+    reassuring-text failure this task exists to refuse, spending row height to do it.
+
+    So the height is asserted as well as the text: `UX-005` §3's anatomy is what these rows keep.
+    """
+    view, _detail = a_failed_row(queue, views, managers, tmp_path, kind=kind)
+    queue.add(make_job("job-2", tmp_path, status=JobStatus.QUEUED, queue_position=1))
+    view.model.refresh()
+
+    assert action_of(view) == "", (
+        f"{kind.value} was given something to suggest: {action_of(view)!r}"
+    )
+
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 900, 0)
+    option.font = view.table.font()
+    option.fontMetrics = QFontMetrics(option.font)
+    failed = delegate.sizeHint(option, view.model.index(0, JOB_COLUMN)).height()
+    ordinary = delegate.sizeHint(option, view.model.index(1, JOB_COLUMN)).height()
+    assert failed == ordinary, (
+        f"a {kind.value} row is {failed}px against an ordinary row's {ordinary}px, so the queue "
+        "spends a line on a failure that has nothing to say"
+    )
+
+
+def test_the_last_network_failure_offers_the_step_that_is_still_true(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """`T201-R2`'s wording, on the surface that now draws it (`T201-R3`).
+
+    The exhausted sentence existed and was reachable only from a widget nothing constructs. Now
+    that the row carries the step, the row is where *"this retries by itself"* would be a promise
+    nothing will keep — so both states are asserted here too, and from the attempt counter the
+    manager actually writes rather than from a flag this model keeps.
+    """
+    view, _detail = a_failed_row(queue, views, managers, tmp_path, kind=ErrorKind.NETWORK)
+    assert "retries by itself" in action_of(view), (
+        f"a network failure mid-backoff does not say retries are running: {action_of(view)!r}"
+    )
+
+    queue.add(replace(queue.jobs["job-1"], attempts=AUTOMATIC_RETRY_LIMIT))
+    view.model.refresh()
+
+    spent = action_of(view)
+    assert "retries by itself" not in spent, (
+        f"the last network failure still promises an automatic retry: {spent!r}"
+    )
+    assert spent == next_step_for(ErrorKind.NETWORK, exhausted=True)
+
+
+def test_the_step_costs_the_extractors_own_remedy_nothing(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**The measurement the ruling turned on**, encoded (`T201-R3`, option A refused).
+
+    yt-dlp's own ffmpeg diagnostic ends in the flag that fixes it. At 1180 px, appending the next
+    step to that line elides `--ffmpeg-location` to `--ff…` — so stating the remedy this table
+    writes would have cost the remedy the extractor supplied, which is the content `NFR-006`
+    protects hardest.
+
+    Both halves are asserted at the row's **own** text width, taken from the delegate rather than
+    guessed: that the drawn line keeps the flag, and that the composed alternative does not. The
+    second is what makes this a measurement rather than a restatement.
+
+    **A measurement is font-dependent, and this one says so rather than degrading quietly.** The
+    width is the default view font's; at a larger one the reason elides on its own and the
+    comparison stops meaning anything. So the precondition — the whole reason fits — is asserted
+    first, and it fails with that explanation rather than leaving a green test that measures
+    nothing.
+    """
+    message = (
+        "ERROR: You have requested merging of multiple formats but ffmpeg is not "
+        "installed; pass its location with --ffmpeg-location"
+    )
+    view, detail = a_failed_row(
+        queue, views, managers, tmp_path, kind=ErrorKind.FFMPEG_MISSING, message=message
+    )
+    action = action_of(view)
+
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 1180, 90)
+    option.font = view.table.font()
+    option.fontMetrics = QFontMetrics(option.font)
+    _body, text_area = delegate._verb_area(option, view.model.index(0, JOB_COLUMN))
+    metrics = option.fontMetrics
+
+    drawn = metrics.elidedText(detail, Qt.TextElideMode.ElideRight, text_area.width())
+    # **Option A's own order**, which is the half of the finding that makes it bite: the step goes
+    # *between* the class and the message — `headline · next step · message`, as `describe_failure`
+    # composes it — so the message is what runs off the end. Appended after the message instead,
+    # the step would simply elide itself and cost the extractor nothing.
+    composed = metrics.elidedText(
+        f"{headline_for(ErrorKind.FFMPEG_MISSING)} · {action} · {message}",
+        Qt.TextElideMode.ElideRight,
+        text_area.width(),
+    )
+
+    assert drawn == detail, (
+        f"the reason's line does not fit in {text_area.width()}px at this font, so the comparison "
+        f"below measures nothing: {drawn!r}"
+    )
+    assert "--ffmpeg-location" in drawn, (
+        f"the reason's line lost the extractor's own remedy at 1180 px: {drawn!r}"
+    )
+    assert "--ffmpeg-location" not in composed, (
+        "appending the step to this line no longer elides the extractor's remedy, so this test no "
+        "longer measures what refused option A — re-measure before trusting the ruling's premise"
+    )
+
+
+def test_a_screen_reader_hears_what_the_user_can_do_as_well(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """`NFR-005`: a fact added for the eye reaches the ear (`T201-R3`, the ruling's own condition).
+
+    The reason was given both surfaces at criterion 3, and the step is the newer half of the same
+    row. A screen-reader user hearing what failed and why but not what to do is `T017-R2`'s split
+    reopened one field over.
+    """
+    view, _detail = a_failed_row(queue, views, managers, tmp_path, kind=ErrorKind.FFMPEG_MISSING)
+
+    spoken = view.model.data(
+        view.model.index(0, JOB_COLUMN), int(Qt.ItemDataRole.AccessibleTextRole)
+    )
+    assert isinstance(spoken, str)
+    assert next_step_for(ErrorKind.FFMPEG_MISSING) in spoken, (
+        f"the drawn row says what to do and the spoken row does not: {spoken!r}"
     )
 
 

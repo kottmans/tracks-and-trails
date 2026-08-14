@@ -26,7 +26,11 @@ from tests.qt_lifecycle import drain
 from tracks_and_trails.core.errors import ErrorKind, is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
-from tracks_and_trails.downloader.manager import CANCEL_BUDGET_SECONDS, DownloadManager
+from tracks_and_trails.downloader.manager import (
+    AUTOMATIC_RETRY_LIMIT,
+    CANCEL_BUDGET_SECONDS,
+    DownloadManager,
+)
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Progress,
@@ -1047,6 +1051,65 @@ def test_markup_in_an_extractor_message_is_shown_and_not_rendered(
     view._on_job_changed("job-1", JobStatus.FAILED.value)
 
     assert "<b>VISIBLE</b>" in view.error_text()
+
+
+def test_the_live_failure_path_stops_promising_a_retry_once_they_are_spent(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+) -> None:
+    """`T201-R2`, the second time — the wording was corrected and could not be reached.
+
+    The first correction read `job.attempts` **once, in `_load`**, which runs during
+    construction. A view is opened on a job that has not failed yet, so the answer it cached was
+    *"retries remain"* — and nothing re-read it: `_on_job_changed` writes only the status, and
+    `_on_job_failed` redraws without touching the row. Every automatic attempt after that
+    rendered the sentence the correction existed to remove, at exactly the moment none remained.
+
+    **Driven through the manager's own signals, in the manager's own order.** That is the whole
+    point of this regression: the pure formatter's test passed throughout, because it never
+    advances an attempt after a widget has been built. `job_failed` is emitted *before* the retry
+    is scheduled (`_schedule_automatic_retry`), so `job_changed` → `job_failed` at the limit is
+    the real last-failure sequence and not a contrivance.
+
+    Both states are asserted from one view, which is what makes this about the live path rather
+    than about two differently-constructed widgets.
+    """
+    job = make_job("job-1", tmp_path, status=JobStatus.RUNNING)
+    store.add(job)
+    manager = managers()
+    view = views(manager=manager, jobs=store, job_id="job-1")
+
+    # The first failure: attempts still below the bound, so an automatic retry really is coming.
+    manager.job_changed.emit("job-1", JobStatus.FAILED.value)
+    manager.job_failed.emit("job-1", ErrorKind.NETWORK, NETWORK_MESSAGE)
+    assert "retries by itself" in view.error_text(), (
+        f"a failure with attempts left stopped saying they are running: {view.error_text()!r}"
+    )
+
+    # The last one. `_perform_due_retries` advances `attempts` on the `FAILED → QUEUED` edge, so by
+    # the time the final failure is announced the row is at the bound and the manager will refuse.
+    store.add(
+        replace(
+            job,
+            status=JobStatus.FAILED,
+            attempts=AUTOMATIC_RETRY_LIMIT,
+            error_kind=ErrorKind.NETWORK,
+            error_message=NETWORK_MESSAGE,
+        )
+    )
+    manager.job_changed.emit("job-1", JobStatus.FAILED.value)
+    manager.job_failed.emit("job-1", ErrorKind.NETWORK, NETWORK_MESSAGE)
+
+    spent = view.error_text()
+    assert "retries by itself" not in spent, (
+        f"the last failure still promises an automatic retry nothing will schedule: {spent!r}"
+    )
+    assert "automatic retries are used up" in spent, (
+        f"and it never says the retries have run out: {spent!r}"
+    )
+    assert NETWORK_MESSAGE in spent, "the extractor's message went with the wording change"
 
 
 # --- 5. the DRM boundary (`SEC-001`, `REQ-EXCL-001`) ------------------------------------------

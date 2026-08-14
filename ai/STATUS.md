@@ -5,6 +5,39 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-14 (T-201's second correction, approved) — **all four tasks are approved;
+`T-201` is committed and unpushed, the other three are on `main`.** `T-242` (`68cd1c6`), `T-227`
+(`cd52ed5`) and `T-241` (`d7c9b7b`) are approved at those heads, with the review records on `main`
+at `cd87b1e`. `T-201`'s second correction resolved `T201-R2` and `T201-R3`; **`T201-R4` was found
+beside them, is pre-existing at `cd87b1e`, and is filed as the non-blocking `T-244`** — an expanded
+playlist child answers `Retry` and `Remove` while `_verb_rects` measures its baseline from the
+parent's `TEXT_LINES`, so no rectangle fits in the shorter child body and the verbs are drawn
+nowhere. The group-level verbs are the workaround, which is why it does not block.
+
+**The maintainer ratified option C for `T201-R3` on 2026-08-14.** A failed row with an honest next
+step is one line taller, and that line says what the user can do; a failure with nothing to suggest
+keeps `UX-005` §3's anatomy exactly. The ruling and both rejected options are recorded as a `UX-005`
+amendment, which is where a row-anatomy decision lives — a reviewer recommendation is not one, and
+this entry is only writing down what the maintainer chose. The ruled layout is rendered at
+`ai/evidence/2026-08-14-T201-next-step-option-c.png`, with `tools/failed_row_screenshot.py` to
+regenerate it.
+
+**`T201-R2` needed a second correction, and the first one is the interesting part.** The wording was
+right and unreachable: `JobProgressView` read `job.attempts` once, during construction, on a job
+that had not failed yet — so the live `job_changed` → `job_failed` path went on rendering *"this
+retries by itself"* at exactly the moment none remained. **The re-review reproduced it
+deterministically and my own tests could not**, because a formatter test never advances an attempt
+after a widget exists. It is read on the render path now, with a widget-path regression driving the
+manager's own signal order. Two docstrings claiming nothing increments `attempts` — true at
+`T079-R1`, false since `T-083` — were the premise it was reasoned from and are corrected.
+
+Gates on the correction: `ruff check .`, `ruff format --check .`, `mypy src`, bare `mypy` and
+`mypy --platform win32` all clean; **2982 passed, 18 skipped** unit+UI. **Nine mutations across the
+two findings, none surviving.** Nothing is committed or pushed.
+
+*(The block below is the four-verdict round's own and is left as written; `T201-R3` is ruled and
+`T201-R2` is corrected a second time, per the block above.)*
+
 **Last updated:** 2026-08-14 (four verdicts, corrections) — **all four tasks came back Changes
 requested, and one finding is Blocked on a ruling that is the maintainer's.** `T201-R3` is **High**:
 the actionable next step every failure is supposed to carry reaches **no surface a user can open** —

@@ -302,7 +302,9 @@ class JobProgressView(QWidget):
         self._renders = 0
         self._status = JobStatus.QUEUED
         #: Whether the automatic retries are used up, so the failure text can stop promising one
-        #: (`T201-R2`). False until a job is read, which is the state before anything has failed.
+        #: (`T201-R2`). **A cache of the last row that was read, not the state itself** — see
+        #: `_retries_are_spent`, which is what every render goes through. False until a job is read,
+        #: which is the state before anything has failed.
         self._retries_spent = False
         #: The last totals the bar was drawn from, so completion can redraw it truthfully
         #: without a second method reaching into the bar (`T017-R2`).
@@ -605,8 +607,12 @@ class JobProgressView(QWidget):
         the stage line when the job is terminal *or* nothing has been drawn — and after a failure
         something had been drawn.
 
-        The boundary is the status rather than `Job.attempts`: nothing in this project increments
-        that column, so keying to it would be comparing `0` with `0` for ever.
+        The boundary is the status rather than `Job.attempts`. *(This said "nothing in this
+        project increments that column", which was true when `T079-R1` wrote it and stopped being
+        true at `T-083` — `with_another_attempt` runs on the automatic retry edge. The conclusion
+        is unchanged and the reason is now a different one: an automatic retry spends an attempt
+        and a manual one does not, so the counter marks only some of the boundaries this method
+        has to catch. The status marks all of them. `T201-R2` is what the stale claim cost.)*
         """
         if job_id != self._job_id:
             return
@@ -691,15 +697,34 @@ class JobProgressView(QWidget):
 
     # --- rendering ----------------------------------------------------------------------
 
+    def _retries_are_spent(self) -> bool:
+        """Whether the application has stopped retrying this by itself (`T201-R2`).
+
+        **Read at the moment it is rendered, not once at construction.** The first correction read
+        `job.attempts` in `_load` and cached the answer, which is a snapshot of the state *before
+        anything had failed*: `attempts` advances afterwards, on the manager's own retry edge
+        (`with_another_attempt`, `T-083`), and neither `_on_job_changed` nor `_on_job_failed`
+        re-read the row. So a view opened at attempt zero went on rendering *"This retries by
+        itself a few times"* through the live `job_changed` → `job_failed` path at exactly the
+        moment none remained — the same sentence at the same moment the correction was written to
+        remove, one layer further out. `T201-R2`'s re-review reproduced it deterministically.
+
+        **Still not a second counter.** The bound is `DownloadManager`'s and the count is the
+        row's; this compares them and holds no state of its own. The field it writes is a cache of
+        the last row that was read, for the case below where there is no row to read: a job that
+        has left the repository cannot answer, and the last answer it gave is a better one than
+        silently claiming the retries are still coming.
+        """
+        job = self._jobs.get(self._job_id)
+        if job is not None:
+            self._retries_spent = job.attempts >= AUTOMATIC_RETRY_LIMIT
+        return self._retries_spent
+
     def _load(self) -> None:
         job = self._jobs.get(self._job_id)
         if job is not None:
             self._status = job.status
             self._title.setText(job.title or job.url)
-            # **Whether the application has stopped retrying this by itself** (`T201-R2`). Read
-            # from the job rather than counted here: `DownloadManager` refuses to schedule once
-            # `attempts` reaches its bound, and a second count in a widget is a second answer.
-            self._retries_spent = job.attempts >= AUTOMATIC_RETRY_LIMIT
             if job.error_kind is not None and job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
                 self._failure = (job.error_kind, job.error_message or "")
         self._adopt_totals()
@@ -787,8 +812,11 @@ class JobProgressView(QWidget):
             # manager announces every failure *before* deciding whether to schedule another, so
             # the last one used to render *"This one retries by itself"* at exactly the moment
             # none remained — this task's named risk in its own words.
+            #
+            # Asked here rather than read from a field, because the answer changes *after* this
+            # widget is built and this is the path the change arrives on. See `_retries_are_spent`.
             self._error.setText(
-                describe_failure(kind, message, exhausted=self._retries_spent)
+                describe_failure(kind, message, exhausted=self._retries_are_spent())
                 if kind is not None
                 else message
             )

@@ -3190,6 +3190,52 @@ behind a document would leave known-broken behaviour on `main` for longer.
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
 
+### Amended 2026-08-14 — a failed row is one line taller, when it has something to suggest
+
+**Status:** **Accepted** — **maintainer ruling of 2026-08-14**, taken on `T201-R3`. The Reviewer
+recommended option C and said in its own record that a recommendation is not a ruling; this entry
+exists because the maintainer then made it one. *(The distinction is `T145-R1`'s, four amendments
+up: an entry headed "maintainer ruling" when none had been made. It is not repeated here.)*
+
+**Raised by:** `T201-R3` (High). `NFR-006` asks each failure to state **what failed, why, and what
+the user can do**. §2 of this entry removed the detail pane, and the widget that composed all three
+— `JobProgressView` — is constructed by nothing in the product. So the row carried the first two
+and the third reached nobody. The text existed and was tested throughout; what it had was no
+surface.
+
+**The ruling: a third text line, on failed rows only.** Where the row has an honest next step it is
+drawn on its own line, below the reason and above the format line, and the row is one line taller.
+Where there is none — `DRM_PROTECTED`, `GEO_RESTRICTED`, and every row that has not failed — the
+row keeps §3's anatomy exactly.
+
+**The two options this rejects, and why the cheaper one was not taken:**
+
+- **Appending it to the reason's line** (`headline · next step · message`) was refused **on a
+  measurement, not a preference**: at 1180 px the step consumes the width that was carrying
+  `--ffmpeg-location`, and the extractor's message elides to `--ff…`. That is `NFR-006`'s
+  *surfaced, never swallowed* clause paying for `NFR-006`'s *what the user can do* clause, which is
+  not a trade this entry will make. `ai/evidence/2026-08-14-T201-next-step-option-a.png` is the
+  rendering.
+- **Replacing the format line on a failed row** was refused because §6 makes plain format text the
+  row's only statement of what a download ran as, and a failed row offers Retry — so it is
+  precisely the row where knowing what will be attempted again is worth most.
+
+**What this costs, stated rather than glossed: §3's anatomy is no longer one shape.** That is a
+real loss and it is the second time this entry has spent it. Row 9c already made a playlist entry
+shorter than its group, and `RowDelegate.sizeHint` already adds a line only where an entry has a
+format of its own to state. **This follows that established rule** — height goes where the row has
+an additional fact — rather than opening a new one. Uniform item sizing was given up at `T-140`
+and is not given up again here.
+
+**Conditions of the ruling, all of which the correction meets:** the paint and the height derive
+from one role (`ACTION_ROLE`), the selector, progress bar and verbs move down with the line rather
+than being drawn over, and the same text reaches the row's accessible description — `NFR-005` does
+not let a fact be added for the eye alone. `ai/evidence/2026-08-14-T201-next-step-option-c.png` is
+the ruled layout at the head that built it; `tools/failed_row_screenshot.py` regenerates it.
+
+**Everything else in this entry stands**, §2's ban on a detail pane included. The line is the row
+carrying more, not a pane returning.
+
 ### Amended 2026-08-06 — one tab, because the second one's contents are no longer a product
 
 **Status:** **Accepted**, on maintainer direction of 2026-08-06 recorded at `T-169`.

@@ -45,6 +45,7 @@ from tracks_and_trails.core.models import MediaKind
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
 from tracks_and_trails.ui import row_delegate
 from tracks_and_trails.ui.row_delegate import (
+    ACTION_ROLE,
     BAR_HEIGHT,
     CHILD_THUMBNAIL,
     DEPTH_ROLE,
@@ -76,6 +77,7 @@ from tracks_and_trails.ui.row_delegate import (
     TEXT_LINES,
     THUMBNAIL_URL_ROLE,
     TWISTY_WIDTH,
+    VERB_GAP,
     VERBS_ROLE,
     RowDelegate,
     SegmentState,
@@ -1782,6 +1784,171 @@ def test_the_verbs_do_not_narrow_the_format_line_above_them(qapp: QApplication) 
     assert inked > len(SWEEP_WIDTHS) // 2, (
         f"the format line drew nothing at {len(SWEEP_WIDTHS) - inked} of {len(SWEEP_WIDTHS)} "
         "widths, so comparing it proves little"
+    )
+
+
+# --- the failed row's extra line (T201-R3, ruled 2026-08-14) ----------------------------------
+
+#: What a failed row is given to say, in the words `ui/error_text.py` writes for `FFMPEG_MISSING`.
+#: Transcribed rather than imported: these tests are about the *drawing*, and asking production for
+#: the string would make them pass on whatever it happens to say.
+ACTION_TEXT: Final = "Install ffmpeg, or point Settings at it, then retry."
+
+
+def a_failed_row(extra: dict[int, Any] | None = None) -> dict[int, Any]:
+    """A failed queue row carrying all four of the things the ruling has to keep together.
+
+    The format line, the bar, the verbs and the new action line — the point of the ruling is that
+    the action is added *without* displacing any of them, so a row that omitted one would not be
+    able to show that.
+    """
+    row: dict[int, Any] = {
+        HEADLINE_ROLE: "Ridgeline in 4K",
+        DETAIL_ROLE: "This download needed ffmpeg, which was not found · ERROR: ffmpeg not found",
+        HUE_ROLE: 0,
+        JOB_ID_ROLE: "job-1",
+        PROGRESS_ROLE: 0.62,
+        SELECTOR_ROLE: FORMAT_LINE,
+        VERBS_ROLE: [Verb.RETRY, Verb.REMOVE],
+        ACTION_ROLE: ACTION_TEXT,
+    }
+    row.update(extra or {})
+    return row
+
+
+def band(row: dict[int, Any], index: int, *, width: int = RENDER_WIDTH) -> QImage:
+    """The `index`-th text line of a row, cropped to the strip the row's own text lays out in.
+
+    **Painted at the height `sizeHint` gives that row**, which is what a view does. Painting both
+    rows of a comparison at one height instead would be a fairer-looking test and a worse one: the
+    format line and the bar would agree while the row a user sees clipped them.
+
+    **The tile and the verbs are cropped out**, and for opposite reasons. The tile does not move
+    with the lines — it spans the whole row at a fixed position, so two bands at different line
+    numbers hold different slices of one picture and could never compare equal. The verbs do move,
+    but `_verb_rects` clamps their height against the bottom of the body, so a button on the last
+    line of a five-line row is a pixel shorter than one on the last line of a four-line row and the
+    comparison would fail for a reason that is not about position. They are asserted directly, by
+    rectangle, in `test_the_verbs_are_hit_tested_on_the_line_they_are_drawn_on`.
+
+    What is left is every line of text and the progress bar, which is what these claims are about.
+    """
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, width, 0)
+    option.fontMetrics = QFontMetrics(option.font)
+    line = option.fontMetrics.height()
+    model = RowsModel([row])
+    delegate = RowDelegate()
+    height = delegate.sizeHint(option, model.index(0, 0)).height()
+
+    option.rect = QRect(0, 0, width, height)
+    body, area = delegate._verb_area(option, model.index(0, 0))
+    placed = delegate._verb_rects(option.fontMetrics, area, body, model.index(0, 0))
+    # The same `verbs_left` `_paint_verbs` returns, so the crop ends exactly where the bar does.
+    right = min(rect.left() for _verb, rect in placed) - VERB_GAP if placed else width
+
+    image = paint_rows(model, delegate, 0, width=width, height=height)
+    text_left = PADDING + THUMBNAIL_SIZE[0] + GAP
+    return image.copy(QRect(text_left, PADDING + index * line, right - text_left, line))
+
+
+def test_a_failed_row_spends_one_line_on_what_to_do_and_no_other_row_does(
+    qapp: QApplication,
+) -> None:
+    """`T201-R3`, ruled 2026-08-14: option C, and the *only* rows that pay for it.
+
+    **Exactly one line, measured against the row's own font** rather than against a pixel count, so
+    a user running a large accessibility font gets the line rather than a clipped one — which is
+    `T118-R7` and `T-140`'s clipped child arriving here.
+
+    **And an empty `ACTION_ROLE` costs nothing**, which is the half that keeps `UX-005` §3's
+    anatomy: eleven rows in twelve, and every failure with nothing honest to suggest, are drawn at
+    the height they were drawn at before this existed.
+    """
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, RENDER_WIDTH, 0)
+    option.fontMetrics = QFontMetrics(option.font)
+    line = option.fontMetrics.height()
+
+    acting = RowsModel([a_failed_row()])
+    silent = RowsModel([a_failed_row({ACTION_ROLE: ""})])
+    absent = RowsModel([a_download()])
+    delegate = RowDelegate()
+
+    tall = delegate.sizeHint(option, acting.index(0, 0)).height()
+    quiet = delegate.sizeHint(option, silent.index(0, 0)).height()
+    plain = delegate.sizeHint(option, absent.index(0, 0)).height()
+
+    assert tall == (TEXT_LINES + 1) * line + 2 * PADDING, (
+        f"a row with an action is {tall}px, not the {TEXT_LINES + 1} lines it draws — so the text "
+        "is laid out into space the row does not have and is clipped"
+    )
+    assert quiet == plain, (
+        f"a failure with nothing to suggest is {quiet}px against an ordinary row's {plain}px, so "
+        "the height is spent on a line that says nothing"
+    )
+    assert tall > quiet, "the action line was measured for but the row did not grow"
+
+
+def test_the_action_line_pushes_the_rest_of_the_row_down_rather_than_over_it(
+    qapp: QApplication,
+) -> None:
+    """The ruling's condition: paint and size derive from one role, and nothing is displaced.
+
+    `T-140` is the record of what a `sizeHint` and a painter disagreeing about a line costs — the
+    text was drawn into space the row did not have and the maintainer saw half a line under every
+    entry. A new line inserted *above* the format line and the verbs is the same hazard with more
+    surfaces to get wrong, so the assertion is not "the action appears" but **the whole tail of the
+    row is drawn identically, one line lower**.
+
+    The last band is the progress bar's; the verbs share that line and are cropped out of it for
+    the reason `band` gives, then asserted by rectangle in the test below.
+    """
+    acting = a_failed_row()
+    silent = a_failed_row({ACTION_ROLE: ""})
+
+    assert band(acting, 2) != band(silent, 2), (
+        "the third line is drawn the same with and without an action, so the action is not there"
+    )
+    assert band(acting, 3) == band(silent, 2), (
+        "the format line is not drawn identically one line lower, so the action displaced it "
+        "instead of pushing it down — UX-005 §6's text is the half that cannot give"
+    )
+    assert band(acting, 4) == band(silent, 3), (
+        "the progress bar is not drawn identically one line lower, so it is left under the "
+        "action's own text or under the format line"
+    )
+
+
+def test_the_verbs_are_hit_tested_on_the_line_they_are_drawn_on(qapp: QApplication) -> None:
+    """The same claim from the hit-test side, which is where `_verb_rects` could still disagree.
+
+    `_paint_text` and `_verb_rects` are separate readers of `_action_lines`, and the paint
+    comparison above cannot see a layout that draws in the right place while resolving clicks a
+    line above it — `T118-R12` and `T-160` are this project's record of exactly that split.
+    """
+    delegate = RowDelegate()
+    option = QStyleOptionViewItem()
+    line = QFontMetrics(option.font).height()
+    option.rect = QRect(0, 0, RENDER_WIDTH, (TEXT_LINES + 1) * line + 2 * PADDING)
+    option.fontMetrics = QFontMetrics(option.font)
+
+    acting = RowsModel([a_failed_row()])
+    silent = RowsModel([a_failed_row({ACTION_ROLE: ""})])
+
+    tops = []
+    for model in (acting, silent):
+        body, area = delegate._verb_area(option, model.index(0, 0))
+        placed = delegate._verb_rects(option.fontMetrics, area, body, model.index(0, 0))
+        assert placed, "no verb was laid out at all, so nothing here is being measured"
+        tops.append(placed[0][1].top())
+        assert placed[0][1].bottom() <= body.bottom(), (
+            "a verb is laid out past the bottom of the row's body, so it is drawn clipped"
+        )
+
+    assert tops[0] == tops[1] + line, (
+        f"the verbs on a row with an action are hit-tested at y={tops[0]} and on one without at "
+        f"y={tops[1]}, which is not one line apart — the buttons and the action share a line"
     )
 
 

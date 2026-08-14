@@ -101,6 +101,29 @@ HEADLINE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 1
 #: running one. In words, always.
 DETAIL_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 2
 
+#: **What the user can do about this row's failure** — the third of `NFR-006`'s three facts
+#: (`T-201`, `T201-R3`, `UX-005` ruled 2026-08-14).
+#:
+#: `NFR-006` asks for *what failed, why, and what the user can do*. The row already carried the
+#: first two: `HEADLINE_ROLE` names the job, and `DETAIL_ROLE` carries the class in plain words
+#: followed by the extractor's own message. The third had a written, tested text and **no reachable
+#: surface** — `describe_failure` composed it only for `JobProgressView`, which `UX-005` §2's
+#: removal of the detail pane left nothing constructing. So a user was told what failed and never
+#: told what to do, which is the requirement's own third clause missing from the product.
+#:
+#: **Its own line, and its own role, because the alternatives were measured and refused.** Putting
+#: it as a third clause on `DETAIL_ROLE`'s line elided the extractor's `--ffmpeg-location` to
+#: `--ff…` at 1180 px — cutting the words `NFR-006` protects hardest — and putting it in place of
+#: the format line would overturn `UX-005` §6's plain-format-text-after-start for one row state.
+#: The maintainer ruled the extra line on 2026-08-14; `sizeHint` and `_paint_text` both derive it
+#: from this role, so the height and the drawing cannot disagree about whether it is there.
+#:
+#: **Empty is the ordinary answer.** Every row that has not failed answers `""`, and so does a
+#: failure with no honest action — `GEO_RESTRICTED`, `DRM_PROTECTED` — which keeps the row at the
+#: anatomy `UX-005` §3 states and spends the height only where there is something to say. That is
+#: the same conditional-height rule a playlist entry's format line already follows.
+ACTION_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 24
+
 #: Where the row has got to, in words (`NFR-005`): "Reading", "Downloading video", "Couldn't read".
 STATE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 3
 
@@ -367,6 +390,11 @@ GAP: Final = 10
 SELECTOR_LINES: Final = 2
 
 #: How many lines of text a row draws: headline, detail and state, then the selector's own lines.
+#:
+#: **The row's anatomy, and a failed row is one line taller** (`T201-R3`, ruled 2026-08-14). That
+#: line is `ACTION_ROLE`'s and is counted by `_action_lines` rather than folded in here, because
+#: it is spent per row: every row that has not failed, and every failure with no honest action, is
+#: drawn at exactly this height.
 TEXT_LINES: Final = 2 + SELECTOR_LINES
 
 #: **The row is at least as tall as the thumbnail it contains** (`T118-R7`). Derived rather than
@@ -525,6 +553,18 @@ def _depth(index: QModelIndex | _PersistentIndex) -> int:
     if isinstance(depth, bool) or not isinstance(depth, int) or depth < 0:
         return 0
     return depth
+
+
+def _action_lines(index: QModelIndex | _PersistentIndex) -> int:
+    """How many lines this row spends on `ACTION_ROLE` — one, or none (`T201-R3`).
+
+    **The one place the question is answered**, so `sizeHint`, `_paint_text` and `_verb_rects`
+    cannot hold three opinions about how tall the row is. That is `_control_rect`'s rule applied to
+    a height rather than a rectangle, and `T-140`'s child row is the record of what a `sizeHint`
+    and a painter disagreeing about a line costs: the text was drawn into space the row did not
+    have and was clipped.
+    """
+    return 1 if _text(index, ACTION_ROLE) else 0
 
 
 def _segments(index: QModelIndex | _PersistentIndex) -> tuple[SegmentState, ...]:
@@ -741,22 +781,29 @@ class RowDelegate(QStyledItemDelegate):
 
         **A row with its format table open is taller still** (`T-108`). At most one row is open at a
         time, so this is one measured row among however many, not a per-row cost.
+
+        **And a failed row with something to suggest is one line taller** (`T201-R3`, ruled
+        2026-08-14). Spent on the same rule the entry's format line is spent on — height goes where
+        the row has an additional fact — and taken from `_action_lines`, which is also what the
+        painter and the verb layout ask, so the row cannot be sized for one anatomy and drawn in
+        another.
         """
         open_panel = index.data(FORMAT_PANEL_HEIGHT_ROLE)
         if isinstance(open_panel, int) and open_panel > 0:
             # The height comes from the panel's own `sizeHint` — see `FORMAT_PANEL_HEIGHT_ROLE` for
             # why it is asked for rather than assumed.
             return QSize(option.rect.width(), open_panel)
+        action = _action_lines(index)
         if _depth(index) > 0:
             # **Three lines when the entry has a format of its own to state** (`T-157`), two
             # otherwise. `UX-005`'s amendment spends the line exactly where there is something to
             # say, so a uniform playlist — every playlist until somebody retargets a part-done one
             # — is drawn at the height row 9c bought.
             speaks = bool(_text(index, SELECTOR_ROLE))
-            lines = CHILD_TEXT_LINES + (1 if speaks else 0)
+            lines = CHILD_TEXT_LINES + (1 if speaks else 0) + action
             text = lines * option.fontMetrics.height() + 2 * PADDING
             return QSize(option.rect.width(), max(CHILD_THUMBNAIL[1] + 2 * PADDING, text))
-        text = TEXT_LINES * option.fontMetrics.height() + 2 * PADDING
+        text = (TEXT_LINES + action) * option.fontMetrics.height() + 2 * PADDING
         return QSize(option.rect.width(), max(ROW_HEIGHT, text))
 
     def paint(
@@ -992,7 +1039,11 @@ class RowDelegate(QStyledItemDelegate):
             return []
 
         line = metrics.height()
-        top = area.top() + (TEXT_LINES - 1) * line
+        # **The last line, whichever line that is** (`T201-R3`). A failed row with an action to
+        # offer is one line taller, and the buttons move down with it: laid out against a fixed
+        # `TEXT_LINES` they would have been drawn over the action's own line, which is
+        # `T-140`'s clipped child row arriving from the verb side.
+        top = area.top() + (TEXT_LINES + _action_lines(index) - 1) * line
         height = min(line, max(body.bottom() - top, 0))
         if height <= 0:
             return []
@@ -1655,6 +1706,29 @@ class RowDelegate(QStyledItemDelegate):
             metrics.elidedText(second, Qt.TextElideMode.ElideRight, area.width()),
         )
 
+        # **What the user can do about it, on a line of its own** (`ACTION_ROLE`, `T201-R3`, ruled
+        # 2026-08-14). `NFR-006`'s third fact, and the row is the only surface there is for it —
+        # `UX-005` §2 removed the detail pane, and the widget that composed all three was reachable
+        # from nowhere.
+        #
+        # **Below the reason rather than beside it**, which is the whole of the ruling. Appended to
+        # the line above, the two would have shared one elision and the extractor's own message is
+        # what would have been cut: measured at 1180 px, `--ffmpeg-location` became `--ff…`, so the
+        # remedy yt-dlp itself supplied was the price of stating the remedy this table supplies.
+        # On its own line the message above keeps the full width it had before this existed.
+        #
+        # Elided rather than wrapped: a second line for the action would be the same trade one step
+        # further on, and these sentences are written to fit. Drawn in the same muted ink as the
+        # reason, so nothing here is a colour-only signal (`NFR-005`, `T-202`).
+        action = _text(index, ACTION_ROLE)
+        action_lines = _action_lines(index)
+        if action:
+            painter.drawText(
+                QRect(area.left(), area.top() + 2 * line, area.width(), line),
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                metrics.elidedText(action, Qt.TextElideMode.ElideRight, area.width()),
+            )
+
         # **A child row draws two lines, not four** (`UX-005` row 9c, `T-140` corrected).
         # `sizeHint` was shortened for an entry and the painter was not, so the selector and the
         # bar were drawn into space the row does not have and were **clipped** — the maintainer saw
@@ -1670,7 +1744,7 @@ class RowDelegate(QStyledItemDelegate):
             own = _text(index, SELECTOR_ROLE)
             if own:
                 painter.drawText(
-                    QRect(area.left(), area.top() + 2 * line, area.width(), line),
+                    QRect(area.left(), area.top() + (2 + action_lines) * line, area.width(), line),
                     int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
                     metrics.elidedText(own, Qt.TextElideMode.ElideRight, area.width()),
                 )
@@ -1710,7 +1784,7 @@ class RowDelegate(QStyledItemDelegate):
             painter.drawText(
                 QRect(
                     area.left(),
-                    area.top() + 2 * line,
+                    area.top() + (2 + action_lines) * line,
                     max(body.right() - area.left(), 0),
                     selector_lines * line,
                 ),
@@ -1738,7 +1812,7 @@ class RowDelegate(QStyledItemDelegate):
         # a control drawn where nobody clicks, seen from the paint side.
         bar = QRect(
             area.left(),
-            area.top() + (2 + selector_lines) * line + 2,
+            area.top() + (2 + action_lines + selector_lines) * line + 2,
             max((area.right() if verbs_left is None else verbs_left) - area.left(), 0),
             BAR_HEIGHT,
         )

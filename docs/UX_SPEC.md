@@ -69,7 +69,12 @@ recorded as maintainer rulings that no maintainer had made.
    about that job.
 3. **The row anatomy** — thumbnail, title, uploader and duration, progress and state. *(This read
    "both tabs draw the same row anatomy" and described what History changed about the fields; the
-   anatomy is unchanged and now has one surface drawing it.)*
+   anatomy is unchanged and now has one surface drawing it.)* **[T]** `UX-005`, **amended
+   2026-08-14** (`T201-R3`): **a failed row that has an honest next step is one line taller**, and
+   that line says what the user can do. Where there is nothing honest to suggest — `DRM_PROTECTED`,
+   `GEO_RESTRICTED` — the row keeps this anatomy exactly. §2's ban on a detail pane is why the line
+   is here at all: `NFR-006` asks for what failed, why, and what to do, and the row is the only
+   surface there is for the third.
 4. **Every verb the row's state permits is on its last line**, right-aligned, sharing that line with
    the format control, plus `⋯` for the rest — which is also the keyboard route.
 5. **Nothing is drawn disabled and nothing is drawn that would be refused.** A row offers what its

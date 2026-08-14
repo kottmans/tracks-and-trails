@@ -91,9 +91,9 @@ from tracks_and_trails.core.errors import is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.core.presets import BUILT_IN_PRESETS, format_choice_of
-from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.downloader.manager import AUTOMATIC_RETRY_LIMIT, DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
-from tracks_and_trails.ui.error_text import headline_for
+from tracks_and_trails.ui.error_text import headline_for, next_step_for
 from tracks_and_trails.ui.format_text import (
     FORMAT_PREFIX,
     effective_format_text,
@@ -113,6 +113,7 @@ from tracks_and_trails.ui.job_detail import (
     totals_for_ending,
 )
 from tracks_and_trails.ui.row_delegate import (
+    ACTION_ROLE,
     DEPTH_ROLE,
     DETAIL_ROLE,
     EXPANDED_ROLE,
@@ -310,10 +311,13 @@ class _Row:
         video" at the old percentage, with the old speed and ETA — and a saturated pool can leave
         that on screen for as long as the retry waits for a slot.
 
-        **The boundary is the status, not `Job.attempts`.** Keying to the attempt counter is the
-        obvious answer and it would be a guard that can never fire: nothing in this project ever
-        increments `attempts`. It is a schema column with a default that no code writes, so every
-        job's attempt number is `0` for life and a comparison against it is always equal.
+        **The boundary is the status, not `Job.attempts`.** *(This said the counter would be a
+        guard that can never fire because nothing in this project increments `attempts`. True at
+        `T079-R1`; `T-083` made `with_another_attempt` run on the automatic retry edge, and
+        `T201-R2` is the record of a widget still reasoning from the old claim.)* The conclusion
+        holds for a better reason: an automatic retry spends an attempt and a manual one does not,
+        so the counter marks some of the boundaries this method exists to catch and the status
+        marks all of them.
 
         Not done on every rebuild: `refresh()` must keep drawn state *within* an attempt, or a
         newly added neighbour would erase the live total of a still-running job and `T017-R4`'s
@@ -649,6 +653,8 @@ class QueueModel(QAbstractTableModel):
             return self._chip(row)
         if role == DETAIL_ROLE:
             return self._detail(row)
+        if role == ACTION_ROLE:
+            return self._failure_action(row)
         if role == HUE_ROLE:
             return placeholder_hue(row.job.url)
         if role == MEDIA_KIND_ROLE:
@@ -914,9 +920,15 @@ class QueueModel(QAbstractTableModel):
         plain-words class survives eliding when the message is long, and it is joined rather than
         edited — the one transformation is that a newline inside it becomes a space, because this
         is a single elided line and a `\\n` drawn there is a glyph rather than a break. Not a word
-        is changed, and `ui/job_detail.py` renders the full three-part composition — including the
-        next step, which is deliberately **not** here: three sentences on one elided line means the
-        third is never read, and the extractor's own words are the third.
+        is changed.
+
+        **The next step is deliberately not on this line, and now it is on its own** (`T201-R3`,
+        ruled 2026-08-14). The reasoning here was right and incomplete: three sentences on one
+        elided line means the third is never read, and the extractor's own words are the third —
+        measured at 1180 px, appending the step cut `--ffmpeg-location` to `--ff…`. What the
+        original text then relied on was `ui/job_detail.py` rendering the whole composition, and
+        **nothing in the product constructs that widget**, so the step reached no one. It is
+        `_failure_action`'s line now, below this one, and this line keeps the full width it had.
 
         **`CANCELLED` is not routed here**, because it is not a failure (`error_text`,
         `ARCHITECTURE.md` §7): its chip says *Cancelled* and there is no reason to explain.
@@ -936,6 +948,45 @@ class QueueModel(QAbstractTableModel):
         if message:
             parts.append(message)
         return " · ".join(parts)
+
+    def _failure_action(self, row: _Row) -> str:
+        """What the user can do about this failure, or `""` where there is honestly nothing.
+
+        **`NFR-006`'s third fact, on the one surface that can carry it** (`T-201` criterion 1,
+        `T201-R3`, ruled 2026-08-14). The text has existed and been tested since round one; what it
+        had was no reader. `describe_failure` composed all three facts for `JobProgressView`, and
+        `UX-005` §2's removal of the detail pane left nothing in the product constructing that
+        widget — so *what failed* and *why* reached the row and *what to do* reached nobody.
+
+        **The drawn action is `error_text`'s, not a second phrasing of it.** `_failure_detail` takes
+        the headline from the same module for the same reason: one table of sentences, so the row
+        and any other surface cannot disagree about what a class means or what it offers.
+
+        **Empty is a real answer and is the point of the field.** `GEO_RESTRICTED` and
+        `DRM_PROTECTED` have no honest action — `next_step_for` returns `""` and this returns it
+        unchanged, so the row keeps the anatomy `UX-005` §3 states rather than growing a line to
+        hold a hopeful sentence. That refusal is the substance of this task; a table with something
+        encouraging in every row is what it exists to prevent.
+
+        **`exhausted` is read here because only this layer knows it** (`T201-R2`). `error_text` may
+        not import the manager, so the bound comes from `AUTOMATIC_RETRY_LIMIT` and the count from
+        the row — compared, never counted again. Read on every answer rather than cached: the
+        manager increments `attempts` on its own retry edge, and a snapshot taken when a row was
+        built is a snapshot of the state before anything had failed.
+
+        **`CANCELLED` is not routed here** and needs no branch of its own: `_failure_detail`'s
+        status guard is upstream in `data`, and a cancelled job is not a failure (`ARCHITECTURE.md`
+        §7). Its class does carry an empty next step in any case.
+        """
+        if row.job.status is not JobStatus.FAILED:
+            return ""
+        kind = row.job.error_kind
+        if kind is None:
+            # A failure the taxonomy never classified has no class to look an action up under, and
+            # `_failure_detail` already shows the message alone. Inventing a step here would be a
+            # guess about retry policy, which `core/errors.py` refuses one row up.
+            return ""
+        return next_step_for(kind, exhausted=row.job.attempts >= AUTOMATIC_RETRY_LIMIT)
 
     def _whole_row(self, row: _Row) -> str:
         """Everything a sighted user reads from the drawn row, for a screen reader (`NFR-005`).
@@ -959,6 +1010,11 @@ class QueueModel(QAbstractTableModel):
           and nothing else is in exactly the state the sighted row was in before this task, with
           the reason unread in `error_message`. **Read from `_failure_detail`**, the function that
           draws it, rather than composed a second time here.
+        - **What the user can do about it** (`T201-R3`, ruled 2026-08-14). The ruling gave the
+          action a drawn line, and `NFR-005` is exactly the requirement that a fact added for the
+          eye has to reach the ear too — a screen-reader user hearing the reason and not the remedy
+          is the same split `T017-R2` records. **Read from `_failure_action`**, for the reason
+          above it: the function that draws it is the function that says it.
         """
         spoken = [self._accessible_text(row, column) for column in range(len(COLUMN_HEADERS))]
         extra = [
@@ -976,6 +1032,9 @@ class QueueModel(QAbstractTableModel):
             reason = self._failure_detail(row)
             if reason:
                 spoken.append(reason)
+            action = self._failure_action(row)
+            if action:
+                spoken.append(action)
         return ". ".join(spoken)
 
     def _chip(self, row: _Row) -> str:
