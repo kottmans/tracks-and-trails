@@ -164,6 +164,15 @@ COLUMN_HEADERS: Final = ("Job", "Status", "Progress", "Size", "Speed", "ETA")
 #: window, and this answers *what is this row waiting for* on the row.
 HELD_TEXT: Final = "Held"
 
+#: The statuses a row is actively *working* in, for `_detail`'s byte rule (`T-241`).
+#:
+#: **`PROBING` is deliberately not here**, on `_SEGMENT_BY_STATUS`' own reasoning one constant
+#: down: the bar counts downloads, and a probed entry has not downloaded anything yet. A probing
+#: row is identified by its uploader and its duration, not by a percentage of nothing.
+_WORKING_STATUSES: Final[frozenset[JobStatus]] = frozenset(
+    {JobStatus.RUNNING, JobStatus.POST_PROCESSING}
+)
+
 #: The statuses a stopped queue is holding rather than running.
 #:
 #: `READY` is here as well as `QUEUED`: a probed job whose download has not started is waiting on
@@ -814,6 +823,14 @@ class QueueModel(QAbstractTableModel):
         and `UNKNOWN_TEXT` is not shown for them for the reason `format_duration` gives — a field
         the extractor never named is quieter as nothing than as an em dash.
 
+        **A row that is not working and has moved no bytes says nothing about them** (`T-241`).
+        A queued row read `— · 0 B of Unknown` — a percentage that does not exist beside a size
+        that does not exist — and a cancelled one the same. What identifies such a row is what
+        identified it before it started: its uploader and its duration. `SIZE_COLUMN` is
+        untouched, so the count moves rather than goes, which is the trade `T-216` and `T-201`
+        both made one ending over. **A row that *is* working keeps its progress even before the
+        first byte**, because there the indeterminate line is what says the work is happening.
+
         **A job that cannot resume says so here** (`P-24`, `REQ-017`, `T-113`). `REQ-017`'s second
         half is *state clearly when resumption is not possible*, and `UX-007` ruled that the row is
         where it is stated. It is shown while the job could still be started or restarted rather
@@ -845,14 +862,32 @@ class QueueModel(QAbstractTableModel):
             # ruled in from the maintainer's UI review 2026-08-09). See `_failure_detail`.
             return self._failure_detail(row)
 
+        # **A row that is not working and has moved no bytes states nothing about them**
+        # (`T-241`). `— · 0 B of Unknown` is a percentage that does not exist beside a size that
+        # does not exist, and it is what every freshly pasted row carried until a worker started —
+        # the same *confident statement about nothing* `T-201`'s criterion 4 named for a terminal
+        # failure, on the far more common row.
+        #
+        # **Both halves of that condition are load-bearing, and the second was found by a test
+        # that was already passing.** Keyed on the bytes alone, a *running* row that had not yet
+        # received its first progress message drew an empty second line — and
+        # `test_a_row_the_probe_learned_nothing_about_draws_no_empty_fields` said so, because
+        # `T124-R4` settled that such a row opens on its progress. A row that is working says so
+        # even when the number is not known yet; a row that is waiting or stopped has nothing to
+        # report and reports nothing.
+        done, _total = self._totals(row)
+        moved_bytes = bool(done) or row.job.status in _WORKING_STATUSES
         parts = [
             row.job.uploader or "",
             _duration_text(row.job.duration_seconds),
-            self._text(row, PROGRESS_COLUMN),
-            self._text(row, SIZE_COLUMN),
-            self._text(row, SPEED_COLUMN),
-            self._text(row, ETA_COLUMN),
         ]
+        if moved_bytes:
+            parts += [
+                self._text(row, PROGRESS_COLUMN),
+                self._text(row, SIZE_COLUMN),
+                self._text(row, SPEED_COLUMN),
+                self._text(row, ETA_COLUMN),
+            ]
         # A completed row returned above, so the *"dropped once the download is finished"* half of
         # the rule the docstring states is carried by that branch now rather than by a second test
         # here (`T-216`); `mypy` reports this one as unreachable if it is left in.

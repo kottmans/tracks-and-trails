@@ -3653,3 +3653,133 @@ def test_a_screen_reader_hears_why_the_row_failed(
         "the byte count left the drawn line and the spoken row as well, so criterion 4 took "
         f"something away rather than moving it: {spoken!r}"
     )
+
+
+# --- a row that moved no bytes states none (T-241) --------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "status",
+    [JobStatus.QUEUED, JobStatus.READY, JobStatus.PROBING, JobStatus.CANCELLED],
+)
+def test_a_row_that_moved_no_bytes_states_no_progress(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+    status: JobStatus,
+) -> None:
+    """**`T-241`.** `— · 0 B of Unknown` is a percentage and a size that both do not exist.
+
+    **The queued case is the common one** — every freshly pasted row carried it until a worker
+    started — which is the argument for doing this at all. `T-201`'s criterion 4 named the same
+    phrase for a terminal failure; this is the rest of the rows, and it is keyed on the bytes
+    rather than on a list of statuses that would have to be remembered.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=status,
+            title="Winter skills",
+            uploader="Glenmore Lodge",
+            duration_seconds=612,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert "0 B of Unknown" not in detail, f"{status.value} still states a byte count: {detail!r}"
+    assert INDETERMINATE_TEXT not in detail, (
+        f"{status.value} still states a percentage that does not exist: {detail!r}"
+    )
+    # What identifies the row is what identified it before it started.
+    assert "Glenmore Lodge" in detail and "10:12" in detail, (
+        f"the row lost what identifies it as well: {detail!r}"
+    )
+    # **The column keeps it**, so the count moved rather than went — `T-216`'s trade, and the
+    # screen-reader path reads the columns.
+    assert view.model.text_at("job-1", SIZE_COLUMN) == "0 B of Unknown"
+
+
+def test_a_cancelled_row_that_did_download_something_keeps_its_size(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**The sub-question this task's criteria required answering either way** (`T-241`).
+
+    A cancelled download that had moved 12 MB of 48 MB *has* those bytes — the partial file is on
+    disk, and `REQ-017`'s resume turns on exactly it. So the answer is: **the size stays where
+    bytes moved**, and what goes is the statement about bytes that never did. The rule is about
+    the count being about nothing, not about the row being terminal.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.CANCELLED,
+            uploader="Kit List",
+            bytes_done=12_500_000,
+            bytes_total=48_000_000,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert "11.9 MB of 45.8 MB" in detail, (
+        f"a cancelled row that downloaded 12 MB says nothing about them: {detail!r}"
+    )
+
+
+def test_a_running_row_still_states_its_progress(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """The other direction, so this is a rule about bytes rather than a rule about silence."""
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.RUNNING,
+            uploader="Hill & Bothy",
+            bytes_done=41_000_000,
+            bytes_total=98_000_000,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert "39.1 MB of 93.5 MB" in detail, f"a running row lost its progress: {detail!r}"
+    assert "41%" in detail
+
+
+def test_a_running_row_with_no_bytes_yet_still_says_it_is_working(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**The half of `T-241`'s rule that a passing test found** (`T124-R4`).
+
+    Keyed on the bytes alone, a running row that had not yet received its first progress message
+    drew an *empty* second line — and `test_a_row_the_probe_learned_nothing_about_draws_no_empty
+    _fields` said so, because that row is settled to open on its progress. A row that is working
+    says so even when the number is not known yet; a row that is waiting or stopped has nothing to
+    report. Both halves, or the rule is wrong in one direction or the other.
+    """
+    queue.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING, title="Just started"))
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert detail, "a running row drew nothing at all on its second line"
+    assert INDETERMINATE_TEXT in detail, (
+        f"a running row with no bytes yet says nothing about working: {detail!r}"
+    )

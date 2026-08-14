@@ -160,6 +160,36 @@ classes nobody has written text for yet.**
 worse than one that admits there is none — it sends the user to try things. `T-192` already added
 `ACTIONABLE_STATUS_PROPERTY` for a status the user can act on; the same distinction belongs here.
 
+#### What was built, and the two questions it turned on
+
+**The rule: a row that is *not working* and has moved *no bytes* says nothing about bytes.** Both
+halves are load-bearing.
+
+**The bytes half** is the criterion: `— · 0 B of Unknown` is a percentage that does not exist
+beside a size that does not exist. Keyed on the count rather than on a list of statuses, so a
+status added later is covered without anyone remembering to add it.
+
+**The working half was found by a test that was already passing.** With the rule keyed on bytes
+alone, a **running** row that had not yet received its first progress message drew an *empty*
+second line — and `test_a_row_the_probe_learned_nothing_about_draws_no_empty_fields` said so,
+because `T124-R4` settled that such a row opens on its progress. A row that is working says so even
+when the number is not known yet; a row that is waiting or stopped has nothing to report. **A
+passing test that contradicts a change is evidence about the change**, and this one was right.
+
+**`PROBING` is not "working"**, on `_SEGMENT_BY_STATUS`' own reasoning: the bar counts downloads,
+and a probed entry has not downloaded anything yet.
+
+#### The sub-question, answered
+
+*"A cancelled row that **did** move bytes is considered explicitly and the answer recorded either
+way."*
+
+**The size stays.** A download cancelled after 12 MB of 48 MB *has* those bytes — the partial file
+is on disk, and `REQ-017`'s resume turns on exactly it — so reporting them is reporting something
+true. What goes is the statement about bytes that never moved. The rule is about a count being
+*about nothing*, not about the row being terminal, and `test_a_cancelled_row_that_did_download
+_something_keeps_its_size` is what holds it that way.
+
 #### Acceptance criteria
 
 - **Each of the twelve classes has a tested presentation** stating what failed, why, and either what
@@ -527,6 +557,59 @@ works while something is missing is a gate that stops working the moment it succ
   `REQ-023`, with the documents left saying eight.)*
 
 ---
+
+### T-241 — A row that has moved no bytes still states a byte count
+
+**Status:** **In Review — built 2026-08-14**, in the same authorized overnight run as `T-242` and
+`T-227`. The sub-question the criteria required answering **is answered below**, and the rule
+turned out to have a second half that a *passing* test found. Six mutations, none surviving.
+**Owner:** Implementer
+**Priority:** Low — one line of furniture on a row the user themselves stopped. Nothing is
+misreported about a download that ran; the lie is about one that did not
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing. `T-201` built the branch this would sit beside
+**Relevant context:** `ui/queue_view.py` `_detail` and `_failure_detail`, `T-201`'s criterion 4,
+`T-216` (the same trade for a finished row), `ARCHITECTURE.md` §7 (cancelling is not failing)
+**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
+**Risk:** Low
+
+#### Scope
+
+**Measured on 2026-08-14, not inferred**, and it is wider than the title says. On the composed
+application a **cancelled** row's second line reads `— · 0 B of Unknown`, and so does a **queued**
+one: `Glenmore Lodge · 10:12 · — · 0 B of Unknown`. Any row that has not moved a byte says both a
+percentage that does not exist and a size that does not exist — *"0 B of Unknown"* is the exact
+phrase `T-201`'s criterion 4 names as a confident statement about nothing, and the em dash beside
+it is `INDETERMINATE_TEXT` standing in for the percentage.
+
+**The queued row is the more common one**, which is the argument for doing this at all: every
+freshly pasted row carries it until a worker starts.
+
+**`T-201` did not fix it, deliberately.** Its criterion says *a terminal failure*, and cancelling is
+not a failure — `ARCHITECTURE.md` §7 and `error_text` both turn on that, and the last time the two
+were folded together `CANCELLED` was drawn and described as a failure because it sat beside
+`FAILED` where nobody would look for it. Widening a criterion inside the task that owns it is how
+that happens; so this is filed instead.
+
+**The shape is already built twice.** `_detail` returns early for `COMPLETED` (`T-216`) and now for
+`FAILED` (`T-201`), each with its own argument about what is worth saying. A third branch needs its
+own: what identifies a cancelled row is what identified it before — the uploader and the duration —
+and what it should not carry is progress that stopped meaning anything.
+
+#### Acceptance criteria
+
+- A row that has moved no bytes — **queued, ready, probing and cancelled** — draws no percentage
+  and no byte count, and a test asserts it against the drawn line rather than the columns
+- **`SIZE_COLUMN` still reads *done of total*** and the spoken row still carries it, so the count
+  moves rather than goes — the trade `T-216` and `T-201` both made
+- A cancelled row that **did** move bytes is considered explicitly and the answer recorded either
+  way: a partial download the user stopped may be worth a size, and if it is, this criterion says so
+- The row is still not given a failure's reason line (`T-201`'s regression stays green)
+
+#### Out of scope
+
+- Any other row state. `COMPLETED` and `FAILED` have their branches and their arguments
+- The columns, the chip, and the accessible text
 
 ## Complete
 
@@ -5450,58 +5533,6 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
-
-### T-241 — A row that has moved no bytes still states a byte count
-
-**Status:** Proposed — filed 2026-08-14 from `T-201`, whose criterion 4 covers *a terminal
-failure* and therefore does not reach this one.
-**Owner:** Implementer
-**Priority:** Low — one line of furniture on a row the user themselves stopped. Nothing is
-misreported about a download that ran; the lie is about one that did not
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing. `T-201` built the branch this would sit beside
-**Relevant context:** `ui/queue_view.py` `_detail` and `_failure_detail`, `T-201`'s criterion 4,
-`T-216` (the same trade for a finished row), `ARCHITECTURE.md` §7 (cancelling is not failing)
-**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
-**Risk:** Low
-
-#### Scope
-
-**Measured on 2026-08-14, not inferred**, and it is wider than the title says. On the composed
-application a **cancelled** row's second line reads `— · 0 B of Unknown`, and so does a **queued**
-one: `Glenmore Lodge · 10:12 · — · 0 B of Unknown`. Any row that has not moved a byte says both a
-percentage that does not exist and a size that does not exist — *"0 B of Unknown"* is the exact
-phrase `T-201`'s criterion 4 names as a confident statement about nothing, and the em dash beside
-it is `INDETERMINATE_TEXT` standing in for the percentage.
-
-**The queued row is the more common one**, which is the argument for doing this at all: every
-freshly pasted row carries it until a worker starts.
-
-**`T-201` did not fix it, deliberately.** Its criterion says *a terminal failure*, and cancelling is
-not a failure — `ARCHITECTURE.md` §7 and `error_text` both turn on that, and the last time the two
-were folded together `CANCELLED` was drawn and described as a failure because it sat beside
-`FAILED` where nobody would look for it. Widening a criterion inside the task that owns it is how
-that happens; so this is filed instead.
-
-**The shape is already built twice.** `_detail` returns early for `COMPLETED` (`T-216`) and now for
-`FAILED` (`T-201`), each with its own argument about what is worth saying. A third branch needs its
-own: what identifies a cancelled row is what identified it before — the uploader and the duration —
-and what it should not carry is progress that stopped meaning anything.
-
-#### Acceptance criteria
-
-- A row that has moved no bytes — **queued, ready, probing and cancelled** — draws no percentage
-  and no byte count, and a test asserts it against the drawn line rather than the columns
-- **`SIZE_COLUMN` still reads *done of total*** and the spoken row still carries it, so the count
-  moves rather than goes — the trade `T-216` and `T-201` both made
-- A cancelled row that **did** move bytes is considered explicitly and the answer recorded either
-  way: a partial download the user stopped may be worth a size, and if it is, this criterion says so
-- The row is still not given a failure's reason line (`T-201`'s regression stays green)
-
-#### Out of scope
-
-- Any other row state. `COMPLETED` and `FAILED` have their branches and their arguments
-- The columns, the chip, and the accessible text
 
 ### T-243 — An interrupted row says the same thing twice, in two voices
 
