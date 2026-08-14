@@ -327,6 +327,13 @@ packaging/        PyInstaller spec and the frozen smoke test (T-020)
 
 ## Which `REQ-023` settings the screen actually holds
 
+<!-- req023:table -->
+*(The `<!-- req023:… -->` comments in the table below are **read by a test** and are why this
+section cannot go stale: `tests/ui/test_settings_records.py` compares them against
+`ui/settings_dialog.REQ_023_SETTINGS`, which is what the screen itself is built from. Every word
+around them is free prose — the gate reads the markers and nothing else, so rewriting a sentence
+cannot break it and cannot fool it either. `T-227`.)*
+
 `REQ-023` names eight settings. **Settings → Settings… holds all eight** — three from `T-146`, the
 ffmpeg location from `T-199`, the cookie source from `T-197`, the default preset and output
 template from `T-195`, and the network options from `T-196`, which was the last. The screen's own
@@ -363,14 +370,14 @@ then on, and anything already in the queue keeps what it was added with. The scr
 
 | Setting | Where it is | Stored as |
 |---|---|---|
-| Default download directory | Settings screen | `[downloads] directory` |
-| Theme (light/dark) | Settings screen | `[appearance] theme` |
-| Concurrency limit | Settings screen — the toolbar's copy went with `UX-013` (`T-234`) | `[queue] concurrency` |
-| Default preset | Settings screen **and** the preset manager — two controls, **one writer** | `default_preset` (bare key, above the first table) |
-| Output template | Settings screen | `output_template` (bare key, above the first table); absent means the shipped template |
-| ffmpeg location | Settings screen | `[ffmpeg] location` |
-| Network options (rate limit, proxy, retries) | Settings screen | `[network] proxy`, `rate_limit_bytes` (bytes per second), `retries` |
-| Cookie source | Settings screen | `[cookies] file`, plus `cookies_from_browser` per preset |
+| Default download directory <!-- req023:download-directory built --> | Settings screen | `[downloads] directory` |
+| Theme (light/dark) <!-- req023:theme built --> | Settings screen | `[appearance] theme` |
+| Concurrency limit <!-- req023:concurrency built --> | Settings screen — the toolbar's copy went with `UX-013` (`T-234`) | `[queue] concurrency` |
+| Default preset <!-- req023:default-preset built --> | Settings screen **and** the preset manager — two controls, **one writer** | `default_preset` (bare key, above the first table) |
+| Output template <!-- req023:output-template built --> | Settings screen | `output_template` (bare key, above the first table); absent means the shipped template |
+| ffmpeg location <!-- req023:ffmpeg-location built --> | Settings screen | `[ffmpeg] location` |
+| Network options (rate limit, proxy, retries) <!-- req023:network-options built --> | Settings screen | `[network] proxy`, `rate_limit_bytes` (bytes per second), `retries` |
+| Cookie source <!-- req023:cookie-source built --> | Settings screen | `[cookies] file`, plus `cookies_from_browser` per preset |
 
 **The concurrency control is in one place** (`UX-013`, built by `T-234`). Its home is one value in
 `settings.toml`, and the Settings screen is the only view of it: composition applies and saves

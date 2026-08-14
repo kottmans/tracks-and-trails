@@ -42,7 +42,7 @@ reasoning, as the manager's `entry_point`.
 
 from collections.abc import Callable, Sequence
 from contextlib import suppress
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import Final
@@ -92,6 +92,7 @@ __all__ = [
     "PROXY_NOTE_NAME",
     "RATE_LIMIT_NAME",
     "RATE_LIMIT_STEP_BYTES",
+    "REQ_023_SETTINGS",
     "RETRIES_NAME",
     "SETTINGS_STILL_TO_COME",
     "STEP_BUTTON_PROPERTY",
@@ -105,7 +106,9 @@ __all__ = [
     "YTDLP_VERSION_NAME",
     "YTDLP_VERSION_UNKNOWN",
     "YTDLP_WORKING_LABEL",
+    "Req023Setting",
     "SettingsDialog",
+    "still_to_come",
 ]
 
 #: What each theme is called on screen. The stored names are lower-case identifiers; these are the
@@ -263,18 +266,72 @@ YTDLP_REVERT_LABEL: Final = "Use the bundled version"
 #: nothing is responding rather than leaving a dead-looking button (`NFR-006`'s spirit).
 YTDLP_WORKING_LABEL: Final = "Working…"
 
-#: The screen's own statement of what it does not yet cover (`T-146`).
+
+@dataclass(frozen=True, slots=True)
+class Req023Setting:
+    """One of the settings `REQ-023` names, and the control that implements it (`T-227`).
+
+    `key` is the machine-readable name the records are keyed by — it appears in
+    `docs/DEVELOPMENT.md` and `docs/UX_SPEC.md` as an HTML comment, which every renderer ignores
+    and no rewording can disturb. `name` is what the screen would call it in the *still to come*
+    sentence. `control` is the object name of the widget that implements it, or **empty** where
+    nothing does yet.
+    """
+
+    key: str
+    name: str
+    control: str
+
+    @property
+    def built(self) -> bool:
+        return bool(self.control)
+
+
+#: **The one place that says which `REQ-023` settings this screen implements** (`T-227`).
 #:
-#: **`REQ-023` names eight settings and this screen now has all eight**, so it is empty and the
-#: label that carried it is not built (`T-196`). A settings screen that shows only what it
-#: implements reads as complete; this one *is* complete, and an empty string says that without a
-#: sentence claiming it — a screen announcing "nothing is missing" is a claim that goes stale the
-#: moment something is, while an absent label is simply the shape of a covered requirement.
+#: Everything else is derived from it or checked against it: the screen's own *still to come*
+#: sentence below, the coverage table in `docs/DEVELOPMENT.md`, and the count in
+#: `docs/UX_SPEC.md` §2. That is the whole of this structure's job — before it, five records
+#: described the same fact and **all five rotted at once**, hours after the task that changed the
+#: fact was approved (`T-195`'s sixth criterion, found by a walkthrough rather than by any gate).
 #:
-#: **The constant stays, and so does the mechanism.** Adding a setting to `REQ-023` without
-#: building it puts the name back here and the label back on the screen, which is the only
-#: behaviour `T-146`'s criterion actually asks for.
-SETTINGS_STILL_TO_COME: Final = ""
+#: **A control name rather than a boolean**, because a boolean is a claim and a name is checkable:
+#: `test_every_setting_this_screen_claims_is_actually_on_it` builds the screen and looks each one
+#: up, so a setting declared built and not built fails here rather than in a document.
+REQ_023_SETTINGS: Final[tuple[Req023Setting, ...]] = (
+    Req023Setting("download-directory", "the download folder", "chooseDownloadDirectory"),
+    Req023Setting("default-preset", "the default preset", DEFAULT_PRESET_NAME),
+    Req023Setting("concurrency", "the concurrency limit", "settingsConcurrencyChoice"),
+    Req023Setting("output-template", "the output template", OUTPUT_TEMPLATE_NAME),
+    Req023Setting("ffmpeg-location", "the ffmpeg location", "chooseFfmpegLocation"),
+    Req023Setting("network-options", "network options", PROXY_NAME),
+    Req023Setting("cookie-source", "the cookie source", "cookieSourceNone"),
+    Req023Setting("theme", "the theme", "themeLight"),
+)
+
+
+def still_to_come(settings: Sequence[Req023Setting] = REQ_023_SETTINGS) -> str:
+    """The screen's own statement of what it does not yet cover (`T-146`, derived by `T-227`).
+
+    **Derived rather than written**, which is the correction: this was a hand-maintained sentence
+    beside a hand-maintained screen, and the two agreed only for as long as somebody remembered
+    both. Now a setting whose control is empty puts its own name back on the screen, and one that
+    gains a control takes it off — there is no edit that can make the sentence lie.
+
+    Empty when every setting is built, and the label is then not built at all: a screen announcing
+    *"nothing is missing"* is a claim that goes stale the moment something is, while an absent
+    label is simply the shape of a covered requirement.
+
+    **The parameter is what keeps this testable now that all eight are built** (`T-227`). With
+    nothing unbuilt, a body replaced by `return ""` is indistinguishable from the real one — the
+    mutation survived exactly that way — so the derivation is a function *over a declaration*
+    rather than over the module's own, and the gate feeds it one with a gap in it.
+    """
+    missing = [setting.name for setting in settings if not setting.built]
+    return f"Still to come: {', '.join(missing)}." if missing else ""
+
+
+SETTINGS_STILL_TO_COME: Final = still_to_come()
 
 
 class SettingsDialog(QDialog):

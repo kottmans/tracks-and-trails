@@ -370,6 +370,164 @@ is about the viewport, not the labels, and a mutation pointed at the wrong test 
 - Re-wording any explanation to make it fit. The sentences are the ones the reviews settled
 - Other dialogs. The add dialog and the preset manager are their own shapes
 
+### T-227 — Nothing gates the documents that say what is built
+
+**Status:** **In Review — built 2026-08-14**, in the same authorized overnight run as `T-242`.
+**Candidate 2 was chosen** and is recorded below with what the other two cost. Eight mutations,
+none surviving — including the one this task exists for: *a setting is built and no document is
+touched.*
+**Owner:** Implementer
+**Priority:** Medium — no user is misled, because the sentence *on the screen* was correct
+throughout. What rotted is every document describing it, and the phase exits on a **recorded
+checklist run** (`T-212`) read against those documents
+**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
+**Depends on:** nothing
+**Relevant context:** `T-146`'s last criterion, `T-195`'s sixth, `T-212`,
+`tests/ui/test_settings_dialog.py::test_the_screen_says_which_settings_it_does_not_cover`,
+`P3EXIT-R4`, `T214-R1`
+**Affected surfaces:** a new test, and whichever document is chosen as the source of truth
+**Risk:** Medium — see the trap below. A prose gate is easy to write and easy to write *badly*
+
+#### Scope
+
+`T-195`'s sixth criterion reads: *"The record of which `REQ-023` settings are implemented —
+`T-146`'s last criterion — is **updated by this task**, so the screen never claims coverage it does
+not have."* `T-195` was approved 2026-08-11 at `7cd2002`, after six review rounds and eleven
+findings, with that record still saying two of the settings it had just built were **not built**.
+
+**The gate that exists did not fail, and could not have.**
+`test_the_screen_says_which_settings_it_does_not_cover` asserts against `SETTINGS_STILL_TO_COME` —
+the constant rendered on the screen. `T-195` updated the constant *and* that test, both correctly.
+Nothing reads the documents, so five records rotted while every gate stayed green:
+
+| Where | What it said |
+|---|---|
+| `docs/DEVELOPMENT.md` §coverage | *"holds **five**"*; *Default preset* and *Output template* rows marked **"not built — `T-195`"** |
+| `docs/UX_SPEC.md` §2 | *"the **three** `REQ-023` settings this phase built"* … *"the five it does not hold"* |
+| `docs/UX_SPEC.md` §9.1 | the download directory *"(`T-146`, **not built yet**)"* — `T-146` completed 2026-08-10 |
+| `ui/settings_dialog.py` docstring and the `SETTINGS_STILL_TO_COME` comment | *"**Three** of `REQ-023`'s eight"*; *"the **five** absences"*; the no-`OK`-button rationale resting on *"two of these **three** settings"* |
+| `core/settings.py` — `Settings` docstring | *"**One field today.** Phase 4's `REQ-023` adds the other seven"* — the dataclass has nine fields |
+
+**All five are corrected 2026-08-11**, alongside this entry, on maintainer instruction — *"update
+the documentation so it isn't stale"*. **That correction is not this task**, and this task must not
+be read as needing it done again. What is unowned is the gate.
+
+**This is `P3EXIT-R4`'s shape one layer out.** That finding was a second copy of a *finding's state*
+rotting; this is a second copy of *what is built* rotting. The project's answer to `P3EXIT-R4` was
+to delete the copy and name one canonical home. **That answer is not available here** — a screen's
+constant, a developer table and a UX spec clause are genuinely different audiences, and none of the
+three can be deleted in favour of another.
+
+#### The trap, named before anyone builds it
+
+`T214-R1` and `T214-R2` are one lesson twice: **a guard proved against one spelling is a guard
+against one spelling.** A test grepping `docs/DEVELOPMENT.md` for the word *five* would pass the
+moment someone rewrote the sentence to say *5*, or *all but three*, or moved the count into the
+table. **A gate that can be defeated by rephrasing is worse than no gate**, because it is also a
+claim that the documents are checked.
+
+The mutation that matters is therefore not "change the number" but **"build a setting and update
+nothing"** — the exact sequence that produced this task.
+
+#### Acceptance criteria
+
+- **The gate fails on the real sequence**: a setting is added to the screen and *no* document is
+  updated. Demonstrated by mutation, not by argument — the mutation is applied and the gate is
+  observed red
+- **The gate names what disagrees and where**, in the failure message. `T-214`'s corrected guard
+  reports the route rather than only that a rule was broken, and that is why its third defect was
+  caught immediately
+- **One source of truth is chosen and recorded in this entry**, with the rejected options and their
+  costs. The candidates are enumerated below; the choice is design work this task does, not a
+  ruling it needs
+- **Rephrasing any covered document does not break the gate** — no assertion on a spelling, a
+  count-word, or a sentence's shape. If the chosen design cannot meet this, the entry says so and
+  says what is covered instead, rather than shipping a gate whose reach is narrower than its name
+- **The gate's own reach is stated where it is defined** — which documents it covers and which it
+  does not. `SETTINGS_STILL_TO_COME`'s comment already carries this idiom
+- `ruff`, `ruff format`, both `mypy` gates and the affected suites are clean, with **exit codes
+  checked rather than summary lines** (`T195-R7`)
+
+#### What was built, and the source of truth that was chosen
+
+**Candidate 2, sharpened: one declaration in `ui/settings_dialog.py`, and markers in the
+documents.** `REQ_023_SETTINGS` names each of the eight settings, what the screen would call it,
+and **the object name of the control that implements it** — empty where nothing does. Everything
+else is derived from it or checked against it.
+
+**A control name rather than a boolean, and that is the load-bearing choice.** A boolean is a
+claim; a name is something the built screen can be asked about, so a setting declared built whose
+control is absent fails in the layer that knows rather than becoming a document that is
+confidently wrong.
+
+**The documents are keyed by HTML comment, not by prose.** `docs/DEVELOPMENT.md`'s coverage table
+carries `<!-- req023:<key> built -->` per row and `docs/UX_SPEC.md` §2 carries one
+`<!-- req023:count built=8 total=8 -->`. Every renderer ignores them, no rewording disturbs them,
+and **the gate reads nothing else** — which is `T214-R1`'s lesson taken before the finding: a guard
+proved against one spelling is a guard against one spelling, and *five* → *5* → *all but three*
+defeats a grep.
+
+**Why not the other two.** Candidate 1 — one structure everything reads, including the documents —
+is the strongest and puts a documentation concern inside `core/`, which `ARCHITECTURE.md` §4 may
+refuse; the declaration lives in `ui/` instead, because it is a fact about the **screen**.
+Candidate 3 — widen the honesty test and leave the documents ungated — is the option this task was
+filed to refuse, and `T-196` had just demonstrated the gap a third time.
+
+**What is *not* covered, stated where the gate is defined**, which the criteria require: every
+other sentence in those two files, and the module and class docstrings that state the count in
+prose. Those two have rotted before. They are left out because a marker inside a docstring is
+noise in the one place the reasoning lives, and unlike a document they sit **in the diff of any
+change to the thing they describe**. The residual is real; it is smaller than it was, because
+nobody has to remember the count any more.
+
+#### The mutation this exists to fail, and the one that survived first
+
+**Eight mutations, seven red at once**: a ninth setting built with both documents untouched; a
+declared control that is not on the screen; a built setting declared unbuilt; a table row deleted;
+a table row flipped to `unbuilt`; the `UX_SPEC` count made stale; and the sentence's derivation
+broken two ways.
+
+**One survived, and it is the shape this entry predicted.** With all eight built the screen's
+sentence is empty — so a derivation replaced by `return ""` is indistinguishable from the real one,
+and the gate could not see it. **The fix is that the derivation takes the declaration as an
+argument**, so the test can feed it a declaration with a gap in it: the state the sentence exists
+for, and the state the screen will be in the day `REQ-023` gains a ninth setting. A gate that only
+works while something is missing is a gate that stops working the moment it succeeds.
+
+#### Candidate shapes, none chosen
+
+1. **Derive every claim from one structure.** A mapping in `core/settings.py` or the dialog module
+   naming each `REQ-023` setting and its owning task; the screen's sentence, the `DEVELOPMENT.md`
+   table and the test all read it. Strongest coverage, largest change, and it puts a documentation
+   concern inside `core/` — which `ARCHITECTURE.md` §4 may refuse
+2. **A test that reads the documents and the built controls, and compares sets.** No prose parsing:
+   assert that every setting the dialog builds a control for is absent from the *"still to come"*
+   sentence **and** marked as built in the table, by looking up its row rather than reading the
+   prose around it. Needs the table to carry a machine-readable column, which it nearly does
+3. **Widen the existing honesty test only** — leave the documents ungated and record that
+   deliberately, on the reasoning that the user-facing sentence is the one that matters and the
+   documents are the maintainer's own. **Cheapest, and it is a real option**: this rot misled
+   nobody. It must be recorded as a decision rather than reached by not doing the work
+
+#### Out of scope
+
+- **Correcting the five records above.** Done 2026-08-11; this task starts from a clean tree
+- Any other document class. `ai/STATUS.md`, `ai/TASKS.md` and `ai/REVIEWS.md` have their own
+  conventions and their own gate (`T-096`); widening into them is a different task with a different
+  argument
+- `T-196`'s network options. When they land they will be this gate's first real exercise, and that
+  is a reason to have it before then rather than to fold the two together
+
+  *(**They landed first, on 2026-08-13.** `T-196` updated `docs/DEVELOPMENT.md`, `docs/UX_SPEC.md`
+  and the screen's own sentence by hand, and nothing checked that it had — which is this task
+  exactly, and is now a worked example rather than a hypothetical one. It also changes what the
+  gate has to express: with every `REQ-023` setting built, the honest statement is an **empty**
+  sentence and an unbuilt label, so a gate that only checks "each unbuilt setting is named" passes
+  trivially today and must also catch the reverse — a setting removed from the screen, or added to
+  `REQ-023`, with the documents left saying eight.)*
+
+---
+
 ## Complete
 
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
@@ -5461,117 +5619,6 @@ which it merely reports.
 
 ---
 
-
-### T-227 — Nothing gates the documents that say what is built
-
-**Status:** Proposed — filed 2026-08-11 after `T-195`'s sixth acceptance criterion was found unmet
-**hours after the task was approved the same day**, by a maintainer-requested walkthrough of the
-phase rather than by any gate.
-**Owner:** Implementer
-**Priority:** Medium — no user is misled, because the sentence *on the screen* was correct
-throughout. What rotted is every document describing it, and the phase exits on a **recorded
-checklist run** (`T-212`) read against those documents
-**Phase:** Phase 4 — maintenance. **Not a plan deliverable.**
-**Depends on:** nothing
-**Relevant context:** `T-146`'s last criterion, `T-195`'s sixth, `T-212`,
-`tests/ui/test_settings_dialog.py::test_the_screen_says_which_settings_it_does_not_cover`,
-`P3EXIT-R4`, `T214-R1`
-**Affected surfaces:** a new test, and whichever document is chosen as the source of truth
-**Risk:** Medium — see the trap below. A prose gate is easy to write and easy to write *badly*
-
-#### Scope
-
-`T-195`'s sixth criterion reads: *"The record of which `REQ-023` settings are implemented —
-`T-146`'s last criterion — is **updated by this task**, so the screen never claims coverage it does
-not have."* `T-195` was approved 2026-08-11 at `7cd2002`, after six review rounds and eleven
-findings, with that record still saying two of the settings it had just built were **not built**.
-
-**The gate that exists did not fail, and could not have.**
-`test_the_screen_says_which_settings_it_does_not_cover` asserts against `SETTINGS_STILL_TO_COME` —
-the constant rendered on the screen. `T-195` updated the constant *and* that test, both correctly.
-Nothing reads the documents, so five records rotted while every gate stayed green:
-
-| Where | What it said |
-|---|---|
-| `docs/DEVELOPMENT.md` §coverage | *"holds **five**"*; *Default preset* and *Output template* rows marked **"not built — `T-195`"** |
-| `docs/UX_SPEC.md` §2 | *"the **three** `REQ-023` settings this phase built"* … *"the five it does not hold"* |
-| `docs/UX_SPEC.md` §9.1 | the download directory *"(`T-146`, **not built yet**)"* — `T-146` completed 2026-08-10 |
-| `ui/settings_dialog.py` docstring and the `SETTINGS_STILL_TO_COME` comment | *"**Three** of `REQ-023`'s eight"*; *"the **five** absences"*; the no-`OK`-button rationale resting on *"two of these **three** settings"* |
-| `core/settings.py` — `Settings` docstring | *"**One field today.** Phase 4's `REQ-023` adds the other seven"* — the dataclass has nine fields |
-
-**All five are corrected 2026-08-11**, alongside this entry, on maintainer instruction — *"update
-the documentation so it isn't stale"*. **That correction is not this task**, and this task must not
-be read as needing it done again. What is unowned is the gate.
-
-**This is `P3EXIT-R4`'s shape one layer out.** That finding was a second copy of a *finding's state*
-rotting; this is a second copy of *what is built* rotting. The project's answer to `P3EXIT-R4` was
-to delete the copy and name one canonical home. **That answer is not available here** — a screen's
-constant, a developer table and a UX spec clause are genuinely different audiences, and none of the
-three can be deleted in favour of another.
-
-#### The trap, named before anyone builds it
-
-`T214-R1` and `T214-R2` are one lesson twice: **a guard proved against one spelling is a guard
-against one spelling.** A test grepping `docs/DEVELOPMENT.md` for the word *five* would pass the
-moment someone rewrote the sentence to say *5*, or *all but three*, or moved the count into the
-table. **A gate that can be defeated by rephrasing is worse than no gate**, because it is also a
-claim that the documents are checked.
-
-The mutation that matters is therefore not "change the number" but **"build a setting and update
-nothing"** — the exact sequence that produced this task.
-
-#### Acceptance criteria
-
-- **The gate fails on the real sequence**: a setting is added to the screen and *no* document is
-  updated. Demonstrated by mutation, not by argument — the mutation is applied and the gate is
-  observed red
-- **The gate names what disagrees and where**, in the failure message. `T-214`'s corrected guard
-  reports the route rather than only that a rule was broken, and that is why its third defect was
-  caught immediately
-- **One source of truth is chosen and recorded in this entry**, with the rejected options and their
-  costs. The candidates are enumerated below; the choice is design work this task does, not a
-  ruling it needs
-- **Rephrasing any covered document does not break the gate** — no assertion on a spelling, a
-  count-word, or a sentence's shape. If the chosen design cannot meet this, the entry says so and
-  says what is covered instead, rather than shipping a gate whose reach is narrower than its name
-- **The gate's own reach is stated where it is defined** — which documents it covers and which it
-  does not. `SETTINGS_STILL_TO_COME`'s comment already carries this idiom
-- `ruff`, `ruff format`, both `mypy` gates and the affected suites are clean, with **exit codes
-  checked rather than summary lines** (`T195-R7`)
-
-#### Candidate shapes, none chosen
-
-1. **Derive every claim from one structure.** A mapping in `core/settings.py` or the dialog module
-   naming each `REQ-023` setting and its owning task; the screen's sentence, the `DEVELOPMENT.md`
-   table and the test all read it. Strongest coverage, largest change, and it puts a documentation
-   concern inside `core/` — which `ARCHITECTURE.md` §4 may refuse
-2. **A test that reads the documents and the built controls, and compares sets.** No prose parsing:
-   assert that every setting the dialog builds a control for is absent from the *"still to come"*
-   sentence **and** marked as built in the table, by looking up its row rather than reading the
-   prose around it. Needs the table to carry a machine-readable column, which it nearly does
-3. **Widen the existing honesty test only** — leave the documents ungated and record that
-   deliberately, on the reasoning that the user-facing sentence is the one that matters and the
-   documents are the maintainer's own. **Cheapest, and it is a real option**: this rot misled
-   nobody. It must be recorded as a decision rather than reached by not doing the work
-
-#### Out of scope
-
-- **Correcting the five records above.** Done 2026-08-11; this task starts from a clean tree
-- Any other document class. `ai/STATUS.md`, `ai/TASKS.md` and `ai/REVIEWS.md` have their own
-  conventions and their own gate (`T-096`); widening into them is a different task with a different
-  argument
-- `T-196`'s network options. When they land they will be this gate's first real exercise, and that
-  is a reason to have it before then rather than to fold the two together
-
-  *(**They landed first, on 2026-08-13.** `T-196` updated `docs/DEVELOPMENT.md`, `docs/UX_SPEC.md`
-  and the screen's own sentence by hand, and nothing checked that it had — which is this task
-  exactly, and is now a worked example rather than a hypothetical one. It also changes what the
-  gate has to express: with every `REQ-023` setting built, the honest statement is an **empty**
-  sentence and an unbuilt label, so a gate that only checks "each unbuilt setting is named" passes
-  trivially today and must also catch the reverse — a setting removed from the screen, or added to
-  `REQ-023`, with the documents left saying eight.)*
-
----
 
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 
