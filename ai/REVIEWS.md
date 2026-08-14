@@ -16269,3 +16269,33 @@ requires the maintainer disposition described in `AGENTS.md` §10.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-13 — T-196 R5 authorised focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-196`
+**Authorisation:** The maintainer explicitly authorised the additional focused pass required by
+`AGENTS.md` §10 on 2026-08-13.
+**Base:** `c09badd454a5ccb573e4297bf2628889b03706de` — the previously re-reviewed correction
+**Head:** `c70f61a5dc7806570c26e4dee48d27158efc70e2` — the documentation correction on `main`
+**Verdict:** **Approved at `c70f61a`.** `T196-R5` is Resolved. `T196-R1` through `T196-R4`
+remain Resolved, so no open blocking finding remains.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Authorised focused re-review result |
+|---|---|---:|---|---|
+| **T196-R5** | **Medium** | **Yes** | **Resolved** | The two current-truth defects named by the prior verdict are corrected. `ai/STATUS.md` now distinguishes file-transfer `--retries`, per-fragment `--fragment-retries`, and the application's job-level retry. `ai/TASKS.md` makes the same three-way distinction in the acceptance criterion. The recorded maintainer ruling keeps its original wording as history but is marked inaccurate at the quote and corrected immediately beneath it, so it cannot be read as current meaning. A focused sweep of `ai/` and `docs/` found no remaining unannotated current-truth statement that calls `--retries` per-fragment. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary before this record | **Passed:** `main`, `origin/main`, and HEAD were `c70f61a`; the tracked tree was clean; `git diff --check c09badd..c70f61a` passed. |
+| Correction scope | **Passed:** `fb083f5..c70f61a` changes only `ai/STATUS.md` and `ai/TASKS.md`; `src/`, `tests/`, `pyproject.toml`, `.github/`, and `docs/` are unchanged. |
+| R5 terminology sweep | **Passed:** every remaining `per-fragment`, `fragment retries`, `--retries`, and `--fragment-retries` occurrence in the focused current-truth surface is either accurate or explicitly marked as superseded historical wording. |
+| Runtime and static gates | **Not run:** this pass changes and reviews documentation only; `AGENTS.md` §8 requires no source gate, and no prior source/test evidence is promoted to a new result. |
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
+`T-196` out of `## In Review` and update current status to this approval without another review pass.
