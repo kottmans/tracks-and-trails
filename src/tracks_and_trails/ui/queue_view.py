@@ -93,6 +93,7 @@ from tracks_and_trails.core.models import Job
 from tracks_and_trails.core.presets import BUILT_IN_PRESETS, format_choice_of
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
+from tracks_and_trails.ui.error_text import headline_for
 from tracks_and_trails.ui.format_text import (
     FORMAT_PREFIX,
     effective_format_text,
@@ -839,6 +840,11 @@ class QueueModel(QAbstractTableModel):
             ]
             return " · ".join(part for part in parts if part and part != UNKNOWN_TEXT)
 
+        if row.job.status is JobStatus.FAILED:
+            # **A failed row's second line is the reason it failed** (`T-201`, criteria 3 and 4;
+            # ruled in from the maintainer's UI review 2026-08-09). See `_failure_detail`.
+            return self._failure_detail(row)
+
         parts = [
             row.job.uploader or "",
             _duration_text(row.job.duration_seconds),
@@ -854,6 +860,43 @@ class QueueModel(QAbstractTableModel):
         if refusal is not None:
             parts.append(refusal)
         return " · ".join(part for part in parts if part and part != UNKNOWN_TEXT)
+
+    def _failure_detail(self, row: _Row) -> str:
+        """Why this row failed: the class in plain words, then the extractor's own message.
+
+        **The row is the only place the *why* can live** (`UX-005` §2 bans a detail pane), and the
+        failure this closes is on the record as a screenshot: a members-only job whose row read
+        `Failed` and nothing else, while the whole reason sat unread in `error_message`. The chip
+        says *Failed*; this line says what that means.
+
+        **The byte line goes with it** — criterion 4, and the same argument `T-216` made for a
+        finished row one branch up. `0 B of Unknown` on a job that never started is a confident
+        statement about nothing, and it crowds the line the reason needs. `REQ-014`'s columns are
+        untouched: `SIZE_COLUMN` still reads *done of total* for anything that did move bytes, and
+        the accessible text still carries it. This is the drawn second line only.
+
+        **The message is carried, never rewritten** (`NFR-006`, `DAT-003`). It goes last so the
+        plain-words class survives eliding when the message is long, and it is joined rather than
+        edited — the one transformation is that a newline inside it becomes a space, because this
+        is a single elided line and a `\\n` drawn there is a glyph rather than a break. Not a word
+        is changed, and `ui/job_detail.py` renders the full three-part composition — including the
+        next step, which is deliberately **not** here: three sentences on one elided line means the
+        third is never read, and the extractor's own words are the third.
+
+        **`CANCELLED` is not routed here**, because it is not a failure (`error_text`,
+        `ARCHITECTURE.md` §7): its chip says *Cancelled* and there is no reason to explain.
+        """
+        kind = row.job.error_kind
+        message = " ".join((row.job.error_message or "").split())
+        if kind is None:
+            # A failure the taxonomy never classified. `with_failure` always sets a kind, so this
+            # is a row built by hand or by a future path — the message alone is still better than
+            # the empty line this used to be, and inventing a class for it would be worse.
+            return message
+        parts = [headline_for(kind)]
+        if message:
+            parts.append(message)
+        return " · ".join(parts)
 
     def _whole_row(self, row: _Row) -> str:
         """Everything a sighted user reads from the drawn row, for a screen reader (`NFR-005`).
@@ -872,6 +915,11 @@ class QueueModel(QAbstractTableModel):
           there at all now depends on two things — the status *and* whether a built-in describes
           the request — and a second copy of that condition is a second place for it to drift from
           what is drawn, which is the whole of `T017-R2`.
+        - **Why a failed row failed** (`T-201`, criterion 3). It is the newest thing the drawn row
+          carries and the one most worth speaking: a screen-reader user who hears `Status: Failed`
+          and nothing else is in exactly the state the sighted row was in before this task, with
+          the reason unread in `error_message`. **Read from `_failure_detail`**, the function that
+          draws it, rather than composed a second time here.
         """
         spoken = [self._accessible_text(row, column) for column in range(len(COLUMN_HEADERS))]
         extra = [
@@ -885,6 +933,10 @@ class QueueModel(QAbstractTableModel):
         drawn_format = "" if index is None else self.data(self.index(index, 0), SELECTOR_ROLE)
         if drawn_format:
             spoken.append(str(drawn_format))
+        if row.job.status is JobStatus.FAILED:
+            reason = self._failure_detail(row)
+            if reason:
+                spoken.append(reason)
         return ". ".join(spoken)
 
     def _chip(self, row: _Row) -> str:

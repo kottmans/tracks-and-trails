@@ -5,6 +5,31 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-14 (T-201 finished) — **the error-surface pass is complete and
+`T-201` is In Review.** Its last two criteria were the failed row itself: the row now says **what
+failed in plain words, then the extractor's own message verbatim**, and it **stops drawing
+`0 B of Unknown`** for a job that never started. Seven mutations each turn their own evidence red —
+the half built on 2026-08-13 had no mutation evidence, because the row they would have mutated did
+not exist.
+
+**Two things worth keeping.** The entry said criteria 3 and 4 lived in `ui/row_delegate.py`; they
+live in **`ui/queue_view.py`**, because the delegate draws `DETAIL_ROLE` and the *model* decides
+what it says (`T-130`). And the criterion asked only that the reason be **drawn** — it is
+**spoken** too, because a field a sighted user reads and a screen-reader user does not is
+`T017-R2`, one download described to two people differently.
+
+**Filed rather than fixed: `T-241`.** A *cancelled* row still draws `— · 0 B of Unknown`, measured
+on the composed model. It is the same furniture, and `T-201`'s criterion says *a terminal failure* —
+so widening it inside the task that owns it is how `CANCELLED` got folded in beside `FAILED` last
+time. Gates green: **2929 passed, 18 skipped** unit+UI and **440 passed** integration, `ruff`,
+`ruff format`, `mypy src`, bare `mypy` and `mypy --platform win32` clean, exit codes checked.
+
+**What is actionable now:** `T-200` and `T-202` are the last two deliverables, and both are
+whole-application passes — the maintainer's call is to walk the UI first, so anything that needs
+changing is found before those passes verify it. `T-212`'s recorded run stays last.
+
+*(The block below is `T-196`'s approval and is left as written.)*
+
 **Last updated:** 2026-08-13 (T-196 approved) — **`T-196` is Approved at `c70f61a`, all five
 findings Resolved, and `## In Review` is empty.** The last of `REQ-023`'s eight settings is built:
 proxy, per-download speed limit and yt-dlp's own `--retries` are on the Settings screen, in

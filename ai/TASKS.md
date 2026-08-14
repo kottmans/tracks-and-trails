@@ -117,6 +117,158 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-201 — The error-surface pass: twelve classes, and the two with nothing to suggest
+
+**Status:** **In Review — finished 2026-08-14.** All six criteria are met. The two that were
+untouched — the reason on the failed row itself, and the byte line a terminal failure suppresses —
+are built, and **seven mutations each turn their own evidence red**, which the first half of this
+task did not have because the row it would have mutated did not exist yet.
+**Owner:** Implementer
+**Priority:** Medium–High — `NFR-006` is a promise the application makes on its worst day
+**Phase:** Phase 4
+**Depends on:** `T-199` for the ffmpeg classes' capability text. Not blocked by the rest.
+**Relevant context:** `NFR-006`, `REQ-018`, `REQ-EXCL-002`, `DAT-003`, `core/errors.py` §37–60,
+`T-084` (per-job log capture), `T-118`, `T-124`, `T-130`, `T-192`'s
+`ACTIONABLE_STATUS_PROPERTY`, `ui/job_detail.py`, `ui/log_view.py`
+**Affected surfaces:** `core/errors.py`, the job detail and queue presentation, `ui/theme.py`
+**Risk:** Medium — the risk is writing reassuring text that is not true, which is harder to detect
+than a missing message
+
+#### Scope
+
+**`NFR-006` asks for three things per error** — *what failed, why, and what the user can do* — and
+adds that **extractor messages are surfaced, never swallowed or replaced with a generic message.**
+The plan's deliverable is that **every taxonomy class has a tested, actionable presentation.**
+
+`core/errors.py` carries twelve classes: `UNSUPPORTED_URL`, `EXTRACTOR_ERROR`, `AUTH_REQUIRED`,
+`GEO_RESTRICTED`, `DRM_PROTECTED`, `NETWORK`, `FFMPEG_MISSING`, `FFMPEG_ERROR`, `DISK`,
+`WORKER_CRASH`, `INTERRUPTED`, `CANCELLED`. **The pass is per class, and the point of it is the
+classes nobody has written text for yet.**
+
+**Three of the twelve have no honest action, and that is the substance of this task.**
+
+- **`DRM_PROTECTED`** — there is nothing the user can do, and `REQ-EXCL-001`/`REQ-EXCL-002` mean
+  there must not be. The honest presentation says so plainly and offers no retry.
+- **`GEO_RESTRICTED`** — the obvious suggestion is a proxy, and `SEC-003` ruled
+  `--geo-verification-proxy` *in*. **But `REQ-EXCL-002` forbids geo-restriction bypass.** The line
+  between "use your own proxy because you are travelling" and "circumvent a restriction" is a
+  *ruling*, not a wording choice. **This task must not invent it** — if the text would suggest a
+  workaround, it needs a `SEC-` decision first.
+- **`CANCELLED`** is not a failure at all and must not be presented as one.
+
+**"Actionable" cannot become "reassuring".** A message that suggests an action which cannot work is
+worse than one that admits there is none — it sends the user to try things. `T-192` already added
+`ACTIONABLE_STATUS_PROPERTY` for a status the user can act on; the same distinction belongs here.
+
+#### Acceptance criteria
+
+- **Each of the twelve classes has a tested presentation** stating what failed, why, and either what
+  to do or **that there is nothing to do** — one test per class, so a new class added later fails
+  until it is given one
+- **The extractor's own message is present and verbatim** wherever one exists (`NFR-006`,
+  `DAT-003`), and a test asserts it is not truncated, reworded, or replaced by the class's text.
+  The class's text accompanies the message; it does not stand in for it
+- *(Added 2026-08-09, ruled in from the maintainer-approved UI review.)* **The reason appears on
+  the failed row itself** — the class in plain words, then the extractor's message, on the row.
+  `UX-005` §2 bans a detail pane, so the row is the only place the *why* can live. Elided by width
+  when long, never rewritten. The review's screenshot is the failure mode this closes: a
+  members-only job whose row said `Failed` and nothing else while the full reason sat unread in
+  `error_message`
+- *(Added 2026-08-09, same review.)* **A terminal failure suppresses the byte line.** "0 B of
+  Unknown" on a job that never started is a confident statement about nothing, and it crowds the
+  line the reason needs
+- **Retry is offered only where retry can work.** `REQ-018` requires the job stay in a failed state
+  and retry be offered; `DRM_PROTECTED` and `UNSUPPORTED_URL` are where offering it is a lie, and
+  `UX-005` §5 says nothing is drawn that would be refused
+- **`GEO_RESTRICTED`'s text suggests no circumvention**, and if the phrasing needs to reference a
+  proxy at all, a `SEC-` decision is taken first and named in the entry
+- **No class is presented by colour alone** — `T-202` owns the sweep, this task owns not creating
+  new instances
+- Nothing in any presentation leaks material `T-197`'s gate forbids — error paths are the route
+  most likely to quote a path or a URL
+
+#### What was built — 2026-08-13, and what was not
+
+**Built: the words, and the one surface that was showing the identifier.** `ui/error_text.py` is a
+table over `ErrorKind` — total, and a `KeyError` rather than a generic fallback if a thirteenth kind
+is ever added, because *"Download failed"* is the sentence `NFR-006` forbids and a `.get()` default
+would deliver it silently. `describe_failure` composes headline, next step and **the extractor's own
+message last and verbatim**. `ui/job_detail.py` rendered `f"{kind.value}\n{message}"` — a user read
+`geo_restricted` above a sentence — and now renders that composition.
+
+**The three with no honest action are the substance, and each has a reason on the record.**
+`DRM_PROTECTED` offers nothing because `REQ-EXCL-001` means there must never be a way.
+`GEO_RESTRICTED` **suggests no workaround at all**, which meets the criterion *and* leaves the
+`SEC-003`-against-`REQ-EXCL-002` ruling open in both directions — it is deliberately not phrased as
+though a proxy were unavailable either, since that would take the ruling by implication.
+`CANCELLED` is not a failure and its text is asserted to carry no blame vocabulary. **So no
+`SEC-` decision was needed and none was invented.**
+
+**Two of my own assertions were wrong and the tests caught them before anything else did.** One
+forbade a kind's identifier appearing in its own headline — but `cancelled` is an ordinary English
+word and *"You cancelled this download"* is the right sentence. The other required every headline to
+start upper-case, which is wrong for `ffmpeg`. Both are narrowed to the rule actually meant, and
+`NETWORK`'s headline was lengthened because the test that failed on it was right: *"The connection
+failed"* does not say what failed.
+
+**The layering guard caught the new module and that is the guard working.** `ui/error_text.py`
+imports no Qt and its docstring says so deliberately, so `T-214`'s `QT_FREE_UI` now holds it — the
+list is eight rather than seven.
+
+**Criteria, honestly:**
+
+| # | Criterion | State |
+|---|---|---|
+| 1 | Each of the twelve has a tested presentation | **Met for the words** — parametrised over the enum, so a new kind fails until given one. Rendered in the detail view only; see 3 |
+| 2 | The extractor's message present and verbatim | **Met** in `describe_failure` and asserted; **not yet asserted on the row**, because the row does not carry it yet |
+| 3 | The reason appears on the failed row itself | **Met, 2026-08-14.** `_failure_detail` draws the class in plain words, then the extractor's message verbatim. **And it is spoken**, which the criterion does not say and `T017-R2` does: a field a sighted user reads and a screen-reader user does not is one download described to two people differently |
+| 4 | A terminal failure suppresses the byte line | **Met, 2026-08-14** — with `SIZE_COLUMN` untouched, so the count moved rather than went. `T-216` made the same trade for a finished row |
+| 5 | Retry offered only where retry can work | **Met at the text level** — no unretryable kind is told to retry, checked against `core/errors.is_retryable` rather than a second list. The *button* already asked `is_retryable` before this task |
+| 6 | `GEO_RESTRICTED` suggests no circumvention | **Met**, asserted as absence of workaround vocabulary rather than a pinned sentence (`T214-R1`) |
+
+**What was left was criteria 3 and 4, and they are built — 2026-08-14.**
+
+**They live in `ui/queue_view.py`, not the delegate**, and that is worth recording because this
+entry named the wrong file. The delegate *draws* `DETAIL_ROLE`; the **model** decides what it says
+(`T-130`, `T130-R3`: the words on a row are the model's). So `_failure_detail` sits beside
+`_detail`'s completed branch, which is the same shape `T-216` built one ending over.
+
+**What the row says.** The class in plain words, then the extractor's own message — headline first
+so eliding a long message cannot cost the reader *what* failed. **The next step is deliberately not
+there**: three sentences on one elided line means the third is never read, and the third is the
+extractor's words. `ui/job_detail.py` keeps the full composition.
+
+**The one transformation, named:** a newline inside the message becomes a space, because the row is
+a single elided line and a `\n` drawn there is a glyph rather than a break. Not a word changes, and
+a test asserts the words survive in order.
+
+**And it is spoken.** `_whole_row` gained the reason, from the same function that draws it. The
+criterion did not ask; `T017-R2` did, and hearing *"Status: Failed"* and nothing else is precisely
+the state the sighted row was in before this task.
+
+**Seven mutations, each failing exactly one regression**: the failed branch removed, the byte line
+restored beside the reason, the message dropped, the headline dropped, the flattening removed,
+`CANCELLED` folded back in beside `FAILED`, and the reason drawn but not spoken.
+
+**Filed rather than fixed inline: `T-241`.** A *cancelled* row still draws `— · 0 B of Unknown` —
+measured, not assumed. It is the same confident statement about nothing, and this task's criterion
+says *a terminal failure*, so widening it here would be scope this entry has no authority over.
+
+**Gates at the first commit:** `ruff check`, `ruff format --check .` and all three `mypy` gates
+clean; `tests/unit` + `tests/ui` **2826 passed, 18 skipped**, exit code checked. Integration not
+re-run — nothing there touched the worker, the manager or composition.
+
+**Gates on completion, 2026-08-14:** the same five clean; `tests/unit` + `tests/ui` **2929 passed,
+18 skipped**; integration re-run this time, because the failed row is what a composed application
+draws after a real worker fails.
+
+#### Out of scope
+
+- **Adding taxonomy classes.** The twelve are what `core/errors.py` declares; a thirteenth is a
+  different task with a different argument
+- Retry *policy* — `T-196` owns the setting, `REQ-015`/`REQ-018` own the behaviour
+- The per-job log view itself, built by `T-084`. This task presents errors; the log stays verbatim
+
 ## Complete
 
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
@@ -4388,131 +4540,6 @@ to produce rather than on the question it was filed to answer.
 
 ---
 
-### T-201 — The error-surface pass: twelve classes, and the two with nothing to suggest
-
-**Status:** **In Progress — partly built 2026-08-13**, in the same authorized unattended run as
-`T-198`. **The words exist and are proved; two of the six criteria are untouched** and are named
-below rather than left to be discovered. Committed so the tree is clean and the split is
-reviewable; **not** submitted for review.
-**Owner:** Implementer
-**Priority:** Medium–High — `NFR-006` is a promise the application makes on its worst day
-**Phase:** Phase 4
-**Depends on:** `T-199` for the ffmpeg classes' capability text. Not blocked by the rest.
-**Relevant context:** `NFR-006`, `REQ-018`, `REQ-EXCL-002`, `DAT-003`, `core/errors.py` §37–60,
-`T-084` (per-job log capture), `T-118`, `T-124`, `T-130`, `T-192`'s
-`ACTIONABLE_STATUS_PROPERTY`, `ui/job_detail.py`, `ui/log_view.py`
-**Affected surfaces:** `core/errors.py`, the job detail and queue presentation, `ui/theme.py`
-**Risk:** Medium — the risk is writing reassuring text that is not true, which is harder to detect
-than a missing message
-
-#### Scope
-
-**`NFR-006` asks for three things per error** — *what failed, why, and what the user can do* — and
-adds that **extractor messages are surfaced, never swallowed or replaced with a generic message.**
-The plan's deliverable is that **every taxonomy class has a tested, actionable presentation.**
-
-`core/errors.py` carries twelve classes: `UNSUPPORTED_URL`, `EXTRACTOR_ERROR`, `AUTH_REQUIRED`,
-`GEO_RESTRICTED`, `DRM_PROTECTED`, `NETWORK`, `FFMPEG_MISSING`, `FFMPEG_ERROR`, `DISK`,
-`WORKER_CRASH`, `INTERRUPTED`, `CANCELLED`. **The pass is per class, and the point of it is the
-classes nobody has written text for yet.**
-
-**Three of the twelve have no honest action, and that is the substance of this task.**
-
-- **`DRM_PROTECTED`** — there is nothing the user can do, and `REQ-EXCL-001`/`REQ-EXCL-002` mean
-  there must not be. The honest presentation says so plainly and offers no retry.
-- **`GEO_RESTRICTED`** — the obvious suggestion is a proxy, and `SEC-003` ruled
-  `--geo-verification-proxy` *in*. **But `REQ-EXCL-002` forbids geo-restriction bypass.** The line
-  between "use your own proxy because you are travelling" and "circumvent a restriction" is a
-  *ruling*, not a wording choice. **This task must not invent it** — if the text would suggest a
-  workaround, it needs a `SEC-` decision first.
-- **`CANCELLED`** is not a failure at all and must not be presented as one.
-
-**"Actionable" cannot become "reassuring".** A message that suggests an action which cannot work is
-worse than one that admits there is none — it sends the user to try things. `T-192` already added
-`ACTIONABLE_STATUS_PROPERTY` for a status the user can act on; the same distinction belongs here.
-
-#### Acceptance criteria
-
-- **Each of the twelve classes has a tested presentation** stating what failed, why, and either what
-  to do or **that there is nothing to do** — one test per class, so a new class added later fails
-  until it is given one
-- **The extractor's own message is present and verbatim** wherever one exists (`NFR-006`,
-  `DAT-003`), and a test asserts it is not truncated, reworded, or replaced by the class's text.
-  The class's text accompanies the message; it does not stand in for it
-- *(Added 2026-08-09, ruled in from the maintainer-approved UI review.)* **The reason appears on
-  the failed row itself** — the class in plain words, then the extractor's message, on the row.
-  `UX-005` §2 bans a detail pane, so the row is the only place the *why* can live. Elided by width
-  when long, never rewritten. The review's screenshot is the failure mode this closes: a
-  members-only job whose row said `Failed` and nothing else while the full reason sat unread in
-  `error_message`
-- *(Added 2026-08-09, same review.)* **A terminal failure suppresses the byte line.** "0 B of
-  Unknown" on a job that never started is a confident statement about nothing, and it crowds the
-  line the reason needs
-- **Retry is offered only where retry can work.** `REQ-018` requires the job stay in a failed state
-  and retry be offered; `DRM_PROTECTED` and `UNSUPPORTED_URL` are where offering it is a lie, and
-  `UX-005` §5 says nothing is drawn that would be refused
-- **`GEO_RESTRICTED`'s text suggests no circumvention**, and if the phrasing needs to reference a
-  proxy at all, a `SEC-` decision is taken first and named in the entry
-- **No class is presented by colour alone** — `T-202` owns the sweep, this task owns not creating
-  new instances
-- Nothing in any presentation leaks material `T-197`'s gate forbids — error paths are the route
-  most likely to quote a path or a URL
-
-#### What was built — 2026-08-13, and what was not
-
-**Built: the words, and the one surface that was showing the identifier.** `ui/error_text.py` is a
-table over `ErrorKind` — total, and a `KeyError` rather than a generic fallback if a thirteenth kind
-is ever added, because *"Download failed"* is the sentence `NFR-006` forbids and a `.get()` default
-would deliver it silently. `describe_failure` composes headline, next step and **the extractor's own
-message last and verbatim**. `ui/job_detail.py` rendered `f"{kind.value}\n{message}"` — a user read
-`geo_restricted` above a sentence — and now renders that composition.
-
-**The three with no honest action are the substance, and each has a reason on the record.**
-`DRM_PROTECTED` offers nothing because `REQ-EXCL-001` means there must never be a way.
-`GEO_RESTRICTED` **suggests no workaround at all**, which meets the criterion *and* leaves the
-`SEC-003`-against-`REQ-EXCL-002` ruling open in both directions — it is deliberately not phrased as
-though a proxy were unavailable either, since that would take the ruling by implication.
-`CANCELLED` is not a failure and its text is asserted to carry no blame vocabulary. **So no
-`SEC-` decision was needed and none was invented.**
-
-**Two of my own assertions were wrong and the tests caught them before anything else did.** One
-forbade a kind's identifier appearing in its own headline — but `cancelled` is an ordinary English
-word and *"You cancelled this download"* is the right sentence. The other required every headline to
-start upper-case, which is wrong for `ffmpeg`. Both are narrowed to the rule actually meant, and
-`NETWORK`'s headline was lengthened because the test that failed on it was right: *"The connection
-failed"* does not say what failed.
-
-**The layering guard caught the new module and that is the guard working.** `ui/error_text.py`
-imports no Qt and its docstring says so deliberately, so `T-214`'s `QT_FREE_UI` now holds it — the
-list is eight rather than seven.
-
-**Criteria, honestly:**
-
-| # | Criterion | State |
-|---|---|---|
-| 1 | Each of the twelve has a tested presentation | **Met for the words** — parametrised over the enum, so a new kind fails until given one. Rendered in the detail view only; see 3 |
-| 2 | The extractor's message present and verbatim | **Met** in `describe_failure` and asserted; **not yet asserted on the row**, because the row does not carry it yet |
-| 3 | The reason appears on the failed row itself | **Not built.** `UX-005` §2 bans a detail pane, so the row is where this has to live, and the row's second line is untouched |
-| 4 | A terminal failure suppresses the byte line | **Not built** |
-| 5 | Retry offered only where retry can work | **Met at the text level** — no unretryable kind is told to retry, checked against `core/errors.is_retryable` rather than a second list. The *button* already asked `is_retryable` before this task |
-| 6 | `GEO_RESTRICTED` suggests no circumvention | **Met**, asserted as absence of workaround vocabulary rather than a pinned sentence (`T214-R1`) |
-
-**What is left is criteria 3 and 4**, both in `ui/row_delegate.py`'s second line, plus carrying the
-verbatim assertion onto the row once it renders one. **No mutation evidence has been taken yet** —
-the words are covered by 48 tests, and the mutations that would matter are against the row that does
-not exist.
-
-**Gates at this commit:** `ruff check`, `ruff format --check .` and all three `mypy` gates clean;
-`tests/unit` + `tests/ui` **2826 passed, 18 skipped**, exit code checked. Integration not re-run —
-nothing here touches the worker, the manager or composition.
-
-#### Out of scope
-
-- **Adding taxonomy classes.** The twelve are what `core/errors.py` declares; a thirteenth is a
-  different task with a different argument
-- Retry *policy* — `T-196` owns the setting, `REQ-015`/`REQ-018` own the behaviour
-- The per-job log view itself, built by `T-084`. This task presents errors; the log stays verbatim
-
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
 **Status:** **Ready — still undiagnosed, no longer blocking Phase 1** (`OPS-007`, maintainer risk
@@ -5164,6 +5191,54 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
+
+### T-241 — A cancelled row states a byte count about nothing
+
+**Status:** Proposed — filed 2026-08-14 from `T-201`, whose criterion 4 covers *a terminal
+failure* and therefore does not reach this one.
+**Owner:** Implementer
+**Priority:** Low — one line of furniture on a row the user themselves stopped. Nothing is
+misreported about a download that ran; the lie is about one that did not
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing. `T-201` built the branch this would sit beside
+**Relevant context:** `ui/queue_view.py` `_detail` and `_failure_detail`, `T-201`'s criterion 4,
+`T-216` (the same trade for a finished row), `ARCHITECTURE.md` §7 (cancelling is not failing)
+**Affected surfaces:** `ui/queue_view.py`, `tests/ui/test_queue_view.py`
+**Risk:** Low
+
+#### Scope
+
+**Measured on 2026-08-14, not inferred**: a cancelled row's second line reads
+`— · 0 B of Unknown`. A job the user cancelled before it started has no percentage and no size, and
+the row says both anyway — *"0 B of Unknown"* is the exact phrase `T-201`'s criterion 4 names as a
+confident statement about nothing, and the em dash beside it is `INDETERMINATE_TEXT` standing in
+for a percentage that does not exist either.
+
+**`T-201` did not fix it, deliberately.** Its criterion says *a terminal failure*, and cancelling is
+not a failure — `ARCHITECTURE.md` §7 and `error_text` both turn on that, and the last time the two
+were folded together `CANCELLED` was drawn and described as a failure because it sat beside
+`FAILED` where nobody would look for it. Widening a criterion inside the task that owns it is how
+that happens; so this is filed instead.
+
+**The shape is already built twice.** `_detail` returns early for `COMPLETED` (`T-216`) and now for
+`FAILED` (`T-201`), each with its own argument about what is worth saying. A third branch needs its
+own: what identifies a cancelled row is what identified it before — the uploader and the duration —
+and what it should not carry is progress that stopped meaning anything.
+
+#### Acceptance criteria
+
+- A cancelled row draws no percentage and no byte count, and a test asserts it against the drawn
+  line rather than the columns
+- **`SIZE_COLUMN` still reads *done of total*** and the spoken row still carries it, so the count
+  moves rather than goes — the trade `T-216` and `T-201` both made
+- A cancelled row that **did** move bytes is considered explicitly and the answer recorded either
+  way: a partial download the user stopped may be worth a size, and if it is, this criterion says so
+- The row is still not given a failure's reason line (`T-201`'s regression stays green)
+
+#### Out of scope
+
+- Any other row state. `COMPLETED` and `FAILED` have their branches and their arguments
+- The columns, the chip, and the accessible text
 
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 

@@ -46,6 +46,7 @@ from tracks_and_trails.downloader.protocol import (
     Succeeded,
     WorkerFinished,
 )
+from tracks_and_trails.ui.error_text import headline_for
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, describe_bar
 from tracks_and_trails.ui.queue_view import (
     CHIP_TEXT,
@@ -3454,3 +3455,201 @@ def test_a_group_that_failed_keeps_the_bar_that_says_which_part_did(
     segments = view.model.data(view.model.index(0, 0), SEGMENTS_ROLE)
     assert segments, "the group's segmented bar has gone with the finished row's"
     assert SegmentState.FAILED in segments, "the bar no longer says which entry failed"
+
+
+# --- the failed row says why (T-201, criteria 3 and 4) ---------------------------------------
+
+
+def a_failed_row(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+    *,
+    kind: ErrorKind = ErrorKind.AUTH_REQUIRED,
+    message: str = "Join this channel to get access to members-only content",
+    **overrides: Any,
+) -> tuple[QueueView, str]:
+    """One failed row, and the second line it draws."""
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.FAILED,
+            title="A members-only video",
+            error_kind=kind,
+            error_message=message,
+            **overrides,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+    assert isinstance(detail, str)
+    return view, detail
+
+
+def test_a_failed_row_says_what_failed_and_carries_the_extractors_own_words(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**`T-201`, criterion 3**, and the screenshot it was filed from.
+
+    A members-only job read `Failed` and nothing else, while the whole reason sat unread in
+    `error_message`. `UX-005` §2 bans a detail pane, so the row is the only place the *why* can
+    live — and the chip saying `Failed` is the *what*, not the why.
+
+    Both halves are asserted: the class in plain words, and the extractor's own sentence
+    **verbatim**, which `NFR-006` and `DAT-003` require be surfaced rather than swallowed or
+    replaced by the class's text.
+    """
+    message = "Join this channel to get access to members-only content"
+    _view, detail = a_failed_row(queue, views, managers, tmp_path, message=message)
+
+    assert headline_for(ErrorKind.AUTH_REQUIRED) in detail, (
+        f"the row does not say what failed, only that it did: {detail!r}"
+    )
+    assert message in detail, (
+        f"the extractor's own message is not on the row: {detail!r}. It is the only part a user "
+        "can act on, and NFR-006 requires it surfaced rather than replaced"
+    )
+    # The class's words come first, so eliding a long message cannot cost the reader *what* failed.
+    assert detail.index(headline_for(ErrorKind.AUTH_REQUIRED)) < detail.index(message)
+
+
+def test_a_failed_row_draws_no_byte_line(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**`T-201`, criterion 4.** `0 B of Unknown` is a confident statement about nothing.
+
+    It is what a job that never started used to draw, and it crowded the line the reason needs.
+    The same argument `T-216` made for a finished row, one ending over.
+
+    **The columns are untouched**, and that is asserted here rather than assumed: `REQ-014`'s six
+    are the spine and a screen-reader user reads them, so this is about the drawn second line only.
+    """
+    view, detail = a_failed_row(queue, views, managers, tmp_path)
+
+    for column in (PROGRESS_COLUMN, SIZE_COLUMN, SPEED_COLUMN, ETA_COLUMN):
+        cell = view.model.text_at("job-1", column)
+        assert cell is not None and cell not in detail, (
+            f"{COLUMN_HEADERS[column]} reads {cell!r} and is still drawn on a failed row: "
+            f"{detail!r}"
+        )
+    assert view.model.text_at("job-1", SIZE_COLUMN) == "0 B of Unknown", (
+        "the column no longer says it either, so this test would pass on a row that says nothing"
+    )
+
+
+def test_a_failed_row_keeps_a_multi_line_message_readable_on_one_line(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """The row is one elided line, and a `\\n` drawn on it is a glyph rather than a break.
+
+    **Whitespace only.** Every word of the extractor's message survives, in order — what does not
+    survive is the newline, and `ui/job_detail.py` renders the message untouched.
+    """
+    _view, detail = a_failed_row(
+        queue, views, managers, tmp_path, message="ERROR: unable to download\nHTTP Error 403"
+    )
+
+    assert "\n" not in detail, f"a newline reached the single-line row: {detail!r}"
+    assert "ERROR: unable to download HTTP Error 403" in detail
+
+
+def test_a_cancelled_row_is_not_given_a_failure_reason(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**Cancelling is not failing** (`ARCHITECTURE.md` §7, `error_text`), and this is the fold
+    that has already gone wrong once: `CANCELLED` was drawn and described as a failure because it
+    sat beside `FAILED` where no reader would look for it.
+
+    The chip says `Cancelled`; there is no reason to explain, so the row explains none.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.CANCELLED,
+            error_kind=ErrorKind.CANCELLED,
+            error_message="",
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert headline_for(ErrorKind.CANCELLED) not in detail, (
+        f"a cancelled row was given a failure's reason line: {detail!r}"
+    )
+
+
+def test_a_failure_with_no_class_still_shows_the_message(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """`with_failure` always sets a kind, so this is a row built by hand or by a future path.
+
+    The message alone beats the empty line this used to be, and inventing a class for it would be
+    worse than saying less — the same refusal `error_text.describe` makes by raising rather than
+    falling back to *"Download failed"*.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.FAILED,
+            error_kind=None,
+            error_message="something the taxonomy never saw",
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert detail == "something the taxonomy never saw"
+
+
+def test_a_screen_reader_hears_why_the_row_failed(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**`T017-R2`'s split, closed before it could open** (`NFR-005`, `T-201` criterion 3).
+
+    The reason is the newest thing the drawn row carries, and a field a sighted user reads while a
+    screen-reader user does not is one download described differently to two people. Hearing
+    `Status: Failed` and nothing else is the state the sighted row was in before this task.
+
+    **And the byte count is still spoken**, which is the other half of criterion 4's claim: the
+    drawn line drops it, the columns keep it, so nothing was lost — it was moved.
+    """
+    message = "Join this channel to get access to members-only content"
+    view, _detail = a_failed_row(queue, views, managers, tmp_path, message=message)
+
+    spoken = view.model.data(
+        view.model.index(0, JOB_COLUMN), int(Qt.ItemDataRole.AccessibleTextRole)
+    )
+    assert isinstance(spoken, str)
+
+    assert headline_for(ErrorKind.AUTH_REQUIRED) in spoken, (
+        f"a screen reader is told the row failed and not why: {spoken!r}"
+    )
+    assert message in spoken, "the extractor's own words are not spoken"
+    assert "0 B of Unknown" in spoken, (
+        "the byte count left the drawn line and the spoken row as well, so criterion 4 took "
+        f"something away rather than moving it: {spoken!r}"
+    )
