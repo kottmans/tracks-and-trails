@@ -1131,19 +1131,24 @@ class RowDelegate(QStyledItemDelegate):
         the freed width on eight wider blocks instead of surrendering it, which is more of `T-164`
         rather than less.
         """
-        # **A playlist entry keeps nothing, because it draws no bar** (`T-244`). `_paint_text`
-        # returns at the child branch before it reaches the bar — row 9c's two lines have no room
-        # for one — while this went on reading `PROGRESS_ROLE`, which a child answers like any
-        # other row.
+        # **A playlist entry keeps nothing, because it draws no bar** (`T-244`, `T244-R1`).
+        # `_paint_text` returns at the child branch before it reaches the bar — row 9c's two lines
+        # have no room for one — while this went on reading `PROGRESS_ROLE`, which a child answers
+        # like any other row. The width it kept came straight out of the verbs' share.
         #
-        # **This is an agreement between two functions, not a fix, and the difference is measured
-        # rather than assumed.** It changes no layout at any width: swept 150 to 600 px against all
-        # three child verb sets, a child with a fraction and one without place their verbs
-        # identically. The reserve is squeezed out at both ends — `_bar_line` caps it below the
-        # overflow's own width on a narrow row, and a wide row has room the verbs never needed. So
-        # **no mutation is claimed for this branch**; it is here because a function that reads a
-        # role in order to reserve space for something the painter will not draw is wrong in a way
-        # that only stays harmless by accident.
+        # **A running entry is where it showed, and it is the state that can least afford it.** It
+        # offers exactly one verb, `Cancel`, and it is the only child state carrying a fraction —
+        # so restoring the phantom reserve drops that verb into the `⋯` menu at **every width from
+        # 150 to 204 px**. The one control for stopping a download in progress, behind a menu, for
+        # a bar that is not on the row. Gated by
+        # `test_a_running_entry_keeps_its_cancel_on_the_row_at_a_narrow_width`.
+        #
+        # *(This comment claimed the branch changed no layout at any width and that no mutation was
+        # claimed for it. Both were wrong, and `T244-R1` is the record: the sweep behind them paired
+        # a **queued** row's three verbs with a fraction — a combination the model never produces,
+        # and one where the overflow is needed anyway and hides the difference. The pairing that
+        # matters, one verb beside a real fraction, was never tried. Measured from the composed
+        # model now.)*
         if _depth(index) > 0:
             return 0
         room = self._bar_line(metrics, area, index)

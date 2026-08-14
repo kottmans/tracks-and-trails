@@ -5,15 +5,24 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-14 (T-244 built) — **`T-244` is built and awaiting review**, in an
-uncommitted tree on `main` at `ebe4159`. An expanded playlist entry drew none of the verbs it
+**Last updated:** 2026-08-14 (T-244 corrected) — **`T-244` is in review, corrected once.** The task
+commit is **`c1b4ab0`**; the correction for round one's two findings is an uncommitted diff on top
+of it, and `origin/main` is still at `ebe4159`. An expanded playlist entry drew none of the verbs it
 offered, at every width: `sizeHint` shortened a child to `CHILD_TEXT_LINES` while `_verb_rects`
 went on measuring every row's last line from the top-level `TEXT_LINES`, so the baseline landed
 below the child's own body and the layout returned an empty list. **`_text_lines` is the one answer
-now**, asked by the size, the paint and the verb layout alike. The verbs share the child's last
-line rather than being given one, so row 9c's heights are unchanged — 46 px and 63 px, before and
-after. **Six mutations, none surviving; two of them survived the first version of the tests**, and
-one intended change turned out to be unobservable and is recorded as such rather than claimed.
+now**, asked by the size, the paint and the verb layout alike. The verbs share the child's last line
+rather than being given one, so row 9c's heights are unchanged — 46 px and 63 px, before and after.
+
+**Round one's finding is the one worth carrying forward: I asserted a measurement that my own probe
+could not support.** I guarded a child against reserving last-line width for a progress bar it never
+draws, and reported that it changed no layout at any width. **It changes one that matters** — a
+running entry offers exactly `Cancel` and is the only child state carrying a fraction, so the
+phantom reserve drops that single verb into the `⋯` menu at every width from 150 to 204 px. My sweep
+missed it by pairing a *queued* row's three verbs with a fraction, a combination `QueueModel` never
+produces and one where the overflow is needed anyway. **A probe that invents its inputs can agree
+with the assumption that built it.** The gate is driven from the composed model now and asserts its
+own preconditions. **Seven mutations, none surviving; three survived a first version of the tests.**
 
 *(The snapshot below is the four-approval sync's and stands.)*
 

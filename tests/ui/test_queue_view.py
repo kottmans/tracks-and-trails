@@ -3939,6 +3939,78 @@ def test_an_expanded_playlist_entry_draws_every_verb_the_model_offers(
         assert not dropped, f"entry row {row} dropped {sorted(v.value for v in dropped)} at 1180 px"
 
 
+def test_a_running_entry_keeps_its_cancel_on_the_row_at_a_narrow_width(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """**`T244-R1`.** A child reserved last-line width for a bar `_paint_text` never draws.
+
+    `_paint_text` returns at the child branch before it reaches the bar — row 9c's two lines have
+    no room for one — while `_bar_reserve` went on reading `PROGRESS_ROLE`, which a child answers
+    like any other row. The reserved width is taken straight out of what the verbs may use.
+
+    **Measured, and the pairing is the whole point.** A *running* entry is the case: it offers
+    exactly one verb, `Cancel`, and it is the only child state carrying a fraction. With the
+    phantom reserve restored, every width from **150 to 204 px** drops that single verb into the
+    `⋯` menu — so the one control a user needs to stop a download in progress is behind a menu on a
+    narrow window, for a bar that is not on the row.
+
+    **My own sweep said this changed nothing, and it was wrong.** It paired hand-built role
+    combinations the model never produces together — a *queued* row's three verbs with a fraction,
+    where the overflow is needed anyway and hides the difference — and never tried one `Cancel`
+    beside a real fraction. Driven from the composed model here, so the roles come paired the way
+    the application pairs them.
+    """
+    for position in range(2):
+        queue.add(
+            make_job(
+                f"entry-{position}",
+                tmp_path,
+                status=JobStatus.RUNNING,
+                queue_position=position,
+                playlist_id="pl-1",
+                playlist_index=position,
+                playlist_title="Trail Sounds",
+                bytes_done=5_000_000,
+                bytes_total=10_000_000,
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+    view.model.toggle_group("pl-1")
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+
+    child = next(
+        view.model.index(row, JOB_COLUMN)
+        for row in range(view.model.rowCount())
+        if view.model.data(view.model.index(row, JOB_COLUMN), DEPTH_ROLE)
+    )
+    assert [Verb(v) for v in view.model.data(child, VERBS_ROLE)] == [Verb.CANCEL], (
+        "a running entry no longer offers exactly Cancel, so this no longer measures the pairing "
+        "the finding is about"
+    )
+    assert view.model.data(child, PROGRESS_ROLE) is not None, (
+        "a running entry no longer carries a fraction, so there is no phantom reserve to provoke"
+    )
+
+    for width in range(150, 301):
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, width, 0)
+        option.font = view.table.font()
+        option.fontMetrics = QFontMetrics(option.font)
+        option.rect = QRect(0, 0, width, delegate.sizeHint(option, child).height())
+
+        body, area = delegate._verb_area(option, child)
+        placed = [verb for verb, _ in delegate._verb_rects(option.fontMetrics, area, body, child)]
+
+        assert placed == [Verb.CANCEL], (
+            f"at {width}px a running playlist entry lays out {placed} rather than its own Cancel "
+            "— width is being kept from the verbs for a progress bar the child never draws"
+        )
+
+
 # --- a row that moved no bytes states none (T-241) --------------------------------------------
 
 

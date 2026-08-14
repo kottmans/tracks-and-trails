@@ -117,6 +117,104 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-244 — Expanded playlist entries offer verbs the delegate never draws
+
+**Status:** **In Review — corrected 2026-08-14.** Filed by the `T-201` second-correction
+re-review; the defect reproduces at the review base and is not caused by `T201-R3`, so it was
+carried rather than reopening that task. Round one returned **Changes requested** with `T244-R1`
+(the phantom bar reserve, which I had wrongly measured as unobservable) and `T244-R2` (a stale
+`ai/STATUS.md` claim), **both corrected**. **Seven mutations, none surviving** — and three of the seven
+survived a first version of the tests, including the one `T244-R1` had to find for me.
+**Owner:** Implementer
+**Priority:** Medium — an expanded entry loses its own Retry and Remove controls, but the playlist
+header still offers Retry failed and group removal as workarounds
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `UX-005` rows 4 and 9, `T-140`, `ui/row_delegate.py` `_verb_rects`,
+`ui/queue_view.py` `VERBS_ROLE`
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`, composed queue tests
+**Risk:** Medium — the parent and child row anatomies use different line counts, and fixing one
+without driving paint and hit-testing together can restore a control at the wrong coordinates
+
+#### What is wrong
+
+An expanded playlist child answers its ordinary per-job verbs from `QueueModel`: a retryable failed
+entry offers `Retry` and `Remove`. `RowDelegate._verb_rects()` nevertheless positions every row's
+verbs from the top-level `TEXT_LINES` constant. A child is sized from `CHILD_TEXT_LINES`, so the
+computed top lies below its body and the delegate returns no rectangles. A deterministic composed-
+model probe at 1180 px found two failed children each offering both verbs and drawing **zero**.
+
+`T201-R3` made the mismatch easier to see but did not create it: before that correction the same
+function already used `TEXT_LINES` for a child, and the base tree therefore drops the verbs too.
+The new action line itself is present and fits in the child row; this task owns the older last-line
+calculation rather than making T-201 absorb adjacent playlist geometry.
+
+#### Acceptance criteria
+
+- Every expanded playlist child draws every verb its `VERBS_ROLE` offers, subject to the ordinary
+  overflow rule
+- Paint, hover and click resolve those verbs through the same rectangles
+- The last-line calculation derives from the child or parent anatomy actually sized for that row
+- Failed children with an `ACTION_ROLE`, children with a differing format line, and ordinary
+  two-line children each keep the verbs inside the body without clipping or overlap
+- A composed expanded-playlist regression proves the model offers and the delegate draws the same
+  controls
+
+#### Out of scope
+
+- Changing which verbs playlist entries or headers offer
+- Changing `T201-R3`'s action text or the ratified failed-row line
+
+#### What was built
+
+**`_text_lines(index)` is now the only answer to how many lines a row draws**, and `sizeHint`,
+`_paint_text` and `_verb_rects` all ask it. That is the whole defect: those three derived the
+number separately, and the verb layout kept measuring every row from the top-level `TEXT_LINES`
+while `sizeHint` had shortened a child to `CHILD_TEXT_LINES`. The baseline landed **below the
+child's own body**, `height` clamped to zero, and the layout returned an empty list — **not a
+clipped control, which a user can at least see: no control.** Reproduced through the composed queue
+before anything was touched: four entries, every one offering verbs, every one drawing none.
+
+**The verbs share the child's last line rather than being given one.** A child that grew a line for
+its buttons would undo the trade `UX-005` row 9c made, in the case — a sixteen-item playlist — with
+least room to waste. So whatever text lands on the last line yields its right-hand end instead, via
+one `room_on` helper. **An ordinary row is untouched by that**, deliberately: its last line is the
+bar's and the verbs' already, so `room_on` returns the full width for every line it draws.
+`T-166` is the record of narrowing a line the verbs do *not* occupy, and `T118-R8` of narrowing the
+one line that must never give.
+
+**Heights are unchanged** — 46 px for a two-line entry and 63 px for one carrying `T201-R3`'s
+action line, before and after.
+
+#### Two mutations survived the first tests, and that is the part worth keeping
+
+The first regressions caught the missing verbs and nothing else. **Weakening the yielding rule left
+every test green**, because the strip comparison only ever varied the *detail* — so the format and
+action paths were free to draw underneath the buttons. The test is parametrised by *which role
+lands on the last line* now, which is a different line in each of the four child shapes.
+
+#### `T244-R1` — corrected: the phantom reserve was observable, and I measured it wrong
+
+`_bar_reserve` read `PROGRESS_ROLE` for a child, reserving `MIN_FRACTION_BAR` of the last line for a
+bar `_paint_text` never draws. **I submitted the guard while claiming it changed no layout at any
+width, and asked the Reviewer whether to keep an unobservable branch.** The claim was false.
+
+**A running entry is the case, and it is the state that can least afford it.** It offers exactly one
+verb — `Cancel` — and it is the only child state carrying a fraction. With the phantom reserve
+restored, **every width from 150 to 204 px** drops that verb into the `⋯` menu: the one control for
+stopping a download in progress, behind a menu, for a bar that is not on the row.
+
+**Why my sweep missed it, which is the part worth keeping.** It was built from hand-assembled role
+combinations rather than from the model's own. It paired a *queued* row's three verbs with a
+fraction — a combination `QueueModel` never produces, since a queued row has no fraction — and at
+three verbs the overflow is needed at that width anyway, so the difference was hidden. **The pairing
+that matters, one verb beside a real fraction, was never tried.** A probe that invents its inputs
+can agree with the assumption that built it; this one did.
+
+The gate is driven from the composed model for that reason, sweeps 150–300 px, and asserts the
+preconditions it depends on — that a running entry still offers exactly `Cancel` and still carries a
+fraction — so it fails loudly rather than quietly stopping measuring anything.
+
 ## Complete
 
 ### T-201 — The error-surface pass: twelve classes, and the two with nothing to suggest
@@ -5645,89 +5743,6 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
-
-### T-244 — Expanded playlist entries offer verbs the delegate never draws
-
-**Status:** **Built 2026-08-14, ready for review.** Filed by the `T-201` second-correction
-re-review; the defect reproduces at the review base and is not caused by `T201-R3`, so it was
-carried rather than reopening that task. **Six mutations, none surviving** — and two of the six
-survived the first version of the tests, which is what produced the shape of the ones below.
-**Owner:** Implementer
-**Priority:** Medium — an expanded entry loses its own Retry and Remove controls, but the playlist
-header still offers Retry failed and group removal as workarounds
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `UX-005` rows 4 and 9, `T-140`, `ui/row_delegate.py` `_verb_rects`,
-`ui/queue_view.py` `VERBS_ROLE`
-**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`, composed queue tests
-**Risk:** Medium — the parent and child row anatomies use different line counts, and fixing one
-without driving paint and hit-testing together can restore a control at the wrong coordinates
-
-#### What is wrong
-
-An expanded playlist child answers its ordinary per-job verbs from `QueueModel`: a retryable failed
-entry offers `Retry` and `Remove`. `RowDelegate._verb_rects()` nevertheless positions every row's
-verbs from the top-level `TEXT_LINES` constant. A child is sized from `CHILD_TEXT_LINES`, so the
-computed top lies below its body and the delegate returns no rectangles. A deterministic composed-
-model probe at 1180 px found two failed children each offering both verbs and drawing **zero**.
-
-`T201-R3` made the mismatch easier to see but did not create it: before that correction the same
-function already used `TEXT_LINES` for a child, and the base tree therefore drops the verbs too.
-The new action line itself is present and fits in the child row; this task owns the older last-line
-calculation rather than making T-201 absorb adjacent playlist geometry.
-
-#### Acceptance criteria
-
-- Every expanded playlist child draws every verb its `VERBS_ROLE` offers, subject to the ordinary
-  overflow rule
-- Paint, hover and click resolve those verbs through the same rectangles
-- The last-line calculation derives from the child or parent anatomy actually sized for that row
-- Failed children with an `ACTION_ROLE`, children with a differing format line, and ordinary
-  two-line children each keep the verbs inside the body without clipping or overlap
-- A composed expanded-playlist regression proves the model offers and the delegate draws the same
-  controls
-
-#### Out of scope
-
-- Changing which verbs playlist entries or headers offer
-- Changing `T201-R3`'s action text or the ratified failed-row line
-
-#### What was built
-
-**`_text_lines(index)` is now the only answer to how many lines a row draws**, and `sizeHint`,
-`_paint_text` and `_verb_rects` all ask it. That is the whole defect: those three derived the
-number separately, and the verb layout kept measuring every row from the top-level `TEXT_LINES`
-while `sizeHint` had shortened a child to `CHILD_TEXT_LINES`. The baseline landed **below the
-child's own body**, `height` clamped to zero, and the layout returned an empty list — **not a
-clipped control, which a user can at least see: no control.** Reproduced through the composed queue
-before anything was touched: four entries, every one offering verbs, every one drawing none.
-
-**The verbs share the child's last line rather than being given one.** A child that grew a line for
-its buttons would undo the trade `UX-005` row 9c made, in the case — a sixteen-item playlist — with
-least room to waste. So whatever text lands on the last line yields its right-hand end instead, via
-one `room_on` helper. **An ordinary row is untouched by that**, deliberately: its last line is the
-bar's and the verbs' already, so `room_on` returns the full width for every line it draws.
-`T-166` is the record of narrowing a line the verbs do *not* occupy, and `T118-R8` of narrowing the
-one line that must never give.
-
-**Heights are unchanged** — 46 px for a two-line entry and 63 px for one carrying `T201-R3`'s
-action line, before and after.
-
-#### Two mutations survived the first tests, and that is the part worth keeping
-
-The first regressions caught the missing verbs and nothing else. **Weakening the yielding rule left
-every test green**, because the strip comparison only ever varied the *detail* — so the format and
-action paths were free to draw underneath the buttons. The test is parametrised by *which role
-lands on the last line* now, which is a different line in each of the four child shapes.
-
-**And one intended change turned out to be unobservable, which is recorded rather than claimed.**
-`_bar_reserve` read `PROGRESS_ROLE` for a child, reserving `MIN_FRACTION_BAR` of the last line for a
-bar `_paint_text` never draws. Guarding it changes **no layout at any width**: swept 150 to 600 px
-against all three child verb sets, a child with a fraction and one without place their verbs
-identically — the reserve is capped below the overflow's own width on a narrow row and unneeded on a
-wide one. The guard stays, because a function reserving space for something the painter will not
-draw is wrong in a way that only stays harmless by accident. **No mutation is claimed for it**, and
-the vacuous test that "covered" it was deleted rather than kept green.
 
 ### T-243 — An interrupted row says the same thing twice, in two voices
 
