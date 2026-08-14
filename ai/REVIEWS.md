@@ -16650,3 +16650,43 @@ commit, push, handoff, roadmap, or remote state was changed. The routine post-ve
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
 `T-241` out of `## In Review` without another review pass.
+
+## 2026-08-14 — T-201 second correction focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-201`
+**Implementation boundary:** the bounded uncommitted source, test, documentation, generator and
+evidence diff atop `cd87b1ed9384c1e74175b0e281f032cc5953395a`, before the review record and
+follow-up entry below were added. Nothing was committed or pushed when inspected.
+**Platforms verified:** Linux, Qt offscreen. No Windows runtime, CI, real display, frozen build, or
+external network execution is claimed.
+**Verdict:** **Approved for commit.** `T201-R2` and `T201-R3` are Resolved; no open blocking finding
+remains. The pre-existing expanded-child verb defect found during the geometry check is non-blocking
+for this focused correction and is filed as `T-244`.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T201-R2** | **Medium** | **Yes** | **Resolved** | `JobProgressView._retries_are_spent()` reads the repository row on the render path and retains only the last readable answer for a removed job. The submitted regression constructs one view at attempt zero, proves the in-flight wording, advances the stored row to `AUTOMATIC_RETRY_LIMIT`, and emits the manager's durable `job_changed` then `job_failed` order; the same view renders the exhausted wording and preserves the extractor message. Inspection of `_settle()` and `_failed_and_maybe_retry()` confirms that signal order and that scheduling is refused at the bound. |
+| **T201-R3** | **High** | **Yes** | **Resolved** | The maintainer-ratified option C is reachable through `QueueModel.ACTION_ROLE`. `_failure_action()` returns the shared taxonomy step only for failed rows with an honest action and derives network exhaustion from the current row. `_action_lines()` drives top-level and child height plus paint placement; top-level selector, bar and verb geometry move one line together, and `_whole_row()` carries the same action into accessible text. The composed gates cover actionable, no-action, live/exhausted network and measured long-diagnostic cases. The fresh 1180 px rendering is byte-identical to the submitted evidence and shows 97 px actionable rows against the unchanged 80 px no-action row. |
+| **T201-R4** | **Medium** | **No — pre-existing, with group-level workarounds** | **Follow-up: T-244** | An expanded playlist child answers `Retry` and `Remove` from `VERBS_ROLE`, but `_verb_rects()` uses the parent `TEXT_LINES` baseline and returns no rectangles below the shorter child body. The same parent constant is present at `cd87b1e`, so T201-R3 did not introduce the loss; its action line is itself visible and correctly sized on the child. Under `AGENTS.md` §10 this adjacent pre-existing defect does not reopen the focused correction and is filed separately. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | **Passed:** `HEAD` is `cd87b1e` on `main`, matching `origin/main`; the implementation remains uncommitted and `git diff --check` is clean. The review did not alter reviewed source, tests, product documentation, evidence or generator code. |
+| Focused T-201 suite | **345 passed** in `test_error_text.py`, `test_job_detail.py`, `test_queue_view.py` and `test_row_delegate.py`; the output contained the four existing PySide disconnect warnings plus existing Qt mouse-event deprecation warnings. |
+| Static gates | **Passed:** `ruff check` and `ruff format --check` on the seven changed Python files; `mypy src` (**55 files**), bare `mypy` and `mypy --platform win32` (**142 files** each). |
+| R2 live path | **Passed:** the new one-widget regression exercises both attempt states through the real manager signal objects. Source inspection confirms the production persistence callback announces `job_changed` before `job_failed`, and that the render now reads the post-persistence row. |
+| R3 composition and geometry | **Passed for the correction boundary:** the queue supplies the action role, honest empty cases spend no line, the long reason retains `--ffmpeg-location`, and the top-level format/bar/verb tail moves exactly one font line. Accessible text includes the same step. |
+| Visual regeneration | **Passed:** a fresh generator run reported `97, 80, 97, 97` px and `1180x371`; its PNG and `ai/evidence/2026-08-14-T201-next-step-option-c.png` have the identical SHA-256 `73490db03f8dc397df22729108ed5cd63f2e27d33b955d1f9ee72199e92b6181`. The image was inspected at original resolution. |
+| Adjacent child probe | **Filed as T-244:** two composed failed playlist children each offered `Retry` and `Remove`, carried the new action line at a fitting 63 px height, and produced an empty verb-rectangle list. The unchanged base calculation establishes that this is not a correction regression. |
+| Implementer's wider gates | **Not repeated.** The Implementer reports **2982 passed / 18 skipped** unit+UI and **440 passed** integration; this review neither contradicts nor promotes those figures to independent results. |
+
+The implementation may now be committed as the single T-201 task commit requested by the
+maintainer. A routine post-verdict sync may move `T-201` out of `## In Review` after the commit SHA
+exists. The Reviewer changed only `ai/REVIEWS.md` and the approved follow-up entry in `ai/TASKS.md`;
+no reviewed source, test, product decision/specification, status record, evidence, generator,
+dependency, commit, push, handoff, roadmap, or remote state was changed.

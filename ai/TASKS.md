@@ -5643,6 +5643,50 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-244 — Expanded playlist entries offer verbs the delegate never draws
+
+**Status:** Proposed — filed by the `T-201` second-correction re-review. The defect reproduces at
+the review base and is not caused by `T201-R3`; it is carried rather than reopening that task.
+**Owner:** Implementer
+**Priority:** Medium — an expanded entry loses its own Retry and Remove controls, but the playlist
+header still offers Retry failed and group removal as workarounds
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `UX-005` rows 4 and 9, `T-140`, `ui/row_delegate.py` `_verb_rects`,
+`ui/queue_view.py` `VERBS_ROLE`
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`, composed queue tests
+**Risk:** Medium — the parent and child row anatomies use different line counts, and fixing one
+without driving paint and hit-testing together can restore a control at the wrong coordinates
+
+#### What is wrong
+
+An expanded playlist child answers its ordinary per-job verbs from `QueueModel`: a retryable failed
+entry offers `Retry` and `Remove`. `RowDelegate._verb_rects()` nevertheless positions every row's
+verbs from the top-level `TEXT_LINES` constant. A child is sized from `CHILD_TEXT_LINES`, so the
+computed top lies below its body and the delegate returns no rectangles. A deterministic composed-
+model probe at 1180 px found two failed children each offering both verbs and drawing **zero**.
+
+`T201-R3` made the mismatch easier to see but did not create it: before that correction the same
+function already used `TEXT_LINES` for a child, and the base tree therefore drops the verbs too.
+The new action line itself is present and fits in the child row; this task owns the older last-line
+calculation rather than making T-201 absorb adjacent playlist geometry.
+
+#### Acceptance criteria
+
+- Every expanded playlist child draws every verb its `VERBS_ROLE` offers, subject to the ordinary
+  overflow rule
+- Paint, hover and click resolve those verbs through the same rectangles
+- The last-line calculation derives from the child or parent anatomy actually sized for that row
+- Failed children with an `ACTION_ROLE`, children with a differing format line, and ordinary
+  two-line children each keep the verbs inside the body without clipping or overlap
+- A composed expanded-playlist regression proves the model offers and the delegate draws the same
+  controls
+
+#### Out of scope
+
+- Changing which verbs playlist entries or headers offer
+- Changing `T201-R3`'s action text or the ratified failed-row line
+
 ### T-243 — An interrupted row says the same thing twice, in two voices
 
 **Status:** Proposed — filed 2026-08-14 from the same rendered walkthrough, and it is a consequence
