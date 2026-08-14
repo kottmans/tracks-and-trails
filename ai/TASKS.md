@@ -5192,7 +5192,7 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
-### T-241 — A cancelled row states a byte count about nothing
+### T-241 — A row that has moved no bytes still states a byte count
 
 **Status:** Proposed — filed 2026-08-14 from `T-201`, whose criterion 4 covers *a terminal
 failure* and therefore does not reach this one.
@@ -5208,11 +5208,15 @@ misreported about a download that ran; the lie is about one that did not
 
 #### Scope
 
-**Measured on 2026-08-14, not inferred**: a cancelled row's second line reads
-`— · 0 B of Unknown`. A job the user cancelled before it started has no percentage and no size, and
-the row says both anyway — *"0 B of Unknown"* is the exact phrase `T-201`'s criterion 4 names as a
-confident statement about nothing, and the em dash beside it is `INDETERMINATE_TEXT` standing in
-for a percentage that does not exist either.
+**Measured on 2026-08-14, not inferred**, and it is wider than the title says. On the composed
+application a **cancelled** row's second line reads `— · 0 B of Unknown`, and so does a **queued**
+one: `Glenmore Lodge · 10:12 · — · 0 B of Unknown`. Any row that has not moved a byte says both a
+percentage that does not exist and a size that does not exist — *"0 B of Unknown"* is the exact
+phrase `T-201`'s criterion 4 names as a confident statement about nothing, and the em dash beside
+it is `INDETERMINATE_TEXT` standing in for the percentage.
+
+**The queued row is the more common one**, which is the argument for doing this at all: every
+freshly pasted row carries it until a worker starts.
 
 **`T-201` did not fix it, deliberately.** Its criterion says *a terminal failure*, and cancelling is
 not a failure — `ARCHITECTURE.md` §7 and `error_text` both turn on that, and the last time the two
@@ -5227,8 +5231,8 @@ and what it should not carry is progress that stopped meaning anything.
 
 #### Acceptance criteria
 
-- A cancelled row draws no percentage and no byte count, and a test asserts it against the drawn
-  line rather than the columns
+- A row that has moved no bytes — **queued, ready, probing and cancelled** — draws no percentage
+  and no byte count, and a test asserts it against the drawn line rather than the columns
 - **`SIZE_COLUMN` still reads *done of total*** and the spoken row still carries it, so the count
   moves rather than goes — the trade `T-216` and `T-201` both made
 - A cancelled row that **did** move bytes is considered explicitly and the answer recorded either
@@ -5239,6 +5243,111 @@ and what it should not carry is progress that stopped meaning anything.
 
 - Any other row state. `COMPLETED` and `FAILED` have their branches and their arguments
 - The columns, the chip, and the accessible text
+
+### T-242 — The Settings screen is taller than the screen, and clips its own explanations
+
+**Status:** Proposed — filed 2026-08-14 from a rendered walkthrough of the composed application,
+taken before `T-200` and `T-202` on the maintainer's direction so that rework is found first.
+**Owner:** Implementer
+**Priority:** **Medium–High** — it is visible on every normal display, it costs the user the
+sentences that explain the settings most likely to be misread, and **`T-200` audits this screen**:
+a keyboard pass over a dialog that cannot show its own content would be auditing the wrong shape
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/settings_dialog.py`, `T-146` (the screen), `T-196` (the section that
+pushed it over), `T-197` (`COOKIES_EXPLANATION`), `UX-005` §5
+**Affected surfaces:** `ui/settings_dialog.py`, `tests/ui/test_settings_dialog.py`
+**Risk:** Low to fix, and the measurement is the part to keep
+
+#### Scope
+
+**Measured, not eyeballed.** The screen's own `sizeHint` is **594 × 1407**. A 1080p display has
+roughly a thousand usable pixels of height, so the dialog is compressed by about a third whatever
+the window manager does — and what gives way is the wrapped explanatory text:
+
+| Label | Height it gets | Height it needs |
+|---|---|---|
+| `cookiesExplanation` | 23 px | **51 px** |
+| `networkExplanation` | 38 px | **85 px** |
+| `networkRetriesLabel` | 37 px | **51 px** |
+
+So the sentence saying a cookies file *"does not unlock anything your account cannot already
+reach"* is cut in half, and so is the one saying which retry the retry control governs — the
+sentence `T196-R5` spent a review round getting right.
+
+**Two candidate shapes, neither chosen here.** A `QScrollArea` around the sections is the ordinary
+answer and keeps every section at its natural height; collapsing the explanations into a smaller
+type or into per-control tooltips is the other, and it trades honesty for height, which is the
+trade `UX-005` §5 usually refuses. **The choice affects `T-200`**, because a scroll area changes
+the keyboard route through the screen — so it belongs before that pass, not after.
+
+#### Acceptance criteria
+
+- **No label on this screen is drawn shorter than the height it asks for**, at the smallest window
+  size the screen supports, asserted by comparing `heightForWidth` against the drawn height rather
+  than by looking at a picture
+- The whole screen is reachable at a 1366 × 768 working area — the smallest laptop the project
+  has claimed to support anywhere — with every control operable
+- **Whatever is chosen, the keyboard route is stated**, because `T-200` inherits it
+- A screenshot of the fixed screen is attached to the entry, both themes
+
+#### Out of scope
+
+- Re-wording any explanation to make it fit. The sentences are the ones the reviews settled
+- Other dialogs. The add dialog and the preset manager are their own shapes
+
+### T-243 — An interrupted row says the same thing twice, in two voices
+
+**Status:** Proposed — filed 2026-08-14 from the same rendered walkthrough, and it is a consequence
+of `T-201`'s new row line meeting a message that is not an extractor's.
+**Owner:** Implementer
+**Priority:** Low–Medium — one row state, and the row is still readable; what it costs is the space
+`T-201` just bought
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `persistence/repositories.py` §54–55 (the stored sentence),
+`ui/error_text.py`, `ui/queue_view.py` `_failure_detail`, `NFR-006`, `DAT-003`
+**Affected surfaces:** whichever of the two is chosen — see below
+**Risk:** Low, with one real trap: the obvious fix is a string comparison
+
+#### Scope
+
+**What the row draws today**, rendered from the composed application after a real recovery:
+
+> Tracks & Trails closed while this was downloading · The application stopped unexpectedly while
+> this job was in progress. Nothing is known about why — the process did not survive to record it.
+> Retry to start again.
+
+**Both halves are this project's own words.** The first is `error_text`'s headline for
+`INTERRUPTED`. The second is a constant in `persistence/repositories.py`, written during crash
+recovery into `error_message` — the field `NFR-006` and `DAT-003` reserve for **the extractor's own
+message**, and the reason `_failure_detail` carries it verbatim and last. So the row says the same
+fact twice, and the second copy ends with *"Retry to start again"* — a **next step**, on the one
+line `T-201` deliberately keeps next steps off, because a next step there pushes the extractor's
+words past the elide.
+
+**The question is which of the two owns the sentence**, and it is a real fork rather than a bug to
+patch:
+
+1. **Recovery stops writing prose into `error_message`** — it stores nothing, or a marker, and
+   `error_text` owns every word the user reads for `INTERRUPTED`. Cleanest, and it touches a
+   persistence constant that older rows already carry.
+2. **`_failure_detail` drops a message it recognises as its own.** Cheap and wrong in the way this
+   project keeps recording: it is a string comparison against a constant that will drift.
+
+#### Acceptance criteria
+
+- An interrupted row states what happened **once**
+- The row's line still carries no next step; whatever the fix, *"Retry to start again"* does not
+  reappear on it — the Retry **button** is what offers that (`REQ-018`, `UX-005` §5)
+- **Rows already in the database keep working**, whichever way it goes: a stored message written by
+  an older build is still rendered, not dropped silently
+- The chosen fork is recorded in this entry with the rejected one and its cost
+
+#### Out of scope
+
+- The other eleven classes. Their messages are the extractor's, which is the case the verbatim rule
+  was written for
 
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
