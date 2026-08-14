@@ -252,3 +252,30 @@ def test_the_sentence_names_a_setting_that_is_not_built() -> None:
     )
     assert "the theme" not in sentence, f"it names something that is built: {sentence!r}"
     assert still_to_come(mixed[:1]) == "", "a fully built declaration still claims something"
+
+
+@pytest.mark.parametrize("document", [DEVELOPMENT, UX_SPEC], ids=lambda p: p.name)
+def test_no_marker_starts_a_line_it_shares_with_prose(document: Path) -> None:
+    """**`T227-R1`.** A marker at column one starts a CommonMark **raw-HTML block**.
+
+    The whole line is then emitted without inline Markdown parsing, so the paragraph above it ends
+    early and the rest of the line renders its backticks and asterisks literally — which is the
+    opposite of an invisible marker, and it damaged the very sentence the marker exists to protect.
+    The regex gates could not see it: they read the file as text and never asked where the comment
+    sat.
+
+    **A structural rule rather than a rendered one**, deliberately: parsing Markdown here would add
+    a runtime dependency to a gate whose whole point is to be cheap and total. Two placements are
+    safe and both are allowed — inline with prose around it, or alone on its own line.
+    """
+    offenders = [
+        (number, line)
+        for number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), start=1)
+        if line.startswith("<!--") and line.rstrip() != line[: line.index("-->") + 3].rstrip()
+    ]
+
+    assert not offenders, (
+        f"{document.name} has a marker starting a line it shares with prose, which begins a "
+        "CommonMark HTML block and swallows the rest of that line:\n  "
+        + "\n  ".join(f"line {number}: {line[:90]}" for number, line in offenders)
+    )

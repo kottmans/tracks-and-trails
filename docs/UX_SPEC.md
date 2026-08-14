@@ -135,7 +135,7 @@ rather than storing one.
 `REQ-020` was withdrawn the same day, so there is nothing anywhere to clear. `Clear finished` stays
 — it clears completed **queue rows**, and with no records beside it there is nothing left for it to
 be confused with. **[T]** *(built 2026-08-10 by `T-146`)* **`Settings` is a menu between `File`
-<!-- req023:count built=8 total=8 -->and `Help`**, and the screen behind it holds **all eight** of `REQ-023`'s settings — the download
+and `Help`**, and the screen behind it holds **all eight** <!-- req023:count built=8 total=8 --> of `REQ-023`'s settings — the download
 folder, the theme, and the concurrency limit (`T-146`; the toolbar showed it too until `UX-013`
 moved it here alone), the ffmpeg location
 (`T-199`), the cookie source (`T-197`), the default preset and output template (`T-195`), and the
