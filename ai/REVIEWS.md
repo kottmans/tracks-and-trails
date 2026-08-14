@@ -16223,3 +16223,49 @@ while any of these findings remains open.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-13 — T-196 corrections focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-196`
+**Base:** `24ed437c4aa4aac750bfb61fd5753295c07580b3` — the reviewed implementation
+**Head:** `c09badd454a5ccb573e4297bf2628889b03706de` — the correction, pushed on `main`
+**Platforms verified:** Linux, Qt offscreen. No Windows runtime, CI, frozen build, or external
+network execution is claimed.
+**Verdict:** **Blocked.** `T196-R1` through `T196-R4` are Resolved, and the R5 product text is
+correct. `T196-R5` remains Open because two current-truth records still state the superseded
+per-fragment meaning. This is the one focused correction re-review allowed by `AGENTS.md` §10;
+with only a blocking Medium remaining, another automatic pass is not authorised. The maintainer
+must choose whether to authorise a final focused documentation re-review, accept the documented
+risk, change scope, or carry it to a named follow-up.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T196-R1** | **Critical** | **Yes** | **Resolved** | Live feedback and writing are separated: `textChanged` reaches only `_show_proxy_refusal`; `editingFinished` and `done()` reach `_commit_proxy`. The composed numeric-password route leaves memory, `settings.toml`, and the next request credential-free. Reconnecting `_commit_proxy` to `textChanged` made all three credential-entry cases fail, including memory holding `http://alice:12345`. Removing the `autoDefault` correction independently made Return open the folder picker and fail its regression. |
+| **T196-R2** | **Medium** | **Yes** | **Resolved** | `_proxy_from`'s reason carries no value or worked example. Public `registrable_proxy` is shared by stored and runtime routes and admits only a usable proxy or one carrying `@`. The four-shape composed formatter test passes. Restoring the old `://`/`@` classifier damaged an ordinary URL and failed one of four cases; appending `proxy_refusal` to the reason quoted three refused values and failed three of four cases. |
+| **T196-R3** | **Medium** | **Yes** | **Resolved** | `RATE_LIMIT_MINIMUM_BYTES = 1024` is enforced by `Settings`, `_rate_limit_from`, and `with_network_options`; 1/500/1023 are raised and reported, 1024 and non-multiples above it remain exact, and unrelated edits preserve the stored remainder. Lowering the floor to one made four of the six focused unit/UI cases fail, including a one-byte limit displayed as `No limit`. |
+| **T196-R4** | **Medium** | **Yes** | **Resolved** | The composed regression drives proxy and rate controls, checks `settings.toml`, builds the next request through the add dialog, and ends at adapter `proxy` and `ratelimit`. The reviewer's exact mutation — retain only `NetworkOptions(retries=options.retries)` in `choose_network` — now produces **1 failed, 9 passed**, at the new regression's persisted-proxy assertion; the restored selection is **10 passed**. |
+| **T196-R5** | **Medium** | **Yes** | **Open** | The visible label and accessible name both say *Retries of the file transfer, within one attempt*, and the section explains the separate segmented-stream count. Restoring the old label fails its focused UI regression. However, `ai/STATUS.md:504` still says yt-dlp `--retries` is **per-fragment**, and `ai/TASKS.md:317-318` still defines the acceptance choice as **fragment retries or job-level retry**. Both are current-truth surfaces under `AGENTS.md` §6, both materially misstate the built setting, and both directly continue R5. Correct them to distinguish file-transfer `--retries`, per-fragment `--fragment-retries`, and the application's job-level retry. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary before this record | **Passed:** `main`, `origin/main`, and HEAD were `c09badd`; tracked tree clean; `git diff --check 24ed437..c09badd` passed; the ignored handoff was outside the commit. |
+| Static gates | **Passed:** `ruff check .`; `ruff format --check .` (**179 files**); `mypy src` (**55 source files**); bare `mypy` and `mypy --platform win32` (**141 source/test files** each). |
+| Focused unit | **328 passed, 1 skipped** in `test_models.py` and `test_settings.py`. |
+| Focused UI | **41 passed** in `test_settings_dialog.py`, Qt offscreen. |
+| Focused composition | **10 passed, 63 deselected** for `test_composition.py -k 'network or proxy'`, Qt offscreen. |
+| Mutation isolation | Every reviewer mutation ran in a clean `git archive c09badd` tree with `PYTHONPATH` bound to that archive and `PYTHONDONTWRITEBYTECODE=1`; none touched the reviewed checkout. |
+| Implementer's full suites | **Not repeated by the Reviewer.** The Implementer reports **2923 passed, 18 skipped** unit+UI and **440 passed** integration at this exact head; this focused review neither contradicts nor promotes those figures to independent results. |
+
+### Remaining correction boundary
+
+No implementation or test change is requested. R5 needs only the two current-truth corrections
+identified above. Because this focused pass consumes the ordinary review budget, a further verdict
+requires the maintainer disposition described in `AGENTS.md` §10.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.
