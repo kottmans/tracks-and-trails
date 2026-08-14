@@ -5,6 +5,39 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-14 (overnight run) — **four tasks are In Review and nothing is pushed.**
+`T-201` finished the error-surface pass; `T-242`, `T-227` and `T-241` were built in an authorized
+unattended run, one commit each, held at `860d440`. **`## In Review` now holds four entries**, which
+is the most this project has had at once — they are independent and each carries its own mutation
+sweep, but that is a real queue for the Reviewer and it is stated rather than discovered.
+
+**What each was, in one line.** `T-201`: the failed row says what failed and carries the
+extractor's own words, and stops drawing `0 B of Unknown`. `T-242`: the Settings screen fits the
+screen. `T-227`: the records that say what is built are gated. `T-241`: no row states a byte count
+about nothing.
+
+**Three findings the builds produced that no plan predicted, and each is the interesting part:**
+
+- **A scroll area alone would have handed `T-200` a worse defect than the one it fixed.** Tabbing
+  through the fixed Settings screen left **31 of 40 tab stops focused off screen** with the scroll
+  bar never moving — `QScrollArea` scrolls when *it* resolves the focus move, and in a dialog the
+  dialog owns the tab chain. The screen follows the application's own `focusChanged` now; **0 of
+  40** after. `setFocus` alone still does not scroll, which is how it was found.
+- **`T-227`'s gate stopped working the moment it succeeded.** With all eight settings built the
+  screen's *still to come* sentence is empty — so a derivation replaced by `return ""` is
+  indistinguishable from a working one, and the mutation survived. The derivation takes the
+  declaration as an argument now, so the gate can be fed the state it exists for.
+- **A passing test contradicted `T-241` and was right.** Keyed on bytes alone, a *running* row with
+  no progress message yet drew an empty second line;
+  `test_a_row_the_probe_learned_nothing_about_draws_no_empty_fields` said so, and the rule gained
+  its second half.
+
+Gates on the final head: `ruff`, `ruff format`, `mypy src`, bare `mypy` and `mypy --platform win32`
+clean; **2949 passed, 18 skipped** unit+UI and **440 passed** integration, exit codes checked.
+**Twenty-six mutations across the four tasks, none surviving.**
+
+*(The block below is `T-201`'s own and is left as written.)*
+
 **Last updated:** 2026-08-14 (T-201 finished) — **the error-surface pass is complete and
 `T-201` is In Review.** Its last two criteria were the failed row itself: the row now says **what
 failed in plain words, then the extractor's own message verbatim**, and it **stops drawing
