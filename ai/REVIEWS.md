@@ -16780,3 +16780,38 @@ request the authorized pass. Do not push meanwhile.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
 dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
+
+## 2026-08-14 — T-244 authorized documentation re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-244`
+**Authorization:** maintainer-authorized documentation-only pass after the ordinary review budget
+was exhausted with `T244-R2` still open.
+**Correction boundary:** `2fb651f0b36a73d324d7e4cb0a24fbbb65a12d76..`
+`510923d295a30b0c77a0ee29eb35c08242e4f3a0` — one local, unpushed documentation commit.
+**Platforms verified:** documentation inspection only. No runtime, Windows, CI, real-display,
+frozen-build, or external-network claim is made.
+**Verdict:** **Approved at `510923d`.** `T244-R1` and `T244-R2` are Resolved; no open blocking
+finding remains.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Authorized re-review result |
+|---|---|---:|---|---|
+| **T244-R2** | **Medium** | **Yes** | **Resolved** | The snapshot now names only commits that already existed when its diff was written—`c1b4ab0` for the task and `30aaf42` for its first correction—and states the independently mutable push fact separately: nothing in T-244 is pushed and `origin/main` is at `ebe4159`. It makes no claim about whether the diff carrying that sentence is committed and deliberately does not attempt to name `510923d`, so committing it cannot falsify it. The same rule is recorded where the repeated error occurred: never describe the commit state of the diff carrying the description. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed:** `2fb651f..510923d` changes only `ai/STATUS.md` and `ai/TASKS.md`, **+37/−5**, and passes `git diff --check`. Its 43-character imperative subject, human-only authorship, `Task: T-244` and `Review: T244-R2` trailers satisfy repository policy. |
+| Commit-stable truth | **Passed:** every named SHA predates the correction; the correction's own SHA and commit state are absent; the push statement is true at review time with `origin/main == ebe4159`. |
+| Source/test exclusion | **Passed:** `git diff 30aaf42..510923d -- src tests` is empty, so the independently resolved R1 source and gate are unchanged. |
+| Task placement | **14 passed** in `tests/unit/test_task_placement.py`; T-244 remains beneath `## In Review`, matching its status at the reviewed head. |
+| Runtime/static suites | **Not repeated for this documentation-only correction.** `AGENTS.md` §8 requires none. The Implementer's reported Ruff, unit and prior runtime results are not promoted to independent claims. |
+
+T-244 may move from `## In Review` to `## Complete` in the routine post-verdict sync. Nothing may
+be pushed without the maintainer's separate instruction.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
+dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
