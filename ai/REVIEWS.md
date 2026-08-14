@@ -16690,3 +16690,50 @@ maintainer. A routine post-verdict sync may move `T-201` out of `## In Review` a
 exists. The Reviewer changed only `ai/REVIEWS.md` and the approved follow-up entry in `ai/TASKS.md`;
 no reviewed source, test, product decision/specification, status record, evidence, generator,
 dependency, commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-14 — T-244 expanded-child verb review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-244`
+**Implementation boundary:** `ebe4159be891ebdc078eb310111465f66176748fc..`
+`c1b4ab0768b289a0b7f3871eda7e01c7a6f1a1eb` — one local, unpushed task commit. `main` was
+`396eeeb` during review; that later `AGENTS.md`-only amendment is excluded, and `git diff` confirms
+that source, tests and T-244 coordination files are identical to `c1b4ab0` there.
+**Platforms verified:** Linux, Qt offscreen. No Windows runtime, CI, real display, frozen build, or
+external network execution is claimed.
+**Verdict:** **Changes requested.** The child-anatomy fix works and the repaired last-line
+parameterisation catches the two mutations that originally survived. Approval is blocked because
+the supposedly unobservable `_bar_reserve` guard does change composed child layout and has no gate,
+while the canonical status snapshot still identifies the committed task as an uncommitted tree at
+its parent.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T244-R1** | **Medium** | **Yes** | Phantom-bar reserve / evidence | The new `_depth(index) > 0` guard in `_bar_reserve()` is observable, contrary to the source comment, task entry, status snapshot and handoff's original reasoning. A composed running playlist child at 50% and 180 px offers `Cancel`: the submitted guard draws `Cancel` directly, while restoring the old phantom `MIN_FRACTION_BAR` reserve leaves only `⋯`. Across four child shapes and representative verb sets, independent old-versus-new comparison found changed rectangles over intervals from 175 through 364 px; even the real one-verb running shape differs from 137 through 204 px. The submitted `SWEEP_WIDTHS` starts at 300, its child fixtures carry no `PROGRESS_ROLE`, and therefore none of the fourteen new tests can fail when this guard is removed. The claimed 150–600 no-difference sweep was not a mutation test that established the branch. This is a good behavior change—an entry with no bar should not lose a direct verb to space reserved for one—but it is an unguarded seventh mutation, not an unobservable agreement. | Keep the guard, correct every durable “unobservable/no layout change” claim, and add a non-vacuous running-child regression at a width where restoring the old reserve changes `Cancel` to overflow-only. Demonstrate that restoration fails that test and update the mutation count. Removing the guard and its claims is also internally consistent, but would retain a phantom reserve and is not the recommended correction now that its effect is measured. | **Open** |
+| **T244-R2** | **Medium** | **Yes** | Current-truth review boundary | `ai/STATUS.md` in `c1b4ab0` says T-244 is “in an uncommitted tree on main at `ebe4159`.” `ebe4159` is the task's parent; the task is committed at `c1b4ab0`, and `main` subsequently advanced to `396eeeb`. The corrected handoff gives the real review boundary, but handoffs are untracked messages and `STATUS.md` is the canonical current-truth snapshot. A reader following it inspects the wrong tree and is told a committed task is uncommitted. | Rewrite the top snapshot to say T-244 is committed and awaiting focused re-review without trying to self-name a correction commit that does not exist yet. Keep the exact correction base/head in the next handoff. | **Open** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed:** `ebe4159..c1b4ab0` is one five-file task commit, **+416/−24**, and passes `git diff --check`. Its 38-character imperative subject, human-only authorship, `Task: T-244` and `Refs:` trailers satisfy repository policy. `396eeeb` changes only `AGENTS.md` and is excluded. |
+| Focused UI suite | **213 passed** in `test_row_delegate.py` and `test_queue_view.py`, with existing Qt mouse-event deprecation warnings. |
+| Static gates | **Passed:** focused `ruff check` and `ruff format --check`; `mypy src` (**55 files**), bare `mypy` and `mypy --platform win32` (**142 files** each). |
+| Child verbs and geometry | **Passed:** `_text_lines()` gives size, paint and verb placement one parent/child answer; the four child shapes retain their original heights, keep rectangles inside the body and yield whichever text role owns the last line. The composed wide-row case draws every offered failed, completed and queued verb. |
+| Last-line mutations | **Caught independently at exact `c1b4ab0` source:** making the action line ignore `room_on()` fails only the action-line parameter; making the child format line ignore it fails the format-only and action-plus-format parameters. The parametrisation repairs the gap the handoff identifies. |
+| Click route | **Passed:** the focused suite drives press/release at reported child rectangles and receives the matching verb. Paint and event handling share `_verb_rects()`. |
+| Phantom-reserve mutation | **Not caught; finding reproduced:** a composed running child at 50% and 180 px changes from direct `Cancel` to overflow-only when the old reserve is restored, while every submitted T-244 test remains outside that state/width combination. |
+| T-201 visual boundary | **Passed:** the generator still reports `97, 80, 97, 97` px at 1180×371 and produces the exact prior SHA-256 `73490db03f8dc397df22729108ed5cd63f2e27d33b955d1f9ee72199e92b6181`. |
+| Implementer's wider gates | **Not repeated.** The Implementer reports **2996 passed / 18 skipped** unit+UI and **440 passed** integration; this review neither contradicts nor promotes those figures to independent results. |
+
+### Correction boundary
+
+Keep the task unpushed. Correct R1's evidence and durable claims—preferably retaining and gating the
+measured no-phantom-reserve behavior—and correct R2's current-truth boundary in one focused batch.
+The working child-anatomy, `room_on()` parameterisation and existing fourteen regressions need no
+redesign.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
+dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
