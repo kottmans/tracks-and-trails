@@ -202,3 +202,47 @@ def test_a_failure_with_no_message_still_says_what_happened() -> None:
 
     assert rendered.startswith(headline_for(ErrorKind.WORKER_CRASH))
     assert not rendered.endswith("\n")
+
+
+def test_the_network_step_stops_promising_a_retry_once_they_are_spent() -> None:
+    """**`T201-R2`.** The one kind that is retried automatically is the one that can run out.
+
+    `DownloadManager` announces every failure *before* deciding whether to schedule another, and
+    refuses once `attempts` reaches `AUTOMATIC_RETRY_LIMIT` — so the fourth and final failure
+    rendered *"This one retries by itself"* at exactly the moment none remained. That is this
+    task's own named risk: **reassuring text that is no longer true.**
+
+    Both states are asserted, because a correction that made the *ordinary* text hedge would
+    satisfy a one-sided test while telling a user mid-backoff that nothing is happening.
+    """
+    during = next_step_for(ErrorKind.NETWORK)
+    after = next_step_for(ErrorKind.NETWORK, exhausted=True)
+
+    assert "retries by itself" in during, (
+        f"a network failure with retries left does not say they are running: {during!r}"
+    )
+    assert during != after, "the last failure says the same thing as the ones being retried"
+    assert "retries by itself" not in after, (
+        f"the final network failure still promises an automatic retry: {after!r}"
+    )
+    assert "retry" in after.lower(), (
+        f"and it no longer says what the user can do instead: {after!r}"
+    )
+
+
+@pytest.mark.parametrize("kind", [kind for kind in ErrorKind if kind is not ErrorKind.NETWORK])
+def test_every_other_kind_says_the_same_thing_either_way(kind: ErrorKind) -> None:
+    """Eleven of the twelve have no exhausted state, because nothing else retries by itself.
+
+    A second wording for a kind that is never automatically retried would be a state the product
+    cannot reach — and an empty `exhausted_next_step` is how the table says so.
+    """
+    assert next_step_for(kind) == next_step_for(kind, exhausted=True)
+
+
+def test_the_whole_composition_carries_the_exhausted_wording() -> None:
+    """`describe_failure` is what a surface renders, so the flag has to reach it (`T201-R2`)."""
+    spent = describe_failure(ErrorKind.NETWORK, "ERROR: timed out", exhausted=True)
+
+    assert "retries by itself" not in spent
+    assert "ERROR: timed out" in spent, "the extractor's message went with the wording change"

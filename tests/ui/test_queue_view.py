@@ -3783,3 +3783,53 @@ def test_a_running_row_with_no_bytes_yet_still_says_it_is_working(
     assert INDETERMINATE_TEXT in detail, (
         f"a running row with no bytes yet says nothing about working: {detail!r}"
     )
+
+
+@pytest.mark.parametrize(
+    ("stored", "drawn"),
+    [
+        ("ERROR:  two spaces", "ERROR:  two spaces"),
+        ("ERROR:\ttab", "ERROR:\ttab"),
+        ("ERROR: crlf\r\nsecond", "ERROR: crlf second"),
+        ("ERROR: cr\rsecond", "ERROR: cr second"),
+        ("  leading and trailing  ", "  leading and trailing  "),
+        ("ERROR:  two  spaces\tand a tab\nnext", "ERROR:  two  spaces\tand a tab next"),
+    ],
+    ids=["double-space", "tab", "crlf", "cr", "surrounding", "mixed"],
+)
+def test_only_line_separators_are_touched_in_the_extractors_message(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+    stored: str,
+    drawn: str,
+) -> None:
+    """**`T201-R1`.** The row's one transformation is line separators, and nothing else.
+
+    It was `" ".join(message.split())`, which with no argument splits on *all* whitespace — so
+    every double space, tab and carriage return collapsed as well, while the entry called the
+    behaviour *"a newline becomes a space"* and the criterion called it verbatim. The reviewer's
+    probe turned `"ERROR:  two spaces\\tand a tab\\nnext line"` into
+    `"ERROR: two spaces and a tab next line"`.
+
+    **The previous regression covered one newline and word order**, which is why it passed while
+    the rest was being rewritten. Each case here is a character class that must survive.
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.FAILED,
+            error_kind=ErrorKind.EXTRACTOR_ERROR,
+            error_message=stored,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert drawn in detail, (
+        f"the row drew {detail!r}; {drawn!r} is the message with its line separators joined and "
+        "every other character left alone"
+    )

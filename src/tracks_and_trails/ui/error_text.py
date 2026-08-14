@@ -68,6 +68,14 @@ class ErrorPresentation:
     headline: str
     next_step: str
 
+    #: What to say once the application has stopped retrying this by itself (`T201-R2`).
+    #:
+    #: **Empty for eleven of the twelve**, and that is the whole point of the field: only
+    #: `NETWORK` is retried automatically, so only `NETWORK` has a state in which its own next
+    #: step stops being true. A kind with nothing different to say after exhaustion keeps saying
+    #: what it said before, which is what an empty value here means.
+    exhausted_next_step: str = ""
+
     @property
     def has_next_step(self) -> bool:
         return bool(self.next_step)
@@ -119,8 +127,15 @@ _PRESENTATIONS: Final[dict[ErrorKind, ErrorPresentation]] = {
         headline="The connection to the site failed",
         # The only auto-retryable kind, so the sentence says the application is already trying —
         # otherwise a user reads "check your connection" while a retry they were not told about
-        # is in flight.
-        next_step="This one retries by itself. Check your connection if it keeps failing.",
+        # is in flight. **Bounded, and it says so** (`T201-R2`): the automatic retries run out,
+        # and a sentence that promises another one at the moment none remains is the reassuring
+        # text this module exists to refuse. `exhausted_next_step` is what the last failure gets.
+        next_step="This retries by itself a few times. Check your connection if it keeps failing.",
+        # **What the *final* failure says**, once `AUTOMATIC_RETRY_LIMIT` attempts are spent. Not
+        # a variant of the sentence above: at that point nothing is in flight, and the honest
+        # instruction is the button the row is already offering.
+        exhausted_next_step="The automatic retries are used up. Check your connection and press "
+        "Retry.",
     ),
     ErrorKind.FFMPEG_MISSING: ErrorPresentation(
         headline="This download needed ffmpeg, which was not found",
@@ -169,22 +184,34 @@ def headline_for(kind: ErrorKind) -> str:
     return describe(kind).headline
 
 
-def next_step_for(kind: ErrorKind) -> str:
+def next_step_for(kind: ErrorKind, *, exhausted: bool = False) -> str:
     """What to do, or `""` where there is honestly nothing.
 
     **Consistent with `core/errors.is_retryable` by construction**: a kind that may not be
     retried is never given a step that says to retry. The two are checked against each other by
     `test_no_unretryable_kind_is_told_to_retry` rather than kept in line by memory.
+
+    **`exhausted` is whether the automatic retries are spent** (`T201-R2`), which only the caller
+    can know: the bound lives on `DownloadManager` and this module may not import Qt. It was
+    missing, and the cost was exact — `NETWORK` said *"This one retries by itself"* on the fourth
+    and final failure, at the one moment no automatic retry remained. That is this task's named
+    risk in its own words: **reassuring text that is no longer true.**
+
+    A kind with no separate exhausted wording keeps its ordinary one, which is eleven of the
+    twelve — nothing else is retried automatically, so nothing else has a state to leave.
     """
     presentation = describe(kind)
-    if not is_retryable(kind) and "retry" in presentation.next_step.lower():
+    step = presentation.next_step
+    if exhausted and presentation.exhausted_next_step:
+        step = presentation.exhausted_next_step
+    if not is_retryable(kind) and "retry" in step.lower():
         # Unreachable while the table above holds, and cheap insurance if it is edited: the
         # alternative is a screen telling a user to press a button that is deliberately absent.
         return ""
-    return presentation.next_step
+    return step
 
 
-def describe_failure(kind: ErrorKind, message: str) -> str:
+def describe_failure(kind: ErrorKind, message: str, *, exhausted: bool = False) -> str:
     """The whole thing a surface shows: what failed, what to do, then the extractor's own words.
 
     **The message goes last and unchanged.** `NFR-006` requires it surfaced rather than swallowed
@@ -196,7 +223,7 @@ def describe_failure(kind: ErrorKind, message: str) -> str:
     class, and the headline is what the user reads then.
     """
     lines = [headline_for(kind)]
-    step = next_step_for(kind)
+    step = next_step_for(kind, exhausted=exhausted)
     if step:
         lines.append(step)
     if message.strip():

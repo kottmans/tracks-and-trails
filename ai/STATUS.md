@@ -5,6 +5,35 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-14 (four verdicts, corrections) — **all four tasks came back Changes
+requested, and one finding is Blocked on a ruling that is the maintainer's.** `T201-R3` is **High**:
+the actionable next step every failure is supposed to carry reaches **no surface a user can open** —
+`describe_failure` feeds `JobProgressView`, and **nothing in the product constructs that view**,
+because `UX-005` §2 removed the detail pane. The queue row is the only reachable failure surface and
+it deliberately omits the step. **Three places it could go, two of which need a ruling and the third
+the reviewer has already refused** — set out in the entry with two rendered pictures, because one
+option's cost is only visible as one: adding the step elides the ffmpeg row's extractor message from
+`--ffmpeg-location` to `--ff…`.
+
+**The other six findings are corrected.** `T201-R1`: the row split the extractor's message on *all*
+whitespace while calling itself verbatim — tabs and double spaces collapsed too; line separators
+only now. `T201-R2`: the last network failure promised an automatic retry at the moment none
+remained. `T242-R1`: the dialog sized itself against the **primary** display while its own comment
+claimed *"the screen it is on"* — a two-monitor desk recreates the defect at exactly the 1366 × 768
+working area the criterion names. `T242-R2`: the screenshots are attached, with
+`tools/settings_screenshots.py` committed so the current screen is one command away. `T227-R1`: the
+count marker began a line it shared with prose, which starts a CommonMark HTML block and **damaged
+the sentence it exists to protect**. `T241-R1`: this task's own rationale had been written into
+`T-201`'s entry.
+
+**Two of my own new regressions were wrong first, and both were caught by mutation rather than by
+reading.** `T-242`'s display test asserted only that the room was *small enough*, which the smaller
+offscreen primary satisfies — so the mutation it existed to catch passed. And the first placement
+guard for `T-227` needed a second case before it bound.
+
+*(The block below is the overnight run's own and is left as written, except for the mutation count
+it got wrong — see the correction inside it.)*
+
 **Last updated:** 2026-08-14 (overnight run) — **four tasks are In Review and nothing is pushed.**
 `T-201` finished the error-surface pass; `T-242`, `T-227` and `T-241` were built in an authorized
 unattended run, one commit each, held at `860d440`. **`## In Review` now holds four entries**, which
@@ -34,7 +63,9 @@ about nothing.
 
 Gates on the final head: `ruff`, `ruff format`, `mypy src`, bare `mypy` and `mypy --platform win32`
 clean; **2949 passed, 18 skipped** unit+UI and **440 passed** integration, exit codes checked.
-**Twenty-six mutations across the four tasks, none surviving.**
+**Twenty-seven mutations across the four tasks, none surviving** — *twenty-six* in the first
+version of this line and in the handoff, which the Reviewer counted and corrected. A miscount in
+the direction of fewer is the harmless one and it is still a number nobody had added up.
 
 *(The block below is `T-201`'s own and is left as written.)*
 

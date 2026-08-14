@@ -16299,3 +16299,196 @@ remain Resolved, so no open blocking finding remains.
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
 `T-196` out of `## In Review` and update current status to this approval without another review pass.
+
+## 2026-08-14 — T-201 failed-row reason review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-201`
+**Implementation boundaries:** `21be6a2d574b1320e3377879133ee87ddfb54728..`
+`90ee6f02cbb018be2c703f360ef258a4de6a335e` for criteria 1, 2, 5 and 6, then
+`31b54a8c963aef9a8193a2f91ca15d9197b2b3fb..643fa14a66cacb3f3d1dc82bc3a29414f30c6c50`
+for criteria 3 and 4. The first commit is already on `origin/main` but was explicitly excluded from
+the intervening T-198 reviews; the second is local and unpushed. Interleaved tasks are not included.
+**Platforms verified:** Linux, Qt offscreen. No Windows, CI, real-display, frozen-build, or external
+network execution is claimed.
+**Verdict:** **Changes requested.** The failed branch, byte-line suppression, classification text,
+and accessible path behave as intended. Approval is blocked because the task's actionable next-step
+text is not reachable anywhere in the composed application, the row rewrites extractor messages
+more broadly than the verbatim criterion permits, and an exhausted network failure still promises
+an automatic retry that the bounded manager will not schedule.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T201-R1** | **Medium** | **Yes** | Extractor-message fidelity | `QueueModel._failure_detail()` uses `" ".join(message.split())`. With no separator, `split()` strips leading/trailing whitespace and collapses every run of spaces, tabs, carriage returns, and line feeds. The implementation therefore does more than its disclosed newline-to-space transformation. An independent probe changed `"ERROR:  two spaces\tand a tab\nnext line"` to `"ERROR: two spaces and a tab next line"`. That contradicts the task's criterion that the message be present verbatim, not reworded, and that the row elide but never rewrite it. The new regression covers one newline and word order only, so double spaces and tabs pass while being changed. The database/detail-view copy remaining intact does not satisfy the separate row criterion. | Preserve all payload characters other than whichever exact line-separator treatment is explicitly authorised for the one-line row, and add regressions for repeated spaces, tabs, CRLF, and leading/trailing whitespace. Reconcile the criterion with any retained newline transformation; do not continue to call unrestricted whitespace collapsing “verbatim.” | **Open** |
+| **T201-R2** | **Medium** | **Yes** | Network action text | `NETWORK` always says `This one retries by itself`, but the manager announces every failure before attempting to schedule it and refuses scheduling once `job.attempts >= AUTOMATIC_RETRY_LIMIT` (three). The fourth/final failure therefore renders that promise at exactly the point no automatic retry remains. The static test checks only that `NETWORK` belongs to the auto-retryable class; it has no exhausted-attempt context and positively requires the misleading phrase. This is the task's named risk: reassuring action text that is no longer true. | Use wording true both during backoff and after exhaustion—for example, state the bounded policy and tell the user when to retry manually—or make the presentation context-aware. Gate the final exhausted-failure surface, not only `is_auto_retryable(ErrorKind.NETWORK)`. | **Open** |
+| **T201-R3** | **High** | **Yes** | Actionable presentation / composition | Criteria 1 and NFR-006 require the user to be told what they can do. `describe_failure()` supplies that next step only to `JobProgressView`; no production call constructs that view. `main_window._build_body()` passes no selection callback because `UX-005` removed the detail pane, and `app.py` explicitly says nothing follows a job into one. The only shipped failure surface is therefore the queue row, whose new `_failure_detail()` deliberately includes the headline and extractor message but omits `next_step_for()`. A user sees why authentication, ffmpeg, disk, worker-crash, and other failures happened but never sees the task's actionable instruction. The isolated `JobProgressView` tests pass against a surface the application cannot open, so the gate is false-green for the composed product. This is the central functionality T-201 exists to deliver, not an adjacent presentation preference. | Put each applicable next step on a reachable visible surface consistent with `UX-005`'s no-detail-pane decision, and drive the composed main-window route for representative actionable, no-action, and long-message cases. Preserve the extractor message's readable width rather than merely appending a third elided clause; if the row anatomy cannot carry both, obtain the required layout ruling instead of treating the unreachable widget as delivery. | **Open** |
+
+### Review judgments on the first implementation commit
+
+The presentation table is total over all twelve kinds, preserves the original message in
+`describe_failure`, keeps `GEO_RESTRICTED` free of workaround language, offers no DRM retry, and
+keeps cancellation out of failure routes. `ui/error_text.py` remains Qt-free through the layering
+gate. The pure composition and table ownership are acceptable. R3 is about delivery: rendering the
+composition in an unconstructed widget does not make it a product surface.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundaries and metadata | **Passed:** each T-201 implementation part is one task commit and both diffs pass `git diff --check`. Subjects are 58 and 37 characters—both inside the hard 60 cap—and both commits have human-only authorship plus `Task:` / `Refs:` trailers. |
+| First-part exact-head suite | **Passed:** `test_error_text.py`, `test_layering.py`, and `test_job_detail.py`, **415 passed with 4 existing PySide disconnect warnings in 3.75 s**, from a `git archive` of `90ee6f0`. |
+| Exact-head focused suite | **Passed:** `tests/ui/test_queue_view.py`, **102 passed in 2.12 s**, from a `git archive` of `643fa14` with `PYTHONPATH` bound to that archive. |
+| Final-tree T-201 suite | **Passed:** error-text, layering, job-detail, and queue-view files, **528 passed with 4 existing PySide disconnect warnings in 6.95 s**. This does not resolve R1/R2 because the submitted assertions encode both behaviors. |
+| Final-tree four-task combined slice | **Passed:** queue, Settings, and settings-record test files, **163 passed in 3.05 s**. |
+| Message-fidelity probe | **Failed the criterion as described in R1:** two spaces and a tab were collapsed in addition to the documented newline replacement. |
+| Exhausted-retry inspection | **Failed the honest-action criterion as described in R2:** `AUTOMATIC_RETRY_LIMIT == 3`; the manager emits the final failure and declines to schedule when attempts equal that limit, while `next_step_for(NETWORK)` still says it retries itself. |
+| Composed-surface reachability | **Failed as described in R3:** the source tree contains no production construction of `JobProgressView`; the main window explicitly supplies no row-selection callback, and composition explicitly removes the old detail-pane follow. The queue row is the reachable surface and does not consume `next_step_for` or `describe_failure`. |
+| Static gates on all four tasks' changed Python files | **Passed:** `ruff check`; `ruff format --check` (**5 files**); `mypy src` (**55 files**); bare `mypy` and `mypy --platform win32` (**142 files** each). |
+| Full suites / other platforms | **Not repeated.** The Implementer reports the wider gates at final head; this review does not promote those reports to independent results. |
+
+### Correction boundary
+
+Keep the local head unpushed. Deliver the actionable text on a reachable `UX-005`-compatible
+surface, correct the row transformation, and correct the exhausted-network wording in one batch,
+with composed or focused evidence for each finding. Reconcile the current criterion if a
+newline-only exception is retained. Because R3 is High, focused correction and independent
+verification continue until the product surface is real; the already-correct taxonomy,
+failed/status, accessibility, and no-bypass branches do not need a second broad audit.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-14 — T-242 Settings-screen fit review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-242`
+**Base:** `64cc27348075da0d349e4ec48604b32f95ed2c23`
+**Head:** `2c9ccf8b8db9a5335239223eaabb209a3e7b0042` — one local, unpushed commit
+**Platforms verified:** Linux, Qt offscreen. No real display, multi-monitor host, Windows, CI,
+frozen build, or external network is claimed.
+**Verdict:** **Changes requested.** The scroll region, fixed Close row, one-way scrolling, and
+Tab-driven focus following all pass. The opening bound is taken from the wrong display on a
+multi-monitor desktop, and the two screenshots required by the task are not attached or linked.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T242-R1** | **Medium** | **Yes** | Multi-monitor sizing | `_room_on_screen()` always uses `QApplication.primaryScreen()`, despite its own call-site claim that the dialog is bounded by “the screen it is on.” `SettingsDialog` is parented to the main window, so a main window on a smaller secondary display can open Settings using the larger primary display's available height. For example, a 1080-high primary can permit roughly a 1032-pixel dialog while the parent sits on the 768-high display named by the acceptance criterion, recreating the off-screen/clipped dialog this task exists to remove. The test also asks only `primaryScreen()`, so it is false-green for the same implementation. This is a narrow multi-monitor trigger but directly misses the required 1366×768 working-area case. | Resolve available geometry from the dialog/parent's associated `screen()` and use the primary display only as the no-associated-screen fallback. Add a deterministic regression in which the associated display's room is smaller than the primary display's and assert the associated room wins. | **Open** |
+| **T242-R2** | **Medium** | **Yes** | Required visual evidence | The fourth acceptance criterion requires fixed-screen screenshots in both themes attached to the T-242 entry. The entry contains only the claim that 620×700 offscreen images were rendered; commit `2c9ccf8` changes only `ai/TASKS.md`, the dialog, and its test, and the entry has no image or link. The evidence therefore cannot be inspected, even at the explicitly limited offscreen confidence level. | Attach or durably link the composed 620×700 light and dark captures at the task entry, or obtain maintainer approval to amend the criterion. Keep the limitation that they are offscreen and do not stand in for T-212's real-display pass. | **Open** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed:** `64cc273..2c9ccf8` is one commit; `git diff --check` is clean; the 38-character subject, human-only authorship, and `Task:` / `Refs:` trailers satisfy repository policy. |
+| Exact-head focused suite | **Passed:** `tests/ui/test_settings_dialog.py`, **47 passed in 0.90 s**, from a `git archive` of `2c9ccf8`. |
+| Final-tree combined focused suite | **Passed:** queue, Settings, and settings-record test files, **163 passed in 3.05 s**. |
+| Scroll/focus behavior | **Passed offscreen:** the submitted tests drive real Tab presses, keep every encountered focus widget visible, keep Close outside the scroll area, prohibit horizontal overflow, and bound the dialog against the single offscreen primary display. |
+| Multi-monitor selection | **Failed by inspection:** the only production and test query is `QApplication.primaryScreen()`; the dialog's/parent's associated display is never consulted. No multi-monitor runtime was available, so no broader display claim is made. |
+| Screenshot evidence | **Missing:** no image path, Markdown attachment, or durable link appears in the commit or task entry. |
+| Static gates | **Passed:** the shared four-task `ruff` and `mypy` results recorded in the T-201 review above. |
+
+### Correction boundary
+
+Keep the commit unpushed. Correct the display selection, add its focused regression, and supply the
+two evidence images in the task record in one batch. The focused re-review will verify those two
+findings and the correction diff; it will not treat offscreen output as real-display verification.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-14 — T-227 settings-record gate review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-227`
+**Base:** `2c9ccf8b8db9a5335239223eaabb209a3e7b0042`
+**Head:** `2ece51f55b28c106ea94b6680d27bd7dc1f2fede` — one local, unpushed commit
+**Platforms verified:** Linux, Qt offscreen. No Windows, CI, browser-hosted Markdown renderer,
+frozen build, or external network is claimed.
+**Verdict:** **Changes requested.** `REQ_023_SETTINGS` is an honest production declaration rather
+than a test-only seam, and the control/table/count comparisons have the intended reach. One count
+marker is placed as a CommonMark HTML block and visibly damages the UX specification it is meant
+to protect.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T227-R1** | **Medium** | **Yes** | UX-spec rendering | `docs/UX_SPEC.md` puts `<!-- req023:count built=8 total=8 -->and \`Help\`**...` at the start of a continuation line. A `<!--` at the beginning of a line starts a CommonMark raw-HTML block; the whole line is emitted without inline Markdown parsing. The preceding paragraph therefore ends after `File`, while the continuation renders its backticks/asterisks literally instead of behaving as an invisible inline marker. This contradicts the implementation record's claim that every renderer ignores the markers and makes the gated current-truth sentence malformed on every normal Markdown rendering. The raw-text regex tests remain green because they never exercise marker placement or rendering. | Put the count marker inline within the paragraph with surrounding whitespace, or on a comment-only block line separated from prose. Add a structural regression that rejects a beginning-of-line marker sharing its line with prose, so the test need not add a Markdown runtime dependency. | **Open** |
+
+### Review judgment requested in the handoff
+
+`still_to_come(settings=...)` is accepted as a production-shaped pure function over the declaration,
+not a test seam. The live screen uses the default declaration; accepting a declaration argument
+makes the future unbuilt state directly expressible without monkeypatching a module global. The
+gate also checks that every declared-built representative control exists. No architecture-layer
+violation was found.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed:** `2c9ccf8..2ece51f` is one commit; `git diff --check` is clean; the 39-character subject, human-only authorship, and `Task:` trailer satisfy repository policy. |
+| Exact-head focused suite | **Passed:** `test_settings_dialog.py` plus `test_settings_records.py`, **54 passed in 0.97 s**, from a `git archive` of `2ece51f`. |
+| Gate behavior at submitted head | **Passed:** every declared built control is found; the developer-table set and UX count agree with all eight declarations; the alternate declaration makes the missing-settings sentence non-empty. |
+| Marker placement | **Failed by inspection under CommonMark block rules:** the count marker begins at column one and shares its raw-HTML block line with Markdown prose. No browser-hosted renderer was used or claimed. |
+| Static gates | **Passed:** the shared four-task `ruff` and `mypy` results recorded in the T-201 review above. |
+
+### Correction boundary
+
+Keep the commit unpushed. Move only the malformed count marker and add the narrow placement guard;
+the declaration shape and the existing record comparisons require no redesign. The focused
+re-review will inspect that correction and the affected settings-record tests only.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.
+
+## 2026-08-14 — T-241 zero-byte row review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-241`
+**Base:** `2ece51f55b28c106ea94b6680d27bd7dc1f2fede`
+**Head:** `860d44086ca34cf56a453a6421e71f3ad4719f6e` — one local, unpushed commit
+**Platforms verified:** Linux, Qt offscreen. No Windows, CI, real-display, frozen-build, or external
+network execution is claimed.
+**Verdict:** **Changes requested.** The queue-model rule is correct at the reviewed boundary: idle
+zero-byte rows drop invented progress, active rows retain the working signal, and a cancelled
+partial retains its real size. Approval is blocked by the current-truth task record placing
+T-241's implementation and required sub-question answer inside T-201 instead of T-241.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T241-R1** | **Medium** | **Yes** | Task record / scope truth | Commit `860d440` inserts “What was built, and the two questions it turned on,” the zero-byte rule, and the cancelled-partial answer at `ai/TASKS.md:163-191`—inside the `T-201` entry. The actual T-241 entry says the required sub-question “is answered below,” but it reaches its acceptance criteria and Out of scope without that answer or any built-implementation section. The record therefore attributes T-241 behavior to T-201, duplicates the two tasks' scope, and fails to make the owning entry self-contained. This is not merely a heading preference: T-201 deliberately stopped at failures, while T-241 exists because cancellation/queued states were outside it. | Move the implementation/rationale/sub-question section into T-241 before its acceptance criteria and remove it from T-201. Keep the source and tests unchanged. | **Open** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed:** `2ece51f..860d440` is one commit; `git diff --check` is clean; the 39-character subject, human-only authorship, and `Task:` trailer satisfy repository policy. |
+| Exact-head focused suite | **Passed:** `tests/ui/test_queue_view.py`, **109 passed in 2.23 s**, from a `git archive` of `860d440`. |
+| Zero-byte rows | **Passed:** queued, ready, probing, and cancelled rows omit both the indeterminate percentage and `0 B of Unknown` from `DETAIL_ROLE`; uploader and duration remain. |
+| Working and partial rows | **Passed:** a zero-byte running row still carries indeterminate working progress; a running row with totals keeps percent/size; a cancelled 12.5 MB partial keeps its real size while terminal speed/ETA remain absent. |
+| T-201 regression | **Passed:** failed rows still use their failure-reason branch, and cancelled rows do not receive a failure reason. |
+| Current-truth placement | **Failed:** the only recorded answer and implementation rationale are above the T-201 acceptance criteria, not below the T-241 status that points to them. |
+| Static gates | **Passed:** the shared four-task `ruff` and `mypy` results recorded in the T-201 review above. |
+
+### Correction boundary
+
+Keep the commit unpushed. This task needs only the task-entry move described in R1; no source or
+test correction is requested. The focused re-review will verify the self-contained T-241 record and
+that the implementation tree remains unchanged.
+
+### Queue-wide bookkeeping note
+
+The four task entries enumerate **27** submitted mutations: T-201 seven, T-242 six, T-227 eight,
+and T-241 six. The handoff and the top `ai/STATUS.md` snapshot say **26**. None of these verdicts
+relies on the aggregate, and the discrepancy is not assigned to T-241, but the current-truth total
+should be corrected in the next coordination sync.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed.

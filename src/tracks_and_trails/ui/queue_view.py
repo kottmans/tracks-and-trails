@@ -922,7 +922,11 @@ class QueueModel(QAbstractTableModel):
         `ARCHITECTURE.md` §7): its chip says *Cancelled* and there is no reason to explain.
         """
         kind = row.job.error_kind
-        message = " ".join((row.job.error_message or "").split())
+        # **Line separators only** (`T201-R1`). `str.split()` with no argument takes tabs and
+        # repeated spaces with them, which is a rewrite rather than a line join. `splitlines()`
+        # knows exactly the separators a line can end with — `\r\n` as one break rather than two —
+        # and every other character is passed through untouched.
+        message = " ".join((row.job.error_message or "").splitlines())
         if kind is None:
             # A failure the taxonomy never classified. `with_failure` always sets a kind, so this
             # is a row built by hand or by a future path — the message alone is still better than

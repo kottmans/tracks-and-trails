@@ -97,7 +97,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core.errors import ErrorKind, is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.downloader.manager import AUTOMATIC_RETRY_LIMIT, DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.ui.error_text import describe_failure
 from tracks_and_trails.ui.log_view import LogView, build_log_view
@@ -301,6 +301,9 @@ class JobProgressView(QWidget):
         #: How many times the progress fields have been redrawn. See `renders`.
         self._renders = 0
         self._status = JobStatus.QUEUED
+        #: Whether the automatic retries are used up, so the failure text can stop promising one
+        #: (`T201-R2`). False until a job is read, which is the state before anything has failed.
+        self._retries_spent = False
         #: The last totals the bar was drawn from, so completion can redraw it truthfully
         #: without a second method reaching into the bar (`T017-R2`).
         self._totals: tuple[int | None, int | None] = (None, None)
@@ -693,6 +696,10 @@ class JobProgressView(QWidget):
         if job is not None:
             self._status = job.status
             self._title.setText(job.title or job.url)
+            # **Whether the application has stopped retrying this by itself** (`T201-R2`). Read
+            # from the job rather than counted here: `DownloadManager` refuses to schedule once
+            # `attempts` reaches its bound, and a second count in a widget is a second answer.
+            self._retries_spent = job.attempts >= AUTOMATIC_RETRY_LIMIT
             if job.error_kind is not None and job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
                 self._failure = (job.error_kind, job.error_message or "")
         self._adopt_totals()
@@ -776,7 +783,15 @@ class JobProgressView(QWidget):
             # whether anything could be done. `ui/error_text.py` owns the words; the message is
             # appended rather than replaced, because paraphrasing it destroys the only
             # information the user can act on (`core/errors.py`).
-            self._error.setText(describe_failure(kind, message) if kind is not None else message)
+            # **The exhausted wording once the automatic retries are spent** (`T201-R2`). The
+            # manager announces every failure *before* deciding whether to schedule another, so
+            # the last one used to render *"This one retries by itself"* at exactly the moment
+            # none remained — this task's named risk in its own words.
+            self._error.setText(
+                describe_failure(kind, message, exhausted=self._retries_spent)
+                if kind is not None
+                else message
+            )
             self._error.setVisible(True)
         else:
             self._error.setVisible(False)
