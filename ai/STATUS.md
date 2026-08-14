@@ -5,14 +5,25 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-14 (T-201's second correction, approved) — **all four tasks are approved;
-`T-201` is committed and unpushed, the other three are on `main`.** `T-242` (`68cd1c6`), `T-227`
-(`cd52ed5`) and `T-241` (`d7c9b7b`) are approved at those heads, with the review records on `main`
-at `cd87b1e`. `T-201`'s second correction resolved `T201-R2` and `T201-R3`; **`T201-R4` was found
-beside them, is pre-existing at `cd87b1e`, and is filed as the non-blocking `T-244`** — an expanded
-playlist child answers `Retry` and `Remove` while `_verb_rects` measures its baseline from the
-parent's `TEXT_LINES`, so no rectangle fits in the shorter child body and the verbs are drawn
-nowhere. The group-level verbs are the workaround, which is why it does not block.
+**Last updated:** 2026-08-14 (four approvals synced) — **`## In Review` is empty and Phase 4 has no
+build deliverable left.** `T-201` (`da9e0a7`, committed and **unpushed**), `T-242` (`68cd1c6`),
+`T-227` (`cd52ed5`) and `T-241` (`d7c9b7b`) are all Approved and moved to `## Complete`; the review
+records are on `main` at `cd87b1e`. **Seven of the phase's eight plan deliverables are in** — the
+error-surface pass closed with `T-201` — and the eighth is the accessibility pass, `T-200`, which
+has not started.
+
+**What is left in the phase, in the order it has to happen.** `T-244` and `T-243` first: both were
+filed from `T-201`'s review, neither is a plan deliverable, and **`T-244` costs a user controls** —
+an expanded playlist child answers `Retry` and `Remove` while `_verb_rects` measures its baseline
+from the parent's `TEXT_LINES`, so no rectangle fits in the shorter child body and the verbs are
+drawn nowhere. It is **pre-existing at `cd87b1e`**, which is why it did not reopen `T-201`; the
+group-level verbs are the workaround, which is why it does not block. Then `T-200`, `T-202`,
+`T-212` and the exit review — each verifies the whole application, so each runs after everything
+that adds or changes a control.
+
+**The ruling `T201-R3` was held on is taken and closed.** A failed row with an honest next step is
+one line taller; a failure with nothing to suggest keeps `UX-005` §3's anatomy. Recorded as a
+`UX-005` amendment with both rejected options and their reasons.
 
 **The maintainer ratified option C for `T201-R3` on 2026-08-14.** A failed row with an honest next
 step is one line taller, and that line says what the user can do; a failure with nothing to suggest

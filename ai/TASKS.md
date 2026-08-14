@@ -117,17 +117,22 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+## Complete
+
 ### T-201 — The error-surface pass: twelve classes, and the two with nothing to suggest
 
-**Status:** **In Review — approved for commit 2026-08-14**, second correction. Round one returned
-**Changes requested** with `T201-R1` (Medium), `T201-R2` (Medium) and `T201-R3` (**High**). The
-first focused re-review resolved `R1` and **reopened `R2`**: the corrected wording was not reachable
-through the widget's live event path. `R3` stayed open pending a ruling only the maintainer could
-take. **The maintainer ratified option C on 2026-08-14** — recorded as an amendment to `UX-005`,
-which is where a row-anatomy ruling lives. The second focused re-review **resolved both**, with
-**nine mutations** across them; `T201-R4` was found beside them and is **pre-existing and
-non-blocking**, filed as `T-244`. The routine post-verdict sync moves this entry once the commit
-exists.
+**Status:** **Complete — Approved at `da9e0a7` on 2026-08-14**, after a second correction. Round
+one returned **Changes requested** with `T201-R1` (Medium), `T201-R2` (Medium) and `T201-R3`
+(**High**). The first focused re-review resolved `R1` and **reopened `R2`**: the corrected wording
+was not reachable through the widget's live event path. `R3` stayed open pending a ruling only the
+maintainer could take. **The maintainer ratified option C on 2026-08-14** — recorded as an
+amendment to `UX-005`, which is where a row-anatomy ruling lives. The second focused re-review
+**resolved both**, with **nine mutations** across them; `T201-R4` was found beside them and is
+**pre-existing and non-blocking**, filed as `T-244`.
+
+**This entry closes the last build deliverable in Phase 4.** What remains of the phase is the
+accessibility pass (`T-200`), the colour sweep (`T-202`), the recorded checklist run (`T-212`) and
+the exit review — plus the polish `T-243` and `T-244` carry, neither of which is a plan deliverable.
 
 #### `T201-R1` — corrected: only line separators are touched
 
@@ -355,8 +360,8 @@ draws after a real worker fails.
 
 ### T-242 — The Settings screen is taller than the screen, and clips its own explanations
 
-**Status:** **In Review — corrected 2026-08-14.** Round one returned **Changes requested** with
-`T242-R1` and `T242-R2`, **both corrected**. The sizing now reads the display the dialog is *on*
+**Status:** **Complete — Approved at `68cd1c6` on 2026-08-14.** Round one returned **Changes
+requested** with `T242-R1` and `T242-R2`, **both Resolved**. The sizing now reads the display the dialog is *on*
 rather than the primary one — the reviewer found the code contradicting its own call-site comment,
 and the multi-monitor case it misses is exactly the 1366 × 768 working area this task's criterion
 names. The screenshots are attached rather than claimed. **Ten mutations across both rounds, none
@@ -471,8 +476,8 @@ is about the viewport, not the labels, and a mutation pointed at the wrong test 
 
 ### T-227 — Nothing gates the documents that say what is built
 
-**Status:** **In Review — corrected 2026-08-14.** Round one returned **Changes requested** with
-one finding, `T227-R1`, **corrected**: the `UX_SPEC` count marker sat at the start of a line it
+**Status:** **Complete — Approved at `cd52ed5` on 2026-08-14.** Round one returned **Changes
+requested** with one finding, `T227-R1`, **Resolved**: the `UX_SPEC` count marker sat at the start of a line it
 shared with prose, which begins a **CommonMark raw-HTML block** — so the paragraph above it ended
 early and the rest of that line rendered its backticks and asterisks literally. **A marker that
 damages the sentence it exists to protect is worse than no marker**, and the regex gates could not
@@ -637,8 +642,8 @@ works while something is missing is a gate that stops working the moment it succ
 
 ### T-241 — A row that has moved no bytes still states a byte count
 
-**Status:** **In Review — built 2026-08-14**, in the same authorized overnight run as `T-242` and
-`T-227`. The sub-question the criteria required answering is answered below — **in this entry,
+**Status:** **Complete — Approved at `d7c9b7b` on 2026-08-14**, built in the same authorized
+overnight run as `T-242` and `T-227`. The sub-question the criteria required answering is answered below — **in this entry,
 which is where `T241-R1` found it was not**: the section had been written into `T-201`'s entry,
 attributing this task's behaviour to the task that deliberately stopped short of it. The rule also
 turned out to have a second half that a *passing* test found. Six mutations, none surviving.
@@ -719,8 +724,6 @@ _something_keeps_its_size` is what holds it that way.
 
 - Any other row state. `COMPLETED` and `FAILED` have their branches and their arguments
 - The columns, the chip, and the accessible text
-
-## Complete
 
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
 
