@@ -5,6 +5,30 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-13 (T-196 approved) — **`T-196` is Approved at `c70f61a`, all five
+findings Resolved, and `## In Review` is empty.** The last of `REQ-023`'s eight settings is built:
+proxy, per-download speed limit and yt-dlp's own `--retries` are on the Settings screen, in
+`[network]` in `settings.toml`, and bound onto the request when a job is queued.
+
+**Three review rounds, and the shape of them is the part worth keeping.** Round one found a
+**Critical** — the screen wrote the proxy on every keystroke, so a credentialed proxy reached
+`settings.toml` one keystroke before the `@` arrived and the value was refused. Round two resolved
+`T196-R1`–`R4` with independent mutation evidence and **blocked on prose**: two current-truth
+records still called `--retries` *per-fragment*, one of them **this task's own acceptance
+criterion**, so the criterion demanding the control name which retry it is was naming the wrong one.
+Round three — **authorised by the maintainer**, because `AGENTS.md` §10's ordinary budget was
+spent — approved the documentation correction. **No source or test changed after `c09badd`.**
+
+**The lesson is the sweep's boundary.** The first correction searched the *task entry* and stopped
+there; `T-186` had already established that a prose sweep runs over the whole current-truth surface.
+One `grep` for *per-fragment* across `ai/` and `docs/` returns every site at once.
+
+**What is actionable now:** `T-201` is In Progress with criteria 3 and 4 unbuilt, and `T-200`,
+`T-202`, `T-227` and `T-240` are Proposed. `T-212`'s checklist run stays last, by the plan's own
+reasoning — it checks an application the remaining tasks are about to change.
+
+*(The block below is the re-review that returned Blocked, and is left as written.)*
+
 **Last updated:** 2026-08-13 (T-196 re-reviewed: Blocked) — **four of the five findings are
 Resolved and the fifth is held open by two sentences of prose.** `T196-R1` through `T196-R4` are
 marked Resolved by the Reviewer, each independently re-tested and mutation-verified — including the

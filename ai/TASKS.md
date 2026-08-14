@@ -5,9 +5,9 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-10 — T-146 is Complete, approved at `0adf9e3` after the
-maintainer-authorized T146-R3 pass; T146-R1, T146-R2, and T146-R3 are all Resolved. T-215 remains
-Complete at the combined implementation tree `b9caa40`.
+**Last updated:** 2026-08-13 — `T-196` is Complete, approved at `c70f61a` after a maintainer-
+authorized documentation-only pass; `T196-R1` … `T196-R5` are all Resolved and the entry has moved
+to `## Complete`. `T-146` remains Complete at `0adf9e3` and `T-215` at `b9caa40`.
 **Phase 4 is the current phase**, its plan deliverables decomposed under `## Proposed — Phase 4`.
 For what is awaiting a verdict now, read `## In Review` — this header does not duplicate it, for
 `T204-R2`'s reason.
@@ -117,19 +117,21 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+## Complete
+
 ### T-196 — Network options: rate limit, proxy, and a retry policy that does not exist yet
 
-**Status:** **In Review — Blocked at the focused re-review, 2026-08-13, and the block is two
-sentences of prose.** `T196-R1` through `T196-R4` are **Resolved**, marked so by the Reviewer and
-each independently mutation-verified. **`T196-R5` stays Open**: the label, the accessible name and
-the section were correct, but `ai/STATUS.md` still called `--retries` *per-fragment* and this
-entry's own acceptance criterion still framed the choice as *fragment retries or job-level retry*.
-**Both are corrected here, and no implementation or test change was requested or made.**
+**Status:** **Complete — Approved at `c70f61a` on 2026-08-13.** All five findings are **Resolved**:
+`T196-R1` through `T196-R4` in the correction at `c09badd`, each independently mutation-verified by
+the Reviewer, and **`T196-R5` in a documentation-only correction the maintainer authorised** as the
+extra focused pass `AGENTS.md` §10 requires. No follow-up is required by the review.
 
-**A further verdict needs the maintainer, not another submission** (`AGENTS.md` §10): the focused
-correction pass is spent, so a documentation-only re-review has to be authorised, the risk accepted,
-the scope changed, or the residue carried to a named follow-up. **That disposition is the
-maintainer's and is not taken here.**
+**`T196-R5` cost three passes and never once touched the product.** The label, the accessible name
+and the section explaining segmented streams were right in the first correction; what was wrong were
+two **current-truth records** that still called `--retries` *per-fragment* — `ai/STATUS.md`'s ruling
+bullet and **this entry's own acceptance criterion**. A criterion demanding the control name which
+retry it is was itself naming the wrong one. The Reviewer's closing sweep of `ai/` and `docs/` found
+no unannotated statement left.
 
 Round one returned **Changes requested** with one Critical and four Medium findings, **all five
 corrected in one batch** and recorded below. `ruff`, `ruff format`, `mypy src`, bare `mypy` and
@@ -361,8 +363,6 @@ this task must not land a stored proxy without it.
   `T-203` is arguing per-row controls *down* rather than up
 - yt-dlp's wider network surface — `--socket-timeout`, `--source-address`, `--impersonate` and the
   rest belong to Phase 4.5's audit (`T-183`), and `SEC-003` already excluded `--impersonate`
-
-## Complete
 
 ### T-198 — Report the yt-dlp version, update it in place, and be able to go back
 
