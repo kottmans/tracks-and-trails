@@ -117,15 +117,17 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+## Complete
+
 ### T-244 — Expanded playlist entries offer verbs the delegate never draws
 
-**Status:** **In Review — corrected 2026-08-14.** Filed by the `T-201` second-correction
-re-review; the defect reproduces at the review base and is not caused by `T201-R3`, so it was
-carried rather than reopening that task. Round one returned **Changes requested** with `T244-R1`
-(the phantom bar reserve, which I had wrongly measured as unobservable) and `T244-R2` (a stale
-`ai/STATUS.md` claim). `T244-R1` is **Resolved**; `T244-R2` outlived its first correction and is
-corrected again here, under the maintainer's authorization of a third, documentation-only pass —
-`AGENTS.md` §10's budget was exhausted with it still open. **Seven mutations, none surviving** —
+**Status:** **Complete — Approved at `510923d` on 2026-08-14.** Filed by the `T-201`
+second-correction re-review; the defect reproduces at the review base and is not caused by
+`T201-R3`, so it was carried rather than reopening that task. Round one returned **Changes
+requested** with `T244-R1` (the phantom bar reserve, which I had wrongly measured as unobservable)
+and `T244-R2` (a stale `ai/STATUS.md` claim). Both are **Resolved** — `T244-R2` outlived its first
+correction and took a **third, documentation-only pass** the maintainer authorized, `AGENTS.md`
+§10's ordinary budget having been exhausted with it still open. **Seven mutations, none surviving** —
 and three of the seven survived a first version of the tests, including the one `T244-R1` had to
 find for me.
 **Owner:** Implementer
@@ -238,8 +240,6 @@ writing triggers. Recorded in `ai/STATUS.md` where the mistake was made, not onl
 
 **No source or test change.** This finding was documentation-only in all three rounds; the
 `T244-R1` correction is the last change to reach `src/` or `tests/`.
-
-## Complete
 
 ### T-201 — The error-surface pass: twelve classes, and the two with nothing to suggest
 

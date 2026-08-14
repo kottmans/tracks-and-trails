@@ -5,9 +5,10 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-14 (T-244 in review) — **`T-244` is in review, corrected twice.** The task
-is **`c1b4ab0`**, its first correction **`30aaf42`**. **Nothing in this task is pushed**;
-`origin/main` is at `ebe4159`. An expanded playlist entry drew none of the verbs it
+**Last updated:** 2026-08-14 (T-244 approved) — **`T-244` is Approved at `510923d` and
+`## In Review` is empty.** The task is `c1b4ab0`, its corrections `30aaf42` and `510923d`, after
+two correction rounds and a third the maintainer authorized. **Nothing since `ebe4159` is pushed**;
+that is where `origin/main` stands. An expanded playlist entry drew none of the verbs it
 offered, at every width: `sizeHint` shortened a child to `CHILD_TEXT_LINES` while `_verb_rects`
 went on measuring every row's last line from the top-level `TEXT_LINES`, so the baseline landed
 below the child's own body and the layout returned an empty list. **`_text_lines` is the one answer
@@ -32,22 +33,22 @@ dutifully updated and the self-referential shape left in place. **Name commits t
 and state the push separately**: a SHA stays true once written, and pushing is a deliberate act with
 its own update, not something the act of writing triggers.
 
-*(The snapshot below is the four-approval sync's and stands.)*
+*(The snapshot below is the four-approval sync's. Two claims in it have been corrected rather than
+left standing: it called `T-201` unpushed — `da9e0a7` is an ancestor of `origin/main` and has been
+pushed since — and it listed `T-244` as work still to come. **The first is `T244-R2`'s defect a
+third time, in a block marked as still true**, which is why the push state is now stated once, at
+the top, instead of beside each SHA.)*
 
-**`## In Review` is empty and Phase 4 has no build deliverable left.** `T-201` (`da9e0a7`, committed and **unpushed**), `T-242` (`68cd1c6`),
-`T-227` (`cd52ed5`) and `T-241` (`d7c9b7b`) are all Approved and moved to `## Complete`; the review
-records are on `main` at `cd87b1e`. **Seven of the phase's eight plan deliverables are in** — the
-error-surface pass closed with `T-201` — and the eighth is the accessibility pass, `T-200`, which
-has not started.
+**Phase 4 has no build deliverable left.** `T-201` (`da9e0a7`), `T-242` (`68cd1c6`), `T-227`
+(`cd52ed5`) and `T-241` (`d7c9b7b`) are all Approved and in `## Complete`; their review records are
+at `cd87b1e`. **Seven of the phase's eight plan deliverables are in** — the error-surface pass
+closed with `T-201` — and the eighth is the accessibility pass, `T-200`, which has not started.
 
-**What is left in the phase, in the order it has to happen.** `T-244` and `T-243` first: both were
-filed from `T-201`'s review, neither is a plan deliverable, and **`T-244` costs a user controls** —
-an expanded playlist child answers `Retry` and `Remove` while `_verb_rects` measures its baseline
-from the parent's `TEXT_LINES`, so no rectangle fits in the shorter child body and the verbs are
-drawn nowhere. It is **pre-existing at `cd87b1e`**, which is why it did not reopen `T-201`; the
-group-level verbs are the workaround, which is why it does not block. Then `T-200`, `T-202`,
-`T-212` and the exit review — each verifies the whole application, so each runs after everything
-that adds or changes a control.
+**What is left in the phase, in the order it has to happen.** `T-243` first: filed from `T-201`'s
+review, not a plan deliverable, and a fork rather than a patch — an interrupted row states its
+reason twice, because crash recovery writes our own sentence into the field reserved for the
+extractor's. Then `T-200`, `T-202`, `T-212` and the exit review — each verifies the whole
+application, so each runs after everything that adds or changes a control.
 
 **The ruling `T201-R3` was held on is taken and closed.** A failed row with an honest next step is
 one line taller; a failure with nothing to suggest keeps `UX-005` §3's anatomy. Recorded as a
