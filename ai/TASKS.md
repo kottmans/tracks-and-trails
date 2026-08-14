@@ -119,10 +119,64 @@ this one returned four verdicts before approving.*
 
 ### T-201 — The error-surface pass: twelve classes, and the two with nothing to suggest
 
-**Status:** **In Review — finished 2026-08-14.** All six criteria are met. The two that were
-untouched — the reason on the failed row itself, and the byte line a terminal failure suppresses —
-are built, and **seven mutations each turn their own evidence red**, which the first half of this
-task did not have because the row it would have mutated did not exist yet.
+**Status:** **In Review — corrected 2026-08-14, and one finding is Blocked on a ruling that is
+the maintainer's.** Round one returned **Changes requested** with `T201-R1` (Medium), `T201-R2`
+(Medium) and `T201-R3` (**High**). **R1 and R2 are corrected**, with five mutations of their own.
+**R3 cannot be corrected by an implementer**, and the reviewer says so in its own recommendation:
+*"if the row anatomy cannot carry both, obtain the required layout ruling instead of treating the
+unreachable widget as delivery."* The ruling is set out below with the options rendered.
+
+#### `T201-R1` — corrected: only line separators are touched
+
+It read `" ".join(message.split())`, and `str.split()` with no argument splits on **all**
+whitespace — every double space, tab and carriage return collapsed too, while this entry called the
+behaviour *"a newline becomes a space"* and the criterion called it verbatim. The reviewer's probe
+turned `"ERROR:  two spaces\tand a tab\nnext line"` into `"ERROR: two spaces and a tab next line"`.
+It is `splitlines()` now, which knows exactly what a line can end with — `\r\n` as one break — and
+passes every other character through. Six parametrised cases: double space, tab, CRLF, CR,
+surrounding whitespace, and the reviewer's own mixed string.
+
+#### `T201-R2` — corrected: the last network failure stops promising a retry
+
+`AUTOMATIC_RETRY_LIMIT` is three, and the manager announces every failure **before** deciding
+whether to schedule another — so the fourth rendered *"This one retries by itself"* at exactly the
+moment none remained. `ErrorPresentation` gained `exhausted_next_step`, `next_step_for` an
+`exhausted` flag, and `JobProgressView` reads `job.attempts >= AUTOMATIC_RETRY_LIMIT` rather than
+counting again. **Eleven of the twelve say the same thing either way**, because nothing else is
+retried automatically — asserted, so a hedge cannot be added to a kind that has no such state.
+
+#### `T201-R3` — **High, and it needs a layout ruling. Nothing is built for it.**
+
+**The finding is right and the diagnosis is worse than it looks.** `describe_failure` supplies the
+next step only to `JobProgressView`, and **nothing in the product constructs that view** — `UX-005`
+§2 removed the detail pane, `main_window._build_body` passes no selection callback, and composition
+says in as many words that nothing follows a job into one. So the only reachable failure surface is
+the queue row, and the row deliberately carries the headline and the extractor's message **without**
+the next step. A user is told what failed and never told what to do.
+
+**Three places it could live. Two need a ruling and the third the reviewer has already refused.**
+
+| | Where | What it costs |
+|---|---|---|
+| **A** | A third clause on the row's second line — `headline · next step · message` | **Measured, not argued**: at 1180 px the ffmpeg row's message elides from `…--ffmpeg-location` to `…--ff…`. The extractor's own words are what gets cut, which is what `NFR-006` protects most. The reviewer names this one and refuses it |
+| **B** | The next step **replaces the format line** on a failed row | Overturns `UX-005` §6's *"plain format text once a download starts"* for one row state. Defensible — nothing is downloading — but §6 is a `[T]` clause and this is not an implementer's to reinterpret |
+| **C** | A **third text line**, failed rows only | Changes the row anatomy `UX-005` §3 states and `T-119` built: a new line, a new row height, and every measurement in `row_delegate` that depends on both |
+
+**Rendered rather than described**, from the real delegate against three failure kinds:
+`ai/evidence/2026-08-14-T201-next-step-today.png` (as built, no next step anywhere) and
+`ai/evidence/2026-08-14-T201-next-step-option-a.png` (A, with the elision visible). B and C are not
+rendered: B needs a `[T]` clause overturned before it is worth drawing, and C is delegate work.
+
+**What is not in doubt:** the text itself is written, tested and correct for all twelve kinds; what
+is missing is a surface. **This is the criterion the task exists for**, so it stays open — and no
+mutation evidence can close it, because nothing is built.
+
+*(The build record below is round one's and stands, except that the message transformation is now
+line separators only — see `T201-R1` above.)*
+
+**Round one's status:** all six criteria were reported met. The two that had been untouched — the
+reason on the failed row, and the byte line a terminal failure suppresses — are built, and **seven
+mutations each turn their own evidence red**.
 **Owner:** Implementer
 **Priority:** Medium–High — `NFR-006` is a promise the application makes on its worst day
 **Phase:** Phase 4
@@ -159,36 +213,6 @@ classes nobody has written text for yet.**
 **"Actionable" cannot become "reassuring".** A message that suggests an action which cannot work is
 worse than one that admits there is none — it sends the user to try things. `T-192` already added
 `ACTIONABLE_STATUS_PROPERTY` for a status the user can act on; the same distinction belongs here.
-
-#### What was built, and the two questions it turned on
-
-**The rule: a row that is *not working* and has moved *no bytes* says nothing about bytes.** Both
-halves are load-bearing.
-
-**The bytes half** is the criterion: `— · 0 B of Unknown` is a percentage that does not exist
-beside a size that does not exist. Keyed on the count rather than on a list of statuses, so a
-status added later is covered without anyone remembering to add it.
-
-**The working half was found by a test that was already passing.** With the rule keyed on bytes
-alone, a **running** row that had not yet received its first progress message drew an *empty*
-second line — and `test_a_row_the_probe_learned_nothing_about_draws_no_empty_fields` said so,
-because `T124-R4` settled that such a row opens on its progress. A row that is working says so even
-when the number is not known yet; a row that is waiting or stopped has nothing to report. **A
-passing test that contradicts a change is evidence about the change**, and this one was right.
-
-**`PROBING` is not "working"**, on `_SEGMENT_BY_STATUS`' own reasoning: the bar counts downloads,
-and a probed entry has not downloaded anything yet.
-
-#### The sub-question, answered
-
-*"A cancelled row that **did** move bytes is considered explicitly and the answer recorded either
-way."*
-
-**The size stays.** A download cancelled after 12 MB of 48 MB *has* those bytes — the partial file
-is on disk, and `REQ-017`'s resume turns on exactly it — so reporting them is reporting something
-true. What goes is the statement about bytes that never moved. The rule is about a count being
-*about nothing*, not about the row being terminal, and `test_a_cancelled_row_that_did_download
-_something_keeps_its_size` is what holds it that way.
 
 #### Acceptance criteria
 
@@ -301,9 +325,17 @@ draws after a real worker fails.
 
 ### T-242 — The Settings screen is taller than the screen, and clips its own explanations
 
-**Status:** **In Review — built 2026-08-14**, in an authorized overnight run. A scroll area was
-chosen; **the keyboard route it changes is built and gated**, because the measurement that matters
-here was found while evidencing it — see below. Six mutations, none surviving.
+**Status:** **In Review — corrected 2026-08-14.** Round one returned **Changes requested** with
+`T242-R1` and `T242-R2`, **both corrected**. The sizing now reads the display the dialog is *on*
+rather than the primary one — the reviewer found the code contradicting its own call-site comment,
+and the multi-monitor case it misses is exactly the 1366 × 768 working area this task's criterion
+names. The screenshots are attached rather than claimed. **Ten mutations across both rounds, none
+surviving**; the two new ones are the display choice and its fallback.
+
+**One of the new regressions was written wrongly first**, and it is worth recording: it asserted
+only that the room was *small enough*, which the offscreen primary display satisfies by being
+smaller still — so the mutation it existed to catch passed. It asserts the exact dimensions only
+the associated display can produce now.
 **Owner:** Implementer
 **Priority:** **Medium–High** — it is visible on every normal display, it costs the user the
 sentences that explain the settings most likely to be misread, and **`T-200` audits this screen**:
@@ -388,12 +420,19 @@ is about the viewport, not the labels, and a mutation pointed at the wrong test 
   size the screen supports, asserted by comparing `heightForWidth` against the drawn height rather
   than by looking at a picture
 - The whole screen is reachable at a 1366 × 768 working area — the smallest laptop the project
-  has claimed to support anywhere — with every control operable
+  has claimed to support anywhere — with every control operable. **And it is that display's room
+  that bounds the dialog** (`T242-R1`): `_room_on_screen` reads `self.screen()` and falls back to
+  the primary only where a widget has never been shown on any display
 - **Whatever is chosen, the keyboard route is stated**, because `T-200` inherits it — **met, and
   it was not free**: see the finding above
-- A screenshot of the fixed screen is attached to the entry, both themes — **rendered from the
-  composed application at 620 × 700, both themes, zero labels clipped**. Offscreen, so it says
-  nothing about a real display; that is `T-212`'s
+- A screenshot of the fixed screen is attached to the entry, both themes — **attached, since
+  `T242-R2`**: `ai/evidence/2026-08-14-T242-settings-light.png` and
+  `…-dark.png`, rendered from the composed application at 620 × 700 with **zero labels clipped**.
+  Round one recorded only the claim that they had been rendered, which the reviewer could not
+  inspect. `tools/settings_screenshots.py` regenerates the *current* screen in one command, which
+  is what `ai/evidence/README.md` asks for; the dated captures are the one head, which is the part
+  re-running cannot give back. Offscreen either way, so they say nothing about a real display —
+  that is `T-212`'s
 
 #### Out of scope
 
@@ -402,10 +441,18 @@ is about the viewport, not the labels, and a mutation pointed at the wrong test 
 
 ### T-227 — Nothing gates the documents that say what is built
 
-**Status:** **In Review — built 2026-08-14**, in the same authorized overnight run as `T-242`.
-**Candidate 2 was chosen** and is recorded below with what the other two cost. Eight mutations,
-none surviving — including the one this task exists for: *a setting is built and no document is
-touched.*
+**Status:** **In Review — corrected 2026-08-14.** Round one returned **Changes requested** with
+one finding, `T227-R1`, **corrected**: the `UX_SPEC` count marker sat at the start of a line it
+shared with prose, which begins a **CommonMark raw-HTML block** — so the paragraph above it ended
+early and the rest of that line rendered its backticks and asterisks literally. **A marker that
+damages the sentence it exists to protect is worse than no marker**, and the regex gates could not
+see it because they read the file as text and never asked where the comment sat. It is inline now,
+and a **structural guard** rejects any marker that begins a line it shares with prose — a rule
+rather than a rendered check, so the gate stays free of a Markdown runtime.
+
+**Candidate 2 was chosen** and is recorded below with what the other two cost. **Ten mutations
+across both rounds, none surviving** — including the one this task exists for, *a setting is built
+and no document is touched*, and the two new placement ones.
 **Owner:** Implementer
 **Priority:** Medium — no user is misled, because the sentence *on the screen* was correct
 throughout. What rotted is every document describing it, and the phase exits on a **recorded
@@ -561,7 +608,9 @@ works while something is missing is a gate that stops working the moment it succ
 ### T-241 — A row that has moved no bytes still states a byte count
 
 **Status:** **In Review — built 2026-08-14**, in the same authorized overnight run as `T-242` and
-`T-227`. The sub-question the criteria required answering **is answered below**, and the rule
+`T-227`. The sub-question the criteria required answering is answered below — **in this entry,
+which is where `T241-R1` found it was not**: the section had been written into `T-201`'s entry,
+attributing this task's behaviour to the task that deliberately stopped short of it. The rule also
 turned out to have a second half that a *passing* test found. Six mutations, none surviving.
 **Owner:** Implementer
 **Priority:** Low — one line of furniture on a row the user themselves stopped. Nothing is
@@ -595,6 +644,36 @@ that happens; so this is filed instead.
 `FAILED` (`T-201`), each with its own argument about what is worth saying. A third branch needs its
 own: what identifies a cancelled row is what identified it before — the uploader and the duration —
 and what it should not carry is progress that stopped meaning anything.
+
+#### What was built, and the two questions it turned on
+
+**The rule: a row that is *not working* and has moved *no bytes* says nothing about bytes.** Both
+halves are load-bearing.
+
+**The bytes half** is the criterion: `— · 0 B of Unknown` is a percentage that does not exist
+beside a size that does not exist. Keyed on the count rather than on a list of statuses, so a
+status added later is covered without anyone remembering to add it.
+
+**The working half was found by a test that was already passing.** With the rule keyed on bytes
+alone, a **running** row that had not yet received its first progress message drew an *empty*
+second line — and `test_a_row_the_probe_learned_nothing_about_draws_no_empty_fields` said so,
+because `T124-R4` settled that such a row opens on its progress. A row that is working says so even
+when the number is not known yet; a row that is waiting or stopped has nothing to report. **A
+passing test that contradicts a change is evidence about the change**, and this one was right.
+
+**`PROBING` is not "working"**, on `_SEGMENT_BY_STATUS`' own reasoning: the bar counts downloads,
+and a probed entry has not downloaded anything yet.
+
+#### The sub-question, answered
+
+*"A cancelled row that **did** move bytes is considered explicitly and the answer recorded either
+way."*
+
+**The size stays.** A download cancelled after 12 MB of 48 MB *has* those bytes — the partial file
+is on disk, and `REQ-017`'s resume turns on exactly it — so reporting them is reporting something
+true. What goes is the statement about bytes that never moved. The rule is about a count being
+*about nothing*, not about the row being terminal, and `test_a_cancelled_row_that_did_download
+_something_keeps_its_size` is what holds it that way.
 
 #### Acceptance criteria
 
