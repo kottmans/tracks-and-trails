@@ -16623,3 +16623,30 @@ claimed.
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
 commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
 `T-227` out of `## In Review` without another review pass.
+
+## 2026-08-14 — T-241 correction focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-241`
+**Base:** `9f7c3cb501acae6101d3f499d77d98792c6c3e21`
+**Head:** `d7c9b7b2bffdb457f623ccaad3b1f4395f9a9a83` — the local, unpushed correction
+**Platforms verified:** Documentation inspection only.
+**Verdict:** **Approved at `d7c9b7b`.** `T241-R1` is Resolved; no blocking finding remains.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T241-R1** | **Medium** | **Yes** | **Resolved** | The zero-byte implementation rationale and the required cancelled-partial answer were removed from T-201 and now sit inside T-241 before its acceptance criteria. T-241 is self-contained, T-201 no longer claims behavior it deliberately stopped short of, and the correction changes no source or test. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | **Passed:** `9f7c3cb..d7c9b7b` is documentation-only and passes `git diff --check`; metadata has a 37-character subject, human-only authorship, and `Task:` / `Review:` trailers. |
+| Placement | **Passed:** the complete “What was built” and “The sub-question, answered” sections occur under T-241; the former T-201 location is absent. |
+| Runtime/static gates | **Not run for this correction:** `AGENTS.md` §8 requires none for a documentation-only move, and no previous runtime result is promoted to a new claim. |
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, dependency,
+commit, push, handoff, roadmap, or remote state was changed. The routine post-verdict sync may move
+`T-241` out of `## In Review` without another review pass.
