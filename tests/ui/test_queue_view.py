@@ -3596,6 +3596,82 @@ def test_a_cancelled_row_is_not_given_a_failure_reason(
     )
 
 
+def test_an_interrupted_row_states_what_happened_once(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """`T-243`. The row said the same fact twice, in two voices, and both were ours.
+
+    Rendered from the composed application after a real recovery, before this was fixed:
+
+        Tracks & Trails closed while this was downloading · The application stopped unexpectedly
+        while this job was in progress. Nothing is known about why — the process did not survive
+        to record it. Retry to start again.
+
+    The first half is `error_text`'s headline for `INTERRUPTED`. The second was a constant in
+    `persistence/repositories.py`, written during crash recovery into `error_message` — the field
+    `NFR-006` and `DAT-003` reserve for **the extractor's** message, which is why `_failure_detail`
+    carries it verbatim and last.
+
+    Recovery records no message now, so the row is the headline alone. **And the next step is gone
+    from this line with it**: *"Retry to start again"* was a next step on the one line `T201-R3`
+    keeps them off, because a step there pushes the extractor's words past the elide. The `Retry`
+    button offers it (`REQ-018`, `UX-005` §5).
+    """
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.FAILED,
+            error_kind=ErrorKind.INTERRUPTED,
+            error_message=None,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert detail == headline_for(ErrorKind.INTERRUPTED)
+    assert "·" not in detail, f"the row is still saying it twice: {detail!r}"
+    assert "Retry" not in detail, f"a next step reached the reason line: {detail!r}"
+
+
+def test_an_interrupted_row_written_by_an_older_build_still_shows_its_message(
+    queue: FakeQueue,
+    views: Callable[..., QueueView],
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+) -> None:
+    """`T-243`'s third criterion: rows already in the database keep working.
+
+    A build before this change stored its own sentence, and those rows are on disk. They are drawn
+    with it, unedited — **the rejected fork is the one that would have dropped them.** Recognising
+    the project's own sentence and deleting it is a string comparison against a constant that
+    drifts, and the first edit to the wording turns it into a silent no-op.
+
+    So this row still says it twice. That is the honest outcome for a row written before the fix,
+    and it is better than a rule that decides which stored messages are worth showing.
+    """
+    stored = "The application stopped unexpectedly while this job was in progress."
+    queue.add(
+        make_job(
+            "job-1",
+            tmp_path,
+            status=JobStatus.FAILED,
+            error_kind=ErrorKind.INTERRUPTED,
+            error_message=stored,
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+
+    detail = view.model.data(view.model.index(0, JOB_COLUMN), DETAIL_ROLE)
+
+    assert stored in detail
+    assert detail == f"{headline_for(ErrorKind.INTERRUPTED)} · {stored}"
+
+
 def test_a_failure_with_no_class_still_shows_the_message(
     queue: FakeQueue,
     views: Callable[..., QueueView],

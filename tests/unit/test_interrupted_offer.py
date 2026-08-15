@@ -148,17 +148,74 @@ def test_a_job_that_was_not_in_flight_is_left_exactly_as_it_was(
     assert repository.get("queued") == before
 
 
-def test_the_recovery_message_says_what_happened(repository: JobRepository, tmp_path: Path) -> None:
-    """`T-014`'s criterion: the recovery is recorded, not silent. The queue must be able to say
-    why a job the user left running is now offering a retry."""
+def test_the_recovery_is_recorded_by_its_classification(
+    repository: JobRepository, tmp_path: Path
+) -> None:
+    """`T-014`'s criterion: the recovery is recorded, not silent — and `T-243` moves *where*.
+
+    **This asserted `job.error_message` and that was the defect one layer down.** The criterion is
+    that the queue can say why a job the user left running is now offering a retry, and what makes
+    that possible is the **classification**: `ui/error_text.py` turns `INTERRUPTED` into *"Tracks &
+    Trails closed while this was downloading"*. Asserting that a message was stored pinned the
+    duplicate prose in place as though it were the requirement.
+    """
     add_in_flight(repository, tmp_path, 1)
 
     repository.recover_interrupted(now=datetime(2026, 8, 1, 9, 0, tzinfo=UTC))
 
     job = repository.get("job-0")
     assert job is not None
-    assert job.error_message
+    assert job.error_kind is ErrorKind.INTERRUPTED
     assert job.finished_at is not None
+
+
+def test_recovery_records_no_message_because_there_is_none(
+    repository: JobRepository, tmp_path: Path
+) -> None:
+    """`T-243`. `error_message` is the **extractor's** own words (`NFR-006`, `DAT-003`).
+
+    An interrupted job has none — the process died before anything could be recorded, which is the
+    entire content of the classification — so recovery writes nothing there. `None` rather than
+    `""`: *nothing was recorded* is a different fact from *something empty was*, and the drawn row
+    reads this field.
+
+    **The row said the same thing twice before this**: `error_text`'s headline, and then a sentence
+    of the project's own prose stored here, ending in a next step on the one line `T201-R3`
+    deliberately keeps next steps off.
+    """
+    add_in_flight(repository, tmp_path, 1)
+
+    repository.recover_interrupted()
+
+    job = repository.get("job-0")
+    assert job is not None
+    assert job.error_message is None
+
+
+def test_a_message_written_by_an_older_build_is_still_rendered(
+    repository: JobRepository, tmp_path: Path
+) -> None:
+    """`T-243`'s third criterion: rows already in the database keep working.
+
+    A build before this change wrote its own sentence into `error_message`, and those rows are on
+    disk. They are still carried verbatim, because that is what the field means whatever wrote it —
+    **the rejected fork is what would have dropped them.** Recognising the project's own sentence
+    and deleting it is a string comparison against a constant that drifts, and the first edit to
+    the wording turns it into a silent no-op that leaves the duplication back on screen.
+    """
+    from tracks_and_trails.ui.error_text import headline_for
+
+    stored = "The application stopped unexpectedly while this job was in progress."
+    add_in_flight(repository, tmp_path, 1)
+    job = repository.get("job-0")
+    assert job is not None
+    repository.update(job.with_failure(ErrorKind.INTERRUPTED, stored))
+
+    recovered = repository.get("job-0")
+    assert recovered is not None
+    assert recovered.error_message == stored
+    # And what a row like that draws: the headline, then the stored words, unedited.
+    assert headline_for(ErrorKind.INTERRUPTED) != stored
 
 
 def test_a_recovered_job_is_retryable(repository: JobRepository, tmp_path: Path) -> None:
@@ -196,7 +253,9 @@ def test_a_transition_the_state_machine_refuses_leaves_nothing_half_written(
     original = Job.with_failure
     calls = {"n": 0}
 
-    def refuse_the_third(self: Job, kind: ErrorKind, message: str) -> Job:
+    # `message` is optional since `T-243`, and this stub stands in for the real signature — a
+    # required parameter here would raise `TypeError` on a call that is perfectly legal.
+    def refuse_the_third(self: Job, kind: ErrorKind, message: str | None = None) -> Job:
         calls["n"] += 1
         if calls["n"] == 3:
             raise ValueError("refused")

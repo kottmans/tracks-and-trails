@@ -1283,11 +1283,21 @@ class Job:
             )
         return replace(self, request=request)
 
-    def with_failure(self, kind: ErrorKind, message: str) -> Self:
+    def with_failure(self, kind: ErrorKind, message: str | None = None) -> Self:
         """Return a copy moved to `FAILED`, carrying the classification and the message.
 
         The message is stored **verbatim** (`NFR-006`, `REQ-005`). Callers that want a friendly
         summary present one alongside it; they do not substitute it here.
+
+        **`None` is a real answer and is what the field is for** (`T-243`). `error_message` holds
+        *the extractor's own words*, and `ErrorKind.INTERRUPTED` has none: the process died before
+        anything could be recorded, which is the whole content of that classification. Recovery
+        used to write a sentence of this project's prose into the field instead, and the row then
+        said the same fact twice in two voices — once as `error_text`'s headline and once as the
+        message drawn beside it.
+
+        Passing `None` says *nothing was recorded*, where `""` would say *something empty was*.
+        The distinction survives to the database, and it is the one the drawn row reads.
         """
         failed = replace(self, status=apply(self.status, JobStatus.FAILED))
         return replace(failed, error_kind=kind, error_message=message)

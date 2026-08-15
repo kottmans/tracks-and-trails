@@ -62,6 +62,19 @@ history, and why `12dff92` is excluded by name on `T-065`'s decision. And **of t
 now have to say so, as `Task: none - <reason>`. **The gate changes practice slightly rather than
 only enforcing it**, and that is recorded rather than left to be met as a refusal.
 
+**`T-243` is in review: an interrupted row states what happened once.** Crash recovery was writing
+a sentence of this project's prose into `error_message` — the field `NFR-006` and `DAT-003` reserve
+for **the extractor's** words — so the row said the same fact twice in two voices, and the stored
+copy ended with a next step on the one line `T201-R3` keeps next steps off. **Fork 1**: recovery
+records the classification and nothing else, and `ui/error_text.py` owns every word. **Rows written
+by an older build still carry and still draw their stored sentence**, which is the criterion the
+rejected fork fails — a string comparison against a constant that drifts drops exactly those rows.
+
+**Two tests were pinning the defect, one layer apart**, and neither was wrong about what it wanted:
+both asserted `error_message` was non-empty where the claim was that *the queue can say why*. They
+read the classification and the drawn row now. Three mutations, none surviving — including
+implementing the rejected fork.
+
 *(The snapshot below is the build's and stands, except where this block corrects it.)* The queue's
 run control had **no keyboard route of any kind**:
 `QToolBar` gives every button `Qt.NoFocus`, `Start` and `Clear finished` are on no menu, and the

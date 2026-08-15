@@ -547,6 +547,110 @@ split had leaked.
 - Redesigning the logo itself
 - Any change to the brand hex values fixed by `T-003`
 
+### T-243 — An interrupted row says the same thing twice, in two voices
+
+**Status:** **In Review — built 2026-08-15.** Filed 2026-08-14 from the same rendered walkthrough,
+and it is a consequence of `T-201`'s new row line meeting a message that is not an extractor's.
+**Fork 1 was taken** — recovery stops writing prose into `error_message` — and all four acceptance
+criteria are met.
+**Owner:** Implementer
+**Priority:** Low–Medium — one row state, and the row is still readable; what it costs is the space
+`T-201` just bought
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `persistence/repositories.py` §54–55 (the stored sentence),
+`ui/error_text.py`, `ui/queue_view.py` `_failure_detail`, `NFR-006`, `DAT-003`
+**Affected surfaces:** whichever of the two is chosen — see below
+**Risk:** Low, with one real trap: the obvious fix is a string comparison
+
+#### Scope
+
+**What the row draws today**, rendered from the composed application after a real recovery:
+
+> Tracks & Trails closed while this was downloading · The application stopped unexpectedly while
+> this job was in progress. Nothing is known about why — the process did not survive to record it.
+> Retry to start again.
+
+**Both halves are this project's own words.** The first is `error_text`'s headline for
+`INTERRUPTED`. The second is a constant in `persistence/repositories.py`, written during crash
+recovery into `error_message` — the field `NFR-006` and `DAT-003` reserve for **the extractor's own
+message**, and the reason `_failure_detail` carries it verbatim and last. So the row says the same
+fact twice, and the second copy ends with *"Retry to start again"* — a **next step**, on the one
+line `T-201` deliberately keeps next steps off, because a next step there pushes the extractor's
+words past the elide.
+
+**The question is which of the two owns the sentence**, and it is a real fork rather than a bug to
+patch:
+
+1. **Recovery stops writing prose into `error_message`** — it stores nothing, or a marker, and
+   `error_text` owns every word the user reads for `INTERRUPTED`. Cleanest, and it touches a
+   persistence constant that older rows already carry.
+2. **`_failure_detail` drops a message it recognises as its own.** Cheap and wrong in the way this
+   project keeps recording: it is a string comparison against a constant that will drift.
+
+#### What was built — fork 1, and the rejected one is why
+
+**Recovery stops writing prose into `error_message`.** It records the classification and nothing
+else; `ui/error_text.py` owns every word the user reads for `INTERRUPTED`. `Job.with_failure`'s
+`message` is optional now, and `None` is passed — *nothing was recorded* rather than *something
+empty was*, which is the truthful statement: the process died before anything could be recorded,
+and that is the entire content of the classification.
+
+**Fork 2 was rejected and its cost is now a test rather than a prediction.** *"`_failure_detail`
+drops a message it recognises as its own"* is a string comparison against a constant that drifts,
+and the first edit to the wording turns it into a silent no-op that puts the duplication back on
+screen. It also fails the third criterion outright: it drops stored text, and rows written by an
+older build are exactly the rows it would drop.
+`test_an_interrupted_row_written_by_an_older_build_still_shows_its_message` is the gate, and
+implementing fork 2 as a mutation fails it.
+
+**Old rows still say it twice, and that is the honest outcome.** They carry their stored sentence
+and are drawn with it, because that field is rendered verbatim whatever wrote it. The alternative
+is a rule deciding which stored messages are worth showing, which is the fork that was rejected.
+
+#### What the row draws now
+
+    Tracks & Trails closed while this was downloading
+
+One sentence, `error_text`'s. **And the next step left with the duplicate**: the removed constant
+ended *"Retry to start again"*, a next step on the one line `T201-R3` deliberately keeps next steps
+off, because a step there pushes the extractor's words past the elide. The `Retry` button offers it
+(`REQ-018`, `UX-005` §5), and `_failure_action` draws it on its own line.
+
+#### Two tests were pinning the defect, one layer apart
+
+Neither was wrong about what it wanted; both checked it at the field rather than at the claim.
+
+- `test_the_recovery_message_says_what_happened` asserted `job.error_message` was truthy. `T-014`'s
+  criterion is that *the queue can say why*, and what makes that possible is the classification.
+  Asserting a message was stored pinned the duplicate prose as though it were the requirement.
+  Renamed to `test_the_recovery_is_recorded_by_its_classification`.
+- `tests/integration/test_end_to_end.py` asserted the same field with *"recovery that says nothing
+  is recovery nobody can act on"*. That claim is about what the **user** is told, so it reads the
+  row now — a `shown_reason` helper beside `shown_status`, for `shown_status`'s own stated reason:
+  since `UX-005` removed the detail pane, the row is where a job reports itself.
+
+**Three mutations, none surviving:** restoring the prose (caught by the new persistence gate),
+implementing fork 2 (caught by the older-build gate), and storing `""` instead of `None` (caught,
+which is what makes the `None`/`""` distinction load-bearing rather than a preference).
+
+**3048 passed / 18 skipped** unit and UI; **440 passed** integration; `ruff`, `ruff format` and
+`mypy` clean.
+
+#### Acceptance criteria
+
+- An interrupted row states what happened **once** — **met**
+- The row's line still carries no next step; whatever the fix, *"Retry to start again"* does not
+  reappear on it — the Retry **button** is what offers that (`REQ-018`, `UX-005` §5) — **met**; it left with the constant
+- **Rows already in the database keep working**, whichever way it goes: a stored message written by
+  an older build is still rendered, not dropped silently — **met**, and gated; it is the criterion fork 2 fails
+- The chosen fork is recorded in this entry with the rejected one and its cost — **met**, above
+
+#### Out of scope
+
+- The other eleven classes. Their messages are the extractor's, which is the case the verbatim rule
+  was written for
+
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
 **Status:** **In Review — built 2026-08-15.** Filed 2026-08-13 from `T198-R6`, which the reviewer
@@ -6451,60 +6555,6 @@ narrows what the gate claims; (2) changes what users of a screen reader hear.
 - Every other role. The three measured above publish the name they are given
 
 ---
-
-### T-243 — An interrupted row says the same thing twice, in two voices
-
-**Status:** Proposed — filed 2026-08-14 from the same rendered walkthrough, and it is a consequence
-of `T-201`'s new row line meeting a message that is not an extractor's.
-**Owner:** Implementer
-**Priority:** Low–Medium — one row state, and the row is still readable; what it costs is the space
-`T-201` just bought
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `persistence/repositories.py` §54–55 (the stored sentence),
-`ui/error_text.py`, `ui/queue_view.py` `_failure_detail`, `NFR-006`, `DAT-003`
-**Affected surfaces:** whichever of the two is chosen — see below
-**Risk:** Low, with one real trap: the obvious fix is a string comparison
-
-#### Scope
-
-**What the row draws today**, rendered from the composed application after a real recovery:
-
-> Tracks & Trails closed while this was downloading · The application stopped unexpectedly while
-> this job was in progress. Nothing is known about why — the process did not survive to record it.
-> Retry to start again.
-
-**Both halves are this project's own words.** The first is `error_text`'s headline for
-`INTERRUPTED`. The second is a constant in `persistence/repositories.py`, written during crash
-recovery into `error_message` — the field `NFR-006` and `DAT-003` reserve for **the extractor's own
-message**, and the reason `_failure_detail` carries it verbatim and last. So the row says the same
-fact twice, and the second copy ends with *"Retry to start again"* — a **next step**, on the one
-line `T-201` deliberately keeps next steps off, because a next step there pushes the extractor's
-words past the elide.
-
-**The question is which of the two owns the sentence**, and it is a real fork rather than a bug to
-patch:
-
-1. **Recovery stops writing prose into `error_message`** — it stores nothing, or a marker, and
-   `error_text` owns every word the user reads for `INTERRUPTED`. Cleanest, and it touches a
-   persistence constant that older rows already carry.
-2. **`_failure_detail` drops a message it recognises as its own.** Cheap and wrong in the way this
-   project keeps recording: it is a string comparison against a constant that will drift.
-
-#### Acceptance criteria
-
-- An interrupted row states what happened **once**
-- The row's line still carries no next step; whatever the fix, *"Retry to start again"* does not
-  reappear on it — the Retry **button** is what offers that (`REQ-018`, `UX-005` §5)
-- **Rows already in the database keep working**, whichever way it goes: a stored message written by
-  an older build is still rendered, not dropped silently
-- The chosen fork is recorded in this entry with the rejected one and its cost
-
-#### Out of scope
-
-- The other eleven classes. Their messages are the extractor's, which is the case the verbatim rule
-  was written for
-
 
 
 ### T-202 — Nothing is said by colour alone

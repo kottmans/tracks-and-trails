@@ -50,10 +50,24 @@ INTERRUPTED_ON_STARTUP: Final = frozenset(
     {JobStatus.PROBING, JobStatus.RUNNING, JobStatus.POST_PROCESSING}
 )
 
-_INTERRUPTED_MESSAGE: Final = (
-    "The application stopped unexpectedly while this job was in progress. "
-    "Nothing is known about why — the process did not survive to record it. Retry to start again."
-)
+#: *(Removed 2026-08-15 by `T-243`. This held:*
+#:
+#:     "The application stopped unexpectedly while this job was in progress. Nothing is known
+#:      about why — the process did not survive to record it. Retry to start again."
+#:
+#: *and recovery wrote it into `error_message` — the field `NFR-006` and `DAT-003` reserve for the
+#: **extractor's** own message, and the reason `queue_view._failure_detail` carries that field
+#: verbatim and last.*
+#:
+#: *So the row said the same fact twice in two voices: `error_text`'s headline for `INTERRUPTED`,*
+#: **"Tracks & Trails closed while this was downloading"**, *and then this sentence saying it
+#: again. Its final clause was worse than redundant — a next step on the one line `T201-R3`
+#: deliberately keeps next steps off, because a step there pushes the extractor's words past the
+#: elide. The `Retry` button is what offers that (`REQ-018`, `UX-005` §5).*
+#:
+#: **`error_text` owns every word the user reads for `INTERRUPTED` now**, and recovery records no
+#: message because there is none: the process died before anything could be recorded, which is the
+#: entire content of the classification.*)*
 
 #: Request fields written to the database. Derived from the dataclass rather than typed out, so
 #: a new field cannot be silently dropped on the way to disk — the round-trip test compares whole
@@ -553,9 +567,16 @@ class JobRepository:
         describing a state that ended when the process died.
 
         **The recovery is recorded, not silent** (`T-014` acceptance criterion). Each job carries
-        `ErrorKind.INTERRUPTED` and a message saying what is and is not known, so the queue shows
-        the user why a job they left running is now offering a retry. A silent move to `QUEUED`
-        would restart a download without asking, which `REQ-018` reserves for `NETWORK`.
+        `ErrorKind.INTERRUPTED`, so the queue shows the user why a job they left running is now
+        offering a retry. A silent move to `QUEUED` would restart a download without asking, which
+        `REQ-018` reserves for `NETWORK`.
+
+        **What it records is the classification, and nothing else** (`T-243`). It used to write a
+        sentence of this project's prose into `error_message` as well, and `error_text` already has
+        one for `INTERRUPTED` — so the row said the same thing twice. The classification is the
+        record; `ui/error_text.py` is where its words live. Rows recovered by an older build still
+        carry their stored sentence and are still drawn with it, because that field is rendered
+        verbatim whatever wrote it.
 
         Transitions go through `Job.with_failure`, so the state machine validates every one. A
         status this method cannot legally move to `FAILED` raises rather than being written.
@@ -580,7 +601,7 @@ class JobRepository:
         finished_at = now if now is not None else datetime.now().astimezone()
         pending = [
             replace(
-                job.with_failure(ErrorKind.INTERRUPTED, _INTERRUPTED_MESSAGE),
+                job.with_failure(ErrorKind.INTERRUPTED),
                 finished_at=finished_at,
             )
             for job in self.with_statuses(INTERRUPTED_ON_STARTUP)

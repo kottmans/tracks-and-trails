@@ -58,8 +58,10 @@ from tracks_and_trails.downloader import worker
 from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
+from tracks_and_trails.ui.error_text import headline_for
 from tracks_and_trails.ui.format_selection import FormatKind, kind_of
-from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT
+from tracks_and_trails.ui.queue_view import JOB_COLUMN
+from tracks_and_trails.ui.row_delegate import CHOOSE_FORMATS_TEXT, DETAIL_ROLE
 
 REPO_ROOT = Path(__file__).parents[2]
 
@@ -487,6 +489,22 @@ def shown_status(composition: application.Composition, job_id: str) -> JobStatus
         return None
     job = view.model.job_for(job_id)
     return job.status if job is not None else None
+
+
+def shown_reason(composition: application.Composition, job_id: str) -> str:
+    """The reason line the queue **row** draws for `job_id` (`T-243`).
+
+    `shown_status`'s reasoning, one field along: the row is where a job reports itself since
+    `UX-005` removed the detail pane, so a claim about what the user is told has to be read from
+    the row rather than from the database column that used to hold it.
+    """
+    view = composition.window.queue_view
+    if view is None:
+        return ""
+    row = view.model.row_of(job_id)
+    if row is None:
+        return ""
+    return str(view.model.data(view.model.index(row, JOB_COLUMN), DETAIL_ROLE) or "")
 
 
 def why(composition: application.Composition, job_id: str) -> str:
@@ -1479,7 +1497,16 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
         assert shown_status(composition, job_id) is JobStatus.FAILED, (
             "a recovered job the queue does not show as failed is a job nobody knows to retry"
         )
-        assert recovered.error_message, "recovery that says nothing is recovery nobody can act on"
+        # **And the row says why** — which is what "recovery nobody can act on" was reaching for.
+        #
+        # This asserted `recovered.error_message`, and `T-243` is why it no longer can: that field
+        # holds *the extractor's* words (`NFR-006`, `DAT-003`), an interrupted job has none, and
+        # recovery filling it with a sentence of our own is what made the row state the same fact
+        # twice. The classification is the record; `ui/error_text.py` turns it into words. So the
+        # claim is checked where the user meets it rather than at the field that used to carry it.
+        assert headline_for(ErrorKind.INTERRUPTED) in shown_reason(composition, job_id), (
+            "recovery that says nothing is recovery nobody can act on"
+        )
     finally:
         composition.shutdown.begin()
         assert spin(lambda: composition.shutdown.finished, timeout=60)
