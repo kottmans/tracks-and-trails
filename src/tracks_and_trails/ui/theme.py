@@ -325,7 +325,10 @@ BORDERED_CONTROLS: Final = (
             "A tab stop with arrow-key navigation inside it. **The base class, not `QListWidget`** "
             "(`T202-R1`, third round): the queue and the add dialog's staging list are plain "
             "`QListView`s, so a rule naming `QListWidget` reached the preset manager and missed "
-            "the two lists this application is mostly made of."
+            "the two lists this application is mostly made of. Left to Qt they were drawn with a "
+            "frame at **1.72:1** against the window in light and **1.04:1** in dark — a boundary "
+            "under `MINIMUM_CONTROL_CONTRAST` in one palette and invisible in the other, which is "
+            "what `Theme.border` exists to prevent."
         ),
     ),
     BorderedControl(

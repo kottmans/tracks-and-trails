@@ -511,13 +511,57 @@ it**, and this task owns making it complete rather than incidental.
 
 ### T-202 — Nothing is said by colour alone
 
-**Status:** **In Review — corrected three times, 2026-08-15.** The first review returned
-**Changes requested** with `T202-R1` (High): *focus* was still conveyed by colour alone, and the
-sweep exempted it by name. The second pass **held it open** — the correction had fixed the three
-controls the finding named and left every other bordered control recolouring. The third pass held
-it open again: the inventory was parsed out of the style sheet, so a `QListView`, framed by Qt and
-mentioned nowhere in `theme.py`, was invisible to it. `AGENTS.md` §10 permits correcting a High
-without another pass authorization.
+**Status:** **In Review — corrected four times, 2026-08-15.** `T202-R1` (High) was returned three
+times: *focus* conveyed by colour alone and exempted by name; then fixed for the three controls the
+finding named and left everywhere else; then an inventory parsed out of the style sheet, blind to a
+`QListView` that Qt frames and `theme.py` never mentions. The fourth pass raised **`T202-R2`**
+(Medium) against the tests themselves. The maintainer authorized this pass for it.
+
+#### `T202-R2` — the dark half of every rendered test was not dark
+
+**The rendered tests installed the style sheet and nothing else.** `theme.apply` is the one call
+that themes anything and it does three things — the sheet, the `QPalette`, and the record in
+`theme.applied()`. Calling `setStyleSheet` alone leaves the other two, so **both parameter cases
+ran as light**: measured, `applied=light` in the dark case and the platform's own `#efefef` window
+where the dark theme's is `#0A1712`.
+
+**It mattered immediately, and the reviewer's own mutation is the proof.** `SortableHeader` reads
+`theme.applied().accent` to paint its current section, so hard-coding the light accent there
+survived every one of the 79 assertions. `dress()` is the fix — `theme.apply`, plus two assertions
+that the theme really is in force, because this was invisible for exactly as long as nothing asked.
+
+**The mutation the reviewer asked for could not be a greyscale one.** That sweep cannot tell one
+accent from another *by construction* — it is the measure for *is focus visible without colour*,
+and a painter with the wrong palette's gold nailed into it passes it honestly. So the assertion
+lives where the claim does: `test_the_current_section_is_drawn_in_the_theme_that_is_applied` in
+`tests/ui/test_format_table.py` renders the focused header in each palette and requires the applied
+theme's accent to be on screen **and the other theme's not to be**. It is the one colour assertion
+in this area, and it is a statement about provenance rather than about legibility.
+
+**Three figures recorded in earlier rounds were measured under that unapplied palette, and two did
+not survive re-measurement.** They are corrected below rather than left standing:
+
+- The reason given for changing the ink measure — *a doubled gold border scoring 5958 before and
+  5958 after* — **does not reproduce** with the palette installed. What does, and is what the
+  reason now rests on, is that Qt hands `:default` to whichever button has focus: six of the preset
+  manager's seven buttons go from a `#ffffff` ground to `#1e5e47` on focus, so ink counted against
+  a fill that moved is two questions averaged.
+- The focus gain across the isolated controls was recorded as **0.90 to 1.02** of a ring. Measured
+  with the theme applied it is **0.82 to 1.94**.
+- The reason `QListView` needed the rule was recorded as *focus recoloured a native frame*. With
+  the palette in force the native frame measures **1.72:1** against the window in light and
+  **1.04:1** in dark — it was not a visible boundary being recoloured, it was barely a boundary.
+  The fix is the same and better founded: `MINIMUM_CONTROL_CONTRAST` is 3:1, and `Theme.border`
+  exists because *a control whose boundary is invisible is a control you cannot find*.
+
+The figures that **did** survive re-measurement, unchanged: 12 pixels of contents edge repainted
+with the views' padding against 754 without it; 254 changed pixels against a 1516 floor for the
+Settings scroller under the old 1px ring; the scrolled viewport holding `QRect(2, 2, 550, 693)`;
+and 50 controls measured with 12 skipped as disabled, worst case clearing its floor by **1.44x**.
+
+**Eight mutations, all caught**, two of them new: the reviewer's hard-coded light accent, and
+reverting `dress()` to a bare `setStyleSheet` — which fails 56 assertions rather than passing them,
+because the guard is the point.
 
 #### `T202-R1`, third round — the inventory could only see what `theme.py` had thought to style
 
@@ -556,8 +600,10 @@ front of it.
 counted *ink* — pixels unlike the control's own fill — and Qt draws a `Sunken` `StyledPanel` as two
 lines, one dark and one light. When the fix replaced both with two rings of accent the count came
 out **identical to the pixel**: 5958 before, 5958 after, on a border that had visibly doubled and
-turned gold. Counting ink also assumes the fill holds still, and Qt hands `:default` to whichever
-button has focus, so half this application's dialog buttons *invert* when focused.
+turned gold. *(That measurement was taken with the palette not installed — `T202-R2` above — and
+does not reproduce with `theme.apply` in force. The reason that does is the next sentence.)*
+Counting ink also assumes the fill holds still, and Qt hands `:default` to whichever button has
+focus, so six of the preset manager's seven buttons *invert* when focused.
 
 It asks the criterion's own question now — **would a greyscale reading see a difference?** — pixel
 against the same pixel, at `MINIMUM_CONTROL_CONTRAST`. That threshold is not chosen to make the
@@ -587,8 +633,8 @@ thickening selector is **built from it** rather than typed out: retyping the lis
 correction covered three. Two halves keep it honest — the sweep reads the bordered set **out of the
 generated sheet**, so a sixteenth bordered control fails rather than joining silently; and every
 `takes_focus` claim is put to Qt, so an exemption is `NoFocus` or a popup window rather than an
-opinion. Measured after: **0.90 to 1.02 of a full extra ring** on all eleven focusable controls,
-both palettes.
+opinion. Measured after: a full extra ring on all eleven focusable controls, both palettes —
+recorded then as **0.90 to 1.02**, and **0.82 to 1.94** once `T202-R2` put the palette in force.
 
 **The sheet was asserting something false about the toolbar.** `QToolBar QToolButton:disabled`'s
 reason said *"nothing on this bar takes focus"*. Tab reaches `Pause queue` from the central widget —

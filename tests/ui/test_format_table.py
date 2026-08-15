@@ -28,12 +28,13 @@ from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QColor, QImage, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails.core.models import FormatInfo
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
+from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.format_selection import SelectionMode
 from tracks_and_trails.ui.format_table import (
     AUDIO_CODEC_COLUMN,
@@ -790,6 +791,59 @@ def test_tab_reaches_the_header_and_tab_leaves_it_again(
         )
     finally:
         table.close()
+
+
+@pytest.mark.parametrize("dressing", [theme.LIGHT, theme.DARK], ids=lambda one: one.name)
+def test_the_current_section_is_drawn_in_the_theme_that_is_applied(
+    qapp: QApplication, derived: tuple[FormatInfo, ...], dressing: theme.Theme
+) -> None:
+    """**`T202-R2`.** The header paints its own focus edge, so it must read the theme in force.
+
+    `paintSection` draws the current section in `theme.applied().accent` — a painter cannot read a
+    style sheet, so this is the only route the colour can take. That makes it the one place in this
+    file where **asserting a colour is the right test**: everything else about this edge is held by
+    the greyscale sweep in `tests/ui/test_colour_is_never_alone.py`, which by construction cannot
+    tell one accent from another and would pass a painter with the wrong palette's value nailed
+    into it. It measured exactly that: hard-coding `theme.LIGHT.accent` here survived all 79 of
+    those assertions.
+
+    So both halves are checked — the applied theme's accent is on the screen, and the *other*
+    theme's is not. `theme.apply` rather than `setStyleSheet`, because installing only the sheet
+    leaves `theme.applied()` at whatever it was, which is the defect `T202-R2` found in the sweep.
+    """
+    theme.apply(qapp, dressing)
+    other = theme.DARK if dressing is theme.LIGHT else theme.LIGHT
+    table = FormatTable(derived)
+    table.show()
+    qapp.processEvents()
+    try:
+        table.header.setFocus()
+        qapp.processEvents()
+        assert table.header.hasFocus(), "the header never took focus, so nothing painted a section"
+
+        image = QImage(table.header.size(), QImage.Format.Format_ARGB32)
+        image.fill(QColor("#00000000"))
+        table.header.render(image)
+        drawn = {
+            image.pixelColor(x, y).name().lower()
+            for y in range(image.height())
+            for x in range(image.width())
+        }
+
+        assert dressing.accent.lower() in drawn, (
+            f"the header holds the keyboard under the {dressing.name} theme and its accent "
+            f"{dressing.accent} is nowhere in the render — the painter is not reading "
+            "theme.applied()"
+        )
+        assert other.accent.lower() not in drawn, (
+            f"the {other.name} theme's accent {other.accent} is on screen while the "
+            f"{dressing.name} theme is applied, so the colour is coming from somewhere other than "
+            "the theme in force"
+        )
+    finally:
+        table.close()
+        table.deleteLater()
+        qapp.processEvents()
 
 
 def test_the_keyboard_chooses_a_column_and_sorts_that_one(

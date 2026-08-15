@@ -35,7 +35,7 @@ from typing import Final
 
 import pytest
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QAccessible, QColor, QImage, QPainter, QPen
+from PySide6.QtGui import QAccessible, QColor, QImage, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QAbstractScrollArea,
     QApplication,
@@ -295,25 +295,28 @@ def pixels_of(image: QImage) -> memoryview:
 def visible_change(before: QImage, after: QImage) -> int:
     """How many pixels differ between two renders **in brightness**, not merely in hue.
 
-    **This is the whole instrument, and it took three tries to get right.** Every assertion about
-    focus in this file is this number, and each earlier version reported a pass for something that
-    was not one:
-
-    1. It counted pixels that differed from `theme.window`, when a control's own fill is
-       `surface` — so a fix that plainly worked measured zero.
-    2. It counted *ink*: pixels unlike the control's fill. Qt draws a `Sunken` `StyledPanel` as
-       two lines, one dark and one light, so a list's idle frame already put two rings of
-       not-the-fill pixels on screen; when the fix replaced both with two rings of accent the
-       count came out **identical to the pixel** — 5958 before, 5958 after, on a border that had
-       visibly doubled and turned gold.
-    3. Counting ink also assumes the fill stays put, and it does not: Qt hands `:default` to
-       whichever button has focus, so half the dialog buttons in this application *invert* when
-       focused. Measuring ink against a fill that itself changed compares two different questions.
+    **This is the whole instrument, and every assertion about focus in this file is this number.**
+    Two earlier versions counted **ink** — pixels unlike the control's own fill — and both reported
+    a pass for something that was not one. The first compared against `theme.window` when a
+    control's own ground is `surface`, so a fix that plainly worked measured zero. The second
+    assumed the fill holds still, and it does not: Qt hands `:default` to whichever button has
+    focus, so six of the preset manager's seven buttons go from a `#ffffff` ground to `#1e5e47`
+    the moment they take the keyboard. Ink counted against a fill that moved underneath it is two
+    questions averaged together.
 
     So it asks the criterion's own question instead — **would a greyscale reading see a
     difference?** — pixel against the same pixel, which needs no fill and survives the control
     changing colour entirely. A recolour at the same brightness scores zero however large it is;
     a thicker edge, an inverted fill and a redrawn arrow all score what they are worth.
+
+    **`T202-R2` is why the third version of this docstring is shorter than the second.** It
+    recorded a rendered list whose doubled gold border scored *identically to the pixel* — 5958
+    before and after — as the reason ink was the wrong measure. That number was produced with the
+    palette **not installed**, which is the defect `T202-R2` found in the tests around this
+    function; with `theme.apply` in force it does not reproduce, and a claim that does not
+    reproduce does not belong in the reason for a change. What is left is the part that does: the
+    `:default` inversion above, measured, and the fact that *did a greyscale reader see it* is the
+    question `NFR-005` actually asks.
     """
     assert before.size() == after.size(), "the two renders are different sizes"
     changed = Counter(zip(pixels_of(before), pixels_of(after), strict=True))
@@ -415,6 +418,38 @@ def repainted_on_the_edge_of(before: QImage, after: QImage, rect: QRect) -> int:
     return changed
 
 
+def dress(qapp: QApplication, theme: ui_theme.Theme) -> None:
+    """Put the application in `theme` — **all of it, not only the style sheet** (`T202-R2`).
+
+    `theme.apply` is the one call that themes anything, and it does three things: it installs the
+    style sheet, it installs the `QPalette`, and it records the theme in `theme.applied()`. Every
+    rendered test here called `setStyleSheet` alone, so **the dark cases were not dark**: measured,
+    both parameter cases kept `applied=light` and the platform's own `#efefef` window, where the
+    dark theme's is `#0A1712`.
+
+    That is not a cosmetic difference in what got measured. `SortableHeader` reads
+    `theme.applied().accent` to paint its current section, and `QPalette` is the path Qt itself
+    takes for anything a style sheet cannot express — item-view selections, and any widget that
+    calls `palette().window()`. A painter with the light accent hard-coded would have passed the
+    dark regression, which is the mutation `test_the_dark_sweep_is_dark` and the battery now run.
+
+    The two assertions are the guard: this defect was invisible because nothing asked. Cleanup is
+    the autouse `_undressed_afterwards` fixture in `tests/ui/conftest.py`, which puts the sheet,
+    the palette **and** `theme.applied()` back — a `finally` that only cleared the sheet was the
+    other half of the same mistake.
+    """
+    ui_theme.apply(qapp, theme)
+    assert ui_theme.applied() is theme, (
+        f"the application reports {ui_theme.applied().name} after being dressed in {theme.name} — "
+        "a painter reading theme.applied() would be drawing the wrong palette's colours"
+    )
+    window = qapp.palette().color(QPalette.ColorRole.Window).name().lower()
+    assert window == theme.window.lower(), (
+        f"the palette's window is {window} and {theme.name} says {theme.window} — the style sheet "
+        "is in force and the palette is not, so everything Qt draws from the palette is untouched"
+    )
+
+
 def one_more_ring(widget: QWidget) -> int:
     """How much ink a second pixel of border adds to a control this size.
 
@@ -429,10 +464,11 @@ def one_more_ring(widget: QWidget) -> int:
 
 #: How much of that ring a control must actually gain to count as having thickened its edge.
 #:
-#: Measured 2026-08-15 across every focusable control in `theme.BORDERED_CONTROLS`, both palettes:
-#: **0.90 to 1.02** of a full ring — the low end is the stepper, whose rounded corners cost it a
-#: few pixels. A rule that only recolours scores **0.00**, which is what seven of these scored
-#: before this round. The floor sits between the two with room on either side, so it separates the
+#: Measured 2026-08-15 across every focusable control in `theme.BORDERED_CONTROLS`, both palettes
+#: and with `theme.apply` in force (`T202-R2`): **0.82 to 1.94** of a full ring. The low end is the
+#: stepper, whose rounded corners cost it a few pixels; the high end is the primary verb, where the
+#: ring lands on a brand fill and the padding shifts the label as well. A rule that only recolours
+#: scores **0.00**. The floor sits between the two with room on either side, so it separates the
 #: two states of the world this test exists to tell apart without flapping on a rounding difference.
 MINIMUM_FOCUS_RING_SHARE: Final = 0.6
 
@@ -645,29 +681,26 @@ def test_focus_is_visible_without_reading_its_colour(
     value**, which is the point: the assertion is about whether the shape changed, so it cannot be
     satisfied by choosing a louder colour.
     """
-    qapp.setStyleSheet(ui_theme.stylesheet(theme))
-    try:
-        host = QWidget()
-        layout = QVBoxLayout(host)
-        elsewhere = QPushButton("elsewhere", host)
-        layout.addWidget(elsewhere)
-        widget = build(control.selector, host)
-        host.resize(260, 200)
-        host.show()
-        qapp.processEvents()
+    dress(qapp, theme)
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    elsewhere = QPushButton("elsewhere", host)
+    layout.addWidget(elsewhere)
+    widget = build(control.selector, host)
+    host.resize(260, 200)
+    host.show()
+    qapp.processEvents()
 
-        elsewhere.setFocus()
-        qapp.processEvents()
-        change = focus_change(widget, qapp)
+    elsewhere.setFocus()
+    qapp.processEvents()
+    change = focus_change(widget, qapp)
 
-        floor = MINIMUM_FOCUS_RING_SHARE * one_more_ring(widget)
-        assert change >= floor, (
-            f"{control.selector!r} in {theme.name} changes {change} pixels in brightness when "
-            f"focused, under the {floor:.0f} its size asks for — focus is being drawn by changing "
-            "a colour rather than by changing the edge"
-        )
-    finally:
-        qapp.setStyleSheet("")
+    floor = MINIMUM_FOCUS_RING_SHARE * one_more_ring(widget)
+    assert change >= floor, (
+        f"{control.selector!r} in {theme.name} changes {change} pixels in brightness when "
+        f"focused, under the {floor:.0f} its size asks for — focus is being drawn by changing "
+        "a colour rather than by changing the edge"
+    )
 
 
 @pytest.mark.parametrize("theme", THEMES, ids=lambda theme: theme.name)
@@ -688,42 +721,39 @@ def test_focus_does_not_move_the_control(
     different rectangles — though `test_focus_does_not_paint_over_the_contents` is the assertion
     that actually holds those to account, for the reason it records.
     """
-    qapp.setStyleSheet(ui_theme.stylesheet(theme))
-    try:
-        host = QWidget()
-        layout = QVBoxLayout(host)
-        elsewhere = QPushButton("elsewhere", host)
-        layout.addWidget(elsewhere)
-        widget = build(control.selector, host)
-        host.resize(260, 200)
-        host.show()
-        qapp.processEvents()
+    dress(qapp, theme)
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    elsewhere = QPushButton("elsewhere", host)
+    layout.addWidget(elsewhere)
+    widget = build(control.selector, host)
+    host.resize(260, 200)
+    host.show()
+    qapp.processEvents()
 
-        elsewhere.setFocus()
-        qapp.processEvents()
-        idle_geometry, idle_hint = widget.geometry(), widget.sizeHint()
-        idle_viewport = viewport_of(widget)
+    elsewhere.setFocus()
+    qapp.processEvents()
+    idle_geometry, idle_hint = widget.geometry(), widget.sizeHint()
+    idle_viewport = viewport_of(widget)
 
-        widget.setFocus()
-        qapp.processEvents()
-        layout.activate()
-        qapp.processEvents()
+    widget.setFocus()
+    qapp.processEvents()
+    layout.activate()
+    qapp.processEvents()
 
-        assert viewport_of(widget) == idle_viewport, (
-            f"{control.selector!r} in {theme.name} moves its contents when focused: viewport "
-            f"{idle_viewport} to {viewport_of(widget)} — the frame grew inwards, so every row or "
-            "character inside it steps across as the keyboard arrives"
-        )
-        assert widget.geometry() == idle_geometry, (
-            f"{control.selector!r} in {theme.name} moves or resizes when focused: "
-            f"{idle_geometry} to {widget.geometry()} — the padding is not paying for the border"
-        )
-        assert widget.sizeHint() == idle_hint, (
-            f"{control.selector!r} in {theme.name} asks for a different size when focused: "
-            f"{idle_hint} to {widget.sizeHint()} — nothing has moved yet, and it will"
-        )
-    finally:
-        qapp.setStyleSheet("")
+    assert viewport_of(widget) == idle_viewport, (
+        f"{control.selector!r} in {theme.name} moves its contents when focused: viewport "
+        f"{idle_viewport} to {viewport_of(widget)} — the frame grew inwards, so every row or "
+        "character inside it steps across as the keyboard arrives"
+    )
+    assert widget.geometry() == idle_geometry, (
+        f"{control.selector!r} in {theme.name} moves or resizes when focused: "
+        f"{idle_geometry} to {widget.geometry()} — the padding is not paying for the border"
+    )
+    assert widget.sizeHint() == idle_hint, (
+        f"{control.selector!r} in {theme.name} asks for a different size when focused: "
+        f"{idle_hint} to {widget.sizeHint()} — nothing has moved yet, and it will"
+    )
 
 
 #: How much of the contents rectangle's own edge a focus ring may repaint.
@@ -759,35 +789,32 @@ def test_focus_does_not_paint_over_the_contents(
     With the pixel of padding the thicker border has its own room and stops at the contents' edge:
     the only thing repainted there is the four rounded corners.
     """
-    qapp.setStyleSheet(ui_theme.stylesheet(theme))
-    try:
-        host = QWidget()
-        layout = QVBoxLayout(host)
-        elsewhere = QPushButton("elsewhere", host)
-        layout.addWidget(elsewhere)
-        widget = build(control.selector, host)
-        host.resize(260, 200)
-        host.show()
-        qapp.processEvents()
+    dress(qapp, theme)
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    elsewhere = QPushButton("elsewhere", host)
+    layout.addWidget(elsewhere)
+    widget = build(control.selector, host)
+    host.resize(260, 200)
+    host.show()
+    qapp.processEvents()
 
-        elsewhere.setFocus()
-        qapp.processEvents()
-        assert isinstance(widget, QAbstractScrollArea)
-        idle = rendered(widget)
-        contents = widget.viewport().geometry()
+    elsewhere.setFocus()
+    qapp.processEvents()
+    assert isinstance(widget, QAbstractScrollArea)
+    idle = rendered(widget)
+    contents = widget.viewport().geometry()
 
-        widget.setFocus()
-        qapp.processEvents()
-        repainted = repainted_on_the_edge_of(idle, rendered(widget), contents)
+    widget.setFocus()
+    qapp.processEvents()
+    repainted = repainted_on_the_edge_of(idle, rendered(widget), contents)
 
-        allowed = MOST_OF_THE_CONTENTS_EDGE * one_more_ring(widget.viewport())
-        assert repainted < allowed, (
-            f"{control.selector!r} in {theme.name} repaints {repainted} pixels of its contents' "
-            f"own edge when focused, over the {allowed:.0f} a corner radius accounts for — the "
-            "focus border is being drawn over the first row rather than beside it"
-        )
-    finally:
-        qapp.setStyleSheet("")
+    allowed = MOST_OF_THE_CONTENTS_EDGE * one_more_ring(widget.viewport())
+    assert repainted < allowed, (
+        f"{control.selector!r} in {theme.name} repaints {repainted} pixels of its contents' "
+        f"own edge when focused, over the {allowed:.0f} a corner radius accounts for — the "
+        "focus border is being drawn over the first row rather than beside it"
+    )
 
 
 # --- the same question, asked of the application itself (T202-R1, third round) -----------------
@@ -864,7 +891,7 @@ def test_focus_is_visible_on_every_control_the_application_shows(
     actually focuses its `qt_spinbox_lineedit`, and the control a user perceives is the parent,
     which this sweep measures in its own right.
     """
-    qapp.setStyleSheet(ui_theme.stylesheet(theme))
+    dress(qapp, theme)
     measured = 0
     disabled = 0
     faults: list[str] = []
@@ -889,7 +916,6 @@ def test_focus_is_visible_on_every_control_the_application_shows(
                 "size asks for"
             )
 
-    qapp.setStyleSheet("")
     assert not faults, (
         f"in {theme.name}, focus is drawn by changing a colour rather than the edge on: "
         + "; ".join(sorted(faults))
