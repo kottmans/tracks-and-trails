@@ -192,6 +192,28 @@ def test_recovery_records_no_message_because_there_is_none(
     assert job.error_message is None
 
 
+def test_a_failure_cannot_lose_its_message_by_omission(repository: JobRepository) -> None:
+    """`T243-R1`: `None` is legal for `INTERRUPTED`, not for whatever a caller forgot to pass.
+
+    **The default was the defect.** `T-243` needs a job with no extractor message to be
+    expressible; it does not need omission to become legal for all twelve classifications. With
+    `message` defaulting to `None`, `with_failure(ErrorKind.EXTRACTOR_ERROR)` type-checked and
+    produced a `FAILED` job whose diagnostic had silently vanished — indistinguishable from the one
+    case where having nothing recorded is the truth.
+
+    Asserted through the signature rather than by calling it, because the whole point is that the
+    bad call **no longer type-checks**; `mypy` is what enforces this, and it found the single
+    call site that relied on the default when the default was removed.
+    """
+    import inspect
+
+    parameter = inspect.signature(Job.with_failure).parameters["message"]
+    assert parameter.default is inspect.Parameter.empty, (
+        "`with_failure`'s message has a default again, so an extractor diagnostic can go missing "
+        "by omission and look exactly like an interrupted job that never had one"
+    )
+
+
 def test_a_message_written_by_an_older_build_is_still_rendered(
     repository: JobRepository, tmp_path: Path
 ) -> None:
@@ -253,9 +275,10 @@ def test_a_transition_the_state_machine_refuses_leaves_nothing_half_written(
     original = Job.with_failure
     calls = {"n": 0}
 
-    # `message` is optional since `T-243`, and this stub stands in for the real signature — a
-    # required parameter here would raise `TypeError` on a call that is perfectly legal.
-    def refuse_the_third(self: Job, kind: ErrorKind, message: str | None = None) -> Job:
+    # `message` widened to `str | None` in `T-243` and stayed **required** in `T243-R1`, so this
+    # stub takes it the same way: a stub with a default would keep passing if the real signature
+    # grew one back, which is the defect the finding is about.
+    def refuse_the_third(self: Job, kind: ErrorKind, message: str | None) -> Job:
         calls["n"] += 1
         if calls["n"] == 3:
             raise ValueError("refused")

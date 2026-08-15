@@ -509,92 +509,6 @@ it**, and this task owns making it complete rather than incidental.
 - Colour contrast and colour-only information — `T-202`
 - High-contrast themes, font scaling, and reduced motion. None is requested; each is its own decision
 
-### T-021 — Simplified small-size icon glyph
-
-**Status:** **In Review — built 2026-08-15.** The design decision this entry waited on was taken by
-the maintainer the same day: **keep the note head, the stem and the gold trail sweep**, over a
-trail-only mark, a note-only mark, or deferring the task. Three of the four acceptance criteria are
-met and gated. **The fourth is a side-by-side judgement and is the maintainer's** — the evidence is
-`ai/evidence/2026-08-15-T021-small-glyph.png` and nothing here claims the judgement has been made.
-**Moved out of `## Proposed — Phase 0`, where it had sat since the phase was exited.**
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 4 (theming) — not a Phase 0 exit condition
-**Depends on:** `T-003`
-**Relevant context:** `T-003` completion note, `T003-R2`, `ARCHITECTURE.md` §8, `T-071`
-(the `FILL` and `VISIBLE_ALPHA` reasoning this reuses), `T-022`'s resource gates
-**Affected surfaces:** `src/tracks_and_trails/resources/icons/`, `tools/icons/`,
-`tests/unit/test_resources.py`, `tests/ui/test_resources.py`
-**Risk:** Low — cosmetic only
-
-#### What was built
-
-**The glyph is derived from `icon.png`, not drawn beside it**, and that is the answer to the second
-criterion rather than a convenience. *"Recognizably the same mark"* is a claim a hand-drawn
-approximation has to keep arguing; a derivation cannot drift. Three of its four elements are the
-master's own pixels, taken by `tools/icons/render_small_glyph.py`:
-
-- **The stem and the flag are copied.** Measured: everything at `x >= 512` on the master is stem or
-  flag, and the trees and mountain end well left of it, so one vertical cut separates the note from
-  the landscape.
-- **The trail is copied and widened** by `TRAIL_GROWTH`, ≈0.4 px at 24 px. At 16 px the master's
-  trail is under a pixel at its waist and renders as a broken dotted line.
-- **The head is redrawn as a plain ellipse**, and it is the only element that is. It has to be: the
-  landscape *is* the head's interior, so keeping the head's own pixels keeps the trees. The ellipse
-  is measured from the master's outline — left edge x=261 at y≈650, bottom y=740 — rather than
-  chosen.
-- **The sound arcs are dropped.** Three hairlines at 1024 px, three stray gold pixels at 16.
-  **The ruling named neither keeping nor dropping them**, so it is recorded here as a decision
-  taken rather than a detail lost, and it is visible in the evidence.
-
-`render_icons.py` renders 16 and 24 from the small master and everything else from the full logo,
-in the PNGs and the `.ico` alike. Each master is trimmed and filled on **its own** bounds: the
-reduced glyph is a narrower shape, and measuring it against the full mark's bounds would leave it
-floating in the cell at exactly the sizes it exists to fill.
-
-**Two defects found while building, both by looking rather than by reasoning:**
-
-- **A white hairline ran the full height of the stem.** The mask was taking green pixels, and the
-  stem carries a one-pixel column of §8's deep-green shading — measured `(7, 30, 18)` — which a
-  greenness test rejects, since 30 is not more than 7 + 25. Taken from alpha now, with gold
-  subtracted to drop the arcs.
-- **The trail spilled past the head.** On the full mark it runs to the head's drawn outline; the
-  head here is an ellipse, which is not that outline. It is clipped to the silhouette, or the glyph
-  reads as a trail with a bite out of the disc behind it.
-
-#### What is gated, and what is not
-
-**Measured 2026-08-15 at 16 px: the full-logo downscale puts 13 gold pixels on screen out of 69
-opaque, and the reduced glyph puts 20 out of 66.** At 24 px it is 38 of 172 against 47 of 157.
-
-`test_the_reduced_glyph_keeps_its_trail_at_16_px` asserts a floor of **16** — between the two
-numbers, so a regeneration that stopped using the small master lands back on 13 and fails, while
-redrawing the glyph has room to move. **Proved by putting the old asset back: 13, and the gate
-names why.** It is counted from the pixmap Qt renders, not from the file, for the reason that
-module exists.
-
-**The first criterion is not gated and cannot be.** *"More legible, judged side by side"* is a
-human judgement. `ai/evidence/2026-08-15-T021-small-glyph.png` is both sizes plus a 32 px control,
-magnified and at true size, on light and dark grounds. **The 32 px column must be identical in both
-rows** — it comes from the full logo either way — and it is; a difference there would mean the
-split had leaked.
-
-#### Acceptance criteria
-
-- At 16 px and 24 px the glyph is **more legible than the current downscale**, judged
-  side by side — not merely legible, which the current asset already is
-  — **evidence recorded; the judgement is the maintainer's and has not been made**
-- The glyph is recognizably the same mark as the full logo, not a different one — **derived from
-  it rather than redrawn, which is the strongest form of this available**
-- The Windows `.ico` embeds the simplified glyph at 16/24 and the full logo at 32 and above — **met**
-- The `T-022` resource tests still pass, with their expected frame set updated if it changes —
-  **met**; `icon-small.png` is added to the expected set and pinned at 1024x1024
-
-#### Out of scope
-
-- Redesigning the logo itself
-- Any change to the brand hex values fixed by `T-003`
-
 ### T-202 — Nothing is said by colour alone
 
 **Status:** **In Review — corrected once, 2026-08-15.** The first review returned **Changes
@@ -779,7 +693,26 @@ A new `muted` rule that is neither fails and has to say which it is.
 
 ### T-243 — An interrupted row says the same thing twice, in two voices
 
-**Status:** **In Review — built 2026-08-15.** Filed 2026-08-14 from the same rendered walkthrough,
+**Status:** **In Review — corrected once, 2026-08-15.** The first review confirmed fork 1 as the
+right presentation boundary and returned **Changes requested** with `T243-R1` (Medium): making the
+message optional widened the failure API past the one class this task owns.
+
+#### `T243-R1` — the default, not the type
+
+**`str | None` was right; `= None` was not.** This task needs `None` to be a legal, *explicit*
+value for `INTERRUPTED`. It does not need omission to become legal for all twelve classifications —
+and with a default, `with_failure(ErrorKind.EXTRACTOR_ERROR)` type-checked and produced a `FAILED`
+job whose extractor diagnostic had silently vanished, indistinguishable from the one case where
+having nothing recorded is the truth. Before this task, `mypy` required every call site to supply
+the message; the default gave that audit away for a convenience one caller wanted.
+
+**The argument is required again.** Removing the default *is* the call-site audit: `mypy` named the
+single site that relied on it, and recovery passes `None` explicitly now. The gate asserts the
+signature rather than calling it, because the point is that the bad call no longer type-checks.
+**Mutation: restoring the default fails.**
+
+**Status before this round:** **In Review — built 2026-08-15.** Filed 2026-08-14 from the same
+rendered walkthrough,
 and it is a consequence of `T-201`'s new row line meeting a message that is not an extractor's.
 **Fork 1 was taken** — recovery stops writing prose into `error_message` — and all four acceptance
 criteria are met.
@@ -1048,6 +981,94 @@ which it merely reports.
 ---
 
 ## Complete
+
+### T-021 — Simplified small-size icon glyph
+
+**Status:** **Complete — Approved on 2026-08-15**, no findings. The reviewer independently
+regenerated the small master, the eight PNGs and the seven-frame `.ico` and got byte-identical
+output, measured the 16 px render at **66 opaque pixels, 20 gold** against the floor of 16, and
+**made the side-by-side judgement the first criterion asks for**: at both sizes and on both grounds
+the reduced glyph removes the landscape mass that competed with the note, the stem and head read
+more clearly, the gold sweep stays visible, and it is recognizably the same mark. The 32 px control
+is identical between rows, so the small-master split has not leaked upward.
+
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 4 (theming) — not a Phase 0 exit condition
+**Depends on:** `T-003`
+**Relevant context:** `T-003` completion note, `T003-R2`, `ARCHITECTURE.md` §8, `T-071`
+(the `FILL` and `VISIBLE_ALPHA` reasoning this reuses), `T-022`'s resource gates
+**Affected surfaces:** `src/tracks_and_trails/resources/icons/`, `tools/icons/`,
+`tests/unit/test_resources.py`, `tests/ui/test_resources.py`
+**Risk:** Low — cosmetic only
+
+#### What was built
+
+**The glyph is derived from `icon.png`, not drawn beside it**, and that is the answer to the second
+criterion rather than a convenience. *"Recognizably the same mark"* is a claim a hand-drawn
+approximation has to keep arguing; a derivation cannot drift. Three of its four elements are the
+master's own pixels, taken by `tools/icons/render_small_glyph.py`:
+
+- **The stem and the flag are copied.** Measured: everything at `x >= 512` on the master is stem or
+  flag, and the trees and mountain end well left of it, so one vertical cut separates the note from
+  the landscape.
+- **The trail is copied and widened** by `TRAIL_GROWTH`, ≈0.4 px at 24 px. At 16 px the master's
+  trail is under a pixel at its waist and renders as a broken dotted line.
+- **The head is redrawn as a plain ellipse**, and it is the only element that is. It has to be: the
+  landscape *is* the head's interior, so keeping the head's own pixels keeps the trees. The ellipse
+  is measured from the master's outline — left edge x=261 at y≈650, bottom y=740 — rather than
+  chosen.
+- **The sound arcs are dropped.** Three hairlines at 1024 px, three stray gold pixels at 16.
+  **The ruling named neither keeping nor dropping them**, so it is recorded here as a decision
+  taken rather than a detail lost, and it is visible in the evidence.
+
+`render_icons.py` renders 16 and 24 from the small master and everything else from the full logo,
+in the PNGs and the `.ico` alike. Each master is trimmed and filled on **its own** bounds: the
+reduced glyph is a narrower shape, and measuring it against the full mark's bounds would leave it
+floating in the cell at exactly the sizes it exists to fill.
+
+**Two defects found while building, both by looking rather than by reasoning:**
+
+- **A white hairline ran the full height of the stem.** The mask was taking green pixels, and the
+  stem carries a one-pixel column of §8's deep-green shading — measured `(7, 30, 18)` — which a
+  greenness test rejects, since 30 is not more than 7 + 25. Taken from alpha now, with gold
+  subtracted to drop the arcs.
+- **The trail spilled past the head.** On the full mark it runs to the head's drawn outline; the
+  head here is an ellipse, which is not that outline. It is clipped to the silhouette, or the glyph
+  reads as a trail with a bite out of the disc behind it.
+
+#### What is gated, and what is not
+
+**Measured 2026-08-15 at 16 px: the full-logo downscale puts 13 gold pixels on screen out of 69
+opaque, and the reduced glyph puts 20 out of 66.** At 24 px it is 38 of 172 against 47 of 157.
+
+`test_the_reduced_glyph_keeps_its_trail_at_16_px` asserts a floor of **16** — between the two
+numbers, so a regeneration that stopped using the small master lands back on 13 and fails, while
+redrawing the glyph has room to move. **Proved by putting the old asset back: 13, and the gate
+names why.** It is counted from the pixmap Qt renders, not from the file, for the reason that
+module exists.
+
+**The first criterion is not gated and cannot be.** *"More legible, judged side by side"* is a
+human judgement. `ai/evidence/2026-08-15-T021-small-glyph.png` is both sizes plus a 32 px control,
+magnified and at true size, on light and dark grounds. **The 32 px column must be identical in both
+rows** — it comes from the full logo either way — and it is; a difference there would mean the
+split had leaked.
+
+#### Acceptance criteria
+
+- At 16 px and 24 px the glyph is **more legible than the current downscale**, judged
+  side by side — not merely legible, which the current asset already is
+  — **evidence recorded; the judgement is the maintainer's and has not been made**
+- The glyph is recognizably the same mark as the full logo, not a different one — **derived from
+  it rather than redrawn, which is the strongest form of this available**
+- The Windows `.ico` embeds the simplified glyph at 16/24 and the full logo at 32 and above — **met**
+- The `T-022` resource tests still pass, with their expected frame set updated if it changes —
+  **met**; `icon-small.png` is added to the expected set and pinned at 1024x1024
+
+#### Out of scope
+
+- Redesigning the logo itself
+- Any change to the brand hex values fixed by `T-003`
 
 ### T-245 — Qt publishes a combo box's value where its name should be
 

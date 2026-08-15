@@ -1283,7 +1283,7 @@ class Job:
             )
         return replace(self, request=request)
 
-    def with_failure(self, kind: ErrorKind, message: str | None = None) -> Self:
+    def with_failure(self, kind: ErrorKind, message: str | None) -> Self:
         """Return a copy moved to `FAILED`, carrying the classification and the message.
 
         The message is stored **verbatim** (`NFR-006`, `REQ-005`). Callers that want a friendly
@@ -1298,6 +1298,14 @@ class Job:
 
         Passing `None` says *nothing was recorded*, where `""` would say *something empty was*.
         The distinction survives to the database, and it is the one the drawn row reads.
+
+        **`message` is required, and giving it a default was the defect** (`T243-R1`). `T-243`
+        needs `None` to be a legal, *explicit* value for one classification; it does not need
+        omission to become legal for all twelve. With a default, `with_failure(EXTRACTOR_ERROR)`
+        type-checked and produced a `FAILED` job whose diagnostic had silently vanished —
+        indistinguishable from the one case where having no message is the truth. Before `T-243`
+        every call site had to supply the message and `mypy` enforced it; requiring the argument
+        keeps that audit while still allowing the honest `None`.
         """
         failed = replace(self, status=apply(self.status, JobStatus.FAILED))
         return replace(failed, error_kind=kind, error_message=message)

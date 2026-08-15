@@ -601,7 +601,10 @@ class JobRepository:
         finished_at = now if now is not None else datetime.now().astimezone()
         pending = [
             replace(
-                job.with_failure(ErrorKind.INTERRUPTED),
+                # **`None` explicitly, because the argument is required** (`T243-R1`). Omitting it
+                # would make a missing message legal for every other classification too, where a
+                # vanished extractor diagnostic is a defect rather than the truth.
+                job.with_failure(ErrorKind.INTERRUPTED, None),
                 finished_at=finished_at,
             )
             for job in self.with_statuses(INTERRUPTED_ON_STARTUP)

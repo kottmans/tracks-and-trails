@@ -5,7 +5,37 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 (T-200 fourth pass) — **`T-200`'s third-pass review returned Blocked
+**Last updated:** 2026-08-15 (four review findings corrected) — **the overnight six-task review
+came back at `9300adc`: `T-021` Approved, `T-246` approved as a records-only filing, and four
+blockers.** All four are corrected, one commit each, still unpushed. **The 60-run soak finished
+clean** — 60 passed, 0 test failures, 0 process deaths, 8h06m, at `f3eb9f8`; `OPS-007`'s bar is met
+and `T-238`'s guard never fired, so its criterion 4 stays open.
+
+**`T200-R7` (High) — a control named by what it holds.** `QAccessibleComboBox::text` falls through
+`Name` to `Value` under `Q_OS_UNIX`, so **every** combo published its selected item where its name
+belonged and discarded `setAccessibleName`; two controls in the add dialog announced the same group
+title. Fixed with buddy labels — the mechanism Qt's own source names for Linux — which keeps the
+`expandable` state and the `ShowMenu`/`Press` actions that an interface override would have
+dropped. The sweep found a fifth combo reading had missed. **`T-245` is withdrawn**: it was the
+criterion failing, not follow-up work.
+
+**`T202-R1` (High) — focus was colour alone.** The registry enumerated by palette *field*, so the
+focus ring, drawn in `accent`, was never asked what it meant. Measured: **414 pixels changed and
+none was background becoming ink**, the two hues 1.45:1 apart in light. Already-bordered controls
+thicken to 2px with compensated padding now; `theme.STATE_RULES` enumerates by **what a rule
+conveys**; and the regression counts ink rather than comparing colours. A mutation reclassifying the
+menu highlight as pointer feedback survived until channel claims were bound to their selectors.
+
+**`T240-R1` (Medium) — the range half read less than it claimed.** Merges were skipped
+unconditionally, so a merge-only push exited 0 having read nothing; the new-branch fallback read the
+tip alone. Both fixed, with the count now printed, and tested over real repositories because the
+parser tests could not see either bypass.
+
+**`T243-R1` (Medium) — the default, not the type.** `str | None` was right and `= None` was not:
+`with_failure(EXTRACTOR_ERROR)` type-checked and lost the diagnostic. Required again; removing the
+default was itself the call-site audit.
+
+*(The block below is the fourth pass's and stands.)* — **`T-200`'s third-pass review returned Blocked
 at `26eb41c`, and the maintainer authorized a fourth focused pass under `AGENTS.md` §10**, choosing
 it over accepting the risk, amending criterion 3, or carrying the gap into a follow-up task.
 `T200-R3` and `T200-R6` are corrected. **Nothing since `ebe4159` is pushed**; that is where
