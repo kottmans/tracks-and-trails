@@ -16978,3 +16978,154 @@ fixture claim at the same time.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
 decision, dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
+
+## 2026-08-15 — overnight six-task review
+
+**Reviewer:** Codex (Reviewer)
+**Combined boundary:** `26eb41c5e0c87e3ced1186291296ba3f2ec6d086..`
+`f3eb9f85bc87c3b4329662841b8583d2f28b60a0` — six local, unpushed task commits. Each verdict
+below binds its own one-commit boundary; this range is not one approval unit.
+**Platforms verified:** Linux, Qt offscreen. No Windows runtime, CI, real display, Orca/AT-SPI,
+Narrator/UI Automation, frozen build, or external network execution is claimed. The reported
+37-of-60 soak is incomplete under `OPS-007` and is deliberately not used as evidence here.
+
+### Verdicts
+
+| Task | Boundary | Verdict |
+|---|---|---|
+| `T-200` | `26eb41c..22c80e2` | **Changes requested.** `T200-R3` and `T200-R6` are Resolved, but new `T200-R7` is High and blocking. The combo-box survivor is a failed acceptance criterion, not a non-blocking follow-up. |
+| `T-246` | `22c80e2..8631524` | **Approved as a records-only filing.** The task itself remains Proposed; this verdict approves the accuracy and scope of its entry, not its unbuilt acceptance criteria. |
+| `T-021` | `8631524..9b6a743` | **Approved.** No findings. The side-by-side criterion passes independent visual inspection. |
+| `T-240` | `9b6a743..990b79f` | **Changes requested.** `T240-R1` is Medium and blocking because CI does not check every commit in the range it calls “what arrived.” |
+| `T-243` | `990b79f..b8f0a58` | **Changes requested.** `T243-R1` is Medium and blocking: the optional default widens the failure API beyond the one class this task owns. |
+| `T-202` | `b8f0a58..f3eb9f8` | **Changes requested.** `T202-R1` is High and blocking: an existing focus state is still conveyed only by a border-colour change and the new sweep explicitly exempts it. |
+
+### T-200 — authorized fourth focused pass
+
+**Verdict:** **Changes requested.** The authorized correction does what `T200-R3` and `T200-R6`
+asked. One inventory now drives the nine realised surfaces through the name, role, route and focus-
+order assertions, the exact Options inversion is killed, and the quiet service lets the focused
+process terminate normally. `T200-R1`, `R2`, `R4` and `R5` remain Resolved; `R3` and `R6` are
+Resolved here.
+
+The submitted survivor changes the verdict. It is not merely a pre-existing weakness in a test:
+it establishes that criterion 4 and the Phase 4 exit criterion are false for a shipped control.
+
+#### Finding resolution and new finding
+
+| ID | Severity | Blocks approval | Status | Result |
+|---|---|---:|---|---|
+| **T200-R3** | **Medium** | **Yes** | **Resolved** | `every_surface` is the sole nine-surface inventory and the focus-order test walks it. An independent runtime mutation adding `QWidget.setTabOrder(self._embed_subtitles, self._audio_codec)` to `OptionsDialog` fails exactly at `optionsEmbedSubtitles`, row **7 → 0**. The committed file passes **11 tests**. |
+| **T200-R6** | **Low** | **No** | **Resolved** | `QuietYtdlp` is injected through `compose()`'s existing seam. `timeout 20s ... tests/ui/test_accessibility.py` reports **11 passed in 0.74 s** and exits **0**, proving the process result rather than only the pytest summary. |
+| **T200-R7** | **High** | **Yes** | **Open** | `settingsDefaultPreset` has `accessibleName="Default preset"`, but `QAccessible` publishes the selected preset as both **Name** and **Value**. The actual Settings label is not a buddy and supplies no label relation. Independent mutation: clearing `_preset_choice.accessibleName()` leaves all **11 accessibility tests green**. The test at `tests/ui/test_accessibility.py:663` reads the published Name, sees words in *“Best video up to 1080p (MP4)”*, and mistakes a value for the control's purpose. `NFR-005`, T-200 criterion 4, and the amended Phase 4 exit criterion require a correct control name, not merely a nonempty word-bearing string. `T-245`'s proposed raw-property branch would make the test narrower while leaving the published tree wrong, and its claim that neither fork changes user-visible behaviour contradicts the interface-factory branch's purpose. Publish a purpose label/name and a distinct selected value (through a supported label relation, an interface override, or another mechanism that produces the required tree), then test both fields. Check the Windows UI Automation result when that gate is available. |
+
+`T200-R7` is High because the screen-reader-label requirement and the acceptance criterion this task
+exists to deliver are unmet. Under `AGENTS.md` §10, correction and focused verification of a new
+High finding do not need another ordinary-pass authorization. If the maintainer instead wants to
+accept the raw-property branch and leave the published Name as the value, that is a scope amendment,
+not a test correction, and requires an explicit ruling.
+
+### T-246 — menu-route filing
+
+**Verdict:** **Approved as a records-only filing.** The entry accurately carries the maintainer's
+File-menu ruling, the `T-130` shared-`QAction` precedent, the toolbar and `Shift+F10` invariants,
+both hand-maintained Windows gates, and the unverified-Windows limitation. Filing this separately
+from the authorized `T200-R3`/`R6` correction was the correct scope decision: adding menu items is
+new product work, not focused verification of either finding.
+
+`T-246` remains **Proposed** and dependent on the eventual T-200 disposition. None of its product
+acceptance criteria is treated as built by this verdict.
+
+### T-021 — simplified small-size icon
+
+**Verdict:** **Approved.** No findings.
+
+The recorded evidence supplies the human comparison the first criterion asks for. At both 16 px
+and 24 px, on light and dark grounds, the reduced glyph removes the landscape mass that competed
+with the note silhouette; the stem and head read more clearly and the gold sweep remains visible.
+It is recognizably the same note/trail mark. The 32 px control is visually identical between rows,
+so the small-master split has not leaked upward.
+
+Independent reproduction ran `render_small_glyph.py` and `render_icons.py`; SHA-256 for
+`icon-small.png`, the 16/24/32 PNGs and `icon.ico` was byte-identical before and after. The 16 px
+render measures **66 opaque pixels, 20 gold**, above the floor of 16. The combined resource slice is
+**26 passed**, and focused Ruff/format checks pass. The `.ico` declares the required seven frames;
+no Windows shell rendering is claimed or required by this task's criterion.
+
+### T-240 — commit-message enforcement
+
+**Verdict:** **Changes requested.** The hook, message parser, explicit exemption, grandfathered
+`12dff92`, documented setup and scratch-clone proof are sound. The blocking defect is in the half
+whose job is to catch what a forgotten or bypassed hook missed.
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **T240-R1** | **Medium** | **Yes — acceptance criteria 1–3** | `commits_in()` invokes `git rev-list --no-merges`, so CI ignores every real merge commit. A merge-only range on this repository returns `[]` and `check_range()` exits 0 without inspecting the message. The local hook may catch that message when installed, but the CI half is specifically what must cover an uninstalled or `--no-verify` hook. The workflow has a second admitted hole: when `before` is unusable on a new branch, force-push or re-pushed tag, it checks only `$head~1..$head`; earlier commits in the push are not “what arrived” despite the workflow and task claiming that boundary. There are no unit tests for `commits_in()` or `check_range()`, so the 29 passing parser tests cannot see either bypass. | Make range handling event-aware: include real merge commits on pushes, exclude only GitHub's synthetic PR merge if necessary, and cover the complete determinable new-branch range or amend the claim/criterion where GitHub supplies no exact base. Add temporary-repository tests proving an invalid merge and a non-tip invalid commit in a new-branch-shaped range both fail. | **Open** |
+
+This is Medium because the trigger is a particular history shape and the hook remains a workaround;
+it blocks because the task's central “cannot be skipped by forgetting” and “pushed range” claims are
+not true for those commits.
+
+### T-243 — interrupted-row wording
+
+**Verdict:** **Changes requested.** Fork 1 is the correct presentation boundary: new recovery rows
+carry `ErrorKind.INTERRUPTED` with no invented extractor message, old stored messages continue to
+render verbatim, and the row's reason appears once with no next step. The focused UI/unit slice is
+**16 passed / 123 deselected** and the real kill/restart integration path is **1 passed**.
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **T243-R1** | **Medium** | **Yes — NFR-006 boundary and stated out-of-scope classes** | `Job.with_failure()` changed from a required `message: str` to `message: str | None = None`. The task needs `None` to be a valid, explicit value for `INTERRUPTED`; it does not need omission to become valid for every `ErrorKind`. A direct final-tree probe calls `with_failure(ErrorKind.EXTRACTOR_ERROR)` and produces a legal `FAILED` job with `error_kind='extractor_error'` and `error_message=None`. Before this commit, mypy required every caller to supply the message. The default therefore weakens all eleven classes the task says are out of scope and makes an accidentally swallowed extractor diagnostic indistinguishable from the one intentional no-message case. | Keep the widened value type but remove the default: require `message: str | None`, and have recovery pass `None` explicitly. If the model is meant to guarantee that only `INTERRUPTED` may lack a message, enforce and test that stronger invariant; otherwise the required argument still preserves the existing call-site audit. | **Open** |
+
+This is a robustness gap rather than a currently failing production route, so its consequence is
+Medium. It blocks because it weakens the approved honest-error boundary in the shared model while
+the task explicitly excludes changing the other error classes.
+
+### T-202 — colour is never the only signal
+
+**Verdict:** **Changes requested.** The `warn` registry, both-palette sheet sweep, segment words,
+comment stripping and muted-state split are useful and their four reported mutations are credible.
+They do not establish the phase-wide requirement, because the sweep classifies colours by palette
+field rather than by the information a rule conveys.
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **T202-R1** | **High** | **Yes — NFR-005 and the Phase 4 exit criterion** | The global `*:focus` rule changes an already-bordered control from `border: 1px solid theme.border` to `border: 1px solid theme.accent`; width, shape and weight do not change. An independent offscreen `QPushButton` rendering changed **414 pixels**, **378** of them exactly from light-theme border `#748A7E` to accent `#8A6412`, with the same geometry. The idle/focus border colours are only **1.45:1** apart in light and **2.17:1** in dark. Focus is therefore conveyed by colour alone on buttons, line edits, combo boxes and other controls that already have a one-pixel border. `COINCIDENTAL_SEMANTIC_VALUES` explicitly exempts `*:focus` because dark `accent == warn`; that correctly says the ring is not a *warning*, but it never asks what the ring does mean: keyboard focus. The task cannot narrow “no information conveyed by color alone” to uses of fields named `ok`, `warn`, `stop`, and `muted`. | Give focused, already-bordered controls a non-colour state change—shape, thickness, offset, weight, or another stable visual channel—and add a rendered both-palette regression that distinguishes focused from idle without relying only on RGB values. Audit the sibling interaction selectors (`selected`, `checked`, hover/pressed where they carry state, popup/menu selection) as the same defect class; the checked toolbar rule already demonstrates the accepted pattern by thickening its border. Enumerate by the information conveyed, not only by the semantic field name. | **Open** |
+
+This is High because visible focus and no-colour-only signaling are explicit `NFR-005` requirements
+and Phase 4 exit criteria, and the keyboard user this task protects can lose the only visual focus
+indicator. The defect predates the submitted commit, but T-202 is the phase-wide audit and initial
+review of the task whose acceptance claims to have found every such signal.
+
+### Independent final-tree verification
+
+| Check | Result |
+|---|---|
+| Boundaries and metadata | **Passed:** six human-authored commits, one per declared task, all with valid `Task:` trailers; `tools/commit_message_check.py --range 26eb41c..f3eb9f8` exits 0. Every one-commit range and the combined range pass `git diff --check`. `origin/main == 26eb41c`; nothing is pushed. |
+| Ruff | **Passed:** `ruff check .` — all checks; `ruff format --check .` — **189 files** formatted. |
+| Typing | **Passed:** bare `mypy` and `mypy --platform win32` each report **146 source files**, no issues. The `.venv/bin/mypy` wrapper itself has a stale interpreter path in this checkout, so both were invoked correctly as `.venv/bin/python -m mypy`; that environment issue is not attributed to these tasks. |
+| Unit + UI | **Substantively green with the sandbox split stated:** the broad run produced **3058 passed / 18 skipped** and one loopback-socket `PermissionError`; the exact denied test passed **1/1** when rerun with localhost permission. No single 3059-pass command is claimed by this review. |
+| Integration | **Passed:** **440 passed in 272.01 s** with the localhost sockets and real child processes the suite requires. |
+| Focused task slices | T-200 **11 passed, exit 0**; T-240 **29 passed** plus its six-commit range check; T-021 resources **26 passed**; T-243 UI/unit **16 passed / 123 deselected** and recovery integration **1 passed**; T-202 **11 passed** plus existing group-detail slices **2 passed / 123 deselected**. |
+| T-200 mutations | Options focus-order inversion **caught** at row `7 → 0`; deleting the Settings preset combo name **not caught**, all **11 passed**. |
+| T-021 reproducibility | **Passed:** regenerated small master, eight PNGs and seven-frame ICO are byte-identical; side-by-side human criterion independently judged met. |
+| Platform/manual limits | **Not run and not claimed:** Windows, CI, real display, Orca, Narrator, frozen build, network. The 37-of-60 soak is not a completed result and is not quoted as one. |
+
+### Correction boundaries
+
+- `T-200`: correct only `T200-R7` and the T-245 record it invalidates; focused verification may
+  carry the already-resolved `R3`/`R6` negatives without reopening their implementation.
+- `T-240`: correct `T240-R1` in the range/workflow code and add range-level tests; keep the parser,
+  hook, grandfathering and published history unchanged.
+- `T-243`: correct `T243-R1` at the method signature and recovery call, with a focused call-site
+  audit; do not revisit the chosen presentation fork.
+- `T-202`: correct `T202-R1` and audit sibling interaction-state selectors as one defect class;
+  preserve the semantic/muted/segment checks that already pass.
+
+The ordinary first-review budget remains available for T-240 and T-243's focused corrections.
+T202-R1 and T200-R7 are High, so `AGENTS.md` §10 permits focused correction and independent
+verification until those serious findings are resolved. T-021 may move to `## Complete` in the
+routine post-verdict sync. T-246 stays Proposed.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
+decision, dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
