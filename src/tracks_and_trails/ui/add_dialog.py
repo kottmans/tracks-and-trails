@@ -1561,9 +1561,25 @@ class AddUrlDialog(QDialog):
         box.setObjectName("presetBox")
         layout = QVBoxLayout(box)
 
+        # **Two controls in this box announced the same name** (`T200-R7`). Neither had a label, so
+        # the only `Label` relation either could offer was the group box — *"Download as"* — and a
+        # combo box publishes its selected item as its accessible name on Linux rather than what
+        # `setAccessibleName` says. The preset picker and the bitrate picker were therefore
+        # indistinguishable to a screen reader, both announcing the section they sit in.
+        # **Beside the control, not above it, and the height is why** (`T200-R7`). A label on its
+        # own row makes this box taller, and `test_the_panel_fits_the_viewport_at_the_size_the
+        # _criteria_claim` measures the playlist panel against a viewport this box shares —
+        # measured, two stacked labels pushed it to 210 px inside 198. A `QHBoxLayout` row is as
+        # tall as the combo it holds, so the criterion is untouched.
+        preset_row = QHBoxLayout()
+        preset_label = QLabel("Preset", box)
+        preset_label.setObjectName("presetChoiceLabel")
+        preset_row.addWidget(preset_label)
+
         self._preset_choice = QComboBox(box)
         self._preset_choice.setObjectName("presetChoice")
         self._preset_choice.setAccessibleName("Download preset")
+        preset_label.setBuddy(self._preset_choice)
         for preset in self._presets:
             self._preset_choice.addItem(preset.name)
         # **The batch opens on the default preset** (`REQ-007`, `P-7`, `T-111`). *"The default
@@ -1581,14 +1597,21 @@ class AddUrlDialog(QDialog):
         wanted = self._preset_choice.findText(self._default_preset) if self._default_preset else -1
         self._preset_choice.setCurrentIndex(max(wanted, 0))
         self._preset_choice.currentIndexChanged.connect(self._on_preset_changed)
-        layout.addWidget(self._preset_choice)
+        preset_row.addWidget(self._preset_choice, 1)
+        layout.addLayout(preset_row)
 
         # `T-076`, `REQ-010`. A property of the conversion, not a different preset — five MP3
         # presets would encode one parameter as five products, and the model already carries it
         # as `audio_quality`.
+        bitrate_row = QHBoxLayout()
+        bitrate_label = QLabel("MP3 bitrate", box)
+        bitrate_label.setObjectName("audioBitrateLabel")
+        bitrate_row.addWidget(bitrate_label)
+
         self._bitrate_choice = QComboBox(box)
         self._bitrate_choice.setObjectName("audioBitrateChoice")
         self._bitrate_choice.setAccessibleName("MP3 bitrate")
+        bitrate_label.setBuddy(self._bitrate_choice)
         self._bitrate_choice.setAccessibleDescription(
             "The constant bitrate to convert to, in kilobits per second. Higher is larger and "
             "closer to the source."
@@ -1599,7 +1622,8 @@ class AddUrlDialog(QDialog):
             preset_registry.MP3_BITRATES.index(preset_registry.MP3_QUALITY)
         )
         self._bitrate_choice.currentIndexChanged.connect(self._show_selector)
-        layout.addWidget(self._bitrate_choice)
+        bitrate_row.addWidget(self._bitrate_choice, 1)
+        layout.addLayout(bitrate_row)
 
         self._selector_value = QLabel(box)
         self._selector_value.setObjectName("selectorValue")

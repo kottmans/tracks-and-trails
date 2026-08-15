@@ -119,7 +119,55 @@ this one returned four verdicts before approving.*
 
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 
-**Status:** **In Review — corrected three times, 2026-08-15.** Round one returned **Blocked** with
+**Status:** **In Review — corrected four times, 2026-08-15.** The fourth-pass review resolved
+`T200-R3` and `T200-R6` and raised **`T200-R7` (High)**: the survivor I had filed as `T-245` is a
+failed acceptance criterion, not a follow-up. **`AGENTS.md` §10 permits correcting a High without
+another ordinary-pass authorization**, and this is that correction.
+
+#### `T200-R7` — a control named by what it holds
+
+**`QComboBox` publishes its selected item as its accessible name and discards
+`setAccessibleName`.** Not a fallback this project could have avoided: `QAccessibleComboBox::text`
+falls through `Name` to `Value` under `Q_OS_UNIX`, and Qt's own comment says why — *"on Linux we
+use relations for this, name is text"*. So on this platform the supported mechanism is the `Label`
+relation, and a combo with no buddy has **no name at all**; it has a value standing where its name
+should be.
+
+**Seven combos, and the sweep found one I had not.** Reading the code found four; the new rule
+found `optionsContainerChoice` as well, which is the difference between an audit and a list.
+
+| Control | Before | Now |
+|---|---|---|
+| `settingsDefaultPreset` | *"Best video up to 1080p (MP4)"* | *"Preset a newly pasted URL starts with"* — the label was already there and was not a buddy |
+| `cookieBrowserChoice` | *"brave"* | *"Browser to read cookies from"* — it had **no label at all**; three radio buttons sat above it and a `QRadioButton` cannot be a buddy |
+| `presetChoice` | *"Download as"* (the group box) | *"Preset"* |
+| `audioBitrateChoice` | *"Download as"* — **the same name as the control above it** | *"MP3 bitrate"* |
+| `optionsContainerChoice` | *"avi"* | *"Container to convert to"* |
+| `optionsAudioCodec`, `optionsAudioQuality` | already correct | unchanged — `QFormLayout.addRow` buddies its label |
+
+**The interface-override branch was measured and rejected.** A factory returning a
+`QAccessibleWidget` subclass does fix Name and Value — and drops the `expandable` state, the
+`ShowMenu` and `Press` actions and the popup child that `QAccessibleComboBox` provides, because
+PySide6 exposes no `QAccessibleComboBox` to inherit from. Fixing the name by removing the
+affordance is a worse tree, not a better one. `setBuddy` keeps all of it: measured, `children=1`,
+`actions=['ShowMenu', 'Press']`, `expandable=1`.
+
+**Two labels went beside their control rather than above it**, and the height is why: stacking them
+in the add dialog's preset box pushed the playlist panel to **210 px inside a 198 px viewport** and
+broke `test_the_panel_fits_the_viewport_at_the_size_the_criteria_claim`. A `QHBoxLayout` row is as
+tall as the combo it holds, so the ruled bound is untouched.
+
+**The gate asks both fields, and one of them for a platform it cannot run.**
+`test_no_control_is_named_only_by_the_value_it_happens_to_hold` requires a buddy *and* a non-empty
+`accessibleName()` — the first is what Linux reads, the second is what Windows reads through
+`QAccessibleWidget::text`, and requiring only the first would have moved the gap to the platform
+this file cannot see. It also asserts the value is still the selection, so the rule cannot be
+satisfied by breaking the value instead. **Both mutations caught**: dropping the buddy, and the
+reviewer's own — clearing the accessible name.
+
+**`T-245` is withdrawn**, superseded by this correction.
+
+**Status before this round:** **In Review — corrected three times, 2026-08-15.** Round one returned **Blocked** with
 `T200-R1` (High), `T200-R2`, `T200-R3`, `T200-R4` (Medium) and `T200-R5` (Low); the focused
 re-review resolved `R1`, `R4` and `R5` and **reopened `R2` and `R3`**, adding `T200-R6` (Low); the
 authorized third pass resolved `R2` and **reopened `R3` a second time**, `R6` with it. The
@@ -926,6 +974,28 @@ which it merely reports.
 ---
 
 ## Complete
+
+### T-245 — Qt publishes a combo box's value where its name should be
+
+**Status:** **Cancelled — 2026-08-15, superseded by `T200-R7`.** Filed the same day from `T-200`'s
+mutation battery, on the reading that the survivor was a pre-existing gate weakness needing a fork
+this task did not own. **The reviewer overturned that reading**, and was right to: it is a failed
+acceptance criterion of `T-200`, not a follow-up, so it was corrected inside `T-200` rather than
+carried.
+
+**The fork this entry proposed no longer exists.** Branch 1 — *accept Qt's contract and assert
+`accessibleName()`* — would have made the test narrower while leaving the published tree wrong, and
+its claim that neither branch changes user-visible behaviour contradicted branch 2's whole purpose.
+Branch 2 — an interface factory — was then measured and rejected on its own terms: it drops the
+`expandable` state, the `ShowMenu` and `Press` actions and the popup child, because PySide6 exposes
+no `QAccessibleComboBox` to inherit from.
+
+**What was actually done** is the third option the finding named and this entry missed: the
+`Label` relation, through `setBuddy`, which is the mechanism Qt's own source says Linux uses. See
+`T-200`'s entry for the seven controls and the measurements.
+
+**Kept rather than deleted**, because the wrong call is the part worth reading: a survivor was
+filed as follow-up work when it was the criterion failing.
 
 ### T-244 — Expanded playlist entries offer verbs the delegate never draws
 
@@ -6618,81 +6688,6 @@ so plainly rather than reporting a Linux pass as the whole result.
 - Menu items for anything else the toolbar might gain later
 
 ---
-
-### T-245 — Qt publishes a combo box's value where its name should be
-
-**Status:** Proposed — filed 2026-08-15 from `T-200`'s fourth pass, as the one mutation of eight
-that survived. **Not a regression of that correction**: the gate has read combo boxes this way for
-as long as it has existed, which is why it is a filed task rather than another round.
-**Owner:** Implementer — after a maintainer decision on the fork below
-**Priority:** Medium — it is `NFR-005` and criterion 4 of `T-200`, and what is wrong is a gate that
-reports a pass it has not established. No user-visible behaviour changes either way
-**Phase:** Phase 4 (accessibility; not a plan deliverable)
-**Depends on:** nothing. `T-200` should close first — this is its follow-up, not its blocker
-**Relevant context:** `NFR-005`, `T-200` criterion 4, `tests/ui/test_accessibility.py`
-(`is_a_name`, `test_every_surface_names_every_control_it_publishes`),
-`tests/ui/test_windows_accessibility.py`, `OPS-004`
-**Affected surfaces:** `tests/ui/test_accessibility.py`, and `src/tracks_and_trails/ui/**` only if
-the fork below takes the interface-factory branch
-**Risk:** Low to measure, Medium to decide — the cheap fix asserts a different thing rather than a
-stronger thing
-
-#### What was measured
-
-Deleting `self._preset_choice.setAccessibleName("Default preset")` from the Settings screen leaves
-all eleven accessibility assertions green. The reason is not the fallback `T-200` already found and
-fixed for glyph labels — **the name is set, and Qt publishes something else.**
-
-`settingsDefaultPreset` carries `accessibleName='Default preset'` and publishes
-`'Best video up to 1080p (MP4)'`. `cookieBrowserChoice` carries
-`accessibleName='Browser to read cookies from'` and publishes `'brave'`.
-
-Against a bare Qt, with `setAccessibleName("The control's own name")` on each:
-
-| Widget | Published `Name` | Published `Value` |
-|---|---|---|
-| `QPushButton` | *The control's own name* | *(empty)* |
-| `QLineEdit` | *The control's own name* | `typed value` |
-| `QSpinBox` | *The control's own name* | `7` |
-| **`QComboBox`** | **`Alpha`** | **`Alpha`** |
-
-So `QAccessibleComboBox` reports the current item as the **Name**, discarding what the application
-set, and Name and Value are the same string. **The sweep has therefore never checked a combo box's
-name.** It has checked that the selected item's text contains a word, which every preset and every
-browser name does.
-
-#### The fork, and why it is not the Implementer's
-
-1. **Accept Qt's contract and check the right field.** For a `QComboBox`, assert
-   `widget.accessibleName()` — the field the application controls and the one a bridge that
-   respects it would read. Honest, cheap, and it admits that what a Linux AT-SPI or Windows UIA
-   client actually announces for these two controls is unverified on this side.
-2. **Override it with a `QAccessible` interface factory**, so the published Name is the label and
-   the Value is the selection. This makes the published tree correct rather than the test kinder,
-   and it is a runtime change to accessibility behaviour affecting every combo box in the
-   application.
-
-**Neither is obviously right**, which is the reason this is filed rather than fixed inline. (1)
-narrows what the gate claims; (2) changes what users of a screen reader hear.
-
-#### Acceptance criteria
-
-- **Deleting a combo box's accessible name fails a test**, whichever fork is taken
-- The chosen fork is recorded here with the rejected one and its cost
-- **What the published tree actually carries is stated**, not implied — if fork 1 is taken, the
-  entry and the test say plainly that the published Name remains the value
-- `tests/ui/test_windows_accessibility.py` is checked against the same question on the platform
-  where the **real** published tree can be queried. `OPS-004` is why that half matters here: it is
-  the one place this project can tell a bridge's output from Qt's source tree
-
-#### Out of scope
-
-- Whether an announcement is *coherent*. Amended into the pre-release session by the `T200-R1`
-  ruling for both platforms
-- Every other role. The three measured above publish the name they are given
-
----
-
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 

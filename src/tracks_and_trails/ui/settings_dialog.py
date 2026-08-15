@@ -661,6 +661,15 @@ class SettingsDialog(QDialog):
         layout.addWidget(preset_label)
 
         self._preset_choice = QComboBox(box)
+        # **The label is the combo's buddy, and on Linux that is the only thing naming it**
+        # (`T200-R7`). `QAccessibleComboBox::text` falls through `Name` to `Value` under
+        # `Q_OS_UNIX` — Qt's own comment says *"on Linux we use relations for this"* — so a combo
+        # box publishes its **selected item** as its accessible name and discards
+        # `setAccessibleName` entirely. Measured: this control announced *"Best video up to 1080p
+        # (MP4)"* as both its name and its value, and deleting its accessible name changed nothing.
+        # `setBuddy` publishes the `Label` relation the platform reads instead, and costs no
+        # layout: the label was already here and already said what the control is for.
+        preset_label.setBuddy(self._preset_choice)
         self._preset_choice.setObjectName(DEFAULT_PRESET_NAME)
         self._preset_choice.setAccessibleName("Default preset")
         for name in self._preset_names:
@@ -813,9 +822,20 @@ class SettingsDialog(QDialog):
             layout.addWidget(button)
             self._cookie_sources[key] = button
 
+        # **This control had no label at all**, for anyone (`T200-R7`). It followed three radio
+        # buttons, and a `QRadioButton` cannot be a buddy — so the only thing the accessibility
+        # tree had to name it with was the group box, *"Cookies"*, which is the name of the section
+        # rather than of the choice. Sighted users were reading it from the radio above it by
+        # proximity; a screen reader has no proximity.
+        browser_label = QLabel("Browser to read cookies from", box)
+        browser_label.setObjectName("cookieBrowserLabel")
+        browser_label.setWordWrap(True)
+        layout.addWidget(browser_label)
+
         self._cookie_browser_choice = QComboBox(box)
         self._cookie_browser_choice.setObjectName("cookieBrowserChoice")
         self._cookie_browser_choice.setAccessibleName("Browser to read cookies from")
+        browser_label.setBuddy(self._cookie_browser_choice)
         for browser in BROWSER_NAMES:
             self._cookie_browser_choice.addItem(browser)
         self._cookie_browser_choice.currentTextChanged.connect(self._cookie_browser_picked)

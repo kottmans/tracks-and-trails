@@ -70,6 +70,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QComboBox,
+    QLabel,
     QLineEdit,
     QMenu,
     QScrollArea,
@@ -664,6 +665,90 @@ def test_every_focusable_control_is_named(every_surface: list[Surface]) -> None:
                 unnamed.append(f"{surface.label}: {type(widget).__name__} {widget.objectName()!r}")
 
     assert not unnamed, "focusable control(s) with no accessible name: " + ", ".join(unnamed)
+
+
+def buddy_label_of(widget: QWidget) -> str:
+    """The text of the `QLabel` that declares `widget` as its buddy, or `""`.
+
+    **The buddy is what produces the `Label` relation a screen reader reads**, and it is asked from
+    the widget side rather than by walking `interface.relations()` because a control gets a
+    relation for its enclosing `QGroupBox` as well. Both arrive as `Label`, in an order nothing
+    documents, and *"the section this sits in"* is not a name for the control — that is exactly the
+    confusion `T200-R7` is about. A buddy is declared deliberately by whoever built the screen.
+    """
+    window = widget.window()
+    for label in window.findChildren(QLabel):
+        if label.buddy() is widget:
+            return label.text()
+    return ""
+
+
+def test_no_control_is_named_only_by_the_value_it_happens_to_hold(
+    every_surface: list[Surface],
+) -> None:
+    """**`T200-R7`.** A control has to say what it is *for*, not only what it currently holds.
+
+    **`QComboBox` publishes its selected item as its accessible name and discards
+    `setAccessibleName` entirely** — on this platform, by Qt's design.
+    `QAccessibleComboBox::text` falls through `Name` to `Value` under `Q_OS_UNIX`, and the upstream
+    comment says why: *"on Linux we use relations for this, name is text"*. So the supported
+    mechanism here is the `Label` relation, and a combo without a buddy has **no name at all** —
+    it has a value standing where its name should be.
+
+    Measured before this rule existed: the Settings preset picker announced *"Best video up to
+    1080p (MP4)"* as both its name and its value, and deleting its accessible name changed nothing
+    the sweep could see, because `is_a_name` found words in the preset's title. **A rule that asks
+    only whether a string contains a word cannot tell a purpose from a selection.**
+
+    Worse, two controls announced the *same* name: the add dialog's preset picker and its bitrate
+    picker had no labels at all, so the only relation either could offer was the group box they
+    share — *"Download as"* — for two different choices.
+
+    **So both fields are checked.** Where the published name is the value, the name has to come
+    from a buddy; and the value still has to be the selection, so this cannot be satisfied by
+    breaking the value instead.
+    """
+    faults: list[str] = []
+    checked = 0
+    for surface in every_surface:
+        for widget, interface in operable_widgets(surface):
+            if is_platform_furniture(node_for(widget, interface)):
+                continue
+            name = interface.text(QAccessible.Text.Name)
+            value = interface.text(QAccessible.Text.Value)
+            if not value or name != value:
+                # The control publishes a name of its own — the ordinary case, and every role
+                # except `QComboBox` measured on this platform.
+                continue
+            checked += 1
+            buddy = buddy_label_of(widget)
+            where = f"{surface.label}: {type(widget).__name__} {widget.objectName()!r}"
+            if not is_a_name(buddy):
+                faults.append(
+                    f"{where} publishes {name!r} as both its name and its value, and no label "
+                    "declares it as a buddy — so nothing says what it is for"
+                )
+            # **The widget's own field is asked for as well, and only here** (`T200-R7`). Everywhere
+            # else in this file the interface is the right object to ask; for these controls it is
+            # the right object on *one* platform. The fall-through that hides `accessibleName` is
+            # `Q_OS_UNIX`-only, so Windows reads `QAccessibleWidget::text` and gets this field —
+            # which `tests/ui/test_windows_accessibility.py` checks through real UI Automation and
+            # this file cannot. Requiring both is what stops a fix for the platform under test from
+            # silently emptying the name on the platform that is not.
+            if not is_a_name(widget.accessibleName()):
+                faults.append(
+                    f"{where} has no accessibleName of its own — the buddy names it on Linux, and "
+                    "Windows reads this field instead, so dropping it moves the gap rather than "
+                    "closing it"
+                )
+            if isinstance(widget, QComboBox) and value != widget.currentText():
+                faults.append(f"{where} publishes {value!r} as its value, not its selection")
+
+    assert checked, (
+        "no control was found publishing its value as its name, so this rule inspected nothing — "
+        "if Qt stopped doing that, delete this test rather than letting it pass in silence"
+    )
+    assert not faults, "control(s) named only by what they hold:\n" + "\n".join(faults)
 
 
 # --- keyboard reachability (T-200 criterion 1) ------------------------------------------------

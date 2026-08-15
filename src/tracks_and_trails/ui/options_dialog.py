@@ -409,9 +409,20 @@ class OptionsDialog(QDialog):
             button.toggled.connect(self._update_enabled)
             layout.addWidget(button)
 
+        # **The label is the buddy, and on Linux it is the only thing naming this** (`T200-R7`).
+        # `QAccessibleComboBox::text` falls through `Name` to `Value` under `Q_OS_UNIX`, so a combo
+        # publishes its selected item — *"avi"* — where its name should be, and discards
+        # `setAccessibleName`. The three radio buttons above cannot be buddies, and the group box
+        # is the section rather than the choice, so this control had nothing naming it at all.
+        container_label = QLabel("Container to convert to", group)
+        container_label.setObjectName("optionsContainerLabel")
+        container_label.setWordWrap(True)
+        layout.addWidget(container_label)
+
         self._container_choice = QComboBox(group)
         self._container_choice.setObjectName(CONTAINER_CHOICE_NAME)
         self._container_choice.setAccessibleName("Container to convert to")
+        container_label.setBuddy(self._container_choice)
         for container in CONTAINER_FORMATS:
             self._container_choice.addItem(container, container)
         layout.addWidget(self._container_choice)
