@@ -5,8 +5,42 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 (T-200 built) — **`T-200` is in review, and the accessibility pass
-found what it was filed to find.** The queue's run control had **no keyboard route of any kind**:
+**Last updated:** 2026-08-15 (T-200 fourth pass) — **`T-200`'s third-pass review returned Blocked
+at `26eb41c`, and the maintainer authorized a fourth focused pass under `AGENTS.md` §10**, choosing
+it over accepting the risk, amending criterion 3, or carrying the gap into a follow-up task.
+`T200-R3` and `T200-R6` are corrected. **Nothing since `ebe4159` is pushed**; that is where
+`origin/main` stands.
+
+**`T200-R3` was one defect class showing up four times: a gate asking an adjacent question.** The
+file held **two** inventories of screens — top-level ones opened, nested ones constructed — and
+each check looped over whichever was nearest. The name check grew a nested twin, then the route
+check grew one, and the focus-order check never did, so `setTabOrder` on the options dialog
+inverted a visible order while all fourteen assertions passed. **There is one inventory now** and
+every criterion-owned check walks all nine surfaces; what differs between screens is recorded on
+the surface rather than inside a check.
+
+**Realising those screens is what found the thing nothing was in a position to see.** Qt takes the
+`TabFocus` bit off the *unchecked* members of an auto-exclusive radio group **at show time** —
+measured, policy `11` to `10` on the options dialog's containers — so a sweep over unrealised
+widgets called two controls Tab-reachable that a real session does not, in the direction that
+passes. The radio contract is asked as a question with a real answer (*is any member reachable by
+Tab?*), not written down as an exemption, and a group where none is still fails.
+
+**`T200-R6` needed the seam, not a longer wait.** `shutdown.begin()` closes the manager, the
+writer, the database and the lock, and does not own the `YtdlpService` that `open_settings()`
+starts; the module printed *"14 passed"* and exited **124**. A local `QuietYtdlp` through
+`compose()`'s own injection point takes it to exit **0**.
+
+**Eight mutations, one survived, and it is filed as `T-245` rather than folded in.** Deleting the
+Settings preset combo's accessible name changes nothing, because **Qt discards it**:
+`QComboBox` publishes its current value as its Name while `QPushButton`, `QLineEdit` and `QSpinBox`
+all publish the name they are given. The name half of criterion 4 has therefore never inspected a
+combo box's name. Pre-existing rather than a regression, and it needs a decision — accept Qt's
+contract and assert the field the application controls, or override the published tree with an
+interface factory — so §10 routes it to follow-up work.
+
+*(The snapshot below is the build's and stands, except where this block corrects it.)* The queue's
+run control had **no keyboard route of any kind**:
 `QToolBar` gives every button `Qt.NoFocus`, `Start` and `Clear finished` are on no menu, and the
 whole UI held two shortcuts — `Ctrl+N` and `Ctrl+Q` — neither of them these. An empty queue exposed
 **zero** focusable widgets. `UX-006` made the queue *stopped until started*, so **a user without a

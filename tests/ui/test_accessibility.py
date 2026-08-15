@@ -29,18 +29,31 @@ AT-SPI, which needs a real display and a running assistive client; the suite run
 `QAccessible.isActive()` is `False` and stays so. So the source tree is what is automatable here,
 and the Orca half is recorded as a human check in `T-200`'s entry rather than pretended at.
 
+## One inventory, and every check walks all of it
+
+`every_surface` is the list of realised screens and **there is exactly one of it** (`T200-R3`).
+Each criterion — a name and a role, a keyboard route, a focus order that follows the layout — is
+asserted once, over that list.
+
+**This file carried two inventories for three review rounds and that was the defect.** Top-level
+screens were opened by one helper, the screens below the add dialog were built by another, and
+each check picked whichever list was nearest. The name check grew a nested twin, then the route
+check grew one, and the focus-order check never did — so `setTabOrder(embed_subtitles,
+audio_codec)` on the options dialog inverted a visible order while all fourteen assertions passed.
+Nobody decides to skip a surface; they write the next loop over the list they are already holding.
+
+The surfaces still differ in how they are realised, and the difference is recorded **on the
+surface** rather than in the checks — see `Surface`. A check that wants an opinion about which
+screens it applies to has to justify it there, where the next reader will see it.
+
 ## Driven through the routes a user takes
 
-Each surface is opened the way the application opens it — `open_add_dialog()`, `open_settings()`,
-`show_about()` — rather than constructed directly. **`T-201` is why.** Its text was written, tested
-and correct for twelve error classes and reached nobody, because the only widget that composed it
-was one `UX-005` §2 had left nothing constructing. A pass that instantiates a screen in order to
-audit it can pass over a screen no user can open, which is the same defect wearing this file's
-clothes.
-
-The surfaces below the add dialog — the format table, the template editor, the options dialog, the
-preset manager — are reached through a row's own controls and are constructed here, with that
-difference stated at each one rather than blurred.
+The top-level screens are opened the way the application opens them — `open_add_dialog()`,
+`open_settings()`, `show_about()` — rather than constructed. **`T-201` is why.** Its text was
+written, tested and correct for twelve error classes and reached nobody, because the only widget
+that composed it was one `UX-005` §2 had left nothing constructing. A pass that instantiates a
+screen in order to audit it can pass over a screen no user can open, which is the same defect
+wearing this file's clothes.
 """
 
 import time
@@ -53,7 +66,9 @@ import pytest
 from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAccessible, QAccessibleInterface, QAction
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
+    QButtonGroup,
     QComboBox,
     QLineEdit,
     QMenu,
@@ -64,6 +79,7 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails import app as application
+from tracks_and_trails.downloader.ytdlp_service import YtdlpService
 from tracks_and_trails.ui.keyboard import ROUTE_ELSEWHERE_PROPERTY
 from tracks_and_trails.ui.main_window import MainWindow
 
@@ -248,6 +264,61 @@ def reaches_by_tab(widget: QWidget) -> bool:
     return bool(int(widget.focusPolicy()) & int(Qt.FocusPolicy.TabFocus))
 
 
+def radio_group_of(widget: QAbstractButton) -> list[QAbstractButton]:
+    """The auto-exclusive buttons `widget` competes with, however the group was formed.
+
+    Qt has two mechanisms and this application uses the implicit one: an explicit `QButtonGroup`,
+    or — when there is none — every auto-exclusive sibling under the same parent widget. Both are
+    handled, because which one a screen uses is the screen's business and not this file's.
+
+    `group()` is typed as never-`None` and measured to return `None` for all three of the options
+    dialog's container radios, which use the implicit mechanism. The same stub-versus-runtime
+    mismatch `walk` documents for `interface.object()`, handled the same way: a `cast` says what
+    the contract really is, where a `type: ignore` would only silence the check that noticed.
+    """
+    group = cast("QButtonGroup | None", widget.group())
+    if group is not None:
+        return list(group.buttons())
+    parent = widget.parentWidget()
+    if parent is None:
+        return [widget]
+    return [
+        button
+        for button in parent.findChildren(QAbstractButton)
+        if button.parentWidget() is parent and button.autoExclusive()
+    ]
+
+
+def reached_by_arrows_in_its_group(widget: QWidget) -> bool:
+    """Whether Tab reaches `widget`'s radio group and the arrow keys then reach `widget`.
+
+    **Qt takes the `TabFocus` bit off the unchecked members of an auto-exclusive group when the
+    surface is shown**, and it does it at show time rather than on construction — measured on the
+    options dialog, where all three container radios are policy `11` while unrealised and the two
+    unchecked ones are policy `10` once `show()` has run. That is the standard radio-group contract
+    on every platform: **Tab enters the group at the checked button and the arrow keys move within
+    it**, so a group is one stop rather than three and the keyboard cannot land on an option
+    without selecting it.
+
+    **This was invisible to this file until `T200-R3`'s restructure**, and the reason is the finding
+    itself: the surfaces below the add dialog were constructed and never realised, so the sweep was
+    reading focus policies Qt had not finished deciding. Realising them is what
+    `test_tab_order_follows_visual_order_on_every_surface` needs anyway, and it brought this with
+    it.
+
+    **Not an exemption, and deliberately not a `route_is_elsewhere` declaration.** That property
+    says *this application chose to make a control unfocusable and here is where its route went*;
+    this is Qt deciding, after the fact, on a widget whose focus policy the application never
+    touched — declaring it would put a sentence about Qt's behaviour on our widget, and would go on
+    being true if the group ever became genuinely unreachable. So it is asked as a question with a
+    real answer: **is some member of this group reachable by Tab?** A group where none is fails,
+    which is the defect this would otherwise hide.
+    """
+    if not isinstance(widget, QAbstractButton) or not widget.autoExclusive() or widget.isChecked():
+        return False
+    return any(button.isChecked() and reaches_by_tab(button) for button in radio_group_of(widget))
+
+
 def focusable(widget: QWidget) -> list[QWidget]:
     """Every visible descendant **Tab** can land on, the widget itself included.
 
@@ -273,7 +344,91 @@ def focusable(widget: QWidget) -> list[QWidget]:
     return found
 
 
-# --- the surfaces, opened the way the application opens them ----------------------------------
+# --- one inventory of realised surfaces (T200-R3) ---------------------------------------------
+#
+# **This file used to carry two of these and the second one was the defect.** Top-level screens
+# were opened by `surfaces()`; the screens below the add dialog were built by a `nested_surfaces`
+# fixture; and every check then chose which of the two it looked at. `T200-R3` was reopened twice
+# on that shape — the name check grew a nested twin, then the route check grew one, and the
+# **focus-order** check never did, so adding `setTabOrder(embed_subtitles, audio_codec)` to
+# `OptionsDialog` inverted a visible order while all fourteen assertions passed.
+#
+# The reviewer named the class rather than the instance: *a gate asks an adjacent implementation
+# question rather than the criterion's user-facing question*, four times. Two inventories is how a
+# criterion comes to be applied to a subset — nobody decides to skip a surface, they just write the
+# next loop over the list they were already holding.
+#
+# **So there is one inventory now**, and every criterion-owned check walks all of it. A surface
+# records how it was realised on itself, because that is a genuine difference between these
+# screens; what is not allowed is for a *check* to have an opinion about which ones it applies to.
+
+
+@dataclass(frozen=True, slots=True)
+class Surface:
+    """One realised screen, carrying what is genuinely different about it.
+
+    Two of these fields exist because a real difference would otherwise have to live in the checks,
+    which is what produced `T200-R3`. Both are properties **of the screen**, and both are asserted
+    somewhere rather than merely believed.
+    """
+
+    label: str
+    widget: QWidget
+
+    #: Whether the application opened it, or this file constructed it.
+    #:
+    #: The screens below the add dialog are genuinely reachable — `AddUrlDialog.open_format_table`,
+    #: `open_template_editor`, `open_options` and `open_preset_manager` are the routes, asserted by
+    #: `tests/ui/test_add_dialog.py` — but reaching them needs a *staged row*, which needs a real
+    #: probe against a fixture. Driving that here would make an accessibility failure ambiguous
+    #: with a probe failure. Everything this file asks of a screen is answerable either way; only
+    #: modality, which is a fact about being *opened*, is asked of the opened ones alone.
+    opened_through_its_route: bool
+
+    #: Whether Tab is expected to reach anything at all on it.
+    #:
+    #: **The main window is the one surface where the answer is no, and it is a criterion rather
+    #: than a gap** (`T-234`): nothing on its toolbar may take focus, because `T203-R3` recorded a
+    #: focusable toolbar widget stealing `Shift+F10` from the row menu on a freshly opened window.
+    #: Its verbs are reached by menu and by shortcut, asserted separately below. Every other
+    #: surface with an empty chain is a defect, and `test_every_surface_is_fully_reachable_by_tab`
+    #: says so.
+    expects_a_tab_chain: bool = True
+
+
+class QuietYtdlp(YtdlpService):
+    """A version service that spawns nothing, injected through `compose`'s own seam (`T200-R6`).
+
+    **A widget audit was starting a real yt-dlp child.** `open_settings()` calls `refresh()`, the
+    real service answers it by spawning a process and importing yt-dlp, and this file opens the
+    Settings screen in every check that walks the inventory. The module printed *"14 passed in
+    0.56 s"* and then did not exit within twelve seconds — a passing summary measures assertion
+    time, not process completion, and the Implementer's broad suite hid it by doing enough other
+    work while those children finished.
+
+    The first correction closed the window through `composition.shutdown.begin()`, which is the
+    right lifecycle and does close the manager, the writer, the database and the instance lock —
+    but `OrderlyShutdown` does not own this task, so the process still hung. `compose()` has had an
+    injection seam for exactly this since `T-198`; this is that seam, used.
+
+    **A subclass rather than a stand-in**, so the signals, the busy state and the guard against two
+    operations at once are the production ones and only the three methods that touch a process are
+    replaced. `tests/integration/test_composition.py` has one of these for the same reason; it is
+    not imported from there because a `tests/ui` module reaching into `tests/integration` couples
+    two suites that run separately, and the shared thing would be four lines of stub.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(directory=Path("/nonexistent-in-tests"))
+
+    def refresh(self) -> None:
+        """Answer nothing, and spawn nothing to answer it with."""
+
+    def install_latest_version(self) -> None:
+        """Never reached here; overridden so no audit can start an install."""
+
+    def revert(self) -> None:
+        """Never reached here; overridden so no audit can start a revert."""
 
 
 @pytest.fixture
@@ -288,16 +443,18 @@ def composed(qapp: QApplication, tmp_path: Path) -> Iterator[MainWindow]:
         cache_directory=tmp_path / "cache",
         # Nothing is downloaded: every claim here is about widgets.
         entry_point=lambda *_args, **_kwargs: None,
+        # And nothing is resolved: see `QuietYtdlp` (`T200-R6`).
+        ytdlp_service=QuietYtdlp(),
     )
     window = composition.window
     window.show()
     qapp.processEvents()
     yield window
-    # **Torn down through the lifecycle composition owns** (`T200-R6`). Closing the window alone
-    # left the real `YtdlpService` and the queue writer running, and the file's teardown ran past a
-    # twelve-second bound — a sweep of widgets holding a version service open. `shutdown.begin()`
-    # is the same route `tests/integration/test_composition.py` drives and the one the application
-    # takes when a user closes the window.
+    # **Torn down through the lifecycle composition owns.** Closing the window alone leaves the
+    # queue writer and the database open. `shutdown.begin()` is the same route
+    # `tests/integration/test_composition.py` drives and the one the application takes when a user
+    # closes the window. It does not own the version service, which is why `QuietYtdlp` is above
+    # rather than instead of this.
     window.close()
     composition.shutdown.begin()
     deadline = time.monotonic() + 30
@@ -308,76 +465,205 @@ def composed(qapp: QApplication, tmp_path: Path) -> Iterator[MainWindow]:
     assert composition.shutdown.finished, "composition never finished shutting down"
 
 
-def test_the_window_publishes_a_named_role_for_every_control_a_user_operates(
-    composed: MainWindow,
-) -> None:
-    """`NFR-005`, over the whole tree rather than a list of widgets (`T-200`).
+@pytest.fixture
+def every_surface(composed: MainWindow, qapp: QApplication) -> Iterator[list[Surface]]:
+    """Every screen this application shows, realised, in one list.
+
+    The top-level screens are opened the way the application opens them — `open_add_dialog()`,
+    `open_settings()`, `show_about()` — rather than constructed. **`T-201` is why.** Its text was
+    written, tested and correct for twelve error classes and reached nobody, because the only
+    widget that composed it was one `UX-005` §2 had left nothing constructing. A pass that
+    instantiates a screen in order to audit it can pass over a screen no user can open.
+
+    The screens below the add dialog are constructed, for the reason recorded on
+    `Surface.opened_through_its_route`, and **shown**: geometry is what
+    `test_tab_order_follows_visual_order_on_every_surface` compares, and an unrealised widget has
+    none worth comparing.
+    """
+    from tracks_and_trails.core.models import FormatInfo
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+    from tracks_and_trails.core.settings import Settings
+    from tracks_and_trails.ui.format_table import FormatTable
+    from tracks_and_trails.ui.options_dialog import OptionsDialog
+    from tracks_and_trails.ui.playlist_picker import PlaylistPicker
+    from tracks_and_trails.ui.preset_manager import PresetManager
+    from tracks_and_trails.ui.template_editor import TemplateEditor
+
+    inventory: list[Surface] = [
+        Surface(
+            "main window",
+            composed,
+            opened_through_its_route=True,
+            expects_a_tab_chain=False,
+        )
+    ]
+
+    add = composed.open_add_dialog()
+    qapp.processEvents()
+    inventory.append(Surface("add dialog", add, opened_through_its_route=True))
+
+    settings = composed.open_settings()
+    assert settings is not None, (
+        "composition wired no settings writers, so the Settings screen never opened and this "
+        "sweep would silently cover one surface fewer"
+    )
+    qapp.processEvents()
+    inventory.append(Surface("settings", settings, opened_through_its_route=True))
+
+    about = composed.show_about()
+    qapp.processEvents()
+    inventory.append(Surface("about", about, opened_through_its_route=True))
+
+    built: list[tuple[str, QWidget]] = [
+        # **With a row in it.** An empty table publishes no operable control, and a sweep over
+        # nothing is what `T-227`'s gate did the moment it succeeded.
+        ("format table", FormatTable([FormatInfo(format_id="137", extension="mp4", height=1080)])),
+        ("template editor", TemplateEditor("%(title)s.%(ext)s")),
+        ("playlist picker", PlaylistPicker()),
+        ("options dialog", OptionsDialog(preset=BUILT_IN_PRESETS[0])),
+        ("preset manager", PresetManager(Settings(), save=lambda _settings: None)),
+    ]
+    for label, widget in built:
+        widget.show()
+        inventory.append(Surface(label, widget, opened_through_its_route=False))
+    qapp.processEvents()
+
+    yield inventory
+
+    # **The constructed ones are owned here, because nothing else owns them** (`T-238`). They are
+    # built parentless, and a parentless widget left to the garbage collector has its destructor
+    # run inside whichever test comes next — which segfaulted the very next `compose()` when this
+    # was a plain function. `T-238`'s guard is the record of that exact shape: *views alive with no
+    # parent: zero*.
+    for _label, widget in built:
+        widget.close()
+        widget.deleteLater()
+    qapp.processEvents()
+
+
+#: The floor the whole-application sweeps must clear before their silence means anything.
+#:
+#: **Measured 2026-08-15 across the nine surfaces of the inventory**: 81 operable nodes, 65
+#: focusable widgets, 59 operable widgets reached by the route check.
+#: `test_the_sweeps_actually_reach_the_applications_controls` prints the per-surface breakdown when
+#: it fails, so this can be re-derived rather than guessed at the next time it moves.
+#:
+#: **Set so that losing the largest surface fails it.** The Settings screen contributes 25 of each,
+#: and a sweep that quietly stopped opening it would come back with 34 and 40 — both under this.
+#: That is the shape being guarded: not a control added or removed, which should never fail a
+#: floor, but a whole screen dropping out unnoticed. `T-227`'s gate stopping the moment it
+#: succeeded is the precedent.
+#:
+#: The floor is the **aggregate** guard and it is the weaker half: per-surface non-vacuity is
+#: asserted by each check as it goes, which is what stops one missing surface hiding behind eight
+#: present ones.
+COVERAGE_FLOOR: Final = 42
+
+
+def operable_nodes(surface: Surface) -> list[Node]:
+    """The nodes on one surface that this file holds to a name."""
+    return [
+        node for node in tree_of(surface.widget) if node.role in OPERABLE_ROLES | NAMED_CONTAINERS
+    ]
+
+
+def operable_widgets(surface: Surface) -> Iterator[tuple[QWidget, QAccessibleInterface]]:
+    """Every widget on one surface that a user operates, with the interface that describes it.
+
+    Scoped to the surface's own window, for `focusable`'s reason: a dialog is *parented* to the
+    window that opened it, so `findChildren` otherwise walks straight into it.
+    """
+    for widget in surface.widget.findChildren(QWidget):
+        if widget.window() is not surface.widget.window():
+            continue
+        interface = cast(
+            "QAccessibleInterface | None", QAccessible.queryAccessibleInterface(widget)
+        )
+        if interface is None or interface.role() not in OPERABLE_ROLES:
+            continue
+        yield widget, interface
+
+
+# --- names and roles (T-200 criterion 4) ------------------------------------------------------
+
+
+def test_every_surface_names_every_control_it_publishes(every_surface: list[Surface]) -> None:
+    """`NFR-005`, over the whole tree of every screen rather than a list of widgets.
 
     **A per-widget list is a list that drifts** — the criterion says so in as many words, and this
     project has the receipts: `T-235` found the queue's run control had never been in the Windows
     sweep at all, because that sweep enumerated roles and the control had a role nobody had thought
     of. So this walks what Qt publishes and holds every operable node to the same rule.
+
+    A screen signed off on its own is a screen whose labels were checked by whoever wrote it. This
+    is the pass that asks the same question of all of them at once, which is the difference between
+    this task and the per-surface work `T-107`, `T-110`, `T-181` and `UX-007` already did.
     """
-    nodes = tree_of(composed)
-    operable = [node for node in nodes if node.role in OPERABLE_ROLES | NAMED_CONTAINERS]
-    assert operable, f"the window publishes no operable control at all:\n{describe(nodes)}"
+    faults: list[str] = []
+    for surface in every_surface:
+        operable = operable_nodes(surface)
+        # **Per-surface non-vacuity, checked here rather than by the aggregate floor.** One
+        # surface publishing nothing is exactly what an aggregate hides.
+        if not operable:
+            faults.append(f"{surface.label}: publishes no operable control at all")
+            continue
+        unnamed = [
+            node
+            for node in operable
+            if not is_a_name(node.name) and not is_platform_furniture(node)
+        ]
+        if unnamed:
+            faults.append(f"{surface.label}:\n{describe(unnamed)}")
 
-    unnamed = [
-        node for node in operable if not is_a_name(node.name) and not is_platform_furniture(node)
-    ]
-    assert not unnamed, (
-        f"{len(unnamed)} control(s) reach the tree with no accessible name:\n{describe(unnamed)}"
-    )
+    assert not faults, "controls with no accessible name:\n" + "\n".join(faults)
 
 
-def test_no_control_is_published_without_a_role(composed: MainWindow) -> None:
+def test_no_control_is_published_without_a_role(every_surface: list[Surface]) -> None:
     """A name with no role is announced as *"Start"* and nothing else — a word, not a control.
 
     `QAccessible.Role.NoRole` is the value Qt uses when it has nothing to say, so a named node
     carrying it is a control the bridge cannot classify.
     """
-    named = [node for node in tree_of(composed) if node.name.strip()]
-    roleless = [node for node in named if node.role == QAccessible.Role.NoRole]
-    assert not roleless, f"named control(s) published with no role:\n{describe(roleless)}"
+    faults: list[str] = []
+    for surface in every_surface:
+        named = [node for node in tree_of(surface.widget) if node.name.strip()]
+        assert named, f"{surface.label}: publishes no named node at all"
+        roleless = [node for node in named if node.role == QAccessible.Role.NoRole]
+        if roleless:
+            faults.append(f"{surface.label}:\n{describe(roleless)}")
+
+    assert not faults, "named control(s) published with no role:\n" + "\n".join(faults)
 
 
-def test_every_focusable_control_in_the_window_is_named(composed: MainWindow) -> None:
+def test_every_focusable_control_is_named(every_surface: list[Surface]) -> None:
     """The same rule from the widget side, which catches what the tree flattens.
 
     A `QAccessible` tree is not one node per widget: Qt merges, promotes and hides. A control can
     therefore be focusable — a user tabs to it, and a screen reader is asked to say what it is —
     while contributing no operable node for the sweep above to inspect.
-
-    **The main window legitimately has almost nothing focusable**, and that is `T-234`'s criterion
-    rather than a gap: nothing on its toolbar may take focus, because `T203-R3` recorded a focusable
-    toolbar widget stealing `Shift+F10` from the row menu on a freshly opened window. Its verbs are
-    reached by menu and by shortcut instead — asserted separately, below. So this sweeps whatever is
-    focusable without requiring that anything is.
     """
-    unnamed = []
-    for widget in focusable(composed):
-        if widget.objectName() in PLATFORM_FURNITURE:
-            continue
-        interface = cast(
-            "QAccessibleInterface | None", QAccessible.queryAccessibleInterface(widget)
-        )
-        # A container that merely accepts focus so its children can be reached announces itself by
-        # role; the rule is about controls, and `OPERABLE_ROLES` is where that line is drawn.
-        if interface is None or interface.role() not in OPERABLE_ROLES:
-            continue
-        # **Asked of the interface, not of the widget** — `widget.accessibleName()` is the wrong
-        # object for half these controls. A `QToolBar` builds its buttons from `QAction`s and the
-        # *action* carries the text, so `Start` and `Clear finished` have an empty
-        # `accessibleName()` and a perfectly good published name. Asserting the widget's own field
-        # would have demanded a second copy of a name that is already right, which is how a rule
-        # ends up making an application worse to satisfy it.
-        if not is_a_name(interface.text(QAccessible.Text.Name)):
-            unnamed.append(widget)
+    unnamed: list[str] = []
+    for surface in every_surface:
+        for widget in focusable(surface.widget):
+            if widget.objectName() in PLATFORM_FURNITURE:
+                continue
+            interface = cast(
+                "QAccessibleInterface | None", QAccessible.queryAccessibleInterface(widget)
+            )
+            # A container that merely accepts focus so its children can be reached announces itself
+            # by role; the rule is about controls, and `OPERABLE_ROLES` is where that line is drawn.
+            if interface is None or interface.role() not in OPERABLE_ROLES:
+                continue
+            # **Asked of the interface, not of the widget** — `widget.accessibleName()` is the wrong
+            # object for half these controls. A `QToolBar` builds its buttons from `QAction`s and
+            # the *action* carries the text, so `Start` and `Clear finished` have an empty
+            # `accessibleName()` and a perfectly good published name. Asserting the widget's own
+            # field would have demanded a second copy of a name that is already right, which is how
+            # a rule ends up making an application worse to satisfy it.
+            if not is_a_name(interface.text(QAccessible.Text.Name)):
+                unnamed.append(f"{surface.label}: {type(widget).__name__} {widget.objectName()!r}")
 
-    assert not unnamed, (
-        "focusable control(s) with no accessible name: "
-        f"{[(type(w).__name__, w.objectName()) for w in unnamed]}"
-    )
+    assert not unnamed, "focusable control(s) with no accessible name: " + ", ".join(unnamed)
 
 
 # --- keyboard reachability (T-200 criterion 1) ------------------------------------------------
@@ -410,7 +696,86 @@ def tab_order(surface: QWidget, qapp: QApplication) -> list[QWidget]:
     return order
 
 
-def test_every_verb_the_window_offers_has_a_keyboard_route(composed: MainWindow) -> None:
+def test_every_surface_is_fully_reachable_by_tab(
+    every_surface: list[Surface], qapp: QApplication
+) -> None:
+    """Reachability across every surface, which is criterion 1 in one assertion.
+
+    Each surface is swept for the widgets a keyboard can land on and then walked through Qt's own
+    focus chain; anything focusable the chain never visits is a control a mouse-free user cannot
+    operate.
+
+    **An empty chain is a defect everywhere except the main window**, where `T-234` requires it —
+    and that exception is declared on the surface rather than decided here, so a dialog that
+    quietly stops offering a chain fails instead of being skipped.
+    """
+    faults: list[str] = []
+    for surface in every_surface:
+        expected = set(focusable(surface.widget))
+        if not expected:
+            if surface.expects_a_tab_chain:
+                faults.append(f"{surface.label}: exposes no control Tab can reach at all")
+            continue
+        assert not surface.expects_a_tab_chain or expected, surface.label
+        missed = expected - set(tab_order(surface.widget, qapp))
+        if missed:
+            faults.append(
+                f"{surface.label}: Tab never reaches "
+                f"{sorted((type(w).__name__, w.objectName()) for w in missed)}"
+            )
+
+    assert not faults, "controls the Tab chain never reaches:\n" + "\n".join(faults)
+
+
+def test_no_operable_control_quietly_loses_its_keyboard_route(
+    every_surface: list[Surface],
+) -> None:
+    """**`T200-R2`.** Every sweep above inspects the controls it can *see*, and that is the hole.
+
+    Setting the Settings screen's *Choose folder…* button to `Qt.NoFocus` left all eleven tests of
+    the first submission green: a control that stops being focusable drops out of the focusable
+    set, so the assertion that every focusable control is reachable stays true by having one thing
+    fewer to check. **A rule that only checks what it can still see cannot notice something being
+    taken away.** `Qt.ClickFocus` then did the same thing one property along, which is why
+    `reaches_by_tab` asks for the `TabFocus` capability rather than for a policy that is not
+    `NoFocus`.
+
+    So this reads the **accessible tree** — which lists the control whether or not it takes focus —
+    and requires each operable node to be reachable one of three ways: it takes focus, it is a menu
+    item, or it **declares where its route is** through `ui/keyboard.route_is_elsewhere`. The
+    declaration is on the widget with its reason, because a list of exempt object names in a test
+    is the list that drifts, which is what criterion 4 refuses when it asks for the whole tree
+    rather than per widget.
+    """
+    faults: list[str] = []
+    inspected = 0
+    for surface in every_surface:
+        for widget, interface in operable_widgets(surface):
+            if is_platform_furniture(node_for(widget, interface)):
+                continue
+            inspected += 1
+            if (
+                reaches_by_tab(widget)
+                or reached_by_arrows_in_its_group(widget)
+                or widget.property(ROUTE_ELSEWHERE_PROPERTY)
+            ):
+                continue
+            faults.append(
+                f"{surface.label}: {type(widget).__name__} {widget.objectName()!r} "
+                f"({interface.text(QAccessible.Text.Name)!r}) takes no focus and declares no route"
+            )
+
+    assert inspected >= COVERAGE_FLOOR, (
+        f"only {inspected} operable control(s) were inspected across {len(every_surface)} "
+        f"surfaces, under the {COVERAGE_FLOOR} floor — this passed by looking at almost nothing"
+    )
+    assert not faults, (
+        "operable control(s) a keyboard cannot reach, and which do not say where the route went:\n"
+        + "\n".join(faults)
+    )
+
+
+def test_every_toolbar_verb_has_a_menu_item_or_a_shortcut(composed: MainWindow) -> None:
     """**The global question this task exists to ask** (`T-200`, criterion 1).
 
     Reachability has been argued one surface at a time and never verified end to end — and the
@@ -425,16 +790,26 @@ def test_every_verb_the_window_offers_has_a_keyboard_route(composed: MainWindow)
     the two rules only look opposed: one says *every verb must be operable without a pointer*, the
     other says *not by taking focus on this bar*.
 
-    Every action the window offers — its menus and its toolbar alike — must therefore be invokable
-    by a key: a menu item is reachable through the menu bar, and anything else needs a shortcut.
+    **Asserted as a property, not as two key names.** The rule is *a verb the menus do not carry
+    must carry its own shortcut*; naming `Ctrl+R` here would restate `main_window`'s constant and
+    pass on whatever it said. A third toolbar verb added later without a menu item fails here.
+
+    *(This was two tests until `T200-R3`'s restructure —
+    `test_every_verb_the_window_offers_has_a_keyboard_route` and
+    `test_the_toolbars_two_menuless_verbs_each_have_a_shortcut` — whose `routeless` predicates were
+    the same conjunction in the opposite order. Merged rather than left as a second copy that could
+    drift from the first; the shortcut constants keep their own regression in
+    `tests/ui/test_main_window.py`.)*
     """
-    menu_items = {
-        action
+    menu_texts = {
+        action.text().replace("&", "")
         for menu_action in composed.menuBar().actions()
         if (menu := cast("QMenu | None", menu_action.menu())) is not None
         for action in menu.actions()
         if not action.isSeparator()
     }
+    assert menu_texts, "the menu bar publishes no actions, so this proves nothing"
+
     toolbar = composed.findChild(QToolBar, "queueToolBar")
     assert toolbar is not None, "the queue toolbar is gone, so this proves nothing"
     # **A `QWidgetAction` is furniture, not a verb.** The bar's flexible spacer is one — it exists
@@ -446,53 +821,13 @@ def test_every_verb_the_window_offers_has_a_keyboard_route(composed: MainWindow)
     ]
     assert verbs, "the toolbar carries no verbs at all, so this assertion is vacuous"
 
-    texts = {action.text().replace("&", "") for action in menu_items}
     routeless = [
         action
         for action in verbs
-        if action.shortcut().isEmpty() and action.text().replace("&", "") not in texts
+        if action.shortcut().isEmpty() and action.text().replace("&", "") not in menu_texts
     ]
     assert not routeless, (
         "toolbar verb(s) a keyboard cannot invoke — no shortcut and no menu item: "
-        f"{[a.objectName() for a in routeless]}"
-    )
-
-
-def test_the_toolbars_two_menuless_verbs_each_have_a_shortcut(composed: MainWindow) -> None:
-    """`Start` and `Clear finished` are on no menu, so the shortcut is the route (`T-200`).
-
-    **Asserted as a property, not as two key names.** The rule is *a verb the menus do not carry
-    must carry its own shortcut*; naming `Ctrl+R` here would restate `main_window`'s constant and
-    pass on whatever it said. A third toolbar verb added later without a menu item fails here.
-
-    The keys themselves are transcribed once, at `RUN_SHORTCUT` and `CLEAR_FINISHED_SHORTCUT`,
-    with why they were chosen.
-    """
-    menu_texts = {
-        action.text().replace("&", "")
-        for menu_action in composed.menuBar().actions()
-        if (menu := cast("QMenu | None", menu_action.menu())) is not None
-        for action in menu.actions()
-    }
-    toolbar = composed.findChild(QToolBar, "queueToolBar")
-    assert toolbar is not None, "the queue toolbar is gone, so this proves nothing"
-
-    # **A `QWidgetAction` is furniture, not a verb.** The bar's flexible spacer is one — it exists
-    # to push `Clear finished` to the right edge and there is nothing for a keyboard to invoke.
-    verbs = [
-        action
-        for action in toolbar.actions()
-        if not action.isSeparator() and not isinstance(action, QWidgetAction)
-    ]
-    assert verbs, "the toolbar carries no verbs at all"
-
-    routeless = [
-        action
-        for action in verbs
-        if action.text().replace("&", "") not in menu_texts and action.shortcut().isEmpty()
-    ]
-    assert not routeless, (
-        "toolbar verb(s) on no menu and with no shortcut, so a keyboard cannot invoke them: "
         f"{[a.objectName() for a in routeless]}"
     )
 
@@ -511,284 +846,6 @@ def test_no_two_actions_claim_the_same_shortcut(composed: MainWindow) -> None:
     assert not duplicates, (
         f"shortcut(s) claimed by more than one action: {sorted(duplicates)} — "
         f"{[(a.objectName(), a.shortcut().toString()) for a in bound]}"
-    )
-
-
-# --- every surface, not only the window (T-200 criterion 1) -----------------------------------
-
-
-def surfaces(window: MainWindow, qapp: QApplication) -> list[tuple[str, QWidget]]:
-    """Every screen reachable from the window, opened the way a user opens it.
-
-    `open()` rather than `exec()` throughout, which is the application's own choice and the reason
-    a test can drive these at all — `open_add_dialog`'s docstring records it.
-    """
-    opened: list[tuple[str, QWidget]] = [("main window", window)]
-    add = window.open_add_dialog()
-    qapp.processEvents()
-    opened.append(("add dialog", add))
-    settings = window.open_settings()
-    assert settings is not None, (
-        "composition wired no settings writers, so the Settings screen never opened and this "
-        "sweep would silently cover one surface fewer"
-    )
-    qapp.processEvents()
-    opened.append(("settings", settings))
-    about = window.show_about()
-    qapp.processEvents()
-    opened.append(("about", about))
-    return opened
-
-
-def test_every_surface_names_every_control_it_publishes(
-    composed: MainWindow, qapp: QApplication
-) -> None:
-    """The name sweep across the whole application, not the window alone (`T-200`).
-
-    A screen signed off on its own is a screen whose labels were checked by whoever wrote it. This
-    is the pass that asks the same question of all of them at once, which is the difference between
-    this task and the per-surface work `T-107`, `T-110`, `T-181` and `UX-007` already did.
-    """
-    faults: list[str] = []
-    for label, surface in surfaces(composed, qapp):
-        nodes = tree_of(surface)
-        operable = [node for node in nodes if node.role in OPERABLE_ROLES | NAMED_CONTAINERS]
-        if not operable:
-            faults.append(f"{label}: publishes no operable control at all")
-            continue
-        unnamed = [
-            node
-            for node in operable
-            if not is_a_name(node.name) and not is_platform_furniture(node)
-        ]
-        if unnamed:
-            faults.append(f"{label}:\n{describe(unnamed)}")
-
-    assert not faults, "controls with no accessible name:\n" + "\n".join(faults)
-
-
-def test_every_surface_is_fully_reachable_by_tab(composed: MainWindow, qapp: QApplication) -> None:
-    """Reachability across every surface, which is criterion 1 in one assertion.
-
-    Each surface is swept for the widgets a keyboard can land on and then walked through Qt's own
-    focus chain; anything focusable the chain never visits is a control a mouse-free user cannot
-    operate.
-    """
-    faults: list[str] = []
-    for label, surface in surfaces(composed, qapp):
-        expected = set(focusable(surface))
-        if not expected:
-            # The window is the one surface with no chain, by `T-234`'s criterion; its verbs are
-            # asserted by route instead. A *dialog* with nothing focusable would be a real defect,
-            # and the coverage floor below is what stops that hiding here.
-            continue
-        missed = expected - set(tab_order(surface, qapp))
-        if missed:
-            faults.append(f"{label}: {sorted((type(w).__name__, w.objectName()) for w in missed)}")
-
-    assert not faults, "controls the Tab chain never reaches:\n" + "\n".join(faults)
-
-
-#: The floor the two sweeps above must clear before their silence means anything.
-#:
-#: Measured on 2026-08-15: 42 focusable controls and 42 operable nodes across the four surfaces —
-#: the Settings screen alone contributes 26 and 23. **Deliberately far below those numbers**, so a
-#: surface gaining or losing a control does not fail this, while a sweep that quietly stopped
-#: opening the Settings screen — the shape `surfaces()` guards against with its own assertion —
-#: cannot pass by inspecting almost nothing. `T-227`'s gate stopping the moment it succeeded is
-#: what this is here to prevent.
-COVERAGE_FLOOR: Final = 25
-
-
-@pytest.fixture
-def nested_surfaces(qapp: QApplication) -> Iterator[list[tuple[str, QWidget]]]:
-    """The screens reached through a staged row's own controls (`T200-R3`).
-
-    **Constructed, not opened, and the difference is stated rather than blurred.** Each of these is
-    genuinely reachable — `AddUrlDialog.open_format_table`, `open_template_editor`, `open_options`
-    and `open_preset_manager` are the routes — but reaching them needs a *staged row*, which needs a
-    real probe against a fixture. That machinery lives in `tests/ui/test_add_dialog.py` and driving
-    it here would make an accessibility failure ambiguous with a probe failure.
-
-    **So this checks their names and roles, and claims nothing about their reachability.** The
-    routes above are asserted to exist by `test_add_dialog.py`; what was missing until `T200-R3` is
-    that **nothing checked these screens were labelled at all** — deleting the format table's
-    accessible name left every test here green, because no test had ever looked at it.
-    """
-    from tracks_and_trails.core.models import FormatInfo
-    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
-    from tracks_and_trails.core.settings import Settings
-    from tracks_and_trails.ui.format_table import FormatTable
-    from tracks_and_trails.ui.options_dialog import OptionsDialog
-    from tracks_and_trails.ui.playlist_picker import PlaylistPicker
-    from tracks_and_trails.ui.preset_manager import PresetManager
-    from tracks_and_trails.ui.template_editor import TemplateEditor
-
-    built: list[tuple[str, QWidget]] = [
-        # **With a row in it.** An empty table publishes no operable control, and a sweep over
-        # nothing is what `T-227`'s gate did the moment it succeeded.
-        (
-            "format table",
-            FormatTable([FormatInfo(format_id="137", extension="mp4", height=1080)]),
-        ),
-        ("template editor", TemplateEditor("%(title)s.%(ext)s")),
-        ("playlist picker", PlaylistPicker()),
-        ("options dialog", OptionsDialog(preset=BUILT_IN_PRESETS[0])),
-        ("preset manager", PresetManager(Settings(), save=lambda _settings: None)),
-    ]
-    qapp.processEvents()
-    yield built
-    # **Owned here, because nothing else owns them** (`T-238`). These are built parentless, and a
-    # parentless widget left to the garbage collector has its destructor run inside whichever test
-    # comes next — which segfaulted the very next `compose()` when this was a plain function.
-    # `T-238`'s guard is the record of that exact shape: *views alive with no parent: zero*.
-    for _label, surface in built:
-        surface.close()
-        surface.deleteLater()
-    qapp.processEvents()
-
-
-def test_every_nested_surface_names_every_control_it_publishes(
-    nested_surfaces: list[tuple[str, QWidget]],
-) -> None:
-    """`T200-R3`: the screens below the add dialog were never inspected at all.
-
-    Removing the format table's accessible name left all eleven earlier tests green, because none
-    of them ever built one. A sweep is only a sweep over what it opens.
-    """
-    faults: list[str] = []
-    for label, surface in nested_surfaces:
-        nodes = tree_of(surface)
-        operable = [node for node in nodes if node.role in OPERABLE_ROLES | NAMED_CONTAINERS]
-        if not operable:
-            faults.append(f"{label}: publishes no operable control at all")
-            continue
-        unnamed = [
-            node
-            for node in operable
-            if not is_a_name(node.name) and not is_platform_furniture(node)
-        ]
-        if unnamed:
-            faults.append(f"{label}:\n{describe(unnamed)}")
-
-    assert not faults, "controls with no accessible name:\n" + "\n".join(faults)
-
-
-def test_every_nested_surface_is_fully_reachable_by_keyboard(
-    nested_surfaces: list[tuple[str, QWidget]], qapp: QApplication
-) -> None:
-    """`T200-R3`: these screens were swept for **names** and never for **reachability**.
-
-    Removing focus from the options dialog's codec control changed nothing, because nothing here
-    had ever asked whether a keyboard could get to it. A label on a control nobody can reach is the
-    politest possible way to fail `NFR-005`.
-
-    The same two rules the top-level surfaces get: everything Tab can land on, Tab actually reaches;
-    and every operable control either takes Tab focus or **declares where its route is**. The
-    second is what catches a control being made mouse-only, which is `T200-R2` — and these surfaces
-    were outside it.
-    """
-    faults: list[str] = []
-    for label, surface in nested_surfaces:
-        expected = set(focusable(surface))
-        if not expected:
-            faults.append(f"{label}: exposes no control Tab can reach at all")
-            continue
-        missed = expected - set(tab_order(surface, qapp))
-        if missed:
-            faults.append(
-                f"{label}: Tab never reaches "
-                f"{sorted((type(w).__name__, w.objectName()) for w in missed)}"
-            )
-
-        for widget in surface.findChildren(QWidget):
-            if widget.window() is not surface.window():
-                continue
-            interface = cast(
-                "QAccessibleInterface | None", QAccessible.queryAccessibleInterface(widget)
-            )
-            if interface is None or interface.role() not in OPERABLE_ROLES:
-                continue
-            if is_platform_furniture(node_for(widget, interface)):
-                continue
-            if reaches_by_tab(widget) or widget.property(ROUTE_ELSEWHERE_PROPERTY):
-                continue
-            faults.append(
-                f"{label}: {type(widget).__name__} {widget.objectName()!r} "
-                f"({interface.text(QAccessible.Text.Name)!r}) is mouse-only and declares no route"
-            )
-
-    assert not faults, "keyboard cannot reach:\n" + "\n".join(faults)
-
-
-def test_the_sweeps_actually_reach_the_applications_controls(
-    composed: MainWindow, qapp: QApplication
-) -> None:
-    """**A green sweep over nothing is the failure mode this whole file is exposed to.**
-
-    Both sweeps above are assertions that a set is *empty*, and the cheapest way for either to pass
-    is to inspect no controls at all. That is not hypothetical here: the first version of the
-    reachability test passed over an empty focusable set, because every widget in the window really
-    was `Qt.NoFocus`, and it took printing the counts to notice.
-    """
-    opened = surfaces(composed, qapp)
-    operable = sum(
-        len([node for node in tree_of(surface) if node.role in OPERABLE_ROLES | NAMED_CONTAINERS])
-        for _label, surface in opened
-    )
-    reachable = sum(len(focusable(surface)) for _label, surface in opened)
-
-    assert operable >= COVERAGE_FLOOR, (
-        f"the sweep found {operable} operable controls across {len(opened)} surfaces, under the "
-        f"{COVERAGE_FLOOR} floor — it is passing because it is looking at almost nothing"
-    )
-    assert reachable >= COVERAGE_FLOOR, (
-        f"the sweep found {reachable} focusable controls across {len(opened)} surfaces, under the "
-        f"{COVERAGE_FLOOR} floor"
-    )
-
-
-def test_no_operable_control_quietly_loses_its_keyboard_route(
-    composed: MainWindow, qapp: QApplication
-) -> None:
-    """**`T200-R2`.** Every sweep above inspects the controls it can *see*, and that is the hole.
-
-    Setting the Settings screen's *Choose folder…* button to `Qt.NoFocus` left all eleven tests
-    green: a control that stops being focusable drops out of the focusable set, so the assertion
-    that every focusable control is reachable stays true by having one thing fewer to check. **A
-    rule that only checks what it can still see cannot notice something being taken away.**
-
-    So this reads the **accessible tree** — which lists the control whether or not it takes focus —
-    and requires each operable node to be reachable one of three ways: it takes focus, it is a menu
-    item, or it **declares where its route is** through `ui/keyboard.route_is_elsewhere`. The
-    declaration is on the widget with its reason, because a list of exempt object names in a test
-    is the list that drifts, which is what criterion 4 refuses when it asks for the whole tree
-    rather than per widget.
-    """
-    faults: list[str] = []
-    for label, surface in surfaces(composed, qapp):
-        for widget in surface.findChildren(QWidget):
-            if widget.window() is not surface.window():
-                continue
-            interface = cast(
-                "QAccessibleInterface | None", QAccessible.queryAccessibleInterface(widget)
-            )
-            if interface is None or interface.role() not in OPERABLE_ROLES:
-                continue
-            if widget.objectName() in PLATFORM_FURNITURE:
-                continue
-            if reaches_by_tab(widget):
-                continue
-            if widget.property(ROUTE_ELSEWHERE_PROPERTY):
-                continue
-            faults.append(
-                f"{label}: {type(widget).__name__} {widget.objectName()!r} "
-                f"({interface.text(QAccessible.Text.Name)!r}) takes no focus and declares no route"
-            )
-
-    assert not faults, (
-        "operable control(s) a keyboard cannot reach, and which do not say where the route went:\n"
-        + "\n".join(faults)
     )
 
 
@@ -837,8 +894,21 @@ def visual_rows(surface: QWidget, widgets: list[QWidget]) -> list[int]:
     ]
 
 
+#: How many surfaces must actually be compared before a clean focus-order sweep means anything.
+#:
+#: A surface with fewer than two ordered controls cannot invert, so it is skipped — and a skip is
+#: indistinguishable from a pass, which is the whole reason `T200-R3` survived three rounds.
+#:
+#: **Measured 2026-08-15: five surfaces are compared** — the add dialog, Settings, the template
+#: editor, the options dialog and the preset manager. **Three of the five are constructed ones**,
+#: so a change that stopped realising them would leave two and fail this, which is precisely the
+#: regression to guard against: the mutation that proves this check works lives on the options
+#: dialog, and an unrealised options dialog would stop catching it silently.
+ORDERED_SURFACE_FLOOR: Final = 4
+
+
 def test_tab_order_follows_visual_order_on_every_surface(
-    composed: MainWindow, qapp: QApplication
+    every_surface: list[Surface], qapp: QApplication
 ) -> None:
     """`T-200` criterion 3: focus order is **asserted**, not just reachability.
 
@@ -850,9 +920,16 @@ def test_tab_order_follows_visual_order_on_every_surface(
     `add_dialog`, `format_table`, `template_editor` and `playlist_picker` each call `setTabOrder`
     already; this is the assertion that they agree with what is drawn, and that the surfaces which
     never called it are not relying on luck.
+
+    **This is the check `T200-R3` was reopened twice for.** It ran over the top-level surfaces
+    alone while the name and route checks grew nested twins, so
+    `setTabOrder(embed_subtitles, audio_codec)` on `OptionsDialog` inverted a visible order and all
+    fourteen assertions passed. It walks the one inventory now, which is the restructure rather
+    than a third twin.
     """
     faults: list[str] = []
-    for label, surface in surfaces(composed, qapp):
+    compared: list[str] = []
+    for surface in every_surface:
         # **Controls, not containers** — the same line `OPERABLE_ROLES` draws everywhere else here.
         # A `QScrollArea` accepts focus so the keyboard can scroll it, and Qt puts it *after* its
         # own children in the chain; measured on the Settings screen, that container is the single
@@ -860,7 +937,7 @@ def test_tab_order_follows_visual_order_on_every_surface(
         # be asserting against Qt rather than against this application's layout.
         order = [
             widget
-            for widget in tab_order(surface, qapp)
+            for widget in tab_order(surface.widget, qapp)
             if (
                 interface := cast(
                     "QAccessibleInterface | None", QAccessible.queryAccessibleInterface(widget)
@@ -871,15 +948,16 @@ def test_tab_order_follows_visual_order_on_every_surface(
         ]
         if len(order) < 2:
             continue
+        compared.append(surface.label)
         # Compared **within** each scrolled region, never across one — see `scroll_context`.
         regions: dict[int, list[QWidget]] = {}
         for widget in order:
-            regions.setdefault(id(scroll_context(widget, surface)), []).append(widget)
+            regions.setdefault(id(scroll_context(widget, surface.widget)), []).append(widget)
 
         for group in regions.values():
             if len(group) < 2:
                 continue
-            rows = visual_rows(surface, group)
+            rows = visual_rows(surface.widget, group)
             inversions = [
                 (
                     group[index].objectName() or type(group[index]).__name__,
@@ -890,14 +968,17 @@ def test_tab_order_follows_visual_order_on_every_surface(
                 if rows[index + 1] < rows[index]
             ]
             if inversions:
-                faults.append(f"{label}: Tab moves back up the surface at {inversions}")
+                faults.append(f"{surface.label}: Tab moves back up the surface at {inversions}")
 
+    assert len(compared) >= ORDERED_SURFACE_FLOOR, (
+        f"only {len(compared)} of {len(every_surface)} surfaces had two or more ordered controls "
+        f"to compare, under the {ORDERED_SURFACE_FLOOR} floor — a screen that stopped being "
+        f"realised would be skipped here rather than failing. Compared: {compared}"
+    )
     assert not faults, "focus order disagrees with visual order:\n" + "\n".join(faults)
 
 
-def test_a_modal_returns_focus_to_the_window_that_opened_it(
-    composed: MainWindow, qapp: QApplication
-) -> None:
+def test_a_modal_returns_focus_to_the_window_that_opened_it(every_surface: list[Surface]) -> None:
     """Closing a dialog must put the user back where they were (`T-200` criterion 3).
 
     **Asserted through parentage and modality rather than by reading `focusWidget()` after a
@@ -906,24 +987,85 @@ def test_a_modal_returns_focus_to_the_window_that_opened_it(
     focus back, so a `focusWidget()` assertion would be testing the platform stub rather than the
     application. What this file owns is that each dialog is parented and modal; that Qt honours it
     is Qt's own contract.
+
+    **This is the one check that asks only the opened surfaces**, and it is a fact about being
+    opened rather than a preference about which screens are worth checking: a screen this file
+    constructed was never handed focus, so it has none to hand back.
     """
-    for label, surface in surfaces(composed, qapp)[1:]:
+    window = every_surface[0].widget
+    dialogs = [surface for surface in every_surface[1:] if surface.opened_through_its_route]
+    assert dialogs, "no dialog was opened, so this assertion is vacuous"
+
+    for surface in dialogs:
         # **Modality is half the claim, and asserting parentage alone let it go** (`T200-R4`).
         # Changing the add dialog from `open()` to a modeless `show()` passed this test, because a
         # modeless window is parented just the same and simply never takes focus back. Qt returns
         # focus to the parent when a **modal** child closes; without the modality there is nothing
         # to return.
-        assert surface.isModal(), (
-            f"the {label} is not modal, so closing it hands focus back to nothing — a modeless "
-            "window is parented identically and behaves entirely differently"
+        assert surface.widget.isModal(), (
+            f"the {surface.label} is not modal, so closing it hands focus back to nothing — a "
+            "modeless window is parented identically and behaves entirely differently"
         )
-        assert surface.parent() is not None or surface.parentWidget() is not None, (
-            f"the {label} has no parent, so closing it returns focus nowhere"
+        assert surface.widget.window() is not window, (
+            f"the {surface.label} is not its own window, so it cannot return focus to one"
         )
-        assert surface.window() is not composed, (
-            f"the {label} is not its own window, so it cannot return focus to one"
+        owner = surface.widget.parentWidget()
+        assert owner is not None and owner.window() is window, (
+            f"the {surface.label} is parented to {owner!r} rather than to the window that opened it"
         )
-        owner = surface.parentWidget()
-        assert owner is not None and owner.window() is composed, (
-            f"the {label} is parented to {owner!r} rather than to the window that opened it"
-        )
+
+
+# --- the sweeps are not passing over nothing --------------------------------------------------
+
+
+def test_every_surface_in_the_inventory_is_realised(every_surface: list[Surface]) -> None:
+    """**`Qt` decides part of what this file measures at show time**, so it has to be shown.
+
+    Measured 2026-08-15 on the options dialog: its three container radios are all focus policy
+    `11` — `StrongFocus | WheelFocus` — while unrealised, and the two *unchecked* ones drop to
+    `10` once `show()` has run, because Qt takes the `TabFocus` bit off the losing members of an
+    auto-exclusive group. **An unrealised sweep therefore reports two controls as Tab-reachable
+    that a real session does not**, and it reports them as reachable in the direction that passes.
+
+    That is this task's own defect class one layer down: not a check looking at the wrong screens,
+    but a check looking at the right screens in a state no user is ever in. Realisation is the
+    premise every other assertion here rests on, so it is asserted rather than assumed —
+    deleting `show()` from the fixture otherwise leaves all ten of these green, which is measured
+    rather than supposed.
+    """
+    unrealised = [surface.label for surface in every_surface if not surface.widget.isVisible()]
+    assert not unrealised, (
+        f"surface(s) audited without being realised: {unrealised} — Qt has not finished deciding "
+        "their focus policies, so what this file would measure is not what a user meets"
+    )
+
+
+def test_the_sweeps_actually_reach_the_applications_controls(
+    every_surface: list[Surface],
+) -> None:
+    """**A green sweep over nothing is the failure mode this whole file is exposed to.**
+
+    Most assertions above are that a set is *empty*, and the cheapest way for any of them to pass
+    is to inspect no controls at all. That is not hypothetical here: the first version of the
+    reachability test passed over an empty focusable set, because every widget in the window really
+    was `Qt.NoFocus`, and it took printing the counts to notice.
+
+    Per-surface non-vacuity is asserted by each check as it goes; this is the aggregate, and it
+    prints what it measured so the floors above can be re-derived rather than guessed at.
+    """
+    operable = sum(len(operable_nodes(surface)) for surface in every_surface)
+    reachable = sum(len(focusable(surface.widget)) for surface in every_surface)
+    per_surface = {
+        surface.label: (len(operable_nodes(surface)), len(focusable(surface.widget)))
+        for surface in every_surface
+    }
+
+    assert operable >= COVERAGE_FLOOR, (
+        f"the sweep found {operable} operable controls across {len(every_surface)} surfaces, under "
+        f"the {COVERAGE_FLOOR} floor — it is passing because it is looking at almost nothing: "
+        f"{per_surface}"
+    )
+    assert reachable >= COVERAGE_FLOOR, (
+        f"the sweep found {reachable} focusable controls across {len(every_surface)} surfaces, "
+        f"under the {COVERAGE_FLOOR} floor: {per_surface}"
+    )

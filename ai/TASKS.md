@@ -119,11 +119,99 @@ this one returned four verdicts before approving.*
 
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 
-**Status:** **In Review — corrected twice, 2026-08-15.** Round one returned **Blocked** with
+**Status:** **In Review — corrected three times, 2026-08-15.** Round one returned **Blocked** with
 `T200-R1` (High), `T200-R2`, `T200-R3`, `T200-R4` (Medium) and `T200-R5` (Low); the focused
-re-review resolved `R1`, `R4` and `R5` and **reopened `R2` and `R3`**, adding `T200-R6` (Low). The
-maintainer **authorized a third focused pass** under `AGENTS.md` §10, the ordinary budget being
-exhausted with blocking Mediums open. All six are now corrected.
+re-review resolved `R1`, `R4` and `R5` and **reopened `R2` and `R3`**, adding `T200-R6` (Low); the
+authorized third pass resolved `R2` and **reopened `R3` a second time**, `R6` with it. The
+maintainer **authorized a fourth focused pass** on 2026-08-15 under `AGENTS.md` §10, choosing it
+over accepting the risk, amending criterion 3 or carrying the gap into a follow-up task. `R3` and
+`R6` are corrected here; `R1`, `R2`, `R4` and `R5` stay Resolved and were not reopened.
+
+#### `T200-R3`, third time — two inventories, and only one of them was fully checked
+
+**The correction is the restructure the reviewer asked for, not a fourth loop.** The remaining
+boundary said so in as many words: *"another isolated loop would leave the file's surface coverage
+split again. Restructure the gate around one inventory of realised surfaces and apply the
+criterion-owned name, route and visual-order checks from that inventory."*
+
+`tests/ui/test_accessibility.py` carried **two** lists of screens — top-level ones opened by a
+`surfaces()` helper, nested ones built by a `nested_surfaces` fixture — and each check looped over
+whichever it was written next to. Round two grew a nested twin of the **name** check; round three
+grew one of the **route** check; the **focus-order** check never got one. So
+`setTabOrder(self._embed_subtitles, self._audio_codec)` on `OptionsDialog` inverted a visible order
+and all fourteen assertions passed.
+
+**There is one inventory now** — `every_surface`, nine screens — and every criterion-owned check
+walks all of it. What genuinely differs between screens is recorded **on the `Surface`** rather
+than inside a check: whether the application opened it, and whether Tab is expected to reach
+anything on it at all (`T-234`'s criterion, which makes the main window the one legitimate empty
+chain). A check that wants an opinion about which screens it covers now has to put that opinion
+where the next reader meets it.
+
+**Nobody decides to skip a surface.** They write the next loop over the list they are already
+holding, which is why this is the fourth instance of one defect class rather than four defects.
+
+#### What the restructure found, which nothing had been in a position to see
+
+**Realising the nested screens changed what they publish, and the sweep had been reading the wrong
+state.** The old fixture constructed them and never showed them. Measured: the options dialog's
+three container radios are all focus policy `11` while unrealised, and the two *unchecked* ones
+drop to `10` once `show()` has run — **Qt takes the `TabFocus` bit off the losing members of an
+auto-exclusive group at show time.** That is the standard radio-group contract everywhere: Tab
+enters the group at the checked button, the arrow keys move within it, and the keyboard cannot land
+on an option without selecting it.
+
+So the previous sweeps were calling two controls Tab-reachable that a real session does not —
+**in the direction that passes.** This is the task's own defect class one layer down: not a check
+looking at the wrong screens, but a check looking at the right screens in a state no user is in.
+
+Handled as a question with a real answer rather than as an exemption. `reached_by_arrows_in_its_group`
+asks **is some member of this group reachable by Tab**, so a group where none is still fails —
+proved by mutation. It is deliberately **not** a `route_is_elsewhere` declaration: that property
+says *this application chose to make a control unfocusable and here is where its route went*, and
+this is Qt deciding, after the fact, about a focus policy the application never set.
+
+`test_every_surface_in_the_inventory_is_realised` is the premise stated as an assertion, because
+deleting `show()` from the fixture otherwise left all ten checks green.
+
+#### `T200-R6`, second time — the fix was the seam, not a longer wait
+
+`composition.shutdown.begin()` was the right lifecycle and the wrong owner: it closes the manager,
+the writer, the database and the instance lock, and `OrderlyShutdown` does not own the
+`YtdlpService` task that `open_settings()` starts. The module printed **14 passed in 0.56 s** and
+then exited **124** under a twelve-second bound.
+
+`compose()` has had a `ytdlp_service` seam since `T-198` for exactly this. A local `QuietYtdlp`
+goes through it, and the module now exits **0**. The shutdown stays, because it is still what
+closes everything else.
+
+#### Eight mutations, and the one that survived is filed as `T-245`
+
+| Mutation | Result |
+|---|---|
+| `setTabOrder(embed_subtitles, audio_codec)` on `OptionsDialog` | **Caught** — `test_tab_order_follows_visual_order_on_every_surface`, `optionsEmbedSubtitles` row 7 → 0. `T200-R3`'s own reproduction |
+| *Choose folder…* to `ClickFocus` | **Caught** — the route check. `T200-R2`'s regression still holds |
+| Options audio-codec combo to `ClickFocus` | **Caught** — the route check, on a nested surface |
+| Delete `show()` from the fixture | **Caught** — `test_every_surface_in_the_inventory_is_realised`. **It survived before that check existed**, which is how the check came to be written |
+| Drop `ytdlp_service=QuietYtdlp()` | **Caught** — the module returns to exit 124. `R6`'s fix is load-bearing |
+| Set the *checked* radio to `NoFocus`, so no member of the group reaches Tab | **Caught** — the route check. The radio rule is not a blanket exemption |
+| Remove the Settings screen from the inventory | **Caught** — the route floor and the coverage floor, both |
+| **Delete the Settings preset combo's accessible name** | ***Survived*** — **filed as `T-245`** |
+
+**The survivor is not a missing name; it is Qt discarding one that is set.** `settingsDefaultPreset`
+carries `accessibleName='Default preset'` and publishes `'Best video up to 1080p (MP4)'`. Measured
+against a bare Qt: `QPushButton`, `QLineEdit` and `QSpinBox` all publish the name they are given,
+and **`QComboBox` publishes its current value as its Name instead**. So the name half of criterion 4
+has never inspected a combo box's name — it has been reading the selected item and finding a word in
+it. It is pre-existing rather than a regression of this correction, it needs a decision this task
+does not own, and `AGENTS.md` §10 routes it to follow-up work: `T-245`.
+
+**Two checks were merged into one**, and it is recorded rather than left to be noticed:
+`test_every_verb_the_window_offers_has_a_keyboard_route` and
+`test_the_toolbars_two_menuless_verbs_each_have_a_shortcut` computed *the same conjunction in the
+opposite order*. One copy is now `test_every_toolbar_verb_has_a_menu_item_or_a_shortcut`. The file
+goes from 14 assertions to 11 — four merges and one new check — which is why the suite reports
+**3012 passed / 18 skipped** where the third pass reported 3015.
 
 #### `T200-R2`, second time — the gate asked for the wrong property
 
@@ -6023,6 +6111,80 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
+
+### T-245 — Qt publishes a combo box's value where its name should be
+
+**Status:** Proposed — filed 2026-08-15 from `T-200`'s fourth pass, as the one mutation of eight
+that survived. **Not a regression of that correction**: the gate has read combo boxes this way for
+as long as it has existed, which is why it is a filed task rather than another round.
+**Owner:** Implementer — after a maintainer decision on the fork below
+**Priority:** Medium — it is `NFR-005` and criterion 4 of `T-200`, and what is wrong is a gate that
+reports a pass it has not established. No user-visible behaviour changes either way
+**Phase:** Phase 4 (accessibility; not a plan deliverable)
+**Depends on:** nothing. `T-200` should close first — this is its follow-up, not its blocker
+**Relevant context:** `NFR-005`, `T-200` criterion 4, `tests/ui/test_accessibility.py`
+(`is_a_name`, `test_every_surface_names_every_control_it_publishes`),
+`tests/ui/test_windows_accessibility.py`, `OPS-004`
+**Affected surfaces:** `tests/ui/test_accessibility.py`, and `src/tracks_and_trails/ui/**` only if
+the fork below takes the interface-factory branch
+**Risk:** Low to measure, Medium to decide — the cheap fix asserts a different thing rather than a
+stronger thing
+
+#### What was measured
+
+Deleting `self._preset_choice.setAccessibleName("Default preset")` from the Settings screen leaves
+all eleven accessibility assertions green. The reason is not the fallback `T-200` already found and
+fixed for glyph labels — **the name is set, and Qt publishes something else.**
+
+`settingsDefaultPreset` carries `accessibleName='Default preset'` and publishes
+`'Best video up to 1080p (MP4)'`. `cookieBrowserChoice` carries
+`accessibleName='Browser to read cookies from'` and publishes `'brave'`.
+
+Against a bare Qt, with `setAccessibleName("The control's own name")` on each:
+
+| Widget | Published `Name` | Published `Value` |
+|---|---|---|
+| `QPushButton` | *The control's own name* | *(empty)* |
+| `QLineEdit` | *The control's own name* | `typed value` |
+| `QSpinBox` | *The control's own name* | `7` |
+| **`QComboBox`** | **`Alpha`** | **`Alpha`** |
+
+So `QAccessibleComboBox` reports the current item as the **Name**, discarding what the application
+set, and Name and Value are the same string. **The sweep has therefore never checked a combo box's
+name.** It has checked that the selected item's text contains a word, which every preset and every
+browser name does.
+
+#### The fork, and why it is not the Implementer's
+
+1. **Accept Qt's contract and check the right field.** For a `QComboBox`, assert
+   `widget.accessibleName()` — the field the application controls and the one a bridge that
+   respects it would read. Honest, cheap, and it admits that what a Linux AT-SPI or Windows UIA
+   client actually announces for these two controls is unverified on this side.
+2. **Override it with a `QAccessible` interface factory**, so the published Name is the label and
+   the Value is the selection. This makes the published tree correct rather than the test kinder,
+   and it is a runtime change to accessibility behaviour affecting every combo box in the
+   application.
+
+**Neither is obviously right**, which is the reason this is filed rather than fixed inline. (1)
+narrows what the gate claims; (2) changes what users of a screen reader hear.
+
+#### Acceptance criteria
+
+- **Deleting a combo box's accessible name fails a test**, whichever fork is taken
+- The chosen fork is recorded here with the rejected one and its cost
+- **What the published tree actually carries is stated**, not implied — if fork 1 is taken, the
+  entry and the test say plainly that the published Name remains the value
+- `tests/ui/test_windows_accessibility.py` is checked against the same question on the platform
+  where the **real** published tree can be queried. `OPS-004` is why that half matters here: it is
+  the one place this project can tell a bridge's output from Qt's source tree
+
+#### Out of scope
+
+- Whether an announcement is *coherent*. Amended into the pre-release session by the `T200-R1`
+  ruling for both platforms
+- Every other role. The three measured above publish the name they are given
+
+---
 
 ### T-243 — An interrupted row says the same thing twice, in two voices
 
