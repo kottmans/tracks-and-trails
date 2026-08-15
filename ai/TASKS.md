@@ -6112,6 +6112,85 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-246 — `Start` and `Clear finished` are on no menu, so nothing announces them
+
+**Status:** Proposed — filed 2026-08-15 on the maintainer's ruling. `T-200` recorded the menu route
+as *"recommended and not taken"* because it changes the ruled menu bar, and left it with the
+maintainer on `T201-R3`'s precedent. **The maintainer chose it on 2026-08-15: both verbs go in the
+`File` menu.**
+**Owner:** Implementer
+**Priority:** Medium — `NFR-005` is satisfied without it, and what is missing is the half a
+keyboard route cannot supply on its own
+**Phase:** Phase 4 (accessibility). **Filed rather than folded into `T-200`'s fourth pass**, which
+`AGENTS.md` §10 authorized for `T200-R3` and `T200-R6` only: a menu-bar change is new product work
+on a ruled surface, it breaks two hand-written Windows gates, and putting it inside a focused
+correction would hand the reviewer fresh surface to audit under a boundary drawn for something else
+**Depends on:** `T-200` closing. Nothing else
+**Relevant context:** `NFR-005`, `UX-005` §5, `T-234`'s toolbar criterion, `T203-R3`, `T-130`
+(the shared `QAction` precedent), `T-146`, `T201-R3`, `main_window.py` `_build_menus`,
+`tests/ui/test_windows_accessibility.py`
+**Affected surfaces:** `src/tracks_and_trails/ui/main_window.py`,
+`tests/ui/test_windows_accessibility.py`, `tests/ui/test_main_window.py`, `docs/UX_SPEC.md` if it
+enumerates the menu bar
+**Risk:** Low to build, Medium to verify — the gate that would catch a mistake runs on Windows only
+
+#### Scope
+
+**`T-200` gave the two verbs a keyboard route and could not give them a landing place.**
+`RUN_SHORTCUT` (`Ctrl+R`) and `CLEAR_FINISHED_SHORTCUT` (`Ctrl+Shift+C`) make every verb operable
+without a pointer, which is what `NFR-005` asks. What they cannot do is give a screen-reader user
+somewhere to **land** and hear what the control is: `T-234`'s criterion forbids a focusable widget
+on that toolbar — `T203-R3` recorded one stealing `Shift+F10` from the row menu on a freshly opened
+window — so the drawn buttons take no focus and never will.
+
+**A menu item is a control a screen reader announces, and an undiscoverable shortcut is not.**
+`QToolBar` gives its buttons `Qt.NoFocus` on Qt's own assumption that a toolbar *mirrors a menu*;
+this one mirrors nothing, which is the assumption `T-200` found to be false here.
+
+**The precedent is already in the file.** `T-130` made the toolbar show the *same* `QAction` the
+`File` menu holds, rather than a second one — `self._add_action`, with the comment saying so. So
+`Add URLs...` is the pattern and these two are the exception. This task removes the exception.
+
+#### Acceptance criteria
+
+- `Start` and `Clear finished` appear in the **`File`** menu and are the **same `QAction`s** the
+  toolbar shows — not duplicates, following `T-130`
+- Their enabled state and status tips stay correct from both places, including while the queue is
+  running and while it is empty
+- The shortcuts keep working and are shown in the menu, which is what a `QAction`'s shortcut does
+  once it is on a menu — and is the discoverability the shortcut alone lacks
+- **`UX-005` §5's three verbs and their order are untouched on the toolbar.** This adds a route;
+  it does not restage the bar
+- `T-234`'s criterion still holds: nothing on the toolbar takes focus, and `Shift+F10` still
+  reaches the row menu on a freshly opened window
+- **Both hand-written Windows gates are updated in the same commit**:
+  `test_each_menu_publishes_exactly_its_actions` pins `("&File", ["Add URLs...", "Quit"])`, and the
+  menu-bar equality pins `["File", "Help", "Settings"]`. The first changes; the second does not
+- `tests/ui/test_accessibility.py`'s toolbar-route check keeps passing **for the other reason** —
+  the verbs will now satisfy it by having a menu item rather than a shortcut, so the assertion
+  should be confirmed still non-vacuous rather than assumed
+
+#### The trap
+
+**The gate that catches a mistake here runs on Windows and cannot be run locally.** `T-146`'s entry
+records this exact gate catching a `Settings` menu on the Windows job alone, after Linux had passed
+and three commits had been pushed. `OPS-003`: there is no Windows machine, so the self-hosted
+runner is reached by pushing — which is the maintainer's decision, not the Implementer's, and which
+`AGENTS.md` §7 requires explicit instruction for.
+
+**So this task lands unverified on its riskiest half until it is pushed**, and the entry should say
+so plainly rather than reporting a Linux pass as the whole result.
+
+#### Out of scope
+
+- **A `Queue` menu.** Considered and not chosen: a new top-level menu for two items is a larger
+  change to a ruled surface than adding them to the menu that already holds the toolbar's other
+  verb
+- Restaging the toolbar, changing `UX-005` §5's verbs, or changing the shortcut keys
+- Menu items for anything else the toolbar might gain later
+
+---
+
 ### T-245 — Qt publishes a combo box's value where its name should be
 
 **Status:** Proposed — filed 2026-08-15 from `T-200`'s fourth pass, as the one mutation of eight
