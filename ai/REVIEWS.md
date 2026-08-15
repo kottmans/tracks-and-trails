@@ -16865,3 +16865,63 @@ maintainer ruling changing the criterion; source-tree assertions cannot substitu
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
 dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
+
+## 2026-08-15 — T-200 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-200`
+**Correction boundary:** `e2fad2fc6c03a35924ad8a7bafeb2a0f3e515afe..`
+`70696610146f8479926444e064cff24eb40ccd37` — two local, unpushed commits: `8fbe39e`
+for source/tests and `7069661` for the maintainer's criterion amendment and current-truth sync.
+**Platforms verified:** Linux, Qt offscreen. No Orca session, AT-SPI publication, Windows runtime,
+CI, real display, frozen build, or external network execution is claimed.
+**Verdict:** **Blocked.** `T200-R1`, `T200-R4`, and `T200-R5` are Resolved. `T200-R2` and
+`T200-R3` remain Open on direct continuations of their original keyboard-coverage defects. The
+ordinary initial-plus-focused review budget is exhausted with blocking Medium findings remaining,
+so `AGENTS.md` §10 requires the maintainer to authorize another focused pass, accept the documented
+risk, change scope, or carry the work into named follow-ups.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Focused re-review result |
+|---|---|---:|---|---|
+| **T200-R1** | **High** | **Yes** | **Resolved by maintainer ruling** | The 2026-08-15 ruling takes the exact non-execution path the finding offered. Phase 4 now automates correct name and role on both platforms, defers subjective announcement coherence to the pre-release Orca/Narrator sessions together, and explicitly records the cost: Linux inspects Qt's source tree rather than AT-SPI publication, so a broken bridge can pass Linux automation while Windows UI Automation fails. `STATUS.md` and T-200 state that Orca was not run. This is a scope amendment, not execution evidence, and does not pretend otherwise. |
+| **T200-R2** | **Medium** | **Yes** | **Open** | The exact `NoFocus` mutation is now caught, and keeping each current exemption beside its widget with a sentence is preferable to a drifting object-name list. But the new rule treats every policy other than exactly `NoFocus` as keyboard-reachable. Independent exact-head mutation: changing Settings' visible **Choose folder…** button to `Qt.ClickFocus` removes it from Tab navigation while all **13 accessibility tests** and all **49 Settings tests** remain green (**62 passed** total). `focusable()` and `test_no_operable_control_quietly_loses_its_keyboard_route` both make the same predicate error. Require the `Qt.TabFocus` capability—or a separately verified route—not merely a nonzero focus policy. |
+| **T200-R3** | **Medium** | **Yes** | **Open** | The nested name half is repaired: all five named widgets are constructed, table/list/tree containers are included, and deleting `FormatTable`'s `Available formats` name fails the new test with that exact `Table` node. The keyboard half remains outside the sweep. `nested_surfaces` is used only by the name test; it is never fed to the route, tab-completeness, or visual-order assertions, and its own docstring expressly claims nothing about reachability. Independent exact-head mutation: making the Options dialog's named audio-codec combo `NoFocus` leaves all **13 accessibility tests** plus the entire Options file at **62 passed / 1 skipped**. Audit the nested surfaces' Tab capability and order, and prove their production routes end to end or cite the exact existing key-driven gates that do. |
+| **T200-R4** | **Medium** | **Yes** | **Resolved** | The application-owned preconditions for Qt's return behavior are now both asserted: each dialog is modal and parented to the composing window. Replacing the add dialog's `open()` with modeless `show()` fails the focused test at `isModal()`, **1 failed / 12 deselected**. No application close handler redirects focus elsewhere; actual window-manager focus is correctly not inferred from the offscreen stub. |
+| **T200-R5** | **Low** | **No** | **Resolved** | The stale `"&" in action.text()` assertion and its false Alt-navigation premise are gone. The regression now asserts the nonempty run shortcut and the declared `RUN_SHORTCUT`; the broader accessibility tests retain collision and menu-or-shortcut coverage. The earlier independent key-event probe established that both submitted shortcuts invoke their callbacks. |
+
+### New non-blocking finding
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T200-R6** | **Low** | **No** | Focused-test isolation | The `composed` fixture supplies no `ytdlp_service`, then every `surfaces()` call opens Settings and starts the real `YtdlpService.refresh()` child. The file reports **13 passed in 1.54 s** but does not terminate within `timeout 12s` (**exit 124**); even the single all-surface name test reports passed and then times out. `compose()` has an explicit service-injection seam, and the integration composition suite already has a `QuietYtdlp` for exactly this reason. The Implementer's broad suite can hide the leak by doing enough other work while those children finish. | Inject a local quiet service into this fixture so a widget audit starts no real version-resolution child and its focused command exits cleanly. Correct alongside any maintainer-authorized T-200 pass; this finding does not independently keep T-200 in review. | **Open, non-blocking** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed with one style note:** `e2fad2f..7069661` is two commits over eight files, **+371/−36**, and passes `git diff --check`. Both are human-authored with correct task/review trailers. `8fbe39e` has a 42-character subject; `7069661` has a 54-character subject, below the 60-character hard cap but above the preferred 50. Nothing is pushed. |
+| Commit separation | **Passed:** `8fbe39e..7069661 -- src tests` is empty, proving `7069661` is prose-only. The submission's stated `e2fad2f..7069661 -- src tests` command is not empty—it includes `8fbe39e`'s five source/test files—so the claim is true but that cited range is not its proof. |
+| Submitted focused assertions | **Reported green, teardown not clean:** the selected accessibility/main-window assertions report **18 passed / 59 deselected**, but the process remains alive behind the real version service and required interruption. The exact accessibility file under a 12-second bound reports **13 passed** then exits 124; see `T200-R6`. |
+| Static and placement gates | **Passed:** focused Ruff check and format check; bare mypy checks **144 source files** clean; T-227's placement suite is **14 passed** with T-200 under `## In Review`. |
+| R2 exact mutation | **Caught:** `Choose folder…` at `NoFocus` produces the one named route failure, with the other 12 accessibility tests passing. |
+| R2 continuation mutation | **Not caught:** `Choose folder…` at `ClickFocus` leaves accessibility plus Settings at **62 passed**. |
+| R3 name mutation | **Caught:** deleting the format-table name produces **1 failed / 12 deselected**, naming `QTableView formatTableView`. |
+| R3 focus mutation | **Not caught:** the nested Options audio-codec combo at `NoFocus` leaves accessibility plus Options at **62 passed / 1 skipped**. |
+| R4 mutation | **Caught:** add-dialog `open()` to `show()` produces **1 failed / 12 deselected** at the modality assertion. |
+| R1 documentation boundary | **Passed:** only `ai/IMPLEMENTATION_PLAN.md`, `ai/STATUS.md`, and `ai/TASKS.md` change in `8fbe39e..7069661`; the amended plan names both the deferral and the weaker Linux publication evidence. |
+| Windows accessibility row | **Not executed:** the `&Settings` row remains Windows-only and unpushed. No local or CI pass is claimed. |
+| Implementer's wider suites | **Not repeated.** The Implementer reports **3014 passed / 18 skipped** unit+UI and **440 passed** integration at `8fbe39e`, then **2094 passed / 15 skipped** unit plus accessibility at prose-only `7069661`. This review neither contradicts nor promotes those figures to independent results. |
+
+### Remaining boundary
+
+Keep the task unpushed. No source change is needed for R1, R4, or R5. If the maintainer authorizes
+another focused pass, correct the Tab-capability predicate for R2, apply the keyboard-route and
+focus-order audit to the nested surfaces for R3, and keep the exact `ClickFocus` and nested
+`NoFocus` mutations as final-tree negatives. R6 may be cleaned up in that batch without becoming
+another blocker. Do not repeat the broad audit.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
+decision, dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was
+changed.
