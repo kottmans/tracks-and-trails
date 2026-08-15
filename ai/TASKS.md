@@ -511,11 +511,34 @@ it**, and this task owns making it complete rather than incidental.
 
 ### T-202 — Nothing is said by colour alone
 
-**Status:** **In Review — corrected four times, 2026-08-15.** `T202-R1` (High) was returned three
-times: *focus* conveyed by colour alone and exempted by name; then fixed for the three controls the
-finding named and left everywhere else; then an inventory parsed out of the style sheet, blind to a
-`QListView` that Qt frames and `theme.py` never mentions. The fourth pass raised **`T202-R2`**
-(Medium) against the tests themselves. The maintainer authorized this pass for it.
+**Status:** **Complete — Approved at `a8775bf` on 2026-08-15**, no findings, after four rounds.
+`T202-R1` (High) was returned three times: *focus* conveyed by colour alone and exempted by name;
+then fixed for the three controls the finding named and left everywhere else; then an inventory
+parsed out of the style sheet, blind to a `QListView` that Qt frames and `theme.py` never mentions.
+The fourth pass raised **`T202-R2`** (Medium) against the tests themselves, and the maintainer
+authorized a focused pass for it. Both findings are closed.
+
+**The reviewer verified the mutations rather than the assertions**: the fixed-light-accent painter
+fails the dark header test, and stylesheet-only dressing fails both rendered sweep cases. They also
+ruled on the one thing this task left deliberately uneven — **the `QListView` mutation failing only
+in the light palette is acceptable**, because a mutation needs to be *detected*, and moving the
+threshold to force a dark failure would misrepresent what was measured. That reading is now the
+precedent for the next per-palette asymmetry here.
+
+**What four rounds cost, in one line each**, because the pattern is the reusable part:
+
+1. The sweep enumerated by palette *field*, so a state drawn in `accent` was never asked what it
+   meant.
+2. The fix was written against the three controls the finding named rather than the property they
+   shared.
+3. The inventory was parsed from the style sheet, so it could only contain controls somebody had
+   already written a rule for.
+4. The tests dressed the application in a style sheet without its palette, so every dark case ran
+   as light — and three recorded measurements had to be re-derived, two of which changed.
+
+Each round the gate was widened by asking a question one level less specific than the last: *which
+field?* → *which property?* → *what is actually drawn?* → *is the thing under test the thing that
+ships?*
 
 #### `T202-R2` — the dark half of every rendered test was not dark
 

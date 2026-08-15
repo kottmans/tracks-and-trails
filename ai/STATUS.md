@@ -5,14 +5,14 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 (fourth round on `T-202`) — **the overnight six-task review came
+**Last updated:** 2026-08-15 (`T-202` Approved) — **the overnight six-task review came
 back at `9300adc`: `T-021` Approved, `T-246` approved as a records-only filing, and four blockers.**
-`T200-R7` and `T243-R1` are closed. `T202-R1` was held open three times — the instance fixed and
-the class left, then a gate that could only see what the style sheet had thought to style — and the
-fourth pass raised **`T202-R2`** against the tests themselves: they installed the style sheet
-without the palette, so **every dark case ran as light**. Corrected under maintainer authorization,
-with three figures from earlier rounds re-measured and two of them corrected. **`T-240` remains
-Blocked under the review-budget rule** — its third round is committed and unreviewed. **The 60-run soak finished clean** — 60 passed, 0 test failures, 0
+`T200-R7` and `T243-R1` are closed. **`T-202` is Approved at `a8775bf`** after four rounds:
+`T202-R1` was held open three times — the instance fixed and the class left, then a gate that could
+only see what the style sheet had thought to style — and the fourth pass raised **`T202-R2`**
+against the tests themselves, which installed the style sheet without the palette so every dark
+case ran as light. The reviewer verified this round by its mutations. **`T-240` remains Blocked
+under the review-budget rule** — its third round is committed and unreviewed. **The 60-run soak finished clean** — 60 passed, 0 test failures, 0
 process deaths, 8h06m, at `f3eb9f8`; `OPS-007`'s bar is met and `T-238`'s guard never fired, so its
 criterion 4 stays open.
 
@@ -24,7 +24,7 @@ title. Fixed with buddy labels — the mechanism Qt's own source names for Linux
 dropped. The sweep found a fifth combo reading had missed. **`T-245` is withdrawn**: it was the
 criterion failing, not follow-up work.
 
-**`T202-R2` (Medium) — the dark half of every rendered test was not dark.** `theme.apply` is the
+**`T202-R2` (Medium, closed) — the dark half of every rendered test was not dark.** `theme.apply` is the
 one call that installs the palette and records `theme.applied()`; the tests called `setStyleSheet`
 alone, so both parameter cases ran with `applied=light` and the platform's `#efefef` window. It
 mattered at once: `SortableHeader` paints its focus edge from `theme.applied().accent`, and
@@ -33,7 +33,7 @@ application properly now and **assert that they did**. The greyscale sweep canno
 wrong-palette painter by construction, so that claim gets its own test in `test_format_table.py`,
 asserting the applied theme's accent is drawn and the other theme's is not.
 
-**`T202-R1` (High, third round) — the inventory was parsed out of the style sheet.** It could only
+**`T202-R1` (High, closed) — the inventory was parsed out of the style sheet.** It could only
 contain controls somebody had already written a rule for, and the queue is a plain `QListView` that
 Qt frames natively — one character away from the `QListWidget` the sheet named, and invisible to a
 parser. **The sweep walks the realised application now**: nine screens, 50 keyboard-reachable
