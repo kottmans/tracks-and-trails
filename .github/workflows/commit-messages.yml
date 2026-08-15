@@ -1,0 +1,103 @@
+# Commit-message gate — `T-240`.
+#
+# **This runs on every push and every pull request, with no `paths` filter, and that is the point.**
+# `ci.yml` exempts prose (`OPS-011`) and `prose.yml` covers only `ai/TASKS.md`; a commit message
+# has nothing to do with which files a commit touched, and the commits most likely to omit a
+# `Task:` trailer — status syncs, review records — are exactly the prose-only ones neither of those
+# workflows would examine.
+#
+# ## What this can and cannot do
+#
+# **It reports; it does not prevent.** By the time this runs the history exists, which is precisely
+# the state `T-065` had to preserve rather than fix when `12dff92` reached `origin/main`. The half
+# that prevents is `.githooks/commit-msg`, which refuses the commit while amending is still free —
+# and which can be skipped with `--no-verify` and does not exist in a fresh clone until
+# `tools/install-hooks.sh` is run.
+#
+# Neither half is sufficient. The hook catches the defect at the only moment it is cheap; this
+# catches the defect the hook was not installed to see. `T-240`'s entry asks for that difference to
+# be stated rather than blurred, so it is stated here and in the checker's own docstring.
+#
+# ## Only the pushed range
+#
+# The range is what arrived, never the whole history. 278 of this repository's 915 commits predate
+# the `Task:` requirement and would fail this check; re-litigating them is out of scope by `T-240`
+# and forbidden in `12dff92`'s case by `T-065`. A gate that fails every run for a reason nobody is
+# allowed to fix is a gate that gets switched off.
+
+name: Commit messages
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: commit-messages-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  trailers:
+    name: trailers
+    # Follows `LINUX_RUNNER` like everything else Linux (`OPS-012`). Unset means hosted.
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+
+    steps:
+      # **Full history.** The default depth of 1 cannot resolve a range at all, and the range is
+      # the whole job.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # No `setup-python`, hosted or not: the checker imports `argparse`, `re`, `subprocess`,
+      # `dataclasses` and nothing else, so whatever `python3` the runner has is enough. This is
+      # also what lets `.githooks/commit-msg` run before a virtualenv exists.
+      - name: Work out what arrived
+        id: range
+        run: |
+          before='${{ github.event.before }}'
+          base='${{ github.event.pull_request.base.sha }}'
+          head='${{ github.sha }}'
+
+          if [ -n "$base" ]; then
+            # A pull request: everything the branch adds on top of its base.
+            range="$base..$head"
+          elif [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "$before^{commit}" 2>/dev/null; then
+            range="$before..$head"
+          else
+            # A new branch, a force-push, or a re-pushed tag — `before` is absent or gone. Falling
+            # back to the whole history would report hundreds of pre-gate commits, so this checks
+            # the tip alone and says so rather than pretending to wider coverage.
+            range="$head~1..$head"
+            echo "::notice::No usable before-SHA; checking the tip commit only."
+          fi
+          echo "range=$range" >> "$GITHUB_OUTPUT"
+          echo "range: $range"
+
+      - name: Check the trailers on what arrived
+        run: |
+          # **`pipefail`, because the check's exit code is the whole result.** Without it `tee`
+          # reports success and the gate passes while printing its own failures — the same shape
+          # `ai/TESTING.md` records for chaining validation into a commit.
+          set -o pipefail
+          mkdir -p reports
+          python3 tools/commit_message_check.py --range '${{ steps.range.outputs.range }}' \
+            2>&1 | tee reports/commit-messages.txt
+
+      # Matches the standing rule in `ci.yml` and `prose.yml`: every job leaves its evidence
+      # behind, pass or fail.
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-commit-messages
+          path: reports/
+          retention-days: 30

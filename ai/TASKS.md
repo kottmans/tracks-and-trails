@@ -547,6 +547,143 @@ split had leaked.
 - Redesigning the logo itself
 - Any change to the brand hex values fixed by `T-003`
 
+### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
+
+**Status:** **In Review — built 2026-08-15.** Filed 2026-08-13 from `T198-R6`, which the reviewer
+called *"a real enforcement gap"* while explicitly holding that it *"does not remain a `T-198`
+blocker"*. All five acceptance criteria are met, and the fourth — a deliberately bad commit, made
+and discarded in a scratch clone — is recorded at `ai/evidence/2026-08-15-T240-hook-proof.md`.
+**Owner:** Implementer
+**Priority:** Low — no product behaviour is affected. It is a provenance rule, and the cost lands
+on the record rather than on a user
+**Phase:** Phase 4 (maintenance; not a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `AGENTS.md` §7 and §13, `T-065`, `T198-R6`, published commit `12dff92`
+**Affected surfaces:** a local git hook or a CI step; `AGENTS.md` if the check is to be named there
+**Risk:** Low, with one real trap named below
+
+#### Scope
+
+**`AGENTS.md` §7 and §13 say commit history names the human maintainer only** — no
+`Co-Authored-By:` for an AI tool, no *"generated with"* footer — and §13 additionally requires a
+`Task:` trailer. **Nothing checks either.**
+
+**The rule has been broken twice by the same mechanism**, and the second time is what makes this
+worth filing rather than remembering:
+
+- `12dff92` (2026-07-28) reached `origin/main`. `T-065` closed it by **preserving the exception**
+  rather than rewriting published history, and left a standing criterion: *"no later commit
+  carries an AI authorship trailer."*
+- `fb41895` (2026-08-13) carried the identical trailer, and **also omitted the `Task:` trailer** —
+  the same two defects `T-065`'s entry names together. It was caught by the reviewer before the
+  push and amended to `3876d0e` with an identical tree, so it cost one amend.
+
+**The standing criterion is not a mechanism.** It is a sentence in a Complete task, and the only
+thing that has ever enforced it is a reviewer reading commit metadata. The tooling that writes
+these messages appends the trailer by default, so the failure recurs by construction rather than
+by carelessness — which is the argument for a gate rather than for more care.
+
+#### What was built
+
+**Two halves, and they do different things.** `T-240`'s entry asks for that difference to be stated
+rather than blurred, so it is stated in the checker's docstring, in the workflow's header, in
+`docs/DEVELOPMENT.md` and here.
+
+- **`.githooks/commit-msg` prevents.** The commit does not exist yet, so a rejection costs a
+  re-edit. **It can be skipped with `--no-verify`, and it does not exist in a fresh clone** until
+  `tools/install-hooks.sh` runs — a per-clone step beside `git config user.email`, for the same
+  reason.
+- **`.github/workflows/commit-messages.yml` reports.** By the time it runs the history exists,
+  which is precisely the state `T-065` had to preserve rather than fix. It is the half that cannot
+  be forgotten and the half that arrives too late.
+
+`core.hooksPath` rather than copying into `.git/hooks`: a copy is a second version that goes stale
+the moment the hook changes, and nothing would say so.
+
+**The workflow has no `paths` filter, and that is load-bearing.** `ci.yml` exempts prose
+(`OPS-011`) and `prose.yml` covers only `ai/TASKS.md` — and the commits most likely to omit a
+`Task:` trailer are status syncs and review records, which are prose-only. A message check has
+nothing to do with which files changed.
+
+`tools/commit_message_check.py` imports only the standard library, so the hook works before the
+virtualenv exists and the workflow needs no `setup-python`.
+
+#### What it checks, and what it deliberately does not
+
+Two rules. **Everything else in §13 is out of scope by the entry's own instruction** — the
+subject's mood, its length, the 72-column wrap, the ~150-word budget — because those are judgement,
+and a gate that argues about prose is a gate people learn to skip.
+
+- **§7:** no `Co-Authored-By:`/`Signed-off-by:` naming an AI tool, and no *"generated with"*-shaped
+  footer.
+- **§13:** a `Task:` trailer, in one of the forms §13 gives, **or** an explained exemption.
+
+**The exemption is spelled `Task: none - <reason>`**, as a value rather than a second trailer name,
+so one grep finds the covered commits and the deliberate exceptions alike — and so that omitting
+the trailer entirely is never how *"no task covers this"* gets said. **A reason is required**: a
+bare `none` is indexed but unexplained, which is the state `T-065`'s standing criterion was already
+in.
+
+**Three judgements worth naming, because each could have gone the other way:**
+
+- **AI authorship is matched against a list of names**, which will be incomplete. The alternative —
+  deciding whether an arbitrary name is a person — is not something a gate can do, and one that
+  guessed would eventually reject a human contributor. `test_a_human_co_author_is_not_rejected`
+  pins that: the cheap reading of §7 is *"reject `Co-Authored-By:`"*, and it is wrong.
+- **An authorship trailer is anchored to the start of its line; a *"generated with"* footer is
+  not.** A trailer has a line shape and the footer is only a sentence. The consequence is real and
+  asymmetric: a commit may quote a `Co-Authored-By:` line inside a bullet — this gate's own commit
+  does — but may not write the footer's phrase at all. Both directions are tested.
+- **Only the trailer block counts for `Task:`.** Otherwise any message whose prose mentions the
+  word passes, which is most messages about this file.
+
+#### What the proof established, including one thing not asked for
+
+The scratch-clone run is at `ai/evidence/2026-08-15-T240-hook-proof.md`: the bad commit succeeds
+before the hook is installed, is refused afterwards with both rules named and `HEAD` unmoved, the
+exemption and a conforming message are accepted, and `--no-verify` walks straight past it into the
+range check.
+
+**And a number that is not a defect: 278 of this repository's 915 commits have no `Task:`
+trailer.** Most predate the requirement. This is why the workflow checks **only the pushed range**
+and never the whole history — a gate that fails every run for a reason nobody is allowed to fix is
+a gate that gets switched off — and why `12dff92` is excluded by name in `GRANDFATHERED`, on
+`T-065`'s decision.
+
+**Measured on the last 60 commits: 53 carry the trailer, 7 do not.** Those seven are status syncs
+and review records — the class §13 permits to omit. **So this gate changes practice slightly rather
+than only enforcing it**: from now on such commits say so explicitly. Recorded here rather than
+discovered on the first refusal.
+
+#### Acceptance criteria
+
+- A commit carrying an AI authorship trailer or a *"generated with"* footer **fails a check**,
+  and the check names the offending line — **met**; the line is printed under the rule it broke
+- A commit with no `Task:` trailer fails the same check, or is explicitly exempted where §13
+  permits — *"omit only for work no task covers"* has to survive — **met**, as `Task: none - <reason>`
+- The check runs somewhere it cannot be skipped by forgetting: a hook that is installed by the
+  documented setup step, a CI step over the pushed range, or both — **both**
+- **It is proved by a deliberately bad commit**, made and discarded in a scratch clone, rather
+  than by reading the script — **met**; `ai/evidence/2026-08-15-T240-hook-proof.md`
+- `12dff92` stays exactly as it is; `T-065`'s decision is not reopened — **met**; excluded by name, with the reason on the constant
+
+#### The trap
+
+**A CI step over the pushed range is the useful half, and it fires after the push.** By then the
+history exists, which is precisely the state `T-065` had to preserve rather than fix. A local hook
+catches it while amending is still free but can be bypassed with `--no-verify` and does not exist
+in a fresh clone. Whichever is built, the entry should say plainly which failure it prevents and
+which it merely reports.
+
+#### Out of scope
+
+- Rewriting `12dff92` or any published history. `T-065` decided that, and `AGENTS.md` forbids
+  force-pushing without confirmation
+- Enforcing the rest of §13 — the subject line's mood, the 72-column wrap, the ~150-word budget.
+  Those are judgement, and a gate that argues about prose is a gate people learn to skip
+
+---
+
 ## Complete
 
 ### T-244 — Expanded playlist entries offer verbs the delegate never draws
@@ -6368,68 +6505,6 @@ patch:
 - The other eleven classes. Their messages are the extractor's, which is the case the verbatim rule
   was written for
 
-### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
-
-**Status:** Proposed — filed 2026-08-13 from `T198-R6`, which the reviewer called *"a real
-enforcement gap"* while explicitly holding that it *"does not remain a `T-198` blocker"*.
-**Owner:** Implementer
-**Priority:** Low — no product behaviour is affected. It is a provenance rule, and the cost lands
-on the record rather than on a user
-**Phase:** Phase 4 (maintenance; not a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `AGENTS.md` §7 and §13, `T-065`, `T198-R6`, published commit `12dff92`
-**Affected surfaces:** a local git hook or a CI step; `AGENTS.md` if the check is to be named there
-**Risk:** Low, with one real trap named below
-
-#### Scope
-
-**`AGENTS.md` §7 and §13 say commit history names the human maintainer only** — no
-`Co-Authored-By:` for an AI tool, no *"generated with"* footer — and §13 additionally requires a
-`Task:` trailer. **Nothing checks either.**
-
-**The rule has been broken twice by the same mechanism**, and the second time is what makes this
-worth filing rather than remembering:
-
-- `12dff92` (2026-07-28) reached `origin/main`. `T-065` closed it by **preserving the exception**
-  rather than rewriting published history, and left a standing criterion: *"no later commit
-  carries an AI authorship trailer."*
-- `fb41895` (2026-08-13) carried the identical trailer, and **also omitted the `Task:` trailer** —
-  the same two defects `T-065`'s entry names together. It was caught by the reviewer before the
-  push and amended to `3876d0e` with an identical tree, so it cost one amend.
-
-**The standing criterion is not a mechanism.** It is a sentence in a Complete task, and the only
-thing that has ever enforced it is a reviewer reading commit metadata. The tooling that writes
-these messages appends the trailer by default, so the failure recurs by construction rather than
-by carelessness — which is the argument for a gate rather than for more care.
-
-#### Acceptance criteria
-
-- A commit carrying an AI authorship trailer or a *"generated with"* footer **fails a check**,
-  and the check names the offending line
-- A commit with no `Task:` trailer fails the same check, or is explicitly exempted where §13
-  permits — *"omit only for work no task covers"* has to survive
-- The check runs somewhere it cannot be skipped by forgetting: a hook that is installed by the
-  documented setup step, a CI step over the pushed range, or both
-- **It is proved by a deliberately bad commit**, made and discarded in a scratch clone, rather
-  than by reading the script
-- `12dff92` stays exactly as it is; `T-065`'s decision is not reopened
-
-#### The trap
-
-**A CI step over the pushed range is the useful half, and it fires after the push.** By then the
-history exists, which is precisely the state `T-065` had to preserve rather than fix. A local hook
-catches it while amending is still free but can be bypassed with `--no-verify` and does not exist
-in a fresh clone. Whichever is built, the entry should say plainly which failure it prevents and
-which it merely reports.
-
-#### Out of scope
-
-- Rewriting `12dff92` or any published history. `T-065` decided that, and `AGENTS.md` forbids
-  force-pushing without confirmation
-- Enforcing the rest of §13 — the subject line's mood, the 72-column wrap, the ~150-word budget.
-  Those are judgement, and a gate that argues about prose is a gate people learn to skip
-
----
 
 
 ### T-202 — Nothing is said by colour alone

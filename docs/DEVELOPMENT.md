@@ -200,6 +200,22 @@ git config user.email "<id>+<username>@users.noreply.github.com"
 
 Repo-local config does not survive a fresh clone, so this is a per-clone step.
 
+Install the hooks, which is a per-clone step for the same reason (`T-240`):
+
+```bash
+tools/install-hooks.sh
+```
+
+This points `core.hooksPath` at the version-controlled `.githooks/`, so the hook that runs is the
+hook that was reviewed rather than a copy in `.git/hooks` that goes stale. It installs
+`commit-msg`, which refuses a message that names an AI tool as an author or omits its `Task:`
+trailer — `AGENTS.md` §7 and §13, and the two rules nothing checked until `T-240`.
+
+**It can be skipped with `git commit --no-verify`, and it does not exist until you run the line
+above.** That is why the `Commit messages` workflow checks the same two rules over what was pushed:
+the hook catches the defect while amending is still free, and CI catches the defect the hook was
+never installed to see. Neither is sufficient alone.
+
 Then:
 
 ```bash

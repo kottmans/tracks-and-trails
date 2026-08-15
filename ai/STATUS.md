@@ -48,6 +48,20 @@ gated. **Its first criterion is a side-by-side judgement and is the maintainer's
 `ai/evidence/2026-08-15-T021-small-glyph.png` is the evidence, and nothing claims the judgement has
 been made.
 
+**`T-240` is in review: the commit-message rules are enforced now, by two halves that fail
+differently.** `.githooks/commit-msg` **prevents** — and is skippable with `--no-verify` and absent
+until `tools/install-hooks.sh` runs; `.github/workflows/commit-messages.yml` **reports**, over the
+pushed range only, and arrives after the history exists. Neither is sufficient, which is why both
+are there. Proved by a deliberately bad commit made and discarded in a scratch clone
+(`ai/evidence/2026-08-15-T240-hook-proof.md`), not by reading the script.
+
+**Two measurements came out of it.** **278 of this repository's 915 commits carry no `Task:`
+trailer** — most predate the requirement, which is why the range is the range and never the whole
+history, and why `12dff92` is excluded by name on `T-065`'s decision. And **of the last 60 commits,
+53 carry it and 7 do not**: status syncs and review records, the class §13 permits to omit. Those
+now have to say so, as `Task: none - <reason>`. **The gate changes practice slightly rather than
+only enforcing it**, and that is recorded rather than left to be met as a refusal.
+
 *(The snapshot below is the build's and stands, except where this block corrects it.)* The queue's
 run control had **no keyboard route of any kind**:
 `QToolBar` gives every button `Qt.NoFocus`, `Start` and `Clear finished` are on no menu, and the

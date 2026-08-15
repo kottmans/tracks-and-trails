@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Refuse a commit message that breaks AGENTS.md §7 or §13 (`T-240`).
+#
+# Installed by `tools/install-hooks.sh`, which points `core.hooksPath` at this directory so the
+# hooks are version-controlled rather than living in an untracked `.git/hooks`. It is a per-clone
+# step for the same reason `git config user.email` is — see `docs/DEVELOPMENT.md` §Setup.
+#
+# **This is the half that prevents.** The commit does not exist yet, so a rejection costs a
+# re-edit; by the time CI sees the same defect the history exists and `T-065`'s precedent is that
+# published history gets preserved rather than rewritten.
+#
+# `python3` rather than `.venv/bin/python`: a hook has to work before the virtualenv exists, and
+# the checker imports nothing outside the standard library so it does not need one.
+set -euo pipefail
+exec python3 "$(dirname "$0")/../tools/commit_message_check.py" --message-file "$1"
