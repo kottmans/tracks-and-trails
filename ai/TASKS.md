@@ -816,19 +816,53 @@ which is what makes the `None`/`""` distinction load-bearing rather than a prefe
 
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
-**Status:** **In Review — corrected once, 2026-08-15.** The first review returned **Changes
+**Status:** **In Review — corrected twice, 2026-08-15.** The first review returned **Changes
 requested** with `T240-R1` (Medium, blocking acceptance criteria 1–3): the half whose job is to
 catch what a forgotten or bypassed hook missed did not check every commit in the range it called
-*"what arrived"*.
+*"what arrived"*. The second pass **held it open** — the option that skipped merges had been kept
+for one caller and cannot express what that caller needs, and the range selection still had a shape
+that resolved to nothing.
 
-#### `T240-R1` — two bypasses, and no test could see either
+#### `T240-R1`, second round — an option that could not mean what it was kept for
+
+**`--no-merges` cannot say *that one merge*.** It was kept for pull-request events, where GitHub
+synthesises a merge of the branch into its base that nobody authored and nobody can amend — and it
+skips every merge in the range, including the ones a person wrote and can amend. **The check's own
+test demonstrated the hole**, asserting that a malformed real merge passed under the option.
+
+The synthetic merge is excluded by **not asking about it**. A pull request is read as
+`base.sha..head.sha`, and the head is the branch tip; GitHub's merge sits above it and is simply not
+in the range. **The option is gone**, and with it the only caller that wanted it.
+
+**The fallback resolved to an empty range on the default branch.** `origin/<default>..<tip>` is
+right for a branch that did not exist before and **empty by construction** for the default branch
+itself, where `origin/main` *is* the commit just pushed. A force-push to `main` therefore selected
+nothing, and a range of nothing exits 0 having read nothing — the finding, one level down. The
+determinable range is **counted** before it is trusted, and the tip is read when it comes out empty.
+Counted rather than reasoned about: a *"was this the default branch?"* test catches the force-push
+and misses a tag re-pushed at a commit already on `main`, which is the same empty range by another
+route. Both guards were written; the second made the first unreachable, so the first was removed.
+
+**Range selection is Python now, and that is the finding's other half.** It was twenty lines of
+`bash` inside the workflow, where no test could reach it — which is why *"there are no unit tests
+for `commits_in()` or `check_range()`"* understated the gap: the decision that was wrong lived
+somewhere nothing could call. `select_range(event, payload)` takes the event payload and returns the
+range with the sentence explaining it, the workflow passes `$GITHUB_EVENT_PATH` and reads the exit
+code, and **seven event shapes are under test** over real repositories: a pull request with an
+authored merge in the branch, a force-push to `main`, a re-pushed tag, a new branch, an ordinary
+push, a branch deletion, and a repository whose only commit is its first. A branch deletion returns
+`None` rather than an empty range, so *"nothing arrived"* and *"the question was asked badly"* stay
+different answers.
+
+#### `T240-R1`, first round — two bypasses, and no test could see either
 
 **`commits_in()` passed `--no-merges` unconditionally.** A merge commit's message is a commit
 message: it can carry an AI authorship trailer and it can omit `Task:`. A push consisting only of a
 merge returned an empty list and the check exited **0 having read nothing**. Merges are included
-now, and `--skip-merges` exists for exactly one caller — a pull-request event, where GitHub
-synthesises a merge nobody authored and nobody can amend. **Passed by the caller that knows the
-event**, rather than as a default that quietly covered every case.
+now, and `--skip-merges` was left for exactly one caller — a pull-request event, where GitHub
+synthesises a merge nobody authored and nobody can amend — passed by the caller that knows the
+event rather than as a default that quietly covered every case. **That option is gone**; the second
+round above says why an option that skips every merge could never mean *that one merge*.
 
 **The new-branch fallback checked `$head~1..$head`** — the tip alone — while both the workflow and
 this entry claimed the pushed range. Every earlier commit in a new branch went unread. It resolves

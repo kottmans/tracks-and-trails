@@ -14,6 +14,7 @@ does not belong under `src/`, and `tools/` is not a package.
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -273,9 +274,6 @@ def test_a_merge_commit_is_checked(repository: Path, monkeypatch: pytest.MonkeyP
     assert check.check_range(f"{base}..{head}") == 1, (
         "a merge commit carrying an AI authorship trailer passed the range check"
     )
-    assert check.check_range(f"{base}..{head}", skip_merges=True) == 0, (
-        "`skip_merges` is for the synthetic pull-request merge and must still skip one"
-    )
 
 
 def test_a_merge_only_range_is_not_silently_empty(
@@ -333,3 +331,241 @@ def test_a_clean_range_passes(repository: Path, monkeypatch: pytest.MonkeyPatch)
 
     assert check.commits_in(f"{base}..{head}"), "the range is empty, so this proves nothing"
     assert check.check_range(f"{base}..{head}") == 0
+
+
+# --- which commits an event brought (T240-R1, second round) ------------------------------------
+#
+# **The range used to be chosen by twenty lines of `bash` inside the workflow**, where nothing
+# could reach it — and the finding is that the choice was wrong in two ways. These drive
+# `select_range` with the payload shapes GitHub actually sends, against real repositories, because
+# both defects are about which commits are handed to the parser at all.
+
+#: A commit that is not in any of these repositories, standing in for `github.event.before` after a
+#: force-push: the remote no longer has it and a full-depth clone will not have fetched it.
+GONE: Final = "b" * 40
+ZERO: Final = "0" * 40
+
+
+def push_payload(
+    *, before: str, after: str, ref: str = "refs/heads/main", default: str = "main"
+) -> dict[str, object]:
+    """A `push` payload, with the four fields the selection reads."""
+    return {
+        "before": before,
+        "after": after,
+        "ref": ref,
+        "repository": {"default_branch": default},
+    }
+
+
+def test_a_pull_request_reads_the_branch_rather_than_the_merge_github_built(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T240-R1`'s first bypass, in the shape that survived the first correction.**
+
+    `--no-merges` was kept for pull requests, on the grounds that GitHub synthesises a merge of the
+    branch into its base that nobody authored and nobody can amend. But `--no-merges` cannot say
+    *that one merge*: it skips every merge in the range, and a branch that merged `main` back into
+    itself carries an authored one whose message is as checkable as any other. The check's own test
+    demonstrated it — a malformed real merge passing under the option.
+
+    The synthetic merge is excluded by **not asking about it**. A pull request is read as
+    `base.sha..head.sha`, and the head is the branch tip: GitHub's merge sits above it and is
+    simply not in the range.
+    """
+    monkeypatch.chdir(repository)
+    run_git(repository, "checkout", "-q", "-b", "side")
+    commit(repository, GOOD_MESSAGE, name="side.txt")
+    run_git(repository, "checkout", "-q", "main")
+    commit(repository, GOOD_MESSAGE, name="main.txt")
+    moved_base = run_git(repository, "rev-parse", "HEAD")
+    run_git(repository, "checkout", "-q", "side")
+    # The merge a person makes to catch their branch up, and can amend.
+    run_git(repository, "merge", "--no-ff", "--no-verify", "-m", BAD_TRAILER, "main")
+    head = run_git(repository, "rev-parse", "HEAD")
+    # The merge GitHub builds on top and hands over as `github.sha`. Its message is nobody's.
+    run_git(repository, "checkout", "-q", "main")
+    run_git(repository, "merge", "--no-ff", "--no-verify", "-m", "Merge pull request #1", "side")
+    synthetic = run_git(repository, "rev-parse", "HEAD")
+
+    selection = check.select_range(
+        "pull_request",
+        {"pull_request": {"base": {"sha": moved_base}, "head": {"sha": head}}},
+    )
+
+    assert selection.revisions == f"{moved_base}..{head}", (
+        f"a pull request is read as base..head and this is {selection.revisions!r} — reading "
+        "github.sha instead is what put a commit nobody can amend inside the range"
+    )
+    read = check.commits_in(selection.revisions)
+    assert synthetic not in read, "GitHub's synthetic merge is in the range and cannot be fixed"
+    assert head in read, "the branch tip is not in the range, so the merge in it goes unread"
+    assert check.check_range(selection.revisions) == 1, (
+        "an authored merge carrying an AI authorship trailer passed a pull-request range — this "
+        "is exactly what `--no-merges` was letting through"
+    )
+
+
+def test_a_force_push_to_the_default_branch_does_not_check_nothing(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T240-R1`'s second bypass, in the shape the first correction created.**
+
+    The fallback for an unusable `before` was `origin/<default>..<tip>` — everything the tip adds
+    over the default branch. That is right for a new branch and **empty by construction for the
+    default branch itself**, where `origin/main` *is* the commit that was just pushed. A force-push
+    to `main` therefore selected a range of nothing, and a range of nothing exits 0 having read
+    nothing, which is the whole of this finding one level down.
+
+    The tip is checked instead, and the note says which case it is. The tip is not everything that
+    arrived — after a rewrite nothing can know that — but it is not nothing.
+    """
+    monkeypatch.chdir(repository)
+    commit(repository, BAD_TRAILER, name="rewritten.txt")
+    head = run_git(repository, "rev-parse", "HEAD")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+
+    selection = check.select_range("push", push_payload(before=GONE, after=head))
+
+    assert selection.revisions is not None, "a force-push to main selected nothing to read"
+    assert check.commits_in(selection.revisions), (
+        f"{selection.revisions!r} resolves to no commits at all, so the check would exit 0 having "
+        "read nothing — the silent pass this finding is about"
+    )
+    assert check.check_range(selection.revisions) == 1, (
+        "the rewritten tip carries an AI authorship trailer and the gate passed it"
+    )
+    assert "force-push" in selection.note or "tip" in selection.note, (
+        f"the log line does not say the range is a fallback: {selection.note!r}"
+    )
+
+
+def test_a_new_branch_checks_everything_it_adds_to_the_default(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The case the fallback is *for*, with the bad commit deliberately below the tip.
+
+    A new branch has no `before`, and checking `$head~1..$head` — the first version — read one
+    commit of however many were pushed.
+    """
+    monkeypatch.chdir(repository)
+    base = run_git(repository, "rev-parse", "HEAD")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", base)
+    run_git(repository, "checkout", "-q", "-b", "side")
+    commit(repository, BAD_TRAILER, name="one.txt")
+    commit(repository, GOOD_MESSAGE, name="two.txt")
+    commit(repository, GOOD_MESSAGE, name="three.txt")
+    head = run_git(repository, "rev-parse", "HEAD")
+
+    selection = check.select_range(
+        "push", push_payload(before=ZERO, after=head, ref="refs/heads/side")
+    )
+
+    assert selection.revisions == f"origin/main..{head}"
+    assert len(check.commits_in(selection.revisions)) == 3, (
+        "the new branch's three commits are not all in the range that claims to be what arrived"
+    )
+    assert check.check_range(selection.revisions) == 1, (
+        "a bad commit below the tip of a new branch went unread"
+    )
+
+
+def test_a_re_pushed_tag_that_adds_nothing_still_reads_a_commit(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other way the determinable range comes out empty, and the reason it is counted.
+
+    A force-push to the default branch is caught by asking which ref was pushed. A **tag** pushed
+    at a commit that is already on `main` is not: the ref is `refs/tags/...`, so the fallback
+    computes `origin/main..<tag>` in good faith and gets nothing. Both were named as cases the
+    fallback covers, and both resolved to a range of no commits — which exits 0 having read
+    nothing. Counting the range before trusting it is what makes the second case behave like the
+    first.
+    """
+    monkeypatch.chdir(repository)
+    commit(repository, BAD_TRAILER, name="tagged.txt")
+    head = run_git(repository, "rev-parse", "HEAD")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+    run_git(repository, "tag", "v1.0")
+
+    selection = check.select_range(
+        "push", push_payload(before=ZERO, after=head, ref="refs/tags/v1.0")
+    )
+
+    assert check.commits_in(selection.revisions or ""), (
+        f"{selection.revisions!r} resolves to no commits, so the gate reads nothing and passes"
+    )
+    assert check.check_range(selection.revisions or "") == 1
+
+
+def test_an_ordinary_push_takes_before_to_after(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The common case, and the control for the two fallbacks above."""
+    monkeypatch.chdir(repository)
+    before = run_git(repository, "rev-parse", "HEAD")
+    commit(repository, GOOD_MESSAGE, name="one.txt")
+    commit(repository, BAD_TRAILER, name="two.txt")
+    after = run_git(repository, "rev-parse", "HEAD")
+
+    selection = check.select_range("push", push_payload(before=before, after=after))
+
+    assert selection.revisions == f"{before}..{after}"
+    assert check.check_range(selection.revisions) == 1
+
+
+def test_a_deleted_branch_brought_nothing_and_says_so(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Deleting a branch is a push whose `after` is all zeros. Nothing arrived; nothing is read.
+
+    **This is the one empty result that is honest**, and it is a different value from *"a range
+    that resolved to nothing"* precisely so the two cannot be confused: `revisions is None` says
+    the event brought no commits, where an empty range says the question was asked badly.
+    """
+    monkeypatch.chdir(repository)
+    head = run_git(repository, "rev-parse", "HEAD")
+
+    selection = check.select_range("push", push_payload(before=head, after=ZERO))
+
+    assert selection.revisions is None
+    assert "deleted" in selection.note
+
+
+def test_the_first_commit_in_a_repository_can_still_be_read(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A root commit has no parent, so `HEAD~1..HEAD` raises rather than resolving to it.
+
+    The last-resort range names the commit itself, which `rev-list` reads as *this and its
+    ancestors* — of which there are none.
+    """
+    monkeypatch.chdir(repository)
+    root = run_git(repository, "rev-parse", "HEAD")
+
+    selection = check.select_range("push", push_payload(before=ZERO, after=root, default=""))
+
+    assert selection.revisions == root
+    assert check.commits_in(selection.revisions) == [root]
+
+
+def test_the_event_form_runs_the_selection_it_documents(
+    repository: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """End to end, as the workflow invokes it: a payload file in, an exit code out.
+
+    The workflow passes `$GITHUB_EVENT_PATH` and `$GITHUB_EVENT_NAME` and nothing else. If the two
+    arguments and the payload keys did not line up, every test above would still pass and the gate
+    would fail on the runner — which is the failure mode the `bash` version had no way to catch.
+    """
+    monkeypatch.chdir(repository)
+    before = run_git(repository, "rev-parse", "HEAD")
+    commit(repository, BAD_TRAILER, name="one.txt")
+    after = run_git(repository, "rev-parse", "HEAD")
+    payload = tmp_path / "event.json"
+    payload.write_text(json.dumps(push_payload(before=before, after=after)), encoding="utf-8")
+
+    assert check.main(["--event", str(payload), "--event-name", "push"]) == 1
+
+    payload.write_text(json.dumps(push_payload(before=after, after=ZERO)), encoding="utf-8")
+    assert check.main(["--event", str(payload), "--event-name", "push"]) == 0

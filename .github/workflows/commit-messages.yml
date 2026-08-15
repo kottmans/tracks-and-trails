@@ -56,51 +56,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      # No `setup-python`, hosted or not: the checker imports `argparse`, `re`, `subprocess`,
-      # `dataclasses` and nothing else, so whatever `python3` the runner has is enough. This is
-      # also what lets `.githooks/commit-msg` run before a virtualenv exists.
-      - name: Work out what arrived
-        id: range
-        run: |
-          set -o pipefail
-          before='${{ github.event.before }}'
-          base='${{ github.event.pull_request.base.sha }}'
-          head='${{ github.sha }}'
-          default='${{ github.event.repository.default_branch }}'
-          zero='0000000000000000000000000000000000000000'
-          skip_merges=false
-
-          if [ -n "$base" ]; then
-            # **A pull request.** `github.sha` is a merge of the branch into its base that GitHub
-            # synthesises — nobody authored it and nobody can amend its message — so it is the one
-            # case where merges are excluded, and `--skip-merges` is passed for this event alone
-            # rather than being a default that covered every case (`T240-R1`).
-            range="$base..$head"
-            skip_merges=true
-          elif [ -n "$before" ] && [ "$before" != "$zero" ] \
-               && git cat-file -e "$before^{commit}" 2>/dev/null; then
-            # **An ordinary push.** Merges are included: a merge commit's message can carry an AI
-            # trailer or omit `Task:` exactly like any other.
-            range="$before..$head"
-          elif [ -n "$default" ] && git rev-parse --verify -q "origin/$default" >/dev/null; then
-            # **A new branch, a force-push, or a re-pushed tag** — `before` is absent or no longer
-            # resolvable. The determinable set is everything the tip adds over the default branch,
-            # which is what "what arrived" means for a branch that did not exist before. This is
-            # the case the previous version got wrong: it checked `$head~1..$head`, so every commit
-            # in a new branch except the last was pushed unread.
-            range="origin/$default..$head"
-            echo "::notice::No usable before-SHA; checking everything $head adds over $default."
-          else
-            # Nothing to compare against — a first push to an empty repository, or a clone with no
-            # default branch. The tip is all there is, and saying so beats implying more.
-            range="$head~1..$head"
-            echo "::notice::No before-SHA and no default branch; checking the tip commit only."
-          fi
-          echo "range=$range" >> "$GITHUB_OUTPUT"
-          echo "skip_merges=$skip_merges" >> "$GITHUB_OUTPUT"
-          echo "range: $range (skip_merges=$skip_merges)"
-          git rev-list --count "$range" | sed 's/^/commits in range: /'
-
+      # No `setup-python`, hosted or not: the checker imports `argparse`, `json`, `re`,
+      # `subprocess`, `dataclasses` and nothing else, so whatever `python3` the runner has is
+      # enough. This is also what lets `.githooks/commit-msg` run before a virtualenv exists.
+      #
+      # **Working out which commits arrived is the checker's job, not this file's** (`T240-R1`,
+      # second round). It was twenty lines of `bash` here, and both of the finding's bypasses lived
+      # in them: a pull request was checked with `--no-merges`, which skipped the merges a person
+      # wrote along with GitHub's synthetic one, and the no-usable-`before` fallback resolved to an
+      # empty range whenever the push went to the default branch. Neither could be tested where it
+      # was written. `select_range` is that decision in Python, with the event payload as its
+      # input, and `tests/unit/test_commit_message_check.py` drives it with the payload shapes
+      # GitHub actually sends — including the force-push that produced the empty range.
       - name: Check the trailers on what arrived
         run: |
           # **`pipefail`, because the check's exit code is the whole result.** Without it `tee`
@@ -108,12 +75,8 @@ jobs:
           # `ai/TESTING.md` records for chaining validation into a commit.
           set -o pipefail
           mkdir -p reports
-          skip=""
-          if [ '${{ steps.range.outputs.skip_merges }}' = "true" ]; then
-            skip="--skip-merges"
-          fi
           python3 tools/commit_message_check.py \
-            --range '${{ steps.range.outputs.range }}' $skip \
+            --event "$GITHUB_EVENT_PATH" --event-name "$GITHUB_EVENT_NAME" \
             2>&1 | tee reports/commit-messages.txt
 
       # Matches the standing rule in `ci.yml` and `prose.yml`: every job leaves its evidence

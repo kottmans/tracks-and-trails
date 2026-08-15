@@ -14,14 +14,19 @@ about prose is a gate people learn to skip. This one only ever fires on facts.
 
     python3 tools/commit_message_check.py --message-file .git/COMMIT_EDITMSG
     python3 tools/commit_message_check.py --range <base>..<head>
+    python3 tools/commit_message_check.py --event "$GITHUB_EVENT_PATH" --event-name "$..."
 
 The **hook** form is what `.githooks/commit-msg` runs. It **prevents** the defect: the commit does
 not exist yet, so there is nothing to amend and nothing to preserve. It can be skipped with
 `--no-verify` and it does not exist in a fresh clone until the documented setup step installs it.
 
-The **range** form is what CI runs over what was pushed. It cannot prevent anything — by then the
-history exists, which is precisely the state `T-065` had to preserve rather than fix — so it
-**reports**. It is the half that cannot be forgotten, and the half that arrives too late.
+The **range** form checks exactly what it is given, and is what a person runs by hand.
+
+The **event** form is what CI runs, and it works the range out itself — see `select_range`, which
+is where `T240-R1`'s second round moved that decision from twenty lines of unreachable `bash`. It
+cannot prevent anything — by then the history exists, which is precisely the state `T-065` had to
+preserve rather than fix — so it **reports**. It is the half that cannot be forgotten, and the half
+that arrives too late.
 
 Both are wanted, and `T-240`'s entry asks for the difference to be stated rather than blurred.
 
@@ -41,11 +46,14 @@ carelessness — which is the argument for a gate rather than for more care.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 #: Names that mean *an AI tool wrote this*, matched case-insensitively anywhere in an authorship
 #: trailer.
@@ -193,32 +201,49 @@ def git(*arguments: str) -> str:
     ).stdout
 
 
-def commits_in(revision_range: str, *, skip_merges: bool = False) -> list[str]:
+def resolves(revision: str) -> bool:
+    """Whether `revision` names a commit that exists in this clone.
+
+    `github.event.before` is the shape this exists for: after a force-push it names a commit the
+    remote no longer has, and a full-depth clone will not have fetched it either.
+    """
+    return (
+        subprocess.run(  # noqa: S603 - `shell` stays False, as `git()` above records
+            ["git", "cat-file", "-e", f"{revision}^{{commit}}"],  # noqa: S607 - the runner's git
+            check=False,
+            capture_output=True,
+            text=True,
+        ).returncode
+        == 0
+    )
+
+
+def commits_in(revision_range: str) -> list[str]:
     """Every commit in `revision_range`, newest first.
 
-    **Merges are included by default, and `--no-merges` was a real hole** (`T240-R1`). A merge
-    commit's message is a commit message: it can carry an AI authorship trailer, and it can omit
-    `Task:`. With `--no-merges` always on, a push consisting only of a merge returned an empty list
-    and the check exited 0 without reading anything — in the half whose entire job is to catch what
-    an uninstalled or `--no-verify`-bypassed hook missed.
+    **Merges are included, and `--no-merges` was a real hole** (`T240-R1`). A merge commit's
+    message is a commit message: it can carry an AI authorship trailer, and it can omit `Task:`.
+    With `--no-merges` on, a push consisting only of a merge returned an empty list and the check
+    exited 0 without reading anything — in the half whose entire job is to catch what an
+    uninstalled or `--no-verify`-bypassed hook missed.
 
-    `skip_merges` exists for exactly one caller: a pull-request event, where GitHub synthesises a
-    merge of the branch into its base and hands that SHA to the workflow. Nobody wrote that commit
-    and nobody can fix its message, so it is excluded **there and nowhere else**, by the caller
-    that knows the event, rather than by a default that quietly covered every case.
+    **There is no `skip_merges` any more, and that is the second round of the same finding.** It
+    was kept for one caller — a pull-request event, where GitHub synthesises a merge of the branch
+    into its base and hands that SHA to the workflow — and `--no-merges` cannot express *that one
+    merge*: it skips every merge in the range, including the ones a person wrote and can amend. The
+    check's own test demonstrated it, passing a malformed real merge under the option. The synthetic
+    merge is excluded by **not asking about it**: `select_range` takes the pull request's head
+    commit rather than the merge GitHub built on top of it.
     """
-    arguments = ["rev-list"]
-    if skip_merges:
-        arguments.append("--no-merges")
-    output = git(*arguments, revision_range).strip()
+    output = git("rev-list", revision_range).strip()
     return output.splitlines() if output else []
 
 
-def check_range(revision_range: str, *, skip_merges: bool = False) -> int:
+def check_range(revision_range: str) -> int:
     """Report on every commit in `revision_range`. Returns the process exit code."""
     failed = 0
     inspected = 0
-    for sha in commits_in(revision_range, skip_merges=skip_merges):
+    for sha in commits_in(revision_range):
         short = git("rev-parse", "--short", sha).strip()
         # Matched by prefix rather than by resolving the grandfathered ids to full SHAs: a CI clone
         # may not contain `12dff92` at all, and `git rev-parse` on a missing object raises.
@@ -242,23 +267,144 @@ def check_range(revision_range: str, *, skip_merges: bool = False) -> int:
     return 1 if failed else 0
 
 
+#: What `github.event.before` and `github.event.after` say when there was no such commit.
+ZERO_SHA: Final = "0" * 40
+
+
+@dataclass(frozen=True, slots=True)
+class Selection:
+    """Which commits an event brought, and the sentence explaining how that was decided.
+
+    `revisions` is `None` when the event brought nothing — a branch deletion is the case — which is
+    different from *"a range that happens to be empty"* and has to stay different: the second was
+    `T240-R1`'s second bypass, and it exited 0 having read nothing.
+    """
+
+    revisions: str | None
+    note: str
+
+
+def tip_only(head: str, *, exists: Callable[[str], bool]) -> str:
+    """The last resort: the pushed commit and nothing else.
+
+    `head~1..head` is wrong for a repository's first commit, which has no parent — `git rev-parse`
+    raises on it — so a root commit is named directly, which `rev-list` reads as *this and its
+    ancestors*, and it has none.
+    """
+    return f"{head}~1..{head}" if exists(f"{head}~1") else head
+
+
+def select_range(
+    event: str,
+    payload: Mapping[str, object],
+    *,
+    exists: Callable[[str], bool] = resolves,
+    count: Callable[[str], int] | None = None,
+) -> Selection:
+    """Work out which commits an event actually brought (`T240-R1`).
+
+    **This used to be twenty lines of `bash` inside the workflow**, where no test could reach it —
+    and the finding is specifically that its range selection was wrong in two ways nothing could
+    have seen. It is Python now for that reason alone: the shell step passes the event through and
+    reads the answer.
+
+    The cases, in the order they are asked:
+
+    - **A pull request** takes `pull_request.head.sha`, *not* `github.sha`. GitHub hands a workflow
+      a merge of the branch into its base that nobody authored and nobody can amend, and the first
+      correction dealt with that by passing `--no-merges` — which skipped every *authored* merge in
+      the branch as well. Asking about the head commit excludes the synthetic merge because it is
+      not in the range, and leaves every merge a person wrote where the check can see it.
+    - **An ordinary push** takes `before..after`, merges included.
+    - **A push whose `before` is unusable** — a new branch, a force-push, a re-pushed tag — takes
+      everything the tip adds over the default branch. `origin/<default>..<tip>` is what *"what
+      arrived"* means for a branch that did not exist before.
+    - **Nothing arrived** on a branch deletion, and that is said rather than checked.
+
+    **And then the range is counted**, because the case above has a hole the previous version fell
+    into: force-push *to the default branch*, where `origin/<default>` is the tip that was just
+    pushed and the range is empty by construction. An empty range exits 0 having read nothing,
+    which is the whole of this finding. When the determinable range turns out to be empty the tip
+    is checked instead, and the note says so.
+
+    **Counted rather than reasoned about.** Asking *"was this pushed to the default branch?"*
+    catches the force-push and misses the tag re-pushed at a commit already on `main`, which is the
+    other way that range comes out empty and was named in the same breath as a case the fallback
+    covered. Both guards were written; the second made the first unreachable, and a guard nothing
+    can reach is a guard nobody can check. Measuring the range answers both, and answers the next
+    one nobody thought of.
+    """
+    counter = count if count is not None else (lambda revisions: len(commits_in(revisions)))
+
+    if event in {"pull_request", "pull_request_target"}:
+        request = payload.get("pull_request") or {}
+        base = str((request.get("base") or {}).get("sha") or "")
+        head = str((request.get("head") or {}).get("sha") or "")
+        if head and exists(head) and base and exists(base):
+            return Selection(f"{base}..{head}", f"pull request: {base[:7]}..{head[:7]}")
+        if head and exists(head):
+            return Selection(
+                tip_only(head, exists=exists),
+                f"pull request whose base {base[:7] or '(none)'} is not in this clone; "
+                "checking the head commit only",
+            )
+        return Selection(None, "pull request with no head commit in this clone; nothing to read")
+
+    head = str(payload.get("after") or payload.get("head") or "")
+    if not head or head == ZERO_SHA:
+        return Selection(None, "the branch was deleted; nothing arrived")
+
+    before = str(payload.get("before") or "")
+    if before and before != ZERO_SHA and exists(before):
+        return Selection(f"{before}..{head}", f"push: {before[:7]}..{head[:7]}")
+
+    default = str(((payload.get("repository") or {}).get("default_branch")) or "")
+    if default and exists(f"origin/{default}"):
+        candidate = f"origin/{default}..{head}"
+        if counter(candidate) > 0:
+            return Selection(
+                candidate,
+                f"no usable before-SHA; checking everything {head[:7]} adds over {default}",
+            )
+        return Selection(
+            tip_only(head, exists=exists),
+            f"no usable before-SHA and {head[:7]} adds nothing to {default} — a force-push to the "
+            "default branch, or a tag re-pushed at a commit already on it; checking the tip only",
+        )
+
+    return Selection(
+        tip_only(head, exists=exists),
+        "no before-SHA and no default branch to compare against; checking the tip commit only",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--message-file", help="a commit message file, as the commit-msg hook gets")
-    source.add_argument("--range", dest="revisions", help="a git range, as CI gets")
-    parser.add_argument(
-        "--skip-merges",
-        action="store_true",
+    source.add_argument("--range", dest="revisions", help="a git range, checked as given")
+    source.add_argument(
+        "--event",
         help=(
-            "exclude merge commits. For a pull-request event only, where GitHub synthesises a "
-            "merge nobody authored and nobody can amend."
+            "a GitHub event payload (`$GITHUB_EVENT_PATH`), from which the range is worked out. "
+            "Requires --event-name."
         ),
     )
+    parser.add_argument("--event-name", help="`$GITHUB_EVENT_NAME`, beside --event")
     arguments = parser.parse_args(argv)
 
+    if arguments.event:
+        if not arguments.event_name:
+            parser.error("--event needs --event-name to know which shape the payload is")
+        payload = json.loads(Path(arguments.event).read_text(encoding="utf-8"))
+        selection = select_range(arguments.event_name, payload)
+        print(f"range: {selection.note}")
+        if selection.revisions is None:
+            return 0
+        return check_range(selection.revisions)
+
     if arguments.revisions:
-        return check_range(arguments.revisions, skip_merges=arguments.skip_merges)
+        return check_range(arguments.revisions)
 
     faults = check_message(Path(arguments.message_file).read_text(encoding="utf-8"))
     if not faults:
