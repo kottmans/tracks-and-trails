@@ -5,9 +5,12 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 — §Phase 4's screen-reader exit criterion amended by maintainer
-ruling on `T200-R1`: the name-and-role half is automated on both platforms, and announcement
-*coherence* joins the pre-release session for Linux as it already had for Windows
+**Last updated:** 2026-08-15 — §Phase 4's `T-203` paragraph corrected: it named the wrong ruled
+option, and said the build was in review a month after it was approved. `T-246` added to the
+maintainer-found entries that are not plan deliverables. *(Earlier the same day: §Phase 4's
+screen-reader exit criterion amended by maintainer ruling on `T200-R1` — the name-and-role half is
+automated on both platforms, and announcement* coherence *joins the pre-release session for Linux
+as it already had for Windows.)*
 **Last reviewed:** 2026-08-01
 **Update when:** Phase scope, delivery order, dependencies, or exit criteria change.
 **Does not contain:** Individual coding tasks (`TASKS.md`), progress (`STATUS.md`).
@@ -708,15 +711,17 @@ work anybody had broken down."*
 section rather than here, so there is one place to correct when it is wrong. `T-195`–`T-202` are the
 new entries; `T-146` and `T-021` were already filed, and **`T-212` (filed 2026-08-09) owns the
 recorded-checklist-run criterion**, which had no owner between the ruling that added it and that
-filing. **Further entries — `T-203`, `T-204` and `T-204`'s correction chain — are maintainer-found
-and are *not* plan deliverables** — they must not be counted as satisfying one, which is the
-conflation `P3EXIT-R1` found in Phase 3's records.
+filing. **Further entries — `T-203`, `T-204`, `T-204`'s correction chain and `T-246` — are
+maintainer-found and are *not* plan deliverables** — they must not be counted as satisfying one,
+which is the conflation `P3EXIT-R1` found in Phase 3's records.
 
 **`T-203`'s shape is ruled and built** *(this paragraph narrowed 2026-08-09, the day it was
-written — it had said nothing in the task was agreed work)*: the maintainer chose option A after six
-mockup rounds, and the build is in review. **What stays open** is the `REQ-011` per-item template
-ruling and the `docs/UX_SPEC.md` §8/§9.1 amendment `UX-009` requires; neither is agreed work until
-taken.
+written — it had said nothing in the task was agreed work; corrected again 2026-08-15, when it
+still named the rejected option and still called the build "in review" five days after it was
+approved)*: the maintainer chose **option E** on round 8 (`UX-011`) — option A was built, reviewed
+and rejected on sight — and the build is **approved at `fe1d246`**. The `docs/UX_SPEC.md` amendment
+that ruling required has been taken. **What stays open is one thing, not two**: the `REQ-011`
+per-item template ruling, which is the maintainer's and is not agreed work until taken.
 
 ### Exit criteria
 
