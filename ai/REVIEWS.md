@@ -16925,3 +16925,56 @@ another blocker. Do not repeat the broad audit.
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
 decision, dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was
 changed.
+
+## 2026-08-15 — T-200 authorized third-pass re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-200`
+**Correction boundary:** `d1cc8f182640a30c0747f9f845207da98dd79d5b..`
+`b1968f3cfccd3668b7bb00e88ba5114d33078ba1` — one local, unpushed commit, reviewed under the
+maintainer's explicit `AGENTS.md` §10 authorization.
+**Platforms verified:** Linux, Qt offscreen. No Orca session, AT-SPI publication, Windows runtime,
+CI, real display, frozen build, or external network execution is claimed.
+**Verdict:** **Blocked.** `T200-R2` is Resolved. `T200-R3` remains Open because the correction adds
+nested Tab-capability and route coverage but still excludes those surfaces from the required focus-
+order gate. `T200-R6` also remains Open and non-blocking: the focused module still exceeds the same
+twelve-second process bound after printing its passing summary. With a blocking Medium still open
+after the authorized third pass, another focused pass again requires the maintainer's explicit
+§10 choice.
+
+### Finding resolution
+
+| ID | Severity | Blocks approval | Status | Authorized re-review result |
+|---|---|---:|---|---|
+| **T200-R2** | **Medium** | **Yes** | **Resolved** | `reaches_by_tab` now asks for the `Qt.TabFocus` capability bit, and all three former non-`NoFocus` predicates use it. Independent exact-head mutations making Settings' **Choose folder…** button and the nested Options audio-codec combo `ClickFocus` each fail the route assertion and name the affected control. This classifies policies by their keyboard capability and closes the one-property continuation. |
+| **T200-R3** | **Medium** | **Yes** | **Open** | The five constructed nested surfaces now receive the Tab-completeness and operable-control route checks, and the audio-codec `ClickFocus` mutation is caught. They still never reach `test_tab_order_follows_visual_order_on_every_surface`, whose loop remains `surfaces(composed, qapp)` only. Independent exact-head mutation: adding `QWidget.setTabOrder(self._embed_subtitles, self._audio_codec)` to `OptionsDialog` creates a visible lower-to-upper inversion while all **14 committed accessibility assertions report passed**. A temporary reviewer assertion applying the existing visual-order algorithm to realised nested surfaces fails at `optionsEmbedSubtitles`, row **7 → 0**. This is the focus-order half the prior finding and T-200 criterion 3 expressly required. The fixture docstring also still says it claims nothing about nested reachability, contradicting the new route test. |
+| **T200-R6** | **Low** | **No** | **Open, non-blocking** | `composition.shutdown.begin()` correctly closes the manager, writer, database and instance lock, but `OrderlyShutdown` does not own the real `YtdlpService` task started by `open_settings()`. Exact final-tree command: the module prints **14 passed in 1.97 s** and then `timeout 12s` exits **124**. The single all-surface-name test likewise prints **1 passed** and times out, while a window-only test that never opens Settings exits normally. The correction waits on an adjacent lifecycle and does not close the task named by the finding. Inject the local quiet service through `compose()`'s existing seam, as the original recommendation specified. |
+
+`T200-R1`, `T200-R4`, and `T200-R5` remain Resolved and were not reopened or re-audited in this
+focused pass.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed:** `d1cc8f1..b1968f3` is one human-authored two-file commit, **+136/−10**, with the declared task/review trailers and a clean `git diff --check`. `git diff --name-only d1cc8f1..b1968f3 -- src` is empty. `origin/main == d1cc8f1`, `HEAD == b1968f3`, and the worktree was clean before this review record. |
+| Final-tree focused process | **Failed teardown:** `timeout 12s env QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/ui/test_accessibility.py` prints **14 passed in 1.97 s** and exits **124**, not 0. The summary measures assertion time, not process completion. |
+| R2 / nested-route mutations | **Caught:** with both controls at `ClickFocus`, the focused module reports the Options codec and Settings folder chooser as the two route failures; the remaining **12 assertions pass** before the unresolved process timeout. |
+| Nested focus-order mutation | **Not caught by the committed gate:** the Options lower-to-upper `setTabOrder` mutation leaves all **14 committed assertions reporting passed**. A reviewer-only assertion reusing `tab_order`, `scroll_context` and `visual_rows` on shown nested widgets catches the `optionsEmbedSubtitles` **7 → 0** inversion. |
+| Static and placement gates | **Passed:** focused Ruff check and format check; bare mypy after a no-incremental proof checks **144 source files** clean, and a cached rerun agrees; T-227's placement suite is **14 passed** with T-200 under `## In Review`. |
+| Carried platform limits | **Unchanged and not executed:** the Windows `&Settings` row is still awaiting its self-hosted runner, and Orca was not run because `T200-R1` closed by the maintainer's recorded criterion amendment rather than by execution. |
+| Implementer's wider suites | **Not repeated.** The Implementer reports **3015 passed / 18 skipped** unit+UI and all three mypy modes. Integration was deliberately not rerun over this no-source correction. This review neither contradicts nor promotes those figures to independent results. |
+
+### Remaining boundary
+
+Do not push `b1968f3`. This is now the fourth instance of the repeated failure mode the submission
+itself identified: a gate asks an adjacent implementation question rather than the criterion's
+user-facing question. `reaches_by_tab` is sound, but another isolated loop would leave the file's
+surface coverage split again. Restructure the gate around one inventory of realised surfaces and
+apply the criterion-owned name, route and visual-order checks from that inventory; keep per-surface
+non-vacuity and the `ClickFocus` negatives. Inject a quiet yt-dlp service rather than asking the
+manager/writer shutdown lifecycle to own an unrelated global-pool task. Correct the stale nested-
+fixture claim at the same time.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
+decision, dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
