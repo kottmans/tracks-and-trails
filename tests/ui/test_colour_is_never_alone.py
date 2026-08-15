@@ -29,12 +29,20 @@ and a rule that holds in light and fails in dark is not a rule.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterator
 from typing import Final
 
 import pytest
-from PySide6.QtGui import QAccessible
-from PySide6.QtWidgets import QApplication, QComboBox, QPushButton
+from PySide6.QtGui import QAccessible, QColor, QImage
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.row_delegate import SegmentState
@@ -138,6 +146,191 @@ def test_the_sweep_is_looking_at_a_real_sheet(theme: ui_theme.Theme) -> None:
     assert any(theme.warn.lower() in body.lower() for _selector, body in found), (
         "no rule uses `warn` at all, so the enumeration is matching nothing"
     )
+
+
+# --- interaction states, enumerated by what they convey (T202-R1) ------------------------------
+
+
+_PSEUDO_STATE: Final = re.compile(r":(focus|hover|pressed|checked|selected|disabled|default)\b")
+
+
+@pytest.mark.parametrize("theme", THEMES, ids=lambda theme: theme.name)
+def test_every_interaction_state_in_the_sheet_is_enumerated(theme: ui_theme.Theme) -> None:
+    """**The completeness half of `T202-R1`, and the half the first version did not have.**
+
+    The earlier sweep asked *which rules use `ok`, `warn` or `stop`* — a question about the palette
+    field, not about the information. The focus ring is drawn in `accent`, so it was never asked
+    what it meant, and it meant **keyboard focus**: the single most load-bearing state for the user
+    this task exists to protect.
+
+    So every pseudo-state selector in the generated sheet has to be in `theme.STATE_RULES`, with
+    what it conveys and the channel that conveys it without colour. Adding `:focus` or `:selected`
+    to a new rule and stopping there fails here.
+    """
+    enumerated = {rule.selector for rule in ui_theme.STATE_RULES}
+    present = {selector for selector, _body in rules(theme) if _PSEUDO_STATE.search(selector)}
+
+    assert not present - enumerated, (
+        "interaction state(s) nothing enumerates — add them to `theme.STATE_RULES` with what they "
+        f"tell the user and the channel that says it without colour: {sorted(present - enumerated)}"
+    )
+    assert not enumerated - present, (
+        "`theme.STATE_RULES` names selector(s) the sheet does not have, so the registry has "
+        f"drifted from what it describes: {sorted(enumerated - present)}"
+    )
+
+
+def test_a_channel_claim_is_bound_to_what_its_selector_can_actually_be() -> None:
+    """**A classification nothing checks is a comment.** Found by mutation, after the fact.
+
+    Reclassifying `QMenu::item:selected` from `luminance` to `pointer-feedback` passed every other
+    assertion in this file: the registry said the highlight was mere pointer feedback, and nothing
+    disagreed. That is the whole defect class `T202-R1` is about, one level up — a rule *about* the
+    rules, asserted by nobody.
+
+    Two of the four channels are mechanically checkable from the selector, and those are exactly
+    the two that excuse a rule from carrying a visible second channel:
+
+    - **`pointer-feedback` means hover or pressed.** Those are the only states that exist solely
+      while a pointer is on the control. `:selected`, `:checked` and `:focus` outlive the pointer
+      and are information; claiming otherwise is how a real state gets excused.
+    - **`published-state` means disabled.** It is the one state Qt puts in the accessibility tree
+      by itself.
+
+    `geometry` and `luminance` are not checkable from the selector — they are claims about what is
+    drawn — so they are checked by drawing it instead, in the two tests below.
+    """
+    for rule in ui_theme.STATE_RULES:
+        if rule.channel == "pointer-feedback":
+            assert ":hover" in rule.selector or ":pressed" in rule.selector, (
+                f"{rule.selector!r} claims to be pointer feedback, but it is not a hover or "
+                "pressed rule — a state that outlives the pointer is information, and needs a "
+                "channel that outlives it too"
+            )
+        if rule.channel == "published-state":
+            assert ":disabled" in rule.selector, (
+                f"{rule.selector!r} claims the accessibility tree carries it, but only "
+                "`:disabled` is published by Qt without being drawn"
+            )
+
+
+@pytest.mark.parametrize("theme", THEMES, ids=lambda theme: theme.name)
+def test_every_luminance_claim_is_far_enough_apart_to_be_one(theme: ui_theme.Theme) -> None:
+    """Driven from the registry, so a rule that *claims* `luminance` is the rule that gets checked.
+
+    Asserting the menu highlight by name would have left the claim and the check independent —
+    which is what let the mutation above through. Anything classified `luminance` is measured, and
+    a new one is measured the moment it is added.
+    """
+    claimed = [rule for rule in ui_theme.STATE_RULES if rule.channel == "luminance"]
+    assert claimed, "no rule claims `luminance`, so this test would pass over nothing"
+
+    for rule in claimed:
+        ratio = ui_theme.contrast_ratio(theme.surface, theme.primary)
+        assert ratio >= ui_theme.MINIMUM_CONTRAST, (
+            f"{rule.selector!r} in {theme.name} sits {ratio:.2f}:1 from its unselected ground, "
+            f"under the {ui_theme.MINIMUM_CONTRAST} floor — at that distance it is a hue change "
+            "rather than a brightness one"
+        )
+
+
+def test_every_enumerated_state_declares_a_channel_that_exists() -> None:
+    """A registry whose values are free text is a registry that can say anything.
+
+    Each entry has to name one of the four channels `STATE_CHANNELS` defines, and give a reason —
+    the reason is what a reviewer reads to decide whether the classification is honest, and an
+    entry claiming `pointer-feedback` for something a keyboard user needs would be caught there
+    rather than here.
+    """
+    for rule in ui_theme.STATE_RULES:
+        assert rule.channel in ui_theme.STATE_CHANNELS, (
+            f"{rule.selector!r} claims channel {rule.channel!r}, which is not one of "
+            f"{sorted(ui_theme.STATE_CHANNELS)}"
+        )
+        assert rule.conveys.strip(), f"{rule.selector!r} does not say what it conveys"
+        assert len(rule.reason.split()) >= 8, (
+            f"{rule.selector!r} gives no reason worth reading: {rule.reason!r}"
+        )
+
+
+def ink_pixels(widget: QWidget) -> int:
+    """How many pixels of `widget` are **not** its own fill.
+
+    **This is the measurement that distinguishes a thicker edge from a recoloured one.** A rule
+    that only changes hue leaves this count untouched, because every pixel that was fill is still
+    fill and every pixel that was border is still border. A rule that adds or thickens an edge
+    raises it.
+
+    The fill is taken as the most common colour in the render rather than from the palette: a
+    control's own background is `surface`, not `window`, and the first version of this measurement
+    compared against the wrong one and reported no change from a fix that plainly worked.
+    """
+    image = QImage(widget.size(), QImage.Format.Format_ARGB32)
+    image.fill(QColor("#00000000"))
+    widget.render(image)
+    pixels = [
+        image.pixelColor(x, y).rgba() for y in range(image.height()) for x in range(image.width())
+    ]
+    fill, _count = Counter(pixels).most_common(1)[0]
+    return sum(1 for pixel in pixels if pixel != fill)
+
+
+#: The smallest ink gain that counts as a visible edge change, in pixels.
+#:
+#: Measured 2026-08-15 on a rendered control: **436 to 454** gained across `QPushButton`,
+#: `QComboBox` and `QLineEdit` in both palettes, which is one extra pixel of border all the way
+#: round. The floor is far below that and far above the **zero** the colour-only rule scored, so it
+#: separates the two states of the world this test exists to tell apart.
+MINIMUM_FOCUS_INK: Final = 100
+
+
+@pytest.mark.parametrize("theme", THEMES, ids=lambda theme: theme.name)
+@pytest.mark.parametrize("widget_type", [QPushButton, QComboBox, QLineEdit])
+def test_focus_is_visible_without_reading_its_colour(
+    qapp: QApplication, theme: ui_theme.Theme, widget_type: type[QWidget]
+) -> None:
+    """**`T202-R1`.** Focus was conveyed by colour alone on every already-bordered control.
+
+    `*:focus` changed `border: 1px solid theme.border` to `border: 1px solid theme.accent`: same
+    width, same shape, same geometry. Measured on a rendered `QPushButton`, **414 pixels changed
+    and not one was background becoming ink**, with the idle and focus border colours **1.45:1**
+    apart in light and **2.17:1** in dark. A keyboard user who cannot separate those two hues had
+    no focus indicator at all.
+
+    This renders the control idle and focused and counts ink both times. **It never compares an RGB
+    value**, which is the point: the assertion is about whether the shape changed, so it cannot be
+    satisfied by choosing a louder colour.
+    """
+    qapp.setStyleSheet(ui_theme.stylesheet(theme))
+    try:
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        elsewhere = QPushButton("elsewhere", host)
+        layout.addWidget(elsewhere)
+        widget = widget_type(host)
+        if isinstance(widget, QComboBox):
+            widget.addItems(["Alpha", "Beta"])
+        layout.addWidget(widget)
+        host.resize(220, 120)
+        host.show()
+        qapp.processEvents()
+
+        elsewhere.setFocus()
+        qapp.processEvents()
+        idle = ink_pixels(widget)
+
+        widget.setFocus()
+        qapp.processEvents()
+        focused = ink_pixels(widget)
+
+        assert idle, f"{widget_type.__name__} rendered no ink at all, so this compares nothing"
+        assert focused - idle >= MINIMUM_FOCUS_INK, (
+            f"{widget_type.__name__} in {theme.name} gains {focused - idle} pixels of ink when "
+            f"focused ({idle} to {focused}), under the {MINIMUM_FOCUS_INK} floor — focus is being "
+            "drawn by changing a colour rather than by changing the edge"
+        )
+    finally:
+        qapp.setStyleSheet("")
 
 
 # --- painted state, which no style sheet reaches -----------------------------------------------

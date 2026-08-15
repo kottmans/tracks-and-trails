@@ -282,8 +282,264 @@ SEMANTIC_RULES: Final = (
 #: something has to be moved out of this tuple deliberately.
 COINCIDENTAL_SEMANTIC_VALUES: Final = (
     "*:focus",
+    "QPushButton:focus, QComboBox:focus, QLineEdit:focus",
     'QToolBar QToolButton[primaryAction="true"]:pressed',
 )
+
+
+@dataclass(frozen=True, slots=True)
+class StateRule:
+    """One interaction state a rule draws, and the channel that carries it besides colour.
+
+    **Enumerated by the information conveyed, not by the palette field used** (`T202-R1`).
+    `SEMANTIC_RULES` below asks *which rules use `ok`, `warn` or `stop`*, and that question missed
+    the defect entirely: the focus ring is drawn in `accent`, which is not a semantic field, and
+    focus is unmistakably information. A control's *state* is information whatever colour draws it.
+    """
+
+    selector: str
+    #: What this rule tells the user.
+    conveys: str
+    #: How it says it without colour — see `StateChannel` for the four kinds and why each counts.
+    channel: str
+    reason: str
+
+
+#: The channels a state may use instead of colour, and what makes each acceptable.
+#:
+#: - `geometry` — ink appears where there was none, or an edge changes thickness or shape. Survives
+#:   greyscale, a monochrome display, and any colour vision. The strongest of the four.
+#: - `luminance` — the fill inverts far enough that the change reads as brightness rather than hue.
+#:   Asserted against `MINIMUM_CONTRAST` rather than asserted by eye.
+#: - `published-state` — the state is in the accessibility tree, so a screen reader announces it
+#:   whether or not anything is drawn. `:disabled` is the case, and `QAccessible` is asked directly.
+#: - `pointer-feedback` — **not state.** Hover and pressed describe where the pointer is, to the
+#:   person holding it; they tell a keyboard or screen-reader user nothing, because that user is
+#:   not hovering. A rule in this class conveys no information to lose.
+STATE_CHANNELS: Final = frozenset({"geometry", "luminance", "published-state", "pointer-feedback"})
+
+#: Every rule in `stylesheet()` that draws an interaction state (`T202-R1`).
+#:
+#: **A pseudo-state selector that is not listed here fails a test.** That is the completeness half:
+#: the previous sweep enumerated only rules using a semantic colour field, so a state drawn in
+#: `accent` — focus, exactly — was never asked what it meant.
+STATE_RULES: Final = (
+    StateRule(
+        selector="*:focus",
+        conveys="keyboard focus, on a control with no border of its own",
+        channel="geometry",
+        reason=(
+            "A ring appears where there was nothing. For a check box, a radio button or a "
+            "borderless control this is ink against background, which needs no colour to read."
+        ),
+    ),
+    StateRule(
+        selector="QPushButton:focus, QComboBox:focus, QLineEdit:focus",
+        conveys="keyboard focus, on a control that already has a border",
+        channel="geometry",
+        reason=(
+            "The border goes from 1px to 2px. Recolouring it was the defect: measured on a "
+            "rendered button, 414 pixels changed and none of them was background becoming ink, "
+            "with the two hues 1.45:1 apart in light and 2.17:1 in dark."
+        ),
+    ),
+    StateRule(
+        selector="QPushButton:focus",
+        conveys="keyboard focus — the padding half of the rule above",
+        channel="geometry",
+        reason="Padding drops by exactly what the border gains, so the control does not move.",
+    ),
+    StateRule(
+        selector="QComboBox:focus, QLineEdit:focus",
+        conveys="keyboard focus — the padding half of the rule above",
+        channel="geometry",
+        reason="Padding drops by exactly what the border gains, so the control does not move.",
+    ),
+    StateRule(
+        selector="QToolBar QToolButton:checked",
+        conveys="the queue is paused",
+        channel="geometry",
+        reason=(
+            "`T-149`'s rule, and the precedent the focus fix follows: the border thickens to 2px "
+            "against a reduced padding, so the state survives a greyscale reading."
+        ),
+    ),
+    StateRule(
+        selector="QToolBar QToolButton:checked:hover",
+        conveys="the queue is paused, with the pointer over the control",
+        channel="geometry",
+        reason="Carries the checked rule's 2px border unchanged; only the fill differs.",
+    ),
+    StateRule(
+        selector="QListView::item:selected",
+        conveys="which row is selected",
+        channel="geometry",
+        reason="A 2px bar appears down the left edge — `T-130`'s inset, and a shape, not a tint.",
+    ),
+    StateRule(
+        selector="QMenu::item:selected",
+        conveys="which menu item the keyboard or pointer is on",
+        channel="luminance",
+        reason=(
+            "The fill inverts to the brand green with its own foreground, a change in brightness "
+            "rather than hue; the pair is asserted against MINIMUM_CONTRAST rather than trusted."
+        ),
+    ),
+    StateRule(
+        selector="QPushButton:disabled",
+        conveys="this control cannot be used",
+        channel="published-state",
+        reason=(
+            "Qt publishes `state().disabled`, which a screen reader announces whether or not "
+            "anything is drawn; asserted directly in tests/ui/test_colour_is_never_alone.py."
+        ),
+    ),
+    StateRule(
+        selector="QMenu::item:disabled",
+        conveys="this menu item cannot be used",
+        channel="published-state",
+        reason=(
+            "Qt publishes the disabled state, and the item is unselectable as well, so the "
+            "keyboard skips over it rather than landing somewhere that does nothing."
+        ),
+    ),
+    StateRule(
+        selector="QComboBox:disabled, QLineEdit:disabled",
+        conveys="this control cannot be used",
+        channel="published-state",
+        reason=(
+            "Qt publishes the disabled state, and `T-139` records why the rule exists at all: a "
+            "styled combo drew pixel-identically to an enabled one until it was declared."
+        ),
+    ),
+    StateRule(
+        selector='QToolButton[stepButton="true"]:disabled',
+        conveys="this stepper cannot be used",
+        channel="published-state",
+        reason=(
+            "Qt publishes the disabled state, and the spin box these steppers drive publishes its "
+            "own, so the keyboard route named by `route_is_elsewhere` reports it too."
+        ),
+    ),
+    StateRule(
+        selector="QToolBar QToolButton:disabled",
+        conveys="this toolbar verb cannot be used",
+        channel="published-state",
+        reason=(
+            "Qt publishes the disabled state on the action behind the button, so a screen reader "
+            "announces it even though nothing on this bar takes focus."
+        ),
+    ),
+    StateRule(
+        selector='QToolBar QToolButton[primaryAction="true"]:disabled',
+        conveys="the primary verb cannot be used",
+        channel="published-state",
+        reason="As above, and `T-016`'s reason for dropping the brand fill when it is inert.",
+    ),
+    StateRule(
+        selector="QPushButton:default",
+        conveys="which button Return will press",
+        channel="geometry",
+        reason=(
+            "The brand fill arrives with `font-weight: 600`, so the default reads as heavier text "
+            "as well as a different ground; the weight is what survives a greyscale reading."
+        ),
+    ),
+    StateRule(
+        selector="QPushButton:hover",
+        conveys="nothing — the pointer is over this control",
+        channel="pointer-feedback",
+        reason="Only a pointer user can be hovering, and they can see where their pointer is.",
+    ),
+    StateRule(
+        selector="QPushButton:default:hover",
+        conveys="nothing — the pointer is over the default button",
+        channel="pointer-feedback",
+        reason=(
+            "Only a pointer user can hover, and the default button already says it is the default "
+            "by its weight rather than by this rule."
+        ),
+    ),
+    StateRule(
+        selector="QPushButton:pressed",
+        conveys="nothing — this control is being pressed right now",
+        channel="pointer-feedback",
+        reason="Transient, and the press is the user's own action.",
+    ),
+    StateRule(
+        selector="QTabBar::tab:hover",
+        conveys="nothing — the pointer is over a tab",
+        channel="pointer-feedback",
+        reason=(
+            "Only a pointer user can hover; which tab is current is a different state, drawn by "
+            "the tab bar itself rather than by this rule."
+        ),
+    ),
+    StateRule(
+        selector='QToolButton[stepButton="true"]:hover',
+        conveys="nothing — the pointer is over a stepper",
+        channel="pointer-feedback",
+        reason=(
+            "Only a pointer user can hover, and `T-141` gave these a border of their own so they "
+            "look like controls without needing this rule."
+        ),
+    ),
+    StateRule(
+        selector='QToolButton[stepButton="true"]:pressed',
+        conveys="nothing — a stepper is being pressed",
+        channel="pointer-feedback",
+        reason=(
+            "Transient feedback for the duration of a press the user is themselves making, and "
+            "the value it changes is announced by the spin box."
+        ),
+    ),
+    StateRule(
+        selector='QToolButton[disclosure="true"]:hover',
+        conveys="nothing — the pointer is over a disclosure control",
+        channel="pointer-feedback",
+        reason=(
+            "Only a pointer user can hover; whether the row is expanded is published separately "
+            "and drawn by the twisty rather than by this rule."
+        ),
+    ),
+    StateRule(
+        selector="QToolBar QToolButton:hover",
+        conveys="nothing — the pointer is over a toolbar verb",
+        channel="pointer-feedback",
+        reason=(
+            "Only a pointer user can hover, and `T-129` restored these purely so the bar stops "
+            "looking inert under a pointer."
+        ),
+    ),
+    StateRule(
+        selector="QToolBar QToolButton:pressed",
+        conveys="nothing — a toolbar verb is being pressed",
+        channel="pointer-feedback",
+        reason=(
+            "Transient feedback for the duration of a press, and the result of the press is "
+            "announced by whatever it changes."
+        ),
+    ),
+    StateRule(
+        selector='QToolBar QToolButton[primaryAction="true"]:hover',
+        conveys="nothing — the pointer is over the primary verb",
+        channel="pointer-feedback",
+        reason=(
+            "Only a pointer user can hover; `T-147` made this a lighter fill rather than a ring "
+            "precisely so it reads as feedback and not as a state."
+        ),
+    ),
+    StateRule(
+        selector='QToolBar QToolButton[primaryAction="true"]:pressed',
+        conveys="nothing — the primary verb is being pressed",
+        channel="pointer-feedback",
+        reason=(
+            "Transient, and `T-147` gives it a one-pixel inset rather than a colour change in any "
+            "case, so it is geometry even though it need not be."
+        ),
+    ),
+)
+
 
 #: Rules where `muted` is **secondary emphasis** — quieter, not unavailable.
 #:
@@ -637,7 +893,35 @@ QProgressBar::chunk {{
     background-color: {theme.primary};
 }}
 *:focus {{
+    /* **For a widget with no border of its own, this ring *is* the non-colour channel**
+       (`T202-R1`): focus makes ink appear where there was background, which survives a greyscale
+       reading and a monochrome display alike. A check box, a radio button and a label-like control
+       are all in this case.
+
+       For a control that already has a one-pixel border it is **not** enough, and the three rules
+       below are why. */
     border: 1px solid {theme.accent};
+}}
+QPushButton:focus, QComboBox:focus, QLineEdit:focus {{
+    /* **Focus thickens the edge; it does not merely recolour it** (`T202-R1`, `NFR-005`).
+
+       These controls already carry `border: 1px solid {theme.border}`, so the global rule above
+       changed nothing but the hue. Measured on a rendered `QPushButton`: **414 pixels changed,
+       and not one of them was background becoming ink** — the geometry was identical and the two
+       border colours sit **1.45:1** apart in light and **2.17:1** in dark. A user who cannot
+       separate those hues had no focus indicator at all, which is the keyboard user this whole
+       task exists to protect.
+
+       **The padding is reduced by exactly what the border gains**, so nothing moves. That is not
+       a new trick here: `QToolBar QToolButton:checked` has thickened to 2px against `padding:
+       2px 8px` since `T-149`, for the same reason and with the same arithmetic. */
+    border: 2px solid {theme.accent};
+}}
+QPushButton:focus {{
+    padding: 3px 9px;
+}}
+QComboBox:focus, QLineEdit:focus {{
+    padding: 2px 5px;
 }}
 """.strip()
 

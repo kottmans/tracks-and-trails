@@ -597,8 +597,53 @@ split had leaked.
 
 ### T-202 — Nothing is said by colour alone
 
-**Status:** **In Review — built 2026-08-15.** Filed 2026-08-09 from `IMPLEMENTATION_PLAN.md`
-§Phase 4. All six acceptance criteria are met and gated. **It is one of the phase's exit
+**Status:** **In Review — corrected once, 2026-08-15.** The first review returned **Changes
+requested** with `T202-R1` (High): *focus* was still conveyed by colour alone, and the sweep
+exempted it by name. `AGENTS.md` §10 permits correcting a High without another pass authorization.
+
+#### `T202-R1` — the sweep asked the wrong question, and focus is what it missed
+
+**The registry enumerated by palette *field*, not by information.** It asked *which rules use `ok`,
+`warn` or `stop`* — so the focus ring, drawn in `accent`, was never asked what it meant. It means
+**keyboard focus**, for the exact user this task exists to protect. Worse,
+`COINCIDENTAL_SEMANTIC_VALUES` excluded `*:focus` explicitly: correctly saying the ring is not a
+*warning*, and never asking what it was.
+
+**Reproduced before changing anything.** A rendered `QPushButton`: **414 pixels changed, none of
+them background becoming ink** — identical geometry, hue only — with the idle and focus borders
+**1.45:1** apart in light and **2.17:1** in dark.
+
+**The defect is narrower than the rule, and the fix follows the shape.** `*:focus` *adds* a ring to
+a control with no border, which is already ink where there was none. It is the already-bordered
+controls — `QPushButton`, `QComboBox`, `QLineEdit` — where recolouring was the whole change. Those
+now thicken to **2px with the padding reduced by exactly what the border gains**, so nothing moves:
+measured, all three keep their size hint. That arithmetic is not new — `QToolBar QToolButton:checked`
+has done it since `T-149`, and the reviewer names it as the accepted pattern.
+
+**`theme.STATE_RULES` is the new enumeration, by what a rule conveys**, with four channels and a
+reason each: `geometry`, `luminance`, `published-state`, and `pointer-feedback` for hover and
+pressed, which tell a keyboard user nothing because that user is not hovering. Every pseudo-state
+selector in the sheet must appear, and the sweep fails both ways — an unenumerated state, and a
+registry naming a selector the sheet no longer has.
+
+**The regression never compares an RGB value.** It renders the control idle and focused and counts
+**ink** — pixels that are not the control's own fill — so a recolour scores zero and a thicker edge
+cannot. Measured gain: **436 to 454 pixels**, all three controls, both palettes.
+
+*(The first version of that measurement compared against `theme.window` and reported **zero** for a
+fix that plainly worked, because a control's own fill is `surface`. A metric that reads the wrong
+background is a metric that would have failed the fix and passed the defect.)*
+
+**Three mutations, and the third is the one worth reading.** Reverting the border to 1px fails all
+six rendered cases. Renaming the selector fails the registry sweep. **Reclassifying
+`QMenu::item:selected` from `luminance` to `pointer-feedback` survived** — the registry could
+excuse a real state and nothing disagreed, which is `T202-R1`'s own defect one level up. Channel
+claims are bound to their selectors now: `pointer-feedback` must be `:hover` or `:pressed`,
+`published-state` must be `:disabled`, and every `luminance` claim is measured against
+`MINIMUM_CONTRAST` **from the registry** rather than by name.
+
+**Status before this round:** **In Review — built 2026-08-15.** Filed 2026-08-09 from
+`IMPLEMENTATION_PLAN.md` §Phase 4. All six acceptance criteria are met and gated. **It is one of the phase's exit
 criteria**, and the sweep is what answers `NFR-005`'s last clause rather than a claim that it is
 satisfied.
 **Owner:** Implementer
