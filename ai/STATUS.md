@@ -75,6 +75,22 @@ both asserted `error_message` was non-empty where the claim was that *the queue 
 read the classification and the drawn row now. Three mutations, none surviving — including
 implementing the rejected fork.
 
+**`T-202` is in review, and it closes the phase's colour-only exit criterion.** The enumeration is
+the deliverable and it enforces itself: `theme.SEMANTIC_RULES` pairs each semantic-colour rule with
+the declaration that says the same thing without colour, and the sweep checks it against the
+generated sheet from both directions — every enumerated rule is really there with both halves, and
+every occurrence of a semantic colour is claimed. **No assertion in the file checks that a colour
+is present**, which is what the criterion asks.
+
+**Measured: one semantic rule exists in the whole sheet** — `T-192`'s stopped-queue status, already
+carrying its weight. `ok` is used nowhere and `stop` nowhere in the sheet, so the phase added no
+colour-only signal. **The trap was in the palette**: in dark, `warn` *is* `accent`, both `GOLD`, so
+matching by value finds the focus ring in one theme and not the other; those two selectors are
+named as coincidences. **Grey is used for both meanings and the selector tells them apart** —
+secondary emphasis, or `:disabled`, where Qt publishes the state to the accessibility tree and the
+test asserts both polarities. The playlist bar's five painted states now have a mapping to words
+that is asserted total. Four mutations, none surviving.
+
 *(The snapshot below is the build's and stands, except where this block corrects it.)* The queue's
 run control had **no keyboard route of any kind**:
 `QToolBar` gives every button `Qt.NoFocus`, `Start` and `Clear finished` are on no menu, and the

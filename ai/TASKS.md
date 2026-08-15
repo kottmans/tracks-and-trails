@@ -547,6 +547,143 @@ split had leaked.
 - Redesigning the logo itself
 - Any change to the brand hex values fixed by `T-003`
 
+### T-202 — Nothing is said by colour alone
+
+**Status:** **In Review — built 2026-08-15.** Filed 2026-08-09 from `IMPLEMENTATION_PLAN.md`
+§Phase 4. All six acceptance criteria are met and gated. **It is one of the phase's exit
+criteria**, and the sweep is what answers `NFR-005`'s last clause rather than a claim that it is
+satisfied.
+**Owner:** Implementer
+**Priority:** Medium — it is a named exit criterion, and it is cheap if done as a sweep and
+expensive if discovered in the exit review
+**Phase:** Phase 4 — **after** the phase's new surfaces exist, for `T-200`'s reason
+**Depends on:** `T-146` (the theme selector — a rule that holds in light and fails in dark is not a
+rule), `T-201` (error presentation is the densest use of semantic colour)
+**Relevant context:** `NFR-005`, `ARCHITECTURE.md` §8, `ui/theme.py` (`ok`, `warn`, `stop`),
+`T-130` and `T130-R1` (both palettes' contrast), `T-192`'s `ACTIONABLE_STATUS_PROPERTY`,
+`ui/queue_view.py`, `ui/format_table.py`, `ui/row_delegate.py`
+**Affected surfaces:** `ui/theme.py` and every widget that uses a semantic colour
+**Risk:** Low individually, Medium in aggregate — the failures are in places nobody thinks of as
+information, like a disabled row's grey
+
+#### Scope
+
+`NFR-005` ends with *"and no information conveyed by color alone"*, and the plan repeats it as its
+own exit criterion. **`ui/theme.py` defines three semantic colours** — `ok`, `warn`, `stop` — in
+both palettes. Every place one of them carries meaning needs a second channel: a word, a shape, an
+icon, a weight, or a position.
+
+**`T-192` already set the pattern and it should be named as precedent.** The stopped-queue status
+uses `theme.warn` **and** `font-weight: 600`, applied through a dynamic property so the style is
+selected by *role* rather than by object name — which
+`test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces. **A new widget in that role
+inherits both channels.** That is the shape to reuse: the second channel belongs in the stylesheet
+next to the colour, not bolted on per widget.
+
+**Where to look, from the surfaces that use semantic colour today:** job state in the queue, failed
+versus cancelled versus interrupted, the ffmpeg gate summary, format-table rows that cannot be
+chosen, a row that is not committable, the *Read* badge, progress against stalled progress, and
+anything drawn `muted` to mean *unavailable* rather than merely *secondary*.
+
+**Grey is the one most likely to be missed.** A disabled or muted colour saying *this cannot be
+used* is information conveyed by colour alone, and it does not look like a semantic colour because
+it is not in the `ok`/`warn`/`stop` set.
+
+#### What was built — the enumeration, and it enforces itself
+
+**`theme.SEMANTIC_RULES` is the deliverable.** Each entry pairs a selector with the semantic colour
+it sets, the declaration that says the same thing without colour, and what the colour means. It
+sits directly above `stylesheet()` — *"where the next widget's author will meet it"* — and
+`tests/ui/test_colour_is_never_alone.py` checks it against the generated sheet in **both palettes**,
+from both directions:
+
+- **Every enumerated rule is really in the sheet, with both halves.** A registry that drifts from
+  what it describes reads as coverage while covering nothing.
+- **Every occurrence of a semantic colour in the sheet is claimed.** This is the completeness half
+  and the reason the enumeration is a gate rather than a comment: adding `color: {theme.stop}` to a
+  new rule and stopping there fails.
+
+**Not one assertion in the file reads a colour to check it is there** — the criterion asks the
+opposite. They read words, weight, a published accessibility state, or a count in text; the colour
+is only ever used to *find* the place that has to carry one.
+
+#### What the sweep found, measured rather than assumed
+
+**One semantic rule exists in the whole sheet.** `QStatusBar QLabel[actionableStatus="true"]` —
+`T-192`'s stopped-queue status, already carrying `font-weight: 600` beside its `warn`. **`ok` is
+used nowhere. `stop` is used nowhere in the sheet**, only by the row delegate. So the phase added
+no colour-only signal, which is the criterion this task also owns, and it is now checked rather
+than asserted.
+
+**The trap was in the palette, not the rules.** In dark, `warn` **is** `accent` — both `GOLD`,
+`#D9A24C` — so a sweep matching by *value* finds the focus ring and the pressed primary action
+there and finds neither in light. A gate that behaves differently per theme for a reason unrelated
+to the rule is not a gate. `COINCIDENTAL_SEMANTIC_VALUES` names those two selectors, so a rule that
+starts carrying meaning has to be taken out of that tuple by hand.
+
+**And the sweep would have read its own explanation.** The sheet's comments contain the words
+*warn* and *muted* many times over; comments are stripped before matching.
+
+#### Painted state, which no style sheet reaches
+
+`row_delegate._paint_segments` draws five playlist states in five colours, and the chip beside it
+reads *"12 of 16"* — which counts the done and says nothing about how the rest ended. **The second
+channel already existed**: the header's detail line, *"16 items · 12 done · 2 failed · 1 cancelled ·
+1 queued"*. What did not exist was anything holding the two together.
+
+The inline tuple of words is now `queue_view.SEGMENT_STATE_WORDS`, and the sweep asserts it is
+**total** over `SegmentState`. A sixth state given a colour and no word fails, rather than being
+drawn in silence — which matters because `T-165` already found this bar getting *finished versus
+abandoned* wrong on its own.
+
+#### Grey, which `T-202` predicted would be the one missed
+
+It was used for both meanings, and the answer is that the **selector** tells them apart. Every
+`muted` rule in the sheet is either secondary emphasis — `QGroupBox::title`, `QHeaderView::section`,
+enumerated in `SECONDARY_EMPHASIS_SELECTORS` — or a `:disabled` rule.
+
+**A `:disabled` rule is not colour alone**, and that is asserted rather than argued: Qt publishes
+the state to the accessibility tree, `QAccessible` reports `state().disabled`, and the test checks
+both polarities for the two control kinds those rules cover. *"Disabled is reported"* is worth
+nothing if it is reported always. The control also does not respond, which is a third channel.
+
+A new `muted` rule that is neither fails and has to say which it is.
+
+#### Four mutations, none surviving
+
+| Mutation | Caught by |
+|---|---|
+| `color: {theme.stop}` on `QProgressBar`, enumerated nowhere | the completeness sweep, both palettes |
+| `font-weight: 600` deleted from the one enumerated rule | the registry-versus-sheet check, both palettes |
+| A sixth `SegmentState` with a colour and no word | the totality check |
+| `color: {theme.muted}` on a `[stalled="true"]` rule — grey carrying state | the grey split, both palettes |
+
+**3059 passed / 18 skipped** unit and UI; `ruff`, `ruff format` and `mypy` clean.
+
+#### Acceptance criteria
+
+- **Every use of a semantic colour is enumerated**, and each carries a second, non-colour channel —
+  the enumeration is the deliverable, because an unenumerated use is how this criterion gets
+  claimed without being met — **met**; `theme.SEMANTIC_RULES`, swept for completeness
+- **The second channel is asserted by a test**, not by inspection. A test that reads the rendered
+  text or the widget's role — not one that asserts a colour, which proves the opposite of what is
+  wanted — **met**; no assertion in the file checks that a colour is present
+- **It holds in both palettes.** Light and dark are checked, since `T130-R1` already found contrast
+  problems that differed between them — **met**, and the palettes differ: `warn` is `accent` in dark
+- **Muted-as-unavailable is covered**, or the sweep records that grey is used only for secondary
+  emphasis and never for state — **met**; it is used for both, split by selector, with the disabled state asserted
+- The rule is written where the next widget's author will meet it — beside the styling convention
+  `T-192` established, so it is inherited rather than remembered — **met**; directly above `stylesheet()`
+- No **new** colour-only signal is added by `T-195`–`T-201`; this task is also the check on them — **met**; one semantic rule exists in the whole sheet, and it is `T-192`'s
+
+#### Out of scope
+
+- Contrast ratios and colour blindness simulation. Worth wanting, not requested, and
+  `T-130`/`T130-R1` already fought the contrast fight for both palettes
+- Changing the palette. `ARCHITECTURE.md` §8 owns the brand colours; this task adds channels
+  beside them
+- High-contrast or user-supplied themes — not requested, and each needs its own decision
+
 ### T-243 — An interrupted row says the same thing twice, in two voices
 
 **Status:** **In Review — built 2026-08-15.** Filed 2026-08-14 from the same rendered walkthrough,
@@ -6556,69 +6693,6 @@ narrows what the gate claims; (2) changes what users of a screen reader hear.
 
 ---
 
-
-### T-202 — Nothing is said by colour alone
-
-**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
-**Owner:** Implementer
-**Priority:** Medium — it is a named exit criterion, and it is cheap if done as a sweep and
-expensive if discovered in the exit review
-**Phase:** Phase 4 — **after** the phase's new surfaces exist, for `T-200`'s reason
-**Depends on:** `T-146` (the theme selector — a rule that holds in light and fails in dark is not a
-rule), `T-201` (error presentation is the densest use of semantic colour)
-**Relevant context:** `NFR-005`, `ARCHITECTURE.md` §8, `ui/theme.py` (`ok`, `warn`, `stop`),
-`T-130` and `T130-R1` (both palettes' contrast), `T-192`'s `ACTIONABLE_STATUS_PROPERTY`,
-`ui/queue_view.py`, `ui/format_table.py`, `ui/row_delegate.py`
-**Affected surfaces:** `ui/theme.py` and every widget that uses a semantic colour
-**Risk:** Low individually, Medium in aggregate — the failures are in places nobody thinks of as
-information, like a disabled row's grey
-
-#### Scope
-
-`NFR-005` ends with *"and no information conveyed by color alone"*, and the plan repeats it as its
-own exit criterion. **`ui/theme.py` defines three semantic colours** — `ok`, `warn`, `stop` — in
-both palettes. Every place one of them carries meaning needs a second channel: a word, a shape, an
-icon, a weight, or a position.
-
-**`T-192` already set the pattern and it should be named as precedent.** The stopped-queue status
-uses `theme.warn` **and** `font-weight: 600`, applied through a dynamic property so the style is
-selected by *role* rather than by object name — which
-`test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces. **A new widget in that role
-inherits both channels.** That is the shape to reuse: the second channel belongs in the stylesheet
-next to the colour, not bolted on per widget.
-
-**Where to look, from the surfaces that use semantic colour today:** job state in the queue, failed
-versus cancelled versus interrupted, the ffmpeg gate summary, format-table rows that cannot be
-chosen, a row that is not committable, the *Read* badge, progress against stalled progress, and
-anything drawn `muted` to mean *unavailable* rather than merely *secondary*.
-
-**Grey is the one most likely to be missed.** A disabled or muted colour saying *this cannot be
-used* is information conveyed by colour alone, and it does not look like a semantic colour because
-it is not in the `ok`/`warn`/`stop` set.
-
-#### Acceptance criteria
-
-- **Every use of a semantic colour is enumerated**, and each carries a second, non-colour channel —
-  the enumeration is the deliverable, because an unenumerated use is how this criterion gets
-  claimed without being met
-- **The second channel is asserted by a test**, not by inspection. A test that reads the rendered
-  text or the widget's role — not one that asserts a colour, which proves the opposite of what is
-  wanted
-- **It holds in both palettes.** Light and dark are checked, since `T130-R1` already found contrast
-  problems that differed between them
-- **Muted-as-unavailable is covered**, or the sweep records that grey is used only for secondary
-  emphasis and never for state
-- The rule is written where the next widget's author will meet it — beside the styling convention
-  `T-192` established, so it is inherited rather than remembered
-- No **new** colour-only signal is added by `T-195`–`T-201`; this task is also the check on them
-
-#### Out of scope
-
-- Contrast ratios and colour blindness simulation. Worth wanting, not requested, and
-  `T-130`/`T130-R1` already fought the contrast fight for both palettes
-- Changing the palette. `ARCHITECTURE.md` §8 owns the brand colours; this task adds channels
-  beside them
-- High-contrast or user-supplied themes — not requested, and each needs its own decision
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 

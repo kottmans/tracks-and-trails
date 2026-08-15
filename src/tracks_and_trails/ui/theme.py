@@ -227,6 +227,78 @@ def contrast_ratio(foreground: str, background: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
+@dataclass(frozen=True, slots=True)
+class SemanticRule:
+    """One place a semantic colour carries meaning, and the channel that carries it without colour.
+
+    **The pair is the unit** (`T-202`, `NFR-005`: *"no information conveyed by color alone"*). A
+    colour and its second channel are one decision, so they are recorded together and asserted
+    together — `tests/ui/test_colour_is_never_alone.py` checks that each rule below really is in
+    the sheet, with both halves, in both palettes.
+    """
+
+    #: The selector, verbatim as `stylesheet` writes it.
+    selector: str
+    #: `"ok"`, `"warn"` or `"stop"` — the `Theme` field this rule sets.
+    colour: str
+    #: A declaration in the same rule that says the same thing without colour, verbatim.
+    second_channel: str
+    #: What the colour means, and where the words that say it live.
+    meaning: str
+
+
+#: Every rule in `stylesheet()` where a semantic colour carries meaning (`T-202`).
+#:
+#: **The enumeration is the deliverable**, because an unenumerated use is how `NFR-005`'s last
+#: clause gets claimed without being met. `T-192` set the shape this follows: the stopped-queue
+#: status uses `warn` **and** `font-weight: 600`, applied through a dynamic property so the style
+#: is selected by *role* — a new widget in that role inherits both channels rather than having to
+#: remember the second.
+#:
+#: **Adding a semantic colour to `stylesheet()` without adding it here fails a test.** That is the
+#: whole mechanism: the sweep matches the palette's semantic values against the generated sheet and
+#: requires every occurrence to be claimed, either here or by `COINCIDENTAL_SEMANTIC_VALUES` below.
+SEMANTIC_RULES: Final = (
+    SemanticRule(
+        selector='QStatusBar QLabel[actionableStatus="true"]',
+        colour="warn",
+        second_channel="font-weight: 600",
+        meaning=(
+            "The queue is stopped and the user has to press something. The label already says "
+            '"Queue stopped — press Start to download" in words; the weight is what makes it '
+            "found rather than parsed, and the colour reinforces both."
+        ),
+    ),
+)
+
+#: Occurrences of a semantic colour's **value** in the sheet that are not semantic uses.
+#:
+#: **`warn` and `accent` are the same hex in the dark palette** — both `GOLD`, `#D9A24C` — so a
+#: sweep matching by value finds the focus ring and the pressed primary action there and finds
+#: neither in light. That is a property of the palette, not of the rules: nothing about a focus
+#: ring means *warning*, and the two would have to be told apart by hand in exactly one theme.
+#:
+#: Listed by selector rather than excused by a colour comparison, so a rule that starts meaning
+#: something has to be moved out of this tuple deliberately.
+COINCIDENTAL_SEMANTIC_VALUES: Final = (
+    "*:focus",
+    'QToolBar QToolButton[primaryAction="true"]:pressed',
+)
+
+#: Rules where `muted` is **secondary emphasis** — quieter, not unavailable.
+#:
+#: `T-202` asks for grey to be covered or for the sweep to record that it never carries state.
+#: Measured 2026-08-15: it does both, and the two are told apart by the selector. Every other
+#: `muted` rule in the sheet is a `:disabled` one, where the state is published to the
+#: accessibility tree as well as drawn — `QAccessible` reports `state().disabled`, asserted rather
+#: than assumed — and where the control also does not respond. Grey is the third channel there,
+#: not the only one.
+SECONDARY_EMPHASIS_SELECTORS: Final = (
+    "QGroupBox::title",
+    "QHeaderView::section",
+)
+
+
 def stylesheet(theme: Theme) -> str:
     """The theme as Qt style sheet text.
 

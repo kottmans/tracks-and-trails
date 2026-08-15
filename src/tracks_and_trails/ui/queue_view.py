@@ -190,6 +190,28 @@ CHIP_TEXT: Final[dict[JobStatus, str]] = {
     JobStatus.CANCELLED: "Cancelled",
 }
 
+#: The word each painted segment state is announced by (`T-202`, `NFR-005`).
+#:
+#: **`row_delegate._paint_segments` gives each of these a colour, and this is the other channel.**
+#: A playlist header's bar is five hues; the chip beside it reads *"12 of 16"*, which counts only
+#: the done. So *"16 items · 12 done · 2 failed · 1 cancelled · 1 queued"* is what a user who
+#: cannot tell the hues apart reads instead — and the pair a user actually confuses is finished
+#: against abandoned, which `T-165` already found the bar getting wrong on its own.
+#:
+#: **A mapping rather than the inline tuple this was**, so that the correspondence is checkable:
+#: `tests/ui/test_colour_is_never_alone.py` asserts it is *total* over `SegmentState`, and a sixth
+#: state given a colour and no word fails there rather than being drawn in silence.
+#:
+#: Insertion order is the order the parts are joined in, which is the order the states occur in as
+#: a download proceeds.
+SEGMENT_STATE_WORDS: Final = {
+    SegmentState.DONE: "done",
+    SegmentState.RUNNING: "running",
+    SegmentState.FAILED: "failed",
+    SegmentState.CANCELLED: "cancelled",
+    SegmentState.WAITING: "queued",
+}
+
 JOB_COLUMN: Final = 0
 STATUS_COLUMN: Final = 1
 PROGRESS_COLUMN: Final = 2
@@ -1208,15 +1230,13 @@ class QueueModel(QAbstractTableModel):
             done = sum(1 for state in segments if state is SegmentState.DONE)
             return f"{done} of {len(segments)}"
         if role == DETAIL_ROLE:
+            # **This line is the segment bar's second channel** (`T-202`, `NFR-005`). The bar
+            # draws five states in five colours and the chip beside it says only *"12 of 16"* —
+            # which counts the done and says nothing about how the rest ended. A user who cannot
+            # tell the failed blocks from the cancelled ones reads it here, in words.
             counted = Counter(segments)
             parts = [f"{len(segments)} items"]
-            for state, word in (
-                (SegmentState.DONE, "done"),
-                (SegmentState.RUNNING, "running"),
-                (SegmentState.FAILED, "failed"),
-                (SegmentState.CANCELLED, "cancelled"),
-                (SegmentState.WAITING, "queued"),
-            ):
+            for state, word in SEGMENT_STATE_WORDS.items():
                 if counted[state]:
                     parts.append(f"{counted[state]} {word}")
             return " · ".join(parts)
