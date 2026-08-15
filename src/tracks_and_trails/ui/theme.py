@@ -271,6 +271,148 @@ SEMANTIC_RULES: Final = (
     ),
 )
 
+
+@dataclass(frozen=True, slots=True)
+class BorderedControl:
+    """One control `stylesheet()` gives a border of its own, and whether it can hold the keyboard.
+
+    **The inventory is the deliverable here, not the three rules that came out of it** (`T202-R1`,
+    second round). The first correction thickened the border on `QPushButton`, `QComboBox` and
+    `QLineEdit` — the three controls the finding named — and left every other bordered control
+    recolouring exactly as before. Seven of them, measured at a **literal zero** ink gain.
+
+    A control with a border cannot show focus by *adding* one, so `*:focus` can only change its
+    hue. That is a property of having a border, not of being a button, and this is the list of
+    everything that has one. `takes_focus` decides which half of the rule applies, and it is
+    **checked against Qt** rather than believed: `tests/ui/test_colour_is_never_alone.py` renders
+    each control, asks its focus policy, and fails an entry that claims either answer wrongly.
+    """
+
+    #: Exactly as `stylesheet()` writes it, so the sweep can match rule for rule.
+    selector: str
+    #: Whether the keyboard can land here. `False` means the sweep must be able to *prove* it —
+    #: Qt reports `NoFocus`, or the control is only ever shown as a popup window.
+    takes_focus: bool
+    reason: str
+
+
+#: Every control the sheet gives a `border: <n>px solid` of its own (`T202-R1`).
+#:
+#: **A bordered control that is not listed here fails a test**, and so does one listed here that
+#: the sheet no longer borders. The sweep parses the generated sheet for the border shorthand
+#: rather than reading this tuple and believing it, which is the only arrangement where adding a
+#: bordered control to the sheet cannot silently skip the focus question.
+BORDERED_CONTROLS: Final = (
+    BorderedControl(
+        selector="QPushButton",
+        takes_focus=True,
+        reason="A button is a tab stop; this is the control the finding measured 414 pixels on.",
+    ),
+    BorderedControl(
+        selector="QComboBox",
+        takes_focus=True,
+        reason="A tab stop, and the keyboard opens and changes it — `T-238`'s route depends on it.",
+    ),
+    BorderedControl(
+        selector="QLineEdit",
+        takes_focus=True,
+        reason="A tab stop, and the one control where the keyboard is the only way to use it.",
+    ),
+    BorderedControl(
+        selector="QListWidget",
+        takes_focus=True,
+        reason=(
+            "A tab stop with arrow-key navigation inside it: the playlist picker and the preset "
+            "list are both reached and driven entirely from the keyboard."
+        ),
+    ),
+    BorderedControl(
+        selector="QTableView",
+        takes_focus=True,
+        reason="A tab stop — the format table and the queue are both tables and both operable.",
+    ),
+    BorderedControl(
+        selector="QTreeView",
+        takes_focus=True,
+        reason="A tab stop; the grouped queue is a tree and expands from the keyboard.",
+    ),
+    BorderedControl(
+        selector="QPlainTextEdit",
+        takes_focus=True,
+        reason="A tab stop, and the log view is read by moving the caret through it.",
+    ),
+    BorderedControl(
+        selector="QTextEdit",
+        takes_focus=True,
+        reason="A tab stop, for the same reason as the plain edit above.",
+    ),
+    BorderedControl(
+        selector='QToolButton[stepButton="true"]',
+        takes_focus=True,
+        reason=(
+            "`TabFocus`, measured. `T-141`'s own comment says the global ring used to box "
+            "whichever stepper had focus, which is a statement that these take it."
+        ),
+    ),
+    BorderedControl(
+        selector="QToolBar QToolButton",
+        takes_focus=True,
+        reason=(
+            "`TabFocus`, measured — Tab reaches `Pause queue` from the central widget. The sheet "
+            "said otherwise until this round: `QToolBar QToolButton:disabled` claimed *nothing on "
+            "this bar takes focus*, and the tab order disagrees."
+        ),
+    ),
+    BorderedControl(
+        selector='QToolBar QToolButton[primaryAction="true"]',
+        takes_focus=True,
+        reason=(
+            "The same button with a brand fill, so the same tab stop — and the fill is not a focus "
+            "indicator, being there whether or not it holds the keyboard."
+        ),
+    ),
+    BorderedControl(
+        selector="QGroupBox",
+        takes_focus=False,
+        reason=(
+            "`NoFocus`. A group box is a frame with a caption: it has no value, no action and no "
+            "tab stop, and Qt gives the keyboard to the controls inside it instead."
+        ),
+    ),
+    BorderedControl(
+        selector="QProgressBar",
+        takes_focus=False,
+        reason="`NoFocus`. It reports; there is nothing to operate and nowhere for focus to land.",
+    ),
+    BorderedControl(
+        selector="QMenu",
+        takes_focus=False,
+        reason=(
+            "`NoFocus`, and a popup window besides. A menu is only ever on screen while it is the "
+            "thing being used, so there is no unfocused state for a ring to distinguish it from."
+        ),
+    ),
+    BorderedControl(
+        selector="QComboBox QAbstractItemView",
+        takes_focus=False,
+        reason=(
+            "A popup window. The view itself reports `StrongFocus`, and it is exempt on the menu's "
+            "grounds rather than on that one: it exists only while the drop-down is open, so a "
+            "ring saying *this has the keyboard* would be drawn on every popup that ever appears."
+        ),
+    ),
+)
+
+#: The one selector whose border goes from 1px to 2px when the control takes the keyboard.
+#:
+#: **Built from `BORDERED_CONTROLS` rather than typed out**, so the rule in `stylesheet()` and the
+#: inventory above cannot disagree. Retyping the list was how the first correction covered three
+#: controls and left seven behind; a list that exists once cannot be extended in one place only.
+THICKENED_FOCUS_SELECTOR: Final = ", ".join(
+    f"{control.selector}:focus" for control in BORDERED_CONTROLS if control.takes_focus
+)
+
+
 #: Occurrences of a semantic colour's **value** in the sheet that are not semantic uses.
 #:
 #: **`warn` and `accent` are the same hex in the dark palette** — both `GOLD`, `#D9A24C` — so a
@@ -282,7 +424,8 @@ SEMANTIC_RULES: Final = (
 #: something has to be moved out of this tuple deliberately.
 COINCIDENTAL_SEMANTIC_VALUES: Final = (
     "*:focus",
-    "QPushButton:focus, QComboBox:focus, QLineEdit:focus",
+    THICKENED_FOCUS_SELECTOR,
+    'QToolBar QToolButton[primaryAction="true"]:focus',
     'QToolBar QToolButton[primaryAction="true"]:pressed',
 )
 
@@ -334,13 +477,14 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
-        selector="QPushButton:focus, QComboBox:focus, QLineEdit:focus",
-        conveys="keyboard focus, on a control that already has a border",
+        selector=THICKENED_FOCUS_SELECTOR,
+        conveys="keyboard focus, on every control that already has a border",
         channel="geometry",
         reason=(
             "The border goes from 1px to 2px. Recolouring it was the defect: measured on a "
             "rendered button, 414 pixels changed and none of them was background becoming ink, "
-            "with the two hues 1.45:1 apart in light and 2.17:1 in dark."
+            "with the two hues 1.45:1 apart in light and 2.17:1 in dark. The list is "
+            "`BORDERED_CONTROLS`, not the three controls the finding named."
         ),
     ),
     StateRule(
@@ -354,6 +498,46 @@ STATE_RULES: Final = (
         conveys="keyboard focus — the padding half of the rule above",
         channel="geometry",
         reason="Padding drops by exactly what the border gains, so the control does not move.",
+    ),
+    StateRule(
+        selector=(
+            "QListWidget:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, "
+            "QTextEdit:focus"
+        ),
+        conveys="keyboard focus — the padding half, for the views and the text edits",
+        channel="geometry",
+        reason=(
+            "These had no padding to give up, so the idle rule grants them one pixel and this "
+            "spends it; without it the thicker border is drawn over the first row rather than "
+            "beside it, because Qt does not re-measure a frame when focus arrives."
+        ),
+    ),
+    StateRule(
+        selector='QToolButton[stepButton="true"]:focus',
+        conveys="keyboard focus — the padding half, for a stepper",
+        channel="geometry",
+        reason=(
+            "Vertical only: `min-width` and `max-width` pin the contents box, so the sides cannot "
+            "move whatever the border does, and the top and bottom each give up their pixel."
+        ),
+    ),
+    StateRule(
+        selector="QToolBar QToolButton:focus",
+        conveys="keyboard focus — the padding half, for a toolbar verb",
+        channel="geometry",
+        reason=(
+            "Tab reaches these, measured, and the figures land on `T-149`'s checked geometry "
+            "exactly — so a focused, paused button keeps its shape and takes the accent hue."
+        ),
+    ),
+    StateRule(
+        selector='QToolBar QToolButton[primaryAction="true"]:focus',
+        conveys="keyboard focus — the padding half, for the primary verb",
+        channel="geometry",
+        reason=(
+            "Its idle padding is wider than the plain verb's, so it needs its own figure; the "
+            "brand fill is not a focus indicator, being there whether or not it has the keyboard."
+        ),
     ),
     StateRule(
         selector="QToolBar QToolButton:checked",
@@ -427,7 +611,7 @@ STATE_RULES: Final = (
         channel="published-state",
         reason=(
             "Qt publishes the disabled state on the action behind the button, so a screen reader "
-            "announces it even though nothing on this bar takes focus."
+            "announces it whether or not the button is where the keyboard happens to be."
         ),
     ),
     StateRule(
@@ -576,6 +760,25 @@ QGroupBox, QListWidget, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
     background-color: {theme.surface};
     border: 1px solid {theme.border};
     border-radius: 4px;
+}}
+QListWidget, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
+    /* **A pixel of padding, so focus has something to spend** (`T202-R1`, second round). Every
+       control whose border thickens on focus pays for the extra pixel out of its own padding, and
+       these had none. **Qt does not re-measure a frame when focus arrives** — the width is taken
+       from the sheet at polish time — so without this the thicker border is not pushed outward and
+       the contents are not pushed in: the extra pixel is drawn *on top of* the first row of the
+       list and the first line of the log. Measured with this rule deleted: the viewport keeps its
+       geometry to the pixel, `frameWidth()` still reports 1, and **754 pixels of the contents'
+       own edge are repainted**. Held to that by
+       `test_focus_does_not_paint_over_the_contents`, which is a different assertion from *nothing
+       moves* and had to be, because nothing does.
+
+       **`QGroupBox` is deliberately not in this list**, though it shares the rule above. It has
+       `NoFocus` — asserted, not assumed, in `test_a_bordered_control_left_out_of_the_inventory`
+       — so it never thickens and has nothing to pay for, and its own `padding-top` is `T-129`'s
+       measured clearance for the title. Widening this selector by one class would have moved every
+       group's contents to buy a pixel nothing would ever use. */
+    padding: 1px;
 }}
 QTableView {{
     gridline-color: {theme.rule};
@@ -898,23 +1101,33 @@ QProgressBar::chunk {{
        reading and a monochrome display alike. A check box, a radio button and a label-like control
        are all in this case.
 
-       For a control that already has a one-pixel border it is **not** enough, and the three rules
-       below are why. */
+       For a control that already has a one-pixel border it is **not** enough, and the rules below
+       are why. */
     border: 1px solid {theme.accent};
 }}
-QPushButton:focus, QComboBox:focus, QLineEdit:focus {{
+{THICKENED_FOCUS_SELECTOR} {{
     /* **Focus thickens the edge; it does not merely recolour it** (`T202-R1`, `NFR-005`).
 
-       These controls already carry `border: 1px solid {theme.border}`, so the global rule above
+       Every control listed here already carries a one-pixel border, so the global rule above
        changed nothing but the hue. Measured on a rendered `QPushButton`: **414 pixels changed,
        and not one of them was background becoming ink** — the geometry was identical and the two
        border colours sit **1.45:1** apart in light and **2.17:1** in dark. A user who cannot
        separate those hues had no focus indicator at all, which is the keyboard user this whole
        task exists to protect.
 
-       **The padding is reduced by exactly what the border gains**, so nothing moves. That is not
-       a new trick here: `QToolBar QToolButton:checked` has thickened to 2px against `padding:
-       2px 8px` since `T-149`, for the same reason and with the same arithmetic. */
+       **The list is every bordered control that can hold the keyboard, and the first round had
+       three of them.** The other seven scored a **literal zero** on the same rendered measurement
+       — a list, a table, a tree, two text edits, a stepper and a toolbar verb, in both palettes —
+       because the fix was written against the three controls the finding happened to name rather
+       than against the property they shared. `BORDERED_CONTROLS` is the enumeration now, and a
+       bordered focusable control missing from it fails a test rather than waiting for a reviewer.
+
+       **The padding is reduced by exactly what the border gains**, so nothing moves; the rules
+       below are that half, one per idle padding. That is not a new trick here: `QToolBar
+       QToolButton:checked` has thickened to 2px against `padding: 2px 8px` since `T-149`, for the
+       same reason and with the same arithmetic — and because that rule comes first, a focused
+       *and* checked `Pause queue` keeps the checked geometry exactly and takes the accent hue,
+       with `background-color: {theme.rule}` still saying which state it is in. */
     border: 2px solid {theme.accent};
 }}
 QPushButton:focus {{
@@ -922,6 +1135,25 @@ QPushButton:focus {{
 }}
 QComboBox:focus, QLineEdit:focus {{
     padding: 2px 5px;
+}}
+QListWidget:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, QTextEdit:focus {{
+    padding: 0px;
+}}
+QToolButton[stepButton="true"]:focus {{
+    /* Vertical only: `min-width` and `max-width` pin the *contents* box at 15px, so the sides are
+       already at zero and the width cannot move whatever the border does. */
+    padding: 0 0 1px 0;
+}}
+QToolBar QToolButton:focus {{
+    padding: 2px 8px;
+}}
+QToolBar QToolButton[primaryAction="true"]:focus {{
+    /* **The brand fill is not a focus indicator** — it is there whether or not the button holds
+       the keyboard, and `T-147` deliberately left it without a ring on hover. The border above
+       thickens it like any other bordered control; only the padding differs, because its idle
+       padding is wider than the plain verb's. The attribute selector outranks `QToolBar
+       QToolButton:focus`, which would otherwise apply the narrower figure and move the button. */
+    padding: 3px 11px;
 }}
 """.strip()
 

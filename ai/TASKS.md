@@ -511,11 +511,50 @@ it**, and this task owns making it complete rather than incidental.
 
 ### T-202 — Nothing is said by colour alone
 
-**Status:** **In Review — corrected once, 2026-08-15.** The first review returned **Changes
+**Status:** **In Review — corrected twice, 2026-08-15.** The first review returned **Changes
 requested** with `T202-R1` (High): *focus* was still conveyed by colour alone, and the sweep
-exempted it by name. `AGENTS.md` §10 permits correcting a High without another pass authorization.
+exempted it by name. The second pass **held `T202-R1` open**: the correction had fixed the three
+controls the finding named and left every other bordered control recolouring. `AGENTS.md` §10
+permits correcting a High without another pass authorization.
 
-#### `T202-R1` — the sweep asked the wrong question, and focus is what it missed
+#### `T202-R1`, second round — the fix was written against the examples, not the property
+
+**Three controls thickened; seven did not, and the seven were measured at zero.** `QPushButton`,
+`QComboBox` and `QLineEdit` were the controls the finding happened to name. Offscreen renderings in
+both palettes: `QListWidget`, `QTableView`, `QTreeView`, `QPlainTextEdit`, `QTextEdit`,
+`QToolButton[stepButton="true"]` and `QToolBar QToolButton` gained **0 pixels of ink** on focus. The
+property that matters is *having a border already* — a control with one cannot show focus by growing
+one — and that is what the enumeration asks now.
+
+**`theme.BORDERED_CONTROLS` lists all fifteen**, each with `takes_focus` and a reason, and the
+thickening selector is **built from it** rather than typed out: retyping the list is how the first
+correction covered three. Two halves keep it honest — the sweep reads the bordered set **out of the
+generated sheet**, so a sixteenth bordered control fails rather than joining silently; and every
+`takes_focus` claim is put to Qt, so an exemption is `NoFocus` or a popup window rather than an
+opinion. Measured after: **0.90 to 1.02 of a full extra ring** on all eleven focusable controls,
+both palettes.
+
+**The sheet was asserting something false about the toolbar.** `QToolBar QToolButton:disabled`'s
+reason said *"nothing on this bar takes focus"*. Tab reaches `Pause queue` from the central widget —
+measured through the tab order — and those buttons are bordered, so they were in the defect the
+whole time. Corrected, and they thicken.
+
+**The floor is a share of the control's own edge, not 100 pixels.** A stepper is 17 by 25: its whole
+extra ring is **80 pixels**, so the fixed floor would have failed a stepper that is drawn correctly
+while a list gains 754. The floor is `0.6` of one more ring, against a measured 0.90 and a
+colour-only 0.00.
+
+**Two mutations survived the first draft of the tests, and both were real.** `Qt.Popup` is
+`Qt.Window | 0x8`, so `flags & Qt.Popup` is true of **every** top-level widget — the exemption check
+excused everything, which the `QListWidget`-marked-`takes_focus=False` mutation walked straight
+through. And deleting the views' pixel of padding failed nothing: **Qt does not re-measure a frame
+when focus arrives**, so the thicker border is not pushed outward and the contents are not pushed
+in — the extra pixel is drawn *over* the first row. Nothing moves, so a *nothing moves* assertion
+cannot see it. `test_focus_does_not_paint_over_the_contents` measures the contents' own edge
+instead: **12 pixels repainted with the padding, 754 without.** The padding's justification in the
+sheet had been a sentence describing something that does not happen; it now describes what does.
+
+#### `T202-R1`, first round — the sweep asked the wrong question, and focus is what it missed
 
 **The registry enumerated by palette *field*, not by information.** It asked *which rules use `ok`,
 `warn` or `stop`* — so the focus ring, drawn in `accent`, was never asked what it meant. It means
@@ -529,10 +568,13 @@ them background becoming ink** — identical geometry, hue only — with the idl
 
 **The defect is narrower than the rule, and the fix follows the shape.** `*:focus` *adds* a ring to
 a control with no border, which is already ink where there was none. It is the already-bordered
-controls — `QPushButton`, `QComboBox`, `QLineEdit` — where recolouring was the whole change. Those
-now thicken to **2px with the padding reduced by exactly what the border gains**, so nothing moves:
-measured, all three keep their size hint. That arithmetic is not new — `QToolBar QToolButton:checked`
-has done it since `T-149`, and the reviewer names it as the accepted pattern.
+controls where recolouring was the whole change. Those thicken to **2px with the padding reduced by
+exactly what the border gains**, so nothing moves: measured, they keep their size hint. That
+arithmetic is not new — `QToolBar QToolButton:checked` has done it since `T-149`, and the reviewer
+names it as the accepted pattern.
+
+*(This round read "already-bordered controls" as the three the finding named. The second round is
+above: there are eleven, and the other seven were still recolouring.)*
 
 **`theme.STATE_RULES` is the new enumeration, by what a rule conveys**, with four channels and a
 reason each: `geometry`, `luminance`, `published-state`, and `pointer-feedback` for hover and
@@ -542,7 +584,7 @@ registry naming a selector the sheet no longer has.
 
 **The regression never compares an RGB value.** It renders the control idle and focused and counts
 **ink** — pixels that are not the control's own fill — so a recolour scores zero and a thicker edge
-cannot. Measured gain: **436 to 454 pixels**, all three controls, both palettes.
+cannot. Measured gain that round: **436 to 454 pixels** on the three controls, both palettes.
 
 *(The first version of that measurement compared against `theme.window` and reported **zero** for a
 fix that plainly worked, because a control's own fill is `surface`. A metric that reads the wrong
