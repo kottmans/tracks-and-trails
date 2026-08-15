@@ -16815,3 +16815,53 @@ be pushed without the maintainer's separate instruction.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
 dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
+
+## 2026-08-15 — T-200 accessibility-pass review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-200`
+**Implementation boundary:** `7054dda71442657b6a4083071bc5706b9a2d233b..`
+`050d1a723a0792fde0b5bdc5d91f2b0410e79e37` — one local, unpushed task commit.
+**Platforms verified:** Linux, Qt offscreen. No Orca session, AT-SPI publication, Windows runtime,
+CI, real display, frozen build, or external network execution is claimed.
+**Verdict:** **Blocked.** The two new shortcuts work, the toolbar remains outside the focus chain,
+and the semantic-name regression is real. Approval is blocked because the explicit Linux Orca
+criterion is unmet and because three automated acceptance gates admit weakening mutations. The
+Orca evidence requires a real assistive-technology session or a maintainer scope decision; the
+test findings can be corrected in the ordinary focused correction pass.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T200-R1** | **High** | **Yes** | Linux screen-reader criterion | Both `ai/TASKS.md` and `ai/IMPLEMENTATION_PLAN.md` require Orca to announce every control meaningfully on Linux. The submitted record explicitly says Orca was not run and the criterion is not met. The Windows Narrator exception in `OPS-004` is deliberately Windows-only; it does not waive the separate Linux exit criterion. Honest preservation of the gap is correct, but cannot itself satisfy a criterion whose required result is execution. | Run the application under Orca on a real Linux display, exercise every in-scope surface, and record what “meaningfully” meant plus the actual result. If that cannot be done in this task, obtain a maintainer ruling that amends or defers the Linux criterion; do not approve or close it merely because the gap is named. | **Open** |
+| **T200-R2** | **Medium** | **Yes** | Keyboard-reachability gate | `test_every_surface_is_fully_reachable_by_tab` defines its expected set with `focusable()`, which includes only widgets whose current focus policy is already not `NoFocus`. A control that loses keyboard focus therefore disappears from both sides of the comparison. Independent exact-head mutation: setting Settings' visible **Choose folder…** button to `Qt.NoFocus` leaves all **11** new accessibility tests green; the aggregate floor merely falls from 42 to 41 and remains above 25. This is the same defect class the pass exists to catch, outside the toolbar-specific T-234 gate. | Derive the expected operable controls independently of focus policy—such as from the accessible/control tree plus explicit justified exceptions—and require each to have a keyboard route. Mutation-check at least one ordinary dialog button losing focus, not only a toolbar widget gaining it. | **Open** |
+| **T200-R3** | **Medium** | **Yes** | Whole-application surface coverage | The module says the format table, playlist picker, preset manager, options dialog and template editor are reached and constructed “below,” and criterion 1 names them explicitly. The file ends after opening only four top-level surfaces: main window, an empty add dialog, Settings and About. None of those nested add-flow surfaces is opened. Independent exact-head mutation: deleting the format table's `Available formats` accessible name leaves all **11** new tests green. The same unvisited boundary applies to its focus route and to the other named nested surfaces. | Drive representative single-item and playlist probe results through the real add-dialog route, open each nested surface through its offered control, and include those trees and focus chains in the audit. Open the preset manager and its options editor through their production callbacks. Add per-surface non-vacuity so one missing surface cannot hide behind the aggregate floor. | **Open** |
+| **T200-R4** | **Medium** | **Yes** | Modal focus-return gate | `test_a_modal_returns_focus_to_the_window_that_opened_it` checks only that each dialog has a parent and a distinct window. It never checks modality, closes a dialog, or observes focus returning. Independent exact-head mutation: changing the real add-dialog route from `dialog.open()` to modeless `dialog.show()` still passes the test. Its docstring's statement that parentage and modality are asserted is therefore false, and criterion 3 is not gated. | Assert modality directly and exercise close/return under a platform where focus behavior is meaningful. If offscreen cannot establish actual restoration, keep that limitation explicit and put the behavioral assertion in an available real-plugin gate rather than treating parentage as the result. | **Open** |
+| **T200-R5** | **Low** | **No** | Stale mnemonic regression | `test_the_run_control_is_reachable_by_keyboard` still says the action's `&S` mnemonic makes Alt navigation reach the toolbar and asserts only that the text contains `&`. This is the exact false premise T-200 says it corrected: toolbar action mnemonics are not the route. The new property tests do catch shortcut removal, and independent key events successfully invoke both callbacks, so this stale test does not conceal a current product failure. | Replace or retire the mnemonic assertion. A key-driven regression for `Ctrl+R` and `Ctrl+Shift+C` would state the actual route and verify activation rather than only shortcut metadata. | **Open** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and metadata | **Passed:** `7054dda..050d1a7` is one six-file task commit, **+908/−71**, and passes `git diff --check`. Its imperative 45-character subject, human-only authorship, `Task: T-200` and relevant `Refs:` trailers satisfy repository policy. `origin/main == 7054dda`; nothing is pushed. |
+| Focused submitted tests | **16 passed, 59 deselected** across the new accessibility file and the relevant main-window toolbar/keyboard/modal/focus selection. The exact T-234 no-toolbar-focus invariant remains green. |
+| Shortcut behavior | **Passed independently:** real `QTest.keyClick` events for `Ctrl+R` and `Ctrl+Shift+C` invoke the run and clear callbacks once each on the shown window. |
+| Semantic-name mutation | **Caught:** deleting `_step_button`'s explicit accessible name fails the all-surface name sweep and reports both `settingsConcurrencyStepDown` (`−`) and `settingsConcurrencyStepUp` (`+`). The strengthened rule distinguishes the symbols from semantic labels. |
+| Focus-loss mutation | **Not caught:** making the visible Settings **Choose folder…** button `NoFocus` leaves all **11 passed**. |
+| Nested-surface mutation | **Not caught:** deleting the format table's explicit accessible name leaves all **11 passed**, because no test opens it. |
+| Modal mutation | **Not caught:** replacing the add dialog's `open()` with modeless `show()` leaves the claimed modal-return test **1 passed, 10 deselected**. |
+| Static gates | **Passed:** focused Ruff check and format check; bare mypy reports **143 source files** clean. |
+| Windows accessibility row | **Inspected, not executed:** the `&Settings` / `Settings...` parametrisation matches the current menu source. The file is Windows-only, the task is unpushed, and no local Windows or CI pass is claimed. |
+| Implementer's wider suites | **Not repeated.** The Implementer reports **3008 passed / 18 skipped** unit+UI and **440 passed** integration plus all three mypy modes; this review neither contradicts nor promotes those figures to independent results. |
+
+### Correction boundary
+
+Keep the task unpushed. Preserve the working shortcut implementation, the T-234 toolbar-focus
+invariant and the strengthened semantic-name rule. Correct R2 through R4 as one accessibility-gate
+batch, correct the stale R5 assertion, and return the focused correction with each weakening
+mutation demonstrated against the final tree. R1 additionally needs real Orca evidence or a
+maintainer ruling changing the criterion; source-tree assertions cannot substitute for it.
+
+The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, decision,
+dependency, commit, push, handoff, roadmap, evidence, generator, or remote state was changed.
