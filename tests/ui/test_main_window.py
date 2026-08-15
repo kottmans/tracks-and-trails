@@ -34,6 +34,7 @@ from tracks_and_trails.ui.main_window import (
     ACTIONABLE_STATUS_PROPERTY,
     APP_NAME,
     DEFAULT_SIZE,
+    RUN_SHORTCUT,
     TOOLBAR_SPACER_PROPERTY,
     MainWindow,
     app_icon,
@@ -632,17 +633,30 @@ def test_the_run_control_says_its_state_in_words_not_only_by_being_checked(
 def test_the_run_control_is_reachable_by_keyboard(qapp: QApplication) -> None:
     """`NFR-005`: every interactive control is operable by keyboard alone.
 
-    Asserted through the action's own mnemonic rather than by simulating a key press: the toolbar
-    button is built by Qt from the action, and `&S` is what makes `Alt`-navigation reach it. A
-    control with no mnemonic is reachable only by `Tab` order, which `T-040` already covers for
-    the window as a whole — this is the half that names *this* control.
+    **Asserted on the shortcut, because the mnemonic never was the route** (`T200-R5`).
+
+    *(This read: "Asserted through the action's own mnemonic rather than by simulating a key press:
+    the toolbar button is built by Qt from the action, and `&S` is what makes `Alt`-navigation
+    reach it." It does not. Measured by `T-200` on 2026-08-15: every toolbar button's `shortcut()`
+    is empty, because a `QAction`'s mnemonic binds in a **menu** and this action is on none. Qt
+    strips the `&` for display and registers nothing. So this test asserted the presence of an
+    ampersand and called it reachability, and the control it names had no keyboard route at all for
+    as long as it has existed.)*
+
+    The `&` stays in the text — it is what the button would use if this action ever reached a menu,
+    and `T-235` asserts the label — but it is `RUN_SHORTCUT` that makes the claim in this test's
+    name true, so that is what is asserted.
     """
     window = MainWindow(concurrency=3, control_bar=True)
     action = window.run_action
     assert action is not None
-    assert "&" in action.text(), (
-        f"{action.text()!r} carries no mnemonic, so Alt-navigation cannot reach the one control "
-        "that decides whether anything downloads"
+    assert not action.shortcut().isEmpty(), (
+        "the run control carries no shortcut, and its toolbar button takes no focus by T-234's "
+        "criterion — so nothing reaches the one control that decides whether anything downloads"
+    )
+    assert action.shortcut().toString() == RUN_SHORTCUT, (
+        f"the run control answers {action.shortcut().toString()!r}, not the {RUN_SHORTCUT} this "
+        "project declares; a shortcut nobody documents is one nobody finds"
     )
 
 

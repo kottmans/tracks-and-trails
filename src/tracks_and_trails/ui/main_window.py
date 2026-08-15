@@ -54,6 +54,7 @@ from tracks_and_trails.downloader.ytdlp_service import YtdlpService
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
 from tracks_and_trails.ui.job_detail import JobReader
+from tracks_and_trails.ui.keyboard import route_is_elsewhere
 from tracks_and_trails.ui.options_dialog import PresetSink
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
@@ -1024,13 +1025,16 @@ class MainWindow(QMainWindow):
             if rendered is not None:
                 rendered.setObjectName("addUrlsButton")
                 rendered.setProperty(PRIMARY_ACTION_PROPERTY, True)
-                # **Setting the property here is enough; do not add a repolish** (`T132-R2`).
-                # One was added on 2026-08-04 to fix `T132-R1`, which reported the shipped button
-                # rendering neutral. That finding was **withdrawn as reviewer error**: it measured
-                # a window built without a job sink or output directory, so `T-016` had disabled
-                # the action and `UX-005` row 6 correctly paints a disabled primary `sunken`. A
-                # composed window with the action enabled fills it with the brand either way, and
-                # the regression below stays green with the repolish gone — which is why it went.
+            self._declare_toolbar_route(
+                bar, self._add_urls_button, "File \u2192 Add URLs..., and Ctrl+N"
+            )
+            # **Setting the property here is enough; do not add a repolish** (`T132-R2`).
+            # One was added on 2026-08-04 to fix `T132-R1`, which reported the shipped button
+            # rendering neutral. That finding was **withdrawn as reviewer error**: it measured
+            # a window built without a job sink or output directory, so `T-016` had disabled
+            # the action and `UX-005` row 6 correctly paints a disabled primary `sunken`. A
+            # composed window with the action enabled fills it with the brand either way, and
+            # the regression below stays green with the repolish gone — which is why it went.
         # **No separator after the primary action** (`T-234`). One divided `+ Add URLs` from the
         # concurrency control; with the spacer immediately after it, a line and a gap would divide
         # the same two groups twice. The spacer does the dividing.
@@ -1093,6 +1097,7 @@ class MainWindow(QMainWindow):
         run.toggled.connect(self._run_toggled)
         bar.addAction(run)
         self._run = run
+        self._declare_toolbar_route(bar, run, f"the {RUN_SHORTCUT} shortcut")
         # Sets text, status tip, tooltip and accessible description together, so the four cannot
         # describe different states of the same control (`NFR-005`).
         self._describe_run_action(running=False)
@@ -1117,6 +1122,24 @@ class MainWindow(QMainWindow):
         clear.triggered.connect(self._clear_finished)
         bar.addAction(clear)
         self._clear = clear
+        self._declare_toolbar_route(bar, clear, f"the {CLEAR_FINISHED_SHORTCUT} shortcut")
+
+    @staticmethod
+    def _declare_toolbar_route(bar: QToolBar, action: QAction, route: str) -> None:
+        """Say where a toolbar verb's keyboard route is, since its button takes no focus.
+
+        **`T-234`'s criterion is why the button is unfocusable** — nothing on this bar may take
+        focus, because `T203-R3` recorded a focusable one stealing `Shift+F10` from the row menu on
+        a freshly opened window. **`T200-R2` is why it has to say so**: an unfocusable control drops
+        out of every sweep that inspects focusable controls, so *deliberately unfocusable* and
+        *lost its tab stop* looked identical until the exemption carried its reason.
+
+        The route named here is checked against reality by the accessibility sweep, which requires
+        a shortcut or a menu item; the declaration records *which*, for a reader.
+        """
+        rendered = bar.widgetForAction(action)
+        if rendered is not None:
+            route_is_elsewhere(rendered, route)
 
     def _describe_run_action(self, *, running: bool) -> None:
         """Make the run control's four pieces of text say the same state (`UX-006`, `NFR-005`).

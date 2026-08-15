@@ -79,6 +79,7 @@ from tracks_and_trails.core.settings import (
     RETRIES_MAXIMUM,
     THEME_NAMES,
 )
+from tracks_and_trails.ui.keyboard import route_is_elsewhere
 
 __all__ = [
     "COOKIES_EXPLANATION",
@@ -1469,6 +1470,11 @@ class SettingsDialog(QDialog):
         # `Down` already do, from the spin box itself, so three tab stops for one setting would be
         # the keyboard reaching it three times rather than once.
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # **Declared, so a sweep can tell this from a control that lost its tab stop by accident**
+        # (`T200-R2`, `ui/keyboard.py`). Setting *Choose folder…* to `NoFocus` left every
+        # accessibility test green, because an unfocusable control simply drops out of the set they
+        # inspect. The exemption now has to say where the route went.
+        route_is_elsewhere(button, "the concurrency spin box's own Up and Down arrows")
         return button
 
     def show_concurrency(self, limit: int) -> None:

@@ -119,7 +119,42 @@ this one returned four verdicts before approving.*
 
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 
-**Status:** **In Review — built 2026-08-15.** Six of the seven criteria are met and gated; the
+**Status:** **In Review — corrected 2026-08-15.** Round one returned **Blocked** with
+`T200-R1` (High, Orca not run), `T200-R2`, `T200-R3`, `T200-R4` (Medium) and `T200-R5` (Low).
+**`R2` through `R5` are corrected**; **`R1` is not, and cannot be from here** — see below.
+
+#### What round one found, and it was the same defect four times
+
+**Every one of `R2`–`R4` is a sweep passing over something it never looked at.**
+
+- **`T200-R2`.** Setting *Choose folder…* to `NoFocus` left all eleven tests green: a control that
+  stops being focusable **drops out of the set the sweep inspects**, so "every focusable control is
+  reachable" stays true by having one thing fewer to check. The rule now reads the accessible tree,
+  which lists a control whether or not it takes focus, and requires each operable node to be
+  focusable, a menu item, or to **declare where its route is** — `ui/keyboard.route_is_elsewhere`,
+  a sentence on the widget rather than a list of exempt names in a test. The concurrency steppers
+  and the three toolbar buttons declare theirs.
+- **`T200-R3`.** The nested add-flow surfaces were **never opened**, so deleting the format table's
+  accessible name changed nothing. They are swept now — constructed rather than opened, because
+  reaching them needs a staged row and a real probe, and that difference is stated in the test
+  rather than blurred. Two things fell out: an empty table publishes no operable control, and the
+  name that matters sits on a `Table` node, which is not a role a user *operates*. `NAMED_CONTAINERS`
+  is that gap — a table, a list and a tree are announced **by name**, and an unnamed one is
+  announced as "table".
+- **`T200-R4`.** Changing the add dialog to a modeless `show()` still passed the modal-return test,
+  because it asserted parentage and a modeless window is parented identically. Modality is asserted
+  now; it is what makes Qt hand focus back.
+- **`T200-R5`.** `test_the_run_control_is_reachable_by_keyboard` still asserted `"&" in text` and
+  called it reachability — the premise this task disproved. Rewritten onto the shortcut, with the
+  superseded reasoning kept visible.
+
+**Four mutations, each failing exactly the test that names it.** Two more findings came out of
+building them: `QAccessible` falls back to a widget's own `text()`, so a `QLineEdit`'s clear button
+and a `QComboBox`'s dropdown list are unnamed widgets **Qt** owns rather than gaps of ours; and the
+nested surfaces are parentless, so building them in a plain function ran their destructors inside
+the next test and segfaulted it — `T-238`'s finding exactly, met from the other side.
+
+**Status before this round:** In Review — built 2026-08-15. Six of the seven criteria are met and gated; the
 seventh, Orca's announcements, is a human check on a real display and is recorded below with what
 was and was not done. **The pass found a High defect and it is fixed**: the queue's run control had
 no keyboard route of any kind. **Six mutations, none surviving.**

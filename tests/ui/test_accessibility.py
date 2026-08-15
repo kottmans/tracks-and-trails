@@ -53,6 +53,8 @@ from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAccessible, QAccessibleInterface, QAction
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
+    QLineEdit,
     QMenu,
     QScrollArea,
     QToolBar,
@@ -61,6 +63,7 @@ from PySide6.QtWidgets import (
 )
 
 from tracks_and_trails import app as application
+from tracks_and_trails.ui.keyboard import ROUTE_ELSEWHERE_PROPERTY
 from tracks_and_trails.ui.main_window import MainWindow
 
 #: The roles a user **operates**, and therefore the ones that must carry a name.
@@ -89,6 +92,19 @@ OPERABLE_ROLES: Final = frozenset(
     }
 )
 
+#: Containers a screen reader announces **by name**, and which therefore need one (`T200-R3`).
+#:
+#: A table, a list and a tree are not operated by pressing them, so they are not in
+#: `OPERABLE_ROLES` — and that is precisely how the format table came to be swept without being
+#: checked. Deleting its accessible name left every test green: the name lives on the `Table` node,
+#: every role beneath it is a `Cell`, and nothing was looking at either.
+#:
+#: These are the surfaces a user arrows *into*, and *"Available formats"* or *"Download queue"* is
+#: what tells them where they have landed. An unnamed one is announced as "table".
+NAMED_CONTAINERS: Final = frozenset(
+    {QAccessible.Role.Table, QAccessible.Role.List, QAccessible.Role.Tree}
+)
+
 #: Qt's own furniture, which Qt names and this project does not own.
 #:
 #: `qt_toolbar_ext_button` is the `»` overflow a `QToolBar` grows when it runs out of room. It is
@@ -97,6 +113,23 @@ OPERABLE_ROLES: Final = frozenset(
 #: forgot to label this" are different facts and a sweep that cannot tell them apart is a sweep
 #: nobody will trust the next time it goes red.
 PLATFORM_FURNITURE: Final = frozenset({"qt_toolbar_ext_button", "qt_menubar_ext_button"})
+
+
+def is_platform_furniture(node: Node) -> bool:
+    """Whether a node is a widget **Qt** creates and names, rather than one this project owns.
+
+    Two shapes, both found by this sweep rather than assumed:
+
+    - The named ones, in `PLATFORM_FURNITURE` — a toolbar's `»` overflow and its menu-bar twin.
+    - **Widgets Qt builds inside another control**, which have no object name to list: a
+      `QLineEdit`'s clear button, and the `QListView` a `QComboBox` drops down. Qt creates,
+      names and destroys both. Matched by their parent, because there is nothing else to match on.
+
+    Naming these rather than skipping them silently is the point: *"the platform leaves this
+    unnamed"* and *"we forgot to label this"* are different facts, and a sweep that cannot tell
+    them apart is one nobody will trust the next time it goes red.
+    """
+    return node.object_name in PLATFORM_FURNITURE or node.inside_a_control
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,10 +141,24 @@ class Node:
     name: str
     kind: str
     object_name: str
+    #: Whether this node is a widget Qt builds inside another control — see
+    #: `is_platform_furniture`. A `QLineEdit`'s clear button and a `QComboBox`'s dropdown view are
+    #: both of these, and neither has an object name to recognise it by.
+    inside_a_control: bool = False
 
     def __str__(self) -> str:
         role = str(self.role).rsplit(".", maxsplit=1)[-1]
         return f"{'  ' * self.depth}{role} {self.name!r} <{self.kind} {self.object_name}>"
+
+
+def _is_built_by_a_control(widget: QWidget) -> bool:
+    """Whether Qt built `widget` inside another control, rather than this project placing it."""
+    parent = widget.parentWidget()
+    if isinstance(parent, QLineEdit | QComboBox):
+        return True
+    # A combo's popup sits in a frame of its own, one level further out.
+    grandparent = parent.parentWidget() if parent is not None else None
+    return isinstance(grandparent, QComboBox)
 
 
 def walk(interface: QAccessibleInterface | None, depth: int = 0) -> list[Node]:
@@ -130,6 +177,7 @@ def walk(interface: QAccessibleInterface | None, depth: int = 0) -> list[Node]:
             name=interface.text(QAccessible.Text.Name),
             kind=type(obj).__name__ if obj is not None else "",
             object_name=obj.objectName() if isinstance(obj, QWidget) else "",
+            inside_a_control=isinstance(obj, QWidget) and _is_built_by_a_control(obj),
         )
     ]
     for index in range(interface.childCount()):
@@ -225,13 +273,11 @@ def test_the_window_publishes_a_named_role_for_every_control_a_user_operates(
     of. So this walks what Qt publishes and holds every operable node to the same rule.
     """
     nodes = tree_of(composed)
-    operable = [node for node in nodes if node.role in OPERABLE_ROLES]
+    operable = [node for node in nodes if node.role in OPERABLE_ROLES | NAMED_CONTAINERS]
     assert operable, f"the window publishes no operable control at all:\n{describe(nodes)}"
 
     unnamed = [
-        node
-        for node in operable
-        if not is_a_name(node.name) and node.object_name not in PLATFORM_FURNITURE
+        node for node in operable if not is_a_name(node.name) and not is_platform_furniture(node)
     ]
     assert not unnamed, (
         f"{len(unnamed)} control(s) reach the tree with no accessible name:\n{describe(unnamed)}"
@@ -460,14 +506,14 @@ def test_every_surface_names_every_control_it_publishes(
     faults: list[str] = []
     for label, surface in surfaces(composed, qapp):
         nodes = tree_of(surface)
-        operable = [node for node in nodes if node.role in OPERABLE_ROLES]
+        operable = [node for node in nodes if node.role in OPERABLE_ROLES | NAMED_CONTAINERS]
         if not operable:
             faults.append(f"{label}: publishes no operable control at all")
             continue
         unnamed = [
             node
             for node in operable
-            if not is_a_name(node.name) and node.object_name not in PLATFORM_FURNITURE
+            if not is_a_name(node.name) and not is_platform_furniture(node)
         ]
         if unnamed:
             faults.append(f"{label}:\n{describe(unnamed)}")
@@ -508,6 +554,80 @@ def test_every_surface_is_fully_reachable_by_tab(composed: MainWindow, qapp: QAp
 COVERAGE_FLOOR: Final = 25
 
 
+@pytest.fixture
+def nested_surfaces(qapp: QApplication) -> Iterator[list[tuple[str, QWidget]]]:
+    """The screens reached through a staged row's own controls (`T200-R3`).
+
+    **Constructed, not opened, and the difference is stated rather than blurred.** Each of these is
+    genuinely reachable — `AddUrlDialog.open_format_table`, `open_template_editor`, `open_options`
+    and `open_preset_manager` are the routes — but reaching them needs a *staged row*, which needs a
+    real probe against a fixture. That machinery lives in `tests/ui/test_add_dialog.py` and driving
+    it here would make an accessibility failure ambiguous with a probe failure.
+
+    **So this checks their names and roles, and claims nothing about their reachability.** The
+    routes above are asserted to exist by `test_add_dialog.py`; what was missing until `T200-R3` is
+    that **nothing checked these screens were labelled at all** — deleting the format table's
+    accessible name left every test here green, because no test had ever looked at it.
+    """
+    from tracks_and_trails.core.models import FormatInfo
+    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+    from tracks_and_trails.core.settings import Settings
+    from tracks_and_trails.ui.format_table import FormatTable
+    from tracks_and_trails.ui.options_dialog import OptionsDialog
+    from tracks_and_trails.ui.playlist_picker import PlaylistPicker
+    from tracks_and_trails.ui.preset_manager import PresetManager
+    from tracks_and_trails.ui.template_editor import TemplateEditor
+
+    built: list[tuple[str, QWidget]] = [
+        # **With a row in it.** An empty table publishes no operable control, and a sweep over
+        # nothing is what `T-227`'s gate did the moment it succeeded.
+        (
+            "format table",
+            FormatTable([FormatInfo(format_id="137", extension="mp4", height=1080)]),
+        ),
+        ("template editor", TemplateEditor("%(title)s.%(ext)s")),
+        ("playlist picker", PlaylistPicker()),
+        ("options dialog", OptionsDialog(preset=BUILT_IN_PRESETS[0])),
+        ("preset manager", PresetManager(Settings(), save=lambda _settings: None)),
+    ]
+    qapp.processEvents()
+    yield built
+    # **Owned here, because nothing else owns them** (`T-238`). These are built parentless, and a
+    # parentless widget left to the garbage collector has its destructor run inside whichever test
+    # comes next — which segfaulted the very next `compose()` when this was a plain function.
+    # `T-238`'s guard is the record of that exact shape: *views alive with no parent: zero*.
+    for _label, surface in built:
+        surface.close()
+        surface.deleteLater()
+    qapp.processEvents()
+
+
+def test_every_nested_surface_names_every_control_it_publishes(
+    nested_surfaces: list[tuple[str, QWidget]],
+) -> None:
+    """`T200-R3`: the screens below the add dialog were never inspected at all.
+
+    Removing the format table's accessible name left all eleven earlier tests green, because none
+    of them ever built one. A sweep is only a sweep over what it opens.
+    """
+    faults: list[str] = []
+    for label, surface in nested_surfaces:
+        nodes = tree_of(surface)
+        operable = [node for node in nodes if node.role in OPERABLE_ROLES | NAMED_CONTAINERS]
+        if not operable:
+            faults.append(f"{label}: publishes no operable control at all")
+            continue
+        unnamed = [
+            node
+            for node in operable
+            if not is_a_name(node.name) and not is_platform_furniture(node)
+        ]
+        if unnamed:
+            faults.append(f"{label}:\n{describe(unnamed)}")
+
+    assert not faults, "controls with no accessible name:\n" + "\n".join(faults)
+
+
 def test_the_sweeps_actually_reach_the_applications_controls(
     composed: MainWindow, qapp: QApplication
 ) -> None:
@@ -520,7 +640,7 @@ def test_the_sweeps_actually_reach_the_applications_controls(
     """
     opened = surfaces(composed, qapp)
     operable = sum(
-        len([node for node in tree_of(surface) if node.role in OPERABLE_ROLES])
+        len([node for node in tree_of(surface) if node.role in OPERABLE_ROLES | NAMED_CONTAINERS])
         for _label, surface in opened
     )
     reachable = sum(len(focusable(surface)) for _label, surface in opened)
@@ -532,6 +652,50 @@ def test_the_sweeps_actually_reach_the_applications_controls(
     assert reachable >= COVERAGE_FLOOR, (
         f"the sweep found {reachable} focusable controls across {len(opened)} surfaces, under the "
         f"{COVERAGE_FLOOR} floor"
+    )
+
+
+def test_no_operable_control_quietly_loses_its_keyboard_route(
+    composed: MainWindow, qapp: QApplication
+) -> None:
+    """**`T200-R2`.** Every sweep above inspects the controls it can *see*, and that is the hole.
+
+    Setting the Settings screen's *Choose folder…* button to `Qt.NoFocus` left all eleven tests
+    green: a control that stops being focusable drops out of the focusable set, so the assertion
+    that every focusable control is reachable stays true by having one thing fewer to check. **A
+    rule that only checks what it can still see cannot notice something being taken away.**
+
+    So this reads the **accessible tree** — which lists the control whether or not it takes focus —
+    and requires each operable node to be reachable one of three ways: it takes focus, it is a menu
+    item, or it **declares where its route is** through `ui/keyboard.route_is_elsewhere`. The
+    declaration is on the widget with its reason, because a list of exempt object names in a test
+    is the list that drifts, which is what criterion 4 refuses when it asks for the whole tree
+    rather than per widget.
+    """
+    faults: list[str] = []
+    for label, surface in surfaces(composed, qapp):
+        for widget in surface.findChildren(QWidget):
+            if widget.window() is not surface.window():
+                continue
+            interface = cast(
+                "QAccessibleInterface | None", QAccessible.queryAccessibleInterface(widget)
+            )
+            if interface is None or interface.role() not in OPERABLE_ROLES:
+                continue
+            if widget.objectName() in PLATFORM_FURNITURE:
+                continue
+            if widget.focusPolicy() != Qt.FocusPolicy.NoFocus:
+                continue
+            if widget.property(ROUTE_ELSEWHERE_PROPERTY):
+                continue
+            faults.append(
+                f"{label}: {type(widget).__name__} {widget.objectName()!r} "
+                f"({interface.text(QAccessible.Text.Name)!r}) takes no focus and declares no route"
+            )
+
+    assert not faults, (
+        "operable control(s) a keyboard cannot reach, and which do not say where the route went:\n"
+        + "\n".join(faults)
     )
 
 
@@ -651,6 +815,15 @@ def test_a_modal_returns_focus_to_the_window_that_opened_it(
     is Qt's own contract.
     """
     for label, surface in surfaces(composed, qapp)[1:]:
+        # **Modality is half the claim, and asserting parentage alone let it go** (`T200-R4`).
+        # Changing the add dialog from `open()` to a modeless `show()` passed this test, because a
+        # modeless window is parented just the same and simply never takes focus back. Qt returns
+        # focus to the parent when a **modal** child closes; without the modality there is nothing
+        # to return.
+        assert surface.isModal(), (
+            f"the {label} is not modal, so closing it hands focus back to nothing — a modeless "
+            "window is parented identically and behaves entirely differently"
+        )
         assert surface.parent() is not None or surface.parentWidget() is not None, (
             f"the {label} has no parent, so closing it returns focus nowhere"
         )
