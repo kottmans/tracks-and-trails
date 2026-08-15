@@ -20,7 +20,19 @@ from tests.unit.test_resources import ICO_SIZES, PNG_SIZES
 
 ICONS = Path(tracks_and_trails.__file__).parent / "resources" / "icons"
 
-ALL_ASSETS = ["icon.png", "icon.ico", *(f"icon-{s}.png" for s in PNG_SIZES)]
+ALL_ASSETS = ["icon.png", "icon-small.png", "icon.ico", *(f"icon-{s}.png" for s in PNG_SIZES)]
+
+#: Opaque pixels at 16 px that must be trail gold (`T-021`).
+#:
+#: **Measured 2026-08-15, and it is the whole point of the reduced glyph.** The full logo
+#: downscaled to 16 px puts **13** gold pixels on screen out of 69 opaque; the reduced glyph puts
+#: **20** out of 66, because dropping the trees and the mountain gives the trail the room they were
+#: taking and `render_small_glyph.TRAIL_GROWTH` keeps it continuous instead of dotted.
+#:
+#: The floor sits between the two numbers deliberately. A regeneration that stopped using
+#: `icon-small.png` — the one failure this can actually catch — lands back on 13 and fails here,
+#: while ordinary redrawing of the glyph has room to move.
+MINIMUM_GOLD_AT_16 = 16
 
 
 @pytest.mark.parametrize("name", ALL_ASSETS)
@@ -59,3 +71,40 @@ def test_smallest_icon_renders_actual_content(qapp: QApplication) -> None:
         for y in range(image.height())
     )
     assert opaque > 0, "the 16 px icon is fully transparent"
+
+
+def test_the_reduced_glyph_keeps_its_trail_at_16_px(qapp: QApplication) -> None:
+    """`T-021`: the gold trail is one of the two elements the small glyph exists to preserve.
+
+    **This is the only part of `T-021`'s acceptance a test can carry.** Its first criterion is that
+    the glyph be *more legible than the current downscale, judged side by side*, and that is a
+    human judgement recorded in `ai/evidence/2026-08-15-T021-small-glyph.png`. What is checkable is
+    the mechanism behind it: the trail has to occupy enough of a 16 px cell to read as a line
+    rather than as three specks.
+
+    Counted from the rendered pixmap rather than the file, because Qt is what picks and scales the
+    asset the user sees — the same reason this module exists alongside `tests/unit/test_resources`.
+    """
+    image = QIcon(str(ICONS / "icon-16.png")).pixmap(16, 16).toImage()
+    gold = 0
+    for x in range(image.width()):
+        for y in range(image.height()):
+            colour = image.pixelColor(x, y)
+            if colour.alpha() < 128:
+                continue
+            # Trail gold is `#D9A24C`: high red, mid green, low blue. Compared as a relation
+            # rather than against the exact value, since these pixels are antialiased blends of
+            # the trail with the green behind it.
+            if (
+                colour.red() > 150
+                and colour.green() > 110
+                and colour.blue() < 140
+                and colour.red() > colour.blue() + 50
+            ):
+                gold += 1
+
+    assert gold >= MINIMUM_GOLD_AT_16, (
+        f"the 16 px glyph carries {gold} gold pixels, under the {MINIMUM_GOLD_AT_16} floor — the "
+        "trail has thinned to the point the full-logo downscale had it, which is what the reduced "
+        "glyph exists to fix"
+    )

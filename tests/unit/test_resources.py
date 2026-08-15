@@ -60,8 +60,21 @@ def read_ico_sizes(path: Path) -> list[int]:
 
 
 def test_source_master_is_present_and_full_size() -> None:
-    """`icon.png` is the 1024x1024 master every other asset derives from."""
+    """`icon.png` is the 1024x1024 master the 32 px and larger assets derive from."""
     assert read_png_size(ICONS / "icon.png") == (1024, 1024)
+
+
+def test_small_glyph_master_is_present_and_full_size() -> None:
+    """`icon-small.png` is the reduced glyph `T-021` renders 16 px and 24 px from.
+
+    Full size for the same reason `icon.png` is: every derived asset is a downscale, and a master
+    that has itself been shrunk cannot be told from one that has not once it is written out.
+
+    It is **derived** from `icon.png` by `tools/icons/render_small_glyph.py` rather than drawn, so
+    that the reduced mark cannot drift into a different mark — which is `T-021`'s second acceptance
+    criterion and the one a file check can help with.
+    """
+    assert read_png_size(ICONS / "icon-small.png") == (1024, 1024)
 
 
 @pytest.mark.parametrize("size", PNG_SIZES)
@@ -78,5 +91,5 @@ def test_ico_declares_every_required_frame() -> None:
 
 def test_no_unexpected_files_in_the_icon_directory() -> None:
     """A stray asset is usually a half-finished regeneration; fail loudly rather than ship it."""
-    expected = {"icon.png", "icon.ico"} | {f"icon-{s}.png" for s in PNG_SIZES}
+    expected = {"icon.png", "icon-small.png", "icon.ico"} | {f"icon-{s}.png" for s in PNG_SIZES}
     assert {p.name for p in ICONS.iterdir()} == expected

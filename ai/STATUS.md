@@ -39,6 +39,15 @@ combo box's name. Pre-existing rather than a regression, and it needs a decision
 contract and assert the field the application controls, or override the published tree with an
 interface factory — so §10 routes it to follow-up work.
 
+**`T-021` is also in review, built on the maintainer's ruling of the same day**: the small-size
+glyph keeps the note head, the stem and the gold trail, and drops the trees and the mountain. It is
+**derived from `icon.png`** rather than drawn beside it, so *"recognizably the same mark"* cannot
+drift. 16 px and 24 px come from the reduced master and everything from 32 up is untouched.
+Measured at 16 px, the trail goes from **13 gold pixels to 20**, and a floor between the two is
+gated. **Its first criterion is a side-by-side judgement and is the maintainer's** —
+`ai/evidence/2026-08-15-T021-small-glyph.png` is the evidence, and nothing claims the judgement has
+been made.
+
 *(The snapshot below is the build's and stands, except where this block corrects it.)* The queue's
 run control had **no keyboard route of any kind**:
 `QToolBar` gives every button `Qt.NoFocus`, `Start` and `Clear finished` are on no menu, and the

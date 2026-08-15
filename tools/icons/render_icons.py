@@ -9,6 +9,16 @@ Writes `icon-{16,24,32,48,64,128,256,512}.png` and `icon.ico` into
 `src/tracks_and_trails/resources/icons/`. It never writes `icon.png`, which is the master
 `T-003` delivered and the only file here that is not reproducible from something else.
 
+**Two masters, split by size** (`T-021`). `icon.png` is the full logo and renders 32 px and above.
+`icon-small.png` is the reduced glyph — the note head, the stem and the gold trail, without the
+trees and the mountain that collapse into the green mass below 32 px — and renders 16 px and
+24 px, in the PNGs and in the `.ico` alike. It is itself derived from `icon.png` by
+`tools/icons/render_small_glyph.py`, so the two cannot drift into different marks.
+
+The split is at 32 because that is where `T003-R2` found the landscape stops reading: at 24 px and
+below the trees are a green smudge with a lighter smudge beside them, and dropping them buys the
+note and the trail the room to be seen.
+
 Two details carry the whole point of `T-071`, and a future regeneration that drops either one
 puts the undersized icon straight back:
 
@@ -40,6 +50,9 @@ FILL = 0.92
 
 PNG_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+
+#: Sizes drawn from the reduced glyph rather than the full logo (`T-021`).
+SMALL_SIZES = frozenset({16, 24})
 
 ICONS = Path(__file__).resolve().parents[2] / "src" / "tracks_and_trails" / "resources" / "icons"
 
@@ -92,15 +105,28 @@ def write_ico(frames: dict[int, Image.Image], path: Path) -> None:
     path.write_bytes(header + directory + b"".join(encoded))
 
 
-def main() -> None:
-    master = Image.open(ICONS / "icon.png").convert("RGBA")
+def load_master(name: str) -> Image.Image:
+    master = Image.open(ICONS / name).convert("RGBA")
     if master.size != (1024, 1024):
-        raise SystemExit(f"expected a 1024x1024 master, found {master.size[0]}x{master.size[1]}")
+        raise SystemExit(f"expected a 1024x1024 {name}, found {master.size[0]}x{master.size[1]}")
+    return master
 
-    art = visible_artwork(master)
+
+def main() -> None:
+    art = visible_artwork(load_master("icon.png"))
     print(f"master artwork: {art.width}x{art.height} after trimming at alpha > {VISIBLE_ALPHA}")
 
-    rendered = {size: render(art, size) for size in sorted({*PNG_SIZES, *ICO_SIZES})}
+    # **Trimmed and filled on its own terms** (`T-021`). The reduced glyph is a different shape
+    # from the full logo — narrower, and without the landscape's leftward reach — so measuring it
+    # against the full mark's bounds would leave it floating in the cell at exactly the sizes it
+    # exists to fill. `FILL` is applied to each master's own artwork.
+    small = visible_artwork(load_master("icon-small.png"))
+    print(f"small glyph artwork: {small.width}x{small.height}")
+
+    rendered = {
+        size: render(small if size in SMALL_SIZES else art, size)
+        for size in sorted({*PNG_SIZES, *ICO_SIZES})
+    }
 
     for size in PNG_SIZES:
         rendered[size].save(ICONS / f"icon-{size}.png", format="PNG", optimize=True)
