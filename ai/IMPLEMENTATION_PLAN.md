@@ -5,8 +5,9 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-09 — `T-212` filed to own the checklist-run exit criterion, and §Phase 4's
-`T-203` note narrowed to the rulings actually still open
+**Last updated:** 2026-08-15 — §Phase 4's screen-reader exit criterion amended by maintainer
+ruling on `T200-R1`: the name-and-role half is automated on both platforms, and announcement
+*coherence* joins the pre-release session for Linux as it already had for Windows
 **Last reviewed:** 2026-08-01
 **Update when:** Phase scope, delivery order, dependencies, or exit criteria change.
 **Does not contain:** Individual coding tasks (`TASKS.md`), progress (`STATUS.md`).
@@ -720,11 +721,29 @@ taken.
 ### Exit criteria
 
 - Every function is reachable by keyboard alone, verified end to end **on Linux**
-- A screen reader announces every control meaningfully **on Linux (Orca)**. On Windows this
-  splits per `OPS-004`: that the UI Automation tree exposes a correct name and role for every
-  control is automated by `T-026`; whether Narrator's announcements are *coherent* is
-  subjective, stays with the pre-release Windows session, and is recorded as unverified until
-  then — this phase may exit with that gap named, but not hidden.
+- *(Amended 2026-08-15 by maintainer ruling, on `T200-R1`.)* **Every control exposes a correct
+  name and role, and this is automated on both platforms.** Windows: the **UI Automation tree**,
+  by `T-026`. Linux: the tree Qt publishes *from*, by `T-200` — names, roles, keyboard routes and
+  focus order, offscreen, in the ordinary suite.
+
+  **Whether a screen reader's announcements are *coherent* is subjective on both platforms, and
+  belongs to the pre-release session** — Orca on Linux and Narrator on Windows together. This
+  phase may exit with that gap **named, but not hidden**.
+
+  **Why this was amended.** The criterion previously required Orca to be *run* on Linux while
+  deferring the identical judgement on Windows to a pre-release session. `OPS-004`'s Windows
+  deferral is an **availability** constraint — `OPS-003`, no machine — not a claim that
+  coherence is checkable on one platform and not the other. It is subjective on both, one
+  session cannot regress-guard anything, and treating the two differently made the *reason* for
+  the split look like the platform when it was really the tooling.
+
+  **What this gives up, stated rather than glossed.** Linux's automated half asserts the
+  **source** tree, not the published one: reading what AT-SPI actually exposes needs a real
+  display and a running assistive client, which the offscreen suite has neither of. Windows is
+  the stronger of the two and stays so. **So a bridge that publishes nothing while every name is
+  correct would pass on Linux and fail on Windows** — that asymmetry is the price, it is why the
+  pre-release session covers publication as well as coherence, and it is named here so nobody
+  reads the amendment as the gap having closed.
 - No information is conveyed by color alone
 - Logs contain no cookie contents, cookie paths, proxy credentials, or token-like query
   parameters — verified by an automated redaction test (`NFR-007`)

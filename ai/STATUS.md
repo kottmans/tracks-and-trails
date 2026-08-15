@@ -21,11 +21,18 @@ recorded one stealing `Shift+F10` from the row menu, and the full suite caught t
 menu route is the discoverable option and was not taken** — it changes the ruled menu bar, which is
 the maintainer's on `T201-R3`'s precedent.
 
-**Six of `T-200`'s seven criteria are gated; the seventh is honestly open.** Orca 50.2 is installed
-and Qt 6 compiles the AT-SPI bridge into `libQt6Gui`, so the check is runnable — but the suite is
-offscreen, where no bridge activates, and **Orca has not been run against this application**. That
-is recorded as not done rather than claimed. **The Windows Narrator gap stays unverified**
-(`OPS-004`, `OPS-003`), which the plan permits this phase to exit with **named, not hidden**.
+**The screen-reader exit criterion was amended on 2026-08-15 by maintainer ruling** (`T200-R1`,
+recorded in `IMPLEMENTATION_PLAN.md` §Phase 4). It had required Orca to be *run* on Linux while
+deferring the identical judgement on Windows to the pre-release session — and `OPS-004`'s Windows
+deferral is an **availability** constraint, not a claim that coherence is checkable on one platform
+and not the other. **The name-and-role half is automated on both platforms**; **announcement
+coherence joins the pre-release session for Linux and Windows together.**
+
+**What Linux gives up is named rather than glossed**: its automated half reads the tree Qt
+publishes *from*, not what AT-SPI exposes, because reading the published tree needs a real display
+and a running assistive client. Windows checks the real published tree through UI Automation and
+stays the stronger of the two. **Orca has not been run against this application**, and nothing
+claims it has.
 
 *(The snapshot below is the `T-244` sync's and stands.)*
 

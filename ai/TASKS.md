@@ -120,8 +120,21 @@ this one returned four verdicts before approving.*
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 
 **Status:** **In Review — corrected 2026-08-15.** Round one returned **Blocked** with
-`T200-R1` (High, Orca not run), `T200-R2`, `T200-R3`, `T200-R4` (Medium) and `T200-R5` (Low).
-**`R2` through `R5` are corrected**; **`R1` is not, and cannot be from here** — see below.
+`T200-R1` (High), `T200-R2`, `T200-R3`, `T200-R4` (Medium) and `T200-R5` (Low). **`R2` through
+`R5` are corrected.**
+
+**`T200-R1` is closed by the amendment its own recommendation offered**, not by running Orca.
+The finding said so in as many words: *"If that cannot be done in this task, obtain a maintainer
+ruling that amends or defers the Linux criterion; do not approve or close it merely because the
+gap is named."* The ruling was taken on 2026-08-15 and the criterion is amended in
+`IMPLEMENTATION_PLAN.md` §Phase 4, where the reasoning and the cost live.
+
+**The substance of the ruling**: `OPS-004`'s Windows deferral is an *availability* constraint —
+`OPS-003`, no machine — not a claim that announcement coherence is checkable on one platform and
+not the other. It is subjective on both, a single session regress-guards nothing, and the split
+was making the platform look like the reason when the tooling was. Coherence now belongs to the
+pre-release session for Linux and Windows together. **Orca was still not run, and nothing here
+claims it was.**
 
 #### What round one found, and it was the same defect four times
 
@@ -311,8 +324,12 @@ it**, and this task owns making it complete rather than incidental.
   surface, and a modal returns focus to what opened it
 - **Every control has a name and a role** in the accessibility tree, asserted for the whole tree
   rather than per widget — a per-widget list is a list that drifts
-- **Orca announces every control meaningfully on Linux**, and what "meaningfully" was taken to mean
-  is written down with the result
+- *(Amended 2026-08-15 by maintainer ruling on `T200-R1`; `IMPLEMENTATION_PLAN.md` §Phase 4
+  carries the reasoning.)* **Every control exposes a correct name and role, automated.** Whether a
+  screen reader's announcements are *coherent* is subjective on Linux exactly as `OPS-004` already
+  held it to be on Windows, and joins the pre-release session for both. **What Linux gives up is
+  named**: its automated half reads the tree Qt publishes *from*, not what AT-SPI exposes, so
+  publication is covered by that session too
 - **The Windows Narrator gap is recorded as unverified**, in `STATUS.md` and in the phase exit
   submission, with `OPS-004` named. Stating it is the criterion; closing it is not
 - `tests/ui/test_windows_accessibility.py` covers the menus and controls this phase added
