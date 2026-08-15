@@ -43,6 +43,7 @@ preset manager — are reached through a row's own controls and are constructed 
 difference stated at each one rather than blurred.
 """
 
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -112,7 +113,16 @@ NAMED_CONTAINERS: Final = frozenset(
 #: **Named here rather than skipped silently**, because "the platform leaves this unnamed" and "we
 #: forgot to label this" are different facts and a sweep that cannot tell them apart is a sweep
 #: nobody will trust the next time it goes red.
-PLATFORM_FURNITURE: Final = frozenset({"qt_toolbar_ext_button", "qt_menubar_ext_button"})
+PLATFORM_FURNITURE: Final = frozenset(
+    {
+        "qt_toolbar_ext_button",
+        "qt_menubar_ext_button",
+        # A `QTableView`'s select-all corner, between the two headers. Qt builds it, Qt leaves it
+        # unnamed and mouse-only, and the rows and columns it selects are reachable through the
+        # table itself — which is the table's own keyboard contract, not one this project sets.
+        "qt_tableview_cornerbutton",
+    }
+)
 
 
 def is_platform_furniture(node: Node) -> bool:
@@ -185,6 +195,18 @@ def walk(interface: QAccessibleInterface | None, depth: int = 0) -> list[Node]:
     return nodes
 
 
+def node_for(widget: QWidget, interface: QAccessibleInterface) -> Node:
+    """A `Node` for one widget, so `is_platform_furniture` can be asked about it directly."""
+    return Node(
+        depth=0,
+        role=interface.role(),
+        name=interface.text(QAccessible.Text.Name),
+        kind=type(widget).__name__,
+        object_name=widget.objectName(),
+        inside_a_control=_is_built_by_a_control(widget),
+    )
+
+
 def tree_of(widget: QWidget) -> list[Node]:
     """The accessible tree for one surface."""
     nodes = walk(QAccessible.queryAccessibleInterface(widget))
@@ -211,8 +233,23 @@ def describe(nodes: list[Node]) -> str:
     return "\n".join(str(node) for node in nodes)
 
 
+def reaches_by_tab(widget: QWidget) -> bool:
+    """Whether a keyboard can put focus on `widget` **with Tab** (`T200-R2`).
+
+    **The capability, not the absence of its opposite.** This asked `focusPolicy() != NoFocus`,
+    and `Qt.FocusPolicy.ClickFocus` satisfies that while being exactly as mouse-only as `NoFocus`
+    is — so setting a control to `ClickFocus` removed it from the keyboard and left every
+    accessibility test green. `NoFocus` is 0 and `ClickFocus` is 2; neither carries the `TabFocus`
+    bit, which is what the chain walks.
+
+    Testing the bit rather than naming the three policies that happen to include it means a policy
+    this project has not used yet is classified by what it *does*.
+    """
+    return bool(int(widget.focusPolicy()) & int(Qt.FocusPolicy.TabFocus))
+
+
 def focusable(widget: QWidget) -> list[QWidget]:
-    """Every visible descendant a keyboard can land on, the widget itself included.
+    """Every visible descendant **Tab** can land on, the widget itself included.
 
     `isVisibleTo` rather than `isVisible`, because a surface under test is realised but not
     necessarily shown on the offscreen platform, and a control hidden inside a collapsed box is
@@ -229,11 +266,9 @@ def focusable(widget: QWidget) -> list[QWidget]:
     found = [
         child
         for child in widget.findChildren(QWidget)
-        if child.focusPolicy() != Qt.FocusPolicy.NoFocus
-        and child.isVisibleTo(widget)
-        and child.window() is home
+        if reaches_by_tab(child) and child.isVisibleTo(widget) and child.window() is home
     ]
-    if widget.focusPolicy() != Qt.FocusPolicy.NoFocus:
+    if reaches_by_tab(widget):
         found.insert(0, widget)
     return found
 
@@ -258,8 +293,19 @@ def composed(qapp: QApplication, tmp_path: Path) -> Iterator[MainWindow]:
     window.show()
     qapp.processEvents()
     yield window
+    # **Torn down through the lifecycle composition owns** (`T200-R6`). Closing the window alone
+    # left the real `YtdlpService` and the queue writer running, and the file's teardown ran past a
+    # twelve-second bound — a sweep of widgets holding a version service open. `shutdown.begin()`
+    # is the same route `tests/integration/test_composition.py` drives and the one the application
+    # takes when a user closes the window.
     window.close()
+    composition.shutdown.begin()
+    deadline = time.monotonic() + 30
+    while not composition.shutdown.finished and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(0.005)
     qapp.processEvents()
+    assert composition.shutdown.finished, "composition never finished shutting down"
 
 
 def test_the_window_publishes_a_named_role_for_every_control_a_user_operates(
@@ -628,6 +674,53 @@ def test_every_nested_surface_names_every_control_it_publishes(
     assert not faults, "controls with no accessible name:\n" + "\n".join(faults)
 
 
+def test_every_nested_surface_is_fully_reachable_by_keyboard(
+    nested_surfaces: list[tuple[str, QWidget]], qapp: QApplication
+) -> None:
+    """`T200-R3`: these screens were swept for **names** and never for **reachability**.
+
+    Removing focus from the options dialog's codec control changed nothing, because nothing here
+    had ever asked whether a keyboard could get to it. A label on a control nobody can reach is the
+    politest possible way to fail `NFR-005`.
+
+    The same two rules the top-level surfaces get: everything Tab can land on, Tab actually reaches;
+    and every operable control either takes Tab focus or **declares where its route is**. The
+    second is what catches a control being made mouse-only, which is `T200-R2` — and these surfaces
+    were outside it.
+    """
+    faults: list[str] = []
+    for label, surface in nested_surfaces:
+        expected = set(focusable(surface))
+        if not expected:
+            faults.append(f"{label}: exposes no control Tab can reach at all")
+            continue
+        missed = expected - set(tab_order(surface, qapp))
+        if missed:
+            faults.append(
+                f"{label}: Tab never reaches "
+                f"{sorted((type(w).__name__, w.objectName()) for w in missed)}"
+            )
+
+        for widget in surface.findChildren(QWidget):
+            if widget.window() is not surface.window():
+                continue
+            interface = cast(
+                "QAccessibleInterface | None", QAccessible.queryAccessibleInterface(widget)
+            )
+            if interface is None or interface.role() not in OPERABLE_ROLES:
+                continue
+            if is_platform_furniture(node_for(widget, interface)):
+                continue
+            if reaches_by_tab(widget) or widget.property(ROUTE_ELSEWHERE_PROPERTY):
+                continue
+            faults.append(
+                f"{label}: {type(widget).__name__} {widget.objectName()!r} "
+                f"({interface.text(QAccessible.Text.Name)!r}) is mouse-only and declares no route"
+            )
+
+    assert not faults, "keyboard cannot reach:\n" + "\n".join(faults)
+
+
 def test_the_sweeps_actually_reach_the_applications_controls(
     composed: MainWindow, qapp: QApplication
 ) -> None:
@@ -684,7 +777,7 @@ def test_no_operable_control_quietly_loses_its_keyboard_route(
                 continue
             if widget.objectName() in PLATFORM_FURNITURE:
                 continue
-            if widget.focusPolicy() != Qt.FocusPolicy.NoFocus:
+            if reaches_by_tab(widget):
                 continue
             if widget.property(ROUTE_ELSEWHERE_PROPERTY):
                 continue

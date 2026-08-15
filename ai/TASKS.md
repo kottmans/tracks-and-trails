@@ -119,9 +119,42 @@ this one returned four verdicts before approving.*
 
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 
-**Status:** **In Review — corrected 2026-08-15.** Round one returned **Blocked** with
-`T200-R1` (High), `T200-R2`, `T200-R3`, `T200-R4` (Medium) and `T200-R5` (Low). **`R2` through
-`R5` are corrected.**
+**Status:** **In Review — corrected twice, 2026-08-15.** Round one returned **Blocked** with
+`T200-R1` (High), `T200-R2`, `T200-R3`, `T200-R4` (Medium) and `T200-R5` (Low); the focused
+re-review resolved `R1`, `R4` and `R5` and **reopened `R2` and `R3`**, adding `T200-R6` (Low). The
+maintainer **authorized a third focused pass** under `AGENTS.md` §10, the ordinary budget being
+exhausted with blocking Mediums open. All six are now corrected.
+
+#### `T200-R2`, second time — the gate asked for the wrong property
+
+`focusPolicy() != NoFocus` was the rule, and **`Qt.FocusPolicy.ClickFocus` satisfies it while being
+exactly as mouse-only as `NoFocus`**. Setting *Choose folder…* to `ClickFocus` removed it from the
+keyboard and left every test green. `NoFocus` is `0`, `ClickFocus` is `2`, and neither carries the
+`TabFocus` bit the chain walks.
+
+**The capability is tested now, not the absence of its opposite** — `reaches_by_tab` asks for the
+bit, so a policy this project has not used yet is classified by what it *does* rather than by
+whether somebody remembered to list it. This is the same defect as round one's, one property along:
+a rule that checked something adjacent to what it claimed.
+
+#### `T200-R3`, second time — names are not reachability
+
+The nested surfaces were swept for **labels** and never for **routes**, so removing focus from the
+options dialog's codec control changed nothing. A label on a control nobody can reach is the
+politest possible way to fail `NFR-005`. They now get the same two rules the top-level surfaces do:
+Tab reaches everything Tab can land on, and every operable control either takes Tab focus or
+declares where its route is. `qt_tableview_cornerbutton` — Qt's select-all corner — joined the
+platform furniture, for the reason the others are there.
+
+#### `T200-R6` — the fixture held a version service open
+
+Closing the window left the real `YtdlpService` and the queue writer running, and teardown ran past
+a twelve-second bound: a sweep of widgets keeping an update service alive. It goes through
+`composition.shutdown.begin()` now — the route `tests/integration/test_composition.py` drives and
+the one the application takes when a user closes the window. The file runs in **about two seconds**.
+
+**Three mutations for this pass, none surviving**: `ClickFocus` on *Choose folder…* (6 failed),
+`ClickFocus` on the options codec combo (1 failed, naming it), and the withdrawn shutdown.
 
 **`T200-R1` is closed by the amendment its own recommendation offered**, not by running Orca.
 The finding said so in as many words: *"If that cannot be done in this task, obtain a maintainer
