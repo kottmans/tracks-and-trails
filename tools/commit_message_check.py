@@ -193,21 +193,39 @@ def git(*arguments: str) -> str:
     ).stdout
 
 
-def commits_in(revision_range: str) -> list[str]:
-    output = git("rev-list", "--no-merges", revision_range).strip()
+def commits_in(revision_range: str, *, skip_merges: bool = False) -> list[str]:
+    """Every commit in `revision_range`, newest first.
+
+    **Merges are included by default, and `--no-merges` was a real hole** (`T240-R1`). A merge
+    commit's message is a commit message: it can carry an AI authorship trailer, and it can omit
+    `Task:`. With `--no-merges` always on, a push consisting only of a merge returned an empty list
+    and the check exited 0 without reading anything — in the half whose entire job is to catch what
+    an uninstalled or `--no-verify`-bypassed hook missed.
+
+    `skip_merges` exists for exactly one caller: a pull-request event, where GitHub synthesises a
+    merge of the branch into its base and hands that SHA to the workflow. Nobody wrote that commit
+    and nobody can fix its message, so it is excluded **there and nowhere else**, by the caller
+    that knows the event, rather than by a default that quietly covered every case.
+    """
+    arguments = ["rev-list"]
+    if skip_merges:
+        arguments.append("--no-merges")
+    output = git(*arguments, revision_range).strip()
     return output.splitlines() if output else []
 
 
-def check_range(revision_range: str) -> int:
+def check_range(revision_range: str, *, skip_merges: bool = False) -> int:
     """Report on every commit in `revision_range`. Returns the process exit code."""
     failed = 0
-    for sha in commits_in(revision_range):
+    inspected = 0
+    for sha in commits_in(revision_range, skip_merges=skip_merges):
         short = git("rev-parse", "--short", sha).strip()
         # Matched by prefix rather than by resolving the grandfathered ids to full SHAs: a CI clone
         # may not contain `12dff92` at all, and `git rev-parse` on a missing object raises.
         if any(sha.startswith(prefix) for prefix in GRANDFATHERED):
             print(f"{short}: skipped, grandfathered by T-065")
             continue
+        inspected += 1
         faults = check_message(git("log", "-1", "--format=%B", sha))
         if faults:
             failed += 1
@@ -215,6 +233,10 @@ def check_range(revision_range: str) -> int:
             print(f"\n{short} {subject}")
             for fault in faults:
                 print(fault)
+    # **Say how many were read, always.** A range that resolves to nothing exits 0 either way, and
+    # the difference between *"every commit passed"* and *"no commit was looked at"* is the whole
+    # of `T240-R1`. Printing the count is what makes a silent empty range visible in the log.
+    print(f"{inspected} commit(s) checked in {revision_range}")
     if failed:
         print(f"\n{failed} commit(s) break AGENTS.md §7/§13. See tools/commit_message_check.py.")
     return 1 if failed else 0
@@ -225,10 +247,18 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--message-file", help="a commit message file, as the commit-msg hook gets")
     source.add_argument("--range", dest="revisions", help="a git range, as CI gets")
+    parser.add_argument(
+        "--skip-merges",
+        action="store_true",
+        help=(
+            "exclude merge commits. For a pull-request event only, where GitHub synthesises a "
+            "merge nobody authored and nobody can amend."
+        ),
+    )
     arguments = parser.parse_args(argv)
 
     if arguments.revisions:
-        return check_range(arguments.revisions)
+        return check_range(arguments.revisions, skip_merges=arguments.skip_merges)
 
     faults = check_message(Path(arguments.message_file).read_text(encoding="utf-8"))
     if not faults:

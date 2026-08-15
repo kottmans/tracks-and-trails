@@ -14,9 +14,11 @@ does not belong under `src/`, and `tools/` is not a package.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Final
 
 import pytest
 
@@ -201,3 +203,133 @@ def test_a_fault_names_the_offending_line() -> None:
     assert len(faults) == 1
     assert trailer in str(faults[0])
     assert "claude" in str(faults[0])
+
+
+# --- the range half, over real repositories (T240-R1) ------------------------------------------
+
+
+GOOD_MESSAGE: Final = (
+    "Do a thing\n\nBecause it needed doing and nothing else covers it.\n\nTask: T-240\n"
+)
+BAD_TRAILER: Final = (
+    "Do a thing badly\n\nWith a trailer the tooling appends by default.\n\n"
+    "Co-Authored-By: Claude <noreply@anthropic.com>\nTask: T-240\n"
+)
+
+
+def run_git(repository: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repository), *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def commit(repository: Path, message: str, *, name: str = "file.txt") -> str:
+    (repository / name).write_text(message[:20], encoding="utf-8")
+    run_git(repository, "add", "-A")
+    run_git(repository, "commit", "--no-verify", "-m", message)
+    return run_git(repository, "rev-parse", "HEAD")
+
+
+@pytest.fixture
+def repository(tmp_path: Path) -> Path:
+    """A real repository, because the defect being tested is in what `git rev-list` returns.
+
+    `T240-R1` names the absence of these directly: *"There are no unit tests for `commits_in()` or
+    `check_range()`, so the 29 passing parser tests cannot see either bypass."* A parser test over a
+    string cannot: both bypasses are about which commits are handed to the parser at all.
+    """
+    root = tmp_path / "repo"
+    root.mkdir()
+    run_git(root, "init", "-q", "-b", "main")
+    run_git(root, "config", "user.email", "test@example.com")
+    run_git(root, "config", "user.name", "Test")
+    commit(
+        root, "Add the first file\n\nThe base every range below is measured from.\n\nTask: T-240\n"
+    )
+    return root
+
+
+def test_a_merge_commit_is_checked(repository: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """**`T240-R1`'s first bypass.** `commits_in` passed `--no-merges` unconditionally.
+
+    A merge commit's message is a commit message: it can carry an AI authorship trailer and it can
+    omit `Task:`. With merges skipped, a push consisting only of a merge returned an empty list and
+    the check exited **0 having read nothing** — in the half whose whole job is to catch what an
+    uninstalled or bypassed hook missed.
+    """
+    monkeypatch.chdir(repository)
+    base = run_git(repository, "rev-parse", "HEAD")
+    run_git(repository, "checkout", "-q", "-b", "side")
+    commit(repository, GOOD_MESSAGE, name="side.txt")
+    run_git(repository, "checkout", "-q", "main")
+    commit(repository, GOOD_MESSAGE, name="main.txt")
+    run_git(repository, "merge", "--no-ff", "--no-verify", "-m", BAD_TRAILER, "side")
+    head = run_git(repository, "rev-parse", "HEAD")
+
+    assert head in check.commits_in(f"{base}..{head}"), "the merge is not even in the range"
+    assert check.check_range(f"{base}..{head}") == 1, (
+        "a merge commit carrying an AI authorship trailer passed the range check"
+    )
+    assert check.check_range(f"{base}..{head}", skip_merges=True) == 0, (
+        "`skip_merges` is for the synthetic pull-request merge and must still skip one"
+    )
+
+
+def test_a_merge_only_range_is_not_silently_empty(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shape that returned `[]` and exited 0: a range whose only commit is a merge."""
+    monkeypatch.chdir(repository)
+    run_git(repository, "checkout", "-q", "-b", "side")
+    commit(repository, GOOD_MESSAGE, name="side.txt")
+    run_git(repository, "checkout", "-q", "main")
+    before = run_git(repository, "rev-parse", "HEAD")
+    run_git(repository, "merge", "--no-ff", "--no-verify", "-m", BAD_TRAILER, "side")
+    head = run_git(repository, "rev-parse", "HEAD")
+
+    merge_only = [
+        sha
+        for sha in check.commits_in(f"{before}..{head}")
+        if sha != run_git(repository, "rev-parse", "side")
+    ]
+    assert merge_only, "the merge-only range is empty, which is the bypass itself"
+    assert check.check_range(f"{before}..{head}") == 1
+
+
+def test_a_bad_commit_that_is_not_the_tip_still_fails(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T240-R1`'s second bypass**, in the shape a new branch pushes.
+
+    When `before` is unusable the workflow used to check `$head~1..$head` — the tip alone — while
+    both it and the task claimed the *pushed range*. Every earlier commit in a new branch went
+    unread. This is that range: three commits where the **first** is the bad one.
+    """
+    monkeypatch.chdir(repository)
+    base = run_git(repository, "rev-parse", "HEAD")
+    commit(repository, BAD_TRAILER, name="one.txt")
+    commit(repository, GOOD_MESSAGE, name="two.txt")
+    commit(repository, GOOD_MESSAGE, name="three.txt")
+    head = run_git(repository, "rev-parse", "HEAD")
+
+    assert check.check_range(f"{head}~1..{head}") == 0, (
+        "the tip alone is clean — which is exactly why checking only the tip was the defect"
+    )
+    assert check.check_range(f"{base}..{head}") == 1, (
+        "a bad commit below the tip passed a range that claims to cover what arrived"
+    )
+
+
+def test_a_clean_range_passes(repository: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The control. Without it every assertion above could pass by rejecting everything."""
+    monkeypatch.chdir(repository)
+    base = run_git(repository, "rev-parse", "HEAD")
+    commit(repository, GOOD_MESSAGE, name="one.txt")
+    commit(repository, GOOD_MESSAGE, name="two.txt")
+    head = run_git(repository, "rev-parse", "HEAD")
+
+    assert check.commits_in(f"{base}..{head}"), "the range is empty, so this proves nothing"
+    assert check.check_range(f"{base}..{head}") == 0

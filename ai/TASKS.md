@@ -883,8 +883,37 @@ which is what makes the `None`/`""` distinction load-bearing rather than a prefe
 
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
-**Status:** **In Review — built 2026-08-15.** Filed 2026-08-13 from `T198-R6`, which the reviewer
-called *"a real enforcement gap"* while explicitly holding that it *"does not remain a `T-198`
+**Status:** **In Review — corrected once, 2026-08-15.** The first review returned **Changes
+requested** with `T240-R1` (Medium, blocking acceptance criteria 1–3): the half whose job is to
+catch what a forgotten or bypassed hook missed did not check every commit in the range it called
+*"what arrived"*.
+
+#### `T240-R1` — two bypasses, and no test could see either
+
+**`commits_in()` passed `--no-merges` unconditionally.** A merge commit's message is a commit
+message: it can carry an AI authorship trailer and it can omit `Task:`. A push consisting only of a
+merge returned an empty list and the check exited **0 having read nothing**. Merges are included
+now, and `--skip-merges` exists for exactly one caller — a pull-request event, where GitHub
+synthesises a merge nobody authored and nobody can amend. **Passed by the caller that knows the
+event**, rather than as a default that quietly covered every case.
+
+**The new-branch fallback checked `$head~1..$head`** — the tip alone — while both the workflow and
+this entry claimed the pushed range. Every earlier commit in a new branch went unread. It resolves
+against the default branch now: everything the tip adds over `origin/<default>`, which is what
+*"what arrived"* means for a branch that did not exist before. The bare-tip case survives only where
+there is genuinely nothing to compare against, and says so.
+
+**And the range check now prints how many commits it read.** *"Every commit passed"* and *"no
+commit was looked at"* both exit 0, and that difference is the whole finding.
+
+**The tests the finding asked for exist**, over real repositories in a temporary directory, because
+both bypasses are about which commits reach the parser at all — the 29 parser tests could not see
+either. Four cases: a merge carrying a bad trailer, a merge-only range, a bad commit **below** the
+tip, and a clean range as the control. **Two mutations, both caught**: restoring `--no-merges`
+fails two of them, and truncating the range to its first commit fails the third.
+
+**Status before this round:** **In Review — built 2026-08-15.** Filed 2026-08-13 from `T198-R6`,
+which the reviewer called *"a real enforcement gap"* while explicitly holding that it *"does not remain a `T-198`
 blocker"*. All five acceptance criteria are met, and the fourth — a deliberately bad commit, made
 and discarded in a scratch clone — is recorded at `ai/evidence/2026-08-15-T240-hook-proof.md`.
 **Owner:** Implementer
