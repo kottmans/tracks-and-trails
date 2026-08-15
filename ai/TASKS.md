@@ -117,6 +117,177 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
+
+**Status:** **In Review — built 2026-08-15.** Six of the seven criteria are met and gated; the
+seventh, Orca's announcements, is a human check on a real display and is recorded below with what
+was and was not done. **The pass found a High defect and it is fixed**: the queue's run control had
+no keyboard route of any kind. **Six mutations, none surviving.**
+
+#### What the pass found: the run control could not be operated without a pointer
+
+`UX-006` made the queue *stopped until started*, so `Start` is the application's primary verb.
+Measured on the composed window before anything was changed:
+
+- **Every widget in `MainWindow` was `Qt.NoFocus`.** `QToolBar` builds its buttons that way — Qt's
+  own convention, resting on the assumption that a toolbar *mirrors a menu*. This one mirrors
+  nothing: `Start` and `Clear finished` are on no menu.
+- **The whole UI held two shortcuts** — `Ctrl+N` and `Ctrl+Q` — and neither was these.
+- **So an empty queue exposed zero focusable widgets.** The queue list is the only focusable thing
+  on the window and it is hidden behind the empty-queue notice until a row exists. A keyboard
+  reached the menu bar and stopped.
+
+**A user without a mouse could not download anything.** Nothing else in the suite could have
+noticed: the control is drawn, it is named, and its own tests trigger the action directly.
+
+**The mnemonics were believed to be the route, and are not.**
+`test_nothing_on_the_toolbar_can_take_the_keyboard_from_the_rows` records, as the reason a tab stop
+was unnecessary, that *"each carries a mnemonic (`&Start`)"*. Measured: **every toolbar button's
+`shortcut()` is empty**. Qt strips the `&` for display and registers no accelerator, because a
+`QAction`'s mnemonic binds in a *menu* — so the ampersand was doing nothing but hiding the gap, and
+that sentence is corrected in place.
+
+**The fix is the two shortcuts, and only those.** `RUN_SHORTCUT` (`Ctrl+R`) and
+`CLEAR_FINISHED_SHORTCUT` (`Ctrl+Shift+C`). Every ruled surface is untouched: `UX-005`'s three
+verbs in their order, and the menu bar as it was.
+
+**I first also put the buttons in the Tab chain, and withdrew it.** The reasoning was that a
+shortcut alone leaves the drawn control unfocusable, so a screen-reader user cannot land on it to
+hear what it is. **`T-234`'s criterion forbids exactly that** — no widget on this toolbar may take
+focus, because `T203-R3` recorded a focusable one stealing `Shift+F10` from the row menu on a
+freshly opened window — and the full suite caught it. The two rules only look opposed: one says
+*every verb must be operable without a pointer*, the other says *not by taking focus on this bar*.
+The route satisfies both; the tab stop satisfied one by breaking the other.
+
+**A menu route is recommended and not taken.** It is what Qt's convention assumes exists, it is the
+discoverable option, and it is the one that would also give a screen-reader user something to land
+on. It changes the ruled menu bar — pinned by hand in `tests/ui/test_windows_accessibility.py` —
+and that is the maintainer's, on `T201-R3`'s precedent.
+Recorded here as the option left open rather than silently dropped.
+
+#### Orca: what was established, and what was not
+
+**Orca 50.2 is installed** (AT-SPI 2.60.5, Wayland/KDE session), and **Qt 6 compiles the AT-SPI
+bridge into `libQt6Gui`** — 42 `org.a11y` symbols in both the bundled and the system library. *(I
+first read the absent `accessiblebridge` plugin directory as the bridge being missing. That was
+wrong: it is not a separate plugin in Qt 6.)*
+
+**What was not done: Orca was not run against this application.** The suite is offscreen by
+`tests/ui/conftest.py`, where no bridge activates — `QAccessible.isActive()` is `False` — so the
+announcement check needs a real display session with Orca speaking, which is a session on the
+maintainer's desktop rather than something a test can take. **The criterion is therefore not met,
+and is not claimed to be.** What "meaningfully" should be taken to mean, when it is run: every
+control announces a name that says what it does rather than its class, its role, and its state
+where it has one — which is exactly what the automated gates below assert the *source* of.
+
+#### The Windows Narrator gap, stated rather than closed
+
+`OPS-004` splits the Windows criterion and `OPS-003` records that there is no Windows machine for
+the subjective half. **That the UI Automation tree exposes a correct name and role is automated**
+by `tests/ui/test_windows_accessibility.py` and runs on the self-hosted runner. **Whether
+Narrator's announcements are coherent is unverified**, belongs to the pre-release Windows session,
+and the plan permits this phase to exit with the gap **named, not hidden**. It is named here and in
+`ai/STATUS.md`.
+
+**That file was also incomplete for this phase.** Its menu-bar equality was updated when `T-146`
+added the `Settings` menu — it is the assertion that tripped on it — while
+`test_each_menu_publishes_exactly_its_actions`, the only thing asserting what is *inside* each
+menu, was not. So the Settings menu's one action was checked by nothing on the platform where
+checking it is possible. Added.
+
+#### What is gated, in `tests/ui/test_accessibility.py`
+
+Eleven tests, driven **through the routes the application opens** — `open_add_dialog()`,
+`open_settings()`, `show_about()` — rather than by constructing screens. `T-201` is why: its text
+was correct for twelve error classes and reached nobody, because the only widget composing it was
+one nothing constructed. Coverage measured 2026-08-15: **42 operable controls and 42 focusable
+controls across four surfaces**, with a floor asserted so the sweep cannot pass by inspecting
+nothing.
+
+**Six mutations against the final state, none surviving** — and the sixth is the one worth
+reading. Deleting a Settings control's explicit accessible name **did not fail the sweep**, because
+`QAccessible` falls back to the widget's own `text()`: the concurrency steppers went on reporting
+`+` and `−`, which a screen reader announces as *"plus sign"*. The rule was *is the name blank*,
+and a glyph is not blank. It is *does the name contain a word* now — one letter is not one — which
+the labels this application actually sets (*"Increase the number of downloads"*) clear easily.
+**A sweep that cannot tell a name from a symbol is a sweep that would have passed this screen with
+every stepper unlabelled.**
+
+Four things the first versions got wrong, each caught by measuring rather than by reading:
+
+- **Two tests passed vacuously** over an empty focusable set — which was itself the defect, and
+  only printing the counts revealed it. They assert non-vacuity first now.
+- **The window's sweep reached into its own dialogs.** A dialog is *parented* to the window, so
+  `findChildren` pulled 39 controls out of the Settings screen and the add dialog and called them
+  unreachable. A focus chain does not cross a window boundary; neither does the sweep now.
+- **Focus order was compared across a scroll boundary.** The Settings screen's content lives in a
+  1316 px scrolled widget while its fixed `Close` footer sits at 716 in the dialog's own space, so
+  the footer looked as though it came *above* the controls it follows. Compared within each
+  scrolled region now.
+
+**Status before this task:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
+**Owner:** Implementer
+**Priority:** High — it owns **two of the phase's six exit criteria**, and it is the deliverable
+most likely to be discovered late, because every surface it covers was signed off individually
+**Phase:** Phase 4 — and it should start **late**, after `T-146` and `T-195`–`T-199` have added
+their controls. A pass run before the phase's new surfaces exist verifies the wrong application.
+**Depends on:** `T-146`, `T-195`, `T-196`, `T-197`, `T-198`, `T-199` — every task that adds a
+control. **Also `T-203`** — re-ruled to option *E* by `UX-011` and built 2026-08-10: the row's
+menu is part of the control set this pass audits — real `QAction`s reached through the keyboard
+route, with the painted `⋮` deliberately holding no accessibility node because that sibling route
+exists — so it lands first.
+**Relevant context:** `NFR-005`, `OPS-004`, `OPS-003`, `T-026`,
+`tests/ui/test_windows_accessibility.py`, and the per-surface keyboard work already done in
+`T-107`, `T-110`, `T-181`, `T-192`, `T105-R3`, `T118-R5`, `UX-007`'s `P-20` and `P-22`
+**Affected surfaces:** potentially every widget module; `tests/ui/`
+**Risk:** Medium — low per change, and high in aggregate, because the finding is usually "this was
+never reachable" rather than "this broke"
+
+#### Scope
+
+**Keyboard reachability has been argued surface by surface and never verified end to end.**
+`T105-R3` established that `NFR-005` requires reachability rather than a particular arrangement;
+`T118-R5` established that a context menu is not authority to drop a visible control; `UX-007`
+ruled the preset manager's layout and the template preview's tab stop. **Every one of those is a
+local judgement.** This task is the global one: *can a user who never touches the mouse do
+everything the application does?*
+
+**The plan splits the screen-reader criterion by platform and this task inherits the split.**
+
+- **Linux (Orca)** — in scope, and the exit criterion says *verified*.
+- **Windows** — `OPS-004` splits it. That the **UI Automation tree exposes a correct name and role**
+  for every control is automated by `T-026` and is testable. Whether **Narrator's announcements are
+  coherent** is subjective, belongs to the pre-release Windows session, and the plan says this phase
+  **may exit with that gap named, but not hidden.** This task's job is to name it, not close it.
+
+**`tests/ui/test_windows_accessibility.py` names every menu by hand.** `T-146`'s entry records that
+this gate caught a `Settings` menu appearing on the Windows job alone, after Linux had passed and
+three commits had been pushed. **Every task in this phase that adds a menu or a control will meet
+it**, and this task owns making it complete rather than incidental.
+
+#### Acceptance criteria
+
+- **Every function is reachable by keyboard alone**, verified end to end on Linux — including the
+  add dialog's row controls, the format table, the playlist picker, the preset manager, the options
+  and template editors, the queue's per-job actions, and every control this phase adds
+- The verification is **a test, not a session**. A walked-through checklist is what
+  `P2EXIT-R12` found claiming a pass over its own recorded failures
+- **Focus order is asserted**, not just reachability: tab order follows visual order on each
+  surface, and a modal returns focus to what opened it
+- **Every control has a name and a role** in the accessibility tree, asserted for the whole tree
+  rather than per widget — a per-widget list is a list that drifts
+- **Orca announces every control meaningfully on Linux**, and what "meaningfully" was taken to mean
+  is written down with the result
+- **The Windows Narrator gap is recorded as unverified**, in `STATUS.md` and in the phase exit
+  submission, with `OPS-004` named. Stating it is the criterion; closing it is not
+- `tests/ui/test_windows_accessibility.py` covers the menus and controls this phase added
+
+#### Out of scope
+
+- **Closing the Narrator gap.** `OPS-003`: there is no Windows machine. The pre-release session owns it
+- Colour contrast and colour-only information — `T-202`
+- High-contrast themes, font scaling, and reduced motion. None is requested; each is its own decision
+
 ## Complete
 
 ### T-244 — Expanded playlist entries offer verbs the delegate never draws
@@ -5884,71 +6055,6 @@ which it merely reports.
 
 ---
 
-
-### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
-
-**Status:** Proposed — filed 2026-08-09 from `IMPLEMENTATION_PLAN.md` §Phase 4.
-**Owner:** Implementer
-**Priority:** High — it owns **two of the phase's six exit criteria**, and it is the deliverable
-most likely to be discovered late, because every surface it covers was signed off individually
-**Phase:** Phase 4 — and it should start **late**, after `T-146` and `T-195`–`T-199` have added
-their controls. A pass run before the phase's new surfaces exist verifies the wrong application.
-**Depends on:** `T-146`, `T-195`, `T-196`, `T-197`, `T-198`, `T-199` — every task that adds a
-control. **Also `T-203`** — re-ruled to option *E* by `UX-011` and built 2026-08-10: the row's
-menu is part of the control set this pass audits — real `QAction`s reached through the keyboard
-route, with the painted `⋮` deliberately holding no accessibility node because that sibling route
-exists — so it lands first.
-**Relevant context:** `NFR-005`, `OPS-004`, `OPS-003`, `T-026`,
-`tests/ui/test_windows_accessibility.py`, and the per-surface keyboard work already done in
-`T-107`, `T-110`, `T-181`, `T-192`, `T105-R3`, `T118-R5`, `UX-007`'s `P-20` and `P-22`
-**Affected surfaces:** potentially every widget module; `tests/ui/`
-**Risk:** Medium — low per change, and high in aggregate, because the finding is usually "this was
-never reachable" rather than "this broke"
-
-#### Scope
-
-**Keyboard reachability has been argued surface by surface and never verified end to end.**
-`T105-R3` established that `NFR-005` requires reachability rather than a particular arrangement;
-`T118-R5` established that a context menu is not authority to drop a visible control; `UX-007`
-ruled the preset manager's layout and the template preview's tab stop. **Every one of those is a
-local judgement.** This task is the global one: *can a user who never touches the mouse do
-everything the application does?*
-
-**The plan splits the screen-reader criterion by platform and this task inherits the split.**
-
-- **Linux (Orca)** — in scope, and the exit criterion says *verified*.
-- **Windows** — `OPS-004` splits it. That the **UI Automation tree exposes a correct name and role**
-  for every control is automated by `T-026` and is testable. Whether **Narrator's announcements are
-  coherent** is subjective, belongs to the pre-release Windows session, and the plan says this phase
-  **may exit with that gap named, but not hidden.** This task's job is to name it, not close it.
-
-**`tests/ui/test_windows_accessibility.py` names every menu by hand.** `T-146`'s entry records that
-this gate caught a `Settings` menu appearing on the Windows job alone, after Linux had passed and
-three commits had been pushed. **Every task in this phase that adds a menu or a control will meet
-it**, and this task owns making it complete rather than incidental.
-
-#### Acceptance criteria
-
-- **Every function is reachable by keyboard alone**, verified end to end on Linux — including the
-  add dialog's row controls, the format table, the playlist picker, the preset manager, the options
-  and template editors, the queue's per-job actions, and every control this phase adds
-- The verification is **a test, not a session**. A walked-through checklist is what
-  `P2EXIT-R12` found claiming a pass over its own recorded failures
-- **Focus order is asserted**, not just reachability: tab order follows visual order on each
-  surface, and a modal returns focus to what opened it
-- **Every control has a name and a role** in the accessibility tree, asserted for the whole tree
-  rather than per widget — a per-widget list is a list that drifts
-- **Orca announces every control meaningfully on Linux**, and what "meaningfully" was taken to mean
-  is written down with the result
-- **The Windows Narrator gap is recorded as unverified**, in `STATUS.md` and in the phase exit
-  submission, with `OPS-004` named. Stating it is the criterion; closing it is not
-- `tests/ui/test_windows_accessibility.py` covers the menus and controls this phase added
-
-#### Out of scope
-
-- **Closing the Narrator gap.** `OPS-003`: there is no Windows machine. The pre-release session owns it
-- Colour contrast and colour-only information — `T-202`
-- High-contrast themes, font scaling, and reduced motion. None is requested; each is its own decision
 
 ### T-202 — Nothing is said by colour alone
 

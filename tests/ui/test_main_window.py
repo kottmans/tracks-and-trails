@@ -437,9 +437,17 @@ def test_nothing_on_the_toolbar_can_take_the_keyboard_from_the_rows(qapp: QAppli
     why it is asserted here instead of written into a comment. A control added to the bar that
     *can* take focus fails this and has to answer `T203-R3` again.
 
-    The three verbs stay reachable without Tab: each carries a mnemonic (`&Start`), and
-    `+ Add URLs` is `File → Add URLs…` as well — `NFR-005`'s requirement is a keyboard route, not
-    a place in the tab chain.
+    **`NFR-005`'s requirement is a keyboard route, not a place in the tab chain**, and that half of
+    this docstring stands. What did not is how the route was supplied.
+
+    *(This read: "The three verbs stay reachable without Tab: each carries a mnemonic (`&Start`),
+    and `+ Add URLs` is `File → Add URLs…` as well." **The mnemonic half was false**, measured by
+    `T-200` on 2026-08-15: every toolbar button's `shortcut()` is empty. Qt strips the `&` for
+    display and registers no accelerator, because a `QAction`'s mnemonic binds in a **menu** — so
+    `Start` and `Clear finished`, which are on no menu, had no keyboard route at all while this
+    file recorded that they did. They carry `Ctrl+R` and `Ctrl+Shift+C` now. The criterion this
+    test asserts is unchanged and was never the problem: it is right that nothing here takes
+    focus, and it was the sentence explaining why that was carrying the gap.)*
     """
     window = _window_over([_job("a", 0)])
     bar = window.findChild(QToolBar, "queueToolBar")

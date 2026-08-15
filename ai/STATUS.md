@@ -5,8 +5,31 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-14 (T-244 approved) — **`T-244` is Approved at `510923d` and
-`## In Review` is empty.** The task is `c1b4ab0`, its corrections `30aaf42` and `510923d`, after
+**Last updated:** 2026-08-15 (T-200 built) — **`T-200` is in review, and the accessibility pass
+found what it was filed to find.** The queue's run control had **no keyboard route of any kind**:
+`QToolBar` gives every button `Qt.NoFocus`, `Start` and `Clear finished` are on no menu, and the
+whole UI held two shortcuts — `Ctrl+N` and `Ctrl+Q` — neither of them these. An empty queue exposed
+**zero** focusable widgets. `UX-006` made the queue *stopped until started*, so **a user without a
+pointer could not download anything**, and nothing in the suite could have noticed: the control is
+drawn, named, and triggered directly by its own tests.
+
+**The mnemonics were believed to be the route and are not** — every toolbar button's `shortcut()`
+is empty, because a `QAction`'s `&` binds in a menu and these are on none. Fixed with `Ctrl+R` and
+`Ctrl+Shift+C`, leaving every ruled surface untouched. **I also put the buttons in the Tab chain and
+withdrew it**: `T-234`'s criterion forbids a focusable widget on that toolbar, since `T203-R3`
+recorded one stealing `Shift+F10` from the row menu, and the full suite caught the collision. **A
+menu route is the discoverable option and was not taken** — it changes the ruled menu bar, which is
+the maintainer's on `T201-R3`'s precedent.
+
+**Six of `T-200`'s seven criteria are gated; the seventh is honestly open.** Orca 50.2 is installed
+and Qt 6 compiles the AT-SPI bridge into `libQt6Gui`, so the check is runnable — but the suite is
+offscreen, where no bridge activates, and **Orca has not been run against this application**. That
+is recorded as not done rather than claimed. **The Windows Narrator gap stays unverified**
+(`OPS-004`, `OPS-003`), which the plan permits this phase to exit with **named, not hidden**.
+
+*(The snapshot below is the `T-244` sync's and stands.)*
+
+**`T-244` is Approved at `510923d`.** The task is `c1b4ab0`, its corrections `30aaf42` and `510923d`, after
 two correction rounds and a third the maintainer authorized. **Nothing since `ebe4159` is pushed**;
 that is where `origin/main` stands. An expanded playlist entry drew none of the verbs it
 offered, at every width: `sizeHint` shortened a child to `CHILD_TEXT_LINES` while `_verb_rects`

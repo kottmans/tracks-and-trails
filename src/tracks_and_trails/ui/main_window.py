@@ -75,6 +75,32 @@ APP_NAME: Final = "Tracks & Trails"
 #: menu keeps *"Add URLs..."*, where a leading `+` would be a convention nobody uses.
 ADD_URLS_BUTTON: Final = "+ Add URLs"
 
+#: The keyboard route to the two toolbar verbs that are on no menu (`NFR-005`, `T-200`).
+#:
+#: **Chosen because there was none.** `T-200`'s sweep measured the whole UI holding two shortcuts —
+#: `Ctrl+N` and `Ctrl+Q` — and `QToolBar` giving every button `Qt.NoFocus`, so the run control had
+#: no keyboard route of any kind while `UX-006` made the queue *stopped until started*. A user
+#: without a pointer could not download anything.
+#:
+#: `Ctrl+R` for the run control reads as *run* and collides with nothing here; this application has
+#: no reload. `Ctrl+Shift+C` is deliberately not plain `Ctrl+C`, which every text field on the
+#: window already owns for copy.
+#:
+#: **The mnemonics were believed to be the route and are not.** `test_nothing_on_the_toolbar_can_
+#: take_the_keyboard_from_the_rows` records *"each carries a mnemonic (`&Start`)"* as the reason a
+#: tab stop was unnecessary. Measured 2026-08-15: every toolbar button's `shortcut()` is **empty**.
+#: Qt strips the `&` for display and registers no accelerator, because a `QAction`'s mnemonic binds
+#: in a *menu*; the ampersand was doing nothing but hiding the gap.
+#:
+#: **Neither of these is the discoverable route**, and that is stated rather than glossed: a
+#: shortcut is found by someone who goes looking. **A tab stop on the buttons is not the answer** —
+#: `T-234`'s criterion forbids a focusable widget on this toolbar, because `T203-R3` recorded one
+#: stealing `Shift+F10` from the row menu on a freshly opened window. A **menu** route, which is
+#: what Qt's convention assumes exists, is the discoverable option and changes the ruled menu bar;
+#: `T-200` records it as the maintainer's to take.
+RUN_SHORTCUT: Final = "Ctrl+R"
+CLEAR_FINISHED_SHORTCUT: Final = "Ctrl+Shift+C"
+
 #: The dynamic property the style sheet fills a toolbar's primary button against (`T-132`).
 #:
 #: **A role, not a name.** `theme.py` must style by class so a widget nobody remembered still gets
@@ -1063,6 +1089,7 @@ class MainWindow(QMainWindow):
         run = QAction(self)
         run.setObjectName("runQueueAction")
         run.setCheckable(True)
+        run.setShortcut(RUN_SHORTCUT)
         run.toggled.connect(self._run_toggled)
         bar.addAction(run)
         self._run = run
@@ -1078,6 +1105,7 @@ class MainWindow(QMainWindow):
 
         clear = QAction("&Clear finished", self)
         clear.setObjectName("clearCompletedAction")
+        clear.setShortcut(CLEAR_FINISHED_SHORTCUT)
         clear.setStatusTip("Remove finished downloads from the queue; your files are kept")
         # The files half is the sentence that stops this looking destructive. `UX-001` promises
         # nothing here deletes a download, and a user reading a verb called *Clear*
