@@ -50,7 +50,7 @@ import json
 import re
 import subprocess
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -241,9 +241,20 @@ def commits_in(revision_range: str) -> list[str]:
 
 def check_range(revision_range: str) -> int:
     """Report on every commit in `revision_range`. Returns the process exit code."""
+    return check_commits(commits_in(revision_range), revision_range)
+
+
+def check_commits(shas: Sequence[str], described_as: str) -> int:
+    """Report on each commit in `shas`. Returns the process exit code.
+
+    **Separate from the range that usually produces them** (`T240-R1`, third round), because there
+    is one case where no range can be computed and the commits are known anyway: a force-push to
+    the default branch, where the push payload's `commits` array is the only surviving description
+    of what arrived.
+    """
     failed = 0
     inspected = 0
-    for sha in commits_in(revision_range):
+    for sha in shas:
         short = git("rev-parse", "--short", sha).strip()
         # Matched by prefix rather than by resolving the grandfathered ids to full SHAs: a CI clone
         # may not contain `12dff92` at all, and `git rev-parse` on a missing object raises.
@@ -261,7 +272,7 @@ def check_range(revision_range: str) -> int:
     # **Say how many were read, always.** A range that resolves to nothing exits 0 either way, and
     # the difference between *"every commit passed"* and *"no commit was looked at"* is the whole
     # of `T240-R1`. Printing the count is what makes a silent empty range visible in the log.
-    print(f"{inspected} commit(s) checked in {revision_range}")
+    print(f"{inspected} commit(s) checked in {described_as}")
     if failed:
         print(f"\n{failed} commit(s) break AGENTS.md §7/§13. See tools/commit_message_check.py.")
     return 1 if failed else 0
@@ -270,18 +281,33 @@ def check_range(revision_range: str) -> int:
 #: What `github.event.before` and `github.event.after` say when there was no such commit.
 ZERO_SHA: Final = "0" * 40
 
+#: How many commits a `push` payload's `commits` array carries at most.
+#:
+#: GitHub's own documented cap. It matters because it is the one thing the payload route cannot
+#: promise: at exactly this many, the push may have brought more and the array is all there is.
+#: `select_range` says so in its note rather than reporting a clean read of a truncated list.
+MAX_PAYLOAD_COMMITS: Final = 2048
+
 
 @dataclass(frozen=True, slots=True)
 class Selection:
     """Which commits an event brought, and the sentence explaining how that was decided.
 
-    `revisions` is `None` when the event brought nothing — a branch deletion is the case — which is
-    different from *"a range that happens to be empty"* and has to stay different: the second was
-    `T240-R1`'s second bypass, and it exited 0 having read nothing.
+    Three answers, and they are deliberately different values:
+
+    - `revisions` — a git range, which is the usual and the best answer, because git computes it
+      from the history rather than from what an event happened to report.
+    - `commits` — explicit SHAs out of the event payload, for the one case where **no range exists
+      to compute**: a force-push to the default branch, where `origin/<default>` is already the
+      pushed tip. `T240-R1`'s second round called those commits unknowable and fell back to
+      reading the tip alone; a push payload carries a `commits` array, so they are not.
+    - neither — the event brought nothing at all, which a branch deletion does. Distinct from *a
+      range that resolved to nothing*, which is the bypass this whole finding is about.
     """
 
     revisions: str | None
     note: str
+    commits: tuple[str, ...] = ()
 
 
 def tip_only(head: str, *, exists: Callable[[str], bool]) -> str:
@@ -292,6 +318,59 @@ def tip_only(head: str, *, exists: Callable[[str], bool]) -> str:
     ancestors*, and it has none.
     """
     return f"{head}~1..{head}" if exists(f"{head}~1") else head
+
+
+def pushed_commits(
+    payload: Mapping[str, object],
+    head: str,
+    default: str,
+    *,
+    exists: Callable[[str], bool],
+) -> Selection:
+    """What arrived when no range can describe it (`T240-R1`, third round).
+
+    A force-push to the default branch leaves nothing to subtract from: `origin/<default>` **is**
+    the commit that was just pushed, so every range that could be formed is empty. The second round
+    read the tip alone and recorded the rest as unknowable — which was a claim about GitHub rather
+    than about git, and it was wrong. The `push` payload carries a `commits` array describing the
+    commits the push brought, and a probe with a malformed commit below a clean tip is exactly the
+    shape it exists for: the tip passes, the commit under it does not, and only this route sees it.
+
+    **Only the commits this clone actually has.** The array describes what GitHub received, and a
+    commit missing from the checkout cannot have its message read; those are named in the note
+    rather than dropped silently. **And `distinct` is honoured**: GitHub marks a commit already
+    pushed elsewhere as `distinct: false`, and re-reading history that arrived on another branch is
+    how a gate starts failing for commits nobody in this push wrote.
+    """
+    listed = payload.get("commits")
+    described = listed if isinstance(listed, list) else []
+    wanted = [
+        str(entry.get("id") or "")
+        for entry in described
+        if isinstance(entry, dict) and entry.get("distinct") is not False
+    ]
+    present = [sha for sha in wanted if sha and exists(sha)]
+    why = (
+        f"no usable before-SHA and {head[:7]} adds nothing to {default} — a force-push to the "
+        "default branch, or a tag re-pushed at a commit already on it"
+    )
+    if not present:
+        return Selection(
+            tip_only(head, exists=exists),
+            f"{why}; the payload lists no commit this clone has, so checking the tip only",
+        )
+    missing = len(wanted) - len(present)
+    truncated = (
+        f", and GitHub caps that array at {MAX_PAYLOAD_COMMITS} so the push may have brought more"
+        if len(described) >= MAX_PAYLOAD_COMMITS
+        else ""
+    )
+    absent = f", {missing} of them not in this clone" if missing else ""
+    return Selection(
+        None,
+        f"{why}; reading the {len(present)} commit(s) the payload lists{absent}{truncated}",
+        tuple(present),
+    )
 
 
 def select_range(
@@ -333,6 +412,14 @@ def select_range(
     covered. Both guards were written; the second made the first unreachable, and a guard nothing
     can reach is a guard nobody can check. Measuring the range answers both, and answers the next
     one nobody thought of.
+
+    **And when the range is empty, the payload still knows.** The previous round fell back to the
+    tip alone and called the rest unknowable; that was wrong, and stated as fact. A `push` payload
+    carries a `commits` array describing the commits the push brought — GitHub sends up to
+    **2048** of them — so a force-push to the default branch, where no range can be computed at
+    all, is checked commit by commit out of the event itself. `MAX_PAYLOAD_COMMITS` is the one
+    case where that is not the whole push, and it says so in the log rather than implying
+    coverage it does not have.
     """
     counter = count if count is not None else (lambda revisions: len(commits_in(revisions)))
 
@@ -366,11 +453,7 @@ def select_range(
                 candidate,
                 f"no usable before-SHA; checking everything {head[:7]} adds over {default}",
             )
-        return Selection(
-            tip_only(head, exists=exists),
-            f"no usable before-SHA and {head[:7]} adds nothing to {default} — a force-push to the "
-            "default branch, or a tag re-pushed at a commit already on it; checking the tip only",
-        )
+        return pushed_commits(payload, head, default, exists=exists)
 
     return Selection(
         tip_only(head, exists=exists),
@@ -399,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
         payload = json.loads(Path(arguments.event).read_text(encoding="utf-8"))
         selection = select_range(arguments.event_name, payload)
         print(f"range: {selection.note}")
+        if selection.commits:
+            return check_commits(selection.commits, "the commits the push payload listed")
         if selection.revisions is None:
             return 0
         return check_range(selection.revisions)

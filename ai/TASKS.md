@@ -858,12 +858,38 @@ which is what makes the `None`/`""` distinction load-bearing rather than a prefe
 
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
-**Status:** **In Review — corrected twice, 2026-08-15.** The first review returned **Changes
-requested** with `T240-R1` (Medium, blocking acceptance criteria 1–3): the half whose job is to
-catch what a forgotten or bypassed hook missed did not check every commit in the range it called
-*"what arrived"*. The second pass **held it open** — the option that skipped merges had been kept
-for one caller and cannot express what that caller needs, and the range selection still had a shape
-that resolved to nothing.
+**Status:** **In Review — corrected three times, 2026-08-15.** The first review returned
+**Changes requested** with `T240-R1` (Medium, blocking acceptance criteria 1–3): the half whose job
+is to catch what a forgotten or bypassed hook missed did not check every commit in the range it
+called *"what arrived"*. The second pass **held it open** — the option that skipped merges had been
+kept for one caller and cannot express what that caller needs, and the range selection still had a
+shape that resolved to nothing. The third pass held it open once more, and **the third round is
+under a review-budget block**: `AGENTS.md` §10's focused-Medium allowance is spent, so the
+correction below is made and **another Medium pass needs the maintainer's authorization**.
+
+#### `T240-R1`, third round — the commits were never unknowable
+
+**The fallback read the tip alone and called the rest undeterminable.** That was a claim about
+GitHub rather than about git, it was written down as fact, and it is wrong: a `push` payload carries
+a **`commits` array** describing the commits the push brought. The reviewer's probe is the shape it
+matters for — a malformed commit below a clean tip, force-pushed to `main`, where reading the tip
+exits 0 having walked straight past the defect.
+
+Where no range can be formed — force-push to the default branch, where `origin/main` *is* the
+pushed tip — the check now reads those commits **out of the event**, one at a time. `Selection`
+carries three distinct answers rather than two: a range, an explicit list of commits, or nothing
+arrived at all.
+
+**Three things the array cannot promise, each handled rather than assumed.** GitHub caps it at
+**2048**, so at the cap the note says the push may have brought more instead of reporting a clean
+read. A commit the payload names may be missing from this clone — `git log` on a missing object
+raises, which would take the gate down — so those are dropped and **counted in the note**. And
+`distinct: false` means *this arrived on another branch already*, which is how a gate starts failing
+for commits nobody in this push wrote; this repository has **278** pre-`Task:` commits for it to
+find.
+
+**Seven mutations, all caught**, four of them new: ignoring the array, ignoring `distinct`, keeping
+commits the clone lacks, and the three from the previous round.
 
 #### `T240-R1`, second round — an option that could not mean what it was kept for
 

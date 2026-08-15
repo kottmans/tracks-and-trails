@@ -406,6 +406,102 @@ def test_a_pull_request_reads_the_branch_rather_than_the_merge_github_built(
     )
 
 
+def test_a_force_push_reads_the_commits_the_payload_lists(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`T240-R1`, third round.** The commits below the tip were never unknowable.
+
+    The second round fell back to the tip alone here and recorded the rest as undeterminable —
+    which was a claim about GitHub, not about git, and GitHub disagrees: a `push` payload carries a
+    `commits` array describing what the push brought. The reviewer's probe is this test: a
+    malformed commit **below** a clean tip, force-pushed to `main`, where checking the tip exits 0
+    and reads past the defect.
+    """
+    monkeypatch.chdir(repository)
+    bad = commit(repository, BAD_TRAILER, name="one.txt")
+    middle = commit(repository, GOOD_MESSAGE, name="two.txt")
+    head = commit(repository, GOOD_MESSAGE, name="three.txt")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+
+    payload = push_payload(before=GONE, after=head)
+    payload["commits"] = [{"id": bad, "distinct": True}, {"id": middle}, {"id": head}]
+    selection = check.select_range("push", payload)
+
+    assert check.check_range(f"{head}~1..{head}") == 0, (
+        "the tip is clean — which is why reading it alone was the hole this closes"
+    )
+    assert selection.commits == (bad, middle, head), (
+        f"the payload lists three commits and the selection took {selection.commits}"
+    )
+    assert selection.revisions is None, "a range was formed where the point is that none exists"
+    assert check.check_commits(selection.commits, "probe") == 1, (
+        "a malformed commit below a clean tip passed a force-push to the default branch"
+    )
+
+
+def test_a_commit_the_payload_lists_and_the_clone_lacks_is_reported(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The array describes what GitHub received, which is not always what this checkout has.
+
+    A commit that cannot be read cannot be judged, and `git log` on a missing object raises rather
+    than returning nothing — so an unreadable SHA would take the whole gate down with it. They are
+    dropped and **counted in the note**, because *"12 commits checked"* on a push of 13 is the same
+    silence this finding is about.
+    """
+    monkeypatch.chdir(repository)
+    bad = commit(repository, BAD_TRAILER, name="one.txt")
+    head = commit(repository, GOOD_MESSAGE, name="two.txt")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+
+    payload = push_payload(before=GONE, after=head)
+    payload["commits"] = [{"id": bad}, {"id": "c" * 40}, {"id": head}]
+    selection = check.select_range("push", payload)
+
+    assert selection.commits == (bad, head)
+    assert "1 of them not in this clone" in selection.note, selection.note
+
+
+def test_a_commit_already_pushed_elsewhere_is_not_re_read(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`distinct: false` is GitHub saying *this one arrived on another branch*.
+
+    Re-reading it is how a gate starts failing for commits nobody in this push wrote — and this
+    repository has **278** commits predating the `Task:` requirement for it to find.
+    """
+    monkeypatch.chdir(repository)
+    old = commit(repository, BAD_TRAILER, name="one.txt")
+    head = commit(repository, GOOD_MESSAGE, name="two.txt")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+
+    payload = push_payload(before=GONE, after=head)
+    payload["commits"] = [{"id": old, "distinct": False}, {"id": head, "distinct": True}]
+    selection = check.select_range("push", payload)
+
+    assert selection.commits == (head,)
+    assert check.check_commits(selection.commits, "probe") == 0
+
+
+def test_a_truncated_payload_says_it_may_have_missed_some(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub caps `commits` at 2048, and a gate that read 2048 of 3000 must not imply it read all.
+
+    Driven at the cap rather than with 2048 real commits: what is being asserted is the sentence
+    the log carries, and building three thousand commits to produce it would test `git commit`.
+    """
+    monkeypatch.chdir(repository)
+    head = commit(repository, GOOD_MESSAGE, name="one.txt")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+
+    payload = push_payload(before=GONE, after=head)
+    payload["commits"] = [{"id": head}] * check.MAX_PAYLOAD_COMMITS
+    selection = check.select_range("push", payload)
+
+    assert f"caps that array at {check.MAX_PAYLOAD_COMMITS}" in selection.note, selection.note
+
+
 def test_a_force_push_to_the_default_branch_does_not_check_nothing(
     repository: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
