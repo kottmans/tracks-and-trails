@@ -35,14 +35,14 @@ from typing import Final
 
 import pytest
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QAccessible, QColor, QImage
+from PySide6.QtGui import QAccessible, QColor, QImage, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractScrollArea,
     QApplication,
     QComboBox,
     QGroupBox,
     QLineEdit,
-    QListWidget,
+    QListView,
     QMenu,
     QPlainTextEdit,
     QProgressBar,
@@ -56,6 +56,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tests.ui.conftest import Surface, focusable
 from tracks_and_trails.ui import settings_dialog
 from tracks_and_trails.ui import theme as ui_theme
 from tracks_and_trails.ui.row_delegate import SegmentState
@@ -271,24 +272,118 @@ def test_every_enumerated_state_declares_a_channel_that_exists() -> None:
         )
 
 
-def ink_pixels(widget: QWidget) -> int:
-    """How many pixels of `widget` are **not** its own fill.
+#: How far one pixel's brightness must move between two renders to count as a visible change.
+#:
+#: `theme.MINIMUM_CONTROL_CONTRAST` — WCAG 2.1's non-text floor of **3:1**, which is the number
+#: this project already uses for *an edge you can see*. Reusing it means this measurement agrees
+#: with the finding it exists to catch rather than with a threshold picked to make it agree: the
+#: idle and focus border colours sit **1.45:1** apart in light and **2.17:1** in dark, so every
+#: pixel of the original recolour falls under this bar and the whole change scores **zero**.
+VISIBLY_CHANGED: Final = ui_theme.MINIMUM_CONTROL_CONTRAST
 
-    **This is the measurement that distinguishes a thicker edge from a recoloured one.** A rule
-    that only changes hue leaves this count untouched, because every pixel that was fill is still
-    fill and every pixel that was border is still border. A rule that adds or thickens an edge
-    raises it.
 
-    The fill is taken as the most common colour in the render rather than from the palette: a
-    control's own background is `surface`, not `window`, and the first version of this measurement
-    compared against the wrong one and reported no change from a fix that plainly worked.
+def as_hex(pixel: int) -> str:
+    """One `QRgb` as `#rrggbb`, which is what `theme.contrast_ratio` reads."""
+    return f"#{pixel & 0xFFFFFF:06x}"
+
+
+def pixels_of(image: QImage) -> memoryview:
+    """Every pixel of `image` as one machine word, in order."""
+    return memoryview(bytes(image.constBits())).cast("I")
+
+
+def visible_change(before: QImage, after: QImage) -> int:
+    """How many pixels differ between two renders **in brightness**, not merely in hue.
+
+    **This is the whole instrument, and it took three tries to get right.** Every assertion about
+    focus in this file is this number, and each earlier version reported a pass for something that
+    was not one:
+
+    1. It counted pixels that differed from `theme.window`, when a control's own fill is
+       `surface` — so a fix that plainly worked measured zero.
+    2. It counted *ink*: pixels unlike the control's fill. Qt draws a `Sunken` `StyledPanel` as
+       two lines, one dark and one light, so a list's idle frame already put two rings of
+       not-the-fill pixels on screen; when the fix replaced both with two rings of accent the
+       count came out **identical to the pixel** — 5958 before, 5958 after, on a border that had
+       visibly doubled and turned gold.
+    3. Counting ink also assumes the fill stays put, and it does not: Qt hands `:default` to
+       whichever button has focus, so half the dialog buttons in this application *invert* when
+       focused. Measuring ink against a fill that itself changed compares two different questions.
+
+    So it asks the criterion's own question instead — **would a greyscale reading see a
+    difference?** — pixel against the same pixel, which needs no fill and survives the control
+    changing colour entirely. A recolour at the same brightness scores zero however large it is;
+    a thicker edge, an inverted fill and a redrawn arrow all score what they are worth.
     """
-    image = rendered(widget)
-    pixels = [
-        image.pixelColor(x, y).rgba() for y in range(image.height()) for x in range(image.width())
-    ]
-    fill, _count = Counter(pixels).most_common(1)[0]
-    return sum(1 for pixel in pixels if pixel != fill)
+    assert before.size() == after.size(), "the two renders are different sizes"
+    changed = Counter(zip(pixels_of(before), pixels_of(after), strict=True))
+    return sum(
+        count
+        for (first, second), count in changed.items()
+        if first != second
+        and ui_theme.contrast_ratio(as_hex(first), as_hex(second)) >= VISIBLY_CHANGED
+    )
+
+
+def focus_change(widget: QWidget, qapp: QApplication) -> int:
+    """Render `widget` unfocused and focused, and measure what a greyscale reading would keep."""
+    widget.clearFocus()
+    qapp.processEvents()
+    assert not widget.hasFocus(), f"{widget} kept focus after clearFocus()"
+    idle = rendered(widget)
+
+    widget.setFocus()
+    qapp.processEvents()
+    assert widget.hasFocus(), f"{widget} would not take focus, so this compares two idle renders"
+    return visible_change(idle, rendered(widget))
+
+
+def test_the_measure_sees_a_thicker_edge_and_not_a_recolour(qapp: QApplication) -> None:
+    """The instrument, against squares whose answers are known before it runs.
+
+    **Every assertion about focus in this file is `visible_change`'s output**, and it has been
+    wrong three times in ways that turned a broken fix green — the wrong background, a highlight
+    line counted as ink, and a fill that moved under the measurement. A metric that under-reports
+    change makes a *fix* look like a no-op and a *defect* look like nothing at all, and none of the
+    three was caught by a test, because the tests were the thing being measured.
+
+    So: the same square twice, a square whose edge thickens, a square whose edge changes hue
+    without changing brightness, and the two border colours this whole finding is about.
+    """
+
+    def square(edge: int, colour: str) -> QImage:
+        image = QImage(40, 40, QImage.Format.Format_ARGB32)
+        image.fill(QColor("#ffffff"))
+        if edge:
+            painter = QPainter(image)
+            painter.setPen(QPen(QColor(colour), edge))
+            # Inset by half the pen so the whole stroke lands inside the image.
+            painter.drawRect(edge // 2, edge // 2, 39 - edge, 39 - edge)
+            painter.end()
+        return image
+
+    plain = square(1, "#555555")
+    assert visible_change(plain, square(1, "#555555")) == 0, "the same render measured a change"
+
+    thicker = visible_change(plain, square(2, "#555555"))
+    assert thicker > 100, f"a doubled edge measured {thicker} pixels of change"
+
+    # `#555555` and `#4a4a7a` are 1.06:1 apart — a hue change with the brightness held still.
+    recoloured = visible_change(plain, square(1, "#4a4a7a"))
+    assert recoloured == 0, (
+        f"an edge recoloured at the same brightness measured {recoloured} pixels of change — this "
+        "is the one thing the measure must never see, because it is what focus used to do"
+    )
+
+    # And the finding's own pair, which is what the first version of this fix left in place.
+    for theme in THEMES:
+        defect = visible_change(square(1, theme.border), square(1, theme.accent))
+        assert defect == 0, (
+            f"recolouring a border from {theme.border} to {theme.accent} in {theme.name} measured "
+            f"{defect} pixels of change, and those two are "
+            f"{ui_theme.contrast_ratio(theme.border, theme.accent):.2f}:1 apart — a measure that "
+            "sees this passes the defect T202-R1 was raised for"
+        )
 
 
 def rendered(widget: QWidget) -> QImage:
@@ -391,7 +486,7 @@ CLASSES: Final[dict[str, type[QWidget]]] = {
     "QPushButton": QPushButton,
     "QComboBox": QComboBox,
     "QLineEdit": QLineEdit,
-    "QListWidget": QListWidget,
+    "QListView": QListView,
     "QTableView": QTableView,
     "QTreeView": QTreeView,
     "QPlainTextEdit": QPlainTextEdit,
@@ -415,7 +510,7 @@ FOCUSABLE: Final = tuple(control for control in ui_theme.BORDERED_CONTROLS if co
 #: `QApplication` yet to build a widget with. `test_the_scrolling_controls_are_the_scrolling_ones`
 #: is what stops the list being an opinion.
 SCROLLING: Final = frozenset(
-    {"QListWidget", "QTableView", "QTreeView", "QPlainTextEdit", "QTextEdit"}
+    {"QListView", "QTableView", "QTreeView", "QPlainTextEdit", "QTextEdit"}
 )
 
 
@@ -504,7 +599,7 @@ def test_a_bordered_control_left_out_of_the_inventory(qapp: QApplication) -> Non
 
     **`Qt.Popup` is `Qt.Window | 0x8`**, so `flags & Qt.Popup` is true of every top-level widget
     there is and the first version of this check excused everything. It was caught by mutating
-    `QListWidget` to `takes_focus=False`, which the check happily accepted; the window-type mask is
+    the list control to `takes_focus=False`, which the check happily accepted; the window-type mask
     the comparison Qt intends. A test that cannot fail is worth less than no test, because it also
     reports that the question has been asked.
     """
@@ -542,7 +637,7 @@ def test_focus_is_visible_without_reading_its_colour(
     no focus indicator at all.
 
     **Parametrised over the inventory**, which is the second round's whole point: the same
-    measurement over `QListWidget`, `QTableView`, `QTreeView`, `QPlainTextEdit`, `QTextEdit`, a
+    measurement over `QListView`, `QTableView`, `QTreeView`, `QPlainTextEdit`, `QTextEdit`, a
     stepper and a toolbar verb returned a **literal zero** in both palettes while the three
     controls the finding named were passing.
 
@@ -563,21 +658,13 @@ def test_focus_is_visible_without_reading_its_colour(
 
         elsewhere.setFocus()
         qapp.processEvents()
-        idle = ink_pixels(widget)
+        change = focus_change(widget, qapp)
 
-        widget.setFocus()
-        qapp.processEvents()
-        focused = ink_pixels(widget)
-
-        assert widget.hasFocus(), (
-            f"{control.selector!r} did not take focus, so this measures two idle renderings"
-        )
-        assert idle, f"{control.selector!r} rendered no ink at all, so this compares nothing"
         floor = MINIMUM_FOCUS_RING_SHARE * one_more_ring(widget)
-        assert focused - idle >= floor, (
-            f"{control.selector!r} in {theme.name} gains {focused - idle} pixels of ink when "
-            f"focused ({idle} to {focused}), under the {floor:.0f} its size asks for — focus is "
-            "being drawn by changing a colour rather than by changing the edge"
+        assert change >= floor, (
+            f"{control.selector!r} in {theme.name} changes {change} pixels in brightness when "
+            f"focused, under the {floor:.0f} its size asks for — focus is being drawn by changing "
+            "a colour rather than by changing the edge"
         )
     finally:
         qapp.setStyleSheet("")
@@ -701,6 +788,118 @@ def test_focus_does_not_paint_over_the_contents(
         )
     finally:
         qapp.setStyleSheet("")
+
+
+# --- the same question, asked of the application itself (T202-R1, third round) -----------------
+#
+# **Everything above reads the style sheet, and the style sheet is not the only thing that draws a
+# border.** The inventory was built by parsing `stylesheet()` for `border: <n>px solid`, so it
+# could only ever contain controls this project had thought to style — and `QListView` was not one
+# of them. Qt frames a `QListView` natively with a `StyledPanel`, `*:focus` then recoloured that
+# frame, and the two lists this application is mostly made of — the queue and the add dialog's
+# staging list — were conveying focus by colour alone while every test above passed.
+#
+# A parser cannot find that. Only rendering can. So this walks the **realised application**, asks
+# Qt which controls the keyboard can reach, and holds every one of them to the same measurement,
+# whatever draws it and whether or not anything in `theme.py` mentions it.
+
+#: The floor this sweep must clear before its silence means anything.
+#:
+#: **Measured 2026-08-15 across the nine surfaces**: 50 controls reached and measured and 12
+#: skipped as disabled, with the Settings screen contributing 18 and the preset manager 11. Set so
+#: that losing the largest surface fails it — 50 less 18 is 32, under this — which is the same
+#: reasoning and the same failure shape as `COVERAGE_FLOOR` in `test_accessibility.py`: not a
+#: control added or removed, but a whole screen quietly dropping out.
+#:
+#: The main window contributes **nothing**, and that is a real gap rather than an oversight. Its
+#: queue is a `QListView` that `_show_the_right_thing` hides while the queue is empty, and the
+#: inventory's queue is empty — so the very control `T202-R1`'s third round is about is not on any
+#: screen this sweep can see. What holds the line is that the defect and the fix are both by
+#: **class**: the add dialog's `StagingList` is a `QListView` on a screen that is realised, it
+#: measured zero here, and one rule fixed both.
+SURFACE_COVERAGE_FLOOR: Final = 34
+
+
+def surface_alone(surfaces: list[Surface], surface: Surface, qapp: QApplication) -> None:
+    """Show `surface` and hide the others, so its controls can actually hold the keyboard.
+
+    **Qt draws `:focus` from `hasFocus()`, which is false while another window is active** — and a
+    modal dialog blocks the window beneath it outright. The inventory opens the add dialog, the
+    Settings screen and the About box on top of the main window, so a sweep that walked it as it
+    stands would measure one surface and silently skip eight. The first version of this did exactly
+    that: 39 controls on the main window, every one of them reported as taking no focus.
+    """
+    for other in surfaces:
+        if other is not surface:
+            other.widget.window().hide()
+    window = surface.widget.window()
+    window.show()
+    window.activateWindow()
+    window.raise_()
+    qapp.processEvents()
+
+
+@pytest.mark.parametrize("theme", THEMES, ids=lambda theme: theme.name)
+def test_focus_is_visible_on_every_control_the_application_shows(
+    every_surface: list[Surface], qapp: QApplication, theme: ui_theme.Theme
+) -> None:
+    """**`T202-R1`, third round.** Every control a keyboard can reach, on every screen there is.
+
+    The bar is the same one the style-sheet sweep uses and it is applied to what is **drawn**: the
+    render must differ by more than a hue, measured as a change in ink of at least
+    `MINIMUM_FOCUS_RING_SHARE` of the control's own edge. A rule that only recolours scores zero
+    however the border got there — declared in `theme.py`, inherited from a base class nobody
+    styled, or drawn by Qt's own style.
+
+    **A change in either direction counts, and that is deliberate.** The question this criterion
+    asks is whether a user who cannot separate two hues can still tell focus has arrived, so what
+    matters is that the *drawing* changed and not that it improved. Two of the Settings screen's
+    spin boxes pass here by losing ink: focus gives them a style-sheet border, which switches them
+    to `QStyleSheetStyle` and coarsens their native arrows from 48 distinct colours to 5 — the
+    defect `T-133` left `QSpinBox` unstyled to avoid. That is visible, and it is not good; it is
+    reported as its own matter rather than hidden by a metric that would have called it a pass.
+
+    Disabled controls are skipped, because focus cannot land on one — twelve of them, checked to be
+    disabled rather than assumed. Qt's internal children are skipped too: focusing a `QSpinBox`
+    actually focuses its `qt_spinbox_lineedit`, and the control a user perceives is the parent,
+    which this sweep measures in its own right.
+    """
+    qapp.setStyleSheet(ui_theme.stylesheet(theme))
+    measured = 0
+    disabled = 0
+    faults: list[str] = []
+
+    for surface in reversed(every_surface):
+        surface_alone(every_surface, surface, qapp)
+        for widget in focusable(surface.widget):
+            if widget.objectName().startswith("qt_"):
+                continue
+            if not widget.isEnabled():
+                disabled += 1
+                continue
+
+            change = focus_change(widget, qapp)
+            measured += 1
+            control = f"{type(widget).__name__} {widget.objectName()}"
+            if change >= MINIMUM_FOCUS_RING_SHARE * one_more_ring(widget):
+                continue
+            faults.append(
+                f"{control} on {surface.label}: {change} pixels change in brightness on "
+                f"focus, under the {MINIMUM_FOCUS_RING_SHARE * one_more_ring(widget):.0f} its "
+                "size asks for"
+            )
+
+    qapp.setStyleSheet("")
+    assert not faults, (
+        f"in {theme.name}, focus is drawn by changing a colour rather than the edge on: "
+        + "; ".join(sorted(faults))
+    )
+    assert measured >= SURFACE_COVERAGE_FLOOR, (
+        f"only {measured} controls were reached across {len({s.label for s in every_surface})} "
+        f"surfaces, under the floor of {SURFACE_COVERAGE_FLOOR} — a screen has dropped out of the "
+        "sweep, which is how a criterion comes to be applied to a subset"
+    )
+    assert disabled, "no disabled control was skipped, so that branch is doing nothing"
 
 
 # --- painted state, which no style sheet reaches -----------------------------------------------

@@ -319,11 +319,13 @@ BORDERED_CONTROLS: Final = (
         reason="A tab stop, and the one control where the keyboard is the only way to use it.",
     ),
     BorderedControl(
-        selector="QListWidget",
+        selector="QListView",
         takes_focus=True,
         reason=(
-            "A tab stop with arrow-key navigation inside it: the playlist picker and the preset "
-            "list are both reached and driven entirely from the keyboard."
+            "A tab stop with arrow-key navigation inside it. **The base class, not `QListWidget`** "
+            "(`T202-R1`, third round): the queue and the add dialog's staging list are plain "
+            "`QListView`s, so a rule naming `QListWidget` reached the preset manager and missed "
+            "the two lists this application is mostly made of."
         ),
     ),
     BorderedControl(
@@ -424,6 +426,7 @@ THICKENED_FOCUS_SELECTOR: Final = ", ".join(
 #: something has to be moved out of this tuple deliberately.
 COINCIDENTAL_SEMANTIC_VALUES: Final = (
     "*:focus",
+    "QScrollArea:focus",
     THICKENED_FOCUS_SELECTOR,
     'QToolBar QToolButton[primaryAction="true"]:focus',
     'QToolBar QToolButton[primaryAction="true"]:pressed',
@@ -501,7 +504,7 @@ STATE_RULES: Final = (
     ),
     StateRule(
         selector=(
-            "QListWidget:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, "
+            "QListView:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, "
             "QTextEdit:focus"
         ),
         conveys="keyboard focus — the padding half, for the views and the text edits",
@@ -528,6 +531,37 @@ STATE_RULES: Final = (
         reason=(
             "Tab reaches these, measured, and the figures land on `T-149`'s checked geometry "
             "exactly — so a focused, paused button keeps its shape and takes the accent hue."
+        ),
+    ),
+    StateRule(
+        selector="QScrollArea:focus",
+        conveys="keyboard focus, on a container Qt puts in the tab chain",
+        channel="geometry",
+        reason=(
+            "A two-pixel ring appears where a `NoFrame` container had no edge at all, paid for by "
+            "the padding above so nothing moves. One pixel was measured as good as nothing: 254 "
+            "changed pixels against a floor of 1516 on the Settings screen's scroller."
+        ),
+    ),
+    StateRule(
+        selector='QPushButton:default:focus, QToolBar QToolButton[primaryAction="true"]:focus',
+        conveys="keyboard focus, on the two controls whose ground is the brand fill",
+        channel="geometry",
+        reason=(
+            "The ring is drawn in `on_primary` rather than `accent`, because accent on that fill "
+            "is 1.42:1 in light and 1.25:1 in dark — `T-147`'s own measurement — so thickening it "
+            "left an edge a greyscale reader still could not see. Measured at zero changed pixels "
+            "before this rule and a full ring after."
+        ),
+    ),
+    StateRule(
+        selector="QComboBox QAbstractItemView, QComboBox QAbstractItemView:focus",
+        conveys="nothing — a drop-down is never on screen without the keyboard",
+        channel="geometry",
+        reason=(
+            "The one bordered control that keeps its 1px edge when focused, because it has no "
+            "unfocused state to be told apart from; listed here so the exemption is enumerated "
+            "rather than implied, and proved by asking Qt whether it is a popup window."
         ),
     ),
     StateRule(
@@ -756,12 +790,12 @@ QWidget {{
     background-color: {theme.window};
     color: {theme.text};
 }}
-QGroupBox, QListWidget, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
+QGroupBox, QListView, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
     background-color: {theme.surface};
     border: 1px solid {theme.border};
     border-radius: 4px;
 }}
-QListWidget, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
+QListView, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
     /* **A pixel of padding, so focus has something to spend** (`T202-R1`, second round). Every
        control whose border thickens on focus pays for the extra pixel out of its own padding, and
        these had none. **Qt does not re-measure a frame when focus arrives** — the width is taken
@@ -862,11 +896,19 @@ QMenu::separator {{
     background: {theme.rule};
     margin: 4px 6px;
 }}
-QComboBox QAbstractItemView {{
+QComboBox QAbstractItemView, QComboBox QAbstractItemView:focus {{
     /* The drop-down list is its own view and does not inherit `QMenu`'s rules. Same defect,
-       same remedy: without this, the row's format control highlights nothing as you move. */
+       same remedy: without this, the row's format control highlights nothing as you move.
+
+       **Both states, because the rule above now borders every `QListView` and this is one**
+       (`T202-R1`, third round). A popup is on screen only while it is the thing being used, so it
+       is never *not* focused: a ring that appeared on focus would distinguish it from a state it
+       is never in, and the 1px of padding that pays for one would inset the list for nothing.
+       `BORDERED_CONTROLS` records the same exemption, and the sweep proves it by asking Qt
+       whether this is a popup window rather than by taking the reason on trust. */
     background-color: {theme.surface};
     border: 1px solid {theme.border};
+    padding: 0px;
     selection-background-color: {theme.primary};
     selection-color: {theme.on_primary};
 }}
@@ -1086,6 +1128,24 @@ QToolBar QToolButton[primaryAction="true"]:disabled {{
     color: {theme.muted};
     border-color: {theme.border};
 }}
+QScrollArea {{
+    /* **Two pixels of padding, for the ring below to spend** (`T202-R1`, third round). A scroll
+       area is a `NoFrame` container with nothing to thicken, and `Qt` makes it a tab stop: the
+       keyboard lands on the Settings screen's scroller and on the options dialog's, and until this
+       rule the global one-pixel ring drew so little of itself that the whole-application sweep
+       measured **254 changed pixels against a 1516 floor** on the first and a marginal **1146
+       against 1175** on the second. A container is a strange thing to give the keyboard, and that
+       is Qt's default rather than this application's decision — but while it is a tab stop it has
+       to say so. */
+    padding: 2px;
+}}
+QScrollArea:focus {{
+    /* Two pixels, because one measured as good as nothing here, and the padding above pays for
+       both so the contents do not move: measured, the viewport keeps `QRect(2, 2, 550, 693)`
+       exactly. */
+    border: 2px solid {theme.accent};
+    padding: 0px;
+}}
 QProgressBar {{
     background-color: {theme.sunken};
     border: 1px solid {theme.border};
@@ -1136,7 +1196,7 @@ QPushButton:focus {{
 QComboBox:focus, QLineEdit:focus {{
     padding: 2px 5px;
 }}
-QListWidget:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, QTextEdit:focus {{
+QListView:focus, QTableView:focus, QTreeView:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     padding: 0px;
 }}
 QToolButton[stepButton="true"]:focus {{
@@ -1154,6 +1214,24 @@ QToolBar QToolButton[primaryAction="true"]:focus {{
        padding is wider than the plain verb's. The attribute selector outranks `QToolBar
        QToolButton:focus`, which would otherwise apply the narrower figure and move the button. */
     padding: 3px 11px;
+}}
+QPushButton:default:focus, QToolBar QToolButton[primaryAction="true"]:focus {{
+    /* **A ring is only a ring if it contrasts with the fill it is drawn on** (`T202-R1`, third
+       round). These two are the controls whose ground is `primary`, and `T-147` measured accent
+       against that ground at **1.42:1 in light and 1.25:1 in dark** — its exact words, about the
+       hover ring it removed for this reason. The focus rule then put the same unreadable pair
+       back: thickening a border a greyscale reader cannot see leaves it a border they cannot see,
+       and the whole-application sweep measured **zero** changed pixels on both.
+
+       `on_primary` is the one colour guaranteed to work here, because it is what this fill was
+       chosen to carry text in — **7.64:1** in light and **5.00:1** in dark, against the 3:1 that
+       `MINIMUM_CONTROL_CONTRAST` asks of an edge.
+
+       **Qt hands `:default` to whichever button has focus**, which is why this is not only about
+       the button that starts out default: in a dialog, every button's ground turns `primary` at
+       the moment it takes the keyboard. For the others the fill inverting is itself the change a
+       greyscale reader sees; for the one already wearing it, this ring is all there is. */
+    border-color: {theme.on_primary};
 }}
 """.strip()
 

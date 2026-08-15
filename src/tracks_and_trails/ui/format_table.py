@@ -40,20 +40,19 @@ from PySide6.QtCore import (
 from PySide6.QtCore import (
     QPersistentModelIndex as _PersistentIndex,
 )
-from PySide6.QtGui import QFocusEvent, QKeyEvent, QPainter
+from PySide6.QtGui import QColor, QFocusEvent, QKeyEvent, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QHeaderView,
     QLabel,
-    QStyle,
-    QStyleOptionFocusRect,
     QTableView,
     QVBoxLayout,
     QWidget,
 )
 
 from tracks_and_trails.core.models import FormatInfo
+from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.format_selection import (
     FormatSelection,
     SelectionMode,
@@ -89,6 +88,13 @@ SIZE_COLUMN: Final = 7
 NOTES_COLUMN: Final = 8
 
 COLUMN_COUNT: Final = len(COLUMN_HEADERS)
+
+#: How thick the current section's edge is drawn, in pixels (`T202-R1`).
+#:
+#: Two, to match every other focused control in this application: `theme.py` thickens a bordered
+#: control's border from one pixel to two when it takes the keyboard, and a header that marked the
+#: same state a different thickness would be a second vocabulary for one fact.
+FOCUS_EDGE: Final = 2
 
 #: The role the view sorts on: the **projected value**, not the rendered string (`T-075`).
 #:
@@ -431,14 +437,28 @@ class SortableHeader(QHeaderView):
         logicalIndex: int,  # noqa: N803 - Qt's name
     ) -> None:
         super().paintSection(painter, rect, logicalIndex)
-        if self.hasFocus() and logicalIndex == self._current:
-            option = QStyleOptionFocusRect()
-            option.initFrom(self)
-            option.rect = rect.adjusted(1, 1, -1, -1)
-            option.state |= QStyle.StateFlag.State_KeyboardFocusChange
-            self.style().drawPrimitive(
-                QStyle.PrimitiveElement.PE_FrameFocusRect, option, painter, self
-            )
+        if not (self.hasFocus() and logicalIndex == self._current):
+            return
+        # **Drawn here rather than asked of `PE_FrameFocusRect`** (`T202-R1`, third round). That
+        # primitive is the style's idea of a focus rectangle, and once a style sheet is installed
+        # the style is `QStyleSheetStyle`, whose idea of one is a hairline that barely differs from
+        # the header strip it sits on. Measured on the rendered header: **zero** pixels changed by
+        # 3:1 or more when this section took the keyboard, in both palettes — the whole-application
+        # sweep in `tests/ui/test_colour_is_never_alone.py` is what found it, and this class's own
+        # docstring had already named the defect it is: *a focus rectangle a user cannot see is the
+        # same defect one sense over*.
+        #
+        # `accent` at two pixels, which is the same shape and the same colour every other focused
+        # control in this application takes, and it sits **4.61:1** against the header strip in
+        # light and **7.78:1** in dark — over the 3:1 `theme.MINIMUM_CONTROL_CONTRAST` asks of an
+        # edge. `theme.applied()` for the colour, as `ui/row_delegate.py` does for the same reason:
+        # a painter cannot read a style sheet.
+        painter.save()
+        painter.setPen(QPen(QColor(theme.applied().accent), FOCUS_EDGE))
+        # Inset by half the pen, so a two-pixel stroke lands inside the section rather than
+        # straddling its boundary and being clipped to one pixel.
+        painter.drawRect(rect.adjusted(1, 1, -FOCUS_EDGE, -FOCUS_EDGE))
+        painter.restore()
 
     def focusInEvent(self, event: QFocusEvent) -> None:
         """Arrive on the column the table is sorted by, which is the one the user last acted on."""

@@ -5,11 +5,13 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 (two corrections re-corrected) — **the overnight six-task review came
+**Last updated:** 2026-08-15 (third round on two findings) — **the overnight six-task review came
 back at `9300adc`: `T-021` Approved, `T-246` approved as a records-only filing, and four blockers.**
-The second review pass closed `T200-R7` and `T243-R1` and **held `T202-R1` and `T240-R1` open,
-because each correction had fixed the instance and left the class**. Both are corrected again, one
-commit each, still unpushed. **The 60-run soak finished clean** — 60 passed, 0 test failures, 0
+`T200-R7` and `T243-R1` are closed. `T202-R1` and `T240-R1` have each been held open twice more:
+the second round fixed the instance and left the class, and the third found that **the gate itself
+could only see what the style sheet had thought to style**. Both are corrected again, one commit
+each, still unpushed. **`T-240` is Blocked under the review-budget rule** — another focused Medium
+pass needs the maintainer's authorization. **The 60-run soak finished clean** — 60 passed, 0 test failures, 0
 process deaths, 8h06m, at `f3eb9f8`; `OPS-007`'s bar is met and `T-238`'s guard never fired, so its
 criterion 4 stays open.
 
@@ -21,23 +23,23 @@ title. Fixed with buddy labels — the mechanism Qt's own source names for Linux
 dropped. The sweep found a fifth combo reading had missed. **`T-245` is withdrawn**: it was the
 criterion failing, not follow-up work.
 
-**`T202-R1` (High, second round) — the fix covered the three controls the finding named.** Focus was
-conveyed by colour alone on every already-bordered control; the correction thickened `QPushButton`,
-`QComboBox` and `QLineEdit`. **Seven others scored a literal zero ink gain in both palettes** — a
-list, a table, a tree, two text edits, a stepper, and a toolbar verb that the sheet's own comment
-said *nothing on this bar takes focus* about, where Tab reaches it. `theme.BORDERED_CONTROLS` is the
-inventory now: **all fifteen bordered controls**, each declaring whether the keyboard can land on it,
-and the sweep reads the bordered set **out of the generated sheet** so a sixteenth cannot be added
-quietly. Every exemption is put to Qt rather than believed. Measured after: **0.90 to 1.02 of a full
-extra ring** everywhere it applies.
+**`T202-R1` (High, third round) — the inventory was parsed out of the style sheet.** It could only
+contain controls somebody had already written a rule for, and the queue is a plain `QListView` that
+Qt frames natively — one character away from the `QListWidget` the sheet named, and invisible to a
+parser. **The sweep walks the realised application now**: nine screens, 50 keyboard-reachable
+controls, both palettes, whatever draws the border. It found three more of the same defect, all
+fixed — an accent ring on the brand fill (**1.42:1**, which `T-147` had already measured and
+rejected), the format table's header rectangle drawn through `PE_FrameFocusRect`, and two scroll
+areas Qt makes tab stops. **The instrument was wrong for the third time**: counting ink scored a
+doubled gold border at *exactly zero change* because Qt's sunken frame draws a light line too. It
+measures brightness change per pixel now, at WCAG's 3:1 — the threshold under which the original
+defect's **1.45:1** and **2.17:1** both fall.
 
-**`T240-R1` (Medium, second round) — `--no-merges` was kept for one caller and could not mean what
-that caller needed.** It skipped *authored* merges in a pull-request branch along with GitHub's
-synthetic one, which the check's own test demonstrated. A pull request is read as
-`base.sha..head.sha` now — the synthetic merge is excluded by **not being in the range** — and the
-option is gone. The other half: **range selection has moved out of the workflow's `bash` into
-`select_range`**, where the force-push-to-`main` case that resolved to an empty range is one of
-seven event shapes under test.
+**`T240-R1` (Medium, third round) — the commits below the tip were never unknowable.** The
+force-push fallback read the tip alone and recorded the rest as undeterminable; GitHub's `push`
+payload carries a **`commits` array**, so a malformed commit under a clean tip is readable and was
+being walked past. It is read from the event now, honouring `distinct`, dropping and **counting**
+commits this clone lacks, and saying so when the array hits GitHub's 2048 cap.
 
 **`T243-R1` (Medium) — the default, not the type.** `str | None` was right and `= None` was not:
 `with_failure(EXTRACTOR_ERROR)` type-checked and lost the diagnostic. Required again; removing the

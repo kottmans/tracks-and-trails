@@ -511,11 +511,67 @@ it**, and this task owns making it complete rather than incidental.
 
 ### T-202 — Nothing is said by colour alone
 
-**Status:** **In Review — corrected twice, 2026-08-15.** The first review returned **Changes
-requested** with `T202-R1` (High): *focus* was still conveyed by colour alone, and the sweep
-exempted it by name. The second pass **held `T202-R1` open**: the correction had fixed the three
-controls the finding named and left every other bordered control recolouring. `AGENTS.md` §10
-permits correcting a High without another pass authorization.
+**Status:** **In Review — corrected three times, 2026-08-15.** The first review returned
+**Changes requested** with `T202-R1` (High): *focus* was still conveyed by colour alone, and the
+sweep exempted it by name. The second pass **held it open** — the correction had fixed the three
+controls the finding named and left every other bordered control recolouring. The third pass held
+it open again: the inventory was parsed out of the style sheet, so a `QListView`, framed by Qt and
+mentioned nowhere in `theme.py`, was invisible to it. `AGENTS.md` §10 permits correcting a High
+without another pass authorization.
+
+#### `T202-R1`, third round — the inventory could only see what `theme.py` had thought to style
+
+**The queue is a `QListView`, and the sheet said `QListWidget`.** Qt frames a `QListView` natively
+with a `StyledPanel`, `*:focus` recoloured that frame, and the two lists this application is mostly
+made of — the queue and the add dialog's staging list — were conveying focus by colour alone while
+every test passed. The second round's inventory was **parsed out of the style sheet**, so it could
+only ever contain controls somebody had already written a rule for. One character of that
+selector — `QListWidget` for `QListView` — was invisible to it.
+
+**A parser cannot find that; only rendering can.** So the sweep now walks the **realised
+application**: the nine screens `tests/ui/test_accessibility.py` already opens, every control Qt
+says the keyboard can reach, whatever draws its border. 50 controls measured, 12 skipped as
+disabled, both palettes. That inventory moved to `tests/ui/conftest.py` so both files walk one
+list — building a second one here would have been `T200-R3`'s defect with a module boundary in
+front of it.
+
+**The sweep found three more of the same defect, and all three are fixed.**
+
+- **A ring on the brand fill is not a ring.** `QPushButton:default` and the primary toolbar verb
+  sit on `primary`, and `T-147` had already measured accent against that ground at **1.42:1 in
+  light and 1.25:1 in dark** — its own reason for removing a hover ring. The second round put the
+  identical unreadable pair back as a focus ring: measured at **zero** changed pixels on both. They
+  take `on_primary` now, **7.64:1** and **5.00:1**.
+- **The format table's header drew its focus rectangle through `PE_FrameFocusRect`**, which under a
+  style sheet is `QStyleSheetStyle`'s idea of one — a hairline that measured **zero** against the
+  header strip. `SortableHeader.paintSection` draws the current section itself now, 2px accent,
+  **4.61:1** in light and **7.78:1** in dark. Its own docstring had named this defect in advance:
+  *a focus rectangle a user cannot see is the same defect one sense over.*
+- **Two scroll areas are tab stops with nothing to thicken.** Qt puts a `QScrollArea` in the tab
+  chain and both dialogs have one; the global 1px ring drew **254 changed pixels against a 1516
+  floor** on the Settings screen's. They get two pixels of padding and a 2px ring, and the viewport
+  keeps `QRect(2, 2, 550, 693)` exactly.
+
+**The measuring instrument was wrong for the third time, and this is the important part.** It
+counted *ink* — pixels unlike the control's own fill — and Qt draws a `Sunken` `StyledPanel` as two
+lines, one dark and one light. When the fix replaced both with two rings of accent the count came
+out **identical to the pixel**: 5958 before, 5958 after, on a border that had visibly doubled and
+turned gold. Counting ink also assumes the fill holds still, and Qt hands `:default` to whichever
+button has focus, so half this application's dialog buttons *invert* when focused.
+
+It asks the criterion's own question now — **would a greyscale reading see a difference?** — pixel
+against the same pixel, at `MINIMUM_CONTROL_CONTRAST`. That threshold is not chosen to make the
+answer come out right: the idle and focus borders of the original defect are **1.45:1** and
+**2.17:1** apart, both under WCAG's 3:1 non-text floor, so the defect scores zero by the standard
+rather than by a number picked afterwards. `test_the_measure_sees_a_thicker_edge_and_not_a_recolour`
+is pointed at the instrument itself, because all three of its errors reported a pass and none was
+caught by anything.
+
+**Six mutations, all caught.** Naming `QListWidget` again — sheet and inventory together, so the
+parser sweep agrees with itself — is caught by the rendered sweep, which is the whole claim of this
+round. Ringing the brand fill in accent, dropping the scroll area's ring, letting the style draw the
+header's rectangle, weakening the measure to *any* difference, and letting the sweep walk the
+inventory without hiding the other windows each fail too.
 
 #### `T202-R1`, second round — the fix was written against the examples, not the property
 

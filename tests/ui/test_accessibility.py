@@ -56,14 +56,11 @@ screen in order to audit it can pass over a screen no user can open, which is th
 wearing this file's clothes.
 """
 
-import time
 from collections.abc import Iterator
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final, cast
 
-import pytest
-from PySide6.QtCore import QObject, Qt
+from PySide6.QtCore import QObject
 from PySide6.QtGui import QAccessible, QAccessibleInterface, QAction
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -79,8 +76,7 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-from tracks_and_trails import app as application
-from tracks_and_trails.downloader.ytdlp_service import YtdlpService
+from tests.ui.conftest import Surface, focusable, reaches_by_tab
 from tracks_and_trails.ui.keyboard import ROUTE_ELSEWHERE_PROPERTY
 from tracks_and_trails.ui.main_window import MainWindow
 
@@ -250,21 +246,6 @@ def describe(nodes: list[Node]) -> str:
     return "\n".join(str(node) for node in nodes)
 
 
-def reaches_by_tab(widget: QWidget) -> bool:
-    """Whether a keyboard can put focus on `widget` **with Tab** (`T200-R2`).
-
-    **The capability, not the absence of its opposite.** This asked `focusPolicy() != NoFocus`,
-    and `Qt.FocusPolicy.ClickFocus` satisfies that while being exactly as mouse-only as `NoFocus`
-    is — so setting a control to `ClickFocus` removed it from the keyboard and left every
-    accessibility test green. `NoFocus` is 0 and `ClickFocus` is 2; neither carries the `TabFocus`
-    bit, which is what the chain walks.
-
-    Testing the bit rather than naming the three policies that happen to include it means a policy
-    this project has not used yet is classified by what it *does*.
-    """
-    return bool(int(widget.focusPolicy()) & int(Qt.FocusPolicy.TabFocus))
-
-
 def radio_group_of(widget: QAbstractButton) -> list[QAbstractButton]:
     """The auto-exclusive buttons `widget` competes with, however the group was formed.
 
@@ -318,228 +299,6 @@ def reached_by_arrows_in_its_group(widget: QWidget) -> bool:
     if not isinstance(widget, QAbstractButton) or not widget.autoExclusive() or widget.isChecked():
         return False
     return any(button.isChecked() and reaches_by_tab(button) for button in radio_group_of(widget))
-
-
-def focusable(widget: QWidget) -> list[QWidget]:
-    """Every visible descendant **Tab** can land on, the widget itself included.
-
-    `isVisibleTo` rather than `isVisible`, because a surface under test is realised but not
-    necessarily shown on the offscreen platform, and a control hidden inside a collapsed box is
-    genuinely unreachable while a control on an unshown window is not.
-
-    **Scoped to the surface's own top-level window, which is not a detail.** A dialog opened from
-    the main window is *parented* to it, so `findChildren` reaches straight into the Settings
-    screen and the add dialog and reports their controls as the window's own. The first run of the
-    sweep below did exactly that: it named 39 controls the window's focus chain "never reached",
-    every one of them belonging to a different window that has a chain of its own. A focus chain
-    does not cross a window boundary, so neither does this.
-    """
-    home = widget.window()
-    found = [
-        child
-        for child in widget.findChildren(QWidget)
-        if reaches_by_tab(child) and child.isVisibleTo(widget) and child.window() is home
-    ]
-    if reaches_by_tab(widget):
-        found.insert(0, widget)
-    return found
-
-
-# --- one inventory of realised surfaces (T200-R3) ---------------------------------------------
-#
-# **This file used to carry two of these and the second one was the defect.** Top-level screens
-# were opened by `surfaces()`; the screens below the add dialog were built by a `nested_surfaces`
-# fixture; and every check then chose which of the two it looked at. `T200-R3` was reopened twice
-# on that shape — the name check grew a nested twin, then the route check grew one, and the
-# **focus-order** check never did, so adding `setTabOrder(embed_subtitles, audio_codec)` to
-# `OptionsDialog` inverted a visible order while all fourteen assertions passed.
-#
-# The reviewer named the class rather than the instance: *a gate asks an adjacent implementation
-# question rather than the criterion's user-facing question*, four times. Two inventories is how a
-# criterion comes to be applied to a subset — nobody decides to skip a surface, they just write the
-# next loop over the list they were already holding.
-#
-# **So there is one inventory now**, and every criterion-owned check walks all of it. A surface
-# records how it was realised on itself, because that is a genuine difference between these
-# screens; what is not allowed is for a *check* to have an opinion about which ones it applies to.
-
-
-@dataclass(frozen=True, slots=True)
-class Surface:
-    """One realised screen, carrying what is genuinely different about it.
-
-    Two of these fields exist because a real difference would otherwise have to live in the checks,
-    which is what produced `T200-R3`. Both are properties **of the screen**, and both are asserted
-    somewhere rather than merely believed.
-    """
-
-    label: str
-    widget: QWidget
-
-    #: Whether the application opened it, or this file constructed it.
-    #:
-    #: The screens below the add dialog are genuinely reachable — `AddUrlDialog.open_format_table`,
-    #: `open_template_editor`, `open_options` and `open_preset_manager` are the routes, asserted by
-    #: `tests/ui/test_add_dialog.py` — but reaching them needs a *staged row*, which needs a real
-    #: probe against a fixture. Driving that here would make an accessibility failure ambiguous
-    #: with a probe failure. Everything this file asks of a screen is answerable either way; only
-    #: modality, which is a fact about being *opened*, is asked of the opened ones alone.
-    opened_through_its_route: bool
-
-    #: Whether Tab is expected to reach anything at all on it.
-    #:
-    #: **The main window is the one surface where the answer is no, and it is a criterion rather
-    #: than a gap** (`T-234`): nothing on its toolbar may take focus, because `T203-R3` recorded a
-    #: focusable toolbar widget stealing `Shift+F10` from the row menu on a freshly opened window.
-    #: Its verbs are reached by menu and by shortcut, asserted separately below. Every other
-    #: surface with an empty chain is a defect, and `test_every_surface_is_fully_reachable_by_tab`
-    #: says so.
-    expects_a_tab_chain: bool = True
-
-
-class QuietYtdlp(YtdlpService):
-    """A version service that spawns nothing, injected through `compose`'s own seam (`T200-R6`).
-
-    **A widget audit was starting a real yt-dlp child.** `open_settings()` calls `refresh()`, the
-    real service answers it by spawning a process and importing yt-dlp, and this file opens the
-    Settings screen in every check that walks the inventory. The module printed *"14 passed in
-    0.56 s"* and then did not exit within twelve seconds — a passing summary measures assertion
-    time, not process completion, and the Implementer's broad suite hid it by doing enough other
-    work while those children finished.
-
-    The first correction closed the window through `composition.shutdown.begin()`, which is the
-    right lifecycle and does close the manager, the writer, the database and the instance lock —
-    but `OrderlyShutdown` does not own this task, so the process still hung. `compose()` has had an
-    injection seam for exactly this since `T-198`; this is that seam, used.
-
-    **A subclass rather than a stand-in**, so the signals, the busy state and the guard against two
-    operations at once are the production ones and only the three methods that touch a process are
-    replaced. `tests/integration/test_composition.py` has one of these for the same reason; it is
-    not imported from there because a `tests/ui` module reaching into `tests/integration` couples
-    two suites that run separately, and the shared thing would be four lines of stub.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(directory=Path("/nonexistent-in-tests"))
-
-    def refresh(self) -> None:
-        """Answer nothing, and spawn nothing to answer it with."""
-
-    def install_latest_version(self) -> None:
-        """Never reached here; overridden so no audit can start an install."""
-
-    def revert(self) -> None:
-        """Never reached here; overridden so no audit can start a revert."""
-
-
-@pytest.fixture
-def composed(qapp: QApplication, tmp_path: Path) -> Iterator[MainWindow]:
-    """The real application, wired by `app.compose`, so every route below is the real route."""
-    composition = application.compose(
-        qapp,
-        database=tmp_path / "queue.sqlite3",
-        output_directory=tmp_path / "downloads",
-        geometry_file=tmp_path / "window.toml",
-        settings_file=tmp_path / "settings.toml",
-        cache_directory=tmp_path / "cache",
-        # Nothing is downloaded: every claim here is about widgets.
-        entry_point=lambda *_args, **_kwargs: None,
-        # And nothing is resolved: see `QuietYtdlp` (`T200-R6`).
-        ytdlp_service=QuietYtdlp(),
-    )
-    window = composition.window
-    window.show()
-    qapp.processEvents()
-    yield window
-    # **Torn down through the lifecycle composition owns.** Closing the window alone leaves the
-    # queue writer and the database open. `shutdown.begin()` is the same route
-    # `tests/integration/test_composition.py` drives and the one the application takes when a user
-    # closes the window. It does not own the version service, which is why `QuietYtdlp` is above
-    # rather than instead of this.
-    window.close()
-    composition.shutdown.begin()
-    deadline = time.monotonic() + 30
-    while not composition.shutdown.finished and time.monotonic() < deadline:
-        qapp.processEvents()
-        time.sleep(0.005)
-    qapp.processEvents()
-    assert composition.shutdown.finished, "composition never finished shutting down"
-
-
-@pytest.fixture
-def every_surface(composed: MainWindow, qapp: QApplication) -> Iterator[list[Surface]]:
-    """Every screen this application shows, realised, in one list.
-
-    The top-level screens are opened the way the application opens them — `open_add_dialog()`,
-    `open_settings()`, `show_about()` — rather than constructed. **`T-201` is why.** Its text was
-    written, tested and correct for twelve error classes and reached nobody, because the only
-    widget that composed it was one `UX-005` §2 had left nothing constructing. A pass that
-    instantiates a screen in order to audit it can pass over a screen no user can open.
-
-    The screens below the add dialog are constructed, for the reason recorded on
-    `Surface.opened_through_its_route`, and **shown**: geometry is what
-    `test_tab_order_follows_visual_order_on_every_surface` compares, and an unrealised widget has
-    none worth comparing.
-    """
-    from tracks_and_trails.core.models import FormatInfo
-    from tracks_and_trails.core.presets import BUILT_IN_PRESETS
-    from tracks_and_trails.core.settings import Settings
-    from tracks_and_trails.ui.format_table import FormatTable
-    from tracks_and_trails.ui.options_dialog import OptionsDialog
-    from tracks_and_trails.ui.playlist_picker import PlaylistPicker
-    from tracks_and_trails.ui.preset_manager import PresetManager
-    from tracks_and_trails.ui.template_editor import TemplateEditor
-
-    inventory: list[Surface] = [
-        Surface(
-            "main window",
-            composed,
-            opened_through_its_route=True,
-            expects_a_tab_chain=False,
-        )
-    ]
-
-    add = composed.open_add_dialog()
-    qapp.processEvents()
-    inventory.append(Surface("add dialog", add, opened_through_its_route=True))
-
-    settings = composed.open_settings()
-    assert settings is not None, (
-        "composition wired no settings writers, so the Settings screen never opened and this "
-        "sweep would silently cover one surface fewer"
-    )
-    qapp.processEvents()
-    inventory.append(Surface("settings", settings, opened_through_its_route=True))
-
-    about = composed.show_about()
-    qapp.processEvents()
-    inventory.append(Surface("about", about, opened_through_its_route=True))
-
-    built: list[tuple[str, QWidget]] = [
-        # **With a row in it.** An empty table publishes no operable control, and a sweep over
-        # nothing is what `T-227`'s gate did the moment it succeeded.
-        ("format table", FormatTable([FormatInfo(format_id="137", extension="mp4", height=1080)])),
-        ("template editor", TemplateEditor("%(title)s.%(ext)s")),
-        ("playlist picker", PlaylistPicker()),
-        ("options dialog", OptionsDialog(preset=BUILT_IN_PRESETS[0])),
-        ("preset manager", PresetManager(Settings(), save=lambda _settings: None)),
-    ]
-    for label, widget in built:
-        widget.show()
-        inventory.append(Surface(label, widget, opened_through_its_route=False))
-    qapp.processEvents()
-
-    yield inventory
-
-    # **The constructed ones are owned here, because nothing else owns them** (`T-238`). They are
-    # built parentless, and a parentless widget left to the garbage collector has its destructor
-    # run inside whichever test comes next — which segfaulted the very next `compose()` when this
-    # was a plain function. `T-238`'s guard is the record of that exact shape: *views alive with no
-    # parent: zero*.
-    for _label, widget in built:
-        widget.close()
-        widget.deleteLater()
-    qapp.processEvents()
 
 
 #: The floor the whole-application sweeps must clear before their silence means anything.
