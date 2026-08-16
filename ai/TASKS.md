@@ -7185,8 +7185,15 @@ deliberately, in front of the whole built window, and **recorded** in `ai/eviden
 kinds, since `T-209`'s audit found both spend that turn at 190×26.
 
 **Status:** Proposed — filed 2026-08-09, owning the exit criterion the maintainer added the same
-day. The criterion had no owner in the map above, which is exactly the failure that map exists to
-surface.
+day; **the checklist half is written**, 2026-08-16, at `docs/PHASE_4_CHECKLIST.md` — before the
+run, which is this task's first acceptance criterion. Forty-one rows across seven sections,
+derived from `docs/UX_SPEC.md` §2/§3/§8/§11/§12 and the accepted criteria of every surface Phase 4
+added or reshaped, in `docs/CRITERION_8_CHECKLIST.md`'s shape and under its guards: rows say what
+a user should see, task ids are back-references, and a failed row becomes a task entry rather than
+an inline repair. The maintainer-directed panel-mount row is **5.6**, covering both panel kinds.
+**What remains is the run itself** — a real display and a person looking at it — recorded in
+`ai/evidence/` at a named head. The criterion had no owner in the map above, which is exactly the
+failure that map exists to surface.
 **Owner:** Implementer
 **Priority:** High — it is a phase exit criterion, and the phase cannot exit without the evidence
 **Phase:** Phase 4 — **last.** The plan's own criterion text says why: a run taken before the
