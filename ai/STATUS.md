@@ -5,9 +5,12 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 (`T-202` Approved) — **the overnight six-task review came
+**Last updated:** 2026-08-15 (`T-200`, `T-202`, `T-243` Approved) — **the overnight six-task review came
 back at `9300adc`: `T-021` Approved, `T-246` approved as a records-only filing, and four blockers.**
-`T200-R7` and `T243-R1` are closed. **`T-202` is Approved at `a8775bf`** after four rounds:
+**`T-200` is Approved at `274ed9e` and `T-243` at `083e5e3`**, both with no findings — so
+**five of Phase 4's seven exit criteria are met**, `T-200` carrying two of them. What is left is
+`T-212`'s recorded checklist run and the exit review; `T-246` was gated on `T-200` closing and is
+now buildable. **`T-202` is Approved at `a8775bf`** after four rounds:
 `T202-R1` was held open three times — the instance fixed and the class left, then a gate that could
 only see what the style sheet had thought to style — and the fourth pass raised **`T202-R2`**
 against the tests themselves, which installed the style sheet without the palette so every dark
@@ -16,7 +19,7 @@ under the review-budget rule** — its third round is committed and unreviewed. 
 process deaths, 8h06m, at `f3eb9f8`; `OPS-007`'s bar is met and `T-238`'s guard never fired, so its
 criterion 4 stays open.
 
-**`T200-R7` (High) — a control named by what it holds.** `QAccessibleComboBox::text` falls through
+**`T200-R7` (High, closed) — a control named by what it holds.** `QAccessibleComboBox::text` falls through
 `Name` to `Value` under `Q_OS_UNIX`, so **every** combo published its selected item where its name
 belonged and discarded `setAccessibleName`; two controls in the add dialog announced the same group
 title. Fixed with buddy labels — the mechanism Qt's own source names for Linux — which keeps the

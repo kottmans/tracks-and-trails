@@ -17219,3 +17219,52 @@ Adjusting the threshold to force a dark failure would misrepresent the measured 
 further focused Medium pass needs the maintainer's authorization. **`T-200` and `T-243` remain In
 Review**: their findings are Resolved and neither has been given a task-level verdict. Nothing in
 this range is pushed; `origin/main` is at `26eb41c`.
+
+---
+
+## 2026-08-15 — T-200 and T-243: verdicts on the resolved corrections
+
+**Reviewer:** Codex (Reviewer). **Transcribed by the Implementer on the maintainer's instruction**,
+from the verdicts as relayed. `AGENTS.md` §3 holds: the Implementer wrote neither verdict.
+**Task(s):** `T-200`, `T-243`
+**Verdict:** **Approved — both. No findings.**
+**Platforms verified:** Linux, Qt offscreen, plus `mypy` on the **Win32 target**. No Windows
+runtime, CI, real display, Orca/AT-SPI, Narrator/UI Automation or frozen build is claimed.
+
+### Verdicts
+
+| Task | Boundary | Verdict |
+|---|---|---|
+| `T-200` | **Approved against the current tree at `274ed9e`** | Covers the implementation through `d2828d1` **plus the content-preserving inventory move in `a087753`**. The six moved definitions are **AST-identical**. |
+| `T-243` | **Approved at `083e5e3`**, verified unchanged through `274ed9e` | The correction stands; nothing has touched its three files since. |
+
+**`T200-R1`–`R7` are all Resolved.** `T-245` is **withdrawn**: it was a failed acceptance criterion
+rather than a follow-up, and the fix landed inside `T-200` under §10. `T243-R1` is **Resolved**.
+
+**The cross-task move was disclosed rather than discovered.** `T-200`'s nine-surface inventory left
+`tests/ui/test_accessibility.py` for `tests/ui/conftest.py` in `a087753`, a commit belonging to
+`T-202`, so that the colour sweep and the accessibility sweep walk one list instead of two — which
+is `T200-R3`'s own finding applied one level up. The handoff named it and offered both boundaries;
+the reviewer chose the current tree and verified the move mechanically.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Focused tests | **41 passed** |
+| Task-placement gate | Pass |
+| `ruff check` / format | Clean |
+| `mypy`, Linux **and Win32** targets | Clean |
+| Commit-message range, 20 commits | Accepted |
+| Unit suite | **Substantively green — 2129 passed / 15 skipped in-sandbox**, with the single denied loopback test passing separately under localhost permission |
+
+### Readiness
+
+**Five of Phase 4's seven exit criteria are now met.** `T-200` closes two — keyboard reachability on
+Linux, and name-and-role automated on both platforms — alongside `T-197`, `T-198` and `T-202`. What
+remains is **`T-212`**, the recorded checklist run, and then the **exit review**. `T-246` was
+gated on `T-200` closing and nothing else, so it is now buildable.
+
+**`T-240` remains Blocked and receives no verdict.** Its third correction is at `7c3fa8b`; a further
+focused Medium pass needs the maintainer's authorization. Nothing in this range is pushed;
+`origin/main` is at `26eb41c`.
