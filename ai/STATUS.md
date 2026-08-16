@@ -17,6 +17,19 @@ application-owned keys, which `build_options` has never set; and that `SEC-003` 
 command. **Fifteen options are filed unclassified** because no decision covers them — code
 execution, a runtime-fetched component, TLS validation and three credentials — and `T-256` is filed
 to rule them. Phase 4.5 is decomposed: nine typed-field tasks over 44 options, `T-247`…`T-255`.
+**`T-238`'s criterion 4 has a measurement behind it for the first time, and it argues against the
+harness reading.** The fault's one precondition — a `QWidget` whose last Python reference is
+dropped off the main thread — was measured over a full serial `tests/ui` run with
+`tools/t238_widget_thread_probe.py`: **0 of 8 853 finalisations, across 14 697 widgets.** Two
+earlier versions of that probe reported the same zero *while measuring nothing*, so it now proves
+itself against a known positive before it will report at all. The survey that followed found that
+**no product thread holds a `QWidget`** — and that this does not settle it, because Python's
+cyclic collector runs on whichever thread crosses the allocation threshold, so **a widget inside a
+reference cycle is decref'd wherever `gc` runs, with no thread holding it.** Demonstrated. Both of
+the product's pools allocate, so **the precondition is product-reachable in principle** and
+criterion 4's *product* branch may be the live one. `T-238` stays `Ready`; the next step is named
+in its entry and is no longer "wait for the guard to fire".
+
 **A records sweep over Phase 4's seven exit criteria ran on 2026-08-16 and returned four things.**
 It enumerated every passage *mentioning* each criterion rather than every passage that looked
 stale — `P2EXIT-R15`'s method, because the sentences that rot are the ones that were true when

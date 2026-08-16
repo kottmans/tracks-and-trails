@@ -331,6 +331,27 @@ the host with any soak result, and treat a baseline as belonging to the machine 
 `AGENTS.md` §9 states the general rule — one worker per machine, and a machine performing a
 measurement is fully committed for the duration.
 
+### An instrument carries its own positive control
+
+`tools/t238_widget_thread_probe.py` measures the one precondition of `T-238`'s segfault — a
+`QWidget` whose last Python reference is dropped off the main thread — and it is here as a rule
+rather than as a tool, because **it reported a clean suite twice while measuring nothing**:
+
+- it patched `QWidget.__init__`, and Shiboken gives every class its own `__init__` slot, so the
+  base-class patch never ran for any real widget;
+- then it patched subclasses that *inherit* `__init__`, nesting one wrapper per hierarchy level.
+
+Neither was visible in the output. "No widget was finalised off the main thread" is exactly what a
+blind probe prints, and it is the sentence the investigation wanted to hear — which is the whole
+danger. **So the probe now drops a widget on a named worker thread and requires itself to see it,
+before it reports anything**, and its report opens with `VALID` or `INVALID` rather than with a
+number.
+
+This is `T202-R2` and `T-238`'s own criterion 6 as a general rule: **a measurement that cannot fail
+is not a measurement**, and the cheapest way to know an instrument works is to hand it a known
+positive. `tools/soak.sh` has the same property by construction — it is counting real process
+deaths — which is why this note sits beside it.
+
 ### Prose runs no CI, on either platform (`OPS-011`, 2026-08-05)
 
 A push that changes only documentation triggers **no `ci.yml` run at all** — not the Linux gate

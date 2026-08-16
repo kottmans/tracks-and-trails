@@ -6708,9 +6708,75 @@ block the GUI thread, the pool can drain, and late work does not emit through a 
 | 1 | Reproduction evidence, raw logs retained | **Met for the one observation** — `ai/evidence/T238-SEGFAULT-gw7.txt`. **Not reproduced since**, in 60 runs |
 | 2 | Serial/isolated/module-order runs distinguish this test from contamination | **Met, and it is what redirected the search.** The named test's file constructs no view; the faulting object came from elsewhere in the worker |
 | 3 | The faulting object and lifetime edge identified before claiming identity with `T-074`/`T-128` | **Half met.** The *class* is identified — a `QAbstractItemView` destroyed under Shiboken's cross-thread deletion queue — and the specific object is **not**. No identity with either task is claimed |
-| 4 | Product versus harness established; harness-only gets a guard that fails before a worker dies | **Open, and `T-238` stays `Ready` against it** (maintainer, 2026-08-13; upheld at approval). The guard is delivered and the branch condition is unproved — it cannot be inferred from a green suite. If the guard ever fires on a real test, that is this criterion's evidence |
+| 4 | Product versus harness established; harness-only gets a guard that fails before a worker dies | **Still open — and no longer open with nothing behind it.** The mechanism is identified and is **product-reachable in principle**; see the 2026-08-16 measurement below. The guard remains delivered, and if it ever fires on a real test that is still evidence |
 | 5 | The three original assertions stay intact; no timeout raised | **Met** — `test_deleting_a_closed_store_neither_waits_nor_is_emitted_through` is untouched, and `INTERACTION_BUDGET_SECONDS` is unchanged |
 | 6 | ~~Repeated `-n auto` runs materially exceed the pre-fix sample~~ → **each half of the guard is mutation-checked independently** | **Replaced by maintainer ruling, 2026-08-13; met as replaced and verified at review.** Four mutations, four failures, each in **only** its intended outer regression — see `T238-R1` |
+
+#### Criterion 4, 2026-08-16: the mechanism, measured and then found to be the wrong question
+
+**The approach.** Criterion 4 has stayed open because it *cannot be inferred from a green suite*.
+So this measures the fault's **one precondition** instead of waiting for the fault: the retained
+stack shows `~QAbstractItemView` under `Shiboken::BindingManager::runDeletionInMainThread`, and
+Shiboken only queues a deletion for the main thread when the wrapper's last Python reference was
+dropped **somewhere else**. A `weakref.finalize` callback runs on whichever thread performed that
+decref, so the precondition is directly observable. `tools/t238_widget_thread_probe.py`.
+
+**The measurement, over a full serial `tests/ui` run:**
+
+| | |
+|---|---|
+| `QWidget` classes instrumented | 92 |
+| widgets constructed | 14 697 |
+| finalisations observed | 8 853 |
+| **finalised off the main thread** | **0** |
+
+**The instrument's own positive control passed first, and it had to.** Two earlier versions
+reported *zero off-thread finalisations over the whole suite* while measuring nothing at all —
+first because Shiboken gives every class its own `__init__` slot, so patching `QWidget` caught no
+real widget; then because patching a subclass that *inherits* `__init__` nests a wrapper per
+hierarchy level. **Neither was visible in the output**, and "no widget was finalised off the main
+thread" is exactly what a blind probe prints. The probe now drops a widget on a named worker
+thread and refuses to report unless it sees it. `ai/TESTING.md` carries this as a rule.
+
+**Then a survey of what the product's threads hold, which is where it got interesting.** Every
+thread mechanism the product has was read: `ResultPump` (a `QThread` holding a queue, a job id, an
+`Event` and a dict of `Signal`s), `ytdlp_service._Task` on the shared pool (a `_Sink` `QObject` and
+a bound method of a `QObject`), `thumbnails._ReadFromDisk` / `_DecodeAndStore` / `_SweepTask` (a
+`_Sink`, `str`, `Path`, `bytes`, `set[str]`), and the persistence writer's `QThread` (a `_Worker`
+`QObject` and a callable). **Not one holds a `QWidget`.**
+
+**And that is not sufficient, which is the finding.** Python's cyclic collector runs on whichever
+thread crosses the allocation threshold, so **a widget reachable only from a reference cycle is
+decref'd wherever `gc` happens to run — with no thread ever holding a reference to it.**
+Demonstrated, in twelve lines, by `demonstrate_the_gc_route()` in the probe:
+
+```
+$ QT_QPA_PLATFORM=offscreen .venv/bin/python tools/t238_widget_thread_probe.py
+the widget's last reference was dropped on: t238-gc-demo-worker
+```
+
+**So "who holds a reference" is the wrong question for this criterion. The question is who runs
+`gc`** — timing rather than ownership. Both of the product's pools allocate (`QImage` decodes,
+most obviously), so **the precondition is product-reachable in principle**, and the harness-only
+reading cannot be assumed.
+
+**What this establishes and what it does not.** It identifies the mechanism and shows it is
+available to the product; it does **not** show the product reaches it in a real session, and it
+does not reproduce the crash. It also explains the shape of the evidence better than anything
+before it: a fault needing `gc` to fire on a pool thread at the moment a widget-bearing cycle is
+garbage is one that appears once on a loaded machine and never again in 60 clean runs.
+
+**What criterion 4 needs next**, and it is no longer "wait for the guard to fire":
+
+- **Run the probe against a real session, not the suite** — `tests/integration` cannot answer it
+  (a `QCoreApplication` process has no widgets at all, so the probe's own control would fail), so
+  this needs the application driven on a display with the thumbnail pool actually working
+- **Establish whether any `QWidget` in this application participates in a reference cycle.** If
+  none does, the `gc` route is closed and the harness reading is back; if one does, criterion 4's
+  *product-reachable* branch is the live one and it wants a deterministic regression, not a guard
+
+**`T-238` stays `Ready`.** This narrows the question and does not close it, and the entry is not
+moving to `Complete` on a measurement that argues the opposite of the deliverable it already has.
 
 **Two criteria moved, and neither moved quietly.** Criterion 6 was **replaced** — a soak beating
 60 clean runs is a machine committed for a night (`ai/TESTING.md`: a host performing a measurement
