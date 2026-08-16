@@ -17268,3 +17268,54 @@ gated on `T-200` closing and nothing else, so it is now buildable.
 **`T-240` remains Blocked and receives no verdict.** Its third correction is at `7c3fa8b`; a further
 focused Medium pass needs the maintainer's authorization. Nothing in this range is pushed;
 `origin/main` is at `26eb41c`.
+
+---
+
+## 2026-08-15 — T-246: the queue's two verbs on the `File` menu
+
+**Reviewer:** Codex (Reviewer). **Transcribed by the Implementer on the maintainer's instruction**,
+from the verdict as relayed. `AGENTS.md` §3 holds: the Implementer wrote no part of this verdict.
+**Task(s):** `T-246`
+**Base:** `9f83b7a`  **Head:** `217792a` — one commit
+**Platforms verified:** Linux, Qt offscreen, plus `mypy` on the **host and Win32** targets.
+**Verdict:** **Approved. No findings.**
+
+### What was verified
+
+| Check | Result |
+|---|---|
+| The **same `QAction` instances** appear on the toolbar and on the `File` menu | Pass |
+| Menu insertion point, action-state sharing, toolbar order, no-control-bar behaviour | Pass |
+| Synthetic toolbar buttons are `TabFocus`; **all four composed buttons are `NoFocus`** | Pass — **validating the `T-202` record correction** |
+| Mutation — a toolbar verb with neither route | Fails the route sweep, as required |
+| Mutation — stop inserting the verbs into the menu | Fails both new regressions |
+| Focused tests | **93 passed** |
+| Ruff, formatting, host and Win32 `mypy`, `git diff --check`, commit-message gate | Clean |
+
+### The Windows gap, and the ruling on it
+
+**Windows UI Automation remains explicitly unverified until this is pushed**, and the reviewer ruled
+that **this does not block the scoped criteria**. `test_each_menu_publishes_exactly_its_actions` is
+updated in the same commit and pins `("&File", ["Add URLs...", "Start", "Clear finished", "Quit"])`;
+it is the only assertion on either platform that would catch one of the two verbs ceasing to be
+published, and it runs on the self-hosted Windows runner, which `OPS-003` means is reached by
+pushing.
+
+### The `T-202` correction inside this commit
+
+The Implementer flagged, and the reviewer verified, an edit landing inside already-approved work.
+`theme.BORDERED_CONTROLS` had claimed *"`TabFocus`, measured — Tab reaches `Pause queue`"*, taken
+from a **synthetic** toolbar in the colour sweep where a `QToolButton` added as a *widget* keeps its
+own `TabFocus`. The composed window's four buttons are `NoFocus`, because Qt gives an
+action-created button `NoFocus` and `T-234` requires it. The entry now distinguishes the two cases
+rather than asserting the bar takes focus. **Independently confirmed on both shapes.**
+
+### Readiness
+
+`T-246` is not a plan deliverable and carries no exit criterion. **Phase 4 still stands at five of
+seven met**; what remains is `T-212`'s recorded checklist run and the exit review. Taking this first
+was correct on `T-212`'s own criterion: it changes a surface, and a run taken before the phase's
+surfaces land checks an application that is about to change.
+
+**`T-240` remains Blocked and unreviewed.** Nothing in this range is pushed; `origin/main` is at
+`26eb41c`.

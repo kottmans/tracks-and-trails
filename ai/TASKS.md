@@ -117,141 +117,6 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
-### T-246 — `Start` and `Clear finished` are on no menu, so nothing announces them
-
-**Status:** **In Review — built 2026-08-15.** `T-200` recorded the menu route as *"recommended and
-not taken"* because it changes the ruled menu bar, and left it with the maintainer on `T201-R3`'s
-precedent. **The maintainer chose it on 2026-08-15: both verbs go in the `File` menu**, and
-authorized the build once `T-200` closed.
-
-#### What was built
-
-**`File` is now `Add URLs...` · `Start` · `Clear finished` · ─── · `Quit`.** Both verbs are the
-**same `QAction`s the toolbar draws**, asserted with `is` rather than by text, which is `T-130`'s
-rule and the one `Add URLs...` has followed since it was written. One object means one label, one
-status tip and one enabled state: `show_queue_running(True)` changes the menu item to `Stop`
-because there is nothing else to change, and a test drives exactly that rather than asserting the
-wiring.
-
-**Inserted before the separator, not appended.** `_build_menus` runs before `_build_control_bar`,
-so appending from `_build_queue_actions` would have put both verbs *below* `Quit`. The menu keeps
-an anchor for them. **A window built with `control_bar=False` still has neither**, because the
-actions do not exist there — the all-or-nothing rule the two already followed, now visible on the
-menu and asserted.
-
-**The route declaration says what changed.** `_declare_toolbar_route` recorded *"the `Ctrl+R`
-shortcut"*; it reads *"the `File` menu and the `Ctrl+R` shortcut"* now, because that is what a
-reader needs and because the accessibility sweep checks the claim against reality.
-
-**`T-234`'s criterion holds, and is asserted by the test that already existed.** I wrote a second
-check for it and deleted it: `test_nothing_on_the_toolbar_can_take_the_keyboard_from_the_rows`
-already measures every focusable widget on the bar and carries `T203-R3`'s history. **Two checks
-computing the same thing is `T200-R3`'s defect**, which was reopened twice for exactly that, and
-writing the duplicate was a bigger mistake than the five minutes it cost to remove it.
-
-**The `T-202` record was wrong about this bar, and this task corrects it.** `theme.BORDERED_CONTROLS`
-claimed *"`TabFocus`, measured — Tab reaches `Pause queue`"*, and the sheet's `:disabled` reason had
-been edited to drop *"nothing on this bar takes focus"*. Both came from a **synthetic** toolbar in
-the colour sweep, where a `QToolButton` added as a *widget* keeps its own `TabFocus`. Measured on the
-composed window: **all four toolbar buttons are `NoFocus`** — Qt gives an action-created button
-`NoFocus`, and `T-234` requires it. The rule still has to cover the widget case the sweep builds;
-the entry now says which is which instead of asserting the bar takes focus.
-
-#### Verification, and the half that is not verified
-
-**Mutations, both caught.** A third toolbar verb with neither a menu item nor a shortcut fails
-`test_every_toolbar_verb_has_a_menu_item_or_a_shortcut` — which is the acceptance criterion asking
-that sweep be confirmed **still non-vacuous** now that both verbs satisfy it by menu item rather
-than by shortcut. Removing the menu insertion fails both new regressions.
-
-**3150 passed, 18 skipped** across `tests/unit` and `tests/ui`; `ruff`, `ruff format` and `mypy`
-clean over the repository.
-
-**The Windows half is unverified and stays that way until this is pushed.**
-`test_each_menu_publishes_exactly_its_actions` is updated in this commit — it pins
-`("&File", ["Add URLs...", "Start", "Clear finished", "Quit"])` — and it is the **only assertion on
-either platform** that would notice if one of the two stopped being published. It runs on the
-self-hosted Windows runner, which `OPS-003` means is reached by pushing, which is the maintainer's
-decision under `AGENTS.md` §7. The menu-bar equality `["File", "Help", "Settings"]` is unchanged, as
-the task required. `T-146`'s entry records this same gate catching a `Settings` menu on the Windows
-job alone, after Linux had passed and three commits were already pushed.
-
-**`docs/UX_SPEC.md` needs no change**, checked rather than assumed: it names `Settings` as a menu
-between `File` and `Help` and **enumerates no menu's items**, so there is nothing there that this
-contradicts. The task made the edit conditional on that enumeration existing.
-**Owner:** Implementer
-**Priority:** Medium — `NFR-005` is satisfied without it, and what is missing is the half a
-keyboard route cannot supply on its own
-**Phase:** Phase 4 (accessibility). **Filed rather than folded into `T-200`'s fourth pass**, which
-`AGENTS.md` §10 authorized for `T200-R3` and `T200-R6` only: a menu-bar change is new product work
-on a ruled surface, it breaks two hand-written Windows gates, and putting it inside a focused
-correction would hand the reviewer fresh surface to audit under a boundary drawn for something else
-**Depends on:** `T-200` closing. Nothing else
-**Relevant context:** `NFR-005`, `UX-005` §5, `T-234`'s toolbar criterion, `T203-R3`, `T-130`
-(the shared `QAction` precedent), `T-146`, `T201-R3`, `main_window.py` `_build_menus`,
-`tests/ui/test_windows_accessibility.py`
-**Affected surfaces:** `src/tracks_and_trails/ui/main_window.py`,
-`tests/ui/test_windows_accessibility.py`, `tests/ui/test_main_window.py`, `docs/UX_SPEC.md` if it
-enumerates the menu bar
-**Risk:** Low to build, Medium to verify — the gate that would catch a mistake runs on Windows only
-
-#### Scope
-
-**`T-200` gave the two verbs a keyboard route and could not give them a landing place.**
-`RUN_SHORTCUT` (`Ctrl+R`) and `CLEAR_FINISHED_SHORTCUT` (`Ctrl+Shift+C`) make every verb operable
-without a pointer, which is what `NFR-005` asks. What they cannot do is give a screen-reader user
-somewhere to **land** and hear what the control is: `T-234`'s criterion forbids a focusable widget
-on that toolbar — `T203-R3` recorded one stealing `Shift+F10` from the row menu on a freshly opened
-window — so the drawn buttons take no focus and never will.
-
-**A menu item is a control a screen reader announces, and an undiscoverable shortcut is not.**
-`QToolBar` gives its buttons `Qt.NoFocus` on Qt's own assumption that a toolbar *mirrors a menu*;
-this one mirrors nothing, which is the assumption `T-200` found to be false here.
-
-**The precedent is already in the file.** `T-130` made the toolbar show the *same* `QAction` the
-`File` menu holds, rather than a second one — `self._add_action`, with the comment saying so. So
-`Add URLs...` is the pattern and these two are the exception. This task removes the exception.
-
-#### Acceptance criteria
-
-- `Start` and `Clear finished` appear in the **`File`** menu and are the **same `QAction`s** the
-  toolbar shows — not duplicates, following `T-130`
-- Their enabled state and status tips stay correct from both places, including while the queue is
-  running and while it is empty
-- The shortcuts keep working and are shown in the menu, which is what a `QAction`'s shortcut does
-  once it is on a menu — and is the discoverability the shortcut alone lacks
-- **`UX-005` §5's three verbs and their order are untouched on the toolbar.** This adds a route;
-  it does not restage the bar
-- `T-234`'s criterion still holds: nothing on the toolbar takes focus, and `Shift+F10` still
-  reaches the row menu on a freshly opened window
-- **Both hand-written Windows gates are updated in the same commit**:
-  `test_each_menu_publishes_exactly_its_actions` pins `("&File", ["Add URLs...", "Quit"])`, and the
-  menu-bar equality pins `["File", "Help", "Settings"]`. The first changes; the second does not
-- `tests/ui/test_accessibility.py`'s toolbar-route check keeps passing **for the other reason** —
-  the verbs will now satisfy it by having a menu item rather than a shortcut, so the assertion
-  should be confirmed still non-vacuous rather than assumed
-
-#### The trap
-
-**The gate that catches a mistake here runs on Windows and cannot be run locally.** `T-146`'s entry
-records this exact gate catching a `Settings` menu on the Windows job alone, after Linux had passed
-and three commits had been pushed. `OPS-003`: there is no Windows machine, so the self-hosted
-runner is reached by pushing — which is the maintainer's decision, not the Implementer's, and which
-`AGENTS.md` §7 requires explicit instruction for.
-
-**So this task lands unverified on its riskiest half until it is pushed**, and the entry should say
-so plainly rather than reporting a Linux pass as the whole result.
-
-#### Out of scope
-
-- **A `Queue` menu.** Considered and not chosen: a new top-level menu for two items is a larger
-  change to a ruled surface than adding them to the menu that already holds the toolbar's other
-  verb
-- Restaging the toolbar, changing `UX-005` §5's verbs, or changing the shortcut keys
-- Menu items for anything else the toolbar might gain later
-
----
-
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
 **Status:** **In Review — corrected three times, 2026-08-15.** The first review returned
@@ -479,6 +344,150 @@ which it merely reports.
 ---
 
 ## Complete
+
+### T-246 — `Start` and `Clear finished` are on no menu, so nothing announces them
+
+**Status:** **Complete — Approved at `217792a` on 2026-08-15**, no findings. The reviewer
+independently confirmed the same `QAction` instances on both surfaces, the insertion point, the
+shared action state, the toolbar order and the no-control-bar behaviour; measured **`TabFocus` on a
+synthetic toolbar button against `NoFocus` on all four composed ones**, which validates the `T-202`
+record correction this commit carried; and reproduced both mutations. **93 focused tests**, with
+Ruff, formatting, host and Win32 `mypy`, the diff and the commit gate clean.
+
+**The Windows gap is ruled rather than left hanging:** UI Automation stays explicitly unverified
+until this is pushed, and **that does not block the scoped criteria**.
+
+`T-200` recorded the menu route as *"recommended and not taken"* because it changes the ruled menu
+bar, and left it with the maintainer on `T201-R3`'s precedent. **The maintainer chose it on 2026-08-15: both verbs go in the `File` menu**, and
+authorized the build once `T-200` closed.
+
+#### What was built
+
+**`File` is now `Add URLs...` · `Start` · `Clear finished` · ─── · `Quit`.** Both verbs are the
+**same `QAction`s the toolbar draws**, asserted with `is` rather than by text, which is `T-130`'s
+rule and the one `Add URLs...` has followed since it was written. One object means one label, one
+status tip and one enabled state: `show_queue_running(True)` changes the menu item to `Stop`
+because there is nothing else to change, and a test drives exactly that rather than asserting the
+wiring.
+
+**Inserted before the separator, not appended.** `_build_menus` runs before `_build_control_bar`,
+so appending from `_build_queue_actions` would have put both verbs *below* `Quit`. The menu keeps
+an anchor for them. **A window built with `control_bar=False` still has neither**, because the
+actions do not exist there — the all-or-nothing rule the two already followed, now visible on the
+menu and asserted.
+
+**The route declaration says what changed.** `_declare_toolbar_route` recorded *"the `Ctrl+R`
+shortcut"*; it reads *"the `File` menu and the `Ctrl+R` shortcut"* now, because that is what a
+reader needs and because the accessibility sweep checks the claim against reality.
+
+**`T-234`'s criterion holds, and is asserted by the test that already existed.** I wrote a second
+check for it and deleted it: `test_nothing_on_the_toolbar_can_take_the_keyboard_from_the_rows`
+already measures every focusable widget on the bar and carries `T203-R3`'s history. **Two checks
+computing the same thing is `T200-R3`'s defect**, which was reopened twice for exactly that, and
+writing the duplicate was a bigger mistake than the five minutes it cost to remove it.
+
+**The `T-202` record was wrong about this bar, and this task corrects it.** `theme.BORDERED_CONTROLS`
+claimed *"`TabFocus`, measured — Tab reaches `Pause queue`"*, and the sheet's `:disabled` reason had
+been edited to drop *"nothing on this bar takes focus"*. Both came from a **synthetic** toolbar in
+the colour sweep, where a `QToolButton` added as a *widget* keeps its own `TabFocus`. Measured on the
+composed window: **all four toolbar buttons are `NoFocus`** — Qt gives an action-created button
+`NoFocus`, and `T-234` requires it. The rule still has to cover the widget case the sweep builds;
+the entry now says which is which instead of asserting the bar takes focus.
+
+#### Verification, and the half that is not verified
+
+**Mutations, both caught.** A third toolbar verb with neither a menu item nor a shortcut fails
+`test_every_toolbar_verb_has_a_menu_item_or_a_shortcut` — which is the acceptance criterion asking
+that sweep be confirmed **still non-vacuous** now that both verbs satisfy it by menu item rather
+than by shortcut. Removing the menu insertion fails both new regressions.
+
+**3150 passed, 18 skipped** across `tests/unit` and `tests/ui`; `ruff`, `ruff format` and `mypy`
+clean over the repository.
+
+**The Windows half is unverified and stays that way until this is pushed.**
+`test_each_menu_publishes_exactly_its_actions` is updated in this commit — it pins
+`("&File", ["Add URLs...", "Start", "Clear finished", "Quit"])` — and it is the **only assertion on
+either platform** that would notice if one of the two stopped being published. It runs on the
+self-hosted Windows runner, which `OPS-003` means is reached by pushing, which is the maintainer's
+decision under `AGENTS.md` §7. The menu-bar equality `["File", "Help", "Settings"]` is unchanged, as
+the task required. `T-146`'s entry records this same gate catching a `Settings` menu on the Windows
+job alone, after Linux had passed and three commits were already pushed.
+
+**`docs/UX_SPEC.md` needs no change**, checked rather than assumed: it names `Settings` as a menu
+between `File` and `Help` and **enumerates no menu's items**, so there is nothing there that this
+contradicts. The task made the edit conditional on that enumeration existing.
+**Owner:** Implementer
+**Priority:** Medium — `NFR-005` is satisfied without it, and what is missing is the half a
+keyboard route cannot supply on its own
+**Phase:** Phase 4 (accessibility). **Filed rather than folded into `T-200`'s fourth pass**, which
+`AGENTS.md` §10 authorized for `T200-R3` and `T200-R6` only: a menu-bar change is new product work
+on a ruled surface, it breaks two hand-written Windows gates, and putting it inside a focused
+correction would hand the reviewer fresh surface to audit under a boundary drawn for something else
+**Depends on:** `T-200` closing. Nothing else
+**Relevant context:** `NFR-005`, `UX-005` §5, `T-234`'s toolbar criterion, `T203-R3`, `T-130`
+(the shared `QAction` precedent), `T-146`, `T201-R3`, `main_window.py` `_build_menus`,
+`tests/ui/test_windows_accessibility.py`
+**Affected surfaces:** `src/tracks_and_trails/ui/main_window.py`,
+`tests/ui/test_windows_accessibility.py`, `tests/ui/test_main_window.py`, `docs/UX_SPEC.md` if it
+enumerates the menu bar
+**Risk:** Low to build, Medium to verify — the gate that would catch a mistake runs on Windows only
+
+#### Scope
+
+**`T-200` gave the two verbs a keyboard route and could not give them a landing place.**
+`RUN_SHORTCUT` (`Ctrl+R`) and `CLEAR_FINISHED_SHORTCUT` (`Ctrl+Shift+C`) make every verb operable
+without a pointer, which is what `NFR-005` asks. What they cannot do is give a screen-reader user
+somewhere to **land** and hear what the control is: `T-234`'s criterion forbids a focusable widget
+on that toolbar — `T203-R3` recorded one stealing `Shift+F10` from the row menu on a freshly opened
+window — so the drawn buttons take no focus and never will.
+
+**A menu item is a control a screen reader announces, and an undiscoverable shortcut is not.**
+`QToolBar` gives its buttons `Qt.NoFocus` on Qt's own assumption that a toolbar *mirrors a menu*;
+this one mirrors nothing, which is the assumption `T-200` found to be false here.
+
+**The precedent is already in the file.** `T-130` made the toolbar show the *same* `QAction` the
+`File` menu holds, rather than a second one — `self._add_action`, with the comment saying so. So
+`Add URLs...` is the pattern and these two are the exception. This task removes the exception.
+
+#### Acceptance criteria
+
+- `Start` and `Clear finished` appear in the **`File`** menu and are the **same `QAction`s** the
+  toolbar shows — not duplicates, following `T-130`
+- Their enabled state and status tips stay correct from both places, including while the queue is
+  running and while it is empty
+- The shortcuts keep working and are shown in the menu, which is what a `QAction`'s shortcut does
+  once it is on a menu — and is the discoverability the shortcut alone lacks
+- **`UX-005` §5's three verbs and their order are untouched on the toolbar.** This adds a route;
+  it does not restage the bar
+- `T-234`'s criterion still holds: nothing on the toolbar takes focus, and `Shift+F10` still
+  reaches the row menu on a freshly opened window
+- **Both hand-written Windows gates are updated in the same commit**:
+  `test_each_menu_publishes_exactly_its_actions` pins `("&File", ["Add URLs...", "Quit"])`, and the
+  menu-bar equality pins `["File", "Help", "Settings"]`. The first changes; the second does not
+- `tests/ui/test_accessibility.py`'s toolbar-route check keeps passing **for the other reason** —
+  the verbs will now satisfy it by having a menu item rather than a shortcut, so the assertion
+  should be confirmed still non-vacuous rather than assumed
+
+#### The trap
+
+**The gate that catches a mistake here runs on Windows and cannot be run locally.** `T-146`'s entry
+records this exact gate catching a `Settings` menu on the Windows job alone, after Linux had passed
+and three commits had been pushed. `OPS-003`: there is no Windows machine, so the self-hosted
+runner is reached by pushing — which is the maintainer's decision, not the Implementer's, and which
+`AGENTS.md` §7 requires explicit instruction for.
+
+**So this task lands unverified on its riskiest half until it is pushed**, and the entry should say
+so plainly rather than reporting a Linux pass as the whole result.
+
+#### Out of scope
+
+- **A `Queue` menu.** Considered and not chosen: a new top-level menu for two items is a larger
+  change to a ruled surface than adding them to the menu that already holds the toolbar's other
+  verb
+- Restaging the toolbar, changing `UX-005` §5's verbs, or changing the shortcut keys
+- Menu items for anything else the toolbar might gain later
+
+---
 
 ### T-200 — The accessibility pass: keyboard, focus order, and names a screen reader can use
 

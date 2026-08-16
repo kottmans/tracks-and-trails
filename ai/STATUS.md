@@ -5,15 +5,15 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 (`T-246` built; `T-200`, `T-202`, `T-243` Approved) — **the overnight six-task review came
+**Last updated:** 2026-08-15 (`T-246` Approved; `T-200`, `T-202`, `T-243` before it) — **the overnight six-task review came
 back at `9300adc`: `T-021` Approved, `T-246` approved as a records-only filing, and four blockers.**
 **`T-200` is Approved at `274ed9e` and `T-243` at `083e5e3`**, both with no findings — so
 **five of Phase 4's seven exit criteria are met**, `T-200` carrying two of them. What is left is
-`T-212`'s recorded checklist run and the exit review. **`T-246` is built and in review**: `Start`
-and `Clear finished` are on the `File` menu as the same `QAction`s the toolbar draws, so the two
-verbs a screen reader could not announce now have somewhere to land. **Its riskiest half is
-unverified** — the gate that would catch a mistake there is `test_each_menu_publishes_exactly_its_actions`,
-which runs on Windows only and is reached by pushing. **`T-202` is Approved at `a8775bf`** after four rounds:
+`T-212`'s recorded checklist run and the exit review. **`T-246` is Approved at `217792a`**: `Start` and
+`Clear finished` are on the `File` menu as the same `QAction`s the toolbar draws, so the two verbs a
+screen reader could not announce now have somewhere to land. **Its Windows half stays unverified
+until the push** — `test_each_menu_publishes_exactly_its_actions` is the only gate that would catch
+a regression there — and the reviewer ruled that this does not block the scoped criteria. **`T-202` is Approved at `a8775bf`** after four rounds:
 `T202-R1` was held open three times — the instance fixed and the class left, then a gate that could
 only see what the style sheet had thought to style — and the fourth pass raised **`T202-R2`**
 against the tests themselves, which installed the style sheet without the palette so every dark
