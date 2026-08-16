@@ -56,6 +56,7 @@ screen in order to audit it can pass over a screen no user can open, which is th
 wearing this file's clothes.
 """
 
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Final, cast
@@ -503,10 +504,28 @@ def test_no_control_is_named_only_by_the_value_it_happens_to_hold(
             if isinstance(widget, QComboBox) and value != widget.currentText():
                 faults.append(f"{where} publishes {value!r} as its value, not its selection")
 
-    assert checked, (
-        "no control was found publishing its value as its name, so this rule inspected nothing — "
-        "if Qt stopped doing that, delete this test rather than letting it pass in silence"
-    )
+    # **The guard is asked per platform, because the condition it guards is per platform.**
+    # `QAccessibleComboBox::text` only falls through `Name` to `Value` under `Q_OS_UNIX`, so on
+    # Windows no control can match and `checked` is 0 by construction. An unconditional
+    # `assert checked` therefore failed the whole Windows job for a rule that was working exactly
+    # as designed — found on 2026-08-16 in run `31906562503`, where it had been red since
+    # 2026-08-15 with nothing reading it.
+    #
+    # Both directions are asserted rather than one being skipped: a skip is indistinguishable from
+    # a pass, which is the reason `T200-R3` survived three rounds. If Qt ever starts falling
+    # through on Windows too, that is news and this says so.
+    if sys.platform == "win32":
+        assert not checked, (
+            f"{checked} control(s) published a value as their name on Windows, where Qt's "
+            "Name-to-Value fall-through is Q_OS_UNIX-only. Qt's behaviour has changed and this "
+            "rule now applies on both platforms — widen it rather than relaxing this."
+        )
+    else:
+        assert checked, (
+            "no control was found publishing its value as its name, so this rule inspected "
+            "nothing — if Qt stopped doing that, delete this test rather than letting it pass "
+            "in silence"
+        )
     assert not faults, "control(s) named only by what they hold:\n" + "\n".join(faults)
 
 

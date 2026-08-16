@@ -17,8 +17,42 @@ application-owned keys, which `build_options` has never set; and that `SEC-003` 
 command. **Fifteen options are filed unclassified** because no decision covers them — code
 execution, a runtime-fetched component, TLS validation and three credentials — and `T-256` is filed
 to rule them. Phase 4.5 is decomposed: nine typed-field tasks over 44 options, `T-247`…`T-255`.
-*(Below is the state as of the previous entry.)* (**everything is pushed** — `origin/main` = `9be7433`) — and the
-push doubled as **`T-240`'s first real runner execution: the commit-messages gate ran on GitHub
+**A records sweep over Phase 4's seven exit criteria ran on 2026-08-16 and returned four things.**
+It enumerated every passage *mentioning* each criterion rather than every passage that looked
+stale — `P2EXIT-R15`'s method, because the sentences that rot are the ones that were true when
+written.
+
+1. **The `windows desktop` job has been red since 2026-08-15 and nobody read it** (run
+   `31906562503`). `T-257` filed and fixed: `test_no_control_is_named_only_by_the_value_it_happens_to_hold`
+   ends in a vacuity guard whose condition is `Q_OS_UNIX`-only, so on Windows it inspects nothing
+   and fails by construction. **The product is not at fault.** Criterion 2 is the *"automated on
+   both platforms"* one, so while that job is red the criterion has one platform — and it is
+   recorded as met. **The fix is not closed by Linux passing**; `T-257` closes on a real Windows run.
+2. **`TASKS.md`'s criteria-to-owner map still stated the pre-amendment criterion 2** — *"A screen
+   reader announces every control meaningfully (Orca, Linux)"* — which the maintainer amended on
+   **2026-08-15**. True when written on 2026-08-09, never re-read. Corrected, with the original
+   kept.
+3. **`T-200`'s entry carried the same superseded platform split**, unannotated and in the present
+   tense. Annotated rather than deleted: it is what the task was built against.
+4. **The push state was wrong by three commits**, below.
+
+**What the sweep did not find:** the "five of seven met" count agrees across `STATUS.md`,
+`TASKS.md` and `REVIEWS.md`; criterion 5's evidence is real (`T-198` Complete at `7b20c60`, both
+frozen artifacts); and `docs/PHASE_4_CHECKLIST.md`'s **47 rows across seven sections** re-count
+exactly.
+
+**Push state, verified with `git fetch` on 2026-08-16 rather than inherited:** `origin/main` is
+**`c2b3b61`**, and **one commit is unpushed** — `39fcdbe`, `T-183`'s audit.
+
+> **This line said `origin/main` = `9be7433` and "everything is pushed", and it had been wrong for
+> three commits.** `955837d`, `5238a6b` and `c2b3b61` landed on the remote after it was written and
+> nothing came back to update it. **The commit immediately after `9be7433` is titled *"Correct the
+> push state the records inherited"*** — so this file recorded the lesson, corrected the state, and
+> went stale again inside three commits, which is the shape below repeating one level up. A push
+> state is not a claim that ages gracefully: it is only ever true of the moment it was measured, and
+> the fix is to re-measure it rather than to write it more carefully.
+
+*(Below is the state as of the previous entry.)* — the push at `9be7433` doubled as **`T-240`'s first real runner execution: the commit-messages gate ran on GitHub
 and passed**, 29 commits checked, minutes after its approval. *(A record correction rides along:
 today's entries repeatedly said `origin/main` was at `26eb41c` with everything local. The run
 history shows the maintainer pushed the overnight batch at `083e5e3` on the evening of

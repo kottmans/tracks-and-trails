@@ -120,6 +120,69 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-257 — The Windows job has been red since 2026-08-15, and the failure is the guard, not the product
+
+**Status:** **In Review — fixed 2026-08-16.** Found by the Phase 4 records sweep, not by anybody
+reading CI.
+**Owner:** Implementer
+**Priority:** **High.** It is the gate that evidences Phase 4 exit criterion 2's *"automated on
+**both** platforms"*, and while it is red that criterion has one platform
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T200-R7` (whose rule this is), `tests/ui/test_accessibility.py`,
+`tests/ui/test_windows_accessibility.py`, CI run `31906562503`, `IMPLEMENTATION_PLAN.md` §Phase 4
+exit criterion 2 as amended 2026-08-15
+**Affected surfaces:** `tests/ui/test_accessibility.py`. **No source — the product is not at
+fault**
+**Risk:** Low to fix. The risk it exposed is that **a red Windows job went unread for a day**
+
+#### What happened
+
+`test_no_control_is_named_only_by_the_value_it_happens_to_hold` ends with a vacuity guard —
+`assert checked` — so that a rule which inspects nothing cannot pass in silence. The condition it
+inspects is `QAccessibleComboBox::text` falling through `Name` to `Value`, and **that fall-through
+is `Q_OS_UNIX`-only**. The test's own comment says so, eleven lines above the guard.
+
+So on Windows `checked` is **0 by construction**, the guard fires, and the whole `windows desktop`
+job fails on a rule that is working exactly as designed. Measured on Linux for comparison: `checked`
+is **7**.
+
+**The failure is a harness defect and the product is unaffected** — the same product/harness
+question `T-238` exists to answer, settled here in one reading because the guard names its own
+condition.
+
+#### Why it was not noticed
+
+`083e5e3` was the last push to touch a path `ci.yml` watches. Everything after it — `955837d`,
+`5238a6b`, `c2b3b61` — was prose, correctly skipped by `paths-ignore`, so **no CI run has completed
+on `main` since the failure**. The run at `9be7433` was cancelled in flight. `STATUS.md` meanwhile
+said `T-246`'s *"Windows half is on the runner now … the CI run's verdict lands in the Actions
+log"*. **The verdict landed and nothing went back for it.**
+
+#### The fix
+
+Both platforms are asserted, neither is skipped: on Windows `checked` **must be 0**, and if Qt ever
+starts falling through there the assertion says so and asks for the rule to be widened. A
+`skipif` was rejected — a skip is indistinguishable from a pass, which is the reason `T200-R3`
+survived three rounds.
+
+#### Acceptance criteria
+
+- **The `windows desktop` job is green on a real run.** Linux passing proves nothing about the
+  branch that was failing, and this task is not closed by local evidence
+- The Linux guard still fails when the rule inspects nothing — unchanged, and it still reports 7
+- **The Windows branch is shown to be live rather than dead code.** Forced on Linux, where 7
+  controls match, it fails with its own message; done 2026-08-16 and restored
+- `T-246`'s Windows half — `test_each_menu_publishes_exactly_its_actions` — is read off the same
+  run, since that verdict is still outstanding
+
+#### Out of scope
+
+- The gap that let a red job go unread. That is worth its own entry if it happens twice; once is a
+  sweep finding, and the sweep is what caught it
+
+---
+
 ### T-183 — The option audit: classify every group, and decompose the phase
 
 **Status:** **In Review — built 2026-08-16.** The audit is `docs/YTDLP_OPTION_AUDIT.md`: **250
@@ -1028,6 +1091,11 @@ local judgement.** This task is the global one: *can a user who never touches th
 everything the application does?*
 
 **The plan splits the screen-reader criterion by platform and this task inherits the split.**
+
+> *(**Superseded 2026-08-15**, and kept because it is what the task was built against. The
+> maintainer's amendment on `T200-R1` removed exactly this split: name and role are automated on
+> **both** platforms, and announcement coherence is subjective on **both** and belongs to the
+> pre-release session. The asymmetry described below was the reason `T200-R1` was raised.)*
 
 - **Linux (Orca)** — in scope, and the exit criterion says *verified*.
 - **Windows** — `OPS-004` splits it. That the **UI Automation tree exposes a correct name and role**
@@ -5367,12 +5435,21 @@ does not have is worse than no map.
 | Plan exit criterion | Owner |
 |---|---|
 | Every function reachable by keyboard alone, verified on Linux | `T-200` |
-| A screen reader announces every control meaningfully (Orca, Linux) | `T-200` |
+| **Every control exposes a correct name and role, automated on both platforms** — Windows by `T-026`'s UI Automation tree, Linux by `T-200`'s. Screen-reader *coherence* is the pre-release session's, on both | `T-200`, `T-026` |
 | No information is conveyed by colour alone | `T-202` |
 | Logs carry no cookies, cookie paths, proxy credentials or token-like parameters (`NFR-007`) | `T-197` |
 | Updating yt-dlp changes the reported version; reverting restores the baseline | `T-198` |
 | *(Added 2026-08-09 by maintainer ruling)* The built window matches the agreed flow — a recorded checklist run in `ai/evidence/` | `T-212` — filed 2026-08-09; it runs last |
 | Reviewed and signed off | the phase exit review, as in Phases 1–3 |
+
+*(**The screen-reader row said something else until 2026-08-16, and it was true when it was
+written.** It read *"A screen reader announces every control meaningfully (Orca, Linux) — `T-200`"*,
+which is the criterion as it stood when this map was built on 2026-08-09. The maintainer amended
+that criterion on **2026-08-15** on `T200-R1`: name and role are automated on **both** platforms,
+and whether announcements are *coherent* is subjective on both and belongs to the pre-release
+session. The row was not wrong when written and was never re-read afterwards — `P2EXIT-R15`'s exact
+shape, found by sweeping every passage that **mentions** the criterion rather than every passage
+that looks stale.)*
 
 **Polish carried into the phase rather than planned for it.** `T-191`, `T-192`, `T-193` and `T-194`
 are maintainer-found defects filed during Phase 3 and ruled Phase 4; `T-203` and `T-204` come from
