@@ -17,8 +17,9 @@ a regression there — and the reviewer ruled that this does not block the scope
 `T202-R1` was held open three times — the instance fixed and the class left, then a gate that could
 only see what the style sheet had thought to style — and the fourth pass raised **`T202-R2`**
 against the tests themselves, which installed the style sheet without the palette so every dark
-case ran as light. The reviewer verified this round by its mutations. **`T-240` remains Blocked
-under the review-budget rule** — its third round is committed and unreviewed. **The 60-run soak finished clean** — 60 passed, 0 test failures, 0
+case ran as light. The reviewer verified this round by its mutations. **`T-240`'s fourth focused pass is
+authorized** (2026-08-15) — the review-budget block is lifted, and its third correction at
+`7c3fa8b` awaits the reviewer, re-verified at `be056ed`: 45 focused tests, seven mutations caught. **The 60-run soak finished clean** — 60 passed, 0 test failures, 0
 process deaths, 8h06m, at `f3eb9f8`; `OPS-007`'s bar is met and `T-238`'s guard never fired, so its
 criterion 4 stays open.
 

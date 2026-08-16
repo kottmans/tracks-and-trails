@@ -124,9 +124,13 @@ this one returned four verdicts before approving.*
 is to catch what a forgotten or bypassed hook missed did not check every commit in the range it
 called *"what arrived"*. The second pass **held it open** — the option that skipped merges had been
 kept for one caller and cannot express what that caller needs, and the range selection still had a
-shape that resolved to nothing. The third pass held it open once more, and **the third round is
-under a review-budget block**: `AGENTS.md` §10's focused-Medium allowance is spent, so the
-correction below is made and **another Medium pass needs the maintainer's authorization**.
+shape that resolved to nothing. The third pass held it open once more, and the third round sat
+under a review-budget block — `AGENTS.md` §10's focused-Medium allowance was spent — until
+**2026-08-15, when the maintainer authorized a further focused Medium pass**. Nothing new is
+built under that authorization: the correction has been committed at `7c3fa8b` since the round
+that made it, its surfaces are untouched through `be056ed` (verified by path), and it was
+re-verified the day the pass was authorized — **45 focused tests pass and all seven mutations
+are still caught**. What the authorization unblocks is the review itself, at `5ee22de..7c3fa8b`.
 
 #### `T240-R1`, third round — the commits were never unknowable
 
