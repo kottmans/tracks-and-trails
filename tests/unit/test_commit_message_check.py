@@ -636,9 +636,14 @@ def test_a_later_push_cannot_cancel_the_run_holding_the_bad_commit() -> None:
     **Transcribed as text, the way the Windows menu gate pins its expectations**: this is the
     statement of what the wiring must be, not a copy of whatever it currently is, so restoring
     blanket cancellation fails here rather than waiting for two pushes to race on the runner.
-    Push runs group by their own SHA, which never collides; pull requests keep ref-grouped
-    cancellation because a synchronize run's `base..head` covers every commit its cancelled
-    predecessor would have read — the property the push side lacked.
+
+    **The first version of this pin was itself the second instance.** It pinned `github.sha` and
+    argued the SHA "never collides" — and a push SHA is not a unique run identifier: different ref
+    updates can end at the same commit, and GitHub replaces a **pending** run in a full group even
+    with `cancel-in-progress: false`, so a pin can enforce a defect as firmly as it enforces a fix.
+    `github.run_id` is documented unique per run. Pull requests keep ref-grouped cancellation
+    because a synchronize run's `base..head` covers every commit its cancelled predecessor would
+    have read — the property the push side lacked.
     """
     # Comments stripped first, for the reason the colour sweep records: the explanation beside
     # the wiring quotes the defective pair, and a sweep that reads comments matches its own
@@ -650,14 +655,77 @@ def test_a_later_push_cannot_cancel_the_run_holding_the_bad_commit() -> None:
     )
     assert (
         "group: commit-messages-${{ github.event_name == 'pull_request' && github.ref "
-        "|| github.sha }}" in text
-    ), "push runs no longer get a concurrency group of their own SHA"
+        "|| github.run_id }}" in text
+    ), "push runs no longer get a collision-free concurrency group"
     assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in text, (
         "cancellation is no longer scoped to pull requests"
     )
     assert "cancel-in-progress: true" not in text, (
         "blanket cancellation is back, so a later push can cancel the only run that saw a bad "
         "commit"
+    )
+    assert "github.sha" not in text, (
+        "a push SHA is back in the wiring, and a push SHA is not a unique run identifier: "
+        "different ref updates can end at the same commit and collide in one group, where GitHub "
+        "replaces a pending run even with cancel-in-progress: false — the reviewer's probe was "
+        "three same-SHA ranges scoring 0, 1, 0 with only the middle holding the bad commit"
+    )
+
+
+def test_a_push_of_only_excluded_commits_reads_nothing_and_says_so(
+    repository: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """**`T240-R1`, fifth instance, second half.** Exclusion cuts both ways.
+
+    When every entry is `distinct: false`, the old branch checked the tip anyway — and the tip is
+    one of the commits the exclusion policy had just ruled out of scope. Nothing new arrived, so
+    nothing is read: a fact like a branch deletion, not a shortfall, and distinct from *no usable
+    payload evidence*, where the tip genuinely is all there is.
+    """
+    monkeypatch.chdir(repository)
+    head = commit(repository, BAD_TRAILER, name="one.txt")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+
+    payload = push_payload(before=GONE, after=head)
+    payload["commits"] = [{"id": head, "distinct": False}]
+    selection = check.select_range("push", payload)
+
+    assert selection.revisions is None and selection.commits == (), (
+        "everything this push carried is excluded by policy, and something was selected anyway — "
+        "re-reading the tip contradicts the exclusion that keeps these unjudged"
+    )
+    assert selection.incomplete is None, "a deliberate exclusion is scope, not a shortfall"
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(payload), encoding="utf-8")
+    assert check.main(["--event", str(event), "--event-name", "push"]) == 0
+
+
+def test_the_cap_shortfall_survives_a_payload_of_only_excluded_commits(
+    repository: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """**`T240-R1`, fifth instance — the reviewer's exact probe.**
+
+    2,048 `distinct: false` entries: the cap shortfall was computed, and the empty-wanted return
+    dropped it — `Selection(commits=(), incomplete=None)`, exit 0, with the tip read against the
+    exclusion policy. The cap is a shortfall **regardless of what the visible entries are**: at
+    the cap, the array says nothing about what else the push brought, and the commits beyond it
+    are exactly as unread as a commit the clone lacks.
+    """
+    monkeypatch.chdir(repository)
+    head = commit(repository, GOOD_MESSAGE, name="one.txt")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+
+    payload = push_payload(before=GONE, after=head)
+    payload["commits"] = [{"id": "e" * 40, "distinct": False}] * check.MAX_PAYLOAD_COMMITS
+    selection = check.select_range("push", payload)
+
+    assert selection.incomplete and "cap" in selection.incomplete, (
+        f"2,048 excluded entries dropped the cap shortfall: {selection.incomplete!r}"
+    )
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(payload), encoding="utf-8")
+    assert check.main(["--event", str(event), "--event-name", "push"]) == 1, (
+        "the run exited 0 at the cap because every visible entry happened to be excluded"
     )
 
 

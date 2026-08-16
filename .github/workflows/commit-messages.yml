@@ -31,21 +31,24 @@ on:
   push:
   pull_request:
 
-# **A push run is never cancelled by a later push** (`T240-R2`). This grouped by ref with
-# `cancel-in-progress: true`, and that pair let a successor cancel the only run that held the bad
-# commit: push A is still being checked when push B lands on the same ref; B cancels A, and B's
-# own range starts at A's head — so A's commits are read by nothing, which directly contradicted
-# the claim that this check cannot be skipped. The reviewer probed it on a real repository:
-# rc=1 for A's range, rc=0 for B's, and A's run cancelled.
+# **A push run is never cancelled or replaced by a later push** (`T240-R2`, twice). The first
+# instance grouped by ref with `cancel-in-progress: true`: push B cancelled the run that held
+# push A's bad commit, while B's own range started at A's head — so A's commits were read by
+# nothing. The correction grouped pushes by `github.sha`, and that was the second instance:
+# **a push SHA is not a unique run identifier**. Different ref updates can end at the same
+# commit and collide in one group, and GitHub replaces an existing **pending** run when another
+# enters the same group even with `cancel-in-progress: false`. The reviewer's probe: three real
+# ranges sharing one after-SHA scored 0, 1, 0 — only the middle held the malformed commit, and a
+# third same-SHA run would have replaced it while pending, losing the only evidence.
 #
-# Push runs therefore group by **their own SHA**, which never collides, so every pushed range runs
-# to completion. **Pull requests keep ref-grouped cancellation deliberately**: a synchronize run's
-# `base..head` covers every commit the merge would bring, so the replacement run covers its
-# cancelled predecessor — exactly the property the push side lacked. The wiring is pinned as text
-# by `tests/unit/test_commit_message_check.py`, the way the Windows menu gate pins its own
-# expectations.
+# `github.run_id` is documented unique per run, which makes the push group collision-free **by
+# construction** rather than by the shapes pushes happen to take. **Pull requests keep
+# ref-grouped cancellation deliberately**: a synchronize run's `base..head` covers every commit
+# the merge would bring, so the replacement run covers its cancelled predecessor — exactly the
+# property the push side lacks. The wiring is pinned as text by
+# `tests/unit/test_commit_message_check.py`, comments stripped first.
 concurrency:
-  group: commit-messages-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: commit-messages-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

@@ -119,7 +119,42 @@ this one returned four verdicts before approving.*
 
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
-**Status:** **In Review — corrected five times, 2026-08-15.** Round one: the range half skipped
+**Status:** **In Review — sixth correction, 2026-08-15, under the maintainer's standing
+grant** (*"a pass until this is completed"*, Phase 3's pass-4 precedent). The fifth review held
+both findings open **through branches the fifth correction itself introduced** — which is the
+round's real lesson: a fix's own branch matrix is new instances of the class it fixes, and the
+class sweep that checked the old code never looked at the new.
+
+#### `T240-R1` (fifth instance) and `T240-R2` (second) — the fix's own branches
+
+**`T240-R1`, fifth instance: the empty-wanted return dropped the shortfall it had just computed.**
+The reviewer's probe — 2,048 `distinct: false` entries — produced `Selection(commits=(),
+incomplete=None)` and exit 0, reproduced here before correcting. Worse, that branch **checked the
+tip**, a commit the exclusion policy had just ruled out of scope. The branch matrix is enumerated
+now rather than fallen into: *no payload evidence at all* (the tip genuinely is all there is);
+*everything deliberately excluded* (nothing new arrived — nothing is read, like a branch deletion,
+and the tip stays unjudged too); and **`incomplete` survives every return**, so the cap fails the
+run whatever the visible entries happen to be.
+
+**`T240-R2`, second instance: the pin enforced the defect.** A push SHA is not a unique run
+identifier — different ref updates can end at the same commit and collide in one concurrency
+group, where GitHub replaces a **pending** run even with `cancel-in-progress: false`. The
+reviewer's probe: three ranges sharing one after-SHA scored 0, 1, 0, only the middle holding the
+malformed commit. And the text test **pinned `github.sha`**, so it would have rejected the
+documented-unique fix — a pin can enforce a defect exactly as firmly as a fix. The group keys on
+`github.run_id` now, collision-free by construction, and the test pins that plus the absence of
+`github.sha` from the wiring; pull requests keep ref-grouped cancellation for the recorded reason.
+
+**Also taken while in the file:** the reviewer's out-of-policy `mypy` run over `tools/` found
+three pre-existing `object has no attribute "get"` errors in the payload traversal. A `mapped()`
+narrowing closes all three — chosen over casts because a payload that lies degrades to the same
+honest answer as a missing key. `tools/` remains outside the configured `mypy` scope; widening
+that scope is a Planner call, not smuggled in here.
+
+**Thirteen mutations, all caught**, four new this round: reading the tip when every entry is
+excluded, pinning the SHA back, plus the fifth round's eleven re-run.
+
+*(Superseded status line: In Review — corrected five times, 2026-08-15.)* Round one: the range half skipped
 merges and read the tip of a new branch. Round two: `--skip-merges` was kept for one caller it
 could not serve, and a force-push to the default branch selected an empty range. Round three: the
 fallback called the pushed commits unknowable, and the payload's `commits` array says otherwise.

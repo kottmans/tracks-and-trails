@@ -204,6 +204,17 @@ def git(*arguments: str) -> str:
     ).stdout
 
 
+def mapped(value: object) -> Mapping[str, object]:
+    """`value` as a mapping, or an empty one.
+
+    Event payloads are parsed JSON, so every nested field arrives typed `object`; reaching into
+    `payload["pull_request"]["base"]["sha"]` through that needs either casts or this. Chosen over
+    casts because a payload that *lies* — a string where GitHub documents an object — degrades to
+    the same honest answer as a missing key, instead of an `AttributeError` inside the gate.
+    """
+    return value if isinstance(value, Mapping) else {}
+
+
 def resolves(revision: str) -> bool:
     """Whether `revision` names a commit that exists in this clone.
 
@@ -359,7 +370,18 @@ def pushed_commits(
     **`distinct` is still honoured and is not a shortfall**: GitHub marks a commit already pushed
     elsewhere as `distinct: false`, and re-reading history that arrived on another branch is how a
     gate starts failing for commits nobody in this push wrote. Excluding those is a decision about
-    scope, not a gap in coverage.
+    scope, not a gap in coverage — **which cuts both ways** (fifth round): when *every* entry is
+    excluded, the tip is not read either, because the tip is one of the commits the policy just
+    ruled out of scope, and the fifth-round probe caught this branch doing exactly that.
+
+    **The empty branches are the finding's fifth instance, so they are enumerated rather than
+    fallen into.** `described` empty means the event offers no payload evidence at all, and the tip
+    is genuinely all there is. `described` non-empty with `wanted` empty means everything the push
+    carried was deliberately excluded — nothing new arrived, nothing is read, and that is a fact
+    like a branch deletion, not a shortfall. **And `incomplete` survives every one of these
+    returns**: the fifth-round probe was 2,048 `distinct: false` entries, where the cap shortfall
+    was computed and then dropped by the one return that did not carry it — the run checked a tip
+    the policy had excluded and exited 0.
 
     `why` is the caller's sentence for how it got here, because two callers arrive for different
     reasons: an empty determinable range, and a clone with no default branch to compare against.
@@ -382,14 +404,29 @@ def pushed_commits(
             "push may have brought commits nothing in this event describes"
         )
     incomplete = "; and ".join(shortfalls) if shortfalls else None
-    if not present:
-        if wanted:
+    excluded = [
+        entry for entry in described if isinstance(entry, dict) and entry.get("distinct") is False
+    ]
+    if not wanted:
+        if excluded:
             return Selection(
-                tip_only(head, exists=exists),
-                f"{why}; the payload lists no commit this clone has, so checking the tip only",
+                None,
+                f"{why}; every commit this push carried is marked distinct: false — each arrived "
+                "on another branch already, and the exclusion that keeps them unjudged there "
+                "keeps the tip unjudged here too",
                 incomplete=incomplete,
             )
-        return Selection(tip_only(head, exists=exists), f"{why}; checking the tip commit only")
+        return Selection(
+            tip_only(head, exists=exists),
+            f"{why}; checking the tip commit only",
+            incomplete=incomplete,
+        )
+    if not present:
+        return Selection(
+            tip_only(head, exists=exists),
+            f"{why}; the payload lists no commit this clone has, so checking the tip only",
+            incomplete=incomplete,
+        )
     truncated = (
         f", and GitHub caps that array at {MAX_PAYLOAD_COMMITS} so the push may have brought more"
         if len(described) >= MAX_PAYLOAD_COMMITS
@@ -455,9 +492,9 @@ def select_range(
     counter = count if count is not None else (lambda revisions: len(commits_in(revisions)))
 
     if event in {"pull_request", "pull_request_target"}:
-        request = payload.get("pull_request") or {}
-        base = str((request.get("base") or {}).get("sha") or "")
-        head = str((request.get("head") or {}).get("sha") or "")
+        request = mapped(payload.get("pull_request"))
+        base = str(mapped(request.get("base")).get("sha") or "")
+        head = str(mapped(request.get("head")).get("sha") or "")
         if head and exists(head) and base and exists(base):
             return Selection(f"{base}..{head}", f"pull request: {base[:7]}..{head[:7]}")
         if head and exists(head):
@@ -487,7 +524,7 @@ def select_range(
     if before and before != ZERO_SHA and exists(before):
         return Selection(f"{before}..{head}", f"push: {before[:7]}..{head[:7]}")
 
-    default = str(((payload.get("repository") or {}).get("default_branch")) or "")
+    default = str(mapped(payload.get("repository")).get("default_branch") or "")
     if default and exists(f"origin/{default}"):
         candidate = f"origin/{default}..{head}"
         if counter(candidate) > 0:
