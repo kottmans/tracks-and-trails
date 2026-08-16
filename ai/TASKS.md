@@ -5,9 +5,12 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-13 — `T-196` is Complete, approved at `c70f61a` after a maintainer-
-authorized documentation-only pass; `T196-R1` … `T196-R5` are all Resolved and the entry has moved
-to `## Complete`. `T-146` remains Complete at `0adf9e3` and `T-215` at `b9caa40`.
+**Last updated:** 2026-08-16 — **`T-183` is built and In Review**, and it filed ten entries:
+`T-247`…`T-255` (the typed fields, 44 options over nine tasks) and **`T-256`**, which rules the
+fifteen options the audit found that no decision covers. `T-184` gains four acceptance criteria
+from the audit's findings and now waits on `T-256` as well. *(Previously: `T-196` is Complete,
+approved at `c70f61a` after a maintainer-authorized documentation-only pass; `T196-R1` … `T196-R5`
+are all Resolved. `T-146` remains Complete at `0adf9e3` and `T-215` at `b9caa40`.)*
 **Phase 4 is the current phase**, its plan deliverables decomposed under `## Proposed — Phase 4`.
 For what is awaiting a verdict now, read `## In Review` — this header does not duplicate it, for
 `T204-R2`'s reason.
@@ -116,6 +119,92 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 **The exit review is complete**: approved at `ccdbd0f` on 2026-08-09, all six criteria met, after
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
+
+### T-183 — The option audit: classify every group, and decompose the phase
+
+**Status:** **In Review — built 2026-08-16.** The audit is `docs/YTDLP_OPTION_AUDIT.md`: **250
+options against yt-dlp 2026.07.04**, each in exactly one class, counted from the installed option
+parser rather than the README. **Seven findings**, four of which change how `T-184` has to be
+built; **fifteen options are filed unclassified** because no decision covers them, and `T-256` is
+what rules them. The decomposition is nine tasks over the 44 typed options that have no field yet
+— `T-247`…`T-255` — and `ai/IMPLEMENTATION_PLAN.md` §Phase 4.5 is rewritten from it.
+**Owner:** Planner
+**Priority:** High within the phase — it *is* the phase's plan
+**Phase:** Phase 4.5
+**Depends on:** nothing. `T-182` ruled the excluded families on 2026-08-07 (`SEC-003`), so the excluded class is known before the audit starts
+**Relevant context:** `REQ-030`, `REQ-031`, `ARC-010`, yt-dlp's *Usage and Options*,
+`downloader/ytdlp_adapter.build_options` (what the application already sets and therefore owns),
+`core/models.DownloadRequest`, `core/presets.py`
+**Affected surfaces:** `docs/YTDLP_OPTION_AUDIT.md` (new), `tests/unit/test_option_audit.py` (new),
+`ai/TASKS.md`, `ai/IMPLEMENTATION_PLAN.md` §Phase 4.5
+**Risk:** Medium — a misclassification becomes a wrong task, and the ones that hurt are options
+filed as *escape-hatch-only* that a user reaches for daily
+
+> **The surfaces above are wider than this entry first claimed, and the widening is deliberate.**
+> It said *"`ai/TASKS.md`, `ai/IMPLEMENTATION_PLAN.md` §Phase 4.5. **No source**"*. There is still
+> no `src/` change — but the audit is 562 lines and does not belong inside `TASKS.md`, and the
+> second acceptance criterion asks for **a test**, which has to live in `tests/`. Recorded here
+> rather than silently, because "no source" was a real constraint and a reader should see that it
+> was read and then exceeded, not overlooked.
+
+#### Scope
+
+Every option group in yt-dlp's *Usage and Options*, each option landing in exactly one of four
+classes:
+
+- **Typed field** — it gets a control, an owner task, and a phase position
+- **Escape-hatch only** — reachable through `REQ-031`, no control planned, with the reason
+- **Application-owned** — the GUI sets it and a user may not (`outtmpl`, `format`, `progress_hooks`,
+  `logger`, `quiet`, the simulation and printing flags). This list becomes the refusal list `T-184`
+  enforces, so it must be derived from `build_options` rather than written from memory
+- **Excluded** — per `T-182`
+
+The known-thin areas, recorded here so the audit is checked against them rather than starting from a
+blank page: video-selection filters (`-I`, filesize, date, `--match-filters`, `--max-downloads`),
+download tuning (`--download-sections`, `-N`, retry policy, `--downloader`, `--live-from-start`),
+most of the filesystem group (`--restrict-filenames`, `--windows-filenames`, `--trim-filenames`,
+`--paths`, `--mtime`, the metadata writers), thumbnails, `--extractor-args`, subtitle depth
+(`--write-auto-subs`, `--sub-format`, `--convert-subs`), format depth (`--format-sort`,
+`--merge-output-format`, `--check-formats`) and the workarounds group.
+
+#### Acceptance criteria
+
+- Every option in the current yt-dlp *Usage and Options* appears in exactly one class, against a
+  **recorded yt-dlp version** — an audit of an unnamed version cannot be re-run when upstream moves
+- The application-owned list is **derived from `build_options`**, and a test asserts the two agree,
+  so the refusal list cannot drift from what the code actually sets (`NFR-008`)
+- Typed-field options are decomposed into tasks with owners and dependencies, and Phase 4.5's
+  deliverable table is rewritten from the result
+- Escape-hatch-only classifications each carry a reason. "Nobody asked for it" is a reason; silence
+  is not
+- The audit states what it could not classify, if anything, rather than forcing a class
+
+#### Out of scope
+
+- Implementing any option
+- Ruling on the `T-182` families
+- yt-dlp options that do not exist yet. The audit is a snapshot with a version on it, and `NFR-008`
+  already owns keeping up with upstream
+
+#### Where each criterion stands — 2026-08-16
+
+| # | Criterion | State |
+|---|---|---|
+| 1 | Every option in one class, against a recorded version | **Met.** 250 documented options, one class each, yt-dlp **2026.07.04** — and the version is asserted against the installed one, so the audit cannot outlive its subject quietly |
+| 2 | The application-owned list is derived from `build_options`, and a test asserts they agree | **Met, and it caught something.** The test exercises `build_options` over every branch rather than reading it, and the derivation disagreed with `ARC-010` §4 in both directions — Finding 1 |
+| 3 | Typed-field options decomposed into tasks; the deliverable table rewritten | **Met.** 65 typed rows: 21 built, 44 across `T-247`…`T-255`. Nothing unassigned, nothing in two tasks, and the test asserts the partition |
+| 4 | Escape-hatch classifications each carry a reason | **Met.** All 106 carry one, and a test fails on a row whose reason is shorter than ten characters |
+| 5 | The audit states what it could not classify | **Met, and this is the criterion that earned its place.** Fifteen options reach code execution, a runtime-fetched component, TLS validation or a credential, and no decision covers any of them. They are filed `unruled` and `T-256` rules them |
+
+**The mutation evidence, because "a test asserts they agree" is itself a claim.** Six mutations,
+six failures, each in only its intended test: an `app:sets` row flipped to `hatch`; a row deleted;
+the row count altered; the version line altered; `build_options` made to set a key the audit calls
+`hatch`; and `build_options` made to stop setting a key the audit calls `app:sets`. The last two
+are the ones that matter — they are the drift the criterion exists to catch, and they are caught
+from the code side rather than the document side.
+
+---
+
 
 ## Complete
 
@@ -7250,68 +7339,101 @@ run is the deliverable; the pass is only what it hopefully shows.
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
 descend from, and `T-183` is what turns them into the rest of the phase.)*
 
-### T-183 — The option audit: classify every group, and decompose the phase
+### T-256 — Rule the fifteen options no decision covers
 
-**Status:** Proposed — filed 2026-08-07 with the phase
-**Owner:** Planner
-**Priority:** High within the phase — it *is* the phase's plan
+**Status:** Proposed — filed 2026-08-16 by `T-183`'s fifth criterion
+**Owner:** Planner proposes; **the maintainer rules**
+**Priority:** **Highest in the phase. It blocks `T-184`**, which cannot build a refusal list while
+fifteen options have no ruling
 **Phase:** Phase 4.5
-**Depends on:** nothing. `T-182` ruled the excluded families on 2026-08-07 (`SEC-003`), so the excluded class is known before the audit starts
-**Relevant context:** `REQ-030`, `REQ-031`, `ARC-010`, yt-dlp's *Usage and Options*,
-`downloader/ytdlp_adapter.build_options` (what the application already sets and therefore owns),
-`core/models.DownloadRequest`, `core/presets.py`
-**Affected surfaces:** `ai/TASKS.md`, `ai/IMPLEMENTATION_PLAN.md` §Phase 4.5. **No source**
-**Risk:** Medium — a misclassification becomes a wrong task, and the ones that hurt are options
-filed as *escape-hatch-only* that a user reaches for daily
+**Depends on:** `T-183` approved
+**Relevant context:** `docs/YTDLP_OPTION_AUDIT.md` Findings 2, 3, 4 and 5; `SEC-003`; `ARC-010` §3
+and §4; `NFR-007`; `REQ-EXCL-002`, `-003`, `-005`; `T-034`
+**Affected surfaces:** `ai/DECISIONS.md` (a new `SEC-` entry, plus corrections to `SEC-003` and
+`ARC-010`), `docs/YTDLP_OPTION_AUDIT.md` (the fifteen move out of `unruled`)
+**Risk:** Medium. Three of the four families reach arbitrary code execution, and the cost of ruling
+them *permitted* without noticing is the cost `--exec` was forbidden to avoid
 
 #### Scope
 
-Every option group in yt-dlp's *Usage and Options*, each option landing in exactly one of four
-classes:
+Four questions, and three record corrections that came with them.
 
-- **Typed field** — it gets a control, an owner task, and a phase position
-- **Escape-hatch only** — reachable through `REQ-031`, no control planned, with the reason
-- **Application-owned** — the GUI sets it and a user may not (`outtmpl`, `format`, `progress_hooks`,
-  `logger`, `quiet`, the simulation and printing flags). This list becomes the refusal list `T-184`
-  enforces, so it must be derived from `build_options` rather than written from memory
-- **Excluded** — per `T-182`
+- **Code execution, seven options.** `--plugin-dirs`, `--no-plugin-dirs`, `--use-postprocessor`
+  (arbitrary Python from a named path), `--downloader`, `--downloader-args`, `--postprocessor-args`
+  (an external binary and its arguments), `--js-runtimes`, `--no-js-runtimes` (an external
+  interpreter). Each is the shape `SEC-003` forbade `--exec` for.
+- **`--remote-components`, `--no-remote-components`.** Fetches components at runtime from a remote
+  host: a destination `NFR-007` does not permit, and code this project did not ship.
+- **TLS: `--no-check-certificates`, `--prefer-insecure`.** No decision covers disabling certificate
+  validation.
+- **Credentials `SEC-003` did not name: `-2/--twofactor`, `--ap-username`, `--ap-password`.** The
+  `-u`/`-p` rationale reaches all three verbatim — a secret inside a frozen request that is
+  persisted and crosses a process boundary — and extending an accepted ruling is not the
+  implementer's to do.
 
-The known-thin areas, recorded here so the audit is checked against them rather than starting from a
-blank page: video-selection filters (`-I`, filesize, date, `--match-filters`, `--max-downloads`),
-download tuning (`--download-sections`, `-N`, retry policy, `--downloader`, `--live-from-start`),
-most of the filesystem group (`--restrict-filenames`, `--windows-filenames`, `--trim-filenames`,
-`--paths`, `--mtime`, the metadata writers), thumbnails, `--extractor-args`, subtitle depth
-(`--write-auto-subs`, `--sub-format`, `--convert-subs`), format depth (`--format-sort`,
-`--merge-output-format`, `--check-formats`) and the workarounds group.
+#### The three proposed corrections — **PROPOSED, nobody has ruled on these**
+
+1. **`SEC-003` permits `--netrc-cmd`, which executes a command**, on a rationale (*"the secret
+   lives in the user's own file"*) that does not reach it. Four rows below, the same table forbids
+   `--exec` for executing a command.
+2. **`SEC-003` permits `--client-certificate-password`, which is a secret rather than a path to
+   one** — the shape `_require_credential_free_proxy` makes unrepresentable.
+3. **`SEC-003`'s consequences say the refusal list gains *five* entries and then list *seven*.**
+   The list is right; the count is wrong.
+
+Also for the maintainer's attention, though it is a correction `T-183` has already made in the
+audit rather than one proposed here: **`ARC-010` §4 names `paths` among the application-owned keys
+and `build_options` has never set it.**
 
 #### Acceptance criteria
 
-- Every option in the current yt-dlp *Usage and Options* appears in exactly one class, against a
-  **recorded yt-dlp version** — an audit of an unnamed version cannot be re-run when upstream moves
-- The application-owned list is **derived from `build_options`**, and a test asserts the two agree,
-  so the refusal list cannot drift from what the code actually sets (`NFR-008`)
-- Typed-field options are decomposed into tasks with owners and dependencies, and Phase 4.5's
-  deliverable table is rewritten from the result
-- Escape-hatch-only classifications each carry a reason. "Nobody asked for it" is a reason; silence
-  is not
-- The audit states what it could not classify, if anything, rather than forcing a class
+- **Each of the fifteen is ruled**, into `hatch`, `excluded` or `typed`, with the reason recorded
+  in a `SEC-` decision rather than in a task or a commit
+- **The three `SEC-003` corrections are ruled on**, and if any is accepted the amendment is written
+  by the maintainer or attributed to their ruling — never self-headed (`T145-R1`, `T144-R1`)
+- **`docs/YTDLP_OPTION_AUDIT.md` has no `unruled` rows afterwards**, and its class table is
+  recounted rather than adjusted by hand
+- The audit's test still passes unchanged, which is what shows the reclassification did not quietly
+  move an option out of the application-owned class
 
 #### Out of scope
 
-- Implementing any option
-- Ruling on the `T-182` families
-- yt-dlp options that do not exist yet. The audit is a snapshot with a version on it, and `NFR-008`
-  already owns keeping up with upstream
+- Building any refusal. `T-184` builds it; this decides what is on it
+- The 42 suppressed options as a class. Finding 4 makes them `T-184`'s acceptance criterion, since
+  the question there is *what the parser accepts*, not *what the documentation shows*
 
 ---
 
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
 
-**Status:** Proposed — filed 2026-08-07 with the phase
+**Status:** Proposed — filed 2026-08-07 with the phase. **It now waits on `T-256` as well as
+`T-183`:** the audit delivered the application-owned list on 2026-08-16 and, with it, fifteen
+options no decision covers, and a refusal list cannot be built while those are open. Recorded as a
+dependency rather than as `Blocked`, because nothing in this phase has started — the phase's
+prerequisite is Phase 4 approved.
 **Owner:** Implementer
 **Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
 **Phase:** Phase 4.5
-**Depends on:** `T-183` for the application-owned list. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
+**Depends on:** **`T-256`** for the fifteen unruled options, and `T-183` for the application-owned list — **delivered 2026-08-16**: the refusal list is the audit's `app:sets` + `app:contained` + `app:plumbing` + `excluded` classes, **64 documented options**, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
+
+> **Four of `T-183`'s findings land here, and the first changes the design.**
+>
+> - **Finding 4 — the refusal list keys on `dest`, not on option strings.** yt-dlp maps several
+>   strings onto one `dest`, and four suppressed spellings of `geo_bypass` — `--geo-bypass`,
+>   `--no-geo-bypass`, `--geo-bypass-country`, `--geo-bypass-ip-block` — reach the parameter
+>   `SEC-003` forbids under the name `--xff`. A list of strings would have enforced `REQ-EXCL-002`
+>   against one spelling in five. `--all-formats` reaches `format` and `--no-colors` reaches
+>   `color` the same way. **The refusal still names the string the user typed**, because that is
+>   where it is stated; it is only *keyed* on the `dest`.
+> - **Finding 4, second half — decide the whole parser, not the documented part.** 36 suppressed
+>   options have a `dest` no documented option has, so keying on `dest` does not reach them either.
+>   Two are the forbidden family outright (`--exec-before-download`, `--no-exec-before-download`).
+> - **Finding 6 — `--write-thumbnail` shares `writethumbnail` with the application.** It is the one
+>   place a typed control has to share a key rather than own it; `T-249` owns the tri-state and the
+>   merge rule is this task's.
+> - **Finding 7 — five hatch options touch `T-046`'s reservation, unmeasured.** `--continue`,
+>   `--no-continue`, `--part`, `--no-part` and `--post-overwrites` all change how yt-dlp treats a
+>   file already at the target path, and the download session leaves a zero-byte reservation there.
 **Relevant context:** `REQ-031`, `ARC-010`, `REQ-009` (the pattern), `T-034` (path containment),
 `DAT-003` and `DAT-004` (redaction, and whose text this is), `ARCHITECTURE.md` §8 (a request is
 frozen at job-creation time), `ARC-002` (it crosses a process boundary and must pickle),
@@ -7354,6 +7476,16 @@ under a stated precedence.
 - The migration adding the field round-trips an existing queue, and an old row without it loads
 - `requires_ffmpeg` still answers correctly for a post-processor the hatch installed
 - Both mypy platforms, `ruff`, the model, adapter, persistence and UI tests are clean
+- **The refusal list is keyed on `dest`**, and a test asserts that `--geo-bypass` is refused for the
+  same reason `--xff` is — it fails if the list is rebuilt on option strings (Finding 4)
+- **Every option the parser accepts is dispositioned, suppressed ones included.** A test walks
+  `create_parser()` and fails on an option that is neither refused, nor typed, nor hatch-reachable
+  — the documented 250 are not the parser's whole surface
+- **`--continue`, `--no-continue`, `--part`, `--no-part` and `--post-overwrites` are measured
+  against `T-046`'s reservation**, not reasoned about: a test shows what each does to a job whose
+  target path already holds the zero-byte exclusive-create file (Finding 7)
+- **The `writethumbnail` merge is stated and tested** — the application sets it to embed and delete,
+  `T-249`'s control sets it to keep, and one of them has to win by a written rule (Finding 6)
 
 #### Out of scope
 
@@ -7361,6 +7493,128 @@ under a stated precedence.
 - yt-dlp **configuration files** as an input route. A config file is a second, invisible source of
   options and would defeat every check above; if it is ever wanted it needs its own decision
 - Per-entry hatch options within a playlist — `T-110` owns per-entry anything
+
+---
+
+*(**The nine typed-field tasks, `T-247` … `T-255`**, filed 2026-08-16 by `T-183`, which is where
+the option lists come from: `docs/YTDLP_OPTION_AUDIT.md`. **44 options over nine tasks** — the
+typed class minus the 21 that already have a `DownloadRequest` field. Counted, and
+`tests/unit/test_option_audit.py` asserts the partition, so a task that quietly grows or drops an
+option fails a gate.)*
+
+**The following is true of all nine.** Each still states its own `**Status:**`, because `T-096`'s
+gate reads that line per entry and a shared one would exempt nine tasks from the check that six
+review rounds exist to enforce:
+
+- **Owner:** Implementer · **Phase:** Phase 4.5, filed 2026-08-16
+- **Depends on:** `T-183` approved. **Not on `T-184`** — a typed field is a declared member of
+  `DownloadRequest` and needs nothing from the hatch. Nine independent tasks, in any order
+- **Relevant context:** `ARC-010` §1, `REQ-030`, `docs/YTDLP_OPTION_AUDIT.md`,
+  `core/models.DownloadRequest`, `core/presets.py`, `downloader/ytdlp_adapter.build_options`
+- **Affected surfaces:** `core/models.py`, `downloader/ytdlp_adapter.py`, `persistence/` (each new
+  field is a migration), the preset and options UI, and their tests
+- **Acceptance criteria, common to all nine.** Each option below becomes a declared, typed,
+  validated, frozen and picklable member of `DownloadRequest` (`ARC-002`, `ARCHITECTURE.md` §8);
+  **the value is proved to arrive by asserting on the option dictionary the worker receives**, not
+  by the download succeeding — `T-012` produced five defects that were values computed correctly
+  and then not acted on, and `T012-R5` two more where yt-dlp accepted a key and ignored it; a
+  malformed value fails **at edit time**; the migration round-trips an existing queue and an old
+  row without the field loads; every control is keyboard-reachable and screen-reader-labelled
+  (`NFR-005`); `ruff`, both mypy platforms and the touched suites are clean
+- **Risk:** Medium for all nine — breadth rather than depth, and `NFR-008`'s churn lands on each
+
+### T-247 — Video selection: which items, how big, how old
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Priority:** High among the nine — playlist item selection is the most-asked-for of the 44
+**Options (7):** `-I/--playlist-items`, `--min-filesize`, `--max-filesize`, `--date`,
+`--datebefore`, `--dateafter`, `--max-downloads`
+**Specific criteria:** `-I`'s range grammar is parsed and refused at edit time, not handed to
+yt-dlp as a string; the three date options accept yt-dlp's own relative forms (`today-2weeks`) or
+refuse them with the reason; `--max-downloads` interacts with the queue's own counting and the
+interaction is asserted rather than assumed.
+
+### T-248 — Filename shaping and the modification time
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Options (7):** `--restrict-filenames`, `--no-restrict-filenames`, `--windows-filenames`,
+`--no-windows-filenames`, `--trim-filenames`, `--mtime`, `--no-mtime`
+**Specific criteria:** **`T-034`'s containment check runs after these, not before.** All three
+filename options change what yt-dlp writes, and `--trim-filenames` can shorten a name into a
+collision; the containment and collision tests are extended over each, and a test fails when the
+check is removed. `--windows-filenames` is asserted on **both** platforms — its whole purpose is a
+platform difference, and a Linux-only assertion proves nothing about it.
+
+### T-249 — The sidecar writers: description, info JSON and thumbnail files
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Options (7):** `--write-description`, `--no-write-description`, `--write-info-json`,
+`--no-write-info-json`, `--write-thumbnail`, `--no-write-thumbnail`, `--write-all-thumbnails`
+**Specific criteria:** every file these write lands inside the chosen directory, through `T-034`
+rather than beside it. **`--write-thumbnail` shares `writethumbnail` with the application**
+(`T-183` Finding 6): `build_options` sets it to embed and then delete, this control sets it to
+keep, and the resolution is one written rule with a test — the control is tri-state (off, one,
+all). **`--write-info-json` writes a file yt-dlp's own help calls personal information**, so
+`DAT-003`'s redaction question is asked of it before it ships, not after.
+
+### T-250 — Format depth: sorting, checking and the merge container
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Options (4):** `-S/--format-sort`, `--check-formats`, `--no-check-formats`,
+`--merge-output-format`
+**Specific criteria:** `--format-sort`'s field grammar is validated against yt-dlp's own accepted
+fields rather than passed through; `--check-formats` costs a request per format and the format
+table's probe budget is stated (`T-161`'s per-entry lesson); `--merge-output-format` and
+`remux_container` are two ways to name a container and the precedence between them is written down.
+
+### T-251 — Subtitle depth: automatic captions, format and conversion
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Options (4):** `--write-auto-subs`, `--no-write-auto-subs`, `--sub-format`, `--convert-subs`
+**Specific criteria:** `--convert-subs` installs an ffmpeg post-processor, so `requires_ffmpeg`
+answers true for it and the user is told **before** the bytes are spent (`REQ-024`); automatic
+captions and real subtitles are distinguishable in the UI, because "no subtitles" and "no *human*
+subtitles" are different answers.
+
+### T-252 — Download tuning and the whole retry policy
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Options (7):** `-N/--concurrent-fragments`, `--fragment-retries`, `--extractor-retries`,
+`--socket-timeout`, `--download-sections`, `--live-from-start`, `--no-live-from-start`
+**Specific criteria:** **the three retry knobs are presented as one policy**, not three integers —
+`--retries` already exists and `ytdlp_adapter` carries a comment deferring `--fragment-retries`
+here by name, so this task is where the difference between them stops needing a comment to explain.
+`--download-sections` takes a time-range grammar that is parsed and refused at edit time.
+`-N` interacts with the pool's own concurrency (`ARC-007`, `CONCURRENCY_MAXIMUM = 16`) and the
+interaction is measured rather than assumed.
+
+### T-253 — Network reachability: address family and politeness delays
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Options (4):** `-4/--force-ipv4`, `-6/--force-ipv6`, `--sleep-interval`, `--max-sleep-interval`
+**Specific criteria:** `-4` and `-6` share yt-dlp's `source_address` and are mutually exclusive —
+`DownloadRequest` makes that unrepresentable rather than validating it; `--max-sleep-interval` is
+refused without `--sleep-interval`, which is yt-dlp's own rule, and it is refused at edit time.
+
+### T-254 — SponsorBlock, opt-in per preset
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Options (3):** `--sponsorblock-mark`, `--sponsorblock-remove`, `--no-sponsorblock`
+**Specific criteria:** **off by default, and the control says what enabling it sends.** `SEC-003`
+permitted this and `NFR-007` was amended to name SponsorBlock as a third permitted destination
+*conditional on the user enabling it*; a test asserts no SponsorBlock request leaves the process
+while the option is off. The category lists are validated against yt-dlp's own. `--sponsorblock-api`
+is **excluded** — `SEC-003` declined a configurable endpoint — and this task does not reopen it.
+
+### T-255 — Per-extractor arguments
+
+**Status:** Proposed — filed 2026-08-16 by `T-183`
+**Priority:** Lowest among the nine — one option, and the most expert-facing of the 44
+**Options (1):** `--extractor-args`
+**Specific criteria:** the `IE_KEY:ARGS` grammar is parsed into a validated structure, never stored
+as the string the user typed; an unknown extractor key is refused **with the reason** rather than
+accepted and ignored, which is `T012-R5`'s defect exactly; values are redacted under `DAT-004` like
+any other text this application supplies, because an extractor argument can carry a token.
 
 ---
 

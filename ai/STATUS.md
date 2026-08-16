@@ -5,7 +5,19 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-16 (**everything is pushed** — `origin/main` = `9be7433`) — and the
+**Last updated:** 2026-08-16 — **`T-183`, Phase 4.5's option audit, is built and In Review** at
+`docs/YTDLP_OPTION_AUDIT.md`: 250 documented yt-dlp options against the pinned 2026.07.04, each in
+exactly one class, with the application-owned class **derived by exercising `build_options`** and
+drift-checked from both directions by `tests/unit/test_option_audit.py` — six mutations, six
+failures, each in only its intended test. **Seven findings**, and the ones that change work are
+that a refusal list keyed on option strings is routed around by four suppressed spellings of the
+`geo_bypass` that `SEC-003` forbids as `--xff`; that `ARC-010` §4 claims `paths` among the
+application-owned keys, which `build_options` has never set; and that `SEC-003` permits
+`--netrc-cmd`, which executes a command, four rows above forbidding `--exec` for executing a
+command. **Fifteen options are filed unclassified** because no decision covers them — code
+execution, a runtime-fetched component, TLS validation and three credentials — and `T-256` is filed
+to rule them. Phase 4.5 is decomposed: nine typed-field tasks over 44 options, `T-247`…`T-255`.
+*(Below is the state as of the previous entry.)* (**everything is pushed** — `origin/main` = `9be7433`) — and the
 push doubled as **`T-240`'s first real runner execution: the commit-messages gate ran on GitHub
 and passed**, 29 commits checked, minutes after its approval. *(A record correction rides along:
 today's entries repeatedly said `origin/main` was at `26eb41c` with everything local. The run

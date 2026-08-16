@@ -62,7 +62,22 @@ on:
       - "ai/*.html"
       - "ai/evidence/**"
       - "ai/handoffs/**"
-      - "docs/**"
+      # **`docs/` is enumerated rather than globbed, and `docs/YTDLP_OPTION_AUDIT.md` is the
+      # reason** (`T-183`). This was `docs/**` when nothing under `docs/` was read by a test. The
+      # audit is: `tests/unit/test_option_audit.py` opens it and checks it against the option keys
+      # `build_options` really sets, so an edit to that file alone is a change to a gated claim.
+      # Under the glob it would have skipped every job — the silent coverage loss `P2EXIT-R4`
+      # found, arriving as a side effect of where a file was put.
+      #
+      # A new file under `docs/` is therefore **not** ignored until somebody adds it here, having
+      # checked that no test reads it. Fail-closed is the right direction for this list: the cost
+      # of a needless run is minutes, and the cost of a missed one is a gate nobody notices is gone.
+      - "docs/CRITERION_8_CHECKLIST.md"
+      - "docs/DEVELOPMENT.md"
+      - "docs/PHASE_4_CHECKLIST.md"
+      - "docs/UX_SPEC.md"
+      - "docs/WINDOWS_VERIFICATION.md"
+      - "docs/mockups/**"
       - "AGENTS.md"
       - "README.md"
       - "LICENSE"
