@@ -63,7 +63,7 @@ SUPPRESSED: Final = [o for o in ALL_OPTIONS if not o["documented"]]
 
 # --- what `build_options` actually sets --------------------------------------------------------
 
-_BASE: Final = {
+_BASE: Final[dict[str, Any]] = {
     "url": "https://example.invalid/watch?v=x",
     "output_directory": str(Path.home() / "downloads"),
     "format_selector": "bv*+ba/b",
@@ -110,7 +110,7 @@ def _emitted_keys() -> frozenset[str]:
     )
 
     on = {name: value for name, value in _FIELD_ON.items() if value is not None}
-    cases = [({}, {})]
+    cases: list[tuple[dict[str, Any], dict[str, Any]]] = [({}, {})]
     cases += [({name: value}, {}) for name, value in on.items()]
     cases += [({}, {name: value}) for name, value in _KEYWORD_ON.items()]
     cases.append((on, dict(_KEYWORD_ON)))
@@ -118,8 +118,10 @@ def _emitted_keys() -> frozenset[str]:
 
     keys: set[str] = set()
     for overrides, keywords in cases:
+        # `**` over `dict[str, Any]`: the point of this derivation is to drive `build_options`
+        # through every branch, and the values are deliberately heterogeneous.
         request = DownloadRequest(**_BASE, **overrides)
-        keys |= set(build_options(request, _BASE["output_template"], **keywords))
+        keys |= set(build_options(request, str(_BASE["output_template"]), **keywords))
     return frozenset(keys)
 
 
