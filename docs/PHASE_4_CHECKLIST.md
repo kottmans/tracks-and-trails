@@ -7,6 +7,7 @@
 so that the run executes a list rather than improvises one.
 **Required by:** `IMPLEMENTATION_PLAN.md` §Phase 4 exit criteria (added 2026-08-09 by maintainer
 ruling).
+**Rows:** 47, across seven sections — counted from this file, not estimated.
 **Derived from:** `docs/UX_SPEC.md` §2, §3, §8, §11, §12; the accepted criteria of the surfaces
 Phase 4 added or reshaped — `T-146`, `T-195`–`T-202`, the `T-203` row chain (`T-204`, `T-207`,
 `T-209`, `T-210`, `T-211`, `T-223`, `T-224`), `T-216`, `T-217`, `T-234`, `T-243`, `T-244`,
