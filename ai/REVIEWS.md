@@ -17129,3 +17129,93 @@ routine post-verdict sync. T-246 stays Proposed.
 
 The Reviewer changed only `ai/REVIEWS.md`; no reviewed source, test, task/status record, plan,
 decision, dependency, push, handoff, roadmap, evidence, generator, or remote state was changed.
+
+---
+
+## 2026-08-15 — T-202, T-240, T-200 and T-243: the four correction rounds
+
+**Reviewer:** Codex (Reviewer). **Transcribed by the Implementer on the maintainer's instruction**,
+2026-08-15, from the verdicts as relayed. `AGENTS.md` §3 still holds: the Implementer wrote none of
+these verdicts and signs off on nothing here. Where a round gave no task-level verdict, this record
+says so rather than inferring one.
+**Task(s):** `T-202`, `T-240`; findings only for `T-200` and `T-243`
+**Combined boundary:** `9300adc..a8775bf` — nine local, unpushed task commits across four rounds.
+**Each round below binds its own boundary; this range is not one approval unit.**
+**Platforms verified:** Linux, Qt offscreen, throughout. No Windows runtime, CI, real display,
+Orca/AT-SPI, Narrator/UI Automation or frozen build is claimed by any round.
+
+### Round 2 — the first corrections
+
+**Boundary:** `9300adc..083e5e3` — `T-200` (`d2828d1`), `T-202` (`3804039`), `T-240` (`878f51c`),
+`T-243` (`083e5e3`).
+
+| Finding | Severity | Blocking | Status | Evidence |
+|---|---|---|---|---|
+| `T200-R7` | High | Yes | **Resolved** | Buddy labels are the mechanism Qt's own source names for Linux; no implementation defect found in the correction. |
+| `T243-R1` | Medium | Yes | **Resolved** | The optional default is gone; no implementation defect found in the correction. |
+| `T202-R1` | High | Yes | **Open** | The 2px override covered buttons, combo boxes and line edits only. Offscreen rendering in both palettes produced **zero ink gain** for `QListWidget`, `QTableView` and `QTreeView`, and the regression tested only the three fixed classes. |
+| `T240-R1` | Medium | Yes | **Open** | PR mode set `skip_merges=true`, which becomes `--no-merges` and skips **authored** merges in the branch, not only GitHub's synthetic one — the check's own test demonstrated a malformed real merge passing. The unusable-`before` fallback also became an empty `origin/main..HEAD` range on a force-push to the default branch. |
+
+**Verdicts:** none at task level for `T-200` or `T-243` — their findings are Resolved and no
+approval was given, so both **remain In Review**. `T-202` and `T-240` carried open blockers.
+
+**Checks run:** 83 focused tests passed; focused Ruff and format clean; all four commit diffs pass
+`git diff --check`; worktree clean.
+
+### Round 3 — the class, not the instance
+
+**Boundary:** `083e5e3..5ee22de` — `T-240` (`c3ae631`), `T-202` (`5ee22de`).
+
+| Finding | Severity | Blocking | Status | Evidence |
+|---|---|---|---|---|
+| `T202-R1` | High | Yes | **Open** | The shipped queue uses `QListView`, which retains a native frame, while the inventory covered only borders declared in the style sheet. Independent rendering: focus changed **682 frame pixels** from the idle hue to accent in both palettes, with zero ink gain. |
+| `T240-R1` | Medium | Yes | **Open** | On a default-branch force-push the empty range fell back to the tip alone; a probe with a malformed commit below a clean tip selected only the clean tip and exited 0. The premise that earlier pushed commits are unknowable is incorrect — the push payload supplies a `commits` array of up to 2048 entries. |
+
+**Verdicts:** `T-202` **Changes requested**. `T-240` **Blocked** under the review-budget rule —
+another focused Medium pass requires explicit maintainer authorization.
+
+**Checks run:** 117 focused tests passed; focused Ruff and format clean; both commit diffs clean;
+the commit-message gate accepts both commits.
+
+### Round 4 — the tests were not testing what ships
+
+**Boundary:** `5ee22de..a087753` — `T-202` (`a087753`). `T-240`'s `7c3fa8b` was **not
+re-reviewed** and remained Blocked as requested.
+
+| Finding | Severity | Blocking | Status | Evidence |
+|---|---|---|---|---|
+| `T202-R2` | Medium | Yes | **Open** | The rendered *dark* sweep did not apply the dark theme: it called `setStyleSheet()` only, while `theme.apply()` is the sole path that also installs the palette and updates `theme.applied()`. `SortableHeader` reads `theme.applied().accent`. Deterministic probe: both parameter cases retained `applied=light` and the platform palette `#efefef`, where the dark window is `#0A1712` — so hard-coding the light accent in the custom painter would survive the dark regression. |
+
+**Verdict:** `T-202` **Blocked** — a required-gate defect, Medium, and discovered after the
+ordinary review budget. **The maintainer authorized a focused pass for it the same day.** The
+product-side corrections were otherwise found sound: `QListView` covers both relevant classes, the
+header owns its focus geometry, and scroll-area focus is visible without moving its viewport.
+
+**Checks run:** 130 focused tests passed.
+
+### Round 5 — approved
+
+**Boundary:** `a087753..a8775bf` — `T-202` (`a8775bf`).
+
+**Verdict:** **`T-202` is Approved at `a8775bf`.** No findings. `T202-R1` and `T202-R2` are
+**Resolved**.
+
+| Verified | Result |
+|---|---|
+| Full-theme dressing and restoration | Pass |
+| Fixed-light-accent mutation | Fails the dark header test, as required |
+| Stylesheet-only mutation | Fails both rendered sweep cases |
+| Focused suite | 124 passed |
+| Ruff, mypy, `git diff --check` | Clean |
+
+**One ruling, recorded because it is precedent.** The `QListView` mutation fails only in the light
+palette, and that is **acceptable**: a mutation needs to be *detected*, not to fail every parameter.
+Adjusting the threshold to force a dark failure would misrepresent the measured behaviour.
+
+### Readiness
+
+`T-202` is Approved and closes Phase 4's *no information conveyed by colour alone* exit criterion.
+**`T-240` remains Blocked and unreviewed** — its third correction is committed at `7c3fa8b` and a
+further focused Medium pass needs the maintainer's authorization. **`T-200` and `T-243` remain In
+Review**: their findings are Resolved and neither has been given a task-level verdict. Nothing in
+this range is pushed; `origin/main` is at `26eb41c`.
