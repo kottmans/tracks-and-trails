@@ -17319,3 +17319,31 @@ surfaces land checks an application that is about to change.
 
 **`T-240` remains Blocked and unreviewed.** Nothing in this range is pushed; `origin/main` is at
 `26eb41c`.
+
+---
+
+## 2026-08-15 — T-240, fourth pass: Blocked, and the class is named
+
+**Reviewer:** Codex (Reviewer). **Transcribed by the Implementer on the maintainer's instruction**;
+`AGENTS.md` §3 holds — the Implementer wrote no part of this verdict.
+**Task(s):** `T-240`
+**Base:** `5ee22de`  **Head:** `7c3fa8b` — one commit; no files changed since, verified.
+**Platforms verified:** Linux. Independent checks: 45 focused tests passed; focused Ruff and
+formatting passed; `git diff --check` and the commit gate passed for the boundary.
+**Verdict:** **Blocked.** `7c3fa8b` resolves the exact force-push probe; two Medium blocking gaps
+remain, and this authorized pass consumed the available budget — another correction pass needs
+maintainer authorization under §10. **The maintainer authorized it the same day.**
+
+### Findings
+
+| ID | Severity | Blocking | Status | Finding |
+|---|---|---|---|---|
+| `T240-R1` | Medium | Yes | **Open — fourth instance** | Known-incomplete payload coverage still exits successfully. `pushed_commits` drops commits absent from the clone, the 2,048-entry cap merely adds text to the note, and `main()` then checks the surviving SHAs and returns zero if they are clean. The tests likewise assert only the warning text, not a non-success result. GitHub documents both the cap and the API route for retrieving additional commits. A malformed omitted commit still produces a green check — the original *"did not inspect everything it claimed"* defect one level outward. **Either retrieve the missing commits or make incomplete coverage a non-successful report.** Reproduced by the Implementer before correcting: the run prints *"1 of them not in this clone"* and exits 0. |
+| `T240-R2` | Medium | Yes | **Open** | The workflow can cancel the only run that contains a malformed commit. `concurrency` groups by ref with `cancel-in-progress: true`; if push A contains a bad commit and push B follows on the same ref, B cancels A while B's `before..after` excludes A. The reviewer's real-repository probe produced rc=1 for A's range and rc=0 for B's — once A's run is cancelled, the bad commit is never checked, which directly contradicts criterion 3's claim that the check cannot be skipped. **Remove cancellation for push runs or ensure the replacement run covers every cancelled predecessor.** |
+
+**The class, in the reviewer's words:** *incomplete or discarded evidence is treated as successful
+coverage — first through range selection, now through payload truncation and workflow lifecycle.*
+
+**Also ruled:** the missing hosted-runner execution is **not independently blocking** — static
+wiring and the exact CLI exercise are adequate evidence for that boundary, and **a single green
+push would not exercise either remaining defect**.
