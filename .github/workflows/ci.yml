@@ -536,7 +536,18 @@ jobs:
     # Raised from 15 with T-073: this job now carries the full suite as well as the desktop
     # slice, and 15 was sized for the slice alone. The number bounds how long the job may run
     # once started — it does not bound the queue wait, per RUNNER-R1 below.
-    timeout-minutes: 30
+    #
+    # **Raised again, 30 to 40, on 2026-08-16 (`T-259`) — because the suite grew, not because it
+    # hung.** Measured: the last healthy run took **25.8 min** against 30, which is four minutes of
+    # headroom; the suite has since gained **154 tests** (3506 collected → 3660) and crossed it.
+    # Two consecutive runs died at 30 min, the second on a freshly restarted runner with the
+    # machine otherwise idle, which is what rules out contention.
+    #
+    # **40 rather than 45, and rather than 35.** The job now needs ~32 min, so 35 would restore the
+    # same ~9% margin that just failed. It is not larger than 40 because `STARBASE` has **one**
+    # slot: a genuinely hung job holds every Windows gate for the whole bound, so this number is
+    # also the blast radius of a hang.
+    timeout-minutes: 40
 
     env:
       # Deliberately NOT offscreen. Setting it to the real plugin rather than leaving it unset
