@@ -439,27 +439,39 @@ def test_a_force_push_reads_the_commits_the_payload_lists(
     )
 
 
-def test_a_commit_the_payload_lists_and_the_clone_lacks_is_reported(
-    repository: Path, monkeypatch: pytest.MonkeyPatch
+def test_a_commit_the_payload_lists_and_the_clone_lacks_fails_the_run(
+    repository: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The array describes what GitHub received, which is not always what this checkout has.
+    """**`T240-R1`, fourth instance.** Known-incomplete coverage is a failure, not a footnote.
 
-    A commit that cannot be read cannot be judged, and `git log` on a missing object raises rather
-    than returning nothing — so an unreadable SHA would take the whole gate down with it. They are
-    dropped and **counted in the note**, because *"12 commits checked"* on a push of 13 is the same
-    silence this finding is about.
+    A commit that cannot be read cannot be judged — `git log` on a missing object raises, so an
+    unreadable SHA would take the whole gate down with it. The third round dropped those, counted
+    them **in the note**, and then exited 0 if the survivors were clean: the run *printed* "1 of
+    them not in this clone" and *returned* success, which is the original "did not inspect
+    everything it claimed" defect one level outward.
+
+    **Every readable commit here is clean**, so the non-zero exit can only come from the shortfall
+    itself — a test with a bad survivor would prove nothing about this rule.
     """
     monkeypatch.chdir(repository)
-    bad = commit(repository, BAD_TRAILER, name="one.txt")
+    first = commit(repository, GOOD_MESSAGE, name="one.txt")
     head = commit(repository, GOOD_MESSAGE, name="two.txt")
     run_git(repository, "update-ref", "refs/remotes/origin/main", head)
 
     payload = push_payload(before=GONE, after=head)
-    payload["commits"] = [{"id": bad}, {"id": "c" * 40}, {"id": head}]
+    payload["commits"] = [{"id": first}, {"id": "c" * 40}, {"id": head}]
     selection = check.select_range("push", payload)
 
-    assert selection.commits == (bad, head)
+    assert selection.commits == (first, head)
     assert "1 of them not in this clone" in selection.note, selection.note
+    assert selection.incomplete, "the selection does not know it is incomplete"
+
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(payload), encoding="utf-8")
+    assert check.main(["--event", str(event), "--event-name", "push"]) == 1, (
+        "every readable commit is clean and the run still reported success over one it could "
+        "not read"
+    )
 
 
 def test_a_commit_already_pushed_elsewhere_is_not_re_read(
@@ -483,13 +495,18 @@ def test_a_commit_already_pushed_elsewhere_is_not_re_read(
     assert check.check_commits(selection.commits, "probe") == 0
 
 
-def test_a_truncated_payload_says_it_may_have_missed_some(
+def test_a_truncated_payload_fails_rather_than_claiming_the_push(
     repository: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """GitHub caps `commits` at 2048, and a gate that read 2048 of 3000 must not imply it read all.
+    """GitHub caps `commits` at 2048, and a gate that read 2048 of 3000 must not report success.
 
-    Driven at the cap rather than with 2048 real commits: what is being asserted is the sentence
-    the log carries, and building three thousand commits to produce it would test `git commit`.
+    The fourth round is the second half of that sentence: the cap used to be a phrase in the note,
+    and the run exited 0 around it. GitHub documents an API route for the commits beyond the cap;
+    the checker is stdlib-only and tokenless by design, so the honest alternative to retrieval is
+    `Selection.incomplete` — asserted here as the field `main` fails on, not as prose.
+
+    Driven at the cap rather than with 2048 real commits: what is being asserted is the shortfall,
+    and building three thousand commits to produce it would test `git commit`.
     """
     monkeypatch.chdir(repository)
     head = commit(repository, GOOD_MESSAGE, name="one.txt")
@@ -500,6 +517,148 @@ def test_a_truncated_payload_says_it_may_have_missed_some(
     selection = check.select_range("push", payload)
 
     assert f"caps that array at {check.MAX_PAYLOAD_COMMITS}" in selection.note, selection.note
+    assert selection.incomplete and "cap" in selection.incomplete, (
+        f"a payload at the cap does not mark itself incomplete: {selection.incomplete!r}"
+    )
+
+
+def test_a_complete_payload_with_clean_commits_still_passes(
+    repository: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The control for the shortfall rule: complete coverage of clean commits exits 0.
+
+    Without this, everything above could pass by failing every payload route — and it pins the
+    boundary that matters: **excluding a `distinct: false` commit is a decision about scope, not a
+    gap in coverage**, so it must not trip the incompleteness failure.
+    """
+    monkeypatch.chdir(repository)
+    root = run_git(repository, "rev-parse", "HEAD")
+    first = commit(repository, GOOD_MESSAGE, name="one.txt")
+    head = commit(repository, GOOD_MESSAGE, name="two.txt")
+    run_git(repository, "update-ref", "refs/remotes/origin/main", head)
+
+    payload = push_payload(before=GONE, after=head)
+    payload["commits"] = [{"id": root, "distinct": False}, {"id": first}, {"id": head}]
+    selection = check.select_range("push", payload)
+
+    assert selection.commits == (first, head)
+    assert selection.incomplete is None, (
+        f"a fully readable payload marked itself incomplete: {selection.incomplete!r}"
+    )
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(payload), encoding="utf-8")
+    assert check.main(["--event", str(event), "--event-name", "push"]) == 0
+
+
+def test_a_pull_request_with_an_unresolvable_base_fails_rather_than_passing_its_tip(
+    repository: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The same class, one caller over: a tip reading offered as coverage of a whole pull request.
+
+    The fallback for a base this clone cannot resolve read the head commit alone and exited by
+    what it found there — for an event whose entire meaning is *the commits between base and
+    head*. The head is clean here, so the failure can only be the shortfall.
+    """
+    monkeypatch.chdir(repository)
+    commit(repository, GOOD_MESSAGE, name="one.txt")
+    head = commit(repository, GOOD_MESSAGE, name="two.txt")
+
+    payload = {"pull_request": {"base": {"sha": GONE}, "head": {"sha": head}}}
+    selection = check.select_range("pull_request", payload)
+    assert selection.incomplete, "an unresolvable base did not mark the selection incomplete"
+
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(payload), encoding="utf-8")
+    assert check.main(["--event", str(event), "--event-name", "pull_request"]) == 1
+
+
+def test_a_pull_request_with_an_unresolvable_head_fails_rather_than_reading_nothing(
+    repository: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A head this clone cannot resolve used to exit 0 having read nothing at all.
+
+    That is this finding's original shape from round one — an empty reading reported as a pass —
+    surviving in the one branch nothing had asked about.
+    """
+    monkeypatch.chdir(repository)
+    base = run_git(repository, "rev-parse", "HEAD")
+
+    payload = {"pull_request": {"base": {"sha": base}, "head": {"sha": GONE}}}
+    selection = check.select_range("pull_request", payload)
+    assert selection.incomplete, "an unresolvable head did not mark the selection incomplete"
+
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(payload), encoding="utf-8")
+    assert check.main(["--event", str(event), "--event-name", "pull_request"]) == 1
+
+
+def test_a_push_with_no_comparable_default_still_reads_the_payload(
+    repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The no-default fallback read the tip alone while the event listed what the push brought.
+
+    A first push to an empty repository is the case: `origin/<default>` does not resolve, and the
+    old last resort was the tip commit — with a malformed commit **below** a clean tip sailing
+    through, exactly the force-push shape one caller over. The payload route works here too.
+    """
+    monkeypatch.chdir(repository)
+    bad = commit(repository, BAD_TRAILER, name="one.txt")
+    head = commit(repository, GOOD_MESSAGE, name="two.txt")
+    # No origin/<default> ref exists in this fixture, so the default-branch route cannot fire.
+
+    payload = push_payload(before=ZERO, after=head)
+    payload["commits"] = [{"id": bad}, {"id": head}]
+    selection = check.select_range("push", payload)
+
+    assert selection.commits == (bad, head), (
+        "with no default branch to compare against, the payload's commits went unread"
+    )
+    assert selection.incomplete is None
+    assert check.check_commits(selection.commits, "probe") == 1, (
+        "a malformed commit below a clean tip passed a push this clone cannot range"
+    )
+
+
+# --- the workflow's own lifecycle (T240-R2) -----------------------------------------------------
+
+
+WORKFLOW: Final = TOOL.parents[1] / ".github" / "workflows" / "commit-messages.yml"
+
+
+def test_a_later_push_cannot_cancel_the_run_holding_the_bad_commit() -> None:
+    """**`T240-R2`.** The workflow could cancel the only run that had seen a malformed commit.
+
+    `concurrency` grouped by ref with `cancel-in-progress: true`: push A is still being checked
+    when push B lands on the same ref, B cancels A, and B's own `before..after` starts at A's head
+    — so A's commits are read by nothing, ever. The reviewer probed it on a real repository:
+    rc=1 for A's range, rc=0 for B's, and A's run cancelled.
+
+    **Transcribed as text, the way the Windows menu gate pins its expectations**: this is the
+    statement of what the wiring must be, not a copy of whatever it currently is, so restoring
+    blanket cancellation fails here rather than waiting for two pushes to race on the runner.
+    Push runs group by their own SHA, which never collides; pull requests keep ref-grouped
+    cancellation because a synchronize run's `base..head` covers every commit its cancelled
+    predecessor would have read — the property the push side lacked.
+    """
+    # Comments stripped first, for the reason the colour sweep records: the explanation beside
+    # the wiring quotes the defective pair, and a sweep that reads comments matches its own
+    # explanation. The first run of this test did exactly that.
+    text = "\n".join(
+        line
+        for line in WORKFLOW.read_text(encoding="utf-8").splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    assert (
+        "group: commit-messages-${{ github.event_name == 'pull_request' && github.ref "
+        "|| github.sha }}" in text
+    ), "push runs no longer get a concurrency group of their own SHA"
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in text, (
+        "cancellation is no longer scoped to pull requests"
+    )
+    assert "cancel-in-progress: true" not in text, (
+        "blanket cancellation is back, so a later push can cancel the only run that saw a bad "
+        "commit"
+    )
 
 
 def test_a_force_push_to_the_default_branch_does_not_check_nothing(

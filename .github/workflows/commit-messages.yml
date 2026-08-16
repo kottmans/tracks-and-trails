@@ -31,9 +31,22 @@ on:
   push:
   pull_request:
 
+# **A push run is never cancelled by a later push** (`T240-R2`). This grouped by ref with
+# `cancel-in-progress: true`, and that pair let a successor cancel the only run that held the bad
+# commit: push A is still being checked when push B lands on the same ref; B cancels A, and B's
+# own range starts at A's head — so A's commits are read by nothing, which directly contradicted
+# the claim that this check cannot be skipped. The reviewer probed it on a real repository:
+# rc=1 for A's range, rc=0 for B's, and A's run cancelled.
+#
+# Push runs therefore group by **their own SHA**, which never collides, so every pushed range runs
+# to completion. **Pull requests keep ref-grouped cancellation deliberately**: a synchronize run's
+# `base..head` covers every commit the merge would bring, so the replacement run covers its
+# cancelled predecessor — exactly the property the push side lacked. The wiring is pinned as text
+# by `tests/unit/test_commit_message_check.py`, the way the Windows menu gate pins its own
+# expectations.
 concurrency:
-  group: commit-messages-${{ github.ref }}
-  cancel-in-progress: true
+  group: commit-messages-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

@@ -119,18 +119,51 @@ this one returned four verdicts before approving.*
 
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
-**Status:** **In Review — corrected three times, 2026-08-15.** The first review returned
-**Changes requested** with `T240-R1` (Medium, blocking acceptance criteria 1–3): the half whose job
-is to catch what a forgotten or bypassed hook missed did not check every commit in the range it
-called *"what arrived"*. The second pass **held it open** — the option that skipped merges had been
-kept for one caller and cannot express what that caller needs, and the range selection still had a
-shape that resolved to nothing. The third pass held it open once more, and the third round sat
-under a review-budget block — `AGENTS.md` §10's focused-Medium allowance was spent — until
-**2026-08-15, when the maintainer authorized a further focused Medium pass**. Nothing new is
-built under that authorization: the correction has been committed at `7c3fa8b` since the round
-that made it, its surfaces are untouched through `be056ed` (verified by path), and it was
-re-verified the day the pass was authorized — **45 focused tests pass and all seven mutations
-are still caught**. What the authorization unblocks is the review itself, at `5ee22de..7c3fa8b`.
+**Status:** **In Review — corrected five times, 2026-08-15.** Round one: the range half skipped
+merges and read the tip of a new branch. Round two: `--skip-merges` was kept for one caller it
+could not serve, and a force-push to the default branch selected an empty range. Round three: the
+fallback called the pushed commits unknowable, and the payload's `commits` array says otherwise.
+**Round four — the authorized pass — returned Blocked** with the class named in the reviewer's own
+words: **incomplete or discarded evidence is treated as successful coverage** — first through
+range selection, then payload truncation, then the workflow's own lifecycle. The maintainer
+authorized the fifth correction the same day; both findings are corrected below, and **the review
+of them is what remains**. The reviewer also ruled the missing hosted-runner execution **not
+independently blocking**, and that a single green push would not have exercised either defect.
+
+#### `T240-R1` (fourth instance) and `T240-R2` — a partial reading is a failure, not a footnote
+
+**`T240-R1`, fourth instance: known-incomplete payload coverage exited 0.** `pushed_commits`
+dropped commits the clone lacks and annotated the 2048-entry cap in the note; `main` checked the
+survivors and returned success — reproduced before correcting: the run **printed** *"1 of them not
+in this clone"* and **returned 0**. A note is for a reader; an exit code is for the gate, and only
+the second cannot be skimmed past. `Selection.incomplete` now carries every reason a selection
+knows it read less than the event brought, and `main` fails the run after printing everything that
+was read. The reasons, each with its own regression: a commit the payload names and the clone
+lacks; the **2048-entry cap** (GitHub documents an API route for the remainder — deliberately not
+taken, because the checker is stdlib-only and tokenless so that it runs with no setup step, and
+honesty substitutes for retrieval); a pull request whose **base** this clone cannot resolve (its
+tip is still read and reported, and the run still fails); and a pull request whose **head** cannot
+be resolved, which used to exit 0 having read nothing — round one's shape, surviving in the one
+branch nothing had asked about. **Excluding a `distinct: false` commit is not a shortfall** — that
+is scope, not a gap — and the control test pins it. The no-default-branch fallback routes through
+the payload too now, so a first push to an empty repository reads what it brought rather than its
+tip.
+
+**`T240-R2`: the workflow could cancel the only run that saw the bad commit.** `concurrency`
+grouped by ref with `cancel-in-progress: true`, so push B cancelled push A's run while B's own
+`before..after` started at A's head — A's commits read by nothing, ever, which directly
+contradicted criterion 3's *"cannot be skipped"*. The reviewer probed it on a real repository:
+rc=1 for A's range, rc=0 for B's, A's run cancelled. **Push runs now group by their own SHA**,
+which never collides, so every pushed range runs to completion; **pull requests keep ref-grouped
+cancellation deliberately**, because a synchronize run's `base..head` covers every commit its
+cancelled predecessor would have read — exactly the property the push side lacked. The wiring is
+pinned as text by `test_a_later_push_cannot_cancel_the_run_holding_the_bad_commit`, whose first
+draft matched the words `cancel-in-progress: true` inside its own explanatory comment — comments
+are stripped first now, for the reason the colour sweep records.
+
+**Eleven mutations, all caught**, four of them new: treating incomplete coverage as success,
+dropping the missing-commit shortfall, dropping the cap shortfall, and restoring blanket
+cancellation — plus the seven from earlier rounds, re-run.
 
 #### `T240-R1`, third round — the commits were never unknowable
 

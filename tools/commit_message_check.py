@@ -26,7 +26,10 @@ The **event** form is what CI runs, and it works the range out itself — see `s
 is where `T240-R1`'s second round moved that decision from twenty lines of unreachable `bash`. It
 cannot prevent anything — by then the history exists, which is precisely the state `T-065` had to
 preserve rather than fix — so it **reports**. It is the half that cannot be forgotten, and the half
-that arrives too late.
+that arrives too late. **And when it knows it read less than the event brought** — a commit the
+payload names and the clone lacks, the 2048-entry payload cap, a pull request base or head this
+clone cannot resolve — **it fails rather than reporting coverage it does not have** (fourth round:
+incomplete or discarded evidence must never be treated as successful coverage).
 
 Both are wanted, and `T-240`'s entry asks for the difference to be stated rather than blurred.
 
@@ -303,11 +306,21 @@ class Selection:
       reading the tip alone; a push payload carries a `commits` array, so they are not.
     - neither — the event brought nothing at all, which a branch deletion does. Distinct from *a
       range that resolved to nothing*, which is the bypass this whole finding is about.
+
+    **And `incomplete`, which is the fourth round** (`T240-R1`, fourth instance). The third round
+    dropped commits the clone lacks, annotated the 2048-entry cap in the note, and then let `main`
+    exit 0 if the survivors were clean — *"did not inspect everything it claimed"*, one level
+    outward, in the reviewer's words: **incomplete or discarded evidence treated as successful
+    coverage**. When a selection *knows* it read less than the event brought, this field says why,
+    and `main` fails the run after printing everything that was read. A note is for a reader; an
+    exit code is for the gate, and only the second cannot be skimmed past.
     """
 
     revisions: str | None
     note: str
     commits: tuple[str, ...] = ()
+    #: Why this selection covers less than the event brought, or `None` when it covers it all.
+    incomplete: str | None = None
 
 
 def tip_only(head: str, *, exists: Callable[[str], bool]) -> str:
@@ -323,7 +336,7 @@ def tip_only(head: str, *, exists: Callable[[str], bool]) -> str:
 def pushed_commits(
     payload: Mapping[str, object],
     head: str,
-    default: str,
+    why: str,
     *,
     exists: Callable[[str], bool],
 ) -> Selection:
@@ -336,11 +349,20 @@ def pushed_commits(
     commits the push brought, and a probe with a malformed commit below a clean tip is exactly the
     shape it exists for: the tip passes, the commit under it does not, and only this route sees it.
 
-    **Only the commits this clone actually has.** The array describes what GitHub received, and a
-    commit missing from the checkout cannot have its message read; those are named in the note
-    rather than dropped silently. **And `distinct` is honoured**: GitHub marks a commit already
-    pushed elsewhere as `distinct: false`, and re-reading history that arrived on another branch is
-    how a gate starts failing for commits nobody in this push wrote.
+    **Only the commits this clone actually has can be read — and the rest fail the run**
+    (fourth round). The array describes what GitHub received; a commit missing from the checkout
+    cannot have its message read, and the third round dropped those with a note and exited by the
+    survivors alone. They are counted into `Selection.incomplete` now, as is the **2048-entry
+    cap**: GitHub documents an API route for the commits beyond it, and it is deliberately not
+    taken — this checker imports the standard library only and runs without a token, which is what
+    lets it run with no setup step — so the honest alternative to retrieval is a failing report.
+    **`distinct` is still honoured and is not a shortfall**: GitHub marks a commit already pushed
+    elsewhere as `distinct: false`, and re-reading history that arrived on another branch is how a
+    gate starts failing for commits nobody in this push wrote. Excluding those is a decision about
+    scope, not a gap in coverage.
+
+    `why` is the caller's sentence for how it got here, because two callers arrive for different
+    reasons: an empty determinable range, and a clone with no default branch to compare against.
     """
     listed = payload.get("commits")
     described = listed if isinstance(listed, list) else []
@@ -350,16 +372,24 @@ def pushed_commits(
         if isinstance(entry, dict) and entry.get("distinct") is not False
     ]
     present = [sha for sha in wanted if sha and exists(sha)]
-    why = (
-        f"no usable before-SHA and {head[:7]} adds nothing to {default} — a force-push to the "
-        "default branch, or a tag re-pushed at a commit already on it"
-    )
-    if not present:
-        return Selection(
-            tip_only(head, exists=exists),
-            f"{why}; the payload lists no commit this clone has, so checking the tip only",
-        )
     missing = len(wanted) - len(present)
+    shortfalls = []
+    if missing:
+        shortfalls.append(f"{missing} commit(s) the payload names are not in this clone")
+    if len(described) >= MAX_PAYLOAD_COMMITS:
+        shortfalls.append(
+            f"the payload's commits array is at GitHub's {MAX_PAYLOAD_COMMITS}-entry cap, so the "
+            "push may have brought commits nothing in this event describes"
+        )
+    incomplete = "; and ".join(shortfalls) if shortfalls else None
+    if not present:
+        if wanted:
+            return Selection(
+                tip_only(head, exists=exists),
+                f"{why}; the payload lists no commit this clone has, so checking the tip only",
+                incomplete=incomplete,
+            )
+        return Selection(tip_only(head, exists=exists), f"{why}; checking the tip commit only")
     truncated = (
         f", and GitHub caps that array at {MAX_PAYLOAD_COMMITS} so the push may have brought more"
         if len(described) >= MAX_PAYLOAD_COMMITS
@@ -370,6 +400,7 @@ def pushed_commits(
         None,
         f"{why}; reading the {len(present)} commit(s) the payload lists{absent}{truncated}",
         tuple(present),
+        incomplete=incomplete,
     )
 
 
@@ -434,8 +465,19 @@ def select_range(
                 tip_only(head, exists=exists),
                 f"pull request whose base {base[:7] or '(none)'} is not in this clone; "
                 "checking the head commit only",
+                incomplete=(
+                    f"the pull request names base {base[:7] or '(none)'} and this clone cannot "
+                    "resolve it, so everything below the head commit went unread"
+                ),
             )
-        return Selection(None, "pull request with no head commit in this clone; nothing to read")
+        return Selection(
+            None,
+            "pull request with no head commit in this clone; nothing can be read",
+            incomplete=(
+                f"the pull request names head {head[:7] or '(none)'} and this clone cannot "
+                "resolve it, so nothing the pull request brings was read"
+            ),
+        )
 
     head = str(payload.get("after") or payload.get("head") or "")
     if not head or head == ZERO_SHA:
@@ -453,11 +495,22 @@ def select_range(
                 candidate,
                 f"no usable before-SHA; checking everything {head[:7]} adds over {default}",
             )
-        return pushed_commits(payload, head, default, exists=exists)
+        return pushed_commits(
+            payload,
+            head,
+            f"no usable before-SHA and {head[:7]} adds nothing to {default} — a force-push to "
+            "the default branch, or a tag re-pushed at a commit already on it",
+            exists=exists,
+        )
 
-    return Selection(
-        tip_only(head, exists=exists),
-        "no before-SHA and no default branch to compare against; checking the tip commit only",
+    # No default branch this clone can compare against — a first push to an empty repository is
+    # the case. The payload route works here too (fourth round): reading the tip alone while the
+    # event lists what the push brought was this finding's class, one caller over.
+    return pushed_commits(
+        payload,
+        head,
+        "no usable before-SHA and no default branch this clone can compare against",
+        exists=exists,
     )
 
 
@@ -483,10 +536,19 @@ def main(argv: list[str] | None = None) -> int:
         selection = select_range(arguments.event_name, payload)
         print(f"range: {selection.note}")
         if selection.commits:
-            return check_commits(selection.commits, "the commits the push payload listed")
-        if selection.revisions is None:
-            return 0
-        return check_range(selection.revisions)
+            failed = check_commits(selection.commits, "the commits the push payload listed")
+        elif selection.revisions is not None:
+            failed = check_range(selection.revisions)
+        else:
+            failed = 0
+        if selection.incomplete:
+            # **A known shortfall is a failure, not a footnote** (`T240-R1`, fourth instance).
+            # Everything readable was read and reported above; what this cannot do is call that
+            # a complete check of the push, and an exit code is the one part of the report the
+            # gate itself consumes.
+            print(f"\nNOT FULLY CHECKED: {selection.incomplete}.")
+            return failed or 1
+        return failed
 
     if arguments.revisions:
         return check_range(arguments.revisions)
