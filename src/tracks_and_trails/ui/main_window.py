@@ -1097,7 +1097,8 @@ class MainWindow(QMainWindow):
         run.toggled.connect(self._run_toggled)
         bar.addAction(run)
         self._run = run
-        self._declare_toolbar_route(bar, run, f"the {RUN_SHORTCUT} shortcut")
+        self._show_in_file_menu(run)
+        self._declare_toolbar_route(bar, run, f"the File menu and the {RUN_SHORTCUT} shortcut")
         # Sets text, status tip, tooltip and accessible description together, so the four cannot
         # describe different states of the same control (`NFR-005`).
         self._describe_run_action(running=False)
@@ -1122,7 +1123,29 @@ class MainWindow(QMainWindow):
         clear.triggered.connect(self._clear_finished)
         bar.addAction(clear)
         self._clear = clear
-        self._declare_toolbar_route(bar, clear, f"the {CLEAR_FINISHED_SHORTCUT} shortcut")
+        self._show_in_file_menu(clear)
+        self._declare_toolbar_route(
+            bar, clear, f"the File menu and the {CLEAR_FINISHED_SHORTCUT} shortcut"
+        )
+
+    def _show_in_file_menu(self, action: QAction) -> None:
+        """Put a toolbar verb on the `File` menu as **the same action**, not a copy (`T-246`).
+
+        **A shortcut is a route; a menu item is a place to land.** `T-200` gave both verbs
+        `Ctrl+R` and `Ctrl+Shift+C`, which makes them operable without a pointer — and leaves a
+        screen-reader user with nothing to hear. `T-234` forbids a focusable widget on this
+        toolbar (`T203-R3`: one stole `Shift+F10` from the row menu on a freshly opened window),
+        so the drawn buttons take no focus and never will. The menu item is the announcement the
+        shortcut cannot make, and Qt draws the shortcut beside it, which is the discoverability an
+        undocumented key combination lacks.
+
+        **The same `QAction`, following `T-130`.** The toolbar has shown the File menu's own
+        `Add URLs...` action since that task rather than a second one that would drift; these two
+        are the exception it left, and this removes it. One object means one enabled state, one
+        status tip and one label — the run control's text changes as the queue starts and stops,
+        and the menu item changes with it because there is nothing else to change.
+        """
+        self._file_menu.insertAction(self._before_quit, action)
 
     @staticmethod
     def _declare_toolbar_route(bar: QToolBar, action: QAction, route: str) -> None:
@@ -1387,7 +1410,18 @@ class MainWindow(QMainWindow):
         file_menu.addAction(add_action)
         #: Held so the toolbar can show the *same* action rather than a second one (`T-130`).
         self._add_action = add_action
-        file_menu.addSeparator()
+        #: Where `Start` and `Clear finished` are inserted, and why they are not appended
+        #: (`T-246`).
+        #:
+        #: **The two queue verbs are built by the control bar, not here.** `_build_queue_actions`
+        #: owns them because it owns the text that describes them — the run control's label,
+        #: status tip, tooltip and accessible description are one decision made in one place
+        #: (`_describe_run_action`) — and a window built with `control_bar=False` has neither
+        #: action at all. Appending from there would put both **below `Quit`**, since this menu is
+        #: built first; inserting before this separator keeps the verbs together and leaves `Quit`
+        #: last, where a user's hand expects it.
+        self._file_menu = file_menu
+        self._before_quit = file_menu.addSeparator()
 
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)

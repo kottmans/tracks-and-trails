@@ -389,8 +389,14 @@ def test_no_interactive_control_reaches_the_tree_without_a_name(tree: Tree) -> N
     # assertion that *tripped* on it — while this parametrisation, which is the only thing
     # asserting what is *inside* each menu, was not. So the menu was published and its one action
     # was checked by nothing on the platform where checking it is possible.
+    #
+    # **`Start` and `Clear finished` joined `&File` in `T-246`**, and this line is the reason that
+    # task could not be folded into a focused correction: the two verbs the toolbar draws are the
+    # same `QAction`s the menu now holds, and **this is the only assertion on either platform that
+    # would notice if one of them stopped being published**. `Start` is the run control's stopped
+    # label — the text follows the state, and a freshly built window has never run.
     [
-        ("&File", ["Add URLs...", "Quit"]),
+        ("&File", ["Add URLs...", "Start", "Clear finished", "Quit"]),
         ("&Settings", ["Settings..."]),
         ("&Help", [f"About {APP_NAME}"]),
     ],

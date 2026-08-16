@@ -33,6 +33,7 @@ from tracks_and_trails.ui.main_window import (
     _MAX_COORD,
     ACTIONABLE_STATUS_PROPERTY,
     APP_NAME,
+    CLEAR_FINISHED_SHORTCUT,
     DEFAULT_SIZE,
     RUN_SHORTCUT,
     TOOLBAR_SPACER_PROPERTY,
@@ -84,6 +85,86 @@ def test_menu_bar_exposes_quit_about_and_settings(window: MainWindow) -> None:
 
     names = {action.objectName() for action in window.findChildren(QAction)}
     assert {"actionQuit", "actionAbout", "actionSettings"} <= names
+
+
+def file_menu(window: MainWindow) -> tuple[list[str], list[QAction], list[QAction]]:
+    """The `File` menu's item texts and its actions, with the menu kept alive.
+
+    **The `QAction` wrappers are what keep the `QMenu` wrapper alive**, which is why they are
+    returned rather than discarded: releasing them mid-test raises *"Internal C++ object (QMenu)
+    already deleted"*. `tests/ui/test_windows_accessibility.py` records the same trap, and this
+    helper hit it on its first run.
+    """
+    held = window.menuBar().actions()
+    menu = next(
+        menu
+        for action in held
+        if isinstance(menu := action.menu(), QMenu) and menu.title() == "&File"
+    )
+    items = menu.actions()
+    return [action.text().replace("&", "") for action in items], items, held
+
+
+def test_the_queue_verbs_are_on_the_file_menu_as_the_same_actions(qapp: QApplication) -> None:
+    """**`T-246`.** A shortcut is a route; a menu item is somewhere to land.
+
+    `T-200` gave `Start` and `Clear finished` their shortcuts, which makes them operable without a
+    pointer — and leaves a screen-reader user nothing to hear, because `T-234` forbids a focusable
+    widget on that toolbar and the drawn buttons take `NoFocus`. The menu item is the announcement
+    the shortcut cannot make.
+
+    **The same `QAction`, not a copy** — `T-130`'s rule, which `Add URLs...` has followed since it
+    was written. Asserted with `is`, because two actions with equal text would satisfy anything
+    weaker and would then drift apart the first time one of them was relabelled.
+    """
+    window = MainWindow(concurrency=3, control_bar=True)
+    toolbar = window.findChild(QToolBar, "queueToolBar")
+    assert toolbar is not None, "the queue toolbar is gone, so this proves nothing"
+    run, clear = window.run_action, window.clear_completed_action
+    assert run is not None and clear is not None
+
+    names, on_the_menu, _held = file_menu(window)
+    assert names == ["Add URLs...", "Start", "Clear finished", "", "Quit"], names
+
+    on_the_bar = toolbar.actions()
+    for verb, label in ((run, "Start"), (clear, "Clear finished")):
+        assert any(action is verb for action in on_the_bar), f"{label} left the toolbar"
+        assert any(action is verb for action in on_the_menu), (
+            f"File → {label} is a different object from the toolbar's action, so the two can "
+            "drift apart the first time either is relabelled or disabled"
+        )
+
+    assert run.shortcut().toString() == RUN_SHORTCUT
+    assert clear.shortcut().toString() == CLEAR_FINISHED_SHORTCUT
+
+
+def test_the_run_items_label_follows_the_queue_from_the_menu_too(qapp: QApplication) -> None:
+    """One object means one label, so the menu cannot describe a state the toolbar has left.
+
+    This is what *the same action* buys that a copy would not: nothing here updates the menu item.
+    """
+    window = MainWindow(concurrency=3, control_bar=True)
+    assert file_menu(window)[0][1] == "Start"
+
+    window.show_queue_running(True)
+    assert file_menu(window)[0][1] == "Stop", (
+        "the queue is running and File still offers Start — the menu item is not the toolbar's "
+        "action, or its label is set in a second place"
+    )
+
+    window.show_queue_running(False)
+    assert file_menu(window)[0][1] == "Start"
+
+
+def test_a_window_with_no_control_bar_has_neither_queue_item(qapp: QApplication) -> None:
+    """The all-or-nothing rule the two actions already followed, now visible on the menu.
+
+    `_build_queue_actions` owns both, so a window built without a control bar has neither action —
+    and must therefore offer neither item, rather than a menu route to a verb that does not exist.
+    """
+    window = MainWindow()
+    assert window.run_action is None and window.clear_completed_action is None
+    assert file_menu(window)[0] == ["Add URLs...", "", "Quit"]
 
 
 def test_the_settings_item_is_disabled_on_a_window_that_cannot_write_settings(

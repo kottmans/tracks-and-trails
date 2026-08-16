@@ -363,9 +363,13 @@ BORDERED_CONTROLS: Final = (
         selector="QToolBar QToolButton",
         takes_focus=True,
         reason=(
-            "`TabFocus`, measured — Tab reaches `Pause queue` from the central widget. The sheet "
-            "said otherwise until this round: `QToolBar QToolButton:disabled` claimed *nothing on "
-            "this bar takes focus*, and the tab order disagrees."
+            "`TabFocus` on a `QToolButton` this sheet is handed as a *widget* — which is what "
+            "the sweep builds, and why the rule has to exist. **This application's own toolbar "
+            "buttons are `NoFocus`**, measured on the composed window: Qt gives an "
+            "action-created button `NoFocus`, and `T-234` requires it here — `T203-R3` recorded a "
+            "focusable one stealing `Shift+F10` from the row menu. So the rule protects a shape "
+            "this application does not currently build, and the entry says which is which rather "
+            "than claiming the bar takes focus (`T202-R1`, corrected under `T-246`)."
         ),
     ),
     BorderedControl(
@@ -648,7 +652,8 @@ STATE_RULES: Final = (
         channel="published-state",
         reason=(
             "Qt publishes the disabled state on the action behind the button, so a screen reader "
-            "announces it whether or not the button is where the keyboard happens to be."
+            "announces it even though nothing on this bar takes focus — `T-234`'s criterion, "
+            "measured `NoFocus` on all four of the composed window's toolbar buttons."
         ),
     ),
     StateRule(
