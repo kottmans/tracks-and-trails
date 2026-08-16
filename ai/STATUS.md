@@ -5,15 +5,22 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 (`T-240` Approved — the overnight review's last open task) — **the overnight six-task review came
+**Last updated:** 2026-08-16 (**everything is pushed** — `origin/main` = `9be7433`) — and the
+push doubled as **`T-240`'s first real runner execution: the commit-messages gate ran on GitHub
+and passed**, 29 commits checked, minutes after its approval. *(A record correction rides along:
+today's entries repeatedly said `origin/main` was at `26eb41c` with everything local. The run
+history shows the maintainer pushed the overnight batch at `083e5e3` on the evening of
+2026-08-15 — the claim was inherited from this file and never re-checked against the remote, so
+the unpushed counts in today's handoffs were overstated. Current state is now verified with
+`git fetch`, not assumed.)* — **the overnight six-task review came
 back at `9300adc`: `T-021` Approved, `T-246` approved as a records-only filing, and four blockers.**
 **`T-200` is Approved at `274ed9e` and `T-243` at `083e5e3`**, both with no findings — so
 **five of Phase 4's seven exit criteria are met**, `T-200` carrying two of them. What is left is
 `T-212`'s recorded checklist run and the exit review. **`T-246` is Approved at `217792a`**: `Start` and
 `Clear finished` are on the `File` menu as the same `QAction`s the toolbar draws, so the two verbs a
-screen reader could not announce now have somewhere to land. **Its Windows half stays unverified
-until the push** — `test_each_menu_publishes_exactly_its_actions` is the only gate that would catch
-a regression there — and the reviewer ruled that this does not block the scoped criteria. **`T-202` is Approved at `a8775bf`** after four rounds:
+screen reader could not announce now have somewhere to land. **Its Windows half is on the runner now** —
+the push put `test_each_menu_publishes_exactly_its_actions` in front of the only gate that would
+catch a regression there; the CI run's verdict lands in the Actions log. **`T-202` is Approved at `a8775bf`** after four rounds:
 `T202-R1` was held open three times — the instance fixed and the class left, then a gate that could
 only see what the style sheet had thought to style — and the fourth pass raised **`T202-R2`**
 against the tests themselves, which installed the style sheet without the palette so every dark
