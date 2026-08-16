@@ -509,355 +509,6 @@ it**, and this task owns making it complete rather than incidental.
 - Colour contrast and colour-only information — `T-202`
 - High-contrast themes, font scaling, and reduced motion. None is requested; each is its own decision
 
-### T-202 — Nothing is said by colour alone
-
-**Status:** **Complete — Approved at `a8775bf` on 2026-08-15**, no findings, after four rounds.
-`T202-R1` (High) was returned three times: *focus* conveyed by colour alone and exempted by name;
-then fixed for the three controls the finding named and left everywhere else; then an inventory
-parsed out of the style sheet, blind to a `QListView` that Qt frames and `theme.py` never mentions.
-The fourth pass raised **`T202-R2`** (Medium) against the tests themselves, and the maintainer
-authorized a focused pass for it. Both findings are closed.
-
-**The reviewer verified the mutations rather than the assertions**: the fixed-light-accent painter
-fails the dark header test, and stylesheet-only dressing fails both rendered sweep cases. They also
-ruled on the one thing this task left deliberately uneven — **the `QListView` mutation failing only
-in the light palette is acceptable**, because a mutation needs to be *detected*, and moving the
-threshold to force a dark failure would misrepresent what was measured. That reading is now the
-precedent for the next per-palette asymmetry here.
-
-**What four rounds cost, in one line each**, because the pattern is the reusable part:
-
-1. The sweep enumerated by palette *field*, so a state drawn in `accent` was never asked what it
-   meant.
-2. The fix was written against the three controls the finding named rather than the property they
-   shared.
-3. The inventory was parsed from the style sheet, so it could only contain controls somebody had
-   already written a rule for.
-4. The tests dressed the application in a style sheet without its palette, so every dark case ran
-   as light — and three recorded measurements had to be re-derived, two of which changed.
-
-Each round the gate was widened by asking a question one level less specific than the last: *which
-field?* → *which property?* → *what is actually drawn?* → *is the thing under test the thing that
-ships?*
-
-#### `T202-R2` — the dark half of every rendered test was not dark
-
-**The rendered tests installed the style sheet and nothing else.** `theme.apply` is the one call
-that themes anything and it does three things — the sheet, the `QPalette`, and the record in
-`theme.applied()`. Calling `setStyleSheet` alone leaves the other two, so **both parameter cases
-ran as light**: measured, `applied=light` in the dark case and the platform's own `#efefef` window
-where the dark theme's is `#0A1712`.
-
-**It mattered immediately, and the reviewer's own mutation is the proof.** `SortableHeader` reads
-`theme.applied().accent` to paint its current section, so hard-coding the light accent there
-survived every one of the 79 assertions. `dress()` is the fix — `theme.apply`, plus two assertions
-that the theme really is in force, because this was invisible for exactly as long as nothing asked.
-
-**The mutation the reviewer asked for could not be a greyscale one.** That sweep cannot tell one
-accent from another *by construction* — it is the measure for *is focus visible without colour*,
-and a painter with the wrong palette's gold nailed into it passes it honestly. So the assertion
-lives where the claim does: `test_the_current_section_is_drawn_in_the_theme_that_is_applied` in
-`tests/ui/test_format_table.py` renders the focused header in each palette and requires the applied
-theme's accent to be on screen **and the other theme's not to be**. It is the one colour assertion
-in this area, and it is a statement about provenance rather than about legibility.
-
-**Three figures recorded in earlier rounds were measured under that unapplied palette, and two did
-not survive re-measurement.** They are corrected below rather than left standing:
-
-- The reason given for changing the ink measure — *a doubled gold border scoring 5958 before and
-  5958 after* — **does not reproduce** with the palette installed. What does, and is what the
-  reason now rests on, is that Qt hands `:default` to whichever button has focus: six of the preset
-  manager's seven buttons go from a `#ffffff` ground to `#1e5e47` on focus, so ink counted against
-  a fill that moved is two questions averaged.
-- The focus gain across the isolated controls was recorded as **0.90 to 1.02** of a ring. Measured
-  with the theme applied it is **0.82 to 1.94**.
-- The reason `QListView` needed the rule was recorded as *focus recoloured a native frame*. With
-  the palette in force the native frame measures **1.72:1** against the window in light and
-  **1.04:1** in dark — it was not a visible boundary being recoloured, it was barely a boundary.
-  The fix is the same and better founded: `MINIMUM_CONTROL_CONTRAST` is 3:1, and `Theme.border`
-  exists because *a control whose boundary is invisible is a control you cannot find*.
-
-The figures that **did** survive re-measurement, unchanged: 12 pixels of contents edge repainted
-with the views' padding against 754 without it; 254 changed pixels against a 1516 floor for the
-Settings scroller under the old 1px ring; the scrolled viewport holding `QRect(2, 2, 550, 693)`;
-and 50 controls measured with 12 skipped as disabled, worst case clearing its floor by **1.44x**.
-
-**Eight mutations, all caught**, two of them new: the reviewer's hard-coded light accent, and
-reverting `dress()` to a bare `setStyleSheet` — which fails 56 assertions rather than passing them,
-because the guard is the point.
-
-#### `T202-R1`, third round — the inventory could only see what `theme.py` had thought to style
-
-**The queue is a `QListView`, and the sheet said `QListWidget`.** Qt frames a `QListView` natively
-with a `StyledPanel`, `*:focus` recoloured that frame, and the two lists this application is mostly
-made of — the queue and the add dialog's staging list — were conveying focus by colour alone while
-every test passed. The second round's inventory was **parsed out of the style sheet**, so it could
-only ever contain controls somebody had already written a rule for. One character of that
-selector — `QListWidget` for `QListView` — was invisible to it.
-
-**A parser cannot find that; only rendering can.** So the sweep now walks the **realised
-application**: the nine screens `tests/ui/test_accessibility.py` already opens, every control Qt
-says the keyboard can reach, whatever draws its border. 50 controls measured, 12 skipped as
-disabled, both palettes. That inventory moved to `tests/ui/conftest.py` so both files walk one
-list — building a second one here would have been `T200-R3`'s defect with a module boundary in
-front of it.
-
-**The sweep found three more of the same defect, and all three are fixed.**
-
-- **A ring on the brand fill is not a ring.** `QPushButton:default` and the primary toolbar verb
-  sit on `primary`, and `T-147` had already measured accent against that ground at **1.42:1 in
-  light and 1.25:1 in dark** — its own reason for removing a hover ring. The second round put the
-  identical unreadable pair back as a focus ring: measured at **zero** changed pixels on both. They
-  take `on_primary` now, **7.64:1** and **5.00:1**.
-- **The format table's header drew its focus rectangle through `PE_FrameFocusRect`**, which under a
-  style sheet is `QStyleSheetStyle`'s idea of one — a hairline that measured **zero** against the
-  header strip. `SortableHeader.paintSection` draws the current section itself now, 2px accent,
-  **4.61:1** in light and **7.78:1** in dark. Its own docstring had named this defect in advance:
-  *a focus rectangle a user cannot see is the same defect one sense over.*
-- **Two scroll areas are tab stops with nothing to thicken.** Qt puts a `QScrollArea` in the tab
-  chain and both dialogs have one; the global 1px ring drew **254 changed pixels against a 1516
-  floor** on the Settings screen's. They get two pixels of padding and a 2px ring, and the viewport
-  keeps `QRect(2, 2, 550, 693)` exactly.
-
-**The measuring instrument was wrong for the third time, and this is the important part.** It
-counted *ink* — pixels unlike the control's own fill — and Qt draws a `Sunken` `StyledPanel` as two
-lines, one dark and one light. When the fix replaced both with two rings of accent the count came
-out **identical to the pixel**: 5958 before, 5958 after, on a border that had visibly doubled and
-turned gold. *(That measurement was taken with the palette not installed — `T202-R2` above — and
-does not reproduce with `theme.apply` in force. The reason that does is the next sentence.)*
-Counting ink also assumes the fill holds still, and Qt hands `:default` to whichever button has
-focus, so six of the preset manager's seven buttons *invert* when focused.
-
-It asks the criterion's own question now — **would a greyscale reading see a difference?** — pixel
-against the same pixel, at `MINIMUM_CONTROL_CONTRAST`. That threshold is not chosen to make the
-answer come out right: the idle and focus borders of the original defect are **1.45:1** and
-**2.17:1** apart, both under WCAG's 3:1 non-text floor, so the defect scores zero by the standard
-rather than by a number picked afterwards. `test_the_measure_sees_a_thicker_edge_and_not_a_recolour`
-is pointed at the instrument itself, because all three of its errors reported a pass and none was
-caught by anything.
-
-**Six mutations, all caught.** Naming `QListWidget` again — sheet and inventory together, so the
-parser sweep agrees with itself — is caught by the rendered sweep, which is the whole claim of this
-round. Ringing the brand fill in accent, dropping the scroll area's ring, letting the style draw the
-header's rectangle, weakening the measure to *any* difference, and letting the sweep walk the
-inventory without hiding the other windows each fail too.
-
-#### `T202-R1`, second round — the fix was written against the examples, not the property
-
-**Three controls thickened; seven did not, and the seven were measured at zero.** `QPushButton`,
-`QComboBox` and `QLineEdit` were the controls the finding happened to name. Offscreen renderings in
-both palettes: `QListWidget`, `QTableView`, `QTreeView`, `QPlainTextEdit`, `QTextEdit`,
-`QToolButton[stepButton="true"]` and `QToolBar QToolButton` gained **0 pixels of ink** on focus. The
-property that matters is *having a border already* — a control with one cannot show focus by growing
-one — and that is what the enumeration asks now.
-
-**`theme.BORDERED_CONTROLS` lists all fifteen**, each with `takes_focus` and a reason, and the
-thickening selector is **built from it** rather than typed out: retyping the list is how the first
-correction covered three. Two halves keep it honest — the sweep reads the bordered set **out of the
-generated sheet**, so a sixteenth bordered control fails rather than joining silently; and every
-`takes_focus` claim is put to Qt, so an exemption is `NoFocus` or a popup window rather than an
-opinion. Measured after: a full extra ring on all eleven focusable controls, both palettes —
-recorded then as **0.90 to 1.02**, and **0.82 to 1.94** once `T202-R2` put the palette in force.
-
-**The sheet was asserting something false about the toolbar.** `QToolBar QToolButton:disabled`'s
-reason said *"nothing on this bar takes focus"*. Tab reaches `Pause queue` from the central widget —
-measured through the tab order — and those buttons are bordered, so they were in the defect the
-whole time. Corrected, and they thicken.
-
-**The floor is a share of the control's own edge, not 100 pixels.** A stepper is 17 by 25: its whole
-extra ring is **80 pixels**, so the fixed floor would have failed a stepper that is drawn correctly
-while a list gains 754. The floor is `0.6` of one more ring, against a measured 0.90 and a
-colour-only 0.00.
-
-**Two mutations survived the first draft of the tests, and both were real.** `Qt.Popup` is
-`Qt.Window | 0x8`, so `flags & Qt.Popup` is true of **every** top-level widget — the exemption check
-excused everything, which the `QListWidget`-marked-`takes_focus=False` mutation walked straight
-through. And deleting the views' pixel of padding failed nothing: **Qt does not re-measure a frame
-when focus arrives**, so the thicker border is not pushed outward and the contents are not pushed
-in — the extra pixel is drawn *over* the first row. Nothing moves, so a *nothing moves* assertion
-cannot see it. `test_focus_does_not_paint_over_the_contents` measures the contents' own edge
-instead: **12 pixels repainted with the padding, 754 without.** The padding's justification in the
-sheet had been a sentence describing something that does not happen; it now describes what does.
-
-#### `T202-R1`, first round — the sweep asked the wrong question, and focus is what it missed
-
-**The registry enumerated by palette *field*, not by information.** It asked *which rules use `ok`,
-`warn` or `stop`* — so the focus ring, drawn in `accent`, was never asked what it meant. It means
-**keyboard focus**, for the exact user this task exists to protect. Worse,
-`COINCIDENTAL_SEMANTIC_VALUES` excluded `*:focus` explicitly: correctly saying the ring is not a
-*warning*, and never asking what it was.
-
-**Reproduced before changing anything.** A rendered `QPushButton`: **414 pixels changed, none of
-them background becoming ink** — identical geometry, hue only — with the idle and focus borders
-**1.45:1** apart in light and **2.17:1** in dark.
-
-**The defect is narrower than the rule, and the fix follows the shape.** `*:focus` *adds* a ring to
-a control with no border, which is already ink where there was none. It is the already-bordered
-controls where recolouring was the whole change. Those thicken to **2px with the padding reduced by
-exactly what the border gains**, so nothing moves: measured, they keep their size hint. That
-arithmetic is not new — `QToolBar QToolButton:checked` has done it since `T-149`, and the reviewer
-names it as the accepted pattern.
-
-*(This round read "already-bordered controls" as the three the finding named. The second round is
-above: there are eleven, and the other seven were still recolouring.)*
-
-**`theme.STATE_RULES` is the new enumeration, by what a rule conveys**, with four channels and a
-reason each: `geometry`, `luminance`, `published-state`, and `pointer-feedback` for hover and
-pressed, which tell a keyboard user nothing because that user is not hovering. Every pseudo-state
-selector in the sheet must appear, and the sweep fails both ways — an unenumerated state, and a
-registry naming a selector the sheet no longer has.
-
-**The regression never compares an RGB value.** It renders the control idle and focused and counts
-**ink** — pixels that are not the control's own fill — so a recolour scores zero and a thicker edge
-cannot. Measured gain that round: **436 to 454 pixels** on the three controls, both palettes.
-
-*(The first version of that measurement compared against `theme.window` and reported **zero** for a
-fix that plainly worked, because a control's own fill is `surface`. A metric that reads the wrong
-background is a metric that would have failed the fix and passed the defect.)*
-
-**Three mutations, and the third is the one worth reading.** Reverting the border to 1px fails all
-six rendered cases. Renaming the selector fails the registry sweep. **Reclassifying
-`QMenu::item:selected` from `luminance` to `pointer-feedback` survived** — the registry could
-excuse a real state and nothing disagreed, which is `T202-R1`'s own defect one level up. Channel
-claims are bound to their selectors now: `pointer-feedback` must be `:hover` or `:pressed`,
-`published-state` must be `:disabled`, and every `luminance` claim is measured against
-`MINIMUM_CONTRAST` **from the registry** rather than by name.
-
-**Status before this round:** **In Review — built 2026-08-15.** Filed 2026-08-09 from
-`IMPLEMENTATION_PLAN.md` §Phase 4. All six acceptance criteria are met and gated. **It is one of the phase's exit
-criteria**, and the sweep is what answers `NFR-005`'s last clause rather than a claim that it is
-satisfied.
-**Owner:** Implementer
-**Priority:** Medium — it is a named exit criterion, and it is cheap if done as a sweep and
-expensive if discovered in the exit review
-**Phase:** Phase 4 — **after** the phase's new surfaces exist, for `T-200`'s reason
-**Depends on:** `T-146` (the theme selector — a rule that holds in light and fails in dark is not a
-rule), `T-201` (error presentation is the densest use of semantic colour)
-**Relevant context:** `NFR-005`, `ARCHITECTURE.md` §8, `ui/theme.py` (`ok`, `warn`, `stop`),
-`T-130` and `T130-R1` (both palettes' contrast), `T-192`'s `ACTIONABLE_STATUS_PROPERTY`,
-`ui/queue_view.py`, `ui/format_table.py`, `ui/row_delegate.py`
-**Affected surfaces:** `ui/theme.py` and every widget that uses a semantic colour
-**Risk:** Low individually, Medium in aggregate — the failures are in places nobody thinks of as
-information, like a disabled row's grey
-
-#### Scope
-
-`NFR-005` ends with *"and no information conveyed by color alone"*, and the plan repeats it as its
-own exit criterion. **`ui/theme.py` defines three semantic colours** — `ok`, `warn`, `stop` — in
-both palettes. Every place one of them carries meaning needs a second channel: a word, a shape, an
-icon, a weight, or a position.
-
-**`T-192` already set the pattern and it should be named as precedent.** The stopped-queue status
-uses `theme.warn` **and** `font-weight: 600`, applied through a dynamic property so the style is
-selected by *role* rather than by object name — which
-`test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces. **A new widget in that role
-inherits both channels.** That is the shape to reuse: the second channel belongs in the stylesheet
-next to the colour, not bolted on per widget.
-
-**Where to look, from the surfaces that use semantic colour today:** job state in the queue, failed
-versus cancelled versus interrupted, the ffmpeg gate summary, format-table rows that cannot be
-chosen, a row that is not committable, the *Read* badge, progress against stalled progress, and
-anything drawn `muted` to mean *unavailable* rather than merely *secondary*.
-
-**Grey is the one most likely to be missed.** A disabled or muted colour saying *this cannot be
-used* is information conveyed by colour alone, and it does not look like a semantic colour because
-it is not in the `ok`/`warn`/`stop` set.
-
-#### What was built — the enumeration, and it enforces itself
-
-**`theme.SEMANTIC_RULES` is the deliverable.** Each entry pairs a selector with the semantic colour
-it sets, the declaration that says the same thing without colour, and what the colour means. It
-sits directly above `stylesheet()` — *"where the next widget's author will meet it"* — and
-`tests/ui/test_colour_is_never_alone.py` checks it against the generated sheet in **both palettes**,
-from both directions:
-
-- **Every enumerated rule is really in the sheet, with both halves.** A registry that drifts from
-  what it describes reads as coverage while covering nothing.
-- **Every occurrence of a semantic colour in the sheet is claimed.** This is the completeness half
-  and the reason the enumeration is a gate rather than a comment: adding `color: {theme.stop}` to a
-  new rule and stopping there fails.
-
-**Not one assertion in the file reads a colour to check it is there** — the criterion asks the
-opposite. They read words, weight, a published accessibility state, or a count in text; the colour
-is only ever used to *find* the place that has to carry one.
-
-#### What the sweep found, measured rather than assumed
-
-**One semantic rule exists in the whole sheet.** `QStatusBar QLabel[actionableStatus="true"]` —
-`T-192`'s stopped-queue status, already carrying `font-weight: 600` beside its `warn`. **`ok` is
-used nowhere. `stop` is used nowhere in the sheet**, only by the row delegate. So the phase added
-no colour-only signal, which is the criterion this task also owns, and it is now checked rather
-than asserted.
-
-**The trap was in the palette, not the rules.** In dark, `warn` **is** `accent` — both `GOLD`,
-`#D9A24C` — so a sweep matching by *value* finds the focus ring and the pressed primary action
-there and finds neither in light. A gate that behaves differently per theme for a reason unrelated
-to the rule is not a gate. `COINCIDENTAL_SEMANTIC_VALUES` names those two selectors, so a rule that
-starts carrying meaning has to be taken out of that tuple by hand.
-
-**And the sweep would have read its own explanation.** The sheet's comments contain the words
-*warn* and *muted* many times over; comments are stripped before matching.
-
-#### Painted state, which no style sheet reaches
-
-`row_delegate._paint_segments` draws five playlist states in five colours, and the chip beside it
-reads *"12 of 16"* — which counts the done and says nothing about how the rest ended. **The second
-channel already existed**: the header's detail line, *"16 items · 12 done · 2 failed · 1 cancelled ·
-1 queued"*. What did not exist was anything holding the two together.
-
-The inline tuple of words is now `queue_view.SEGMENT_STATE_WORDS`, and the sweep asserts it is
-**total** over `SegmentState`. A sixth state given a colour and no word fails, rather than being
-drawn in silence — which matters because `T-165` already found this bar getting *finished versus
-abandoned* wrong on its own.
-
-#### Grey, which `T-202` predicted would be the one missed
-
-It was used for both meanings, and the answer is that the **selector** tells them apart. Every
-`muted` rule in the sheet is either secondary emphasis — `QGroupBox::title`, `QHeaderView::section`,
-enumerated in `SECONDARY_EMPHASIS_SELECTORS` — or a `:disabled` rule.
-
-**A `:disabled` rule is not colour alone**, and that is asserted rather than argued: Qt publishes
-the state to the accessibility tree, `QAccessible` reports `state().disabled`, and the test checks
-both polarities for the two control kinds those rules cover. *"Disabled is reported"* is worth
-nothing if it is reported always. The control also does not respond, which is a third channel.
-
-A new `muted` rule that is neither fails and has to say which it is.
-
-#### Four mutations, none surviving
-
-| Mutation | Caught by |
-|---|---|
-| `color: {theme.stop}` on `QProgressBar`, enumerated nowhere | the completeness sweep, both palettes |
-| `font-weight: 600` deleted from the one enumerated rule | the registry-versus-sheet check, both palettes |
-| A sixth `SegmentState` with a colour and no word | the totality check |
-| `color: {theme.muted}` on a `[stalled="true"]` rule — grey carrying state | the grey split, both palettes |
-
-**3059 passed / 18 skipped** unit and UI; `ruff`, `ruff format` and `mypy` clean.
-
-#### Acceptance criteria
-
-- **Every use of a semantic colour is enumerated**, and each carries a second, non-colour channel —
-  the enumeration is the deliverable, because an unenumerated use is how this criterion gets
-  claimed without being met — **met**; `theme.SEMANTIC_RULES`, swept for completeness
-- **The second channel is asserted by a test**, not by inspection. A test that reads the rendered
-  text or the widget's role — not one that asserts a colour, which proves the opposite of what is
-  wanted — **met**; no assertion in the file checks that a colour is present
-- **It holds in both palettes.** Light and dark are checked, since `T130-R1` already found contrast
-  problems that differed between them — **met**, and the palettes differ: `warn` is `accent` in dark
-- **Muted-as-unavailable is covered**, or the sweep records that grey is used only for secondary
-  emphasis and never for state — **met**; it is used for both, split by selector, with the disabled state asserted
-- The rule is written where the next widget's author will meet it — beside the styling convention
-  `T-192` established, so it is inherited rather than remembered — **met**; directly above `stylesheet()`
-- No **new** colour-only signal is added by `T-195`–`T-201`; this task is also the check on them — **met**; one semantic rule exists in the whole sheet, and it is `T-192`'s
-
-#### Out of scope
-
-- Contrast ratios and colour blindness simulation. Worth wanting, not requested, and
-  `T-130`/`T130-R1` already fought the contrast fight for both palettes
-- Changing the palette. `ARCHITECTURE.md` §8 owns the brand colours; this task adds channels
-  beside them
-- High-contrast or user-supplied themes — not requested, and each needs its own decision
-
 ### T-243 — An interrupted row says the same thing twice, in two voices
 
 **Status:** **In Review — corrected once, 2026-08-15.** The first review confirmed fork 1 as the
@@ -1208,6 +859,355 @@ which it merely reports.
 ---
 
 ## Complete
+
+### T-202 — Nothing is said by colour alone
+
+**Status:** **Complete — Approved at `a8775bf` on 2026-08-15**, no findings, after four rounds.
+`T202-R1` (High) was returned three times: *focus* conveyed by colour alone and exempted by name;
+then fixed for the three controls the finding named and left everywhere else; then an inventory
+parsed out of the style sheet, blind to a `QListView` that Qt frames and `theme.py` never mentions.
+The fourth pass raised **`T202-R2`** (Medium) against the tests themselves, and the maintainer
+authorized a focused pass for it. Both findings are closed.
+
+**The reviewer verified the mutations rather than the assertions**: the fixed-light-accent painter
+fails the dark header test, and stylesheet-only dressing fails both rendered sweep cases. They also
+ruled on the one thing this task left deliberately uneven — **the `QListView` mutation failing only
+in the light palette is acceptable**, because a mutation needs to be *detected*, and moving the
+threshold to force a dark failure would misrepresent what was measured. That reading is now the
+precedent for the next per-palette asymmetry here.
+
+**What four rounds cost, in one line each**, because the pattern is the reusable part:
+
+1. The sweep enumerated by palette *field*, so a state drawn in `accent` was never asked what it
+   meant.
+2. The fix was written against the three controls the finding named rather than the property they
+   shared.
+3. The inventory was parsed from the style sheet, so it could only contain controls somebody had
+   already written a rule for.
+4. The tests dressed the application in a style sheet without its palette, so every dark case ran
+   as light — and three recorded measurements had to be re-derived, two of which changed.
+
+Each round the gate was widened by asking a question one level less specific than the last: *which
+field?* → *which property?* → *what is actually drawn?* → *is the thing under test the thing that
+ships?*
+
+#### `T202-R2` — the dark half of every rendered test was not dark
+
+**The rendered tests installed the style sheet and nothing else.** `theme.apply` is the one call
+that themes anything and it does three things — the sheet, the `QPalette`, and the record in
+`theme.applied()`. Calling `setStyleSheet` alone leaves the other two, so **both parameter cases
+ran as light**: measured, `applied=light` in the dark case and the platform's own `#efefef` window
+where the dark theme's is `#0A1712`.
+
+**It mattered immediately, and the reviewer's own mutation is the proof.** `SortableHeader` reads
+`theme.applied().accent` to paint its current section, so hard-coding the light accent there
+survived every one of the 79 assertions. `dress()` is the fix — `theme.apply`, plus two assertions
+that the theme really is in force, because this was invisible for exactly as long as nothing asked.
+
+**The mutation the reviewer asked for could not be a greyscale one.** That sweep cannot tell one
+accent from another *by construction* — it is the measure for *is focus visible without colour*,
+and a painter with the wrong palette's gold nailed into it passes it honestly. So the assertion
+lives where the claim does: `test_the_current_section_is_drawn_in_the_theme_that_is_applied` in
+`tests/ui/test_format_table.py` renders the focused header in each palette and requires the applied
+theme's accent to be on screen **and the other theme's not to be**. It is the one colour assertion
+in this area, and it is a statement about provenance rather than about legibility.
+
+**Three figures recorded in earlier rounds were measured under that unapplied palette, and two did
+not survive re-measurement.** They are corrected below rather than left standing:
+
+- The reason given for changing the ink measure — *a doubled gold border scoring 5958 before and
+  5958 after* — **does not reproduce** with the palette installed. What does, and is what the
+  reason now rests on, is that Qt hands `:default` to whichever button has focus: six of the preset
+  manager's seven buttons go from a `#ffffff` ground to `#1e5e47` on focus, so ink counted against
+  a fill that moved is two questions averaged.
+- The focus gain across the isolated controls was recorded as **0.90 to 1.02** of a ring. Measured
+  with the theme applied it is **0.82 to 1.94**.
+- The reason `QListView` needed the rule was recorded as *focus recoloured a native frame*. With
+  the palette in force the native frame measures **1.72:1** against the window in light and
+  **1.04:1** in dark — it was not a visible boundary being recoloured, it was barely a boundary.
+  The fix is the same and better founded: `MINIMUM_CONTROL_CONTRAST` is 3:1, and `Theme.border`
+  exists because *a control whose boundary is invisible is a control you cannot find*.
+
+The figures that **did** survive re-measurement, unchanged: 12 pixels of contents edge repainted
+with the views' padding against 754 without it; 254 changed pixels against a 1516 floor for the
+Settings scroller under the old 1px ring; the scrolled viewport holding `QRect(2, 2, 550, 693)`;
+and 50 controls measured with 12 skipped as disabled, worst case clearing its floor by **1.44x**.
+
+**Eight mutations, all caught**, two of them new: the reviewer's hard-coded light accent, and
+reverting `dress()` to a bare `setStyleSheet` — which fails 56 assertions rather than passing them,
+because the guard is the point.
+
+#### `T202-R1`, third round — the inventory could only see what `theme.py` had thought to style
+
+**The queue is a `QListView`, and the sheet said `QListWidget`.** Qt frames a `QListView` natively
+with a `StyledPanel`, `*:focus` recoloured that frame, and the two lists this application is mostly
+made of — the queue and the add dialog's staging list — were conveying focus by colour alone while
+every test passed. The second round's inventory was **parsed out of the style sheet**, so it could
+only ever contain controls somebody had already written a rule for. One character of that
+selector — `QListWidget` for `QListView` — was invisible to it.
+
+**A parser cannot find that; only rendering can.** So the sweep now walks the **realised
+application**: the nine screens `tests/ui/test_accessibility.py` already opens, every control Qt
+says the keyboard can reach, whatever draws its border. 50 controls measured, 12 skipped as
+disabled, both palettes. That inventory moved to `tests/ui/conftest.py` so both files walk one
+list — building a second one here would have been `T200-R3`'s defect with a module boundary in
+front of it.
+
+**The sweep found three more of the same defect, and all three are fixed.**
+
+- **A ring on the brand fill is not a ring.** `QPushButton:default` and the primary toolbar verb
+  sit on `primary`, and `T-147` had already measured accent against that ground at **1.42:1 in
+  light and 1.25:1 in dark** — its own reason for removing a hover ring. The second round put the
+  identical unreadable pair back as a focus ring: measured at **zero** changed pixels on both. They
+  take `on_primary` now, **7.64:1** and **5.00:1**.
+- **The format table's header drew its focus rectangle through `PE_FrameFocusRect`**, which under a
+  style sheet is `QStyleSheetStyle`'s idea of one — a hairline that measured **zero** against the
+  header strip. `SortableHeader.paintSection` draws the current section itself now, 2px accent,
+  **4.61:1** in light and **7.78:1** in dark. Its own docstring had named this defect in advance:
+  *a focus rectangle a user cannot see is the same defect one sense over.*
+- **Two scroll areas are tab stops with nothing to thicken.** Qt puts a `QScrollArea` in the tab
+  chain and both dialogs have one; the global 1px ring drew **254 changed pixels against a 1516
+  floor** on the Settings screen's. They get two pixels of padding and a 2px ring, and the viewport
+  keeps `QRect(2, 2, 550, 693)` exactly.
+
+**The measuring instrument was wrong for the third time, and this is the important part.** It
+counted *ink* — pixels unlike the control's own fill — and Qt draws a `Sunken` `StyledPanel` as two
+lines, one dark and one light. When the fix replaced both with two rings of accent the count came
+out **identical to the pixel**: 5958 before, 5958 after, on a border that had visibly doubled and
+turned gold. *(That measurement was taken with the palette not installed — `T202-R2` above — and
+does not reproduce with `theme.apply` in force. The reason that does is the next sentence.)*
+Counting ink also assumes the fill holds still, and Qt hands `:default` to whichever button has
+focus, so six of the preset manager's seven buttons *invert* when focused.
+
+It asks the criterion's own question now — **would a greyscale reading see a difference?** — pixel
+against the same pixel, at `MINIMUM_CONTROL_CONTRAST`. That threshold is not chosen to make the
+answer come out right: the idle and focus borders of the original defect are **1.45:1** and
+**2.17:1** apart, both under WCAG's 3:1 non-text floor, so the defect scores zero by the standard
+rather than by a number picked afterwards. `test_the_measure_sees_a_thicker_edge_and_not_a_recolour`
+is pointed at the instrument itself, because all three of its errors reported a pass and none was
+caught by anything.
+
+**Six mutations, all caught.** Naming `QListWidget` again — sheet and inventory together, so the
+parser sweep agrees with itself — is caught by the rendered sweep, which is the whole claim of this
+round. Ringing the brand fill in accent, dropping the scroll area's ring, letting the style draw the
+header's rectangle, weakening the measure to *any* difference, and letting the sweep walk the
+inventory without hiding the other windows each fail too.
+
+#### `T202-R1`, second round — the fix was written against the examples, not the property
+
+**Three controls thickened; seven did not, and the seven were measured at zero.** `QPushButton`,
+`QComboBox` and `QLineEdit` were the controls the finding happened to name. Offscreen renderings in
+both palettes: `QListWidget`, `QTableView`, `QTreeView`, `QPlainTextEdit`, `QTextEdit`,
+`QToolButton[stepButton="true"]` and `QToolBar QToolButton` gained **0 pixels of ink** on focus. The
+property that matters is *having a border already* — a control with one cannot show focus by growing
+one — and that is what the enumeration asks now.
+
+**`theme.BORDERED_CONTROLS` lists all fifteen**, each with `takes_focus` and a reason, and the
+thickening selector is **built from it** rather than typed out: retyping the list is how the first
+correction covered three. Two halves keep it honest — the sweep reads the bordered set **out of the
+generated sheet**, so a sixteenth bordered control fails rather than joining silently; and every
+`takes_focus` claim is put to Qt, so an exemption is `NoFocus` or a popup window rather than an
+opinion. Measured after: a full extra ring on all eleven focusable controls, both palettes —
+recorded then as **0.90 to 1.02**, and **0.82 to 1.94** once `T202-R2` put the palette in force.
+
+**The sheet was asserting something false about the toolbar.** `QToolBar QToolButton:disabled`'s
+reason said *"nothing on this bar takes focus"*. Tab reaches `Pause queue` from the central widget —
+measured through the tab order — and those buttons are bordered, so they were in the defect the
+whole time. Corrected, and they thicken.
+
+**The floor is a share of the control's own edge, not 100 pixels.** A stepper is 17 by 25: its whole
+extra ring is **80 pixels**, so the fixed floor would have failed a stepper that is drawn correctly
+while a list gains 754. The floor is `0.6` of one more ring, against a measured 0.90 and a
+colour-only 0.00.
+
+**Two mutations survived the first draft of the tests, and both were real.** `Qt.Popup` is
+`Qt.Window | 0x8`, so `flags & Qt.Popup` is true of **every** top-level widget — the exemption check
+excused everything, which the `QListWidget`-marked-`takes_focus=False` mutation walked straight
+through. And deleting the views' pixel of padding failed nothing: **Qt does not re-measure a frame
+when focus arrives**, so the thicker border is not pushed outward and the contents are not pushed
+in — the extra pixel is drawn *over* the first row. Nothing moves, so a *nothing moves* assertion
+cannot see it. `test_focus_does_not_paint_over_the_contents` measures the contents' own edge
+instead: **12 pixels repainted with the padding, 754 without.** The padding's justification in the
+sheet had been a sentence describing something that does not happen; it now describes what does.
+
+#### `T202-R1`, first round — the sweep asked the wrong question, and focus is what it missed
+
+**The registry enumerated by palette *field*, not by information.** It asked *which rules use `ok`,
+`warn` or `stop`* — so the focus ring, drawn in `accent`, was never asked what it meant. It means
+**keyboard focus**, for the exact user this task exists to protect. Worse,
+`COINCIDENTAL_SEMANTIC_VALUES` excluded `*:focus` explicitly: correctly saying the ring is not a
+*warning*, and never asking what it was.
+
+**Reproduced before changing anything.** A rendered `QPushButton`: **414 pixels changed, none of
+them background becoming ink** — identical geometry, hue only — with the idle and focus borders
+**1.45:1** apart in light and **2.17:1** in dark.
+
+**The defect is narrower than the rule, and the fix follows the shape.** `*:focus` *adds* a ring to
+a control with no border, which is already ink where there was none. It is the already-bordered
+controls where recolouring was the whole change. Those thicken to **2px with the padding reduced by
+exactly what the border gains**, so nothing moves: measured, they keep their size hint. That
+arithmetic is not new — `QToolBar QToolButton:checked` has done it since `T-149`, and the reviewer
+names it as the accepted pattern.
+
+*(This round read "already-bordered controls" as the three the finding named. The second round is
+above: there are eleven, and the other seven were still recolouring.)*
+
+**`theme.STATE_RULES` is the new enumeration, by what a rule conveys**, with four channels and a
+reason each: `geometry`, `luminance`, `published-state`, and `pointer-feedback` for hover and
+pressed, which tell a keyboard user nothing because that user is not hovering. Every pseudo-state
+selector in the sheet must appear, and the sweep fails both ways — an unenumerated state, and a
+registry naming a selector the sheet no longer has.
+
+**The regression never compares an RGB value.** It renders the control idle and focused and counts
+**ink** — pixels that are not the control's own fill — so a recolour scores zero and a thicker edge
+cannot. Measured gain that round: **436 to 454 pixels** on the three controls, both palettes.
+
+*(The first version of that measurement compared against `theme.window` and reported **zero** for a
+fix that plainly worked, because a control's own fill is `surface`. A metric that reads the wrong
+background is a metric that would have failed the fix and passed the defect.)*
+
+**Three mutations, and the third is the one worth reading.** Reverting the border to 1px fails all
+six rendered cases. Renaming the selector fails the registry sweep. **Reclassifying
+`QMenu::item:selected` from `luminance` to `pointer-feedback` survived** — the registry could
+excuse a real state and nothing disagreed, which is `T202-R1`'s own defect one level up. Channel
+claims are bound to their selectors now: `pointer-feedback` must be `:hover` or `:pressed`,
+`published-state` must be `:disabled`, and every `luminance` claim is measured against
+`MINIMUM_CONTRAST` **from the registry** rather than by name.
+
+**Status before this round:** **In Review — built 2026-08-15.** Filed 2026-08-09 from
+`IMPLEMENTATION_PLAN.md` §Phase 4. All six acceptance criteria are met and gated. **It is one of the phase's exit
+criteria**, and the sweep is what answers `NFR-005`'s last clause rather than a claim that it is
+satisfied.
+**Owner:** Implementer
+**Priority:** Medium — it is a named exit criterion, and it is cheap if done as a sweep and
+expensive if discovered in the exit review
+**Phase:** Phase 4 — **after** the phase's new surfaces exist, for `T-200`'s reason
+**Depends on:** `T-146` (the theme selector — a rule that holds in light and fails in dark is not a
+rule), `T-201` (error presentation is the densest use of semantic colour)
+**Relevant context:** `NFR-005`, `ARCHITECTURE.md` §8, `ui/theme.py` (`ok`, `warn`, `stop`),
+`T-130` and `T130-R1` (both palettes' contrast), `T-192`'s `ACTIONABLE_STATUS_PROPERTY`,
+`ui/queue_view.py`, `ui/format_table.py`, `ui/row_delegate.py`
+**Affected surfaces:** `ui/theme.py` and every widget that uses a semantic colour
+**Risk:** Low individually, Medium in aggregate — the failures are in places nobody thinks of as
+information, like a disabled row's grey
+
+#### Scope
+
+`NFR-005` ends with *"and no information conveyed by color alone"*, and the plan repeats it as its
+own exit criterion. **`ui/theme.py` defines three semantic colours** — `ok`, `warn`, `stop` — in
+both palettes. Every place one of them carries meaning needs a second channel: a word, a shape, an
+icon, a weight, or a position.
+
+**`T-192` already set the pattern and it should be named as precedent.** The stopped-queue status
+uses `theme.warn` **and** `font-weight: 600`, applied through a dynamic property so the style is
+selected by *role* rather than by object name — which
+`test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` enforces. **A new widget in that role
+inherits both channels.** That is the shape to reuse: the second channel belongs in the stylesheet
+next to the colour, not bolted on per widget.
+
+**Where to look, from the surfaces that use semantic colour today:** job state in the queue, failed
+versus cancelled versus interrupted, the ffmpeg gate summary, format-table rows that cannot be
+chosen, a row that is not committable, the *Read* badge, progress against stalled progress, and
+anything drawn `muted` to mean *unavailable* rather than merely *secondary*.
+
+**Grey is the one most likely to be missed.** A disabled or muted colour saying *this cannot be
+used* is information conveyed by colour alone, and it does not look like a semantic colour because
+it is not in the `ok`/`warn`/`stop` set.
+
+#### What was built — the enumeration, and it enforces itself
+
+**`theme.SEMANTIC_RULES` is the deliverable.** Each entry pairs a selector with the semantic colour
+it sets, the declaration that says the same thing without colour, and what the colour means. It
+sits directly above `stylesheet()` — *"where the next widget's author will meet it"* — and
+`tests/ui/test_colour_is_never_alone.py` checks it against the generated sheet in **both palettes**,
+from both directions:
+
+- **Every enumerated rule is really in the sheet, with both halves.** A registry that drifts from
+  what it describes reads as coverage while covering nothing.
+- **Every occurrence of a semantic colour in the sheet is claimed.** This is the completeness half
+  and the reason the enumeration is a gate rather than a comment: adding `color: {theme.stop}` to a
+  new rule and stopping there fails.
+
+**Not one assertion in the file reads a colour to check it is there** — the criterion asks the
+opposite. They read words, weight, a published accessibility state, or a count in text; the colour
+is only ever used to *find* the place that has to carry one.
+
+#### What the sweep found, measured rather than assumed
+
+**One semantic rule exists in the whole sheet.** `QStatusBar QLabel[actionableStatus="true"]` —
+`T-192`'s stopped-queue status, already carrying `font-weight: 600` beside its `warn`. **`ok` is
+used nowhere. `stop` is used nowhere in the sheet**, only by the row delegate. So the phase added
+no colour-only signal, which is the criterion this task also owns, and it is now checked rather
+than asserted.
+
+**The trap was in the palette, not the rules.** In dark, `warn` **is** `accent` — both `GOLD`,
+`#D9A24C` — so a sweep matching by *value* finds the focus ring and the pressed primary action
+there and finds neither in light. A gate that behaves differently per theme for a reason unrelated
+to the rule is not a gate. `COINCIDENTAL_SEMANTIC_VALUES` names those two selectors, so a rule that
+starts carrying meaning has to be taken out of that tuple by hand.
+
+**And the sweep would have read its own explanation.** The sheet's comments contain the words
+*warn* and *muted* many times over; comments are stripped before matching.
+
+#### Painted state, which no style sheet reaches
+
+`row_delegate._paint_segments` draws five playlist states in five colours, and the chip beside it
+reads *"12 of 16"* — which counts the done and says nothing about how the rest ended. **The second
+channel already existed**: the header's detail line, *"16 items · 12 done · 2 failed · 1 cancelled ·
+1 queued"*. What did not exist was anything holding the two together.
+
+The inline tuple of words is now `queue_view.SEGMENT_STATE_WORDS`, and the sweep asserts it is
+**total** over `SegmentState`. A sixth state given a colour and no word fails, rather than being
+drawn in silence — which matters because `T-165` already found this bar getting *finished versus
+abandoned* wrong on its own.
+
+#### Grey, which `T-202` predicted would be the one missed
+
+It was used for both meanings, and the answer is that the **selector** tells them apart. Every
+`muted` rule in the sheet is either secondary emphasis — `QGroupBox::title`, `QHeaderView::section`,
+enumerated in `SECONDARY_EMPHASIS_SELECTORS` — or a `:disabled` rule.
+
+**A `:disabled` rule is not colour alone**, and that is asserted rather than argued: Qt publishes
+the state to the accessibility tree, `QAccessible` reports `state().disabled`, and the test checks
+both polarities for the two control kinds those rules cover. *"Disabled is reported"* is worth
+nothing if it is reported always. The control also does not respond, which is a third channel.
+
+A new `muted` rule that is neither fails and has to say which it is.
+
+#### Four mutations, none surviving
+
+| Mutation | Caught by |
+|---|---|
+| `color: {theme.stop}` on `QProgressBar`, enumerated nowhere | the completeness sweep, both palettes |
+| `font-weight: 600` deleted from the one enumerated rule | the registry-versus-sheet check, both palettes |
+| A sixth `SegmentState` with a colour and no word | the totality check |
+| `color: {theme.muted}` on a `[stalled="true"]` rule — grey carrying state | the grey split, both palettes |
+
+**3059 passed / 18 skipped** unit and UI; `ruff`, `ruff format` and `mypy` clean.
+
+#### Acceptance criteria
+
+- **Every use of a semantic colour is enumerated**, and each carries a second, non-colour channel —
+  the enumeration is the deliverable, because an unenumerated use is how this criterion gets
+  claimed without being met — **met**; `theme.SEMANTIC_RULES`, swept for completeness
+- **The second channel is asserted by a test**, not by inspection. A test that reads the rendered
+  text or the widget's role — not one that asserts a colour, which proves the opposite of what is
+  wanted — **met**; no assertion in the file checks that a colour is present
+- **It holds in both palettes.** Light and dark are checked, since `T130-R1` already found contrast
+  problems that differed between them — **met**, and the palettes differ: `warn` is `accent` in dark
+- **Muted-as-unavailable is covered**, or the sweep records that grey is used only for secondary
+  emphasis and never for state — **met**; it is used for both, split by selector, with the disabled state asserted
+- The rule is written where the next widget's author will meet it — beside the styling convention
+  `T-192` established, so it is inherited rather than remembered — **met**; directly above `stylesheet()`
+- No **new** colour-only signal is added by `T-195`–`T-201`; this task is also the check on them — **met**; one semantic rule exists in the whole sheet, and it is `T-192`'s
+
+#### Out of scope
+
+- Contrast ratios and colour blindness simulation. Worth wanting, not requested, and
+  `T-130`/`T130-R1` already fought the contrast fight for both palettes
+- Changing the palette. `ARCHITECTURE.md` §8 owns the brand colours; this task adds channels
+  beside them
+- High-contrast or user-supplied themes — not requested, and each needs its own decision
 
 ### T-021 — Simplified small-size icon glyph
 
