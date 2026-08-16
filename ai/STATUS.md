@@ -5,7 +5,7 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-15 (`T-246` Approved; `T-200`, `T-202`, `T-243` before it) — **the overnight six-task review came
+**Last updated:** 2026-08-15 (`T-240` Approved — the overnight review's last open task) — **the overnight six-task review came
 back at `9300adc`: `T-021` Approved, `T-246` approved as a records-only filing, and four blockers.**
 **`T-200` is Approved at `274ed9e` and `T-243` at `083e5e3`**, both with no findings — so
 **five of Phase 4's seven exit criteria are met**, `T-200` carrying two of them. What is left is
@@ -17,16 +17,12 @@ a regression there — and the reviewer ruled that this does not block the scope
 `T202-R1` was held open three times — the instance fixed and the class left, then a gate that could
 only see what the style sheet had thought to style — and the fourth pass raised **`T202-R2`**
 against the tests themselves, which installed the style sheet without the palette so every dark
-case ran as light. The reviewer verified this round by its mutations. **`T-240` is on its sixth
-correction under the maintainer's standing grant** (*"a pass until this is completed"*). The fifth
-review held both findings open **through branches the fifth correction itself introduced**: the
-empty-wanted return dropped the cap shortfall it had just computed — 2,048 `distinct: false`
-entries exited 0 and read a tip the exclusion policy had ruled out — and the sha-keyed concurrency
-group was itself the second `T240-R2` instance, since a push SHA is not a unique run identifier
-and the text test **pinned the defect**. Now: the branch matrix is enumerated, `incomplete`
-survives every return, the group keys on the documented-unique `github.run_id`, and the pin
-forbids `github.sha` from the wiring. 52 focused tests, thirteen mutations caught; the sixth
-review pass is what remains. **The 60-run soak finished clean** — 60 passed, 0 test failures, 0
+case ran as light. The reviewer verified this round by its mutations. **`T-240` is Approved at
+`c559b93`**, no findings, after six review rounds under the maintainer's standing grant. The
+recurring class — *incomplete or discarded evidence treated as successful coverage* — is closed at
+every address it was found: range selection, payload truncation, the workflow's lifecycle, the
+fix's own branches, and a text pin that enforced the defect. The first real runner execution
+remains operational confirmation, not a blocker; it happens with the pending push. **The 60-run soak finished clean** — 60 passed, 0 test failures, 0
 process deaths, 8h06m, at `f3eb9f8`; `OPS-007`'s bar is met and `T-238`'s guard never fired, so its
 criterion 4 stays open.
 

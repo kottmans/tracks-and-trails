@@ -117,10 +117,28 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+## Complete
+
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
-**Status:** **In Review — sixth correction, 2026-08-15, under the maintainer's standing
-grant** (*"a pass until this is completed"*, Phase 3's pass-4 precedent). The fifth review held
+**Status:** **Complete — Approved at `c559b93` on 2026-08-15**, no findings, after **six
+review rounds** under the maintainer's standing grant (*"a pass until this is completed"*,
+Phase 3's pass-4 precedent). `T240-R1` is Resolved in its **fifth** instance — the branch matrix
+preserves incomplete evidence, and capped excluded payloads fail without re-reading the excluded
+tip — and `T240-R2` in its **second**: pushes group by `github.run_id`, which GitHub guarantees
+unique per workflow run, so pending-run replacement can no longer discard another push's evidence.
+The reviewer verified independently — 52 focused tests, the placement gate, Ruff and format, host
+and Win32 `mypy`, direct `mypy` over the tool, the commit gate and `git diff --check`, on a clean
+worktree — and confirmed the `mapped()` narrowing changes no payload semantics. **The first real
+runner execution remains operational confirmation, not a blocker**, the ruling standing since the
+fourth round; the pending push is where it happens.
+
+**What six rounds bought, in one sentence each round**: merges skipped and tips read for ranges;
+an option kept for a caller it could not serve; commits called unknowable that the event lists; a
+note where an exit code belonged, and a lifecycle that discarded the evidence; a fix whose own
+branches re-instanced the class; and a pin that enforced the defect as firmly as a fix. The class
+never changed — *incomplete or discarded evidence treated as successful coverage* — only its
+address did. The fifth review held
 both findings open **through branches the fifth correction itself introduced** — which is the
 round's real lesson: a fix's own branch matrix is new instances of the class it fixes, and the
 class sweep that checked the old code never looked at the new.
@@ -414,8 +432,6 @@ which it merely reports.
   Those are judgement, and a gate that argues about prose is a gate people learn to skip
 
 ---
-
-## Complete
 
 ### T-246 — `Start` and `Clear finished` are on no menu, so nothing announces them
 

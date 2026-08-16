@@ -17372,3 +17372,45 @@ are authorized until `T-240` is completed — which is Phase 3's pass-4 preceden
 **Also noted, not blocking:** an out-of-policy direct `mypy` run over `tools/` reported three
 pre-existing `object has no attribute "get"` errors; `tools/` is outside the configured scope.
 The missing hosted-runner execution remains non-blocking; neither finding depends on a runner.
+
+---
+
+## 2026-08-15 — T-240, sixth pass: Approved
+
+**Reviewer:** Codex (Reviewer). **Transcribed by the Implementer on the maintainer's instruction**;
+`AGENTS.md` §3 holds — the Implementer wrote no part of this verdict.
+**Task(s):** `T-240`
+**Base:** `4ce3294`  **Head:** `c559b93` — the focused boundary
+**Platforms verified:** Linux, plus `mypy` on the Win32 target
+**Verdict:** **Approved — no findings.** `T-240` can move to Complete.
+
+### Findings resolved
+
+| ID | Status | Resolution |
+|---|---|---|
+| `T240-R1` | **Resolved** (fifth instance) | The branch matrix preserves incomplete evidence, and capped excluded payloads fail **without re-reading the excluded tip**. |
+| `T240-R2` | **Resolved** (second instance) | Pushes use `github.run_id`, which GitHub guarantees is unique per workflow run; pending-run replacement can no longer discard another push's evidence. |
+
+The `mapped()` narrowing resolves the direct `tools/` mypy errors **without changing payload
+semantics** — verified, not assumed.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Focused tests | **52 passed** |
+| Task-placement gate | 14 passed |
+| Ruff and format | Clean |
+| `mypy`, host and Win32 targets | Clean |
+| Direct `mypy` on `tools/commit_message_check.py` | Clean |
+| Commit-message gate and `git diff --check` | Clean |
+| Worktree | Clean |
+
+### Readiness
+
+**The first real GitHub runner execution remains operational confirmation, not a blocker** — the
+ruling that has stood since the fourth round. Six review rounds under the maintainer's standing
+grant; the recurring class — *incomplete or discarded evidence treated as successful coverage* —
+is closed at every place it was found, and the last two instances were inside the fifth
+correction's own branches, which is the pattern worth remembering ahead of the Phase 4 exit
+review. Nothing in this range is pushed; `origin/main` is at `26eb41c`.
