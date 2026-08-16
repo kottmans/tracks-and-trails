@@ -17347,3 +17347,28 @@ coverage — first through range selection, now through payload truncation and w
 **Also ruled:** the missing hosted-runner execution is **not independently blocking** — static
 wiring and the exact CLI exercise are adequate evidence for that boundary, and **a single green
 push would not exercise either remaining defect**.
+
+---
+
+## 2026-08-15 — T-240, fifth pass: Blocked through uncovered branches of the same class
+
+**Reviewer:** Codex (Reviewer). **Transcribed by the Implementer on the maintainer's instruction**;
+`AGENTS.md` §3 holds — the Implementer wrote no part of this verdict.
+**Task(s):** `T-240`
+**Base:** `a700766`  **Head:** `a82d5b9` — one commit; no files changed since.
+**Platforms verified:** Linux; Ruff, formatting, configured host and Win32 `mypy`, boundary gate
+and `git diff --check` all passed; 50 focused tests passed.
+**Verdict:** **Blocked.** The cited corrections work, but both findings remain open through
+uncovered branches of the same class. **The maintainer responded with a standing grant** — passes
+are authorized until `T-240` is completed — which is Phase 3's pass-4 precedent.
+
+### Findings
+
+| ID | Severity | Blocking | Status | Finding |
+|---|---|---|---|---|
+| `T240-R1` | Medium | Yes | **Open — fifth instance** | At the 2,048-entry cap, `incomplete` is computed before filtering, but the empty-present/empty-wanted return **drops it**. A payload of 2,048 `distinct: false` entries therefore checks the tip and exits 0 — final-tree probe: `Selection(... commits=(), incomplete=None)`, `range_rc=0`, independently reproduced by the Implementer before correcting. The cap is a shortfall regardless of whether every visible entry is deliberately excluded; the control covers only a mixed payload. **The same branch also re-reads the tip when every entry is non-distinct, contradicting the stated exclusion policy.** Preserve the cap shortfall independently, and distinguish *all entries deliberately excluded* from *no usable payload evidence*. |
+| `T240-R2` | Medium | Yes | **Open — second instance** | **A push SHA is not a unique workflow-run identifier.** Different ref updates can end at the same commit and collide in one concurrency group — and GitHub replaces an existing **pending** run when another enters the same group, even with `cancel-in-progress: false`. Probe: three real ranges sharing one after-SHA scored 0, 1, 0, with only the middle holding the malformed commit; a third same-SHA run would replace the pending middle one, losing the only evidence. `github.run_id` is documented unique. **The text test pins `github.sha` — it does not prove uniqueness and would reject the documented-unique fix.** |
+
+**Also noted, not blocking:** an out-of-policy direct `mypy` run over `tools/` reported three
+pre-existing `object has no attribute "get"` errors; `tools/` is outside the configured scope.
+The missing hosted-runner execution remains non-blocking; neither finding depends on a runner.
