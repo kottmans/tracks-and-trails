@@ -250,12 +250,14 @@ fails on growth rather than on faults, and it fails by looking like a hang.
 
 #### Acceptance criteria
 
+- ~~The next `windows desktop` run **completes**~~ — **met 2026-08-17, run `31985410889`**: 32 min
+  against the 40-minute bound, ~8 min of headroom, and the estimate that justified 40 was ~32. The
+  bound is sized correctly; what is still owed is the half that makes the *next* creep visible
 - **The job reports its own duration where somebody sees it** — a step that prints elapsed against
   the bound, so the margin is a number in the log rather than something recoverable only by
   comparing runs afterwards
 - **A run that lands within a stated margin of the bound says so** — a `::warning::`, so the creep
   is visible while it is still creep
-- The next `windows desktop` run **completes**, which also closes `T-257`
 - **The measurements above are re-derived rather than quoted** if the bound is touched again. The
   reason this entry carries the numbers is that the last raise (`T-073`) recorded a reason and no
   measurement, so nobody could tell later whether 30 had ever had margin
@@ -270,8 +272,9 @@ fails on growth rather than on faults, and it fails by looking like a hang.
 
 ### T-257 — The Windows job has been red since 2026-08-15, and the failure is the guard, not the product
 
-**Status:** **In Review — fixed 2026-08-16.** Found by the Phase 4 records sweep, not by anybody
-reading CI.
+**Status:** **In Review — fixed 2026-08-16, and green on Windows 2026-08-17** (run
+`31985410889`). Found by the Phase 4 records sweep, not by anybody reading CI. **All acceptance
+criteria met.**
 **Owner:** Implementer
 **Priority:** **High.** It is the gate that evidences Phase 4 exit criterion 2's *"automated on
 **both** platforms"*, and while it is red that criterion has one platform
@@ -335,7 +338,18 @@ sentences.**
 | `T-246`'s `test_each_menu_publishes_exactly_its_actions` | **PASSED**, all three menus — File, Settings, Help. That verdict is no longer outstanding |
 | The `windows desktop` job | **Timed out at 30 min** — `T-259`, unrelated to this fix |
 
-**Criterion 1 says the job is green, and the job is not green.** The test it names passed, seventeen
+#### Criterion 1 is met — run `31985410889`, 2026-08-17
+
+**All five jobs green**, `windows desktop` among them: **3597 passed, 30 skipped, 0 failed** in
+30:20, job total 32 min against the raised 40-minute bound. `T-257`'s test passed on Windows for
+the third time, and this time **the job completed**, which is what the criterion asked for.
+
+**Every acceptance criterion is now met.** Ready for review.
+
+*(The block below is what stood before that run, and is kept because the discipline in it is the
+point: the criterion was left unmet through three runs rather than re-read to fit the evidence.)*
+
+**Criterion 1 said the job is green, and the job was not green.** The test it names passed, seventeen
 minutes before the job was killed, and the kill was the suite outgrowing its bound rather than
 anything this task touched. **The criterion is left unmet rather than reinterpreted**: a criterion
 that gets re-read to match the evidence is `P2EXIT-R12`, and the whole reason this one was written
