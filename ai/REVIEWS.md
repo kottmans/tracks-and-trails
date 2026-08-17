@@ -18069,3 +18069,89 @@ T-260 is **approved at `a2389e7`**. The Planner may move it to Complete; the Low
 can be corrected during closeout and does not need another Reviewer pass. The Reviewer changed only
 `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan, status, push or remote
 state was changed.
+
+---
+
+## 2026-08-17 — Duplicate In Review entries repair
+
+**Reviewer:** Codex (Reviewer)
+**Task:** none — current-truth repair not covered by a task
+**Base:** `8b027cd414fb35af43eca693b49d56a9730c1a4e`
+**Head:** `e61152d6741d9c4175a610ef4071561932a6ff5c`
+**Platforms verified:** Documentation structure on Linux; no platform behavior changed
+**Verdict:** **Approved with follow-ups.** The second copies are removed exactly. The missing
+uniqueness invariant is non-blocking follow-up `T-261`; it does not require putting this repair
+behind a newly filed task first.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **COORD-R23** | **Low** | No | At the base, `T-256`, `T-259` and `T-257` each had two live `### T-NNN` entries under the one `## In Review` heading. `live_entries()` suppresses the later copy with `seen`, while `status_line_counts()` overwrites the earlier dictionary value, so every `T-096` assertion can remain green. This is not a reason to widen T-258 or reject the exact deletion, but it is the second structural edit that the task-board gate did not see. | Assert that live task-entry headings are unique, with a mutation that duplicates one complete valid entry in the same section. | **Open — `T-261`; no re-review of e61152d required** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | One commit and one file: `ai/TASKS.md`; `git show --check e61152d` passed |
+| Base structure | One `## In Review` heading, but `T-256`, `T-259` and `T-257` headings each appeared twice before `## Complete` |
+| Head structure | One live heading for each of the three task IDs; the first copies are unchanged |
+| Task-placement gate | **14 passed** on the repaired head; inspection confirmed both parsers still collapse duplicate IDs |
+| Commit-message gate | Both commits in `8b027cd..dbc1e6c` passed; `Task: none - <reason>` is the repository's valid explained exemption, so no task entry or trailer rewrite is required |
+
+### Readiness
+
+The records repair is approved at `e61152d`. It may stay as the separate no-task commit already
+submitted. `T-261` owns preventing recurrence and does not hold this repair or T-258.
+
+---
+
+## 2026-08-17 — T-258 pre-bootstrap containment review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-258
+**Base:** `e61152d6741d9c4175a610ef4071561932a6ff5c`
+**Head:** `dbc1e6cc2ed81311ef8a7ce46c086c0d12ca02f6`
+**Platforms verified:** Linux. Windows source was type-checked, but no Windows runtime or CI result
+exists for this head.
+**Verdict:** **Changes requested.** The outer Job is a plausible fix, and the POSIX measurement is
+sound, but the implementation fails open, does not cover every product spawn site in the defect
+class, and has not proved the Windows-only acceptance criteria. The scanner also exposes a
+destructive cross-process safety defect.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **T258-R1** | **High** | **Yes — the no-orphan guarantee fails on the helper's error path** | `DownloadManager.__init__` logs and continues when `contain_this_application()` returns `False` (`manager.py:524-532`). A deterministic probe forced that return and still constructed a usable manager. This reinstates exactly the fail-open policy `T019-R3` rejected: if Job creation, configuration or assignment fails, a later worker can enter the pre-bootstrap window with no outer containment. The branch is realistic; T-019's first Windows Job implementation failed quietly at this same API boundary. The new success-only test does not exercise it. | Fail closed before any worker can be spawned—either refuse manager construction or retain a state that refuses every session with a visible reason—and add a deterministic failure-path test proving no `Process.start()` is reached. Audit the sibling outer-containment failure paths as one class. | **Open — T-258 correction** |
+| **T258-R2** | **High** | **Yes — acceptance criteria 1 and 2 are unmet** | The new integration test has never run on Windows, and no evidence shows it fails without the outer Job. A normal Windows pass with the fix present would establish only that the final child dies; it cannot distinguish Job-object reaping from the bootstrap pipe's own EOF, so it cannot answer the open mechanism question or satisfy “must fail without the fix.” The test also kills the parent immediately after observing the child and contains no negative control proving that an uncontained child remains alive. Meanwhile `STATUS.md:8-12` and `TASKS.md:393-400,479-489` say the window was reproduced “on both platforms” and that four criteria are met, while the same records admit no Windows execution. | On Windows, demonstrate both sides: a deliberately uncontained driver must leave the stopped child alive until cleanup, and the contained driver must reap it when its parent dies. Run that evidence on the actual Windows gate, retain cleanup for the known-positive case, and rewrite all current-truth claims to the result. A passing fixed-only run is not the requested mutation evidence. | **Open — T-258 correction and Windows CI** |
+| **T258-R3** | **High** | **Yes — the same pre-target window remains at sibling product spawn sites** | The fix is installed only by `DownloadManager.__init__`, but the defect exists before a multiprocessing target is unpickled and therefore cannot know which target was intended. `downloader/ytdlp_resolution.py:86-98` starts a version-query child without constructing a manager, and `_freeze_probe.py:86-92` starts another through the shipped `--spawn-probe` path. The five observed `spawn_main` command lines contain no target identity, so the record cannot establish that they came through the manager. `spawn_resolution`'s existing “containment is not required” rationale covers descendants spawned *by* that child, not the child itself being stranded before its target runs. | Establish outer containment at every product-owned `Process.start()` boundary (or at an application entry point plus explicit non-application drivers) and add a static or enumerated sibling-path test so a new spawn site cannot reopen the class. Keep the manager-specific ordering test, but do not present it as whole-application coverage. | **Open — T-258 correction** |
+| **T258-R4** | **Critical** | **Yes — `--kill` can terminate a process the tool has no authority to identify** | `orphan_scan.py:30-33` explicitly says the markers identify any program's multiprocessing child, not Tracks & Trails'. Nevertheless `--kill` terminates every match (`:143-169`) without a per-PID selection or ownership proof. It also discards the scanned `psutil.Process` identity into an `Orphan` containing only a PID, then constructs a fresh `Process(pid)` later; if the candidate exits and the PID is reused between scan and action, the fresh object identifies and kills the replacement. That is the exact enumerate-then-signal race `process_tree.py` says kernel containment exists to avoid. A reviewer probe confirmed the destructive branch consumes only the stored integer PID. | Remove the bulk destructive mode unless project ownership can be established. If a reap helper remains, require an explicit selected PID, retain and revalidate create time plus command/parent identity immediately before acting, refuse on any drift, and test the PID-reuse and unrelated-worker cases without sending a real signal. Detection alone satisfies the task more safely. | **Open — T-258 correction** |
+| **T258-R5** | **Medium** | **Yes — criterion 5 has an instrument but no detection path** | The scanner's own rationale says nobody logs in to the runner and that this should have reported the five on day one (`orphan_scan.py:3-15`). Nothing invokes it: `TASKS.md:536-538` explicitly leaves CI wiring undone. A dormant script makes a stale orphan inspectable after somebody suspects one; it does not make the unattended machine detect or report one, which is the operational distinction criterion 5 and `OPS-003` turn on. | After T-259's reviewed workflow surface is available, add a scheduled/CI invocation whose non-zero result is visible and whose known-positive test remains in the ordinary suite. Until then record criterion 5 as unmet, not complete. | **Open — T-258 correction after T-259 disposition** |
+| **T258-R6** | **Medium** | **Yes — current truth turns the unverified diagnosis into a fact** | `TASKS.md:433-446` says precisely that the parent left the child blocked on an unwritten pipe and that the working set agrees. The later entry and handoff say the opposite structural evidence predicts EOF, that the measured size/CPU do not fit, and that the block may instead be in `contain_this_process()`. The source module repeats a Windows conclusion before the discriminating run exists. This violates the repository's explicit uncertainty rule and obscures whether the fix covers the observed class. The affected-surfaces field (`TASKS.md:409-410`) also names `worker.py`, which the commit did not change, while omitting every source/tool file it did. | State only what the observations establish: the five never reached the watchdog and their exact pre-watchdog block/target is unknown. Update the diagnosis after the negative-control Windows run, and make the affected surfaces match the submitted implementation. | **Open — T-258 correction** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | One T-258 commit, nine files; `git diff --check 8b027cd..dbc1e6c` and both `git show --check` calls passed |
+| New focused tests | `test_process_tree.py`, `test_orphan_scan.py`, and the new pre-bootstrap integration test: **16 passed** |
+| Manager integration file | First sandbox run: **142 passed, 19 failed**, every failure at localhost socket creation with `PermissionError`. Rerun with localhost access: **161 passed** |
+| Outer-containment failure probe | Forced `contain_this_application() -> False`; warning emitted and `DownloadManager` still constructed (`DownloadManager`) |
+| Spawn-site audit | Product-owned `Process.start()` calls remain in `ytdlp_resolution.resolve_in_a_child` and `_freeze_probe.run_probe` without an outer-containment call on those paths |
+| Scanner destructive-path probe | A synthetic `Orphan(pid=4242, ...)` caused `main(["--kill"])` to construct a fresh process object for PID 4242 and call `kill`; no identity beyond the integer was consulted |
+| Ruff | Changed Python files: **All checks passed** |
+| Ruff format | **6 files already formatted** |
+| Mypy, host / Win32 | Bare checks both clean: **149 source files** |
+| Task placement | **14 passed** after the duplicate-entry repair and `T-261` filing |
+| Windows | **Not run.** No Windows behavior, xdist teardown, Job nesting, negative control or criterion-2 result is claimed |
+| Full submitted gate | Not repeated by the Reviewer. The handoff reports 2,636 unit+integration passes and 15 skips; this review independently ran the focused and complete manager scopes above |
+
+### Readiness
+
+T-258 is not ready to push as approved work at `dbc1e6c`. Correct all six blocking findings in one
+batch, including the scanner's Critical destructive path and the full sibling-spawn audit. The
+focused re-review must see the Windows known-positive/contained pair, not only a green fixed run;
+that same evidence will decide which diagnosis may be written as current truth. The Reviewer
+changed only `ai/REVIEWS.md` and filed non-blocking follow-up `T-261` in `ai/TASKS.md`; no reviewed
+source, test, tool, handoff, status, decision, plan, push or remote state was changed.

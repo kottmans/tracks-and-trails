@@ -6976,6 +6976,38 @@ reported six times, produced here by a tool rather than by inattention. **`T-096
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
 
+### T-261 — Make task placement reject duplicate task IDs
+
+**Status:** **Ready — filed 2026-08-17 from `COORD-R23`.** `e61152d` removed a second copy of
+`T-256`, `T-259` and `T-257`, but all fourteen `T-096` checks passed while the copies existed.
+**Owner:** Implementer
+**Priority:** Low — current truth is repaired; this prevents another scripted edit from making
+one task appear twice while the board's structural gate stays green
+**Phase:** Documentation infrastructure; blocks no product task or phase
+**Depends on:** none
+**Relevant context:** `COORD-R23`, `T-096`, `tests/unit/test_task_placement.py`, `AGENTS.md` §6
+**Affected surfaces:** `tests/unit/test_task_placement.py`
+**Risk:** Low — a narrow invariant over headings in one Markdown file
+
+#### Scope
+
+`live_entries()` keeps a `seen` set and `status_line_counts()` writes into a dictionary keyed by
+task ID. Both therefore collapse a later `### T-NNN` heading into the first instead of reporting
+that current truth contains two entries for one task. Add an independent uniqueness assertion over
+the headings themselves; do not rely on either collapsing parser to supply its own positive set.
+
+#### Acceptance criteria
+
+- Duplicating a complete task entry under the same valid section fails the gate and names the ID
+- The mutation remains caught when both copies have valid, identical status lines, which is the
+  exact `e61152d` case
+- The unchanged board passes and every current `### T-NNN` heading is unique
+
+#### Out of scope
+
+- Reopening `T-096` or changing its status/section vocabulary
+- Rechecking historical prose mentions of a task ID; only live `### T-NNN` entry headings count
+
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
 **Status:** **Ready — the guard is Approved at `9e5feae`, and the task stays open against
