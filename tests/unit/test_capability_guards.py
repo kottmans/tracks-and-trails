@@ -76,26 +76,78 @@ def _requests(node: _Function, fixture: str) -> bool:
     return fixture in names
 
 
-def _functions(tree: ast.AST) -> list[_Function]:
-    return [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+def _pytest_managed(node: _Function) -> bool:
+    """Whether pytest resolves this function's parameters as fixtures.
+
+    **This is the distinction `T260-R1` turned on.** A parameter named `symlinks` only means the
+    capability was checked if *pytest* supplied it — which happens for a collected test and for a
+    declared fixture, and for nothing else. An ordinary helper's caller can pass anything, and
+    `symlinks` is a `None`-returning fixture, so `plant(tmp_path, None)` is indistinguishable from
+    the real thing. Taking the parameter proved nothing.
+    """
+    if node.name.startswith("test_"):
+        return True
+    for decorator in node.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if isinstance(target, ast.Attribute) and target.attr == "fixture":
+            return True
+        if isinstance(target, ast.Name) and target.id == "fixture":
+            return True
+    return False
 
 
 def _creation_sites(tree: ast.AST) -> list[ast.Call]:
     return [n for n in ast.walk(tree) if isinstance(n, ast.Call) and _is_creation(n)]
 
 
-def _enclosing(tree: ast.AST, call: ast.Call) -> list[_Function]:
-    """Every function containing `call`, outermost first. Empty if it sits at module scope.
+def _at_import_time(node: _Function) -> list[ast.Call]:
+    """Creation calls in a function's decorators or parameter defaults.
 
-    **The whole chain, not the innermost** (`T260-R1`'s correction, corrected once more by running
-    it): a closure defined inside a guarded test is itself guarded, because the test skips before
-    the closure can run. `test_a_symlink_planted_during_the_mkdir_is_still_caught` has exactly that
-    shape — it patches `Path.mkdir` with a local function that plants the link — and requiring the
-    *innermost* function to carry the fixture flagged it wrongly.
-
-    A helper at module level with no guarded ancestor still fails, which is the case that matters.
+    These run when the module is imported — **before any fixture resolves** — so the enclosing
+    function's own guard cannot cover them, however it is declared (`T260-R1`).
     """
-    return [f for f in _functions(tree) if any(node is call for node in ast.walk(f))]
+    defaults = [d for d in (*node.args.defaults, *node.args.kw_defaults) if d is not None]
+    return [
+        call
+        for expression in (*node.decorator_list, *defaults)
+        for call in _creation_sites(expression)
+    ]
+
+
+def _walk(
+    statements: list[ast.stmt], chain: list[_Function]
+) -> list[tuple[ast.Call, list[_Function], bool]]:
+    """Every creation site with the function bodies enclosing it, and whether it runs at import.
+
+    Bodies only: a function's decorators and defaults are collected separately, because they execute
+    at a different time from its body and a guard on the body does not reach them.
+    """
+    found: list[tuple[ast.Call, list[_Function], bool]] = []
+    for statement in statements:
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+            found += [(call, chain, True) for call in _at_import_time(statement)]
+            found += _walk(statement.body, [*chain, statement])
+        elif isinstance(statement, ast.ClassDef):
+            found += [
+                (call, chain, True)
+                for decorator in statement.decorator_list
+                for call in _creation_sites(decorator)
+            ]
+            found += _walk(statement.body, chain)
+        else:
+            nested = [
+                n
+                for n in ast.walk(statement)
+                if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+            ]
+            if nested:
+                # A def inside `if`/`with`/`try`: recurse so its body gets its own chain.
+                found += _walk(
+                    [s for s in ast.iter_child_nodes(statement) if isinstance(s, ast.stmt)], chain
+                )
+                continue
+            found += [(call, chain, False) for call in _creation_sites(statement)]
+    return found
 
 
 def _sources() -> list[Path]:
@@ -104,16 +156,19 @@ def _sources() -> list[Path]:
 
 
 def _unguarded(path: Path, source: str) -> list[str]:
-    tree = ast.parse(source)
     faults = []
-    for call in _creation_sites(tree):
-        chain = _enclosing(tree, call)
+    for call, chain, import_time in _walk(ast.parse(source).body, []):
         where = f"{path.name}:{call.lineno}"
-        if not chain:
+        if import_time:
+            faults.append(f"{where} creates a symlink at import time, before any fixture resolves")
+        elif not chain:
             faults.append(f"{where} creates a symlink at module scope, where nothing can guard it")
-        elif not any(_requests(f, CAPABILITY) for f in chain):
+        elif not any(_pytest_managed(f) and _requests(f, CAPABILITY) for f in chain):
             named = " -> ".join(f.name for f in chain)
-            faults.append(f"{where} in {named}() creates a symlink without `{CAPABILITY}`")
+            faults.append(
+                f"{where} in {named}() creates a symlink with no pytest-managed ancestor "
+                f"requesting `{CAPABILITY}`"
+            )
     return faults
 
 
@@ -173,6 +228,26 @@ _UNGUARDED: Final = {
         "def test_x(tmp_path):\n    def inner():\n        (tmp_path / 'l').symlink_to(tmp_path)\n"
         "    inner()\n"
     ),
+    # T260-R1's surviving case, verbatim: the helper takes a parameter *named* `symlinks`, and an
+    # unguarded test calls it with None. pytest never resolved anything.
+    "helper-named-parameter": (
+        "def plant(path, symlinks):\n    path.symlink_to(path)\n\n"
+        "def test_x(tmp_path):\n    plant(tmp_path, None)\n"
+    ),
+    "helper-defaulted-parameter": (
+        "def plant(path, symlinks=None):\n    path.symlink_to(path)\n\n"
+        "def test_x(tmp_path):\n    plant(tmp_path)\n"
+    ),
+    # Decorators and defaults run at import, before any fixture resolves.
+    "decorator-expression": (
+        "import pytest\nfrom pathlib import Path\n"
+        "@pytest.mark.parametrize('x', [Path('l').symlink_to(Path('.'))])\n"
+        "def test_x(x, symlinks):\n    pass\n"
+    ),
+    "parameter-default": (
+        "from pathlib import Path\n"
+        "def test_x(symlinks, planted=Path('l').symlink_to(Path('.'))):\n    pass\n"
+    ),
 }
 
 _GUARDED: Final = {
@@ -183,9 +258,6 @@ _GUARDED: Final = {
     "fixture-requesting-it": (
         "import pytest\n@pytest.fixture\ndef planted(tmp_path, symlinks):\n"
         "    (tmp_path / 'l').symlink_to(tmp_path)\n    return tmp_path\n"
-    ),
-    "helper-taking-it": (
-        "def plant(tmp_path, symlinks):\n    (tmp_path / 'l').symlink_to(tmp_path)\n"
     ),
     "keyword-only": (
         "def test_x(tmp_path, *, symlinks):\n    (tmp_path / 'l').symlink_to(tmp_path)\n"

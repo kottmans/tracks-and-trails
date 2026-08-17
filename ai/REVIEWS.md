@@ -17729,6 +17729,7 @@ closure:
 def plant(path, symlinks):
     path.symlink_to(path)
 
+
 def test_x(tmp_path):
     plant(tmp_path, None)
 ```
