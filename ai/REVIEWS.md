@@ -18305,3 +18305,49 @@ finding; approval still principally waits on the Windows contained/uncontained r
 invoked unattended scanner. Because `T258-R2` remains High, its eventual focused verification may
 continue under `AGENTS.md` §10 without separate pass authorization. The Reviewer changed only
 `ai/REVIEWS.md`; no reviewed source, test, task, status, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-262 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-262
+**Prior review record:** `a4c27511365b54271b78b8f18ff41e3eab20bed2`
+**Correction head:** `33dea08d128fa34ecd2f81e170947a326aeb7cf7`
+**Platforms verified:** Static workflow/current-truth review on Linux; no workflow was dispatched
+and no repository setting was queried or changed
+**Verdict:** **Blocked.** The correction accurately removes the live pull-request claims and labels
+the retained concurrency branch as dormant. Two copies of the same findings remain in current
+truth: the CI policy contradicts its new all-self-hosted premise in the next table, and status still
+records the rejected 343-path count. This is the ordinary focused correction pass, so another pass
+for the remaining blocking Medium requires the maintainer's explicit choice under `AGENTS.md` §10.
+
+### Focused results
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T262-R1** | **Medium** | **Yes** | The lead, trigger table, status environment row and workflow header now agree that no workflow runs on `pull_request`; retaining the concurrency branch as explicitly dormant restoration scaffolding is sound. But `ai/TESTING.md:282-289`, in the same current CI policy section, still calls `STARBASE coverage` fixed to hosted `ubuntu-latest` and “the only hosted job left.” `ci.yml:470-486` says the opposite: the leg moved to `LINUX_RUNNER` on 2026-08-11, with hosted Ubuntu only as the unset-variable fallback. It directly contradicts lines 266-269's corrected security premise that every configured runner is self-hosted. | **Open — current CI policy remains internally contradictory** |
+| **T262-R2** | **Low** | No | `TASKS.md:675-682` now records 344 distinct paths at exact head `1387e57`, and the reviewer reproduced 344 at both that head and the current correction head. `STATUS.md:774-776` still records 343 without a head, so the rejected evidence claim remains in a second current-truth record. | **Open — task corrected; status still stale** |
+| **T262-R3** | **Low** | No | Not revisited; the missing executable trigger guard remains owned by T-264 and does not hold T-262. | **Open — T-264** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | `33dea08` changes the commit-message workflow plus `ai/STATUS.md`, `ai/TASKS.md` and `ai/TESTING.md`; `git diff --check a4c2751..33dea08` and `git show --check 33dea08` passed |
+| Trigger audit | No mapping or inline `pull_request`, `pull_request_target`, `workflow_run`, `issue_comment` or `repository_dispatch` trigger exists under `.github/workflows`; the local fork-code path remains closed |
+| Workflow rationale | Commit-message header now says push only; lines 62-69 explicitly label the PR concurrency expression dormant and state that restoring the trigger requires job gating |
+| Relevant tests | `test_commit_message_check.py` plus task placement: **66 passed** |
+| History count | `git log 1387e57 --name-only --format=` and the same probe at `33dea08` each yield **344** distinct non-empty paths |
+| External state | Tree was clean before review and `origin/main` was still `8b027cd`; no push, visibility change, workflow dispatch or settings mutation was performed |
+
+### Readiness
+
+The local workflow behavior is safe for publication, but T-262 is **blocked**, not approved, while
+the authoritative CI policy contradicts that behavior. The remote is not exposed while it remains
+private; the sequencing constraint is to land the approved trigger-free tree and verify
+`origin/main` **before** changing visibility. This was the one ordinary correction re-review. If the
+two residual current-truth copies are corrected, the maintainer must explicitly authorize another
+focused pass, accept the documented risk, change scope, or carry the blocker to a named follow-up.
+The Reviewer changed only `ai/REVIEWS.md`; no workflow, source, test, task, status, handoff, push,
+visibility or remote state was changed.
