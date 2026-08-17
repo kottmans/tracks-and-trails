@@ -801,8 +801,9 @@ its own broken bootstrap pipe"* — which until now nothing had checked.
 **The fix is the application containing itself**, on the maintainer's ruling the same day.
 `contain_this_application()` puts the application in a `KILL_ON_JOB_CLOSE` Job object **before any
 worker exists**, so every descendant inherits membership at creation and no per-spawn call can
-race one. It hangs off `DownloadManager.__init__` — the object that spawns — and is a documented
-no-op on POSIX. The worker still contains itself; that job nests inside this one and is what lets
+race one. It is established by `start_contained()` on the first spawn — the review moved it out of
+`DownloadManager.__init__`, so a process that merely builds a manager no longer joins a job — and
+is a documented no-op on POSIX. The worker still contains itself; that job nests inside this one and is what lets
 one worker be cancelled without touching its siblings.
 
 **Two things are honestly not done, and neither is paperwork.** The Windows criterion has **no run

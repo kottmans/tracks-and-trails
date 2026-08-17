@@ -593,14 +593,17 @@ so a parent that is not one cannot be the one that spawned it.
 - **Whether the five came through the manager at all.** A `spawn_main` command line carries no
   target identity, which is why the seam now covers all three spawn sites rather than one
 - **A Windows-only risk this build cannot have exercised, stated before the run rather than
-  after it.** `DownloadManager.__init__` is where the outer job is created, so on Windows **every
-  process that constructs a manager is contained — including pytest**, and `tests/integration`
-  constructs many. That is the intended reach: a test driver that spawns workers should reap them.
-  But `KILL_ON_JOB_CLOSE` on an `xdist` worker means its job closes as it exits, and `T-238` is an
-  `xdist` UI worker dying at teardown on a platform where this has never run. **If the Windows job
-  turns red at teardown rather than in a test, this is the first thing to suspect**, and the
-  narrower alternative is to move the call to the application's entry point and have the test
-  drivers make it explicitly
+  after it.** The outer job is created by **`start_contained()`, on the first spawn** — not at
+  construction, which is where `T258-R1`'s correction moved it from. *(This bullet said
+  `DownloadManager.__init__` for one commit after that move; `T258-R6` found it.)* So on Windows
+  **every process that actually spawns is contained, including pytest**, and `tests/integration`
+  spawns constantly. That is the intended reach: a test driver that spawns workers should reap
+  them, and the move narrows it — a process that merely constructs a manager no longer joins a
+  job. But `KILL_ON_JOB_CLOSE` on an `xdist` worker means its job closes as it exits, and `T-238`
+  is an `xdist` UI worker dying at teardown on a platform where this has never run. **If the
+  Windows job turns red at teardown rather than in a test, this is the first thing to suspect**,
+  and the narrower alternative is to establish the job at the application's entry point and have
+  the non-application drivers ask for it explicitly
 
 #### Out of scope
 
