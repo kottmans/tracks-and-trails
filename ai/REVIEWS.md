@@ -18155,3 +18155,65 @@ focused re-review must see the Windows known-positive/contained pair, not only a
 that same evidence will decide which diagnosis may be written as current truth. The Reviewer
 changed only `ai/REVIEWS.md` and filed non-blocking follow-up `T-261` in `ai/TASKS.md`; no reviewed
 source, test, tool, handoff, status, decision, plan, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-258 focused containment correction review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-258
+**Prior reviewed implementation head:** `dbc1e6cc2ed81311ef8a7ce46c086c0d12ca02f6`
+**Correction base:** `067fa746b40183c3bf9753de0351f6c420e8d52c`
+**Head:** `1853acf940c282d899d8298ab12c631eef2e1939`
+**Platforms verified:** Linux. Both mypy platform configurations are clean; no Windows runtime
+result exists.
+**Verdict:** **Blocked.** The correction fixes the shipped fail-open path, covers all three current
+product spawn sites, and removes the Critical destructive scanner action. Approval still requires
+the external Windows contained/uncontained run and an invoked unattended scanner; both acceptance
+gaps are now stated honestly. One residual current-truth sentence also still describes the
+superseded constructor-time design.
+
+### Original findings
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T258-R1** | **High** | Yes | `start_contained()` raises before `Process.start()`, and the manager's existing abort transaction makes the row durably `FAILED` and emits the detailed containment reason. A reviewer probe patched the actual `BaseProcess.start`, forced containment failure, and observed zero starts, one failure, one protocol violation and the underlying reason. | **Resolved at `1853acf`** |
+| **T258-R2** | **High** | **Yes** | The correction adds the required same-driver negative control and accurately labels its POSIX branch as a repeated measurement. It has still never run on Windows, so criteria 1 and 2 and the mechanism question remain unanswered. | **Open — blocked pending Windows execution of both sides** |
+| **T258-R3** | **High** | Yes | The manager, yt-dlp resolver and frozen spawn probe now all start through `process_tree.start_contained`; source inspection found no remaining product-owned multiprocessing start outside that seam. | **Resolved at `1853acf`** |
+| **T258-R4** | **Critical** | Yes | `--kill` and every signalling call are removed. The scanner retains only report-and-fail behavior and explicitly disclaims project ownership. | **Resolved at `1853acf`** |
+| **T258-R5** | **Medium** | **Yes** | Current truth now says criterion 5 is unmet, which corrects the submitted claim. The scanner is still invoked by nothing, so the operational finding itself remains open. | **Open — blocked pending reviewed workflow integration after T-259** |
+| **T258-R6** | **Medium** | **Yes** | The diagnosis, measurements and affected-surface list now preserve uncertainty. But `TASKS.md:595-603` still says `DownloadManager.__init__` creates the outer job and every process constructing a manager is contained; the correction moved that call to the first `start_contained()` invocation. `process_tree.py:326-327` retains the same manager-only rationale. The handoff itself states the new lifecycle correctly. | **Open — correct the residual current-truth/source-doc lifecycle claim** |
+
+### New correction-diff findings
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **T258-R7** | **Low** | No | `test_the_manager_refuses_the_session_rather_than_spawning_uncontained` patches `multiprocessing.context.Process.start`, but `get_context("spawn").Process()` constructs `SpawnProcess`; neither class subclasses the other. With containment allowed the committed counter remained zero, while patching `multiprocessing.process.BaseProcess.start` observed the manager's attempted start. The test also asserts neither the durable `FAILED` row nor the visible reason its docstring claims. Production was independently verified correct, so this is test strength rather than a shipped defect. | Patch the actual constructed class or inject a recording context, and assert zero starts plus the manager's durable/visible failure outcome. | **Open — `T-263`; no T-258 re-review required** |
+| **T258-R8** | **Medium** | No | The hard-coded `KNOWN_SPAWN_SITES` set is a sound fail-closed choice for ordinary direct assignments: a fourth such module fails. The surrounding AST grammar is narrower than the stated rule, though. `_process_variables` visits only `ast.Assign`; reviewer mutations using `child: object = context.Process(); child.start()` and `context.Process().start()` both produced an empty set, so either new spawn site can bypass all three tests while the existing positive control remains populated. | Cover annotated and inline construction, mutation-test both, and state any deliberate factory/alias limit rather than claiming every future spawn spelling. | **Open — `T-263`; no T-258 re-review required** |
+| **T258-R9** | **Medium** | No | `resolve_in_a_child()` now raises `ContainmentUnavailableError` from its shared seam, but `YtdlpService._Task` recognizes only update/resolution errors and routes this one through the generic branch, reducing the actionable Job failure reason to `The operation could not be completed (ContainmentUnavailableError)`. The manager preserves the same reason. | Treat containment refusal as an expected resolution failure and prove the reason reaches `YtdlpService.failed` without a child start. | **Open — `T-263`; no T-258 re-review required** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | One correction commit after the review record; `git diff --check dbc1e6c..1853acf` and `git show --check 1853acf` passed |
+| Focused unit/integration scope | Initial sandbox run: **182 passed, 27 failed**, all 27 at localhost socket construction with `PermissionError`. Rerun with localhost access: **209 passed** |
+| Fail-closed reviewer probe | Forced `contain_this_application() -> False` while patching `BaseProcess.start`: **0 starts**, durable `failed`, one visible failure carrying `probe: forced failure` |
+| Manager-test counter mutation | Patching the committed `multiprocessing.context.Process.start` counter and allowing containment observed **0**; patching `BaseProcess.start` observed **1** |
+| Spawn-gate mutations | Plain assignment found `{'child'}`; annotated assignment and inline construction each found `set()` |
+| Product spawn audit | Exactly three direct `Process(...)` construction modules; all three call `start_contained`; no product multiprocessing object calls `.start()` directly |
+| Scanner safety | No `--kill` option or process-signalling call remains; focused scanner tests passed |
+| Ruff / formatting | Changed Python surfaces: **All checks passed; 10 files already formatted** |
+| Mypy, host / Win32 | Bare scopes through `python -m mypy`: **Success, 150 source files** in each configuration |
+| Platform acceptance | POSIX contained and suppressed-control branches passed. **Windows not run**; criteria 1 and 2 remain unmet |
+| Full submitted gate | Not repeated. The handoff reports **2641 passed, 15 skipped** at `1853acf`; this review independently ran the 209-test focused scope above |
+
+### Readiness
+
+T-258 is substantially corrected but **blocked**, not approved. The next review needs the Windows
+contained/uncontained pair, reviewed scanner invocation for criterion 5, and the residual
+constructor-time sentence corrected. `T258-R2` remains High, so its focused verification may
+continue under `AGENTS.md` §10 without a separate pass authorization. `T258-R7` through `R9` are
+owned by `T-263` and do not hold T-258. The Reviewer changed only `ai/REVIEWS.md` and filed
+`T-263` in `ai/TASKS.md`; no reviewed source, existing test, tool, handoff, status, decision, plan,
+push or remote state was changed.

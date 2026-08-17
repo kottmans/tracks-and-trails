@@ -7141,6 +7141,50 @@ the headings themselves; do not rely on either collapsing parser to supply its o
 - Reopening `T-096` or changing its status/section vocabulary
 - Rechecking historical prose mentions of a task ID; only live `### T-NNN` entry headings count
 
+### T-263 — Close the residual gaps around the outer-containment spawn seam
+
+**Status:** **Ready — filed 2026-08-17 from `T258-R7` through `T258-R9`.** The current three
+product spawn sites use `start_contained()` correctly; this is regression strength and failure
+reporting around that correct behavior, not a reason to reopen it.
+**Owner:** Implementer
+**Priority:** Medium — one asserted manager gate cannot observe the class it patches, the static
+gate accepts two ordinary spawn spellings, and one user-facing caller discards the refusal reason
+**Phase:** Phase 4 maintenance; blocks no T-258 approval criterion
+**Depends on:** T-258's `start_contained()` seam at `1853acf`
+**Relevant context:** `T258-R7`, `T258-R8`, `T258-R9`, `tests/unit/test_process_tree.py`,
+`tests/unit/test_spawn_sites.py`, `downloader/ytdlp_resolution.py`, `downloader/ytdlp_service.py`
+**Affected surfaces:** those tests and yt-dlp resolution/service modules; production containment
+policy is unchanged
+**Risk:** Low to make; narrow tests and error translation around one existing seam
+
+#### Scope
+
+- Make the manager refusal test patch the class the spawn context actually constructs. Patching
+  `multiprocessing.context.Process.start` does not intercept `SpawnProcess.start`; both classes
+  inherit the same original method from `BaseProcess`, but neither subclasses the other
+- Assert the manager-level outcome as well as the absence of a start: the job becomes durably
+  `FAILED` and the containment reason reaches its visible failure signal
+- Strengthen the static spawn-site rule beyond plain `ast.Assign`. An annotated assignment and an
+  inline `context.Process(...).start()` both evade the current scan. State the supported syntax
+  boundary explicitly rather than claiming arbitrary data-flow analysis
+- Preserve `ContainmentUnavailableError`'s actionable reason through `YtdlpService`; today its
+  broad unexpected-error branch reduces it to the exception type alone
+
+#### Acceptance criteria
+
+- A fail-open manager mutation fails by observing a real attempted `SpawnProcess.start`, without
+  spawning an operating-system child or aborting the probe
+- Manager containment refusal leaves zero starts, a durable failed row and a user-visible reason
+- Direct, annotated and inline `Process(...)` start mutations all fail the static gate; any
+  deliberately unsupported alias/factory form is named as a limit
+- A forced containment refusal from the yt-dlp resolution path reaches the service's `failed`
+  signal with its reason and starts no child
+
+#### Out of scope
+
+- Changing the Job-object design, the three current spawn callers, or T-258's Windows evidence
+- General Python data-flow analysis for arbitrary process factories and aliases
+
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
 **Status:** **Ready — the guard is Approved at `9e5feae`, and the task stays open against
