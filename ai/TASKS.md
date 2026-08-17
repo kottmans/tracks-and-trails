@@ -122,126 +122,6 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
-### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
-
-**Status:** **In Review — redesigned 2026-08-17 under a maintainer-authorized fifth pass.** After
-four review rounds, raw symlink creation is now **banned outright** everywhere in `tests/` except
-`tests/capabilities.py`; the `symlinks` fixture returns a **`SymlinkCapability`** object and all
-nine sites create through its `.create()`. The gate that enforces this needs no pytest semantics at
-all, which is the point.
-
-> **Why the design was replaced rather than patched a fifth time.** Rounds one through four were
-> one defect wearing four coats: the gate statically approximated pytest's collection and
-> fixture-resolution semantics, and every approximation had a hole the reviewer found — test bodies
-> only, then a parameter merely *named* `symlinks` (`plant(tmp_path, None)`), then uncollected
-> modules and home-grown `fixture` decorators, then **nested `test_` functions pytest never
-> collects and `@hookimpl` counting because it came from pytest**. Both round-four survivors were
-> reproduced here before anything was decided. `AGENTS.md` §10 names this moment — corrections
-> repeatedly reproducing the same defect class — and its answer, *revisit the design*, is what the
-> maintainer chose on 2026-08-17, the reviewer having proposed no further automatic round. The
-> capability-token design is the alternative the reviewer named in the second-round ruling.
->
-> **A sixth pass was authorized the same day**, for the fifth review's finding: ordinary import
-> aliases bypassed both flat rules — `from os import symlink as make_link` renamed the local
-> binding a call-site ban keyed on, and `SymlinkCapability as Cap` did the same to the constructor
-> — and the exemption compared **basenames**, silently exempting every nested file named
-> `capabilities.py`. All three were reproduced before fixing. Now the *import itself* of a raw
-> name is banned under any alias (no test file has a sanctioned reason to hold one), an aliased
-> import of the capability class is banned outright (annotations need no rename), and the
-> exemption is the exact path `tests/capabilities.py`. The floor also pins the exempt file to
-> **exactly two** raw sites — the probe and `SymlinkCapability.create` — so a third site cannot
-> ride the exemption.
->
-> **A claim from the second pass is withdrawn, not reinterpreted:** *"a helper that takes the
-> fixture as a parameter can only be called by something that has it."* False — `symlinks` returned
-> `None`, so any caller could fake it. Under the token design that forgery fails loudly on every
-> platform (`AttributeError`), which is now a tested property rather than an argument.
-
-Filed 2026-08-16 from a real Windows failure, run `31966531162`
-**Owner:** Implementer
-**Priority:** Medium. It costs a red Windows job and five unreadable errors whenever the privilege
-is absent, which is the ordinary state of a Windows machine
-**Phase:** Phase 4 maintenance. Gates nothing in the centre column
-**Depends on:** nothing
-**Relevant context:** `T-070` (Complete, approved 2026-07-28 — it built the guard),
-`tests/capabilities.py` (`can_create_symlinks`, the `symlinks` fixture), `tests/conftest.py`,
-`tests/integration/test_worker.py`, `tests/unit/test_paths.py`, `ai/TESTING.md` §12
-**Affected surfaces:** `tests/integration/test_worker.py`, and wherever the enforcing check lands.
-**No source**
-**Risk:** Low. The risk of the obvious fix is the opposite one — adding the fixture to five tests
-and calling it done, which is what leaves the sixth to be written next month
-
-#### What happened
-
-`SeCreateSymbolicLinkPrivilege` was absent on `STARBASE` and **five tests failed with a bare
-`OSError: [WinError 1314] A required privilege is not held by the client`** instead of skipping
-with the message that names the privilege.
-
-**`T-070`'s guard is not broken — it is simply not requested.** Of the nine tests that create a
-symlink, four take the `symlinks` fixture and **skipped correctly on the same run**; five do not
-and failed. Derived rather than eyeballed:
-
-| File | Guarded | Unguarded |
-|---|---|---|
-| `tests/unit/test_paths.py` | 3 | 0 |
-| `tests/integration/test_worker.py` | 1 | **5** |
-
-The five: `test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused`,
-`test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written`,
-`test_a_symlinked_staging_name_reports_no_partial_to_resume_from`,
-`test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused`,
-`test_a_symlink_planted_during_the_mkdir_is_still_caught`.
-
-**This is `T-070`'s own defect, re-instanced by tests written after it.** That task fixed four named
-tests and added a fixture; nothing makes a *later* symlink test use it. Fixing these five and
-stopping would be the same trade again — the list is not the property.
-
-*(The privilege went missing because the runner was restarted from a non-elevated session while
-`STARBASE` was being recovered on 2026-08-16. That is the trigger and **not** the defect: a Windows
-machine without Developer Mode or elevation is the ordinary case, and `T-070` exists because the
-suite must say so rather than erroring.)*
-
-#### Acceptance criteria
-
-- **A check enforces the property, not the list**: a test that creates a symlink and does not
-  request the capability **fails a gate**, wherever it is written. A nine-line `ast` walk over
-  `tests/` finds all nine of today's cases, so the mechanism is not the hard part
-- **It is proved by adding an unguarded symlink test and watching the gate fail**, then removing it
-  — the mutation, not the assertion
-- **The five gain the guard**, and on a machine without the privilege they **skip with
-  `NO_SYMLINKS`** rather than raising
-- **Coverage is not quietly reduced.** These five assert containment — `T-034`'s boundary — so a
-  skip on Windows is a real gap and must be visible as a skip count, never as a pass
-- The gate sits with the project's other static checks over its own tree (`test_layering.py`,
-  `test_task_placement.py`) rather than becoming a runtime `except OSError`, which would convert
-  every future privilege failure into a silent pass
-
-#### How each criterion was met — 2026-08-17, after the redesign
-
-*(Three earlier versions of this table described the approximation-based gates the review rounds
-rejected; per `T260-R2` they are replaced rather than accumulated. The review history is in
-`ai/REVIEWS.md`, five records from 75ed6bf's base onward.)*
-
-| # | Criterion | Evidence |
-|---|---|---|
-| 1 | A check enforces the property, not the list | Two flat rules over **every** `*.py` under `tests/`: **no raw `symlink_to`/`symlink` call outside `tests/capabilities.py`**, in any context whatsoever; and **`SymlinkCapability` constructed nowhere else**. No collection semantics, no fixture semantics, no ancestry analysis — nothing left to approximate |
-| 2 | Proved by adding unguarded sites and watching the gate fail | **Both round-four survivors reproduced as real files and flagged by name** — the nested `test_` function and the `@hookimpl` fixture — plus a forged `SymlinkCapability()` construction. Sixteen parametrized raw spellings must be flagged, one per defeated context, including a genuine `@pytest.fixture` creating raw; four sanctioned shapes must not be |
-| 3 | The tests skip rather than raise where the machine cannot | Forced `can_create_symlinks` to `False`: **9 skipped, 0 failed** across both files, each skip naming the privilege and the Developer Mode setting. A sanctioned-route probe also ran end to end on a capable machine: fixture → capability → `.create()` → a real link |
-| 4 | Coverage is not quietly reduced | The floor now counts `symlinks.create(...)` sites (≥ 9) and requires the probe file to still contain raw creation, so a rename of `Path.symlink_to` breaks the ban and the probe together rather than silently unlinking them |
-| 5 | Static, not a runtime `except OSError` | Unchanged in intent, smaller in practice: the static check is ~90 lines with no pytest model. **The propagation question became a runtime property instead** — `plant(path, None)` now fails loudly on every platform, asserted by `test_forging_the_capability_with_none_fails_loudly_on_every_platform` |
-
-**The enforced boundary, stated honestly** (the fourth review's ruling): this prevents accidents —
-the two raw Python spellings and the constructor call. It does not defend against `__new__` forgery
-or shelling out to `ln -s`; no test does either, and one that started to would be visible in review.
-
-#### Out of scope
-
-- Restoring the privilege on `STARBASE`. That is machine configuration, done separately — and if it
-  is restored first, **this defect stops being visible while still being present**, which is the
-  reason it is filed with its evidence rather than left to the next red run
-
----
-
 ### T-256 — Rule the fifteen options no decision covers
 
 **Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
@@ -757,6 +637,137 @@ makes possible.
 ---
 
 ## Complete
+
+### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
+
+**Status:** **Complete — Approved with follow-ups at `a2389e7`**, 2026-08-17, after **six review
+rounds**: one ordinary review, one ordinary re-review, and **four maintainer-authorized passes**
+under `AGENTS.md` §10 — three corrections and one design replacement. `T260-R1` through `T260-R4`
+are Resolved; the only follow-up, `T260-R4`'s stale counts, is closed here and **pinned by a test**
+so it cannot drift again.
+
+**Accepted as out of scope, on the reviewer's ruling:** `__new__` forgery, `ln -s` via a subprocess,
+and **assignment aliasing** (`mk = os.symlink`) — following bindings is dataflow analysis, which is
+the road four rounds established this gate should not walk.
+
+*(Previous status, and the round it describes.)* Redesigned 2026-08-17 under a maintainer-authorized fifth pass. After
+four review rounds, raw symlink creation is now **banned outright** everywhere in `tests/` except
+`tests/capabilities.py`; the `symlinks` fixture returns a **`SymlinkCapability`** object and all
+nine sites create through its `.create()`. The gate that enforces this needs no pytest semantics at
+all, which is the point.
+
+> **Why the design was replaced rather than patched a fifth time.** Rounds one through four were
+> one defect wearing four coats: the gate statically approximated pytest's collection and
+> fixture-resolution semantics, and every approximation had a hole the reviewer found — test bodies
+> only, then a parameter merely *named* `symlinks` (`plant(tmp_path, None)`), then uncollected
+> modules and home-grown `fixture` decorators, then **nested `test_` functions pytest never
+> collects and `@hookimpl` counting because it came from pytest**. Both round-four survivors were
+> reproduced here before anything was decided. `AGENTS.md` §10 names this moment — corrections
+> repeatedly reproducing the same defect class — and its answer, *revisit the design*, is what the
+> maintainer chose on 2026-08-17, the reviewer having proposed no further automatic round. The
+> capability-token design is the alternative the reviewer named in the second-round ruling.
+>
+> **A sixth pass was authorized the same day**, for the fifth review's finding: ordinary import
+> aliases bypassed both flat rules — `from os import symlink as make_link` renamed the local
+> binding a call-site ban keyed on, and `SymlinkCapability as Cap` did the same to the constructor
+> — and the exemption compared **basenames**, silently exempting every nested file named
+> `capabilities.py`. All three were reproduced before fixing. Now the *import itself* of a raw
+> name is banned under any alias (no test file has a sanctioned reason to hold one), an aliased
+> import of the capability class is banned outright (annotations need no rename), and the
+> exemption is the exact path `tests/capabilities.py`. The floor also pins the exempt file to
+> **exactly two** raw sites — the probe and `SymlinkCapability.create` — so a third site cannot
+> ride the exemption.
+>
+> **A claim from the second pass is withdrawn, not reinterpreted:** *"a helper that takes the
+> fixture as a parameter can only be called by something that has it."* False — `symlinks` returned
+> `None`, so any caller could fake it. Under the token design that forgery fails loudly on every
+> platform (`AttributeError`), which is now a tested property rather than an argument.
+
+Filed 2026-08-16 from a real Windows failure, run `31966531162`
+**Owner:** Implementer
+**Priority:** Medium. It costs a red Windows job and five unreadable errors whenever the privilege
+is absent, which is the ordinary state of a Windows machine
+**Phase:** Phase 4 maintenance. Gates nothing in the centre column
+**Depends on:** nothing
+**Relevant context:** `T-070` (Complete, approved 2026-07-28 — it built the guard),
+`tests/capabilities.py` (`can_create_symlinks`, the `symlinks` fixture), `tests/conftest.py`,
+`tests/integration/test_worker.py`, `tests/unit/test_paths.py`, `ai/TESTING.md` §12
+**Affected surfaces:** `tests/integration/test_worker.py`, and wherever the enforcing check lands.
+**No source**
+**Risk:** Low. The risk of the obvious fix is the opposite one — adding the fixture to five tests
+and calling it done, which is what leaves the sixth to be written next month
+
+#### What happened
+
+`SeCreateSymbolicLinkPrivilege` was absent on `STARBASE` and **five tests failed with a bare
+`OSError: [WinError 1314] A required privilege is not held by the client`** instead of skipping
+with the message that names the privilege.
+
+**`T-070`'s guard is not broken — it is simply not requested.** Of the nine tests that create a
+symlink, four take the `symlinks` fixture and **skipped correctly on the same run**; five do not
+and failed. Derived rather than eyeballed:
+
+| File | Guarded | Unguarded |
+|---|---|---|
+| `tests/unit/test_paths.py` | 3 | 0 |
+| `tests/integration/test_worker.py` | 1 | **5** |
+
+The five: `test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused`,
+`test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written`,
+`test_a_symlinked_staging_name_reports_no_partial_to_resume_from`,
+`test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused`,
+`test_a_symlink_planted_during_the_mkdir_is_still_caught`.
+
+**This is `T-070`'s own defect, re-instanced by tests written after it.** That task fixed four named
+tests and added a fixture; nothing makes a *later* symlink test use it. Fixing these five and
+stopping would be the same trade again — the list is not the property.
+
+*(The privilege went missing because the runner was restarted from a non-elevated session while
+`STARBASE` was being recovered on 2026-08-16. That is the trigger and **not** the defect: a Windows
+machine without Developer Mode or elevation is the ordinary case, and `T-070` exists because the
+suite must say so rather than erroring.)*
+
+#### Acceptance criteria
+
+- **A check enforces the property, not the list**: a test that creates a symlink and does not
+  request the capability **fails a gate**, wherever it is written. A nine-line `ast` walk over
+  `tests/` finds all nine of today's cases, so the mechanism is not the hard part
+- **It is proved by adding an unguarded symlink test and watching the gate fail**, then removing it
+  — the mutation, not the assertion
+- **The five gain the guard**, and on a machine without the privilege they **skip with
+  `NO_SYMLINKS`** rather than raising
+- **Coverage is not quietly reduced.** These five assert containment — `T-034`'s boundary — so a
+  skip on Windows is a real gap and must be visible as a skip count, never as a pass
+- The gate sits with the project's other static checks over its own tree (`test_layering.py`,
+  `test_task_placement.py`) rather than becoming a runtime `except OSError`, which would convert
+  every future privilege failure into a silent pass
+
+#### How each criterion was met — 2026-08-17, after the redesign
+
+*(Three earlier versions of this table described the approximation-based gates the review rounds
+rejected; per `T260-R2` they are replaced rather than accumulated. The review history is in
+`ai/REVIEWS.md`, five records from 75ed6bf's base onward.)*
+
+| # | Criterion | Evidence |
+|---|---|---|
+| 1 | A check enforces the property, not the list | Two flat rules over **every** `*.py` under `tests/`: **no raw `symlink_to`/`symlink` call outside `tests/capabilities.py`**, in any context whatsoever; and **`SymlinkCapability` constructed nowhere else**. No collection semantics, no fixture semantics, no ancestry analysis — nothing left to approximate |
+| 2 | Proved by adding unguarded sites and watching the gate fail | **Both round-four survivors reproduced as real files and flagged by name** — the nested `test_` function and the `@hookimpl` fixture — plus a forged `SymlinkCapability()` construction. **Eighteen** parametrized raw spellings must be flagged, one per defeated context — including a genuine `@pytest.fixture` creating raw, and the fifth review's aliased raw import both called and uncalled; four sanctioned shapes must not be |
+| 3 | The tests skip rather than raise where the machine cannot | Forced `can_create_symlinks` to `False`: **9 skipped, 0 failed** across both files, each skip naming the privilege and the Developer Mode setting. A sanctioned-route probe also ran end to end on a capable machine: fixture → capability → `.create()` → a real link |
+| 4 | Coverage is not quietly reduced | The floor now counts `symlinks.create(...)` sites (≥ 9) and requires the probe file to still contain raw creation, so a rename of `Path.symlink_to` breaks the ban and the probe together rather than silently unlinking them |
+| 5 | Static, not a runtime `except OSError` | Unchanged in intent, smaller in practice: the static check is ~90 lines with no pytest model. **The propagation question became a runtime property instead** — `plant(path, None)` now fails loudly on every platform, asserted by `test_forging_the_capability_with_none_fails_loudly_on_every_platform` |
+
+**The enforced boundary, stated honestly** (the fourth review's ruling): this prevents accidents —
+the two raw Python spellings and the constructor call. It does not defend against `__new__` forgery
+or shelling out to `ln -s`; no test does either, and one that started to would be visible in review.
+
+#### Out of scope
+
+- Restoring the privilege on `STARBASE`. That is machine configuration, done separately — and if it
+  is restored first, **this defect stops being visible while still being present**, which is the
+  reason it is filed with its evidence rather than left to the next red run
+
+---
+
 
 ### T-183 — The option audit: classify every group, and decompose the phase
 

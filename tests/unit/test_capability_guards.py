@@ -6,7 +6,7 @@
 `OSError: [WinError 1314]` while four that requested the `symlinks` fixture skipped cleanly
 (CI run `31966531162`).
 
-**Four review rounds then tried to verify the fixture statically, and every round produced a
+**Four review rounds tried to verify the fixture statically, and every round produced a
 survivor.** The first gate read only synchronous `test_` bodies in `test_*.py`; then a parameter
 merely *named* `symlinks` was shown to prove nothing (`plant(tmp_path, None)`); then a
 `test_`-named function in an uncollected module and a home-grown `fixture` decorator; then a
@@ -21,7 +21,7 @@ design): the `symlinks` fixture now returns a `SymlinkCapability`, all creation 
 1. **No raw `symlink_to` / `symlink` call anywhere under `tests/`, except `capabilities.py`** —
    which *is* the probe. No context makes raw creation legal: not a fixture, not a guarded test,
    not a decorator, not module scope. One uniform rule, so the whole under-which-ancestor question
-   the four rounds fought about simply does not arise.
+   those rounds fought about simply does not arise.
 2. **`SymlinkCapability` is constructed only in `capabilities.py`.** Tests obtain it by requesting
    the fixture, which skips — naming the privilege — on a machine that cannot create symlinks.
 
@@ -30,10 +30,19 @@ a parameter, and a caller that fakes it with `None` fails loudly on **every** pl
 (`AttributeError`), not silently with `[WinError 1314]` on an unprivileged Windows machine. That is
 demonstrated below rather than claimed.
 
-**The boundary, stated honestly** (per the `T-260` review's ruling): this prevents accidents. It
-bans the two raw Python spellings and the constructor call; it does not defend against a test
-deliberately forging the object via `__new__` or shelling out to `ln -s`. No current test does
-either, and one that started to would be visible in review.
+**A fifth finding followed the redesign**, and it is why the rules read as they do: ordinary
+import aliases bypassed both — `from os import symlink as make_link` renames the local binding a
+call-site ban is keyed on, and so does `SymlinkCapability as Cap`. **The import itself is banned
+now**, under any alias, because the import is the one place the original name is still visible. The
+exemption is also compared as an exact path, after a nested file named `capabilities.py` was found
+to be silently exempt.
+
+**The boundary, stated honestly** (per the `T-260` review's rulings): this prevents accidents. It
+bans the raw Python spellings, their aliased imports, and the constructor call; it does not defend
+against `__new__` forgery, assignment aliasing (`mk = os.symlink`), or shelling out to `ln -s`.
+Those are accepted as out of scope — following bindings is the dataflow analysis this task spent
+four rounds learning not to attempt. No current test does any of them, and one that started to
+would be visible in review.
 """
 
 import ast
@@ -142,7 +151,7 @@ def test_no_raw_symlink_creation_outside_the_capability_module() -> None:
     """Rule 1, over every Python file in the test tree with no context analysis at all.
 
     Anywhere means anywhere: module scope, fixtures, helpers, closures, decorators, defaults,
-    `except` handlers, `match` arms, collected or not. The four review rounds' survivors were all
+    `except` handlers, `match` arms, collected or not. Those rounds' survivors were all
     contexts a cleverer walker mis-classified; a flat ban has no contexts to mis-classify.
     """
     faults = [
@@ -212,7 +221,7 @@ def test_this_gate_is_looking_at_something() -> None:
     )
 
 
-# --- the detector, against every spelling four review rounds produced ---------------------------
+# --- the detector, against every spelling the review rounds produced ----------------------------
 
 #: Every context that defeated an earlier version of this gate, plus the base spellings. Under the
 #: flat ban they are all the same case, which is the point of the redesign — but each stays here as
@@ -300,9 +309,36 @@ _SANCTIONED: Final = {
 }
 
 
+def test_the_task_entry_states_the_case_counts_it_has() -> None:
+    """`T260-R4`: the entry said sixteen while `_RAW` held eighteen.
+
+    A hand-kept count beside a machine-checked table is the shape that produced the finding, so the
+    count is derived here rather than trusted. Spelled in words because that is how the entry reads.
+    """
+    words = {
+        4: "four",
+        16: "sixteen",
+        18: "eighteen",
+        19: "nineteen",
+        20: "twenty",
+    }
+    entry = (Path(__file__).resolve().parents[2] / "ai" / "TASKS.md").read_text(encoding="utf-8")
+    section = entry[
+        entry.index("### T-260 —") : entry.index("#### Out of scope", entry.index("### T-260 —"))
+    ]
+    raw, sanctioned = words.get(len(_RAW)), words.get(len(_SANCTIONED))
+    assert raw and sanctioned, f"add {len(_RAW)}/{len(_SANCTIONED)} to the words table"
+    assert f"**{raw.capitalize()}** parametrized raw spellings" in section, (
+        f"T-260's evidence does not state {raw} raw spellings"
+    )
+    assert f"{sanctioned} sanctioned shapes" in section, (
+        f"T-260's evidence does not state {sanctioned} sanctioned shapes"
+    )
+
+
 @pytest.mark.parametrize("spelling", sorted(_RAW), ids=sorted(_RAW))
 def test_every_raw_spelling_is_flagged(spelling: str) -> None:
-    """The mutations of four review rounds, kept as the definition of what banned means."""
+    """The mutations of every review round, kept as the definition of what banned means."""
     assert _raw_faults(Path("probe.py"), _RAW[spelling]), (
         f"the ban does not see {spelling}, so that spelling would ship"
     )
