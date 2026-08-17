@@ -17474,3 +17474,76 @@ return the legacy-TLS option to an honest unruled state; and make the gate claim
 evidence. Then reconcile the final-tree counts/current-truth prose and request one focused
 re-review. The Reviewer changed only `ai/REVIEWS.md`; no reviewed document, source, test, task,
 decision, plan, status, handoff, dependency, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-183 focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** T-183
+**Requested base:** 97358bf  **Head:** c9ba7bb
+**Correction commit reviewed:** c9ba7bb. The intervening 5613af4 is the prior review record only;
+the correction itself changes seven files, +378/-64.
+**Platforms verified:** Linux against pinned yt-dlp 2026.07.04. No Windows execution claimed.
+**Verdict:** **Changes requested.** The effective geo default and the missed TLS disposition are
+corrected. Three original findings remain open through incomplete propagation or incomplete gates,
+and the correction introduces one unsupported policy refusal.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| **T183-R1** | **Critical** | **Yes — T-184 still carries the rejected design** | The production half is fixed: build_options now supplies geo_bypass=False before the probe/download branch, and the focused tests catch both an absent value and the plausible-wrong truthy string. The operative downstream specification is not fixed. The corrected audit says actions and normalized values are required at docs/YTDLP_OPTION_AUDIT.md:212-218, then concludes the opposite at lines 237-241. ai/IMPLEMENTATION_PLAN.md:827 and ai/TASKS.md:7869-7875,7927-7928 still require a destination-keyed refusal and still group suppressed --no-geo-bypass with the forbidden spellings. Following T-184 therefore refuses a safe normalized value as though it were the SEC-003 bypass. | **Open — partially resolved** |
+| **T183-R2** | **High** | **Yes — classification and downstream refusal list** | app:policy is a legitimate refinement of ARC-010's existing application-owned/refused class; it does not need a new scheme decision merely because the audit records the reason more precisely. The false-success, playlist-projection and missing-media cases named in the first review are now refused. But T-184 still names only the old four refused classes and 79 rows (ai/TASKS.md:7857-7865), so an implementer following the task omits all app:policy rows. In addition, --wait-for-video / --no-wait-for-video are not supported by the stated rationale: at the pin, yt-dlp waits inside extract_info, reports a [wait] message, re-extracts, and returns the ordinary eventual outcome while the worker is already in PROBING. The audit permits retry-sleep, sleep-requests and typed sleep intervals under the same state model. “No dedicated waiting state” does not by itself make this CLI download capability application-owned, and refusing it conflicts with REQ-030 absent stronger evidence. | **Open — partially resolved** |
+| **T183-R3** | **Critical** | No for the corrected classification | --legacy-server-connect is now honestly unruled and T-256 explicitly carries the maintainer ruling. No inference was made from SEC-004's bounded fifteen-option scope. The stale claim that T-184 has no blocker is tracked under T183-R5 below. | **Resolved in the audit; dependency record still open** |
+| **T183-R4** | **Medium** | **Yes — claimed derivations remain unsound** | The exact --no-check-certificates mutation now fails, and the nine task entries are read. The broader claims still do not hold. An in-memory, recounted mutation moving SEC-003-forbidden --exec from excluded to hatch passed all 17 audit tests. A second mutation moving SEC-003-permitted --netrc from hatch to excluded also passed: test_every_excluded_row_is_named_by_the_decision_it_cites treats any mention in a decision, including “permitted,” or any shared destination as authority for exclusion. The typed partition likewise defines “built” as whatever the nine tasks did not claim; swapping T-247's unbuilt -I/--playlist-items row for the already-built --proxy row passed. Thus neither every SEC-003 prohibition nor the 21-built/44-unbuilt partition is derived as claimed. | **Open** |
+| **T183-R5** | **Medium** | **Yes — current task state can start the wrong work** | The correction recounts the main class table but leaves active contradictions. T-184 says both blockers are cleared, depends on nothing outstanding, names a 79-row list without app:policy, and requires the rejected destination design (ai/TASKS.md:7857-7869,7927). T-256 says unruled is empty and T-184 is unblocked immediately before recording the sixteenth unruled option (lines 127-146). The audit repeats 79/unblocked and destination-keyed conclusions at lines 163, 240 and 304-306; the plan repeats destination-keying at line 827; STATUS.md's opening snapshot still says fifteen options are unclassified before the correction below says one. These are operative current-truth statements, not harmless history, and they contradict the corrected classification and its maintainer boundary. | **Open — now blocking** |
+
+### The four requested uncertainty checks
+
+- **app:policy:** the subtype is a clarification of an accepted refusal category, not a new scheme.
+  The named false-success and playlist-model rows belong there. The wait-for-video pair does not on
+  the evidence supplied; either return it to hatch or show the concrete queue/cancellation outcome
+  ARC-010 cannot represent.
+- **Suppressed --no-* aliases:** deferring their full disposition to T-184 is the correct seam,
+  because T-183 deliberately audits the 250 documented rows and T-184 owns all 292 parser entries.
+  The deferral is not safe while T-184 still mandates destination equality; its criterion must be
+  rewritten around parse_options actions and normalized values.
+- **Destination siblings in the exclusion gate:** rejected as evidence that a cited decision
+  supports the exclusion. Destination equality can conservatively widen a refusal, but that is
+  still a new policy choice, and the --netrc mutation proves the implementation does not even
+  distinguish a decision's permitted side from its forbidden side.
+- **The --break-* family:** leaving it hatch-reachable is not independently blocked, but the
+  “one job per URL makes it inert” argument is false. At the pin, _match_entry can raise
+  ExistingVideoReached or the breaking-filter exception on the current item; this worker calls
+  extract_info directly rather than YoutubeDL.download's wrapper, so the option can change the
+  current job into a failure. Keep the disposition only as an expert-visible represented effect,
+  not on an inertness claim, and measure it when T-184 merges parsed values into both probe and
+  download options.
+
+The second geo test's prose also overstates its mechanism: it says it exercises yt-dlp's real
+reader, but it calls dict.get on the application's own options dictionary. Its truthiness assertion
+still catches the required missing-key and string-value regressions, and the pin-drift audit prevents
+that narrow test from silently claiming a later yt-dlp version, so this is not a separate blocker.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Focused audit + adapter suites | **138 passed** |
+| Full unit suite | **2156 passed, 15 skipped** |
+| Ruff / formatting | Clean; three changed Python files checked |
+| mypy | Changed production module clean |
+| Diff hygiene | git diff --check for c9ba7bb passed |
+| Exact review mutation | Correctly fails now: SEC-004's --no-check-certificates cannot move to hatch |
+| Sibling exclusion mutations | **All 17 audit tests passed incorrectly** for --exec: excluded -> hatch and for --netrc: hatch -> excluded, with summaries recounted in memory |
+| Typed-task mutation | **Passed incorrectly** after replacing T-247's unbuilt playlist-items row with already-built --proxy |
+
+### Readiness
+
+T-183 remains **In Review**, and T-184 remains blocked on both this correction and the maintainer's
+disposition of --legacy-server-connect. Preserve the working geo default and honest unruled row;
+rewrite every operative T-184/current-truth copy, remove or justify the wait-for-video refusal, and
+make the decision and typed-partition gates prove their full claims before requesting another
+focused pass. The Reviewer changed only ai/REVIEWS.md; no reviewed source, test, audit, task,
+decision, plan, status, handoff, dependency, push or remote state was changed.
