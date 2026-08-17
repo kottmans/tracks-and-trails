@@ -1,10 +1,14 @@
 # Commit-message gate — `T-240`.
 #
-# **This runs on every push and every pull request, with no `paths` filter, and that is the point.**
-# `ci.yml` exempts prose (`OPS-011`) and `prose.yml` covers only `ai/TASKS.md`; a commit message
-# has nothing to do with which files a commit touched, and the commits most likely to omit a
-# `Task:` trailer — status syncs, review records — are exactly the prose-only ones neither of those
-# workflows would examine.
+# **This runs on every push, with no `paths` filter, and that is the point.** `ci.yml` exempts
+# prose (`OPS-011`) and `prose.yml` covers only `ai/TASKS.md`; a commit message has nothing to do
+# with which files a commit touched, and the commits most likely to omit a `Task:` trailer —
+# status syncs, review records — are exactly the prose-only ones neither of those workflows would
+# examine.
+#
+# **It no longer runs on pull requests** (`T-262`, 2026-08-17), and this header said it did for one
+# commit after the trigger was removed — `T262-R1`. See the `on:` block below for why the absence
+# is a control rather than a gap.
 #
 # ## What this can and cannot do
 #
@@ -53,11 +57,16 @@ on:
 # third same-SHA run would have replaced it while pending, losing the only evidence.
 #
 # `github.run_id` is documented unique per run, which makes the push group collision-free **by
-# construction** rather than by the shapes pushes happen to take. **Pull requests keep
-# ref-grouped cancellation deliberately**: a synchronize run's `base..head` covers every commit
-# the merge would bring, so the replacement run covers its cancelled predecessor — exactly the
-# property the push side lacks. The wiring is pinned as text by
-# `tests/unit/test_commit_message_check.py`, comments stripped first.
+# construction** rather than by the shapes pushes happen to take.
+#
+# **The `pull_request` half below is dormant, not live** (`T-262`). It is kept as restoration
+# scaffolding rather than deleted, because it is the half that would be needed again and its
+# reasoning is not recoverable from the expression: a synchronize run's `base..head` covers every
+# commit the merge would bring, so a replacement run covers its cancelled predecessor — the
+# property the push side lacks, and the reason the two branches differ at all. **Restoring the
+# trigger takes more than this expression** — see the `on:` block. The wiring is pinned as text by
+# `tests/unit/test_commit_message_check.py`, comments stripped first, which is why the branch also
+# cannot be simplified away without touching that test.
 concurrency:
   group: commit-messages-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

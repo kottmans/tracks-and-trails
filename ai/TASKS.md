@@ -672,9 +672,14 @@ does not silently reopen this.
 
 #### What was checked, and what was not
 
-- **History carries no secrets.** 343 distinct paths have ever been committed; none matches
-  cookie/credential/key/`.env` naming, and no commit in `git rev-list --all` contains a
-  GitHub, AWS, Slack or PEM private-key token pattern. **This is a pattern scan, not a proof**
+- **History carries no secrets, scanned at `1387e57`.** **344** distinct paths have ever been
+  committed at that head; none matches cookie/credential/key/`.env` naming, and no commit contains
+  a GitHub, AWS, Slack or PEM private-key token pattern. **This is a pattern scan, not a proof**
+
+  *(The entry first said 343 — a count taken before `tests/unit/test_spawn_sites.py` landed and
+  then quoted against the tree that included it. `T262-R2`. A number that names no tree cannot be
+  rechecked, which is why the head is part of the claim now; the Reviewer's independent scan at
+  the same head agreed on both the count and the zero matches.)*
 - `tests/unit/test_commit_message_check.py` pins `commit-messages.yml`'s concurrency wiring as
   text and still passes: that expression *mentions* `pull_request` and is now unreachable rather
   than wrong. **Left as written** — it is `T-240`'s reviewed surface, and it is what would be

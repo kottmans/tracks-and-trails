@@ -257,18 +257,26 @@ Do not record a manual item as passed because this job is green. It covers what 
 
 ## 10. CI
 
-Runs on every push and pull request **that changes anything a test reads**. Within that,
-**every test runs on every push, on both platforms** — what changed on 2026-08-03 is *where*
+Runs on every push **that changes anything a test reads**, plus nightly and on demand. Within
+that, **every test runs on every push, on both platforms** — what changed on 2026-08-03 is *where*
 Windows runs and *when its answer arrives*, not what is covered; what changed on 2026-08-05 is
 that prose-only pushes stopped triggering a run at all. `OPS-010` and `OPS-011` are the governing
 decisions; the subsections below state them operationally.
+
+**No workflow runs on `pull_request`, and that is a security control rather than an omission**
+(`T-262`, 2026-08-17). Every runner this project uses is self-hosted, and GitHub runs a fork's
+pull request with the fork's own code — so on a public repository the trigger is arbitrary code
+execution on the maintainer's machines. This section said *"every push and pull request"* in three
+places after the trigger was removed, which `T262-R1` found: a policy file that promises a gate
+nobody runs is worse than one that omits it, because it is read as coverage.
 
 ### What runs on an ordinary push, since 2026-08-03 (`OPS-010`)
 
 | Trigger | What runs |
 |---|---|
-| **push and pull request touching anything a test reads** | everything: Linux `check`, the full `windows desktop` suite, `frozen ubuntu-latest`, `frozen windows`, the coverage notice |
-| **push and pull request touching prose only** | **nothing** (`OPS-011`), except `prose.yml` when `ai/TASKS.md` changed |
+| **push touching anything a test reads** | everything: Linux `check`, the full `windows desktop` suite, `frozen ubuntu-latest`, `frozen windows`, the coverage notice |
+| **push touching prose only** | **nothing** (`OPS-011`), except `prose.yml` when `ai/TASKS.md` changed |
+| **pull request** | **nothing at all** — no workflow carries the trigger (`T-262`) |
 | **nightly (06:00 UTC) and `workflow_dispatch`** | the same as the first row, plus it cannot be cancelled by a push |
 
 ### Where each platform runs (`OPS-012`, 2026-08-05)
