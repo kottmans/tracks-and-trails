@@ -7185,6 +7185,45 @@ policy is unchanged
 - Changing the Job-object design, the three current spawn callers, or T-258's Windows evidence
 - General Python data-flow analysis for arbitrary process factories and aliases
 
+### T-264 — Make the no-untrusted-PR workflow policy executable
+
+**Status:** **Ready — filed 2026-08-17 from `T262-R3`.** T-262 removes every pull-request trigger;
+this task makes that security control fail closed when a workflow is edited or added later.
+**Owner:** Implementer
+**Priority:** Low while the trigger is absent; the consequence of regression is the Critical
+self-hosted-runner exposure T-262 records
+**Phase:** CI security maintenance; blocks no current T-262 correction
+**Depends on:** T-262's trigger removal at `1387e57`
+**Relevant context:** `T262-R3`, `.github/workflows/*.yml`, GitHub's public-fork/self-hosted-runner
+warning, `AGENTS.md` §7
+**Affected surfaces:** a unit/static workflow-policy test; workflow files only if the gate exposes
+another trigger
+**Risk:** Low — a repository-local assertion over four workflow files
+
+#### Scope
+
+Turn the current policy — no pull-request-triggered workflow may reach these self-hosted runners —
+into a test over every file in `.github/workflows/`. Comments are not a gate, and
+`test_commit_message_check.py` currently pins only dormant concurrency text; adding
+`pull_request:` back leaves it green.
+
+The safest current rule is to forbid both `pull_request` and `pull_request_target` triggers. If a
+future task deliberately restores pull-request CI with same-repository job guards, that task must
+change this policy and its mutations in the same reviewed commit rather than bypass it ad hoc.
+
+#### Acceptance criteria
+
+- Both mapping (`pull_request:`) and inline (`on: [push, pull_request]`) trigger mutations fail
+- The scan covers every current and future `.yml`/`.yaml` workflow, including `t074-repeat.yml`
+- Comments mentioning the event do not produce a false failure
+- The current four workflows pass, and adding a new unsafe workflow fails without updating a
+  hard-coded filename list
+
+#### Out of scope
+
+- Re-enabling pull-request CI or designing a trusted hosted PR tier
+- Runner hardening, isolation or GitHub repository settings; T-262 records those separately
+
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
 **Status:** **Ready — the guard is Approved at `9e5feae`, and the task stays open against

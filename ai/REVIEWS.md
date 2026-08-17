@@ -18217,3 +18217,49 @@ continue under `AGENTS.md` §10 without a separate pass authorization. `T258-R7`
 owned by `T-263` and do not hold T-258. The Reviewer changed only `ai/REVIEWS.md` and filed
 `T-263` in `ai/TASKS.md`; no reviewed source, existing test, tool, handoff, status, decision, plan,
 push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-262 self-hosted fork-trigger review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-262
+**Base:** `1853acf940c282d899d8298ab12c631eef2e1939`
+**Head:** `1387e57b5bdd3755fe01e5f07e5d58ea7c613767`
+**Platforms verified:** Static workflow and history review on Linux; no workflow was dispatched and
+repository visibility or variable settings were not changed
+**Verdict:** **Changes requested.** Removing `pull_request` from all three automatic workflows
+closes the submitted fork-to-self-hosted-runner path. The authoritative test policy, current
+status and one workflow header still promise pull-request gates that no longer exist, materially
+misstating a required gate before publication.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **T262-R1** | **Medium** | **Yes — current truth materially misstates the required CI gate** | `ai/TESTING.md:260-271` says CI runs on every push and pull request and repeats that in both trigger rows; `ai/STATUS.md:4385` says CI is green on every push and PR. `.github/workflows/commit-messages.yml:3` says the commit gate runs on every pull request, while lines 30-43 correctly say the trigger's absence is the security control. Its concurrency rationale at lines 55-60 still describes live PR behavior without labelling it dormant. These are not historical references: they describe what the current gates do, and after T-262 they are false. | Update the authoritative CI policy and current status to push/schedule/manual behavior. Make the commit-workflow header agree; either simplify the unreachable PR concurrency branch and its pinning test or explicitly label it dormant restoration scaffolding. | **Open — T-262 correction** |
+| **T262-R2** | **Low** | No | The task says 343 distinct paths had ever been committed. At the submitted head, `git log 1387e57 --name-only --format=` yields **344**; the new `tests/unit/test_spawn_sites.py` appears to have landed after the count was taken. The reviewer repeated the named filename and token-pattern scans over the current head and found zero matches, so this does not overturn the safety conclusion, but the recorded evidence is not scoped to the tree it describes. | Scope the count and scan to the exact reviewed head (or omit the unstable count) and record 344 for `1387e57`; keep the existing “pattern scan, not proof” qualification. | **Open — T-262 correction; does not independently block** |
+| **T262-R3** | **Low** | No | The absence of a PR trigger is now a security control with no executable regression gate. None of the 66 relevant unit tests examines workflow triggers; `test_commit_message_check.py` pins only the now-dormant PR concurrency expression. Re-adding `pull_request:` therefore leaves the suite green and restores untrusted-code execution on the configured self-hosted runners. Current behavior is correct, so this is test strength rather than a present exposure. | Add a repository-wide workflow-policy test with positive mutations for mapping and inline PR triggers and future workflow files. The current no-PR policy can be deliberately revised alongside that test if trusted hosted PR CI is designed later. | **Open — `T-264`; no T-262 re-review required** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | One T-262 commit, three workflow files and two current-truth records; `git diff --check 1853acf..1387e57` and `git show --check 1387e57` passed |
+| Trigger audit | `ci.yml`: `push`, `workflow_dispatch`, `schedule`; `prose.yml` and `commit-messages.yml`: `push`; `t074-repeat.yml`: `workflow_dispatch`. No `pull_request`, `pull_request_target`, `workflow_run`, `issue_comment` or repository-dispatch trigger remains |
+| Runner audit | With the three variable values supplied in the handoff, every automatic job resolves to the Fedora or Windows self-hosted runner; the only unconditional literal self-hosted workflow is manual-only `t074-repeat.yml` |
+| GitHub threat model | GitHub's official [self-hosted runner guidance](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners) warns that public-fork PR code can compromise a self-hosted runner. Its [repository approval documentation](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository) confirms the default is first-time-contributor approval and warns that any merged commit or PR removes that approval requirement |
+| Relevant tests | `test_commit_message_check.py` plus task placement: **66 passed** |
+| Current-head history probe | **344** distinct committed repository paths at `1387e57`; zero filename matches for cookie/credential/secret/private-key/`.env` patterns and zero commits matched the submitted GitHub/AWS/Slack/PEM token-pattern family. This remains a pattern scan, not proof of absence |
+| External state | The review did not query or mutate repository visibility, Actions variables or fork-approval settings. It relies on the maintainer-supplied values; origin remains reported private and at `8b027cd` |
+
+### Readiness
+
+The dangerous trigger path is closed in the local tree, but T-262 is **not approved** until the
+current CI policy and workflow header describe that tree. Correct `T262-R1` and the scoped count in
+one documentation/workflow-comment batch; `T262-R3` is owned by `T-264` and does not require
+re-review of the trigger removal. **Push the approved T-262 control before changing repository
+visibility**: `origin/main` still contains the vulnerable triggers, and private local commits do
+not protect a public remote. The Reviewer changed only `ai/REVIEWS.md` and filed `T-264` in
+`ai/TASKS.md`; no workflow, source, existing test, handoff, status, decision, plan, visibility,
+push or remote state was changed.
