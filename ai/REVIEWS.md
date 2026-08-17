@@ -17547,3 +17547,73 @@ rewrite every operative T-184/current-truth copy, remove or justify the wait-for
 make the decision and typed-partition gates prove their full claims before requesting another
 focused pass. The Reviewer changed only ai/REVIEWS.md; no reviewed source, test, audit, task,
 decision, plan, status, handoff, dependency, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-183 second focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** T-183
+**Previously reviewed implementation head:** c9ba7bb  **Correction:** 1d0caf6
+**Intervening review-only commit:** edd3800
+**Platforms verified:** Linux against pinned yt-dlp 2026.07.04; configured mypy also run for
+Win32. No Windows runtime, integration, network or frozen-build execution claimed.
+**Verdict:** **Approved with follow-ups at 1d0caf6.** No blocking finding remains. The effective
+geo policy, the five-class refusal list, the one honest unruled option, both decision verdict
+directions and the built/unbuilt partition now agree at the task an implementer will follow.
+
+### Finding dispositions
+
+| ID | Re-review result | Status |
+|---|---|---|
+| **T183-R1 — Critical** | Resolved. The application still supplies geo_bypass=False, and every operative T-184 criterion now requires parse_options' normalized value rather than option spelling or destination. It explicitly distinguishes the three bypass-enabling suppressed spellings from safe --no-geo-bypass. | **Resolved** |
+| **T183-R2 — High** | Resolved. app:policy remains a valid refinement of ARC-010's existing application-owned refusal category and is now propagated into T-184's five-class/89-row list. The unsupported wait-for-video pair returned to hatch; the remaining ten are the false-success, missing-media and playlist-model cases established in the first review. | **Resolved** |
+| **T183-R3 — Critical** | Resolved. legacy-server-connect remains unruled, T-256 owns its ruling, and T-184 is blocked until that one disposition exists. No inference widens SEC-004. | **Resolved** |
+| **T183-R4 — Medium** | Resolved. SEC-003 and SEC-004 table verdicts are parsed in both directions; an excluded row must be decision-forbidden or one of two explicit, reviewable exceptions; and the 21 built rows are an explicit table disjoint from the nine tasks. Replaying the exact exec, netrc and playlist-items/proxy mutations now fails at the intended assertions. | **Resolved** |
+| **T183-R5 — Medium in the previous pass** | The blocking propagation failure is resolved: T-184's status, class list, normalization design and legacy-TLS blocker are correct. Residual stale historical/current-truth sentences remain, but the higher-authority plan and operative T-184 entry now prevent the wrong implementation. They are Low follow-up cleanup below and do not consume another correction pass under AGENTS.md section 10. | **Resolved for approval; cleanup assigned** |
+
+### The four requested uncertainty rulings
+
+1. **Keep the two exception maps in the test.** They are policy judgements, and explicit
+   enumeration is the honest form. Moving the citations into the audit and then testing the audit
+   against itself would weaken the independence that caught the three mutations. A new documented
+   parser option still has to enter exactly one audit row; whether it should be an exception remains
+   review judgement rather than something destination equality can derive.
+2. **app:policy at 10 is accepted.** The re-review did not reopen the whole hatch and found no new
+   evidence that another row has an outcome the model cannot represent.
+3. **The 44/21 partition is accepted.** All 21 option-to-field mappings were independently checked
+   against the pinned parser and DownloadRequest, and are correct. Comparing the displayed totals
+   as well as the sets is harmless belt-and-braces; the table, not subtraction from the task list,
+   now defines the built side.
+4. **The suppressed exec-before-download row belongs to T-184.** T-183's documented inventory
+   cannot classify it, and T-184 explicitly owns all 292 parser entries. Its absence from the 250-row
+   audit is not a gap in this task.
+
+### Non-blocking follow-ups
+
+| ID | Severity | Blocks approval | Owner / target | Follow-up |
+|---|---|---:|---|---|
+| **T183-F1** | Low | No | **Planner / T-256** | Reconcile the remaining current-truth residues when T-256 rules legacy-server-connect: docs/YTDLP_OPTION_AUDIT.md:171 still says 79/unblocked and lines 319-324 say T-256 is done/T-184 next; STATUS.md:8-35 still describes the pre-ruling/pre-wait correction snapshot; ai/TASKS.md:409-410 still says fifteen are filed unclassified. In T-184's dependency line, replace “sixteen unruled options and three corrections” with the actual blocker: **one** unruled option. The three SEC-003 corrections are explicitly nonblocking at ai/TASKS.md:149-151 and ai/IMPLEMENTATION_PLAN.md:826. |
+| **T183-F2** | Low | No | **Planner / T-256** | Narrow or complete _ruled_options' claim that it returns every permitted option. Its derived permitted set contains the five explicitly spelled options but omits SEC-003's family-level client-certificate and SponsorBlock permissions. Current classifications remain protected because an unsupported excluded row fails the independent soundness check; this is claim precision, especially relevant when T-256 revisits the client-certificate ruling. |
+| **T183-F3** | Low | No | **Planner / T-252** | docs/YTDLP_OPTION_AUDIT.md:315 still calls T-252 “the whole retry policy” after the task correctly narrowed that title because file-access-retries and retry-sleep remain hatch options. Update the decomposition copy when T-252 is built. |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Three correction mutations | **All fail as required**: exec -> hatch, netrc -> excluded, and T-247 playlist-items -> built proxy |
+| Decision extraction | 23 forbidden spellings and five explicitly named permitted spellings; disjoint |
+| Built mapping | All **21** listed options checked against parser destinations and real DownloadRequest fields |
+| Focused audit + adapter suites | **140 passed**; the sandbox loopback denial passed on the permitted hermetic rerun |
+| Full unit suite | **2158 passed, 15 skipped** |
+| Ruff / formatting | Clean; two changed Python files checked |
+| mypy | **147 source files clean** on host and Win32 configurations |
+| Diff hygiene | git diff --check for 1d0caf6 passed |
+
+### Readiness
+
+T-183 is **Approved with follow-ups at 1d0caf6** and may move to Complete. T-184 remains blocked
+only on the maintainer's disposition of legacy-server-connect; the three proposed SEC-003
+corrections do not extend that blocker. The Reviewer changed only ai/REVIEWS.md; no reviewed
+source, test, audit, task, decision, plan, status, handoff, dependency, push or remote state was
+changed.
