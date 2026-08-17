@@ -403,7 +403,8 @@ product-owned spawn sites. **`T258-R6`'s last residual is corrected here** —
 `test_containing_the_application_twice_keeps_the_first_job` said idempotence existed because a
 `DownloadManager` is constructible twice, when the actual trigger is that `start_contained()` calls
 it on **every** spawn from all three sites. Corrected and awaiting re-review; `T258-R2` being High,
-that verification continues under `AGENTS.md` §10 without a separate pass authorization.
+that verification continues under `AGENTS.md` §10 without a separate pass authorization. Request:
+`ai/handoffs/2026-08-17-T-258-rereview-2-request.md`.
 
 **Two criteria are met; three are not, and the entry no longer says otherwise.** Criterion 3 is
 measured on POSIX. Criterion 4 holds. **Criteria 1 and 2 are unmet** — the reproduction and its
