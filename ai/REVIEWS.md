@@ -18474,3 +18474,48 @@ synchronization in `TASKS.md` and `STATUS.md` is still owed. The Reviewer added 
 the transient handoff pointer from T-262's current-truth entry because `AGENTS.md` §6 forbids
 durable records from citing handoffs. No reviewed workflow/source/test, handoff, push, visibility
 or remote setting was changed.
+
+---
+
+## 2026-08-17 — T-258 second focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-258
+**Previously reviewed head:** `c598041115e2181ebba6e8a4c96de346dd14ac60`
+**Correction:** `e3c259a4f9e3cff726e787d82d1fb9871ac37b70` — the only implementation
+commit reviewed; the intervening T-257/T-259 review record is outside this boundary
+**Platforms verified:** Static source/test inspection and focused tests on Linux; no Windows
+runtime result exists
+**Verdict:** **Blocked.** The submitted correction resolves the source-doc half of T258-R6. The
+task still cannot be approved without T258-R2's Windows contained/uncontained evidence and
+T258-R5's unattended scanner integration; the latter now waits behind T259-R1's Changes requested
+disposition rather than an imminent workflow approval.
+
+### Focused results
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T258-R2** | **High** | **Yes** | No Windows run was submitted. The contained/suppressed-control pair and criteria 1 and 2 remain unverified there. The task's contradictory phrase that the pair had “run on both platforms” was corrected to the supported fact: written for both, run only on POSIX. | **Open — blocked pending Windows execution of both sides** |
+| **T258-R5** | **Medium** | **Yes** | The scanner is still invoked by nothing, as expected for this correction. `476b745` records T259-R1 as Changes requested, so the workflow dependency is farther from reviewed integration than it was at `c598041`. | **Open — blocked pending corrected and reviewed workflow integration** |
+| **T258-R6** | **Medium** | Yes | `contain_this_application()` and `test_containing_the_application_twice_keeps_the_first_job` now name the actual idempotence trigger: `start_contained()` calls containment once per child from all three product-owned spawn sites, and every call after the first must retain the existing job. | **Resolved at `e3c259a`** |
+| **T258-R7–R9** | **Low / Medium** | No | Not revisited. All three remain owned by T-263 and do not hold T-258. | **Open — T-263** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | `e3c259a` changes only `process_tree.py`, `test_process_tree.py` and T-258's task entry; `git show --check e3c259a` passed |
+| Spawn-site audit | The manager, yt-dlp resolver and frozen probe are the three product multiprocessing callers, and all three call `start_contained()` |
+| Counter probe | Patching `contain_this_application`, then calling `start_contained()` for three fake children, observed **3 containment calls** and **one start per child** |
+| Focused tests | `test_process_tree.py`, `test_spawn_sites.py`, task placement and commit-message checks: **80 passed** |
+| Windows | **Not run.** The idempotence handle assertion is still load-bearing only on Windows, and T258-R2's contained/uncontained mechanism pair remains unexecuted there |
+
+### Readiness
+
+T-258 remains **blocked**. T258-R6 is resolved at `e3c259a`; no further wording correction is
+owed for it. Approval still principally waits on the Windows contained/uncontained result and an
+invoked unattended scanner after T-259's correction is reviewed. Because T258-R2 remains High,
+its eventual focused verification continues under `AGENTS.md` §10 without separate authorization.
+The Reviewer updated T-258's status, corrected its self-contradictory platform sentence and removed
+the transient handoff pointer because `AGENTS.md` §6 forbids durable records from citing handoffs.
+No reviewed source/test, handoff, push or remote state was changed.

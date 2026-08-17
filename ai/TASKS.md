@@ -394,22 +394,23 @@ makes possible.
 
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
-**Status:** **In Review — Blocked at `c598041`, 2026-08-17.** The re-review found the six original
-findings addressed and two blockers unchanged: `T258-R2` (High) has no Windows run, and `T258-R5`
-waits on `T-259`'s workflow disposition. The review was right on every one, and two were defects
-rather than paperwork: containment **failed open**, and the fix covered only one of three
-product-owned spawn sites. **`T258-R6`'s last residual is corrected here** —
+**Status:** **In Review — Blocked after the second focused pass, 2026-08-17.** `T258-R6` is
+Resolved at `e3c259a`; two blockers are unchanged: `T258-R2` (High) has no Windows run, and
+`T258-R5` waits on `T-259`'s workflow disposition. `476b745` records that disposition as Changes
+requested, so the dependency moved further out rather than closer. The review was right on every
+original finding, and two were defects rather than paperwork: containment **failed open**, and the
+fix covered only one of three product-owned spawn sites. **`T258-R6`'s last residual was** —
 `process_tree.contain_this_application` and
 `test_containing_the_application_twice_keeps_the_first_job` said idempotence existed because a
 `DownloadManager` is constructible twice, when the actual trigger is that `start_contained()` calls
-it on **every** spawn from all three sites. Corrected and awaiting re-review; `T258-R2` being High,
-that verification continues under `AGENTS.md` §10 without a separate pass authorization. Request:
-`ai/handoffs/2026-08-17-T-258-rereview-2-request.md`.
+it on **every** spawn from all three sites. `T258-R2` being High, its eventual verification
+continues under `AGENTS.md` §10 without a separate pass authorization.
 
 **Two criteria are met; three are not, and the entry no longer says otherwise.** Criterion 3 is
 measured on POSIX. Criterion 4 holds. **Criteria 1 and 2 are unmet** — the reproduction and its
-negative control are written and run on both platforms, but **no Windows run of either exists**,
-and `T258-R2` is right that a green fixed-only run could not have satisfied them anyway.
+negative control are written for both platforms but have run only on POSIX; **no Windows run of
+either exists**, and `T258-R2` is right that a green fixed-only run could not have satisfied them
+anyway.
 **Criterion 5 is unmet**: the scanner exists and nothing invokes it.
 
 *(This previously said "four of the five criteria are met and measured", and that the window was
