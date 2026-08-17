@@ -18006,3 +18006,66 @@ to follow ordinary import aliases and exempt only the exact probe module; sealin
 the preferred way to make its runtime meaning match its name. `T260-R3` is non-blocking. The
 Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan,
 status, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-260 authorized alias/exemption re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-260
+**Previously reviewed head:** 43c08d0  **Correction:** a2389e7
+**Intervening review-only commit:** 21b0f73
+**Authorization:** The maintainer explicitly authorized this sixth pass after the redesign review
+and asked that the task be held only for significant remaining issues.
+**Platforms verified:** Linux. No Windows runtime, CI or real WinError 1314 execution claimed.
+**Verdict:** **Approved with follow-ups.** The ordinary import aliases now fail both at the import
+and call sites, the exemption is the exact root probe path, and the floor is pinned to the two
+sanctioned raw sites. No significant issue remains. One Low evidence-count mismatch does not hold
+T-260 or require another review.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused re-review result | Status |
+|---|---|---:|---|---|
+| **T260-R1** | **Medium** | **Yes, until this correction** | Resolved. `from os import symlink as make_link` is rejected at the import and call, including when the import is never called. `from tests.capabilities import SymlinkCapability as Cap; Cap()` is likewise rejected at both sites. Banning the imports is an appropriate conservative layer: no non-exempt test has a sanctioned need to possess a raw creator or rename the capability class, and false positives fail safely. The nested-file reproduction is also closed: `_sources` now compares `p.relative_to(TESTS)` with `Path("capabilities.py")`, so a real `unit/capabilities.py` was scanned and faulted while the exact root file stayed exempt. | **Resolved at a2389e7** |
+| **T260-R3** | **Low** | No | Resolved as requested. The root exemption now requires exactly two recognized raw calls, covering the current probe and `SymlinkCapability.create`; zero, one or a third recognized site fails. Per-function attribution would be stronger, but the review expressly offered the exact count as an acceptable floor and no additional strength is required for approval. | **Resolved at a2389e7** |
+| **T260-R4** | **Low** | No | `ai/TASKS.md:217` still says the parametrized table contains **16** rejected spellings, but `_RAW` now contains **18**. The section heading/comments in `test_capability_guards.py` also still describe “four review rounds” after the fifth finding and sixth pass. Update the count and round wording during T-260 closeout; this is stale bookkeeping, not a gate defect. | **Open — Planner / T-260 closeout; no re-review required** |
+
+`T260-R2`, `T260-F1`, and `T260-F2` remain resolved. This correction adds new historical prose
+without reviving the rejected fixture-threading claim or either deleted pytest-model boundary.
+
+### Boundary rulings
+
+1. **Banning the import is the right layer.** It reads the original symbol before aliasing erases
+   it, avoids call-graph/dataflow inference, and is safely stricter than necessary in the false-
+   positive direction.
+2. **Assignment aliasing remains outside scope.** `mk = os.symlink; mk(...)`, `__new__`, an unbound
+   `SymlinkCapability.create(None, ...)`, dynamic execution and subprocess link creation are
+   deliberate ways around the named API boundary. No current test uses them, and the task now
+   states that boundary plainly. This review does not require a Python dataflow analyser to defend
+   against them.
+3. **The exact-two floor is accepted.** It catches removal of either current recognized site and a
+   third raw call under the recognized names in the exempt module. It need not prove semantic
+   ownership of each call to close this non-blocking point.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary / hygiene | `a2389e7` only; two files; `git show --check a2389e7` passed |
+| Raw import alias | Import and call both faulted; an uncalled aliased import also faulted |
+| Capability-class alias | Import and constructor call both faulted |
+| Exact exemption path | Temporary root and `unit/capabilities.py` files: root omitted, nested file scanned and faulted |
+| Focused capability suite | **28 passed** |
+| Task placement | **14 passed** |
+| Ruff / formatting | Changed Python file clean and formatted |
+| Direct mypy, host / Win32 | Changed Python file clean in both configurations |
+| Full unit suite | **2185 passed, 15 skipped; one sandbox-only localhost socket denial.** The denied test passed **1/1** with localhost permission; no product failure remains, and no single 2186-pass command is claimed |
+| Platform limits | Full integration and Windows runtime were not repeated because this correction changes only the static gate and task record; the handoff records 440 integration passes |
+
+### Readiness
+
+T-260 is **approved at `a2389e7`**. The Planner may move it to Complete; the Low count/round wording
+can be corrected during closeout and does not need another Reviewer pass. The Reviewer changed only
+`ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan, status, push or remote
+state was changed.
