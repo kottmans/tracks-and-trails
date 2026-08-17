@@ -391,10 +391,16 @@ makes possible.
 
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
-**Status:** **In Review — corrected 2026-08-17 after `dbc1e6c` returned Changes requested with six
-blocking findings, all now addressed.** The review was right on every one, and two were defects
+**Status:** **In Review — Blocked at `c598041`, 2026-08-17.** The re-review found the six original
+findings addressed and two blockers unchanged: `T258-R2` (High) has no Windows run, and `T258-R5`
+waits on `T-259`'s workflow disposition. The review was right on every one, and two were defects
 rather than paperwork: containment **failed open**, and the fix covered only one of three
-product-owned spawn sites.
+product-owned spawn sites. **`T258-R6`'s last residual is corrected here** —
+`process_tree.contain_this_application` and
+`test_containing_the_application_twice_keeps_the_first_job` said idempotence existed because a
+`DownloadManager` is constructible twice, when the actual trigger is that `start_contained()` calls
+it on **every** spawn from all three sites. Corrected and awaiting re-review; `T258-R2` being High,
+that verification continues under `AGENTS.md` §10 without a separate pass authorization.
 
 **Two criteria are met; three are not, and the entry no longer says otherwise.** Criterion 3 is
 measured on POSIX. Criterion 4 holds. **Criteria 1 and 2 are unmet** — the reproduction and its

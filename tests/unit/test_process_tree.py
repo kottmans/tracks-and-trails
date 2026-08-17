@@ -214,11 +214,14 @@ def test_application_containment_succeeds_on_this_platform() -> None:
 
 
 def test_containing_the_application_twice_keeps_the_first_job() -> None:
-    """Idempotent, because `DownloadManager` is constructible more than once in a process.
+    """Idempotent, because `start_contained()` calls it on every spawn.
 
-    A second job would be a second handle rather than a second guarantee — and on Windows the
-    handle is the thing that must not leak, since `KILL_ON_JOB_CLOSE` fires when the *last* one
-    closes. A per-construction job would leave earlier ones open with nothing to close them.
+    All three spawn sites reach it that way, so it runs once per child rather than once per
+    `DownloadManager` — the manager-construction reading this docstring used to give was the
+    narrower of the two triggers (`T258-R6`). A second job would be a second handle rather than
+    a second guarantee — and on Windows the handle is the thing that must not leak, since
+    `KILL_ON_JOB_CLOSE` fires when the *last* one closes. A per-spawn job would leave earlier
+    ones open with nothing to close them.
 
     **This test is only load-bearing on Windows, and says so rather than reading as if it were
     not.** The handle it compares does not exist on POSIX, where containment is a no-op with

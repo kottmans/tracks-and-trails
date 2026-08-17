@@ -323,8 +323,13 @@ if sys.platform == "win32":
         it is what lets *one* worker be cancelled without touching its siblings, which killing
         the outer job cannot express.
 
-        **Idempotent**, because the manager that calls it is constructible more than once in a
-        process and a second job would be a second handle to leak rather than a second guarantee.
+        **Idempotent**, because `start_contained()` calls it on every spawn. Every child this
+        application starts goes through that door — the manager's worker,
+        `ytdlp_resolution.resolve_in_a_child` and `_freeze_probe.run_probe` — so this runs once
+        per child, not once per `DownloadManager`, and every call after the first has to return
+        the job already held rather than make one. A second job would be a second handle to leak
+        rather than a second guarantee, and on Windows the handle is the thing that must not
+        leak: `KILL_ON_JOB_CLOSE` fires when the *last* one closes.
         """
         global _windows_application_job, application_containment_error
         if _windows_application_job is not None:
