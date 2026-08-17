@@ -17924,3 +17924,85 @@ outside the automatic review loop: correct the two significant resolvability cas
 acceptance rule explicitly, or accept the risk through the project's decision process. The
 Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan,
 status, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-260 maintainer-authorized redesign review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-260
+**Previously reviewed implementation head:** 2a47f5e  **Redesign:** 43c08d0
+**Intervening review-only commit:** d2b96fe
+**Authorization:** After the final focused round, the maintainer chose **revisit the design** under
+AGENTS.md section 10 and authorized this review of the replacement design.
+**Platforms verified:** Linux. No Windows runtime, CI or real WinError 1314 execution claimed.
+**Verdict:** **Blocked.** Replacing the pytest model with a capability object is the right design
+direction and closes the prior four rounds' findings, but the replacement gate still accepts
+ordinary aliases that bypass both of its flat rules, and its claimed one-file exemption actually
+exempts every file with that basename. These are significant survivors of T-260's required gate.
+The authorized redesign pass is spent; another correction/re-review requires the maintainer's
+choice under section 10.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Redesign-review result | Status |
+|---|---|---:|---|---|
+| **T260-R1** | **Medium** | **Yes — the acceptance gate does not enforce either replacement rule over the claimed tree** | **Still open in the replacement design, with a different cause.** `_calls` recognizes only the final attribute/name spelling. `from os import symlink as make_link; make_link(...)` therefore passes the raw-creation gate, and `from tests.capabilities import SymlinkCapability as Cap; Cap()` passes the construction gate. Both are ordinary Python import aliases, not the expressly out-of-scope `__new__` forgery or subprocess route. Independent probes returned no faults for either; forcing the reached raw operation to raise produced `[WinError 1314]`. The object is not a runtime-enforced capability either: `SymlinkCapability.create(None, link, target)` also passes both gates and reaches the same forced error because `create` never consumes `self`. That last spelling is adversarial corroboration rather than the reason aliases block. Separately, `_sources` excludes by `p.name == "capabilities.py"`, so `tests/unit/capabilities.py`, `tests/helpers/capabilities.py`, and any other nested file with that basename are all exempt. In a real temporary tree containing root and nested `capabilities.py` files, the walk returned only `test_visible.py`. Thus the documented exemption is not one file and rule 1 is not over every other Python file under `tests/`. | **Open at redesign head 43c08d0** |
+| **T260-R2** | **Low** | No | Remains resolved. The task evidence now describes the replacement design and its current detector counts rather than any superseded pytest-model gate. | **Resolved at 43c08d0** |
+| **T260-F1** | **Low** | No | Resolved. The rejected helper-threading claim survives only as an explicit description of the old failure; current prose says `None` fails loudly and no longer claims that a same-named parameter proves fixture resolution. The evidence table was replaced and its 16-rejected / 4-sanctioned counts match the shipped tables. | **Resolved at 43c08d0** |
+| **T260-F2** | **Low** | No | Resolved by deletion. The coarse conftest re-export inference and hard-coded pytest collection patterns no longer exist because the replacement gate has no pytest model. | **Resolved at 43c08d0** |
+| **T260-R3** | **Low** | No | The exemption floor proves only that at least one raw call remains in root `tests/capabilities.py`. There are two independent required sites today: the actual capability probe and `SymlinkCapability.create`. Removing either one leaves the floor green, so it cannot establish that the fixture still measures capability before returning the creator. Assert the expected sites per function (or at least the exact count) rather than only `>= 1`. | **Open — T-260 correction if authorized, otherwise Planner follow-up** |
+
+### Ruling on the requested boundary
+
+1. **The adversary boundary is accepted as written.** T-260 need not detect `__new__`, `getattr`,
+   assignment laundering, dynamically executed strings, or `subprocess` / `ln -s`. Those are
+   deliberate bypasses and no current test uses them. Ordinary import aliases are different: they
+   are routine refactorings and are within an accidents-oriented gate that claims to ban the
+   underlying Python calls and construction “however they are reached.”
+2. **The exemption must be the path, not the basename.** Exempt exactly
+   `TESTS / "capabilities.py"`; a same-named helper below another directory is not the probe.
+3. **The capability needs either resolvable static bindings or a runtime seal.** The minimal static
+   correction can derive aliases from `ImportFrom` nodes for `os.symlink` and
+   `tests.capabilities.SymlinkCapability`. A stronger and simpler runtime invariant is for the
+   constructor to require a module-private token supplied only by the fixture and for `create` to
+   validate/use that state; then an alias cannot mint a working capability and an unbound call does
+   not reach raw creation. Deliberately importing the private token may remain outside the stated
+   boundary.
+
+### Required probes if another pass is authorized
+
+- `from os import symlink as make_link; make_link(...)` in an ordinary test file must fail the raw
+  gate.
+- `from tests.capabilities import SymlinkCapability as Cap; Cap()` must fail the construction gate;
+  if the object is sealed at runtime, an unbound `SymlinkCapability.create(None, ...)` must fail
+  before reaching `Path.symlink_to`.
+- A raw call in `tests/unit/capabilities.py` must fail while the two sanctioned raw sites in the
+  exact root `tests/capabilities.py` remain accepted.
+- The real fixture-to-capability route must continue to create a link, and the forced-incapable
+  state must continue to report nine skips with the privilege guidance.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Redesign boundary / hygiene | `43c08d0` only; five files; `git show --check 43c08d0` passed |
+| Focused capability suite | **25 passed** |
+| Real capability route | **9 passed** across `test_paths.py` and the symlink-selected worker cases |
+| Forced-incapable route | **9 skipped, 0 failed**, each naming Administrator rights / Developer Mode |
+| Alias and unbound-call mutations | All three returned no raw or construction faults; each reached a forced `[WinError 1314]` |
+| Exemption-scope mutation | A nested real `capabilities.py` was omitted from `_sources`; only the ordinary test file was scanned |
+| Task placement | **14 passed** |
+| Ruff / formatting | Clean for all four changed Python files |
+| Mypy, host / Win32 | **148 source files clean** in both configurations |
+| Full unit suite | **2182 passed, 15 skipped; one sandbox-only localhost socket denial.** The denied test passed **1/1** when rerun with localhost permission; no product failure remains, and no single 2183-pass command is claimed |
+| Platform limits | The full integration suite and Windows execution were not repeated; the six changed integration symlink cases ran in the focused nine-test check |
+
+### Readiness
+
+T-260 is **Blocked at `43c08d0`**. Preserve the capability-object redesign, all nine converted
+sites, the explicit skip behavior, and the flat whole-tree rule. Approval still requires the gate
+to follow ordinary import aliases and exempt only the exact probe module; sealing the capability is
+the preferred way to make its runtime meaning match its name. `T260-R3` is non-blocking. The
+Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan,
+status, push or remote state was changed.
