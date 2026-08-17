@@ -17845,3 +17845,82 @@ helper/default/import-time cases and the accepted guarded fixture/closure. Appro
 the gate to establish rather than guess its pytest-managed contexts and to visit every relevant AST
 field. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision,
 plan, status, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-260 final authorized focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-260
+**Previously reviewed implementation head:** 092a4b3  **Correction:** 2a47f5e
+**Intervening review-only commit:** c61b843
+**Authorization:** The maintainer authorized this fourth and final focused pass under AGENTS.md
+section 10, with the instruction to block only for significant issues.
+**Platforms verified:** Linux. No Windows runtime, CI or real WinError 1314 execution claimed.
+**Verdict:** **Blocked.** The correction fixes the exact uncollected-module, foreign-fixture and
+nested-statement probes from the third review. Two current resolvability assumptions still pass
+real collected pytest files and reach the forced `[WinError 1314]`, so they are significant
+survivors of the required gate rather than optional hardening. This is the final authorized review
+round; no further automatic correction/re-review loop is proposed.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Final re-review result | Status |
+|---|---|---:|---|---|
+| **T260-R1** | **Medium** | **Yes — real pytest executions still bypass the required gate** | **Still open.** The real filenames and generic descent close the third-pass mutations, but resolvability is still inferred too broadly. **Collection context:** `_resolvable` treats every `test_*` function in a collected filename as pytest-resolved, including nested functions that pytest never collects. In a real `test_nested.py`, an ordinary `test_real_nested` called `outer`, whose nested `test_plant(path, symlinks)` was invoked with `None`. The gate returned no faults; pytest collected only `test_real_nested`; the forced-incapable run reached `[WinError 1314]`. **Decorator provenance:** `_pytest_names` records every directly imported name from pytest, and `_is_pytest_fixture` accepts any decorator whose name is in that set. Therefore `from pytest import hookimpl; @hookimpl` is treated as a fixture even though `hookimpl` merely returns a normally callable function. A real collected test called that function with `None`; again the gate returned no faults and runtime reached `[WinError 1314]`. This is the same rejected inference—appearance treated as pytest resolution—in two forms. `_scan` also does not literally visit every AST child: its `ClassDef` special case omits bases, keywords and type parameters; a direct `symlink_to` in a class base expression returned no fault. That definition-time spelling is unusual, but it confirms the traversal claim remains wider than the implementation. | **Open at final reviewed head 2a47f5e** |
+| **T260-R2** | **Low** | No | Remains resolved: criterion 1 describes the current whole-tree/resolvability design rather than the original `test_*.py` gate. | **Resolved at 092a4b3** |
+
+### What is resolved
+
+- The helper fed `None`, defaulted helper, decorator expression and parameter-default mutations
+  fail as required.
+- A `test_*` creator in a genuinely uncollected module and a home-grown `fixture` decorator fail.
+- `except`, `match` and nested `with` bodies are reached, while canonical `@pytest.fixture`, direct
+  `from pytest import fixture`, fixture arguments and the guarded closure remain accepted.
+- Carrying the realistic path with each detector case is the correct structural change and should
+  be preserved.
+
+### Minimal remaining boundary
+
+The gate does not need a general Python resolver. A safe conservative subset is enough:
+
+- Count a test function only in a collection position the gate can establish (at minimum a
+  top-level `test_*` in a collected module; add class-method collection only if it is needed).
+- For direct pytest imports, accept only a binding whose imported source name is `fixture`, not
+  every name imported from pytest. Supporting renamed `fixture` imports is fine; ambiguous or
+  shadowed bindings may fail safely.
+- When function/class bodies need special scope handling, still scan all other AST fields in their
+  parent execution context rather than omitting them.
+
+### Non-blocking follow-ups
+
+| ID | Severity | Blocks approval | Owner / target | Follow-up |
+|---|---|---:|---|---|
+| **T260-F1** | **Low** | No | **Planner / T-260 disposition** | This cleanup remains open, specifically: `tests/unit/test_capability_guards.py:12-24` still states that every creating function itself requests the fixture and repeats the rejected claim that a helper argument can only come from a guarded caller; lines 217-218 still recommend “take it as an argument.” `ai/TASKS.md:210` still says thirteen detector shapes, and lines 215-219 still say fourteen rejected/five accepted; the shipped tables contain **17 rejected and 8 accepted**. |
+| **T260-F2** | **Low** | No | **Planner / static-gate maintenance** | Narrow or pin the two acknowledged drift boundaries. `_fixture_capable_modules` currently treats the final stem of every `ImportFrom` in every conftest as fixture-capable—today that derived set includes unrelated stems such as `pathlib`, `dataclasses`, `models` and Qt modules—without proving that the fixture itself was imported into the applicable conftest. This is coarse but a genuine `pytest.fixture` wrapper prevents the current bare-error path, so it is not a blocker. `COLLECTED_MODULE` correctly matches pytest's defaults today, but no test pins the absence of a `python_files` override; add a configuration assertion or derive it before that setting changes. |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary / hygiene | `c61b843..2a47f5e`; two files; `git diff --check` passed |
+| Prior requested mutations | Uncollected helper module, home-grown fixture, `except`, `match`, nested `with` all rejected; canonical guarded fixture accepted |
+| Focused capability suite | **27 passed** |
+| Nested `test_*` real-file mutation | **Gate reported no faults; pytest collected only the real driver; simulated runtime failed with `[WinError 1314]`** |
+| Non-fixture pytest import real-file mutation | **`@hookimpl` passed the gate; simulated pytest runtime failed with `[WinError 1314]`** |
+| Remaining traversal probe | Class-base creation expression passed the gate incorrectly |
+| Task placement | **14 passed** |
+| Ruff / formatting | Clean; corrected test file checked |
+| Direct mypy, host / Win32 | **1 source file clean** in both configurations |
+| Full unit suite | **2184 passed, 15 skipped; one sandbox-only localhost socket denial.** The denied test passed **1/1** with localhost permission; no product failure remains, and no single 2185-pass command is claimed |
+| Platform limits | Integration-wide and Windows execution were not repeated; the correction is static AST/test-ledger code only |
+
+### Final readiness
+
+T-260 is **Blocked at `2a47f5e`** after the final authorized review round. The correction should be
+preserved, but the task cannot be approved while real collected tests can reach the exact missing-
+capability failure with a clean static gate. The maintainer must now choose the task's disposition
+outside the automatic review loop: correct the two significant resolvability cases, narrow the
+acceptance rule explicitly, or accept the risk through the project's decision process. The
+Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision, plan,
+status, push or remote state was changed.
