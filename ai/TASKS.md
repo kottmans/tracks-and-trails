@@ -6,9 +6,11 @@
 **Maintainer:** Sean Kottman
 **Status:** Active
 **Last updated:** 2026-08-16 — **`T-183` is built and In Review**, and it filed ten entries:
-`T-247`…`T-255` (the typed fields, 44 options over nine tasks) and **`T-256`**, which rules the
-fifteen options the audit found that no decision covers. `T-184` gains four acceptance criteria
-from the audit's findings and now waits on `T-256` as well. *(Previously: `T-196` is Complete,
+`T-247`…`T-255` (the typed fields, 44 options over nine tasks) and **`T-256`**. `SEC-004` ruled
+the fifteen unclassified options **forbidden** the same day, so `T-184`'s refusal list is known.
+**`T-183`'s review then returned Changes requested** (`5613af4`) with two product defects — the geo
+exclusion was never enforced, and twelve `hatch` rows the application owns were reachable — and the
+corrections are in. `T-256` now also owns a **sixteenth** option the audit missed. *(Previously: `T-196` is Complete,
 approved at `c70f61a` after a maintainer-authorized documentation-only pass; `T196-R1` … `T196-R5`
 are all Resolved. `T-146` remains Complete at `0adf9e3` and `T-215` at `b9caa40`.)*
 **Phase 4 is the current phase**, its plan deliverables decomposed under `## Proposed — Phase 4`.
@@ -127,6 +129,13 @@ Filed the same day by `T-183`'s fifth criterion and answered the same day. The a
 reclassified — `unruled` is empty, `excluded` is 23, the refusal list is **79** — and two new tests
 stop the audit's own summary drifting from its tables. **`T-184` is unblocked.**
 
+> **`T183-R3` added a sixteenth option, and it is the first thing this entry now owes.**
+> `--legacy-server-connect` enables `SSL_OP_LEGACY_SERVER_CONNECT` and a compatibility cipher
+> policy — a transport-security downgrade of exactly the kind `SEC-004` forbids. **The audit missed
+> it**, so it was not in the fifteen the maintainer ruled on, and `SEC-004`'s scope is deliberately
+> bounded to what it names. It is `unruled` in the audit and **must not be swept in by inference**;
+> extending a ruling is the maintainer's, not the implementer's.
+>
 > **The three `SEC-003` corrections are NOT ruled, and this entry stays open for them.** The
 > maintainer's ruling answered *the fifteen*; it was not asked about `--netrc-cmd`,
 > `--client-certificate-password`, or the five-versus-seven count. `SEC-004` says so in its own
@@ -367,7 +376,26 @@ makes possible.
 
 ### T-183 — The option audit: classify every group, and decompose the phase
 
-**Status:** **In Review — built 2026-08-16.** The audit is `docs/YTDLP_OPTION_AUDIT.md`: **250
+**Status:** **In Review — corrected 2026-08-17 against `T183-R1`…`R5`.** The review
+(`5613af4`) returned **Changes requested** with four blocking findings, **two of them product
+defects rather than classification opinions**, and all five are addressed:
+
+| Finding | What it was | State |
+|---|---|---|
+| `T183-R1` | **Critical.** Refusing `--xff` never enforced `REQ-EXCL-002`: `get_param('geo_bypass', True)` meant the fake-XFF retry was **on for every user who typed nothing**. Finding 4 also called `--no-geo-bypass` "the same" when it normalizes to the *safe* value | **Fixed.** `build_options` sets `geo_bypass=False`; two tests, both failing on the missing key *and* on the plausible-wrong `'never'` |
+| `T183-R2` | **High.** Twelve `hatch` rows the application owns — their own reasons said so. `-i/--ignore-errors` could reach `Succeeded` after a post-processing failure, because the worker never reads yt-dlp's return code | **Fixed.** New refused class `app:policy`, 12 rows |
+| `T183-R3` | **Critical.** `--legacy-server-connect` is a sixteenth TLS downgrade the audit missed, so `SEC-004` never ruled on it | **Fixed.** Returned to `unruled` and added to `T-256`; **not** inferred into `SEC-004` |
+| `T183-R4` | **Medium.** The gate claimed derivations it never did. Proved by moving `--no-check-certificates` to `hatch`, recounting, and passing all 14 tests | **Fixed.** Forbidden options now read from the decisions; the 44-row partition read from `T-247`…`T-255`; both fail on that mutation. The `typed`/`hatch` line is relabelled judgement |
+| `T183-R5` | **Low.** Post-`SEC-004` counts and current-truth prose | **Fixed**, recounted rather than patched |
+
+**Counts after correction: 250 rows — `typed` 65, `hatch` 93, refused 91, `unruled` 1.**
+
+**The two product defects are the part worth carrying.** Both came from the same wrong instinct:
+that classifying an option *is* controlling it. An exclusion whose behaviour is on by default is
+not enforced by refusing its flag, and an option the application's model cannot represent is not
+made safe by being listed as expert-only.
+
+The audit is `docs/YTDLP_OPTION_AUDIT.md`: **250
 options against yt-dlp 2026.07.04**, each in exactly one class, counted from the installed option
 parser rather than the README. **Seven findings**, four of which change how `T-184` has to be
 built; **fifteen options are filed unclassified** because no decision covers them, and `T-256` is
@@ -7996,12 +8024,14 @@ answers true for it and the user is told **before** the bytes are spent (`REQ-02
 captions and real subtitles are distinguishable in the UI, because "no subtitles" and "no *human*
 subtitles" are different answers.
 
-### T-252 — Download tuning and the whole retry policy
+### T-252 — Download tuning and the retry policy the settings screen shows
 
 **Status:** Proposed — filed 2026-08-16 by `T-183`
 **Options (7):** `-N/--concurrent-fragments`, `--fragment-retries`, `--extractor-retries`,
 `--socket-timeout`, `--download-sections`, `--live-from-start`, `--no-live-from-start`
-**Specific criteria:** **the three retry knobs are presented as one policy**, not three integers —
+**Specific criteria:** **the three retry knobs this task owns are presented as one policy**, not
+three integers — and the entry no longer calls them *the whole* retry policy, because
+`--file-access-retries` and `--retry-sleep` stay in the hatch (`T183-R4`'s wording point) —
 `--retries` already exists and `ytdlp_adapter` carries a comment deferring `--fragment-retries`
 here by name, so this task is where the difference between them stops needing a comment to explain.
 `--download-sections` takes a time-range grammar that is parsed and refused at edit time.

@@ -603,6 +603,16 @@ def build_options(
         # No console, no user, no prompts. An interactive prompt in a worker is a hang.
         "no_color": True,
         "consoletitle": False,
+        # **`REQ-EXCL-002` is a default, not a refusal** (`T183-R1`). `SEC-003` forbids `--xff`,
+        # and refusing the *option* leaves the behaviour on: `InfoExtractor` reads
+        # `get_param('geo_bypass', True)`, so an application that sets nothing gets yt-dlp's
+        # automatic fake-`X-Forwarded-For` retry — the exact mechanism the exclusion names.
+        #
+        # **It has to be `False`, not `'never'`.** yt-dlp's *command line* carries a string and
+        # converts it (`opts.geo_bypass.lower() != 'never'`) before `YoutubeDL` sees it; the
+        # library parameter is a bool. `'never'` is truthy and would enable what it looks like it
+        # disables. Measured against the 2026.07.04 pin.
+        "geo_bypass": False,
         "progress_hooks": list(progress_hooks),
         "postprocessor_hooks": list(postprocessor_hooks),
     }

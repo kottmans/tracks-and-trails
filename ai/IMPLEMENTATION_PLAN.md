@@ -809,13 +809,13 @@ with their help suppressed. Classified:
 | | |
 |---|---|
 | **65** get a typed control | **21 already have one**; the other **44** are nine tasks, `T-247`…`T-255` |
-| **106** are escape-hatch only | `T-184` |
-| **79** are refused | the application owns them, or `SEC-003`/`SEC-004` forbid them |
-| **15** were unclassified | **no decision covered them**; `SEC-004` ruled all fifteen **forbidden** on 2026-08-16, so the refused count is **79** and `T-184` is unblocked |
+| **93** are escape-hatch only | `T-184` |
+| **91** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004` forbid them |
+| **1** is unclassified | `--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`). The original fifteen were ruled **forbidden** by `SEC-004`; this one is `T-256`'s |
 
 **This phase is nine typed-field tasks, the hatch, and one ruling** — not "the rest of yt-dlp".
 `REQ-030` excludes the options that *are* the command line, and the audit found those to be 36 of
-the 64 refused.
+the 91 refused.
 
 ### Deliverables
 

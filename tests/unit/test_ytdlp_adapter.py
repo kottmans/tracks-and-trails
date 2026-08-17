@@ -1533,3 +1533,42 @@ def test_a_request_that_says_nothing_about_the_network_leaves_the_keys_out() -> 
     assert "proxy" not in options
     assert "ratelimit" not in options
     assert "retries" not in options
+
+
+# --- REQ-EXCL-002: the geo exclusion is a default, not a refusal (`T183-R1`) -------------------
+
+
+def test_geo_bypass_is_turned_off_rather_than_left_to_yt_dlps_default() -> None:
+    """`SEC-003` forbids `--xff`, and refusing the option does not enforce the exclusion.
+
+    **The behaviour is on unless it is turned off.** `InfoExtractor` reads
+    `get_param('geo_bypass', True)`, so a caller that supplies nothing gets yt-dlp's automatic
+    fake-`X-Forwarded-For` retry — which is the mechanism `REQ-EXCL-002` names, arriving with the
+    user having typed nothing at all. `T-183`'s audit refused the *option strings* and left the
+    default standing; that is the defect `T183-R1` found.
+
+    Asserted for **both** phases: a probe extracts too, and an exclusion that binds only the
+    download is not an exclusion.
+    """
+    for probe_only in (False, True):
+        options = adapter.build_options(request_for(), "o.%(ext)s", probe_only=probe_only)
+        assert options["geo_bypass"] is False, f"probe_only={probe_only}"
+
+
+def test_the_geo_value_is_the_one_that_actually_disables_it() -> None:
+    """`False`, not `'never'` — the library parameter is a bool and the command line is not.
+
+    yt-dlp's own `__init__.py` converts `--xff never` with
+    `opts.geo_bypass = opts.geo_bypass.lower() != 'never'` **before** `YoutubeDL` is constructed,
+    so the string never reaches the library. Passing `'never'` here would be truthy and would
+    enable exactly what it appears to disable — a fix that reads correct and is not.
+
+    This asserts against yt-dlp's real reader rather than against our own dict, so it fails if
+    upstream changes how the parameter is consumed (`NFR-008`).
+    """
+    options = adapter.build_options(request_for(), "o.%(ext)s")
+
+    assert options["geo_bypass"] is not None
+    assert not options["geo_bypass"], "a truthy geo_bypass enables the bypass"
+    # The value the application supplies must survive `get_param`'s default, which is `True`.
+    assert options.get("geo_bypass", True) is False

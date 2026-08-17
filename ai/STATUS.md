@@ -17,6 +17,34 @@ application-owned keys, which `build_options` has never set; and that `SEC-003` 
 command. **Fifteen options are filed unclassified** because no decision covers them — code
 execution, a runtime-fetched component, TLS validation and three credentials — and `T-256` is filed
 to rule them. Phase 4.5 is decomposed: nine typed-field tasks over 44 options, `T-247`…`T-255`.
+**`T-183`'s review came back Changes requested on 2026-08-16 (`5613af4`), and two of its findings
+were product defects rather than paperwork.** The corrections are in:
+
+1. **`T183-R1` (Critical) — refusing an option is not enforcing an exclusion.** `SEC-003` forbids
+   `--xff`, and `InfoExtractor` reads `get_param('geo_bypass', True)` — so **the application shipped
+   with yt-dlp's automatic fake-`X-Forwarded-For` retry enabled** for every user who typed nothing.
+   `build_options` now sets `geo_bypass=False`, measured as the value that works because the CLI
+   converts the string to a bool before the library sees it and `'never'` is truthy. The audit's
+   Finding 4 was wrong in the same direction: `--no-geo-bypass` shares the `dest` and normalizes to
+   the **safe** value, so a `dest`-keyed refusal would have refused a safe input while leaving the
+   forbidden default running.
+2. **`T183-R2` (High) — twelve `hatch` rows the application actually owns.** Their own reasons said
+   so — *"the queue owns failure policy"*, *"conflicts with the projected-entry model"* — and they
+   were reachable anyway. The sharpest is `-i/--ignore-errors`: yt-dlp suppresses the error, records
+   a return code **the worker never reads**, and returns the info dict, so a row could reach
+   `Succeeded` after a post-processing failure. New class `app:policy`, refused.
+3. **`T183-R3` (Critical) — `--legacy-server-connect` is a sixteenth TLS downgrade** the audit
+   missed, so `SEC-004` never saw it. Returned to `unruled` and added to `T-256`; **not** swept in
+   by inference.
+4. **`T183-R4` (Medium) — the gate claimed derivations it never performed.** The reviewer proved it
+   by moving `--no-check-certificates` from `excluded` to `hatch`, recounting the totals, and
+   passing all fourteen tests. Both derivations are implemented now — forbidden options read from
+   `SEC-003`/`SEC-004`, and the 44-row partition read from `T-247`…`T-255` — and both fail on that
+   mutation. The `typed`/`hatch` line is relabelled as judgement rather than sheltering under the
+   machinery beside it.
+
+**Counts after the corrections: 250 rows — `typed` 65, `hatch` 93, refused 91, `unruled` 1.**
+
 **`T-238`'s criterion 4 has a measurement behind it for the first time, and it argues against the
 harness reading.** The fault's one precondition — a `QWidget` whose last Python reference is
 dropped off the main thread — was measured over a full serial `tests/ui` run with

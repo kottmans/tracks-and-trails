@@ -6,9 +6,11 @@ rather than from a blank page.
 **Authority:** Canonical for the classification. `ARC-010` is canonical for the *scheme*, `SEC-003`
 and `SEC-004` for the excluded families, and `build_options` for what the application owns.
 **Owner:** Planner · `T-183`
-**Status:** Written 2026-08-16. **Reclassified the same day by `SEC-004`**, which ruled the fifteen
-options this audit refused to classify — all forbidden, so the `unruled` class is now empty and the
-refusal list is 79 rather than 64.
+**Status:** Written 2026-08-16; **corrected 2026-08-17 for the `T-183` review** (`T183-R1`…`R5`).
+`SEC-004` ruled the fifteen this audit refused to classify — all forbidden. The review then found
+that refusing an option is not the same as enforcing an exclusion (`geo_bypass` is now set by the
+application), that twelve `hatch` rows the application actually owns were reachable, and that one
+transport-security downgrade had been missed. **The refusal list is 91.**
 **yt-dlp version:** **2026.07.04**, the exact pin in `pyproject.toml`. An audit of an unnamed
 version cannot be re-run when upstream moves, so the version is part of the claim and
 `tests/unit/test_option_audit.py` fails if the installed one stops matching.
@@ -19,25 +21,41 @@ installed option parser, not from the README and not estimated.
 
 ## How this was derived, and how to re-run it
 
-Three of the four classes are **derived from something that can disagree with them**, which is what
-keeps this document from being a list somebody wrote from memory:
+Some of this is **derived from something that can disagree with it**, and some of it is judgement.
+The table says which is which, because the first version of this section claimed the derivations
+were wider than they were:
 
-| Input | Read from | What it decides |
-|---|---|---|
-| The option inventory | `yt_dlp.options.create_parser()` — the parser, not the README | Which options exist, their strings, their `dest` |
-| The application-owned keys | `build_options`, exercised over every branch | Which keys the application actually sets |
-| The excluded families | `SEC-003`, `SEC-004` | Which options are forbidden |
+| Input | Read from | What it decides | Gated? |
+|---|---|---|---|
+| The option inventory | `yt_dlp.options.create_parser()` — the parser, not the README | Which options exist, their strings, their `dest` | **Yes** |
+| The application-owned keys | `build_options`, exercised over every branch | Which keys the application actually sets | **Yes**, both directions |
+| The forbidden options | `SEC-003` and `SEC-004`, parsed | That every option a decision forbids is `excluded`, and that no `excluded` row cites a decision which does not name it or its parameter | **Yes** |
+| The typed decomposition | `ai/TASKS.md` § `T-247`…`T-255` | That the nine tasks cover the unbuilt typed rows exactly once, and that 21 remain built | **Yes** |
+| **`typed` versus `hatch`** | **Judgement.** No user has asked for any of these | Which of the 158 user-owned options gets a control | **No** |
 
-`tests/unit/test_option_audit.py` re-derives all three and fails when this file disagrees with any
-of them. **It is the audit's only defence against the thing this project keeps finding** — a
-statement written once, left standing, and read later as though it were still checked.
+> **`T183-R4` is why this table has a fourth column.** The section previously said the test
+> re-derived the excluded families and asserted the 44-row partition. **It did neither** — the
+> class and count tests only compared the audit to itself, and the reviewer proved it by moving
+> `--no-check-certificates` from `excluded` to `hatch`, recounting the three totals, and watching
+> all fourteen tests pass. Both derivations are now implemented and both fail on that mutation.
+> **The `typed`/`hatch` line is still judgement and is now labelled as such** rather than sheltering
+> under a claim about the machinery next to it.
+
+**One thing the gate deliberately does not do**: it compares parser `dest`s to library option keys,
+and yt-dlp normalizes between the two — `--color` reaches library `color` while `build_options`
+emits the legacy `no_color`, and the post-processing options build the `postprocessors` key the
+inventory calls unroutable. The comparison is therefore **conservative rather than exact**, and
+`T-184` is where normalization has to be handled properly, through `parse_options` rather than by
+reading destinations.
 
 ### The 42 suppressed options, which are not inert
 
 yt-dlp's parser carries **292** options; **42** have their help suppressed and do not appear in
 *Usage and Options*. `T-183`'s criterion is about the documented surface, so those 42 are not
 classified here — **but they still parse, and six of them reach a key this audit refuses.** That is
-Finding 4, and it changes how the refusal list has to be built. The test asserts the 250/42 split,
+Finding 4, and it changes how the refusal list has to be built. **Four of the six are the geo
+family, and one of those four normalizes to the *safe* value** — which is why Finding 4 now
+classifies actions and values rather than destinations. The test asserts the 250/42 split,
 so a suppressed option that becomes documented upstream turns into a failure rather than a silent
 gap.
 
@@ -45,18 +63,30 @@ gap.
 
 ## The classes
 
-`ARC-010` names four. Applying them to a real inventory split one of them into three, because
-*application-owned* turned out to be three different reasons that behave differently:
+`ARC-010` names four. Applying them to a real inventory split one of them into **four**, because
+*application-owned* turned out to be four different reasons that behave differently — the fourth,
+`app:policy`, added by the review that found the first three were not enough:
 
 | Class | Rows | What it means |
 |---|---|---|
 | `typed` | 65 | Gets a control, an owner task and a phase position. 21 already have one |
-| `hatch` | 106 | Reachable through `REQ-031` only. Every row carries a reason |
+| `hatch` | 93 | Reachable through `REQ-031` only. Every row carries a reason |
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
+| `app:policy` | 12 | **The application owns the behaviour, and its model cannot represent the outcome** |
 | `app:contained` | 1 | It redirects where files land, and `T-034` owns that |
 | `excluded` | 23 | Forbidden — 8 by `SEC-003`, **15 by `SEC-004`** |
-| `unruled` | **0** | The class still exists, and is empty |
+| `unruled` | **1** | No decision covers it, and the audit refuses to invent one |
+
+*(**`app:policy` and the one remaining `unruled` row are `T183-R2` and `T183-R3`.** The audit
+originally derived application ownership from the *literal keys `build_options` emits*, which is
+too narrow: an option can fight the application for control of its own process without naming a key
+the application happens to set. Twelve `hatch` rows said so **in their own reasons** — *"the queue
+owns failure policy"*, *"conflicts with the projected-entry model"*, *"the queue owns ordering"* —
+and were reachable anyway. `ARC-010` §4 refuses exactly those, so they are refused now. The
+sharpest is `-i/--ignore-errors`: yt-dlp suppresses the error, records a return code the worker
+never reads, and returns the info dict, so the row can reach **`Succeeded` after a post-processing
+failure**.)*
 
 *(**The `unruled` class held 15 rows until 2026-08-16** — options that reach code execution, a
 runtime-fetched component, TLS validation or a credential, and which no decision covered. `SEC-004`
@@ -65,15 +95,15 @@ the next yt-dlp version can produce another one, and a class that has to be re-i
 deadline is a class that gets skipped. Counts here are **recounted from the tables below**, not
 adjusted by hand — and a test asserts they agree.)*
 
-**The refusal list is `app:sets` + `app:contained` + `app:plumbing` + `excluded` — 79 rows**, and it
-is the list `T-184` enforces. `typed` is not refused: where a typed field and the hatch name the same
+**The refusal list is `app:sets` + `app:contained` + `app:plumbing` + `app:policy` + `excluded` —
+91 rows**, and it is the list `T-184` enforces. `typed` is not refused: where a typed field and the hatch name the same
 user-owned key, `ARC-010`'s precedence rule applies and the typed field wins, because it is the one
 with a visible control.
 
 ### Why `app:sets` is not the same list as *what the application owns*
 
-`build_options` can emit **24 distinct keys**. Only **19 of them are reachable from the command
-line at all** — `logger`, `progress_hooks`, `postprocessor_hooks`, `postprocessors` and `no_color`
+`build_options` can emit **25 distinct keys** (24 before `T183-R1` added `geo_bypass`). Only
+**20 of them are reachable from the command line at all** — `logger`, `progress_hooks`, `postprocessor_hooks`, `postprocessors` and `no_color`
 are library parameters with no option string, so they can never be typed into the hatch and never
 need refusing. Deriving the refusal list from the emitted keys alone would therefore have produced
 five entries that refuse nothing.
@@ -81,8 +111,13 @@ five entries that refuse nothing.
 The invariant the test actually enforces is the useful one, and it holds with no exceptions:
 
 > **No key `build_options` sets is reachable through the hatch.** Every documented option whose
-> `dest` is a key `build_options` emits is classified `app:sets` or `typed` — never `hatch`,
-> `app:plumbing`, `excluded` or `unruled`.
+> `dest` is a key `build_options` emits is classified in a class that is not hatch-reachable —
+> any refused class, or `typed`, whose control wins by `ARC-010`'s precedence rule. Never `hatch`
+> and never `unruled`.
+
+*(**This said `app:sets` or `typed` until `T183-R1`**, which was too narrow: `--xff` is `excluded`
+and names a key the application now sets, because refusing the option and supplying the safe
+default are different jobs and `REQ-EXCL-002` needs both.)*
 
 ---
 
@@ -165,14 +200,39 @@ strings, and `ARC-010` names the application-owned ones as strings. yt-dlp's par
 strings onto one `dest`, and **six of the suppressed 42 share a `dest` with something this audit
 refuses**:
 
-| Suppressed option | `dest` | What it reaches |
-|---|---|---|
-| `--geo-bypass` | `geo_bypass` | **`--xff`, forbidden by `SEC-003`** |
-| `--no-geo-bypass` | `geo_bypass` | the same |
-| `--geo-bypass-country` | `geo_bypass` | the same |
-| `--geo-bypass-ip-block` | `geo_bypass` | the same |
-| `--all-formats` | `format` | `format`, which `build_options` sets |
-| `--no-colors` `--no-colours` | `color` | `color`, which `no_color` overrides |
+| Suppressed option | `dest` | Normalizes to | What it reaches |
+|---|---|---|---|
+| `--geo-bypass` | `geo_bypass` | `'default'` → **`True`** | the bypass **`SEC-003` forbids** |
+| `--geo-bypass-country CC` | `geo_bypass` | `'CC'` → **`True`** | the same |
+| `--geo-bypass-ip-block …` | `geo_bypass` | the block → **`True`** | the same |
+| `--no-geo-bypass` | `geo_bypass` | `'never'` → **`False`** | **the safe value — see below** |
+| `--all-formats` | `format` | — | `format`, which `build_options` sets |
+| `--no-colors` `--no-colours` | `color` | — | `color`, which `no_color` overrides |
+
+> **Corrected 2026-08-17 by `T183-R1`.** This table said all four geo spellings reach *"the same"*
+> parameter, and the fourth does not: **`--no-geo-bypass` normalizes to the value that turns the
+> bypass off.** A refusal list built on `dest` alone would have refused a *safe* input while
+> leaving the forbidden behaviour running. **Destination equality is not semantic equality** — the
+> parser's `dest` holds a string (`'default'` / `'never'` / a country), and yt-dlp's own
+> `__init__.py` converts it to a bool with `opts.geo_bypass.lower() != 'never'` before `YoutubeDL`
+> is constructed. `T-184` must classify **actions and normalized values**, not destinations.
+
+#### And the exclusion was not enforced at all, which is the larger half
+
+**`REQ-EXCL-002` names a behaviour that is on unless it is turned off.** `InfoExtractor` reads
+`get_param('geo_bypass', True)`, and `build_options` emitted no `geo_bypass` — so **the application
+shipped with yt-dlp's automatic fake-`X-Forwarded-For` retry enabled**, for every user who typed
+nothing, while `SEC-003` recorded `--xff` as forbidden.
+
+Refusing an option string, or a `dest`, cannot reach that. **The application has to own the safe
+effective value**, and `build_options` now sets `geo_bypass=False` — measured as the value that
+works, because `'never'` is truthy at the library boundary and would enable what it looks like it
+disables. `tests/unit/test_ytdlp_adapter.py` asserts it for the probe and the download, and fails
+for both the missing key and the `'never'` spelling.
+
+**`--xff` stays `excluded` and the key is now one `build_options` sets.** Both are required, and
+the audit's invariant was widened to say so: a refused class may name an emitted key, because
+refusing the option and supplying the safe default are different jobs.
 
 A refusal list that names `--xff` and stops **permits `--geo-bypass`, which sets the identical
 parameter.** `REQ-EXCL-002` would be enforced against one spelling out of five.
@@ -214,7 +274,7 @@ one place where a typed control has to **share** a key rather than own it. `T-24
 tri-state, and it is the reason `--write-all-thumbnails` is `typed` rather than `hatch`: left in the
 hatch it would have been the only documented route to a key `build_options` sets.
 
-### Finding 7 — four hatch options interact with `T-046`'s reservation, and nothing tests that
+### Finding 7 — five hatch options interact with `T-046`'s reservation, and nothing tests that
 
 `--continue`, `--no-continue`, `--part`, `--no-part` and `--post-overwrites` all change how yt-dlp
 treats a file already at the target path. The download session claims that path with
@@ -260,7 +320,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 
 | Option | Class | Reason |
 |---|---|---|
-| `--abort-on-error` `--no-ignore-errors` | `hatch` | Counterpart of --ignore-errors |
+| `--abort-on-error` `--no-ignore-errors`| `app:policy` | Counterpart of --ignore-errors; the queue owns per-job failure |
 | `--alias` | `app:plumbing` | REQ-030 names --alias as the command line itself |
 | `--color` | `app:plumbing` | Console formatting; the worker has no console |
 | `--compat-options` | `hatch` | youtube-dl compatibility; expert-only |
@@ -270,12 +330,12 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--flat-playlist` | `app:sets` | build_options sets extract_flat for the probe (T-137) |
 | `-h` `--help` | `app:plumbing` | The command line's own help |
 | `--ignore-config` `--no-config` | `app:plumbing` | T-184 refuses config files as a second invisible source |
-| `-i` `--ignore-errors` | `hatch` | The queue owns per-job failure; T-110 owns per-entry |
+| `-i` `--ignore-errors`| `app:policy` | The worker reports success from the info dict and never reads yt-dlp's return code, so this can land a false Succeeded after a post-processing failure (T183-R2) |
 | `--js-runtimes` | `excluded` | SEC-004: forbidden — Names an external interpreter to execute |
 | `--list-extractors` | `app:plumbing` | A listing command, not a download option |
 | `--live-from-start` | `typed` | Download tuning; T-183 names it thin |
 | `--mark-watched` | `hatch` | Needs site auth this application refuses to hold |
-| `--no-abort-on-error` | `hatch` | Counterpart of --ignore-errors |
+| `--no-abort-on-error`| `app:policy` | Counterpart of --ignore-errors; same false-success path |
 | `--no-config-locations` | `app:plumbing` | Config files are refused as an input route |
 | `--no-flat-playlist` | `app:sets` | Counterpart; same key |
 | `--no-js-runtimes` | `excluded` | SEC-004: forbidden — Counterpart of --js-runtimes |
@@ -284,7 +344,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--no-plugin-dirs` | `excluded` | SEC-004: forbidden — Counterpart of --plugin-dirs |
 | `--no-remote-components` | `excluded` | SEC-004: forbidden — Counterpart of --remote-components |
 | `--no-update` | `app:plumbing` | Counterpart of --update |
-| `--no-wait-for-video` | `hatch` | Counterpart of --wait-for-video |
+| `--no-wait-for-video`| `app:policy` | Counterpart of --wait-for-video |
 | `--plugin-dirs` | `excluded` | SEC-004: forbidden — Loads arbitrary Python from a directory - the --exec shape |
 | `-t` `--preset-alias` | `app:plumbing` | core/presets.py owns presets |
 | `--remote-components` | `excluded` | SEC-004: forbidden — Fetches code at runtime: a new destination under NFR-007 |
@@ -292,7 +352,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--update-to` | `app:plumbing` | Counterpart of --update |
 | `--use-extractors` `--ies` | `hatch` | Expert extractor routing; nobody has asked |
 | `--version` | `app:plumbing` | About screen reports the pinned version (OPS-002) |
-| `--wait-for-video` | `hatch` | Scheduled streams; the queue has no waiting state for it |
+| `--wait-for-video`| `app:policy` | The queue has no waiting state to show, so the row would sit in a state the model cannot express |
 
 ### Network Options — 8
 
@@ -337,7 +397,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--no-match-filters` | `hatch` | Counterpart of --match-filters |
 | `--no-playlist` | `app:sets` | build_options sets noplaylist; the app models playlists itself |
 | `-I` `--playlist-items` | `typed` | T-183 names it thin; playlist selection |
-| `--skip-playlist-after-errors` | `hatch` | The queue owns failure policy |
+| `--skip-playlist-after-errors`| `app:policy` | The queue owns failure policy and would not see entries yt-dlp skipped |
 | `--yes-playlist` | `app:sets` | Counterpart; same key |
 
 ### Download Options — 23
@@ -355,13 +415,13 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--hls-use-mpegts` | `hatch` | Expert container choice |
 | `--http-chunk-size` | `hatch` | Expert tuning |
 | `--keep-fragments` | `hatch` | Debugging aid |
-| `--lazy-playlist` | `hatch` | Conflicts with the projected-entry model (T-137) |
+| `--lazy-playlist`| `app:policy` | Conflicts with the projected-entry model (T-137): entries arrive the queue never projected |
 | `-r` `--limit-rate` `--rate-limit` | `typed` | DownloadRequest.rate_limit_bytes exists |
 | `--no-hls-use-mpegts` | `hatch` | Counterpart of --hls-use-mpegts |
 | `--no-keep-fragments` | `hatch` | Counterpart of --keep-fragments |
-| `--no-lazy-playlist` | `hatch` | Counterpart of --lazy-playlist |
+| `--no-lazy-playlist`| `app:policy` | Counterpart of --lazy-playlist |
 | `--no-resize-buffer` | `hatch` | Counterpart of --resize-buffer |
-| `--playlist-random` | `hatch` | The queue owns ordering |
+| `--playlist-random`| `app:policy` | The queue owns ordering; rows would complete in an order the queue did not choose |
 | `--resize-buffer` | `hatch` | Expert tuning |
 | `-R` `--retries` | `typed` | DownloadRequest.retries exists (T-196) |
 | `--retry-sleep` | `hatch` | Expert tuning |
@@ -437,9 +497,9 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--dump-pages` | `app:plumbing` | Debug output to a console there is not |
 | `-J` `--dump-single-json` | `app:plumbing` | REQ-030 names JSON dumping as the command line |
 | `--force-write-archive` `--force-write-download-archive` `--force-download-archive` | `hatch` | Goes with --download-archive |
-| `--ignore-no-formats-error` | `hatch` | Metadata-only extraction; expert-only |
+| `--ignore-no-formats-error`| `app:policy` | Metadata-only extraction inside a downloader — a job that downloads nothing and reports success |
 | `--newline` | `app:plumbing` | REQ-030 names progress formatting as the command line |
-| `--no-ignore-no-formats-error` | `hatch` | Counterpart |
+| `--no-ignore-no-formats-error`| `app:policy` | Counterpart of --ignore-no-formats-error |
 | `--no-progress` | `app:sets` | build_options sets noprogress; progress reaches the GUI by hook |
 | `--no-quiet` | `app:sets` | Counterpart; same key |
 | `--no-simulate` | `app:plumbing` | Counterpart of --simulate |
@@ -463,7 +523,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--add-headers` | `hatch` | Can carry a secret; T-184 must redact the value (DAT-004) |
 | `--bidi-workaround` | `app:plumbing` | A terminal workaround; there is no terminal |
 | `--encoding` | `hatch` | Experimental, per yt-dlp's own help |
-| `--legacy-server-connect` | `hatch` | Narrow TLS workaround |
+| `--legacy-server-connect`| `unruled` | Enables SSL_OP_LEGACY_SERVER_CONNECT and a compatibility cipher policy - a transport-security downgrade. SEC-004's scope is the fifteen this audit surfaced and does not reach it (T183-R3) |
 | `--max-sleep-interval` | `typed` | Pairs with --sleep-interval |
 | `--no-check-certificates` | `excluded` | SEC-004: forbidden — Disables TLS validation; no decision covers it |
 | `--prefer-insecure` `--prefer-unsecure` | `excluded` | SEC-004: forbidden — Retrieves over plaintext; no decision covers it |
@@ -529,7 +589,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 |---|---|---|
 | `--audio-format` | `typed` | DownloadRequest.audio_codec exists |
 | `--audio-quality` | `typed` | DownloadRequest.audio_quality exists |
-| `--concat-playlist` | `hatch` | Conflicts with one-row-per-entry (UX-005) |
+| `--concat-playlist`| `app:policy` | Conflicts with one-row-per-entry (UX-005): N rows, one file |
 | `--convert-subs` `--convert-sub` `--convert-subtitles` | `typed` | T-183 names subtitle depth thin |
 | `--convert-thumbnails` | `hatch` | Nobody has asked |
 | `--embed-chapters` `--add-chapters` | `typed` | DownloadRequest.embed_chapters exists |
@@ -548,7 +608,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--no-embed-metadata` `--no-add-metadata` | `typed` | Counterpart; same field |
 | `--no-embed-subs` | `typed` | Counterpart; same field |
 | `--no-embed-thumbnail` | `typed` | Counterpart; same field |
-| `--no-exec` | `excluded` | Counterpart of --exec |
+| `--no-exec` | `excluded` | SEC-003: counterpart of --exec, forbidden with it |
 | `--no-force-keyframes-at-cuts` | `hatch` | Counterpart |
 | `--no-keep-video` | `hatch` | Counterpart of --keep-video |
 | `--no-post-overwrites` | `hatch` | Counterpart of --post-overwrites |

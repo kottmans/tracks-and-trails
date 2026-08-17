@@ -34,9 +34,16 @@ YTDLP_VERSION: Final = yt_dlp.version.__version__
 AUDIT = Path(__file__).resolve().parents[2] / "docs" / "YTDLP_OPTION_AUDIT.md"
 
 #: Classes whose options the escape hatch must refuse (`ARC-010` §4, `SEC-003`, `SEC-004`).
-REFUSED: Final = frozenset({"app:sets", "app:contained", "app:plumbing", "excluded"})
-#: Classes that may legitimately name a key `build_options` sets.
-MAY_SET: Final = frozenset({"app:sets", "typed"})
+REFUSED: Final = frozenset({"app:sets", "app:contained", "app:plumbing", "app:policy", "excluded"})
+#: Classes that may legitimately name a key `build_options` sets — **everything that is not
+#: hatch-reachable** (`T183-R1`).
+#:
+#: This was `{"app:sets", "typed"}` and it was too narrow. `--xff` is `excluded` by `SEC-003` *and*
+#: names a key the application now sets: refusing the option and supplying the safe default are
+#: **both** required, because `REQ-EXCL-002` names a behaviour that is on unless it is turned off.
+#: The property this guards is hatch-reachability, so the honest membership is every refused class
+#: plus `typed`, whose control wins by `ARC-010`'s precedence rule.
+MAY_SET: Final = REFUSED | {"typed"}
 KNOWN_CLASSES: Final = REFUSED | MAY_SET | {"hatch", "unruled"}
 
 
@@ -230,9 +237,14 @@ def test_the_class_table_counts_what_the_tables_hold() -> None:
 
 
 def test_the_refusal_list_size_is_stated_and_correct() -> None:
-    """What `T-184` enforces, counted rather than asserted in prose."""
+    """What `T-184` enforces, counted rather than asserted in prose.
+
+    Whitespace is normalized before matching: the phrase is prose and wraps, and a gate that fails
+    because a sentence was re-wrapped teaches people to re-wrap rather than to recount.
+    """
     refused = sum(1 for _, cls, _ in ROWS if cls in REFUSED)
-    assert f"— {refused} rows**" in AUDIT.read_text("utf-8"), (
+    flat = " ".join(AUDIT.read_text("utf-8").split())
+    assert f"— {refused} rows**" in flat, (
         f"the audit does not state its refusal list as {refused} rows"
     )
 
@@ -323,3 +335,138 @@ def test_the_forbidden_exec_family_has_a_suppressed_member(option: str) -> None:
     """`SEC-003` names `--exec-before-download`, and the documented surface does not carry it."""
     suppressed = {s for o in SUPPRESSED for s in o["strings"]}
     assert option in suppressed
+
+
+# --- the derivations the audit claims, actually performed (`T183-R4`) ---------------------------
+#
+# The audit said the test re-derived the excluded families and asserted the typed-task partition.
+# It did neither: the class and count tests only compared the audit to itself, and the reviewer
+# demonstrated it by moving `--no-check-certificates` from `excluded` to `hatch`, recounting the
+# three totals, and watching all fourteen tests pass. These are the checks that make the claim true.
+
+DECISIONS: Final = Path(__file__).resolve().parents[2] / "ai" / "DECISIONS.md"
+TASKS: Final = Path(__file__).resolve().parents[2] / "ai" / "TASKS.md"
+#: Option strings as they appear in prose — short forms (`-u`, `-2`) and the `-I/--long` shorthand
+#: the task entries use, which is split on `/` by the callers.
+_OPTION = re.compile(r"`(--?[A-Za-z0-9][A-Za-z0-9/-]*)`")
+
+
+def _decision(name: str) -> str:
+    text = DECISIONS.read_text(encoding="utf-8")
+    start = text.index(f"## {name} —")
+    return text[start : text.index("\n## ", start + 10)]
+
+
+def _class_of() -> dict[str, str]:
+    return {s: cls for strings, cls, _ in ROWS for s in strings}
+
+
+def test_every_option_sec_004_forbids_is_excluded_in_the_audit() -> None:
+    """The security disposition, derived from the decision rather than from the audit's own totals.
+
+    `SEC-004`'s decision table is one row per family and every option in it is forbidden, so it is
+    an authoritative input this test can read. **This is the check that fails on the reviewer's
+    mutation** — moving any of the fifteen out of `excluded` breaks it however carefully the
+    counts are re-derived.
+    """
+    body = _decision("SEC-004")
+    header = body.index("| Family | Options | Why |")
+    table = body[header : body.index("\n\n", header)]
+    entries = [
+        entry
+        for line in table.split("\n")[2:]
+        for entry in _OPTION.findall(line.strip().strip("|").split("|")[1])
+    ]
+    assert len(entries) == 15, f"SEC-004's table names {len(entries)} options, expected 15"
+
+    class_of = _class_of()
+    # An entry may carry two spellings of one option (`-2/--twofactor`), which the audit lists as
+    # one row; either spelling being excluded satisfies the entry.
+    wrong = {
+        entry: [class_of.get(s, "<not classified>") for s in entry.split("/")]
+        for entry in entries
+        if not any(class_of.get(s) == "excluded" for s in entry.split("/"))
+    }
+    assert not wrong, f"SEC-004 forbids these and the audit does not exclude them: {wrong}"
+
+
+def test_every_excluded_row_is_named_by_the_decision_it_cites() -> None:
+    """No option is excluded on the audit's own say-so.
+
+    Each `excluded` row's reason names `SEC-003` or `SEC-004`; this asserts the cited decision
+    actually mentions the option. A row that cites a decision which never heard of it is the
+    audit inventing an exclusion, which is what `T-183`'s fifth criterion exists to prevent.
+    """
+    bodies = {name: _decision(name) for name in ("SEC-003", "SEC-004")}
+    dest_of = {s: option["dest"] for option in DOCUMENTED for s in option["strings"]}
+    #: Every spelling that reaches the same parameter as a spelling the decision names. `--no-exec`
+    #: is the case: `SEC-003` names `--exec`, and both carry `exec_cmd`, so the counterpart is
+    #: covered by the decision's own subject rather than by an inference about its intent. This is
+    #: `T183-R1`'s lesson used the safe way round — a `dest` match *widens* a refusal, never
+    #: narrows one.
+    siblings = {
+        name: {
+            s
+            for s, dest in dest_of.items()
+            if dest in {dest_of.get(n) for n in _OPTION.findall(body)}
+        }
+        for name, body in bodies.items()
+    }
+    unsupported: dict[str, str] = {}
+    for strings, cls, reason in ROWS:
+        if cls != "excluded":
+            continue
+        cited = [name for name in bodies if name in reason]
+        if not cited:
+            unsupported[strings[0]] = "cites no decision"
+            continue
+        named = any(any(s in bodies[name] for s in strings) for name in cited)
+        same_parameter = any(any(s in siblings[name] for s in strings) for name in cited)
+        if not (named or same_parameter):
+            unsupported[strings[0]] = f"cited {cited} names neither it nor its parameter"
+    assert not unsupported, f"excluded without a decision behind it: {unsupported}"
+
+
+def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None:
+    """`T-247`…`T-255` cover the unbuilt typed class exactly once (`T-183` criterion 3).
+
+    The audit and the task entries both claimed this was asserted and it was not. Read from
+    `ai/TASKS.md`, so a task that quietly grows or drops an option fails here rather than drifting.
+    """
+    text = TASKS.read_text(encoding="utf-8")
+    assigned: list[str] = []
+    for task in [f"T-{n}" for n in range(247, 256)]:
+        start = text.index(f"### {task} —")
+        block = text[start : text.index("\n**Specific criteria:**", start)]
+        stated = re.search(r"\*\*Options \((\d+)\):\*\*(.+?)$", block, re.S)
+        assert stated, f"{task} states no option list"
+        entries = _OPTION.findall(stated.group(2))
+        assert len(entries) == int(stated.group(1)), (
+            f"{task} says {stated.group(1)} options and lists {len(entries)}"
+        )
+        assigned += [spelling for entry in entries for spelling in entry.split("/")]
+
+    duplicated = sorted({o for o in assigned if assigned.count(o) > 1})
+    assert not duplicated, f"claimed by more than one task: {duplicated}"
+
+    class_of = _class_of()
+    not_typed = {
+        o: class_of.get(o, "<not classified>") for o in assigned if class_of.get(o) != "typed"
+    }
+    assert not not_typed, f"assigned to a typed-field task and not classified typed: {not_typed}"
+
+    # Rows, not strings: a row may read `-I` `--playlist-items` and a task names either spelling.
+    typed_rows = [strings for strings, cls, _ in ROWS if cls == "typed"]
+    claimed = [r for r in typed_rows if set(r) & set(assigned)]
+    built = len(typed_rows) - len(claimed)
+    assert len(claimed) == 44, (
+        f"the nine tasks name options covering {len(claimed)} typed rows, and the audit says 44"
+    )
+    assert built == 21, (
+        f"{built} typed rows have no task, and the audit says 21 already have a field. The nine "
+        f"tasks and the built set must partition the typed class."
+    )
+    flat = " ".join(AUDIT.read_text("utf-8").split())
+    assert f"| — | {built} |" in flat, (
+        f"the audit's decomposition table does not state {built} already-built rows"
+    )
