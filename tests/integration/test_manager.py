@@ -2268,6 +2268,123 @@ def test_killing_the_parent_takes_the_grandchild_too(tmp_path: Path) -> None:
     )
 
 
+#: Stop the application inside the window `T-258` is about, and stay there to be killed.
+#:
+#: The window is between the worker existing and the worker having read its bootstrap payload.
+#: `prepare_this_worker()` — and therefore the watchdog — runs at the far end of it, so a parent
+#: that dies inside it dies with nothing of ours installed in the child.
+#:
+#: **The seam is the process-creation call itself**, wrapped so it returns a live child to
+#: nobody: the payload is written only after it returns, so blocking there leaves the child
+#: created and unfed. Each platform has its own, because `multiprocessing` creates the process
+#: differently and the window is on the opposite side of the serialisation:
+#:
+#: - **POSIX** serialises the payload *before* the fork and writes it *after* `spawnv_passfds`
+#:   returns. The resource tracker is spawned through the same call and is not the subject,
+#:   hence the `--multiprocessing-fork` filter.
+#: - **Windows** creates the process first and pickles into the pipe afterwards, inside the
+#:   `with open(wfd, 'wb')` block, so `_winapi.CreateProcess` is the same seam one call later.
+_STOP_INSIDE_THE_WINDOW = (
+    "import sys\n"
+    "def _stop(pid):\n"
+    "    print(pid, flush=True)\n"
+    "    import time\n"
+    "    while True:\n"
+    "        time.sleep(3600)\n"
+    "if sys.platform == 'win32':\n"
+    "    import _winapi\n"
+    "    _real = _winapi.CreateProcess\n"
+    "    def _create(app, cmd, *rest):\n"
+    "        result = _real(app, cmd, *rest)\n"
+    "        if '--multiprocessing-fork' not in (cmd or ''):\n"
+    "            return result\n"
+    "        _stop(result[2])\n"
+    "    _winapi.CreateProcess = _create\n"
+    "else:\n"
+    "    import multiprocessing.util\n"
+    "    _real = multiprocessing.util.spawnv_passfds\n"
+    "    def _spawn(path, args, passfds):\n"
+    "        pid = _real(path, args, passfds)\n"
+    "        if '--multiprocessing-fork' not in args:\n"
+    "            return pid\n"
+    "        _stop(pid)\n"
+    "    multiprocessing.util.spawnv_passfds = _spawn\n"
+)
+
+
+def test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing(tmp_path: Path) -> None:
+    """`T-258`: the window before the watchdog exists is the one nobody was guarding.
+
+    Every other orphan test in this file kills the application once the worker is *running*, so
+    all of them exercise a child that has already installed `prepare_this_worker()`'s watchdog.
+    `test_killing_the_parent_does_not_leave_the_child_running` says so in its own comment —
+    it waits for a progress message precisely because a child killed while it is still unpickling
+    "dies of its own broken bootstrap pipe, which would let this pass with no guard at all".
+
+    **That sentence is a claim about the bootstrap pipe, and this test is what checks it.** It
+    stops the application inside the window instead of stepping over it, so the answer is
+    measured on whichever platform runs it rather than assumed from the one that does not.
+
+    **It runs on both platforms deliberately.** `T-258` was filed from five orphans found alive
+    on a real Windows machine after eleven days, and a Linux-only assertion would not have caught
+    that and must not be offered as if it had. On POSIX this passes today and records why; on
+    Windows it is the reproduction, and its verdict there is the task's first criterion.
+    """
+    driver = (
+        _STOP_INSIDE_THE_WINDOW + "from PySide6.QtCore import QCoreApplication\n"
+        "from tracks_and_trails.downloader.manager import DownloadManager\n"
+        "from tests.integration.test_manager import FakeRepository, make_job\n"
+        "app = QCoreApplication([])\n"
+        "repository = FakeRepository()\n"
+        f"repository.add(make_job('job-1', 'https://example.invalid/clip', {str(tmp_path)!r}))\n"
+        # The real entry point: the worker never receives its payload, so nothing it would have
+        # run matters, but a stand-in here would change which process gets created.
+        "manager = DownloadManager(repository)\n"
+        # `UX-006`: a manager is constructed stopped, and nothing spawns until the queue starts.
+        "manager.start_queue()\n"
+        "manager.start('job-1')\n"
+        "import time\n"
+        "while True:\n"
+        "    app.processEvents()\n"
+        "    time.sleep(0.05)\n"
+    )
+    parent = subprocess.Popen(
+        [sys.executable, "-c", driver],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    child: psutil.Process | None = None
+    try:
+        assert parent.stdout is not None
+        announced = parent.stdout.readline().strip()
+        if not announced.isdigit():
+            parent.kill()
+            raise AssertionError(f"the driver never reached the window:\n{parent.communicate()[1]}")
+        child = psutil.Process(int(announced))
+        assert "--multiprocessing-fork" in " ".join(child.cmdline()), (
+            f"the pid announced from the window is not a spawned worker: {child.cmdline()}"
+        )
+
+        psutil.Process(parent.pid).kill()
+        _, alive = psutil.wait_procs([child], timeout=30)
+    finally:
+        parent.kill()
+        parent.wait(timeout=30)
+        # A failure here would otherwise leave behind exactly the orphan the task is about.
+        if child is not None:
+            with contextlib.suppress(psutil.NoSuchProcess):
+                child.kill()
+
+    assert not alive, (
+        f"{alive} outlived the application that created it, having never read its bootstrap "
+        "payload. Nothing of this application's had run in it yet — the watchdog is installed "
+        "by `prepare_this_worker()`, at the far end of this window — so containment cannot "
+        "depend on the child reaching our code."
+    )
+
+
 # --- signal routing ------------------------------------------------------------------------
 
 

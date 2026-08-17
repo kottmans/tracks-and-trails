@@ -5,7 +5,16 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-16 — **`T-183`, Phase 4.5's option audit, is built and In Review** at
+**Last updated:** 2026-08-17 — **`T-258` is built and In Review**: the pre-bootstrap window that
+orphaned five workers on `STARBASE` is reproduced on both platforms, **POSIX is measured not to
+have it** (the child dies within 0.02 s of the parent, on its own broken bootstrap pipe), and the
+application now contains itself in a Job object before any worker exists. **Its Windows criterion
+has no run behind it** and why Windows kept the five is still unexplained — both stated in the
+entry rather than glossed. `ai/TASKS.md`'s `## In Review` section was also found duplicated
+byte-for-byte since `30b473d`, under a placement gate that passes on duplicates.
+
+*(Previously, 2026-08-16 — **`T-183`, Phase 4.5's option audit, was built and In Review**; it is
+now **Complete**, approved with follow-ups at `1d0caf6` on 2026-08-17.)* It is at
 `docs/YTDLP_OPTION_AUDIT.md`: 250 documented yt-dlp options against the pinned 2026.07.04, each in
 exactly one class, with the application-owned class **derived by exercising `build_options`** and
 drift-checked from both directions by `tests/unit/test_option_audit.py` — six mutations, six
@@ -738,6 +747,50 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-17 (T-258): the window is reproduced, and POSIX does not have it
+
+**`T-258` is built and In Review**, and the thing that made the rest measurable was reproducing
+the window before fixing anything. `test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing`
+stops the application *inside* it rather than stepping over it: the seam is the process-creation
+call itself — `util.spawnv_passfds` on POSIX, `_winapi.CreateProcess` on Windows — wrapped so it
+returns a live child to nobody, since `multiprocessing` writes the payload only after it returns.
+**The reproduced child matches the five orphans exactly**: `spawn_main` command line, one thread,
+sleeping — and it stays alive as long as its parent does, so its death is caused by the parent's
+and not by something of its own.
+
+**POSIX does not have the window, measured rather than inferred.** The child dies within
+**0.02 s** of the parent being `SIGKILL`ed — **8 of 8 runs**, and that number is the poll's own
+resolution rather than a latency — with `EOFError: Ran out of input` out of `spawn_main`: the only write
+end of its payload pipe was the parent's. That is criterion 3 answered, and it confirms a sentence
+`T-019` has carried in a comment since it was written — a child killed while unpickling *"dies of
+its own broken bootstrap pipe"* — which until now nothing had checked.
+
+**The fix is the application containing itself**, on the maintainer's ruling the same day.
+`contain_this_application()` puts the application in a `KILL_ON_JOB_CLOSE` Job object **before any
+worker exists**, so every descendant inherits membership at creation and no per-spawn call can
+race one. It hangs off `DownloadManager.__init__` — the object that spawns — and is a documented
+no-op on POSIX. The worker still contains itself; that job nests inside this one and is what lets
+one worker be cancelled without touching its siblings.
+
+**Two things are honestly not done, and neither is paperwork.** The Windows criterion has **no run
+behind it** — the test is written and runs there, nothing has executed it, and no push was started
+because three tasks are awaiting a verdict. And **why Windows kept the five is still unexplained**:
+the structural reading says its bootstrap pipe should break exactly as POSIX's does, and five
+orphans say it did not. The fix does not depend on the answer — the kernel reaps the child wherever
+it is blocked — but the new test is what will give it.
+
+**The detector caught itself reporting nothing**, which is the part worth keeping. `tools/orphan_scan.py`
+first defined an orphan as *the parent pid is 1*; a deliberately orphaned worker on this machine
+reparented to `systemd` at pid 2105, so it answered *"no orphaned workers found"* against a live
+orphan it had been pointed at. **`T-238`'s probe lesson, arriving a second time in a different
+costume** — an instrument whose whole output on a healthy machine is silence proves nothing until
+it has been shown a known positive.
+
+**Separately, `ai/TASKS.md`'s entire `## In Review` section was duplicated** — byte-identical, from
+`30b473d`, carried by six commits. `T-096`'s placement gate passes on it, because every duplicated
+status still matches its section: the gate answers *is this entry in the right section*, not *is
+this entry here once*. Removed in its own commit.
 
 ## 2026-08-13 (T-238 approved): the review reproduced the mechanism I could not
 

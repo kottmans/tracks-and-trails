@@ -514,6 +514,22 @@ class DownloadManager(QObject):
         entry_point: Callable[..., None] = worker.spawn_session,
     ) -> None:
         super().__init__(parent)
+        # **Before any worker exists** (`T-258`). This is the outer half of containment: the
+        # worker's own job is installed at the far end of its bootstrap, and a parent that dies
+        # before then leaves a child with nothing of ours in it. Here rather than in the
+        # application's entry point because *this* is the object that spawns, so a process that
+        # creates workers is contained whether it is the GUI, a test driver or a script.
+        # Idempotent, and a documented no-op on POSIX, where the bootstrap pipe already closes
+        # that window — measured, see `process_tree.contain_this_application`.
+        if not process_tree.contain_this_application():
+            # Logged rather than raised, matching the worker's own containment failure: an
+            # application that cannot make this guarantee still runs downloads, and the cost of
+            # silence would be an orphan nobody could explain afterwards.
+            logging.getLogger(f"{APP_SLUG}.manager").warning(
+                "this application is not contained, so a worker killed before it is prepared "
+                "could outlive it: %s",
+                process_tree.application_containment_error,
+            )
         self._repository = repository
         #: Jobs whose partial is to be thrown away once their process is gone, and the directory
         #: it lives in (`T113-R3`). **The directory is captured when the stop is asked for**, while

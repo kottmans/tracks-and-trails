@@ -352,6 +352,20 @@ is not a measurement**, and the cheapest way to know an instrument works is to h
 positive. `tools/soak.sh` has the same property by construction — it is counting real process
 deaths — which is why this note sits beside it.
 
+**It caught a second instrument on the day it was written** (`T-258`, 2026-08-17).
+`tools/orphan_scan.py` finds spawned workers whose parent is gone, and on a healthy machine its
+entire output is *"no orphaned workers found"* — so it is the same shape of tool, and it was wrong
+in the same invisible way. Its first rule was *the parent pid is 1*; a deliberately orphaned worker
+on the development machine reparented to `systemd` at pid 2105, and the scanner reported nothing
+against a live orphan it had been handed. The rule is now derived from what the child implies about
+its parent rather than from how one platform reparents, and
+`tests/unit/test_orphan_scan.py::test_the_scanner_sees_a_known_orphan` runs first for the reason
+this section exists.
+
+**The positive control belongs in the test file, not only in the tool**, when the instrument has
+one: `T-238`'s probe self-tests at runtime because it is a pytest plugin nobody runs under pytest,
+and this one is exercised by a test suite that can hold the control instead.
+
 ### Prose runs no CI, on either platform (`OPS-011`, 2026-08-05)
 
 A push that changes only documentation triggers **no `ci.yml` run at all** — not the Linux gate

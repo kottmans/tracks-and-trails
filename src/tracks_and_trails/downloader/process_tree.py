@@ -43,6 +43,28 @@ So the manager records the group while the worker is alive and signals that id a
 process group keeps its id reserved for as long as it still has members, which is precisely the
 case where there is anything to reap.
 
+## Why the child's containment is not enough on its own (`T-258`)
+
+Everything above happens **inside the worker**, and a spawned worker runs no code of ours until
+`multiprocessing` has fed it its bootstrap payload. Between the process existing and that payload
+arriving there is a window in which the child has no watchdog, no group, no job, and no way to
+learn that its parent is gone.
+
+That window is not theoretical. Five workers were found alive on `STARBASE` eleven and twelve days
+after the run that spawned them, each with the `spawn_main` command line and — the finding —
+**one thread**, so none had reached `_exit_when_the_parent_does()`.
+
+The two platforms close it differently, and only one of them closes it for free:
+
+- **POSIX closes it by construction.** The payload arrives over a pipe whose only write end is
+  held by the parent, so a parent that dies breaks it and the child raises `EOFError` out of
+  `spawn_main`. Measured, not assumed: a child stopped in this window dies within **0.02 s**
+  of its parent being `SIGKILL`ed — the resolution of the poll, not a latency — in 8 of 8 runs.
+  `test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` is that measurement, kept.
+- **Windows needs `contain_this_application()`**, below. The structural reading says its pipe
+  should break the same way, and the five orphans say it did not — so the guarantee is taken from
+  the kernel instead of from the pipe.
+
 ## The rule that keeps this from killing the application
 
 `killpg` takes a group, and the wrong group id here is the parent's own. Two rules, opposite in
@@ -66,6 +88,7 @@ from typing import Final
 
 __all__ = [
     "GROUPS_ARE_SUPPORTED",
+    "contain_this_application",
     "contain_this_process",
     "group_of",
     "kill_group",
@@ -84,6 +107,13 @@ GROUPS_ARE_SUPPORTED: Final = sys.platform != "win32"
 #: so the reason has to be recorded somewhere rather than lost. `prepare_this_worker()` logs it
 #: once the log handler exists, which is the only moment it can be both known and reportable.
 containment_error: str | None = None
+
+#: Why the last `contain_this_application()` failed, or `None`.
+#:
+#: Kept apart from `containment_error` deliberately: they are different failures, reported by
+#: different processes, and a single variable would let the worker's reason overwrite the
+#: application's in the one process that can still act on either.
+application_containment_error: str | None = None
 
 
 def terminate_group(group: int) -> None:
@@ -113,18 +143,22 @@ if sys.platform == "win32":
     #: kill the very descendants it exists to reap, immediately and at random.
     _windows_job: int | None = None
 
+    #: The Job object **the application** was assigned to (`T-258`), kept alive for the same
+    #: reason as `_windows_job` and separate from it because the two are different jobs in
+    #: different processes: this one is the outer, created before any worker exists.
+    _windows_application_job: int | None = None
+
     #: `SIGKILL` does not exist on Windows; nothing in the parent half signals there anyway.
     _HARD_SIGNAL: Final = signal.SIGTERM
 
-    def contain_this_process() -> bool:
-        """Put this process in a fresh Job object that kills its members when it closes.
+    def _assign_self_to_a_killing_job() -> tuple[int | None, str]:
+        """Create a `KILL_ON_JOB_CLOSE` job, put this process in it, and return its handle.
 
-        Every descendant inherits job membership unless it is created with
-        `CREATE_BREAKAWAY_FROM_JOB`, which yt-dlp and ffmpeg do not use. Nested jobs are
-        permitted from Windows 8 onward, so this works even when a CI runner or a debugger has
-        already put us in one.
+        Shared by both containment calls because they want the identical object for opposite
+        reasons — the worker to take its descendants with it, the application to take *every*
+        descendant with it however it dies. Returns `(None, reason)` on failure; the callers
+        differ only in where they record the reason.
         """
-        global _windows_job, containment_error
         import ctypes
         from ctypes import wintypes
 
@@ -132,10 +166,10 @@ if sys.platform == "win32":
 
         # **Declare every signature.** Without a `restype`, ctypes assumes `c_int` and truncates
         # the returned 64-bit `HANDLE` to 32 bits — so the job is created, the handle is corrupted
-        # on the way back, and every later call against it fails. `contain_this_process()` then
-        # returns False, nothing is contained, and the only symptom is descendants surviving a
-        # cancellation. That is exactly what CI reported on the first Windows run of this code,
-        # and it is invisible on Linux by construction.
+        # on the way back, and every later call against it fails. The caller then returns False,
+        # nothing is contained, and the only symptom is descendants surviving a cancellation.
+        # That is exactly what CI reported on the first Windows run of this code, and it is
+        # invisible on Linux by construction.
         kernel32.CreateJobObjectW.restype = wintypes.HANDLE
         kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
         kernel32.SetInformationJobObject.restype = wintypes.BOOL
@@ -195,25 +229,66 @@ if sys.platform == "win32":
 
         job = kernel32.CreateJobObjectW(None, None)
         if not job:
-            containment_error = f"CreateJobObjectW failed, error {ctypes.get_last_error()}"
-            return False
+            return None, f"CreateJobObjectW failed, error {ctypes.get_last_error()}"
 
         limits = _ExtendedLimits()
         limits.BasicLimitInformation.LimitFlags = kill_on_close
         if not kernel32.SetInformationJobObject(
             job, extended_limit_information, ctypes.byref(limits), ctypes.sizeof(limits)
         ):
-            containment_error = f"SetInformationJobObject failed, error {ctypes.get_last_error()}"
+            reason = f"SetInformationJobObject failed, error {ctypes.get_last_error()}"
             kernel32.CloseHandle(job)
-            return False
+            return None, reason
 
         if not kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
-            containment_error = f"AssignProcessToJobObject failed, error {ctypes.get_last_error()}"
+            reason = f"AssignProcessToJobObject failed, error {ctypes.get_last_error()}"
             kernel32.CloseHandle(job)
-            return False
+            return None, reason
 
+        return int(job), ""
+
+    def contain_this_process() -> bool:
+        """Put this process in a fresh Job object that kills its members when it closes.
+
+        Every descendant inherits job membership unless it is created with
+        `CREATE_BREAKAWAY_FROM_JOB`, which yt-dlp and ffmpeg do not use. Nested jobs are
+        permitted from Windows 8 onward, so this works even when a CI runner, a debugger, or —
+        since `T-258` — **this application's own outer job** has already put us in one.
+        """
+        global _windows_job, containment_error
+        job, reason = _assign_self_to_a_killing_job()
+        if job is None:
+            containment_error = reason
+            return False
         # Held for the life of the process. See `_windows_job`.
-        _windows_job = int(job)
+        _windows_job = job
+        return True
+
+    def contain_this_application() -> bool:
+        """Put **the application** in a job, so a worker is reaped even before it runs our code.
+
+        `T-258`, and the reason it is not `contain_this_process()` called from somewhere else:
+        the job that matters here has to exist **before the worker does**. A worker contains
+        itself at the far end of the bootstrap window, and five orphans on `STARBASE` proved
+        that a parent dying inside that window leaves a child with nothing installed in it. This
+        job is created once, up front, and every descendant inherits membership at creation —
+        so there is no window and no per-spawn call that could race one.
+
+        The worker still contains itself. That job nests inside this one and is not redundant:
+        it is what lets *one* worker be cancelled without touching its siblings, which killing
+        the outer job cannot express.
+
+        **Idempotent**, because the manager that calls it is constructible more than once in a
+        process and a second job would be a second handle to leak rather than a second guarantee.
+        """
+        global _windows_application_job, application_containment_error
+        if _windows_application_job is not None:
+            return True
+        job, reason = _assign_self_to_a_killing_job()
+        if job is None:
+            application_containment_error = reason
+            return False
+        _windows_application_job = job
         return True
 
     def kill_this_group() -> None:
@@ -252,6 +327,24 @@ else:
             # embedding may have arranged otherwise, and it is not worth failing a session over.
             containment_error = f"setsid() failed: {error}"
             return False
+        return True
+
+    def contain_this_application() -> bool:
+        """Nothing to do: POSIX closes `T-258`'s window with the bootstrap pipe.
+
+        **Measured rather than assumed**, which is the whole reason this is a documented no-op
+        and not an oversight. A worker stopped inside the window — created, never fed — dies
+        within 0.02 s of its parent being `SIGKILL`ed — 8 of 8 runs, and that figure is the
+        poll's own resolution rather than a measured latency — raising `EOFError` out of
+        `spawn_main`, because the only write end of its payload pipe was the parent's.
+        `test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` runs on both
+        platforms and is where that answer is kept.
+
+        Deliberately **not** `setsid()` here. The application leading its own group would change
+        what "our own group" means to every guard in this module — `group_of`, `_signal_group`
+        and `kill_this_group` all turn on the comparison — to close a window that is already
+        shut.
+        """
         return True
 
     def kill_this_group() -> None:

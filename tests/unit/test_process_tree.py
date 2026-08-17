@@ -183,6 +183,117 @@ def test_containment_succeeds_on_this_platform() -> None:
     )
 
 
+def test_application_containment_succeeds_on_this_platform() -> None:
+    """`T-258`: the outer half must work here too, and it fails as quietly as the inner one.
+
+    Same shape and same reason as `test_containment_succeeds_on_this_platform`, which exists
+    because a broken Windows Job object reported `False` and was noticed only through four
+    integration tests failing elsewhere. This half has *no* integration test that would notice:
+    its whole job is a window that opens when the application is killed, so nothing routine
+    exercises it and a quiet `False` here would be invisible until orphans accumulated.
+
+    Run in a child so that the test runner is not the process being contained.
+    """
+    probe = (
+        "from tracks_and_trails.downloader import process_tree\n"
+        "worked = process_tree.contain_this_application()\n"
+        "print(worked, process_tree.application_containment_error)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert result.stdout.strip().startswith("True"), (
+        f"application containment failed on {sys.platform}: {result.stdout.strip()}. A worker "
+        "killed before it reads its bootstrap payload then has nothing holding it."
+    )
+
+
+def test_containing_the_application_twice_keeps_the_first_job() -> None:
+    """Idempotent, because `DownloadManager` is constructible more than once in a process.
+
+    A second job would be a second handle rather than a second guarantee — and on Windows the
+    handle is the thing that must not leak, since `KILL_ON_JOB_CLOSE` fires when the *last* one
+    closes. A per-construction job would leave earlier ones open with nothing to close them.
+
+    **This test is only load-bearing on Windows, and says so rather than reading as if it were
+    not.** The handle it compares does not exist on POSIX, where containment is a no-op with
+    nothing to be idempotent about, so the third value is trivially `True` there and only the
+    first two mean anything. Stated because a test that quietly asserts nothing on the platform
+    that runs it most is how a guard comes to be trusted for a check it never made.
+    """
+    probe = (
+        "from tracks_and_trails.downloader import process_tree\n"
+        "first = process_tree.contain_this_application()\n"
+        "held = getattr(process_tree, '_windows_application_job', None)\n"
+        "second = process_tree.contain_this_application()\n"
+        "print(first, second, held == getattr(process_tree, '_windows_application_job', None))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert result.stdout.strip() == "True True True", (
+        f"containing twice reported {result.stdout.strip()!r}; the second call must keep the "
+        "first job rather than create another handle to it"
+    )
+
+
+def test_the_manager_contains_the_application_before_it_can_spawn() -> None:
+    """`T-258`: constructing a manager is what installs the outer job, and it must be enough.
+
+    The guarantee is *ordering* — the job has to exist before any worker does — so this asserts
+    against a manager that has been constructed and nothing more. Deleting the call from
+    `DownloadManager.__init__` fails here, which is the mutation that matters: every other test
+    in the suite spawns workers from a process that would still be uncontained.
+
+    **It watches the call rather than the job**, because the job is a Windows object and this has
+    to fail on Linux too. Asserting on `_windows_application_job` would have made the whole test
+    vacuous on the platform that runs it most: POSIX containment is a no-op returning `True`, so
+    a deleted call would have looked identical to a made one.
+
+    In a child for the usual reason, and because containing the test runner would outlive the
+    test.
+    """
+    probe = (
+        "from PySide6.QtCore import QCoreApplication\n"
+        "from tracks_and_trails.downloader import process_tree\n"
+        "from tests.integration.test_manager import FakeRepository\n"
+        "calls = []\n"
+        "real = process_tree.contain_this_application\n"
+        "def watched():\n"
+        "    calls.append(True)\n"
+        "    return real()\n"
+        "process_tree.contain_this_application = watched\n"
+        # Imported after the patch so the manager resolves it through the module, which is the
+        # binding production uses.
+        "from tracks_and_trails.downloader.manager import DownloadManager\n"
+        "QCoreApplication([])\n"
+        "DownloadManager(FakeRepository())\n"
+        "print(len(calls) == 1)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert result.stdout.strip() == "True", (
+        f"constructing a manager did not contain the application: {result.stdout.strip()!r}. "
+        "The job must exist before the first worker, not alongside it."
+    )
+
+
 @posix_only
 def test_containment_leads_a_new_group() -> None:
     """The POSIX half of the same claim: reporting success and *being* a leader must agree."""
