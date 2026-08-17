@@ -18351,3 +18351,78 @@ two residual current-truth copies are corrected, the maintainer must explicitly 
 focused pass, accept the documented risk, change scope, or carry the blocker to a named follow-up.
 The Reviewer changed only `ai/REVIEWS.md`; no workflow, source, test, task, status, handoff, push,
 visibility or remote state was changed.
+
+---
+
+## 2026-08-17 — T-257 / T-259 Windows-chain review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** T-257, T-259
+**T-257 boundary:** `39fcdbe4a824cbc3012be6fc011938f9ab8d8bdd` →
+`ffa29c14a8230c7fff7ba9417786a83caad8fce4`
+**T-259 boundary:** `5bcb6b0831d542899f8583d309fb95137d94c37c` →
+`3be67584652cefaea7d27971ca464b5a5b0bbe2a`
+**Later evidence inspected at:** `b6a6d2062c08480f5cdb2f641d7044ece2710480`; the T-257 test
+is unchanged and T-259's 40-minute bound remains in the current workflow.
+**Platforms verified:** Linux locally, plus read-only inspection of the real Windows Actions run
+`31985410889` and its job log.
+**Verdicts:** **T-257 Approved. T-259 Changes requested.** The accessibility guard now states and
+tests the actual per-platform invariant, and the cited Windows run completed green. T-259's raised
+bound restored a readable job, but two acceptance criteria explicitly remain unimplemented: the job
+does not report its elapsed time against the bound and never warns when its margin becomes small.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **T259-R1** | **High** | **Yes — two core acceptance criteria are absent** | The only workflow change at `3be6758` raises `timeout-minutes` from 30 to 40 and documents the historical measurements. At the current head, `JOB_STARTED_AT` is stamped solely for crash-dump filtering; no terminal step computes elapsed time, prints elapsed/bound/margin, or emits `::warning::` near the bound. The independently inspected successful Windows job confirms the omission: its steps go from the full suite to crash-dump reporting and artifact upload with no duration/margin report. The task entry itself accurately says this half is not done. Raising the number fixes the immediate timeout but leaves the recurrence detector T-259 exists to add completely absent. | Add an `if: always()` reporting step that derives elapsed time from the job-start stamp, prints elapsed, the 40-minute bound and remaining margin, and emits a warning at a stated threshold. Put the calculation in a testable script or add a workflow-policy test that mutation-checks both normal and warning paths. Verify the step on the next Windows run; do not reinterpret the existing Actions duration display as the requested in-log signal. | **Open — T-259 correction** |
+
+No T-257 finding was raised.
+
+### T-257 acceptance results
+
+- **The real Windows gate is green.** GitHub reports run `31985410889` completed successfully at
+  head `7e376e7`; the `windows desktop` job completed in 32 minutes.
+- **The named test passed on Windows.** The full-suite log shows
+  `test_no_control_is_named_only_by_the_value_it_happens_to_hold PASSED`; the suite reported
+  **3597 passed, 30 skipped, 35 deselected**.
+- **Both local branches are load-bearing.** The ordinary Linux test passed. A reviewer mutation
+  replaced the Linux sweep with an empty one and observed the intended “inspected nothing” failure;
+  forcing `sys.platform = "win32"` on the same Linux data observed the Windows branch reject the
+  seven Unix fall-through matches. Both probes passed by seeing those failures.
+- **T-246's companion Windows evidence is present.** All three parameterizations of
+  `test_each_menu_publishes_exactly_its_actions`—File, Settings and Help—passed in the same job.
+
+### T-259 acceptance results
+
+- **The bound and its reasoning are sound.** The 40-minute limit remains present, and the first
+  completed run needed about 32 minutes total with a 30:20 full-suite step. That restores roughly
+  the intended margin without turning a real hang into an unbounded runner occupation.
+- **The next Windows run completed.** This criterion is met by run `31985410889` and is also what
+  supplied T-257's required evidence.
+- **The historical measurements are recorded.** The workflow and task preserve the previous
+  25.4–25.8-minute healthy range, two 30-minute timeouts, collection growth and the reason for 40.
+- **Elapsed reporting and early warning are absent.** T-259 remains incomplete on criteria 1 and 2.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Commit hygiene | Both exact implementation commits passed `git diff --check`; T-257's test file has not changed since `ffa29c1` |
+| T-257 focused file | **12 passed** on Linux/offscreen |
+| T-257 reviewer mutations | Original test plus empty-Linux and forced-Windows probes: **3 passed** |
+| Real Windows job | Run `31985410889`: **success**; `windows desktop` **success**, all named evidence present |
+| Ruff / formatting | `test_accessibility.py` clean and formatted |
+| Mypy, host / Win32 | `--no-incremental` project scopes clean: **150 source files** in both configurations |
+| Task placement | **14 passed** |
+| T-259 workflow inspection | No duration/margin step or near-bound warning exists at the reviewed or current head |
+| Full local suite | Not repeated for these historical narrow changes; the real Windows full-suite result above is stronger for T-257's platform criterion |
+
+### Readiness
+
+T-257 is **approved at `ffa29c1`** and may move to Complete. T-259 is **not approved at
+`3be6758`**: preserve the 40-minute bound and measurements, then implement the two missing signals
+in one correction and request the ordinary focused re-review. The Reviewer changed only
+`ai/REVIEWS.md`; the in-flight `ai/TASKS.md`, `ai/STATUS.md`, `ai/TESTING.md`, `process_tree.py`
+and `test_process_tree.py` edits already present in the worktree were preserved and excluded. No
+reviewed workflow, source, test, task, status, handoff, push or remote state was changed.
