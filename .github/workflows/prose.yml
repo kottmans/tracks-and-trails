@@ -29,11 +29,18 @@ on:
       - "ai/TASKS.md"
       - "tests/unit/test_task_placement.py"
       - ".github/workflows/prose.yml"
-  pull_request:
-    paths:
-      - "ai/TASKS.md"
-      - "tests/unit/test_task_placement.py"
-      - ".github/workflows/prose.yml"
+  # **No `pull_request:` trigger, and its absence is a security control** (`T-262`).
+  # Every job in this repository resolves to a **self-hosted runner** while `LINUX_RUNNER`,
+  # `WINDOWS_RUNNER` and `STARBASE_AVAILABLE` are set, and GitHub runs fork pull requests with
+  # the fork's own code. In a public repository that is arbitrary code execution on the
+  # maintainer's Fedora machine and on `STARBASE`, gated only by a fork-approval setting that
+  # auto-approves anyone with one merged pull request.
+  #
+  # Nothing is given up: `AGENTS.md` §7 makes this a one-checkout, one-writer project that
+  # commits straight to `main`, and a branch requires explicit instruction. **Restoring this
+  # trigger requires gating every self-hosted job** on
+  # `github.event.pull_request.head.repo.full_name == github.repository`, not just adding the
+  # line back.
 
 # Its own group, so a prose push never cancels a `CI` run and a `CI` push never cancels this.
 # Sharing `ci.yml`'s group would reintroduce the collision this whole change exists to remove.

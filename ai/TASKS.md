@@ -612,6 +612,83 @@ so a parent that is not one cannot be the one that spawned it.
 
 ---
 
+### T-262 — Every CI job runs on the maintainer's own machines, and fork pull requests could too
+
+**Status:** **In Review — built 2026-08-17**, on the maintainer's direct instruction while
+preparing to make the repository public.
+**Owner:** Implementer
+**Priority:** **High while the repository is being made public**, and moot while it is private. The
+window is the moment of the visibility change, not a period afterwards
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. **Blocks making the repository public**
+**Relevant context:** `.github/workflows/ci.yml`, `prose.yml`, `commit-messages.yml`,
+`t074-repeat.yml`; repository variables `LINUX_RUNNER`, `WINDOWS_RUNNER`, `STARBASE_AVAILABLE`;
+`OPS-003`, `OPS-009`, `AGENTS.md` §7 (serial work mode)
+**Affected surfaces:** the three workflows that carried a `pull_request:` trigger
+**Risk:** Low to make. The risk of not making it is arbitrary code execution on two machines the
+maintainer uses
+
+#### What the warning was, and why it applied harder here than it reads
+
+GitHub warns that forks of a public repository can run code on self-hosted runners. **Every runner
+this project uses is self-hosted right now**, which the warning cannot know:
+
+| Variable | Value |
+|---|---|
+| `LINUX_RUNNER` | `["self-hosted","Linux","fedora"]` |
+| `WINDOWS_RUNNER` | `["self-hosted","windows","desktop"]` |
+| `STARBASE_AVAILABLE` | `true` |
+
+So there was no hosted leg left in the default path, and **three workflows triggered on
+`pull_request`** — `ci.yml`, `prose.yml` and `commit-messages.yml`. A fork pull request runs the
+fork's own code, and `pytest` executes whatever Python the fork ships. That is code execution on
+the maintainer's Fedora machine and on `STARBASE`, on the maintainer's own network.
+
+**No job gated on the event or the actor.** `windows-desktop` checked only
+`vars.STARBASE_AVAILABLE`; `frozen` — which lands on `STARBASE` *and* the Fedora box — had no `if:`
+at all.
+
+**GitHub's fork-approval default is not the control it looks like.** A public repository defaults
+to *require approval for first-time contributors*, which auto-approves anyone who has had one pull
+request merged — and the approval prompt arrives at exactly the moment somebody wants to see
+whether the tests pass.
+
+#### What was done
+
+**The `pull_request:` trigger is removed from all three.** `t074-repeat.yml` already ran only on
+`workflow_dispatch`, which needs write access, and is unchanged.
+
+**Nothing is given up.** `AGENTS.md` §7 makes this a one-checkout, one-writer project committing
+straight to `main`; a branch needs explicit instruction and pull requests are not part of how the
+work is done. The trigger was dead weight that happened also to be the entire attack surface.
+
+**Each removal carries its reason in the file**, including what restoring it would require — every
+self-hosted job gated on
+`github.event.pull_request.head.repo.full_name == github.repository` — so that adding the line back
+does not silently reopen this.
+
+#### What was checked, and what was not
+
+- **History carries no secrets.** 343 distinct paths have ever been committed; none matches
+  cookie/credential/key/`.env` naming, and no commit in `git rev-list --all` contains a
+  GitHub, AWS, Slack or PEM private-key token pattern. **This is a pattern scan, not a proof**
+- `tests/unit/test_commit_message_check.py` pins `commit-messages.yml`'s concurrency wiring as
+  text and still passes: that expression *mentions* `pull_request` and is now unreachable rather
+  than wrong. **Left as written** — it is `T-240`'s reviewed surface, and it is what would be
+  needed again if the trigger ever returns
+
+#### Not done, and deliberately
+
+- **The repository is still private.** This removes the blocker; flipping it is the maintainer's
+- **`ai/` becomes public with everything else**, and it is ~30 000 lines of candid engineering
+  narrative naming machines, timings and working patterns. Nothing dangerous, and not this task's
+  call to make — but it should be a decision rather than a side effect
+- **Runner hardening beyond this** — ephemeral runners, a non-privileged account, network
+  isolation — is not attempted. Removing the trigger closes the path; it does not harden the
+  machines behind it
+
+---
+
 ## Complete
 
 ### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows

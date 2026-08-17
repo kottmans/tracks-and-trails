@@ -29,7 +29,18 @@ name: Commit messages
 
 on:
   push:
-  pull_request:
+  # **No `pull_request:` trigger, and its absence is a security control** (`T-262`).
+  # Every job in this repository resolves to a **self-hosted runner** while `LINUX_RUNNER`,
+  # `WINDOWS_RUNNER` and `STARBASE_AVAILABLE` are set, and GitHub runs fork pull requests with
+  # the fork's own code. In a public repository that is arbitrary code execution on the
+  # maintainer's Fedora machine and on `STARBASE`, gated only by a fork-approval setting that
+  # auto-approves anyone with one merged pull request.
+  #
+  # Nothing is given up: `AGENTS.md` §7 makes this a one-checkout, one-writer project that
+  # commits straight to `main`, and a branch requires explicit instruction. **Restoring this
+  # trigger requires gating every self-hosted job** on
+  # `github.event.pull_request.head.repo.full_name == github.repository`, not just adding the
+  # line back.
 
 # **A push run is never cancelled or replaced by a later push** (`T240-R2`, twice). The first
 # instance grouped by ref with `cancel-in-progress: true`: push B cancelled the run that held

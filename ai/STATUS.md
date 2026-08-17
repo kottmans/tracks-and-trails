@@ -750,6 +750,36 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
+## 2026-08-17 (T-262): making the repository public would have exposed two machines
+
+**`T-262` is built and In Review.** The maintainer, preparing to make the repository public, read
+GitHub's self-hosted-runner warning and stopped to ask. **It applied harder here than it reads.**
+
+**Every runner this project uses is self-hosted right now** — `LINUX_RUNNER`, `WINDOWS_RUNNER` and
+`STARBASE_AVAILABLE` are all set, so there is no hosted leg left in the default path — and **three
+workflows triggered on `pull_request`**. A fork pull request runs the fork's own code, and `pytest`
+executes whatever Python the fork ships: code execution on the maintainer's Fedora machine and on
+`STARBASE`, on the maintainer's own network. **No job gated on the event or the actor**;
+`windows-desktop` checked only `vars.STARBASE_AVAILABLE`, and `frozen` had no `if:` at all.
+
+**GitHub's fork-approval default is not the control it looks like**: a public repository
+auto-approves anyone who has had one pull request merged, and the prompt arrives exactly when
+somebody wants to see whether the tests pass.
+
+**The `pull_request` trigger is removed from all three, and nothing is given up.** `AGENTS.md` §7
+makes this a one-checkout, one-writer project committing straight to `main`; pull requests are not
+part of how the work is done, so the trigger was dead weight that happened to be the whole attack
+surface. Each removal carries its reason in the file, including what restoring it would require.
+
+**History was scanned before publishing and is clean** — 343 committed paths, no
+cookie/credential/key naming, no token-shaped strings in any commit. **A pattern scan, not a
+proof**, and recorded that way.
+
+**Two things are deliberately not done.** The repository is still private: this removes the
+blocker, and flipping it is the maintainer's. And `ai/` — 30 000 lines naming machines, timings and
+working patterns — goes public with everything else, which should be a decision rather than a side
+effect.
+
 ## 2026-08-17 (T-258): the window is reproduced, and POSIX does not have it
 
 **`T-258` is built and In Review**, and the thing that made the rest measurable was reproducing

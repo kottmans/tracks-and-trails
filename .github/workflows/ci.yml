@@ -82,8 +82,18 @@ on:
       - "README.md"
       - "LICENSE"
       - "**/*.md.orig"
-  pull_request:
-    paths-ignore: *prose
+  # **No `pull_request:` trigger, and its absence is a security control** (`T-262`).
+  # Every job in this repository resolves to a **self-hosted runner** while `LINUX_RUNNER`,
+  # `WINDOWS_RUNNER` and `STARBASE_AVAILABLE` are set, and GitHub runs fork pull requests with
+  # the fork's own code. In a public repository that is arbitrary code execution on the
+  # maintainer's Fedora machine and on `STARBASE`, gated only by a fork-approval setting that
+  # auto-approves anyone with one merged pull request.
+  #
+  # Nothing is given up: `AGENTS.md` §7 makes this a one-checkout, one-writer project that
+  # commits straight to `main`, and a branch requires explicit instruction. **Restoring this
+  # trigger requires gating every self-hosted job** on
+  # `github.event.pull_request.head.repo.full_name == github.repository`, not just adding the
+  # line back.
   # **Windows on demand, and once a night.** See the `windows desktop` job: the full Windows
   # suite stopped running on every push because it was costing ~13 minutes of a ~32 minute run
   # and slowing development to the point where the gate was the bottleneck rather than the work.
