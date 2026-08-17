@@ -18263,3 +18263,45 @@ visibility**: `origin/main` still contains the vulnerable triggers, and private 
 not protect a public remote. The Reviewer changed only `ai/REVIEWS.md` and filed `T-264` in
 `ai/TASKS.md`; no workflow, source, existing test, handoff, status, decision, plan, visibility,
 push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-258 lifecycle-wording re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-258
+**Prior focused head:** `1853acf940c282d899d8298ab12c631eef2e1939`
+**Correction head:** `351b1d84f84c26b1388a1a774a8dd6cc53dc9b15`
+**Platforms verified:** Static documentation/source inspection on Linux; no Windows runtime result
+exists
+**Verdict:** **Blocked.** The task and status records now put application containment at the first
+`start_contained()` call and correctly exclude manager construction alone. The exact source-doc
+rationale cited by `T258-R6` remains manager-only, while the Windows and unattended-scanner
+acceptance blockers are unchanged.
+
+### Focused results
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T258-R2** | **High** | **Yes** | No Windows run was submitted. The contained/suppressed-control pair and criteria 1 and 2 remain unverified there. | **Open — blocked pending Windows execution of both sides** |
+| **T258-R5** | **Medium** | **Yes** | The correction does not wire the scanner into unattended execution, as expected; criterion 5 remains explicitly unmet pending T-259's workflow disposition. | **Open — blocked pending reviewed workflow integration** |
+| **T258-R6** | **Medium** | **Yes** | `TASKS.md:596-602` and `STATUS.md:801-806` now state the lifecycle correctly. But `process_tree.py:326-327` still says idempotence exists because the manager is constructible more than once, even though all three spawn sites call `start_contained()` and therefore require idempotence on every spawn; `test_process_tree.py:216-221` repeats that current rationale. This is the source-doc half explicitly identified in the prior result, not a new finding. | **Open — records corrected; source and matching test rationale remain stale** |
+| **T258-R7–R9** | **Low / Medium** | No | Not revisited; all three remain owned by T-263 and do not hold T-258. | **Open — T-263** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | `351b1d8` changes only `ai/TASKS.md` and `ai/STATUS.md`; `git diff --check a059c9a..351b1d8` and `git show --check 351b1d8` passed |
+| Lifecycle records | Both current-truth records now say the outer job is established by the first spawn through `start_contained()`, and that constructing a manager alone does not contain the process |
+| Residual rationale | Targeted source/test search found the manager-construction rationale still live at `process_tree.py:326-327` and `test_process_tree.py:216-221` |
+| Relevant policy tests | Included in the shared focused run with T-262: **66 passed** (`test_commit_message_check.py` and `test_task_placement.py`) |
+| Platform acceptance | **Windows not run**; criteria 1 and 2 and the mechanism question remain open |
+
+### Readiness
+
+T-258 remains **blocked**. Correct the source and matching test rationale when next touching this
+finding; approval still principally waits on the Windows contained/uncontained result and an
+invoked unattended scanner. Because `T258-R2` remains High, its eventual focused verification may
+continue under `AGENTS.md` §10 without separate pass authorization. The Reviewer changed only
+`ai/REVIEWS.md`; no reviewed source, test, task, status, handoff, push or remote state was changed.
