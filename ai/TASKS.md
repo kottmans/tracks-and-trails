@@ -206,7 +206,7 @@ suite must say so rather than erroring.)*
 
 | # | Criterion | Evidence |
 |---|---|---|
-| 1 | A check enforces the property, not the list | `tests/unit/test_capability_guards.py` walks **every** `*.py` under `tests/` and fails any raw `symlink_to`/`symlink` creation site — attribute or direct-name spelling, sync or async — unless a **pytest-managed** ancestor (a `test_*` function or a declared fixture) requests `symlinks`. Module scope, ordinary helpers, decorators and parameter defaults are refused outright. `tests/capabilities.py` is exempt — it *is* the probe |
+| 1 | A check enforces the property, not the list | `tests/unit/test_capability_guards.py` walks **every** `*.py` under `tests/` and fails any raw `symlink_to`/`symlink` creation site — attribute or direct-name, sync or async, anywhere in the grammar — unless an ancestor **pytest actually resolves** requests `symlinks`. Resolvable means: a `test_*` function in a module pytest *collects*; or a decorator that resolves through this module's imports to `pytest.fixture`, in a `conftest.py`, a collected module, or a module a conftest re-exports from. Module scope, ordinary helpers, decorators and parameter defaults are refused outright. `tests/capabilities.py` is exempt — it *is* the probe |
 | 2 | **Proved by adding unguarded sites and watching the gate fail** | **Four real-file mutations, all caught, each naming its site**: a `conftest.py` fixture (`conftest.py:4 in planted()`), a helper module (`zzhelper.py:2 in plant_a_symlink()`), an `async def` test, and `from os import symlink`. All removed; gate green again. Thirteen more spellings are parametrized detector cases — eight unguarded, five guarded |
 | 3 | The five gain the guard and **skip** rather than raise | Forced the no-capability state by making `can_create_symlinks` return `False`: **6 skipped, 0 failed** across the six symlink tests, each naming the privilege and the Developer Mode setting |
 | 4 | Coverage is not quietly reduced | The skip is a skip, visible in the count. A second test asserts **at least nine** symlink-creating tests exist, so removing the coverage fails rather than satisfying the gate by emptying it |
@@ -219,8 +219,19 @@ scope, a `conftest.py` fixture, a plain helper, `async def` and `from os import 
 **five guarded shapes must not be**, including a declared fixture that requests the capability, a
 keyword-only `symlinks`, and a closure inside a guarded test.
 
-> **`T260-R1` was blocking after the ordinary pass budget, and the maintainer authorized a third
-> focused pass on 2026-08-17 under `AGENTS.md` §10** — choosing it over accepting the risk,
+> **`T260-R1` took two authorized passes beyond the ordinary budget** — the maintainer authorized a
+> third on 2026-08-17 and a **fourth** the same day under `AGENTS.md` §10, each time choosing a pass
+> over accepting the risk, narrowing the rule, or a follow-up.
+>
+> **The fourth closed three ways the third was still too trusting.** *Any* `test_`-named function
+> counted as pytest-managed — including one in a module pytest never collects, whose parameters are
+> therefore whatever its caller passed. *Any* decorator named `fixture` counted — including a
+> home-grown one. And the walker enumerated the compound statements it knew about, so `except`
+> handlers and `match` arms were never descended into. **The rule is now "can pytest actually
+> resolve this?"**, answered from the collection patterns and from the module's own imports, and the
+> traversal recurses over every AST child rather than the shapes somebody remembered.
+>
+> *(The third pass was authorized like this.)* — choosing it over accepting the risk,
 > narrowing the rule, or carrying the remainder to a follow-up. The correction is the reviewer's own
 > ruling 1: permit raw creation only where pytest resolves the capability.
 >
