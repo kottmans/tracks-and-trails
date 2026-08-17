@@ -6533,6 +6533,75 @@ reported six times, produced here by a tool rather than by inattention. **`T-096
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
 
+### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
+
+**Status:** **Ready — filed 2026-08-16 from a real Windows failure**, run `31966531162`
+**Owner:** Implementer
+**Priority:** Medium. It costs a red Windows job and five unreadable errors whenever the privilege
+is absent, which is the ordinary state of a Windows machine
+**Phase:** Phase 4 maintenance. Gates nothing in the centre column
+**Depends on:** nothing
+**Relevant context:** `T-070` (Complete, approved 2026-07-28 — it built the guard),
+`tests/capabilities.py` (`can_create_symlinks`, the `symlinks` fixture), `tests/conftest.py`,
+`tests/integration/test_worker.py`, `tests/unit/test_paths.py`, `ai/TESTING.md` §12
+**Affected surfaces:** `tests/integration/test_worker.py`, and wherever the enforcing check lands.
+**No source**
+**Risk:** Low. The risk of the obvious fix is the opposite one — adding the fixture to five tests
+and calling it done, which is what leaves the sixth to be written next month
+
+#### What happened
+
+`SeCreateSymbolicLinkPrivilege` was absent on `STARBASE` and **five tests failed with a bare
+`OSError: [WinError 1314] A required privilege is not held by the client`** instead of skipping
+with the message that names the privilege.
+
+**`T-070`'s guard is not broken — it is simply not requested.** Of the nine tests that create a
+symlink, four take the `symlinks` fixture and **skipped correctly on the same run**; five do not
+and failed. Derived rather than eyeballed:
+
+| File | Guarded | Unguarded |
+|---|---|---|
+| `tests/unit/test_paths.py` | 3 | 0 |
+| `tests/integration/test_worker.py` | 1 | **5** |
+
+The five: `test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused`,
+`test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written`,
+`test_a_symlinked_staging_name_reports_no_partial_to_resume_from`,
+`test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused`,
+`test_a_symlink_planted_during_the_mkdir_is_still_caught`.
+
+**This is `T-070`'s own defect, re-instanced by tests written after it.** That task fixed four named
+tests and added a fixture; nothing makes a *later* symlink test use it. Fixing these five and
+stopping would be the same trade again — the list is not the property.
+
+*(The privilege went missing because the runner was restarted from a non-elevated session while
+`STARBASE` was being recovered on 2026-08-16. That is the trigger and **not** the defect: a Windows
+machine without Developer Mode or elevation is the ordinary case, and `T-070` exists because the
+suite must say so rather than erroring.)*
+
+#### Acceptance criteria
+
+- **A check enforces the property, not the list**: a test that creates a symlink and does not
+  request the capability **fails a gate**, wherever it is written. A nine-line `ast` walk over
+  `tests/` finds all nine of today's cases, so the mechanism is not the hard part
+- **It is proved by adding an unguarded symlink test and watching the gate fail**, then removing it
+  — the mutation, not the assertion
+- **The five gain the guard**, and on a machine without the privilege they **skip with
+  `NO_SYMLINKS`** rather than raising
+- **Coverage is not quietly reduced.** These five assert containment — `T-034`'s boundary — so a
+  skip on Windows is a real gap and must be visible as a skip count, never as a pass
+- The gate sits with the project's other static checks over its own tree (`test_layering.py`,
+  `test_task_placement.py`) rather than becoming a runtime `except OSError`, which would convert
+  every future privilege failure into a silent pass
+
+#### Out of scope
+
+- Restoring the privilege on `STARBASE`. That is machine configuration, done separately — and if it
+  is restored first, **this defect stops being visible while still being present**, which is the
+  reason it is filed with its evidence rather than left to the next red run
+
+---
+
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
 **Status:** **Ready — filed 2026-08-16 from five live observations on `STARBASE`.** Not a
