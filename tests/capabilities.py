@@ -58,11 +58,43 @@ def can_create_symlinks(directory: Path) -> bool:
     return True
 
 
+class SymlinkCapability:
+    """Proof the machine can create symlinks, and the only way a test may create one (`T-260`).
+
+    **Why an object rather than a `None`-returning skip fixture.** Four review rounds tried to
+    verify statically that every raw `symlink_to` call sat under a pytest-resolved `symlinks`
+    fixture, and every round the reviewer produced a survivor — a helper taking a parameter merely
+    *named* `symlinks`, a `test_` function pytest never collects, a decorator that only looked like
+    `pytest.fixture`. The approximation of pytest's semantics was the defect, so it is gone: raw
+    creation is now **banned everywhere in `tests/` except this file**, and creation goes through
+    this object, which only the `symlinks` fixture constructs.
+
+    That converts the propagation problem from a static-analysis question into a runtime property:
+    a helper can take the capability as a parameter, and a caller that fakes it with `None` fails
+    loudly on **every** platform (`AttributeError`), rather than silently reaching a bare
+    `[WinError 1314]` only on an unprivileged Windows machine.
+
+    The boundary, stated honestly: this prevents *accidents* — the gate bans the two raw Python
+    spellings and constructing this class outside this file. It does not defend against a test
+    deliberately forging the object or shelling out to `ln -s`; no current test does either, and a
+    reviewer would see it.
+    """
+
+    def create(self, link: Path, target: Path, *, target_is_directory: bool = False) -> None:
+        """Create `link` pointing at `target` — the one sanctioned spelling."""
+        link.symlink_to(target, target_is_directory=target_is_directory)
+
+
 @pytest.fixture
-def symlinks(tmp_path: Path) -> None:
-    """Skip with a reason a human can act on when this machine cannot create symlinks."""
+def symlinks(tmp_path: Path) -> SymlinkCapability:
+    """Skip with a reason a human can act on when this machine cannot create symlinks.
+
+    Returns the capability object on a machine that can — which is what lets the requesting test
+    (or anything it passes the object to) actually create one.
+    """
     if not can_create_symlinks(tmp_path):
         pytest.skip(NO_SYMLINKS)
+    return SymlinkCapability()
 
 
 #: Why a machine may not be able to run the conversion tests, in words that name the fix.

@@ -124,25 +124,28 @@ this one returned four verdicts before approving.*
 
 ### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
 
-**Status:** **In Review — corrected 2026-08-17 against `T260-R1`.** The five are guarded and the
-property is enforced across the **whole test tree** by `tests/unit/test_capability_guards.py`.
+**Status:** **In Review — redesigned 2026-08-17 under a maintainer-authorized fifth pass.** After
+four review rounds, raw symlink creation is now **banned outright** everywhere in `tests/` except
+`tests/capabilities.py`; the `symlinks` fixture returns a **`SymlinkCapability`** object and all
+nine sites create through its `.create()`. The gate that enforces this needs no pytest semantics at
+all, which is the point.
 
-> **`T260-R1` (Medium, blocking) — the gate enforced a narrower rule than the task asked for.** The
-> first version walked only `tests/**/test_*.py`, only synchronous `test_` functions, and only
-> attribute calls, so four ordinary routes to the same bare `WinError 1314` passed it: a
-> `conftest.py` fixture, a helper in an ordinary module, `async def test_…`, and
-> `from os import symlink`. **The rule is now about creation sites rather than about tests**: a
-> function anywhere under `tests/` that creates a symlink must request the capability, with no
-> exception for module scope, fixtures, helpers or `async`. Threading the fixture through a
-> parameter is what makes it propagate — a fixture that requests it skips the test, and a helper
-> that takes it can only be called by something that has it.
+> **Why the design was replaced rather than patched a fifth time.** Rounds one through four were
+> one defect wearing four coats: the gate statically approximated pytest's collection and
+> fixture-resolution semantics, and every approximation had a hole the reviewer found — test bodies
+> only, then a parameter merely *named* `symlinks` (`plant(tmp_path, None)`), then uncollected
+> modules and home-grown `fixture` decorators, then **nested `test_` functions pytest never
+> collects and `@hookimpl` counting because it came from pytest**. Both round-four survivors were
+> reproduced here before anything was decided. `AGENTS.md` §10 names this moment — corrections
+> repeatedly reproducing the same defect class — and its answer, *revisit the design*, is what the
+> maintainer chose on 2026-08-17, the reviewer having proposed no further automatic round. The
+> capability-token design is the alternative the reviewer named in the second-round ruling.
 >
-> **Broadening it immediately found a real site the narrow version had missed**, and it also showed
-> the first correction was itself slightly wrong: `test_a_symlink_planted_during_the_mkdir_is_still_caught`
-> plants its link inside a local `plant_then_create()` closure, which the *innermost function* rule
-> flagged. A closure inside a guarded test **is** guarded — the test skips before it can run — so
-> the check asks whether **any enclosing function** requests the capability. A module-level helper
-> with no guarded ancestor still fails, which is the case that matters.
+> **A claim from the second pass is withdrawn, not reinterpreted:** *"a helper that takes the
+> fixture as a parameter can only be called by something that has it."* False — `symlinks` returned
+> `None`, so any caller could fake it. Under the token design that forgery fails loudly on every
+> platform (`AttributeError`), which is now a tested property rather than an argument.
+
 Filed 2026-08-16 from a real Windows failure, run `31966531162`
 **Owner:** Implementer
 **Priority:** Medium. It costs a red Windows job and five unreadable errors whenever the privilege
@@ -202,50 +205,23 @@ suite must say so rather than erroring.)*
   `test_task_placement.py`) rather than becoming a runtime `except OSError`, which would convert
   every future privilege failure into a silent pass
 
-#### How each criterion was met — 2026-08-17
+#### How each criterion was met — 2026-08-17, after the redesign
+
+*(Three earlier versions of this table described the approximation-based gates the review rounds
+rejected; per `T260-R2` they are replaced rather than accumulated. The review history is in
+`ai/REVIEWS.md`, five records from 75ed6bf's base onward.)*
 
 | # | Criterion | Evidence |
 |---|---|---|
-| 1 | A check enforces the property, not the list | `tests/unit/test_capability_guards.py` walks **every** `*.py` under `tests/` and fails any raw `symlink_to`/`symlink` creation site — attribute or direct-name, sync or async, anywhere in the grammar — unless an ancestor **pytest actually resolves** requests `symlinks`. Resolvable means: a `test_*` function in a module pytest *collects*; or a decorator that resolves through this module's imports to `pytest.fixture`, in a `conftest.py`, a collected module, or a module a conftest re-exports from. Module scope, ordinary helpers, decorators and parameter defaults are refused outright. `tests/capabilities.py` is exempt — it *is* the probe |
-| 2 | **Proved by adding unguarded sites and watching the gate fail** | **Four real-file mutations, all caught, each naming its site**: a `conftest.py` fixture (`conftest.py:4 in planted()`), a helper module (`zzhelper.py:2 in plant_a_symlink()`), an `async def` test, and `from os import symlink`. All removed; gate green again. Thirteen more spellings are parametrized detector cases — eight unguarded, five guarded |
-| 3 | The five gain the guard and **skip** rather than raise | Forced the no-capability state by making `can_create_symlinks` return `False`: **6 skipped, 0 failed** across the six symlink tests, each naming the privilege and the Developer Mode setting |
-| 4 | Coverage is not quietly reduced | The skip is a skip, visible in the count. A second test asserts **at least nine** symlink-creating tests exist, so removing the coverage fails rather than satisfying the gate by emptying it |
-| 5 | A static gate, not a runtime `except OSError` | Static. A runtime catch would turn every future privilege failure into a silent pass — worse than the bare `OSError` this began with |
+| 1 | A check enforces the property, not the list | Two flat rules over **every** `*.py` under `tests/`: **no raw `symlink_to`/`symlink` call outside `tests/capabilities.py`**, in any context whatsoever; and **`SymlinkCapability` constructed nowhere else**. No collection semantics, no fixture semantics, no ancestry analysis — nothing left to approximate |
+| 2 | Proved by adding unguarded sites and watching the gate fail | **Both round-four survivors reproduced as real files and flagged by name** — the nested `test_` function and the `@hookimpl` fixture — plus a forged `SymlinkCapability()` construction. Sixteen parametrized raw spellings must be flagged, one per defeated context, including a genuine `@pytest.fixture` creating raw; four sanctioned shapes must not be |
+| 3 | The tests skip rather than raise where the machine cannot | Forced `can_create_symlinks` to `False`: **9 skipped, 0 failed** across both files, each skip naming the privilege and the Developer Mode setting. A sanctioned-route probe also ran end to end on a capable machine: fixture → capability → `.create()` → a real link |
+| 4 | Coverage is not quietly reduced | The floor now counts `symlinks.create(...)` sites (≥ 9) and requires the probe file to still contain raw creation, so a rename of `Path.symlink_to` breaks the ban and the probe together rather than silently unlinking them |
+| 5 | Static, not a runtime `except OSError` | Unchanged in intent, smaller in practice: the static check is ~90 lines with no pytest model. **The propagation question became a runtime property instead** — `plant(path, None)` now fails loudly on every platform, asserted by `test_forging_the_capability_with_none_fails_loudly_on_every_platform` |
 
-**The detector is itself tested in both directions**, because a gate that stops recognising a
-symlink call passes silently: **fourteen unguarded spellings must be flagged** — including
-`T260-R1`'s survivor, its defaulted variant, a decorator expression, a parameter default, module
-scope, a `conftest.py` fixture, a plain helper, `async def` and `from os import symlink` — and
-**five guarded shapes must not be**, including a declared fixture that requests the capability, a
-keyword-only `symlinks`, and a closure inside a guarded test.
-
-> **`T260-R1` took two authorized passes beyond the ordinary budget** — the maintainer authorized a
-> third on 2026-08-17 and a **fourth** the same day under `AGENTS.md` §10, each time choosing a pass
-> over accepting the risk, narrowing the rule, or a follow-up.
->
-> **The fourth closed three ways the third was still too trusting.** *Any* `test_`-named function
-> counted as pytest-managed — including one in a module pytest never collects, whose parameters are
-> therefore whatever its caller passed. *Any* decorator named `fixture` counted — including a
-> home-grown one. And the walker enumerated the compound statements it knew about, so `except`
-> handlers and `match` arms were never descended into. **The rule is now "can pytest actually
-> resolve this?"**, answered from the collection patterns and from the module's own imports, and the
-> traversal recurses over every AST child rather than the shapes somebody remembered.
->
-> *(The third pass was authorized like this.)* — choosing it over accepting the risk,
-> narrowing the rule, or carrying the remainder to a follow-up. The correction is the reviewer's own
-> ruling 1: permit raw creation only where pytest resolves the capability.
->
-> **What was wrong was my reasoning, not just the coverage.** I claimed a helper taking `symlinks`
-> as an argument "can only be called from something that has it". It cannot: `symlinks` is a
-> `None`-returning fixture, so `plant(tmp_path, None)` is indistinguishable from the resolved value,
-> and a defaulted `symlinks=None` needs no argument at all. **A parameter name is not a fixture
-> request.** Only a collected test or a declared fixture gets resolution, so that is what the gate
-> now requires — and decorators and defaults are refused outright, because they run at import,
-> before any fixture exists.
-
-**This was fixed after the privilege was restored, which is the point.** Developer Mode went on
-`STARBASE` on 2026-08-16, so the five pass there again and the gap became invisible — exactly why
-the entry was filed with its evidence rather than left for the next red run.
+**The enforced boundary, stated honestly** (the fourth review's ruling): this prevents accidents —
+the two raw Python spellings and the constructor call. It does not defend against `__new__` forgery
+or shelling out to `ln -s`; no test does either, and one that started to would be visible in review.
 
 #### Out of scope
 

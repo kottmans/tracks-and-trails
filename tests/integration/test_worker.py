@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 
+from tests.capabilities import SymlinkCapability
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.paths import UnsafePathError, is_contained, safe_output_path
@@ -1084,13 +1085,15 @@ def test_a_traversal_title_lands_inside_the_output_directory(
     assert is_contained(Path(succeeded.output_path), tmp_path)
 
 
-def test_a_symlink_out_of_the_directory_is_still_refused(tmp_path: Path, symlinks: None) -> None:
+def test_a_symlink_out_of_the_directory_is_still_refused(
+    tmp_path: Path, symlinks: SymlinkCapability
+) -> None:
     """`T-034`'s own guarantee, kept as a direct check because no template can express it."""
     outside = tmp_path / "elsewhere"
     outside.mkdir()
     target = tmp_path / "Downloads"
     target.mkdir()
-    (target / "link").symlink_to(outside)
+    symlinks.create(target / "link", outside)
 
     with pytest.raises(UnsafePathError):
         safe_output_path(target, "link/clip.mp4")
@@ -2238,7 +2241,7 @@ def test_a_sidecar_reported_through_a_dotdot_spelling_is_refused(tmp_path: Path)
 
 
 def test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused(
-    tmp_path: Path, symlinks: None
+    tmp_path: Path, symlinks: SymlinkCapability
 ) -> None:
     """The spelling a purely textual check cannot see at all.
 
@@ -2249,7 +2252,7 @@ def test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused(
     (staging / "Clip.de.vtt").unlink()
     outside = tmp_path / "important.txt"
     outside.write_bytes(b"not ours")
-    (staging / "Clip.de.vtt").symlink_to(outside)
+    symlinks.create(staging / "Clip.de.vtt", outside)
     reported = {"requested_subtitles": {"de": {"filepath": str(staging / "Clip.de.vtt")}}}
 
     with pytest.raises(UnsafePathError, match="outside its own working directory"):
@@ -2393,7 +2396,7 @@ def test_a_discard_refuses_a_staging_path_outside_its_directory(
 
 
 def test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, symlinks: None
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, symlinks: SymlinkCapability
 ) -> None:
     """**`T113-R1`, Critical.** A digest makes the *name* safe and says nothing about what is at it.
 
@@ -2412,8 +2415,8 @@ def test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_writ
     outside.mkdir()
     sentinel = outside / "sentinel.txt"
     sentinel.write_bytes(b"the user's own file")
-    worker_module.staging_directory(downloads, "job-1").symlink_to(
-        outside, target_is_directory=True
+    symlinks.create(
+        worker_module.staging_directory(downloads, "job-1"), outside, target_is_directory=True
     )
 
     monkeypatch.setattr(
@@ -2478,7 +2481,7 @@ def test_an_existing_staging_directory_is_reused_with_its_partial_intact(tmp_pat
 
 
 def test_a_symlinked_staging_name_reports_no_partial_to_resume_from(
-    tmp_path: Path, symlinks: None
+    tmp_path: Path, symlinks: SymlinkCapability
 ) -> None:
     """Reporting what is inside a foreign directory as *this job's partial* answers for a file the
     session never wrote — and it is the manager that reads this, to decide what to clean up."""
@@ -2487,8 +2490,8 @@ def test_a_symlinked_staging_name_reports_no_partial_to_resume_from(
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "Clip.mp4.part").write_bytes(b"somebody else's partial")
-    worker_module.staging_directory(downloads, "job-1").symlink_to(
-        outside, target_is_directory=True
+    symlinks.create(
+        worker_module.staging_directory(downloads, "job-1"), outside, target_is_directory=True
     )
 
     assert worker_module.resumable_partial(downloads, "job-1") is None
@@ -2497,7 +2500,7 @@ def test_a_symlinked_staging_name_reports_no_partial_to_resume_from(
 
 
 def test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused(
-    tmp_path: Path, symlinks: None
+    tmp_path: Path, symlinks: SymlinkCapability
 ) -> None:
     """Containment alone is not enough, and a mutation is what said so.
 
@@ -2512,7 +2515,9 @@ def test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused
     theirs = downloads / "Music I Already Had"
     theirs.mkdir()
     (theirs / "track.mp3").write_bytes(b"the user's own music")
-    worker_module.staging_directory(downloads, "job-1").symlink_to(theirs, target_is_directory=True)
+    symlinks.create(
+        worker_module.staging_directory(downloads, "job-1"), theirs, target_is_directory=True
+    )
 
     with pytest.raises(UnsafePathError, match="not this download's own working directory"):
         worker_module.open_staging(downloads, "job-1")
@@ -2521,7 +2526,7 @@ def test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused
 
 
 def test_a_symlink_planted_during_the_mkdir_is_still_caught(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, symlinks: None
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, symlinks: SymlinkCapability
 ) -> None:
     """Why the check runs **after** the create as well as before it.
 
@@ -2541,7 +2546,7 @@ def test_a_symlink_planted_during_the_mkdir_is_still_caught(
 
     def plant_then_create(self: Path, *args: Any, **kwargs: Any) -> None:
         if self == staging:
-            staging.symlink_to(outside, target_is_directory=True)
+            symlinks.create(staging, outside, target_is_directory=True)
             return
         original(self, *args, **kwargs)
 

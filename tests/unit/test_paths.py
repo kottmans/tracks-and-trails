@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.capabilities import SymlinkCapability
 from tracks_and_trails.core.paths import (
     DERIVED_COMPONENT_LENGTH,
     MAX_COMPONENT_BYTES,
@@ -258,7 +259,9 @@ def test_a_sibling_directory_with_a_shared_prefix_is_not_contained(tmp_path: Pat
     assert not is_contained(sibling / "clip.mp4", tmp_path / "Downloads")
 
 
-def test_a_symlink_out_of_the_directory_is_not_contained(tmp_path: Path, symlinks: None) -> None:
+def test_a_symlink_out_of_the_directory_is_not_contained(
+    tmp_path: Path, symlinks: SymlinkCapability
+) -> None:
     """A symlink inside the output directory pointing elsewhere is still an escape.
 
     The file would be written outside the directory the user chose, which is the property, not
@@ -268,12 +271,12 @@ def test_a_symlink_out_of_the_directory_is_not_contained(tmp_path: Path, symlink
     target.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
-    (target / "link").symlink_to(outside)
+    symlinks.create(target / "link", outside)
     assert not is_contained(target / "link" / "clip.mp4", target)
 
 
 def test_a_symlink_escape_is_rejected_through_the_public_entry_point(
-    tmp_path: Path, symlinks: None
+    tmp_path: Path, symlinks: SymlinkCapability
 ) -> None:
     """`T034-R1`. The security gate must be exercised through `safe_output_path`, not only
     through `is_contained`.
@@ -288,17 +291,19 @@ def test_a_symlink_escape_is_rejected_through_the_public_entry_point(
     target.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
-    (target / "link").symlink_to(outside)
+    symlinks.create(target / "link", outside)
 
     with pytest.raises(UnsafePathError):
         safe_output_path(target, "link/clip.mp4")
 
 
-def test_a_symlink_inside_the_directory_is_still_allowed(tmp_path: Path, symlinks: None) -> None:
+def test_a_symlink_inside_the_directory_is_still_allowed(
+    tmp_path: Path, symlinks: SymlinkCapability
+) -> None:
     """The rejection must be about *where it resolves*, not about symlinks as such."""
     target = tmp_path / "Downloads"
     (target / "real").mkdir(parents=True)
-    (target / "link").symlink_to(target / "real")
+    symlinks.create(target / "link", target / "real")
 
     result = safe_output_path(target, "link/clip.mp4")
     assert is_contained(result, target)

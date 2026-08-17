@@ -1,34 +1,39 @@
-"""Where a test may create a symlink, and who has to ask first (`T-260`).
+"""Raw symlink creation is banned in the test tree; the capability object is the only route
+(`T-260`).
 
-**`T-070` built the capability fixture and nothing made later tests use it.** That task found four
-tests failing on an ordinary Windows desktop with a bare `OSError` naming no cause, added
-`tests.capabilities.can_create_symlinks` and the `symlinks` fixture — which skips naming the
-privilege — and fixed the four. Tests written afterwards did not request it, so on 2026-08-16, with
-`SeCreateSymbolicLinkPrivilege` absent from `STARBASE`, **five failed with
-`OSError: [WinError 1314]` while four skipped cleanly** (CI run `31966531162`).
+**`T-070` built the guard and nothing made later tests use it.** On 2026-08-16, with
+`SeCreateSymbolicLinkPrivilege` absent from `STARBASE`, five tests failed with a bare
+`OSError: [WinError 1314]` while four that requested the `symlinks` fixture skipped cleanly
+(CI run `31966531162`).
 
-**So the rule is about creation sites, not about tests.** The restriction this file enforces:
+**Four review rounds then tried to verify the fixture statically, and every round produced a
+survivor.** The first gate read only synchronous `test_` bodies in `test_*.py`; then a parameter
+merely *named* `symlinks` was shown to prove nothing (`plant(tmp_path, None)`); then a
+`test_`-named function in an uncollected module and a home-grown `fixture` decorator; then a
+*nested* `test_` function pytest never collects and `@hookimpl` counting because it was imported
+from pytest. Each fix approximated more of pytest's collection and resolution semantics, and each
+approximation had holes. **The approximation was the defect.**
 
-> **A function anywhere in the test tree that creates a symlink must request the `symlinks`
-> capability.** No exceptions at module scope, none for fixtures, none for helpers, and none for
-> `async def`.
+So the maintainer authorized replacing the design (2026-08-17, `AGENTS.md` §10 — revisit the
+design): the `symlinks` fixture now returns a `SymlinkCapability`, all creation goes through its
+`.create()`, and this file enforces two flat rules that need no pytest semantics at all:
 
-That is deliberately broader than "a test body that calls `symlink_to`", which is what the first
-version checked and what `T260-R1` rejected. A `conftest.py` fixture or a helper in an ordinary
-module can create the link *for* an unguarded test, reaching link creation with no capability check
-and raising the same bare `OSError` — while a gate that only reads synchronous `test_` functions in
-`test_*.py` files reports success.
+1. **No raw `symlink_to` / `symlink` call anywhere under `tests/`, except `capabilities.py`** —
+   which *is* the probe. No context makes raw creation legal: not a fixture, not a guarded test,
+   not a decorator, not module scope. One uniform rule, so the whole under-which-ancestor question
+   the four rounds fought about simply does not arise.
+2. **`SymlinkCapability` is constructed only in `capabilities.py`.** Tests obtain it by requesting
+   the fixture, which skips — naming the privilege — on a machine that cannot create symlinks.
 
-**Threading the capability through a parameter is what makes the rule propagate.** A fixture that
-requests `symlinks` skips the test that uses it; a helper that takes it as an argument can only be
-called from something that has it. Neither needs this gate to understand the call graph.
+What replaced the propagation question is a *runtime* property: a helper can take the capability as
+a parameter, and a caller that fakes it with `None` fails loudly on **every** platform
+(`AttributeError`), not silently with `[WinError 1314]` on an unprivileged Windows machine. That is
+demonstrated below rather than claimed.
 
-**Static, not a runtime `except OSError`.** Catching it at runtime would turn every future
-privilege failure into a silent pass — worse than the bare error this began with, because a skip
-nobody sees is indistinguishable from coverage. Reading the source fails when written, on any host,
-whether or not the capability happens to be present locally. That matters: Developer Mode is now
-enabled on `STARBASE`, so the original five pass there again and the gap would otherwise be
-invisible.
+**The boundary, stated honestly** (per the `T-260` review's ruling): this prevents accidents. It
+bans the two raw Python spellings and the constructor call; it does not defend against a test
+deliberately forging the object via `__new__` or shelling out to `ln -s`. No current test does
+either, and one that started to would be visible in review.
 """
 
 import ast
@@ -37,199 +42,116 @@ from typing import Final
 
 import pytest
 
+from tests.capabilities import SymlinkCapability
+
 TESTS: Final = Path(__file__).resolve().parents[1]
 
-#: The fixture a symlink-creating function must request (`tests/capabilities.py`).
-CAPABILITY: Final = "symlinks"
+#: The names that create a symlink, however they are reached: `path.symlink_to(...)`,
+#: `os.symlink(...)`, or `symlink(...)` after `from os import symlink`. Matching names rather than
+#: resolved callables flags an unrelated method that happens to be called `symlink` too — a false
+#: positive costs one rename or one `.create()` call, a false negative costs a bare
+#: `[WinError 1314]` on somebody's Windows machine.
+RAW_CALLS: Final = frozenset({"symlink_to", "symlink"})
 
-#: The names that create a symlink, matched however they are spelled:
-#:
-#: - `path.symlink_to(...)` and `os.symlink(...)` — an `ast.Attribute` call
-#: - `symlink(...)` after `from os import symlink` — an `ast.Name` call (`T260-R1`)
-#:
-#: Matching the *name* rather than a resolved call means an unrelated method called `symlink` is
-#: also flagged. **False positives are cheap here and false negatives are not**: a wrong flag costs
-#: one fixture argument, a miss costs a bare `WinError 1314` on somebody's Windows machine.
-SYMLINK_CALLS: Final = frozenset({"symlink_to", "symlink"})
+#: The capability class, whose *construction* is confined to the probe module.
+CONSTRUCTOR: Final = SymlinkCapability.__name__
 
-#: `tests/capabilities.py` *is* the probe — `can_create_symlinks` creates one to find out whether it
-#: can, so it cannot ask itself first.
+#: `tests/capabilities.py` is the probe: `can_create_symlinks` creates a link to find out whether
+#: it can, and the fixture constructs the capability. It is the one file both rules exempt.
 EXEMPT: Final = frozenset({"capabilities.py"})
 
-_Function = ast.FunctionDef | ast.AsyncFunctionDef
 
-#: What pytest collects, from its own defaults — `pyproject.toml` overrides neither.
-COLLECTED_MODULE: Final = ("test_*.py", "*_test.py")
+def _calls(tree: ast.AST, names: frozenset[str]) -> list[ast.Call]:
+    def matches(called: ast.expr) -> bool:
+        if isinstance(called, ast.Attribute):
+            return called.attr in names
+        return isinstance(called, ast.Name) and called.id in names
 
-
-def _is_creation(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    called = node.func
-    if isinstance(called, ast.Attribute):
-        return called.attr in SYMLINK_CALLS
-    if isinstance(called, ast.Name):
-        return called.id in SYMLINK_CALLS
-    return False
-
-
-def _requests(node: _Function, fixture: str) -> bool:
-    arguments = node.args
-    names = [a.arg for a in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)]
-    return fixture in names
-
-
-def _pytest_names(tree: ast.Module) -> tuple[set[str], set[str]]:
-    """How this module refers to pytest: module aliases, and directly imported names.
-
-    **Resolved from the imports rather than trusted by name** (`T260-R1`, third pass). A decorator
-    spelled `fixture` proves nothing on its own — a module can define its own, or import one from
-    anywhere. `@pytest.fixture` counts because `pytest` is bound to pytest *here*.
-    """
-    aliases: set[str] = set()
-    directly: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            aliases |= {a.asname or a.name for a in node.names if a.name == "pytest"}
-        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
-            directly |= {a.asname or a.name for a in node.names}
-    return aliases, directly
-
-
-def _is_pytest_fixture(node: _Function, tree: ast.Module) -> bool:
-    aliases, directly = _pytest_names(tree)
-    for decorator in node.decorator_list:
-        target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        if isinstance(target, ast.Attribute) and target.attr == "fixture":
-            root = target.value
-            if isinstance(root, ast.Name) and root.id in aliases:
-                return True
-        elif isinstance(target, ast.Name) and target.id in directly:
-            return True
-    return False
-
-
-def _fixture_capable_modules() -> set[str]:
-    """Module stems whose fixtures reach pytest by being re-exported from a `conftest.py`.
-
-    `tests/capabilities.py` is the live case: `tests/conftest.py` imports `symlinks` from it and
-    lists it in `__all__`, so pytest resolves it even though the filename is not collectible.
-    Derived rather than allowlisted, so a second such module needs no edit here.
-    """
-    stems = set()
-    for conftest in TESTS.rglob("conftest.py"):
-        for node in ast.walk(ast.parse(conftest.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module:
-                stems.add(node.module.rsplit(".", 1)[-1])
-    return stems
-
-
-def _resolvable(path: Path, node: _Function, tree: ast.Module) -> bool:
-    """Whether **pytest** supplies this function's parameters.
-
-    Three ways, and no others:
-
-    - a `test_*` function in a module pytest collects — `test_*.py` or `*_test.py`;
-    - a genuine `pytest.fixture` in a `conftest.py` or in a collected module;
-    - a genuine `pytest.fixture` in a module a `conftest.py` re-exports from.
-
-    A `test_`-named function in an uncollected helper module is **not** resolvable: pytest never
-    sees it, so its `symlinks` parameter is whatever its caller passed (`T260-R1`, third pass).
-    """
-    collected = any(path.match(pattern) for pattern in COLLECTED_MODULE)
-    if node.name.startswith("test_"):
-        return collected
-    if not _is_pytest_fixture(node, tree):
-        return False
-    return collected or path.name == "conftest.py" or path.stem in _fixture_capable_modules()
-
-
-def _creation_sites(node: ast.AST) -> list[ast.Call]:
-    return [n for n in ast.walk(node) if isinstance(n, ast.Call) and _is_creation(n)]
-
-
-Site = tuple[ast.Call, list[_Function], bool]
-
-
-def _scan(node: ast.AST, chain: list[_Function], import_time: bool) -> list[Site]:
-    """Every creation site, its enclosing function bodies, and whether it runs at import.
-
-    **Generic recursion over `iter_child_nodes`, not a statement-shape walker.** The previous
-    version enumerated the compound statements it knew about and therefore missed the ones it did
-    not — `except` handlers are `ExceptHandler`, `match` arms are `match_case`, and neither is an
-    `ast.stmt`, so their bodies were never scanned (`T260-R1`, third pass). Recursing over every
-    child covers the grammar rather than the parts of it somebody remembered.
-    """
-    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-        defaults = [d for d in (*node.args.defaults, *node.args.kw_defaults) if d is not None]
-        found = [
-            site
-            for expression in (*node.decorator_list, *defaults)
-            for site in _scan(expression, chain, True)
-        ]
-        return found + [s for stmt in node.body for s in _scan(stmt, [*chain, node], import_time)]
-    if isinstance(node, ast.ClassDef):
-        found = [s for d in node.decorator_list for s in _scan(d, chain, True)]
-        return found + [s for stmt in node.body for s in _scan(stmt, chain, import_time)]
-    here: list[Site] = []
-    if isinstance(node, ast.Call) and _is_creation(node):
-        here.append((node, chain, import_time))
-    for child in ast.iter_child_nodes(node):
-        here += _scan(child, chain, import_time)
-    return here
+    return [n for n in ast.walk(tree) if isinstance(n, ast.Call) and matches(n.func)]
 
 
 def _sources() -> list[Path]:
-    """**Every** Python file in the test tree — `conftest.py` and helpers included (`T260-R1`)."""
     return sorted(p for p in TESTS.rglob("*.py") if p.name not in EXEMPT)
 
 
-def _unguarded(path: Path, source: str) -> list[str]:
-    tree = ast.parse(source)
-    faults = []
-    for call, chain, import_time in _scan(tree, [], False):
-        where = f"{path.name}:{call.lineno}"
-        if import_time:
-            faults.append(f"{where} creates a symlink at import time, before any fixture resolves")
-        elif not chain:
-            faults.append(f"{where} creates a symlink at module scope, where nothing can guard it")
-        elif not any(_resolvable(path, f, tree) and _requests(f, CAPABILITY) for f in chain):
-            named = " -> ".join(f.name for f in chain)
-            faults.append(
-                f"{where} in {named}() creates a symlink with no pytest-resolved "
-                f"`{CAPABILITY}` above it"
-            )
-    return faults
+def _raw_faults(path: Path, source: str) -> list[str]:
+    return [
+        f"{path.name}:{call.lineno} creates a symlink directly"
+        for call in _calls(ast.parse(source), RAW_CALLS)
+    ]
 
 
-def test_every_symlink_creation_site_asks_whether_the_machine_can() -> None:
-    """The rule `T-070` could not enforce, enforced across the whole test tree.
+def _construction_faults(path: Path, source: str) -> list[str]:
+    return [
+        f"{path.name}:{call.lineno} constructs {CONSTRUCTOR} outside tests/capabilities.py"
+        for call in _calls(ast.parse(source), frozenset({CONSTRUCTOR}))
+    ]
 
-    A creation site reached without the capability raises a bare `OSError` on any machine lacking
-    the privilege — the ordinary state of a Windows desktop, not an unusual one.
+
+def test_no_raw_symlink_creation_outside_the_capability_module() -> None:
+    """Rule 1, over every Python file in the test tree with no context analysis at all.
+
+    Anywhere means anywhere: module scope, fixtures, helpers, closures, decorators, defaults,
+    `except` handlers, `match` arms, collected or not. The four review rounds' survivors were all
+    contexts a cleverer walker mis-classified; a flat ban has no contexts to mis-classify.
     """
     faults = [
-        fault for path in _sources() for fault in _unguarded(path, path.read_text(encoding="utf-8"))
+        fault
+        for path in _sources()
+        for fault in _raw_faults(path, path.read_text(encoding="utf-8"))
     ]
     assert not faults, (
-        "these create a symlink without asking whether the machine can, so they raise "
-        "OSError [WinError 1314] instead of skipping:\n  " + "\n  ".join(faults) + "\n"
-        f"Request the `{CAPABILITY}` fixture from tests/capabilities.py, or take it as an argument "
-        "so the caller must have it."
+        "raw symlink creation is banned in tests (T-260):\n  "
+        + "\n  ".join(faults)
+        + "\nRequest the `symlinks` fixture and call symlinks.create(link, target) instead — it "
+        "skips, naming the missing privilege, on a machine that cannot create symlinks."
+    )
+
+
+def test_the_capability_is_constructed_only_where_the_probe_lives() -> None:
+    """Rule 2: the object exists only downstream of the skip-or-return fixture.
+
+    Importing the name for a type annotation is fine and this file does it; *calling* the
+    constructor elsewhere would mint the capability without the machine ever being asked.
+    """
+    faults = [
+        fault
+        for path in _sources()
+        for fault in _construction_faults(path, path.read_text(encoding="utf-8"))
+    ]
+    assert not faults, (
+        "the capability may only be constructed by the `symlinks` fixture (T-260):\n  "
+        + "\n  ".join(faults)
     )
 
 
 def test_this_gate_is_looking_at_something() -> None:
-    """A rule that inspects nothing passes in silence, so it says how much it inspected.
+    """A rule that inspects nothing passes in silence, so both rules prove their subjects exist.
 
-    Nine creation sites existed when this was written — three in `tests/unit/test_paths.py`, six in
-    `tests/integration/test_worker.py`. If that reaches zero the symlink coverage has gone, not the
-    risk.
+    The probe file must still contain raw creation — if `Path.symlink_to` is ever renamed, the ban
+    list and the probe drift together or this fails. And the nine converted sites must still exist
+    as `symlinks.create(...)` calls; if symlink coverage is deliberately removed, update the floor
+    and say why.
     """
-    sites = sum(len(_creation_sites(ast.parse(p.read_text("utf-8")))) for p in _sources())
-    assert sites >= 9, (
-        f"only {sites} symlink creation sites remain; there were nine when this gate was written. "
-        "If that coverage was deliberately removed, update this floor and say why."
+    probe = (TESTS / "capabilities.py").read_text(encoding="utf-8")
+    assert _calls(ast.parse(probe), RAW_CALLS), (
+        "tests/capabilities.py contains no raw symlink creation — the probe has changed shape, "
+        "so the names this gate bans may no longer be the names that matter"
+    )
+
+    created = 0
+    for path in _sources():
+        for call in _calls(ast.parse(path.read_text(encoding="utf-8")), frozenset({"create"})):
+            called = call.func
+            if (
+                isinstance(called, ast.Attribute)
+                and isinstance(called.value, ast.Name)
+                and called.value.id == "symlinks"
+            ):
+                created += 1
+    assert created >= 9, (
+        f"only {created} symlinks.create(...) sites remain; there were nine when this gate was "
+        "written. If symlink coverage was deliberately removed, update this floor and say why."
     )
     assert len(_sources()) > 20, (
         f"the walk found only {len(_sources())} Python files under tests/, which suggests it is "
@@ -237,158 +159,126 @@ def test_this_gate_is_looking_at_something() -> None:
     )
 
 
-# --- the detector, against every spelling T260-R1 named -----------------------------------------
+# --- the detector, against every spelling four review rounds produced ---------------------------
 
-#: Spellings that must be flagged, each with the filename it would really live in — because
-#: resolvability depends on whether pytest collects that file at all.
-_TEST_FILE: Final = Path("test_probe.py")
-_HELPER_FILE: Final = Path("helpers.py")
-_CONFTEST: Final = Path("conftest.py")
-
-_UNGUARDED: Final = {
-    "sync-test-attribute": (
-        _TEST_FILE,
-        "def test_x(tmp_path):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
-    ),
-    "os-attribute": (
-        _TEST_FILE,
-        "import os\ndef test_x(tmp_path):\n    os.symlink(tmp_path, tmp_path / 'l')\n",
-    ),
+#: Every context that defeated an earlier version of this gate, plus the base spellings. Under the
+#: flat ban they are all the same case, which is the point of the redesign — but each stays here as
+#: its own entry so a regression toward context-sensitivity fails loudly.
+_RAW: Final = {
+    "attribute-call": "def test_x(tmp_path):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
+    "os-attribute": "import os\ndef test_x(tmp_path):\n    os.symlink(tmp_path, tmp_path / 'l')\n",
     "direct-import": (
-        _TEST_FILE,
-        "from os import symlink\ndef test_x(tmp_path):\n    symlink(tmp_path, tmp_path / 'l')\n",
+        "from os import symlink\ndef test_x(tmp_path):\n    symlink(tmp_path, tmp_path / 'l')\n"
     ),
-    "async-test": (
-        _TEST_FILE,
-        "async def test_x(tmp_path):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
-    ),
-    "conftest-fixture": (
-        _CONFTEST,
-        "import pytest\n@pytest.fixture\ndef planted(tmp_path):\n"
-        "    (tmp_path / 'l').symlink_to(tmp_path)\n    return tmp_path\n",
-    ),
-    "helper-function": (
-        _TEST_FILE,
-        "def plant_a_symlink(tmp_path):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
-    ),
-    "module-scope": (_TEST_FILE, "from pathlib import Path\nPath('l').symlink_to(Path('.'))\n"),
-    "nested-helper": (
-        _TEST_FILE,
-        "def test_x(tmp_path):\n    def inner():\n        (tmp_path / 'l').symlink_to(tmp_path)\n"
-        "    inner()\n",
-    ),
-    # T260-R1's surviving case, verbatim: the helper takes a parameter *named* `symlinks`, and an
-    # unguarded test calls it with None. pytest never resolved anything.
-    "helper-named-parameter": (
-        _TEST_FILE,
-        "def plant(path, symlinks):\n    path.symlink_to(path)\n\n"
-        "def test_x(tmp_path):\n    plant(tmp_path, None)\n",
-    ),
-    "helper-defaulted-parameter": (
-        _TEST_FILE,
-        "def plant(path, symlinks=None):\n    path.symlink_to(path)\n\n"
-        "def test_x(tmp_path):\n    plant(tmp_path)\n",
-    ),
-    # Decorators and defaults run at import, before any fixture resolves.
+    "async-test": "async def test_x(tmp_path):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
+    "module-scope": "from pathlib import Path\nPath('l').symlink_to(Path('.'))\n",
     "decorator-expression": (
-        _TEST_FILE,
         "import pytest\nfrom pathlib import Path\n"
         "@pytest.mark.parametrize('x', [Path('l').symlink_to(Path('.'))])\n"
-        "def test_x(x, symlinks):\n    pass\n",
+        "def test_x(x):\n    pass\n"
     ),
     "parameter-default": (
-        _TEST_FILE,
-        "from pathlib import Path\n"
-        "def test_x(symlinks, planted=Path('l').symlink_to(Path('.'))):\n    pass\n",
+        "from pathlib import Path\ndef test_x(planted=Path('l').symlink_to(Path('.'))):\n    pass\n"
     ),
-    # `T260-R1`, third pass: pytest never collects an uncollected module, so its `test_`-named
-    # function's parameters are whatever its caller passed.
-    "test-named-function-in-a-helper-module": (
-        _HELPER_FILE,
-        "def test_x(tmp_path, symlinks):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
-    ),
-    # A decorator merely *named* `fixture` is not pytest's.
-    "home-grown-fixture-decorator": (
-        _CONFTEST,
-        "def fixture(fn):\n    return fn\n\n@fixture\ndef planted(tmp_path, symlinks):\n"
-        "    (tmp_path / 'l').symlink_to(tmp_path)\n",
-    ),
-    # Grammar the previous statement-shape walker never descended into.
-    "inside-an-except-handler": (
-        _TEST_FILE,
+    "except-handler": (
         "def test_x(tmp_path):\n    try:\n        pass\n    except ValueError:\n"
-        "        (tmp_path / 'l').symlink_to(tmp_path)\n",
+        "        (tmp_path / 'l').symlink_to(tmp_path)\n"
     ),
-    "inside-a-match-case": (
-        _TEST_FILE,
+    "match-arm": (
         "def test_x(tmp_path, kind):\n    match kind:\n        case 'link':\n"
-        "            (tmp_path / 'l').symlink_to(tmp_path)\n",
+        "            (tmp_path / 'l').symlink_to(tmp_path)\n"
     ),
-    "inside-a-with-in-an-else": (
-        _TEST_FILE,
-        "import contextlib\ndef test_x(tmp_path):\n    if False:\n        pass\n    else:\n"
-        "        with contextlib.suppress(OSError):\n"
-        "            (tmp_path / 'l').symlink_to(tmp_path)\n",
+    "class-base-expression": (
+        "from pathlib import Path\ndef base(x):\n    return object\n"
+        "class Probe(base(Path('l').symlink_to(Path('.')))):\n    pass\n"
     ),
-}
-
-_GUARDED: Final = {
-    "sync-test": (
-        _TEST_FILE,
-        "def test_x(tmp_path, symlinks):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
+    # The survivors, one per review round. All flagged now, because context is irrelevant.
+    "round-2-helper-named-parameter": (
+        "def plant(path, symlinks):\n    path.symlink_to(path)\n\n"
+        "def test_x(tmp_path):\n    plant(tmp_path, None)\n"
     ),
-    "async-test": (
-        _TEST_FILE,
-        "async def test_x(tmp_path, symlinks):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
+    "round-3-uncollected-test-function": (
+        "def test_x(tmp_path, symlinks):\n    (tmp_path / 'l').symlink_to(tmp_path)\n"
     ),
-    "fixture-requesting-it": (
-        _CONFTEST,
+    "round-3-home-grown-fixture": (
+        "def fixture(fn):\n    return fn\n\n@fixture\ndef planted(tmp_path, symlinks):\n"
+        "    (tmp_path / 'l').symlink_to(tmp_path)\n"
+    ),
+    "round-4-nested-test-function": (
+        "def outer(tmp_path):\n    def test_inner(path, symlinks):\n"
+        "        path.symlink_to(path)\n    return test_inner\n\n"
+        "def test_x(tmp_path):\n    outer(tmp_path)(tmp_path, None)\n"
+    ),
+    "round-4-hookimpl": (
+        "from pytest import hookimpl\n@hookimpl\ndef planted(tmp_path, symlinks):\n"
+        "    (tmp_path / 'l').symlink_to(tmp_path)\n"
+    ),
+    # Even a genuine, correctly-guarded pytest fixture may not create one raw any more.
+    "genuine-fixture-creating-raw": (
         "import pytest\n@pytest.fixture\ndef planted(tmp_path, symlinks):\n"
-        "    (tmp_path / 'l').symlink_to(tmp_path)\n    return tmp_path\n",
+        "    (tmp_path / 'l').symlink_to(tmp_path)\n"
     ),
-    "fixture-imported-directly": (
-        _CONFTEST,
-        "from pytest import fixture\n@fixture\ndef planted(tmp_path, symlinks):\n"
-        "    (tmp_path / 'l').symlink_to(tmp_path)\n",
+}
+
+_SANCTIONED: Final = {
+    "test-via-capability": (
+        "def test_x(tmp_path, symlinks):\n    symlinks.create(tmp_path / 'l', tmp_path)\n"
     ),
-    "fixture-with-arguments": (
-        _CONFTEST,
-        "import pytest\n@pytest.fixture(scope='function')\ndef planted(tmp_path, symlinks):\n"
-        "    (tmp_path / 'l').symlink_to(tmp_path)\n",
+    "helper-passed-the-capability": (
+        "def plant(tmp_path, symlinks):\n    symlinks.create(tmp_path / 'l', tmp_path)\n\n"
+        "def test_x(tmp_path, symlinks):\n    plant(tmp_path, symlinks)\n"
     ),
-    "keyword-only": (
-        _TEST_FILE,
-        "def test_x(tmp_path, *, symlinks):\n    (tmp_path / 'l').symlink_to(tmp_path)\n",
-    ),
-    "closure-inside-a-guarded-test": (
-        _TEST_FILE,
+    "closure-using-the-capability": (
         "def test_x(tmp_path, symlinks):\n    def plant():\n"
-        "        (tmp_path / 'l').symlink_to(tmp_path)\n    plant()\n",
+        "        symlinks.create(tmp_path / 'l', tmp_path)\n    plant()\n"
     ),
-    "guarded-inside-an-except-handler": (
-        _TEST_FILE,
-        "def test_x(tmp_path, symlinks):\n    try:\n        pass\n    except ValueError:\n"
-        "        (tmp_path / 'l').symlink_to(tmp_path)\n",
+    "annotation-only": (
+        "from tests.capabilities import SymlinkCapability\n"
+        "def plant(tmp_path, symlinks: SymlinkCapability):\n"
+        "    symlinks.create(tmp_path / 'l', tmp_path)\n"
     ),
 }
 
 
-@pytest.mark.parametrize("spelling", sorted(_UNGUARDED), ids=sorted(_UNGUARDED))
-def test_the_detector_catches_every_unguarded_spelling(spelling: str) -> None:
-    """The mutations, run rather than described.
-
-    **`T260-R1` found four of these undiscovered by the first version**: a `conftest.py` fixture, a
-    helper in an ordinary module, `async def`, and `from os import symlink`. Each is a real route to
-    the bare `WinError 1314` the task exists to remove, so each is a case here.
-    """
-    path, source = _UNGUARDED[spelling]
-    assert _unguarded(path, source), (
-        f"the detector does not see {spelling}, so the gate would pass while this spelling ships"
+@pytest.mark.parametrize("spelling", sorted(_RAW), ids=sorted(_RAW))
+def test_every_raw_spelling_is_flagged(spelling: str) -> None:
+    """The mutations of four review rounds, kept as the definition of what banned means."""
+    assert _raw_faults(Path("probe.py"), _RAW[spelling]), (
+        f"the ban does not see {spelling}, so that spelling would ship"
     )
 
 
-@pytest.mark.parametrize("spelling", sorted(_GUARDED), ids=sorted(_GUARDED))
-def test_the_detector_accepts_a_guarded_site(spelling: str) -> None:
-    """The other direction, so the gate cannot pass by calling everything unguarded."""
-    path, source = _GUARDED[spelling]
-    assert not _unguarded(path, source)
+@pytest.mark.parametrize("spelling", sorted(_SANCTIONED), ids=sorted(_SANCTIONED))
+def test_the_sanctioned_route_is_not_flagged(spelling: str) -> None:
+    source = _SANCTIONED[spelling]
+    assert not _raw_faults(Path("probe.py"), source)
+    assert not _construction_faults(Path("probe.py"), source)
+
+
+def test_forging_the_capability_with_none_fails_loudly_on_every_platform() -> None:
+    """The runtime property that dissolved the propagation question.
+
+    Under the old design, a helper taking a parameter named `symlinks` could be called with `None`
+    and reach raw creation — failing only on an unprivileged Windows machine, as a bare
+    `[WinError 1314]`. Under this design the same forgery breaks immediately, everywhere, with a
+    name in the message.
+    """
+
+    def plant(link: Path, symlinks: SymlinkCapability) -> None:
+        symlinks.create(link, link)
+
+    with pytest.raises(AttributeError, match="create"):
+        plant(Path("never-created"), None)  # type: ignore[arg-type]
+
+
+def test_the_construction_ban_sees_both_spellings() -> None:
+    flagged = _construction_faults(
+        Path("probe.py"),
+        "from tests.capabilities import SymlinkCapability\ncap = SymlinkCapability()\n",
+    )
+    assert flagged, "direct construction was not flagged"
+    flagged = _construction_faults(
+        Path("probe.py"),
+        "import tests.capabilities as cap\nc = cap.SymlinkCapability()\n",
+    )
+    assert flagged, "attribute-form construction was not flagged"
