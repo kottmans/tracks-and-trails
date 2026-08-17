@@ -124,10 +124,15 @@ this one returned four verdicts before approving.*
 
 ### T-256 — Rule the fifteen options no decision covers
 
-**Status:** **In Review — the ruling is taken, 2026-08-16: `SEC-004`, all fifteen forbidden.**
-Filed the same day by `T-183`'s fifth criterion and answered the same day. The audit is
-reclassified — `unruled` is empty, `excluded` is 23, the refusal list is **79** — and two new tests
-stop the audit's own summary drifting from its tables. **`T-184` is unblocked.**
+**Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
+forbidden.** Filed the same day by `T-183`'s fifth criterion and answered the same day: the audit
+is reclassified, `excluded` is 23, the refusal list is **89** across five classes, and the gate
+derives both verdict sides from the decisions.
+
+**`T-184` is still blocked, and this entry is why.** `T183-R3` found a **sixteenth** option the
+audit had missed, so `unruled` is 1 rather than 0 — and three `SEC-003` corrections remain
+unanswered. *(This status previously said `unruled` is empty and `T-184` is unblocked, in the
+paragraph immediately above the one recording the sixteenth option. The re-review found it.)*
 
 > **`T183-R3` added a sixteenth option, and it is the first thing this entry now owes.**
 > `--legacy-server-connect` enables `SSL_OP_LEGACY_SERVER_CONNECT` and a compatibility cipher
@@ -383,15 +388,18 @@ defects rather than classification opinions**, and all five are addressed:
 | Finding | What it was | State |
 |---|---|---|
 | `T183-R1` | **Critical.** Refusing `--xff` never enforced `REQ-EXCL-002`: `get_param('geo_bypass', True)` meant the fake-XFF retry was **on for every user who typed nothing**. Finding 4 also called `--no-geo-bypass` "the same" when it normalizes to the *safe* value | **Fixed.** `build_options` sets `geo_bypass=False`; two tests, both failing on the missing key *and* on the plausible-wrong `'never'` |
-| `T183-R2` | **High.** Twelve `hatch` rows the application owns — their own reasons said so. `-i/--ignore-errors` could reach `Succeeded` after a post-processing failure, because the worker never reads yt-dlp's return code | **Fixed.** New refused class `app:policy`, 12 rows |
+| `T183-R2` | **High.** `hatch` rows the application owns — their own reasons said so. `-i/--ignore-errors` could reach `Succeeded` after a post-processing failure, because the worker never reads yt-dlp's return code | **Fixed.** New refused class `app:policy`, **10 rows**. The re-review returned `--wait-for-video` to `hatch`: yt-dlp waits inside `extract_info` and returns the ordinary outcome, so a missing state was not evidence of ownership |
 | `T183-R3` | **Critical.** `--legacy-server-connect` is a sixteenth TLS downgrade the audit missed, so `SEC-004` never ruled on it | **Fixed.** Returned to `unruled` and added to `T-256`; **not** inferred into `SEC-004` |
-| `T183-R4` | **Medium.** The gate claimed derivations it never did. Proved by moving `--no-check-certificates` to `hatch`, recounting, and passing all 14 tests | **Fixed.** Forbidden options now read from the decisions; the 44-row partition read from `T-247`…`T-255`; both fail on that mutation. The `typed`/`hatch` line is relabelled judgement |
+| `T183-R4` | **Medium.** The gate claimed derivations it never did | **Fixed at the second attempt.** The first pass still let three mutations through — `SEC-003`'s `--exec` to `hatch`, permitted `--netrc` to `excluded`, and a built-for-unbuilt task swap. Both verdict sides are parsed now, and `built` is a table naming real `DownloadRequest` fields rather than *whatever the tasks did not claim*. All three fail |
 | `T183-R5` | **Low.** Post-`SEC-004` counts and current-truth prose | **Fixed**, recounted rather than patched |
 
-**Counts after correction: 250 rows — `typed` 65, `hatch` 93, refused 91, `unruled` 1.**
+**Counts after correction: 250 rows — `typed` 65, `hatch` 95, `app:policy` 10, refused 89, `unruled` 1.**
 
-**The two product defects are the part worth carrying.** Both came from the same wrong instinct:
-that classifying an option *is* controlling it. An exclusion whose behaviour is on by default is
+**The two product defects are the part worth carrying, and the correction had a third failure of
+its own shape.** The defects came from one wrong instinct — that classifying an option *is*
+controlling it. The correction then fixed the audit and **left `T-184` carrying the design the
+review had just rejected**, which is the same error one document downstream: a specification is not
+corrected until the thing that reads it is. An exclusion whose behaviour is on by default is
 not enforced by refusing its flag, and an option the application's model cannot represent is not
 made safe by being listed as expert-only.
 
@@ -7854,25 +7862,37 @@ descend from, and `T-183` is what turns them into the rest of the phase.)*
 
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
 
-**Status:** Proposed — filed 2026-08-07 with the phase. **Both of its blockers are cleared.**
-`T-183` delivered the application-owned list on 2026-08-16 and, with it, fifteen options no
-decision covered; **`SEC-004` ruled all fifteen forbidden the same day**, so the refusal list is
-known: the audit's `app:sets` + `app:contained` + `app:plumbing` + `excluded` classes, **79
-documented options**. Nothing in this phase starts before Phase 4 exits.
+**Status:** Proposed — filed 2026-08-07 with the phase. **Blocked on `T-256`**, which now owns a
+**sixteenth** unruled option (`--legacy-server-connect`, `T183-R3`) as well as the three `SEC-003`
+corrections. `T-183` delivered the classification and `SEC-004` ruled the original fifteen
+forbidden, so the refusal list is the audit's `app:sets` + `app:contained` + `app:plumbing` +
+**`app:policy`** + `excluded` classes — **89 documented options** — but a refusal list cannot be
+final while any option is unruled. Nothing in this phase starts before Phase 4 exits.
+
+*(**This entry said "both blockers are cleared", "nothing outstanding" and "79 documented options",
+and required a destination-keyed refusal, after `T183-R1`…`R5` had changed all four.** The
+re-review found it: correcting the audit and leaving the task that consumes it is how an
+implementer follows a specification the audit no longer holds — and it would have refused a safe
+normalized value as though it were the `SEC-003` bypass.)*
 **Owner:** Implementer
 **Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
 **Phase:** Phase 4.5
-**Depends on:** nothing outstanding. `T-183` delivered the classification and **`SEC-004`** ruled the fifteen it refused to classify — the refusal list is **79 documented options**, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
+**Depends on:** **`T-256`** — sixteen unruled options and three `SEC-003` corrections. `T-183` delivered the classification and `SEC-004` ruled the original fifteen; the refusal list is **89 documented options** across five refused classes, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
 
 > **Four of `T-183`'s findings land here, and the first changes the design.**
 >
-> - **Finding 4 — the refusal list keys on `dest`, not on option strings.** yt-dlp maps several
->   strings onto one `dest`, and four suppressed spellings of `geo_bypass` — `--geo-bypass`,
->   `--no-geo-bypass`, `--geo-bypass-country`, `--geo-bypass-ip-block` — reach the parameter
->   `SEC-003` forbids under the name `--xff`. A list of strings would have enforced `REQ-EXCL-002`
->   against one spelling in five. `--all-formats` reaches `format` and `--no-colors` reaches
->   `color` the same way. **The refusal still names the string the user typed**, because that is
->   where it is stated; it is only *keyed* on the `dest`.
+>
+> - **Finding 4 — the refusal list keys on the normalized value `parse_options` produces**, not on
+>   the option string and **not on the `dest`**. Three suppressed spellings — `--geo-bypass`,
+>   `--geo-bypass-country`, `--geo-bypass-ip-block` — reach the value `SEC-003` forbids under the
+>   name `--xff`, so a list of strings enforces `REQ-EXCL-002` against one spelling in four. **But
+>   `--no-geo-bypass` shares that same `dest` and normalizes to the value that *disables* the
+>   bypass**, so keying on `dest` refuses a safe input. Run the candidate through `parse_options`
+>   and refuse on what comes out. The refusal still names the string the user typed, because that
+>   is where it is stated.
+>
+>   *(This bullet required destination-keying until `T183-R1`'s re-review. It was the audit's
+>   original conclusion and it was wrong in the direction that looks safe.)*
 > - **Finding 4, second half — decide the whole parser, not the documented part.** 36 suppressed
 >   options have a `dest` no documented option has, so keying on `dest` does not reach them either.
 >   Two are the forbidden family outright (`--exec-before-download`, `--no-exec-before-download`).
@@ -7924,8 +7944,17 @@ under a stated precedence.
 - The migration adding the field round-trips an existing queue, and an old row without it loads
 - `requires_ffmpeg` still answers correctly for a post-processor the hatch installed
 - Both mypy platforms, `ruff`, the model, adapter, persistence and UI tests are clean
-- **The refusal list is keyed on `dest`**, and a test asserts that `--geo-bypass` is refused for the
-  same reason `--xff` is — it fails if the list is rebuilt on option strings (Finding 4)
+- **The refusal list is keyed on the value `parse_options` produces**, and a test asserts that
+  `--geo-bypass` is refused for the same reason `--xff` is **while `--no-geo-bypass` is not refused
+  as a bypass** — it fails if the list is rebuilt on option strings *or* on destinations (Finding 4,
+  as corrected by `T183-R1`)
+- **All five refused classes are enforced**, `app:policy` included. It is 10 rows the application
+  owns by behaviour rather than by setting a key, and a refusal list built from the other four
+  omits every one of them
+- **`--break-on-existing` and `--break-per-input` are measured, not assumed inert.** At the pin
+  `_match_entry` can raise on the current item and this worker calls `extract_info` directly rather
+  than through `YoutubeDL.download`, so the option can turn the current job into a failure. Keep
+  them hatch-reachable only if that effect is visible to the user
 - **Every option the parser accepts is dispositioned, suppressed ones included.** A test walks
   `create_parser()` and fails on an option that is neither refused, nor typed, nor hatch-reachable
   — the documented 250 are not the parser's whole surface

@@ -809,13 +809,13 @@ with their help suppressed. Classified:
 | | |
 |---|---|
 | **65** get a typed control | **21 already have one**; the other **44** are nine tasks, `T-247`…`T-255` |
-| **93** are escape-hatch only | `T-184` |
-| **91** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004` forbid them |
-| **1** is unclassified | `--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`). The original fifteen were ruled **forbidden** by `SEC-004`; this one is `T-256`'s |
+| **95** are escape-hatch only | `T-184` |
+| **89** are refused | the application owns them (`app:sets`, `app:plumbing`, `app:policy`, `app:contained`), or `SEC-003`/`SEC-004` forbid them |
+| **1** is unclassified | `--legacy-server-connect`, a transport-security downgrade the audit first missed (`T183-R3`). The original fifteen were ruled **forbidden** by `SEC-004`; this one is `T-256`'s, and **`T-184` is blocked until it is ruled** |
 
 **This phase is nine typed-field tasks, the hatch, and one ruling** — not "the rest of yt-dlp".
 `REQ-030` excludes the options that *are* the command line, and the audit found those to be 36 of
-the 91 refused.
+the 89 refused.
 
 ### Deliverables
 
@@ -824,7 +824,7 @@ the 91 refused.
 | ~~**The `REQ-EXCL` ruling**~~ — **taken 2026-08-07 as `SEC-003`**: `--netrc` and client certs in, `-u`/`-p` out; `--impersonate` and `--xff` out; `--geo-verification-proxy` in; `--exec` out; `--download-archive` in as a user-named file; SponsorBlock in, opt-in, with `NFR-007` amended | `T-182` | **Complete.** It blocked the phase and no longer does. It also corrected `ARC-010` §3, which claimed containment reaches `--exec` |
 | ~~**The option audit**~~ — **written 2026-08-16**, `docs/YTDLP_OPTION_AUDIT.md`: 250 options, each in exactly one class, against a named yt-dlp version, with the application-owned class derived from `build_options` and drift-checked by `tests/unit/test_option_audit.py` | `T-183` | **In review.** It returned seven findings, four of which change how `T-184` must be built |
 | ~~**The fifteen unclassified options, ruled**~~ — **done 2026-08-16, `SEC-004`: all fifteen forbidden.** Code execution, a runtime-fetched component, TLS validation and three credentials, none covered by `SEC-003` | `T-256` | **In review.** Three proposed corrections to `SEC-003` itself are **still unruled** and block nothing |
-| **The escape hatch** (`REQ-031`): parsing, validation, containment, redaction, refusal list, precedence against typed fields | `T-184` | **High** — it is a new route to `T-034`'s containment boundary and `DAT-003`/`DAT-004`'s redaction boundary. Both are Critical-band if breached. **The refusal list keys on `dest`, not on option strings** — audit Finding 4 |
+| **The escape hatch** (`REQ-031`): parsing, validation, containment, redaction, refusal list, precedence against typed fields | `T-184` | **High** — it is a new route to `T-034`'s containment boundary and `DAT-003`/`DAT-004`'s redaction boundary. Both are Critical-band if breached. **The refusal list keys on the value `parse_options` produces** — not on option strings and not on `dest`, since `--no-geo-bypass` shares the forbidden destination and normalizes to the safe value (audit Finding 4, as corrected by `T183-R1`) |
 | **Typed fields, nine tasks over 44 options**: `T-247` selection · `T-248` filenames · `T-249` sidecar writers · `T-250` format depth · `T-251` subtitle depth · `T-252` download tuning · `T-253` reachability · `T-254` SponsorBlock · `T-255` extractor arguments | `T-247`…`T-255` | Medium — breadth, and `NFR-008`'s churn lands on every one of them. Each is independent of the others and of the hatch |
 | Promotion of the options users actually type into the hatch | from `T-184` | Low — but it is what stops the hatch becoming the interface |
 

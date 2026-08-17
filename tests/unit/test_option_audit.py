@@ -361,78 +361,150 @@ def _class_of() -> dict[str, str]:
     return {s: cls for strings, cls, _ in ROWS for s in strings}
 
 
-def test_every_option_sec_004_forbids_is_excluded_in_the_audit() -> None:
-    """The security disposition, derived from the decision rather than from the audit's own totals.
+def _ruled_options() -> tuple[set[str], set[str]]:
+    """Every option `SEC-003`/`SEC-004` forbids, and every one they permit — read from the tables.
 
-    `SEC-004`'s decision table is one row per family and every option in it is forbidden, so it is
-    an authoritative input this test can read. **This is the check that fails on the reviewer's
-    mutation** — moving any of the fifteen out of `excluded` breaks it however carefully the
-    counts are re-derived.
+    **Both sides, because only reading the forbidden side is half a gate** (`T183-R4`): a mutation
+    moving `SEC-003`-permitted `--netrc` *into* `excluded` passed, since the old check accepted any
+    mention of an option in a decision — including a sentence permitting it — as authority to
+    exclude it.
+
+    `SEC-003`'s verdict column mixes both in one cell (*"`--xff` forbidden;
+    `--geo-verification-proxy` permitted"*), so each cell is split into clauses and each clause is
+    read for its own verdict.
     """
-    body = _decision("SEC-004")
-    header = body.index("| Family | Options | Why |")
-    table = body[header : body.index("\n\n", header)]
-    entries = [
-        entry
-        for line in table.split("\n")[2:]
-        for entry in _OPTION.findall(line.strip().strip("|").split("|")[1])
-    ]
-    assert len(entries) == 15, f"SEC-004's table names {len(entries)} options, expected 15"
+    forbidden: set[str] = set()
+    permitted: set[str] = set()
+    for name, header in (
+        ("SEC-003", "| Family | Ruled |"),
+        ("SEC-004", "| Family | Options | Why |"),
+    ):
+        body = _decision(name)
+        start_of = body.index(header)
+        table = body[start_of : body.index("\n\n", start_of)]
+        for line in table.split("\n")[2:]:
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+            family, verdict = cells[0], cells[1]
+            if name == "SEC-004":
+                # Every option in SEC-004's table is forbidden; the third column is reasoning.
+                forbidden |= {s for e in _OPTION.findall(verdict) for s in e.split("/")}
+                continue
+            for clause in re.split(r"[.;]", verdict):
+                named = {s for e in _OPTION.findall(clause) for s in e.split("/")}
+                if not named:
+                    named = {s for e in _OPTION.findall(family) for s in e.split("/")}
+                if "forbidden" in clause.lower():
+                    forbidden |= named
+                elif "permitted" in clause.lower():
+                    permitted |= named
+    assert not forbidden & permitted, (
+        f"a decision both forbids and permits: {forbidden & permitted}"
+    )
+    return forbidden, permitted
 
+
+#: Counterpart spellings refused alongside an option a decision names, listed one by one.
+#:
+#: `T183-R4` rejected a general "same `dest`" rule as authority: destination equality can widen a
+#: refusal conservatively, but doing it by rule is a policy choice made silently. So the choices are
+#: enumerated instead — short enough to read, and each one visible to a reviewer.
+_REFUSED_COUNTERPARTS: Final = {"--no-exec": "--exec"}
+
+#: Options a decision refuses in its **prose** rather than in its verdict table, quoted so the
+#: reader can check the citation without opening the decision.
+#:
+#: **Enumerated rather than parsed, deliberately.** `SEC-003`'s *Alternatives considered* contains
+#: sentences like *"Forbidding `--geo-verification-proxy` with `--xff`. Rejected"* — a rejected
+#: *refusal*, which means the option is permitted. Any rule that scanned for "rejected" or
+#: "declined" near an option name would read that backwards.
+_REFUSED_IN_PROSE: Final = {
+    "--sponsorblock-api": ("SEC-003", "A self-hosted `--sponsorblock-api` was declined"),
+}
+
+
+def test_every_option_a_decision_forbids_is_excluded_in_the_audit() -> None:
+    """The security disposition, derived from both decisions rather than the audit's own totals.
+
+    Fails on `T183-R4`'s mutations: moving `SEC-004`'s `--no-check-certificates` or `SEC-003`'s
+    `--exec` out of `excluded` breaks it however carefully the counts are re-derived.
+    """
+    forbidden, _ = _ruled_options()
     class_of = _class_of()
-    # An entry may carry two spellings of one option (`-2/--twofactor`), which the audit lists as
-    # one row; either spelling being excluded satisfies the entry.
+    # A decision may name an option the documented surface does not carry (`--exec-before-download`
+    # is suppressed); those are `T-184`'s to refuse and cannot be asserted against these rows.
     wrong = {
-        entry: [class_of.get(s, "<not classified>") for s in entry.split("/")]
-        for entry in entries
-        if not any(class_of.get(s) == "excluded" for s in entry.split("/"))
+        option: class_of[option]
+        for option in forbidden
+        if option in class_of and class_of[option] != "excluded"
     }
-    assert not wrong, f"SEC-004 forbids these and the audit does not exclude them: {wrong}"
+    assert not wrong, f"a decision forbids these and the audit does not exclude them: {wrong}"
+
+
+def test_no_option_a_decision_permits_is_excluded() -> None:
+    """The other side of the same gate (`T183-R4`).
+
+    `SEC-003` permits `--netrc`, `--netrc-location`, the client certificates,
+    `--geo-verification-proxy` and `--download-archive`. Excluding one of them would be the audit
+    overruling a decision, which is the failure `T-183`'s own Finding 3 exists to avoid committing.
+    """
+    _, permitted = _ruled_options()
+    class_of = _class_of()
+    wrong = {o: class_of[o] for o in permitted if class_of.get(o) == "excluded"}
+    assert not wrong, f"a decision permits these and the audit excludes them: {wrong}"
 
 
 def test_every_excluded_row_is_named_by_the_decision_it_cites() -> None:
-    """No option is excluded on the audit's own say-so.
-
-    Each `excluded` row's reason names `SEC-003` or `SEC-004`; this asserts the cited decision
-    actually mentions the option. A row that cites a decision which never heard of it is the
-    audit inventing an exclusion, which is what `T-183`'s fifth criterion exists to prevent.
-    """
-    bodies = {name: _decision(name) for name in ("SEC-003", "SEC-004")}
-    dest_of = {s: option["dest"] for option in DOCUMENTED for s in option["strings"]}
-    #: Every spelling that reaches the same parameter as a spelling the decision names. `--no-exec`
-    #: is the case: `SEC-003` names `--exec`, and both carry `exec_cmd`, so the counterpart is
-    #: covered by the decision's own subject rather than by an inference about its intent. This is
-    #: `T183-R1`'s lesson used the safe way round — a `dest` match *widens* a refusal, never
-    #: narrows one.
-    siblings = {
-        name: {
-            s
-            for s, dest in dest_of.items()
-            if dest in {dest_of.get(n) for n in _OPTION.findall(body)}
-        }
-        for name, body in bodies.items()
-    }
+    """No option is excluded on the audit's own say-so, and no rule quietly widens a refusal."""
+    forbidden, _ = _ruled_options()
     unsupported: dict[str, str] = {}
-    for strings, cls, reason in ROWS:
+    for strings, cls, _reason in ROWS:
         if cls != "excluded":
             continue
-        cited = [name for name in bodies if name in reason]
-        if not cited:
-            unsupported[strings[0]] = "cites no decision"
+        if set(strings) & forbidden:
             continue
-        named = any(any(s in bodies[name] for s in strings) for name in cited)
-        same_parameter = any(any(s in siblings[name] for s in strings) for name in cited)
-        if not (named or same_parameter):
-            unsupported[strings[0]] = f"cited {cited} names neither it nor its parameter"
+        counterpart = next((s for s in strings if s in _REFUSED_COUNTERPARTS), None)
+        if counterpart and _REFUSED_COUNTERPARTS[counterpart] in forbidden:
+            continue
+        prose = next((s for s in strings if s in _REFUSED_IN_PROSE), None)
+        if prose:
+            decision, quote = _REFUSED_IN_PROSE[prose]
+            assert quote in _decision(decision), (
+                f"{prose} is excluded on a quotation {decision} no longer contains: {quote!r}"
+            )
+            continue
+        unsupported[strings[0]] = "no decision forbids it, and it is not a listed counterpart"
     assert not unsupported, f"excluded without a decision behind it: {unsupported}"
 
 
-def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None:
-    """`T-247`…`T-255` cover the unbuilt typed class exactly once (`T-183` criterion 3).
+def _built_table() -> dict[str, str]:
+    """The typed options that already have a `DownloadRequest` field, read from the audit."""
+    text = AUDIT.read_text(encoding="utf-8")
+    header = text.index("| Option | `DownloadRequest` field |")
+    table = text[header : text.index("\n\n", header)]
+    return {
+        m.group(1): m.group(2)
+        for line in table.split("\n")[2:]
+        if (m := re.match(r"^\| `([^`]+)` \| `([^`]+)` \|$", line.strip()))
+    }
 
-    The audit and the task entries both claimed this was asserted and it was not. Read from
-    `ai/TASKS.md`, so a task that quietly grows or drops an option fails here rather than drifting.
+
+def test_the_already_built_options_name_fields_the_model_really_has() -> None:
+    """`built` is a claim about the code, so it is checked against the code (`T183-R4`).
+
+    The partition previously defined `built` as *whatever the nine tasks did not claim*, which is
+    circular: swapping an unbuilt option for an already-built one left the counts intact and passed.
     """
+    built = _built_table()
+    assert built, "the audit states no already-built table"
+    fields = {f.name for f in dataclasses.fields(DownloadRequest)}
+    missing = {option: field for option, field in built.items() if field not in fields}
+    assert not missing, f"named a DownloadRequest field that does not exist: {missing}"
+
+
+def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None:
+    """`T-247`…`T-255` plus the built table cover the typed class exactly once (criterion 3)."""
     text = TASKS.read_text(encoding="utf-8")
     assigned: list[str] = []
     for task in [f"T-{n}" for n in range(247, 256)]:
@@ -455,18 +527,21 @@ def test_the_typed_tasks_partition_the_typed_options_with_no_field_yet() -> None
     }
     assert not not_typed, f"assigned to a typed-field task and not classified typed: {not_typed}"
 
-    # Rows, not strings: a row may read `-I` `--playlist-items` and a task names either spelling.
+    built = set(_built_table())
+    overlap = sorted(built & set(assigned))
+    assert not overlap, (
+        f"claimed by a typed-field task and already built: {overlap}. Building it twice is the "
+        f"swap T183-R4 found — the counts stay right and the work is wrong."
+    )
+
+    # Rows, not spellings: a row may read `-x` `--extract-audio` and either side may be named.
     typed_rows = [strings for strings, cls, _ in ROWS if cls == "typed"]
+    unaccounted = [r for r in typed_rows if not (set(r) & set(assigned)) and not (set(r) & built)]
+    assert not unaccounted, (
+        f"typed rows that no task claims and the built table does not list: {unaccounted}"
+    )
     claimed = [r for r in typed_rows if set(r) & set(assigned)]
-    built = len(typed_rows) - len(claimed)
-    assert len(claimed) == 44, (
-        f"the nine tasks name options covering {len(claimed)} typed rows, and the audit says 44"
-    )
-    assert built == 21, (
-        f"{built} typed rows have no task, and the audit says 21 already have a field. The nine "
-        f"tasks and the built set must partition the typed class."
-    )
-    flat = " ".join(AUDIT.read_text("utf-8").split())
-    assert f"| — | {built} |" in flat, (
-        f"the audit's decomposition table does not state {built} already-built rows"
+    assert len(claimed) == 44, f"the nine tasks cover {len(claimed)} typed rows, the audit says 44"
+    assert len(typed_rows) - len(claimed) == 21, (
+        f"{len(typed_rows) - len(claimed)} typed rows are already built, and the audit says 21"
     )

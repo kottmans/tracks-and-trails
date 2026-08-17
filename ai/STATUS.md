@@ -43,7 +43,18 @@ were product defects rather than paperwork.** The corrections are in:
    mutation. The `typed`/`hatch` line is relabelled as judgement rather than sheltering under the
    machinery beside it.
 
-**Counts after the corrections: 250 rows — `typed` 65, `hatch` 93, refused 91, `unruled` 1.**
+**A focused re-review on 2026-08-17 (`edd3800`) returned Changes requested again, and it was right
+three times about the gate.** Only `SEC-004`'s prohibitions were derived, so `SEC-003`-forbidden
+`--exec` could move to `hatch`; a decision *permitting* an option counted as authority to exclude
+it, so `--netrc` could move to `excluded`; and `built` was defined as whatever the nine tasks did
+not claim, so an unbuilt option could be swapped for a built one with every count intact. **All
+three mutations now fail.** It also found that the corrections had not reached `T-184`, which still
+carried the rejected destination-keyed design and the old 79-row list — correcting an audit and
+leaving the task that consumes it is how an implementer follows a specification that no longer
+holds. And `--wait-for-video` went back to `hatch`: yt-dlp waits inside `extract_info` and returns
+the ordinary outcome, so "no dedicated waiting state" was not evidence of ownership.
+
+**Counts now: 250 rows — `typed` 65, `hatch` 95, `app:policy` 10, refused 89, `unruled` 1.**
 
 **`T-238`'s criterion 4 has a measurement behind it for the first time, and it argues against the
 harness reading.** The fault's one precondition — a `QWidget` whose last Python reference is

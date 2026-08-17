@@ -1563,8 +1563,11 @@ def test_the_geo_value_is_the_one_that_actually_disables_it() -> None:
     so the string never reaches the library. Passing `'never'` here would be truthy and would
     enable exactly what it appears to disable — a fix that reads correct and is not.
 
-    This asserts against yt-dlp's real reader rather than against our own dict, so it fails if
-    upstream changes how the parameter is consumed (`NFR-008`).
+    **This reads the application's own options dictionary, not yt-dlp's reader** — the claim that
+    it exercised the library was an overstatement the `T-183` re-review caught. What it does catch
+    is the two regressions that matter: the key going missing, and the truthy `'never'` spelling.
+    Upstream drift is covered instead by the audit's pin check, which fails if the recorded yt-dlp
+    version stops matching the installed one (`NFR-008`).
     """
     options = adapter.build_options(request_for(), "o.%(ext)s")
 
