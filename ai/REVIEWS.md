@@ -18426,3 +18426,51 @@ in one correction and request the ordinary focused re-review. The Reviewer chang
 `ai/REVIEWS.md`; the in-flight `ai/TASKS.md`, `ai/STATUS.md`, `ai/TESTING.md`, `process_tree.py`
 and `test_process_tree.py` edits already present in the worktree were preserved and excluded. No
 reviewed workflow, source, test, task, status, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-262 authorized second focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-262
+**Previously reviewed head:** `b6a6d2062c08480f5cdb2f641d7044ece2710480`
+**Correction:** `8ee106b3db8cde83823d19cde17a2f08fa2eb6fd` — the only implementation
+commit reviewed; the intervening T-257/T-259 record and T-258 correction are outside this boundary
+**Platforms verified:** Static workflow/current-truth review on Linux; no workflow was dispatched
+and no repository setting was queried or changed
+**Verdict:** **Approved with follow-ups.** The authorized correction resolves the internally
+contradictory runner claim and the stale history count. Its two sibling wording fixes belong to
+the same defect-class audit. The remaining inventory defects do not change which machines run the
+jobs or reopen the fork-code path, so they are non-blocking and owned by T-265.
+
+### Focused results
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T262-R1** | **Medium** | Yes | `STARBASE coverage` now names `vars.LINUX_RUNNER`, matching `ci.yml:486`, and the policy distinguishes configured self-hosted execution from the unset-variable hosted fallback. Correcting `prose.yml`'s runner and the frozen Linux job name was in scope: §10 requires the implementer to audit sibling fields and variants when a finding represents a defect class. | **Resolved at `8ee106b`** |
+| **T262-R2** | **Low** | No | `STATUS.md` now records 344 distinct paths at exact head `1387e57`. The reviewer reproduced 344 at both `1387e57` and `b6a6d20`; the existing pattern-scan qualification remains explicit. | **Resolved at `8ee106b`** |
+| **T262-R3** | **Low** | No | Not revisited. The missing executable trigger guard remains owned by T-264 and does not hold T-262. | **Open — T-264** |
+| **T262-R4** | **Low** | No | The corrected policy's runner inventory is still incomplete and has one false selector: `windows desktop` and `frozen windows` are pinned to literal STARBASE labels, not selected by `WINDOWS_RUNNER`; the table omits the Linux `trailers` job and manual `t074-repeat` job; and the later comparison with “the hosted job” does not distinguish conditional workflow capability from configured current execution. The safety conclusion remains correct because the named destinations are right and the configured values are stated separately. | **Open — T-265; no T-262 re-review required** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | `8ee106b` changes only `ai/TESTING.md`, `ai/STATUS.md` and `ai/TASKS.md`; `git diff --check b6a6d20..8ee106b` and `git show --check 8ee106b` passed |
+| Runner mapping | `check`, `frozen linux`, `prose`, `trailers` and `STARBASE coverage` all use `LINUX_RUNNER` with an unset-variable `ubuntu-latest` fallback; `windows desktop`, `frozen windows` and manual `repeat` use literal STARBASE labels |
+| Relevant tests | `test_commit_message_check.py` plus task placement: **66 passed** |
+| History count | `git log 1387e57 --name-only --format=` and the same probe at `b6a6d20` each yield **344** distinct non-empty paths |
+| Remote sequencing | Read-only `git ls-remote` confirmed GitHub `main` is `b6a6d20`, which already contains the trigger-free T-262 tree; no push is needed to put that security control on the remote |
+| External state | No workflow dispatch, visibility change, variable/settings query or mutation, or push was performed |
+
+### Readiness
+
+T-262 is **approved with follow-ups at `8ee106b`**. T-264 owns executable regression protection;
+T-265 owns the non-blocking policy inventory cleanup. The two extra corrections in the submitted
+batch were proper siblings, not scope expansion. Because GitHub `main` is already `b6a6d20`, the
+visibility flip is no longer waiting for the trigger removal to be pushed; repository visibility
+and the separate decision about publishing `ai/` remain the maintainer's actions. Completion
+synchronization in `TASKS.md` and `STATUS.md` is still owed. The Reviewer added T-265 and removed
+the transient handoff pointer from T-262's current-truth entry because `AGENTS.md` §6 forbids
+durable records from citing handoffs. No reviewed workflow/source/test, handoff, push, visibility
+or remote setting was changed.

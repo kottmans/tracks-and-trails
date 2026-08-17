@@ -635,7 +635,7 @@ the all-self-hosted premise the same section's security argument rests on. **Tha
 `prose.yml` and `frozen ubuntu-latest` names beside it, and `T262-R2`'s 343 in `ai/STATUS.md` are
 corrected here.** The ordinary correction pass is spent, and **the maintainer authorized one more
 focused pass on 2026-08-17** under `AGENTS.md` §10, choosing a pass over accepting the risk,
-changing scope, or a named follow-up. Request: `ai/handoffs/2026-08-17-T-262-rereview-2-request.md`.
+changing scope, or a named follow-up.
 **Owner:** Implementer
 **Priority:** **High while the repository is being made public**, and moot while it is private. The
 window is the moment of the visibility change, not a period afterwards
@@ -7248,6 +7248,49 @@ change this policy and its mutations in the same reviewed commit rather than byp
 
 - Re-enabling pull-request CI or designing a trusted hosted PR tier
 - Runner hardening, isolation or GitHub repository settings; T-262 records those separately
+
+### T-265 — Make the CI runner inventory describe every job exactly
+
+**Status:** **Ready — filed 2026-08-17 from `T262-R4`.** T-262's blocking contradiction is
+resolved: the policy now places `STARBASE coverage` on `LINUX_RUNNER`, and no job is pinned to
+hosted compute under the configured repository variables. This is the non-blocking inventory
+residue around that corrected safety statement.
+**Owner:** Documentation Maintainer
+**Priority:** Low — the destinations that matter to T-262 are stated correctly; this closes
+smaller current-truth errors about selectors, omitted jobs and conditional history
+**Phase:** CI documentation maintenance; blocks neither T-262 nor repository visibility
+**Depends on:** T-262 approved at `8ee106b`
+**Relevant context:** `T262-R4`, `ai/TESTING.md` §10, `.github/workflows/*.yml`, `OPS-012`,
+`AGENTS.md` §6
+**Affected surfaces:** `ai/TESTING.md`
+**Risk:** Low — documentation only; the trap is turning configured repository state into an
+unqualified property of a workflow whose hosted fallbacks still exist
+
+#### Scope
+
+Make *Where each platform runs* an exact inventory rather than a representative list:
+
+- `windows desktop` is enabled by `STARBASE_AVAILABLE` and pinned to the literal self-hosted
+  labels; `frozen windows` is pinned to the same labels. Neither runner is selected by
+  `WINDOWS_RUNNER`, which instead controls the optional Windows matrix leg of `check`
+- Add the Linux `trailers` job from `commit-messages.yml` and the manual-only `repeat on STARBASE`
+  job from `t074-repeat.yml`, or state an explicit table boundary that honestly excludes them
+- Rewrite or qualify the later *Two things still differ from the hosted job* sentence so a reader
+  can distinguish the optional hosted `check` leg from the repository's configured current runs
+
+#### Acceptance criteria
+
+- Every current workflow job is represented, or an explicit scope rule explains every omission
+- Each row names the actual `runs-on` selector or literal labels and separately names any enable
+  condition such as `STARBASE_AVAILABLE`
+- Configured self-hosted state, unset-variable hosted fallbacks and historical behavior are not
+  collapsed into one tense
+- No repository setting is asserted from the workflow files alone
+
+#### Out of scope
+
+- Changing a workflow, repository variable, runner label, trigger or GitHub setting
+- Reopening T-262's approved trigger removal or T-264's executable regression guard
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
