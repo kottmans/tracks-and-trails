@@ -124,8 +124,25 @@ this one returned four verdicts before approving.*
 
 ### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
 
-**Status:** **In Review — built 2026-08-17.** The five are guarded and the property is enforced
-by `tests/unit/test_capability_guards.py`, so the *next* symlink test cannot skip the guard either.
+**Status:** **In Review — corrected 2026-08-17 against `T260-R1`.** The five are guarded and the
+property is enforced across the **whole test tree** by `tests/unit/test_capability_guards.py`.
+
+> **`T260-R1` (Medium, blocking) — the gate enforced a narrower rule than the task asked for.** The
+> first version walked only `tests/**/test_*.py`, only synchronous `test_` functions, and only
+> attribute calls, so four ordinary routes to the same bare `WinError 1314` passed it: a
+> `conftest.py` fixture, a helper in an ordinary module, `async def test_…`, and
+> `from os import symlink`. **The rule is now about creation sites rather than about tests**: a
+> function anywhere under `tests/` that creates a symlink must request the capability, with no
+> exception for module scope, fixtures, helpers or `async`. Threading the fixture through a
+> parameter is what makes it propagate — a fixture that requests it skips the test, and a helper
+> that takes it can only be called by something that has it.
+>
+> **Broadening it immediately found a real site the narrow version had missed**, and it also showed
+> the first correction was itself slightly wrong: `test_a_symlink_planted_during_the_mkdir_is_still_caught`
+> plants its link inside a local `plant_then_create()` closure, which the *innermost function* rule
+> flagged. A closure inside a guarded test **is** guarded — the test skips before it can run — so
+> the check asks whether **any enclosing function** requests the capability. A module-level helper
+> with no guarded ancestor still fails, which is the case that matters.
 Filed 2026-08-16 from a real Windows failure, run `31966531162`
 **Owner:** Implementer
 **Priority:** Medium. It costs a red Windows job and five unreadable errors whenever the privilege
@@ -190,7 +207,7 @@ suite must say so rather than erroring.)*
 | # | Criterion | Evidence |
 |---|---|---|
 | 1 | A check enforces the property, not the list | `tests/unit/test_capability_guards.py` walks every `test_*.py` with `ast` and fails on a `test_` function that calls `symlink_to`/`symlink` without the `symlinks` fixture. `tests/capabilities.py` is exempt — it *is* the probe |
-| 2 | **Proved by adding an unguarded test and watching the gate fail** | Done, and the failure named it: *"unit/test_zz_mutation_probe.py::test_an_unguarded_symlink_test"*. Removed, gate green again |
+| 2 | **Proved by adding unguarded sites and watching the gate fail** | **Four real-file mutations, all caught, each naming its site**: a `conftest.py` fixture (`conftest.py:4 in planted()`), a helper module (`zzhelper.py:2 in plant_a_symlink()`), an `async def` test, and `from os import symlink`. All removed; gate green again. Thirteen more spellings are parametrized detector cases — eight unguarded, five guarded |
 | 3 | The five gain the guard and **skip** rather than raise | Forced the no-capability state by making `can_create_symlinks` return `False`: **6 skipped, 0 failed** across the six symlink tests, each naming the privilege and the Developer Mode setting |
 | 4 | Coverage is not quietly reduced | The skip is a skip, visible in the count. A second test asserts **at least nine** symlink-creating tests exist, so removing the coverage fails rather than satisfying the gate by emptying it |
 | 5 | A static gate, not a runtime `except OSError` | Static. A runtime catch would turn every future privilege failure into a silent pass — worse than the bare `OSError` this began with |
