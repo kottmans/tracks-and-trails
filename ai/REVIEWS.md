@@ -17679,3 +17679,83 @@ T-260 remains **In Review**. Preserve the five fixture additions and explicit si
 broaden or redesign the gate so the helper, fixture and syntax mutations fail, then request one
 focused re-review of that correction commit. The Reviewer changed only `ai/REVIEWS.md`; no reviewed
 test, task, handoff, source, decision, plan, status, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-260 focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-260
+**Previously reviewed implementation head:** 30b473d  **Correction:** d03c3af
+**Intervening review-only commit:** 75ed6bf
+**Platforms verified:** Linux. No Windows runtime, CI or real WinError 1314 execution claimed.
+**Verdict:** **Blocked.** The correction closes the four concrete discovery gaps from the first
+review, but the helper-propagation claim still admits an unguarded test that reaches link creation.
+`T260-R1` therefore remains a blocking Medium after the one ordinary correction pass. Under
+AGENTS.md section 10, another correction/re-review now requires the maintainer to authorize a third
+pass, accept the documented risk, narrow the rule, or carry it into a named follow-up.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| **T260-R1** | **Medium** | **Yes — the acceptance criterion still has a survivor** | **Partially resolved.** The walk now reads every non-exempt Python file under `tests/`, recognizes sync and async functions, and recognizes both attribute and direct-name calls. Independent real-file probes for `conftest.py`, an ordinary helper module, an async test and `from os import symlink` all fail and name the exact site. The remaining propagation argument is false for a module-level helper: `symlinks` is a `None`-returning pytest fixture, so `def plant(path, symlinks): path.symlink_to(path)` can be called by an unguarded `test_x` as `plant(tmp_path, None)`. The shipped gate reports no fault; executing that test with `Path.symlink_to` forced to raise produces `[WinError 1314]`. A defaulted `symlinks=None` helper survives too. Thus taking a same-named parameter does not prove that pytest resolved the capability for the caller. The any-enclosing implementation also treats calls in a top-level test's default expressions or decorators as guarded by that test, although those expressions execute during module import, before fixtures resolve. | **Open — partially resolved; review budget exhausted** |
+| **T260-R2** | **Low** | No | `ai/TASKS.md:209` still says criterion 1 is met by walking only `test_*.py` and synchronous `test_` functions, and lines 215-217 still describe only the original two detector cases. Both contradict the correction status immediately above and the shipped implementation. | **Open — target: T-260 cleanup if another pass is authorized, otherwise Planner follow-up** |
+
+### Ruling on the requested design questions
+
+1. **Keep the closure relaxation, but anchor it to execution scope.** The existing
+   `plant_then_create` closure is safe: it is defined and invoked inside a pytest-collected test
+   whose `symlinks` fixture resolves before the body runs. Requiring that closure to take a dummy
+   parameter would add ceremony without safety. What is too broad is treating any lexical function
+   with a parameter named `symlinks` as proof. The simplest enforceable shape is to permit raw
+   creation in pytest-managed tests/fixtures requesting the capability and in their executable
+   nested bodies, while forbidding module-level helper creation. A call-site analysis or a real
+   capability token are alternatives if reusable raw-creation helpers are required.
+2. **Loose name matching is accepted.** A false positive on an unrelated `symlink` method is cheap
+   and visible; missing the two standard Python spellings is the more consequential direction.
+3. **Shelling out is not added to `T260-R1`.** No current test does it, and `ln -s` introduces a
+   distinct external-tool/platform contract. The durable prose should name the enforced boundary
+   as raw Python `Path.symlink_to` / `os.symlink` creation rather than claim semantic detection of
+   every possible way a process could manufacture a link. If a subprocess spelling is introduced,
+   its capability rule must be decided then rather than silently assumed covered now.
+
+### Required mutation if another pass is authorized
+
+The correction must at minimum reject this pair while continuing to accept the real guarded
+closure:
+
+```python
+def plant(path, symlinks):
+    path.symlink_to(path)
+
+def test_x(tmp_path):
+    plant(tmp_path, None)
+```
+
+It should also distinguish a call in a function body from one in that function's decorator or
+default expressions, because only the body runs after pytest fixture setup.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary / hygiene | `75ed6bf..d03c3af`; two files; `git diff --check` passed |
+| Four requested real-file probes | **All four caught**, naming `conftest.py`, helper module, async test and direct-import test |
+| Focused capability suite | **16 passed** |
+| Helper-provenance mutation | **Gate passed incorrectly; simulated runtime raised `[WinError 1314]`** |
+| Additional survivor probes | Required-helper-fed-`None`, defaulted helper, top-level default expression and top-level decorator all passed the gate incorrectly |
+| Task placement | **14 passed** |
+| Ruff / formatting | Clean; corrected test file checked |
+| Direct mypy, host / Win32 | **1 source file clean** in both configurations |
+| Full unit suite | **2173 passed, 15 skipped; one sandbox-only localhost socket denial.** The denied test passed **1/1** with localhost permission; no product failure remains, and no single 2174-pass command is claimed |
+| Platform limits | Integration-wide and Windows execution were not repeated; the correction is static AST/test-ledger code only |
+
+### Readiness
+
+T-260 is not approved at `d03c3af`. The correction materially improves the gate and should be
+preserved, including the guarded-closure case. The remaining question is now explicit: whether the
+project requires the gate to prove that a helper's caller actually obtained the pytest capability,
+as the existing acceptance criterion says, or accepts a parameter-name convention that a plain
+`None` satisfies. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff,
+source, decision, plan, status, push or remote state was changed.
