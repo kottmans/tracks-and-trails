@@ -5,12 +5,14 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-258` is built and In Review**: the pre-bootstrap window that
-orphaned five workers on `STARBASE` is reproduced on both platforms, **POSIX is measured not to
-have it** (the child dies within 0.02 s of the parent, on its own broken bootstrap pipe), and the
-application now contains itself in a Job object before any worker exists. **Its Windows criterion
-has no run behind it** and why Windows kept the five is still unexplained — both stated in the
-entry rather than glossed. `ai/TASKS.md`'s `## In Review` section was also found duplicated
+**Last updated:** 2026-08-17 — **`T-258` is In Review, corrected after six blocking findings.**
+The pre-bootstrap window that orphaned five workers on `STARBASE` is reproduced, **POSIX is
+measured not to have it** (the child dies within 0.02 s of the parent, on its own broken bootstrap
+pipe), and the application now contains itself in a Job object before any worker exists — through
+**one seam that refuses to spawn rather than warn**, at **all three** product-owned spawn sites.
+The review found the first version failing open and covering only the manager, and it was right.
+**Three of five criteria are unmet and the entry now says so**: no Windows run exists for the
+reproduction or its new negative control, and the orphan scanner is invoked by nothing. `ai/TASKS.md`'s `## In Review` section was also found duplicated
 byte-for-byte since `30b473d`, under a placement gate that passes on duplicates.
 
 *(Previously, 2026-08-16 — **`T-183`, Phase 4.5's option audit, was built and In Review**; it is

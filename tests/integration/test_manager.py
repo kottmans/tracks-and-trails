@@ -2385,6 +2385,97 @@ def test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing(tmp_pat
     )
 
 
+#: Make `start_contained` proceed while establishing no outer Job — the negative control.
+#:
+#: Patching the *result* rather than removing the call, because removing it would also remove the
+#: refusal and the driver would take a different path through `_abort_start` instead of spawning.
+#: What has to be isolated is the Job object's absence, nothing else.
+_WITHOUT_THE_OUTER_JOB = (
+    "from tracks_and_trails.downloader import process_tree\n"
+    "process_tree.contain_this_application = lambda: True\n"
+)
+
+
+def test_an_uncontained_application_is_what_the_outer_job_prevents(tmp_path: Path) -> None:
+    """The negative control `T258-R2` asked for: prove the fix is what does the reaping.
+
+    **A passing run with the fix present proves almost nothing on its own.** The child dies either
+    way on POSIX, because its bootstrap pipe breaks — so a green
+    `test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` cannot distinguish
+    *the Job object reaped it* from *the pipe did*, and on Windows it would answer the acceptance
+    criterion with the one fact the criterion is not asking about.
+
+    So this runs the identical driver with the outer Job suppressed and **asserts the opposite
+    outcome on Windows**: the stopped child must still be alive after its parent is killed. That
+    is the mutation evidence — the two tests together say the Job object is load-bearing, and
+    neither says it alone.
+
+    **On POSIX this asserts the weaker half, and says so rather than reading as if it did not.**
+    The child dies here with or without the Job, because `contain_this_application()` is a no-op
+    on this platform and the pipe closes the window by itself. That is not a negative control; it
+    is the same measurement twice, and it is recorded here so nobody reads a green Linux run as
+    the evidence criterion 2 wants. **The Windows branch is the one that means something**, and
+    until this has run there it is a test, not a result.
+    """
+    driver = (
+        _STOP_INSIDE_THE_WINDOW + _WITHOUT_THE_OUTER_JOB + "from PySide6.QtCore import "
+        "QCoreApplication\n"
+        "from tracks_and_trails.downloader.manager import DownloadManager\n"
+        "from tests.integration.test_manager import FakeRepository, make_job\n"
+        "app = QCoreApplication([])\n"
+        "repository = FakeRepository()\n"
+        f"repository.add(make_job('job-1', 'https://example.invalid/clip', {str(tmp_path)!r}))\n"
+        "manager = DownloadManager(repository)\n"
+        "manager.start_queue()\n"
+        "manager.start('job-1')\n"
+        "import time\n"
+        "while True:\n"
+        "    app.processEvents()\n"
+        "    time.sleep(0.05)\n"
+    )
+    parent = subprocess.Popen(
+        [sys.executable, "-c", driver],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    child: psutil.Process | None = None
+    try:
+        assert parent.stdout is not None
+        announced = parent.stdout.readline().strip()
+        if not announced.isdigit():
+            parent.kill()
+            raise AssertionError(f"the driver never reached the window:\n{parent.communicate()[1]}")
+        child = psutil.Process(int(announced))
+
+        psutil.Process(parent.pid).kill()
+        _, alive = psutil.wait_procs([child], timeout=15)
+    finally:
+        parent.kill()
+        parent.wait(timeout=30)
+        # **This test expects a survivor on Windows, so cleanup is not optional here.** Leaving it
+        # would make the suite the thing that accumulates the orphans the task is about.
+        if child is not None:
+            with contextlib.suppress(psutil.NoSuchProcess):
+                child.kill()
+            psutil.wait_procs([child], timeout=30)
+
+    if sys.platform == "win32":
+        assert alive, (
+            "with the outer Job suppressed the child was reaped anyway, so this run is not "
+            "evidence that the Job object is what reaps it. Either something else now closes the "
+            "window — in which case the fix needs re-justifying — or the suppression above no "
+            "longer suppresses anything."
+        )
+    else:
+        assert not alive, (
+            "the child survived on POSIX with no outer Job, which contradicts the measurement "
+            "that the bootstrap pipe closes this window by itself. That measurement is what "
+            "makes `contain_this_application()` a documented no-op here."
+        )
+
+
 # --- signal routing ------------------------------------------------------------------------
 
 

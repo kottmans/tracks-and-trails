@@ -9,10 +9,23 @@ Prevention that regresses is silent; this is what would have said so on day one.
 **Usage** — a script, and it needs no repository checkout beyond `psutil`:
 
     .venv/bin/python tools/orphan_scan.py            # report, exit 1 if any were found
-    .venv/bin/python tools/orphan_scan.py --kill     # report and reap them
 
-The non-zero exit on a find is what lets a CI step fail the machine rather than the build's
-subject, and `--kill` is the manual reap that was performed by hand the first time.
+The non-zero exit on a find is what lets a scheduled run fail the machine rather than the build's
+subject.
+
+## It reports and does not kill (`T258-R4`)
+
+**There was a `--kill`, and removing it is the fix rather than a retreat.** It terminated every
+match, and this tool cannot establish that a match is ours — the section below says so itself. It
+was worse than that: the scan stored only an integer pid and `--kill` built a fresh
+`psutil.Process` from it later, so a candidate that exited between scan and signal meant the tool
+killed whatever had been given that pid since. That is the **enumerate-then-signal race**
+`process_tree.py`'s own docstring says kernel containment exists to avoid, reintroduced in a tool
+written for the containment task.
+
+Reaping is a person's decision here, with the report in front of them, because the only safe
+version of this tool would have to prove ownership it cannot prove. Detection is what criterion 5
+asked for.
 
 ## What counts as one, and why it is not "a python process with no parent"
 
@@ -143,9 +156,6 @@ def find_orphans(minimum_age_seconds: float = MINIMUM_AGE_SECONDS) -> list[Orpha
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--kill", action="store_true", help="reap what was found, rather than only reporting it"
-    )
-    parser.add_argument(
         "--minimum-age-seconds",
         type=float,
         default=MINIMUM_AGE_SECONDS,
@@ -161,12 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{len(orphans)} orphaned worker(s) — spawned, parent gone, still running:")
     for orphan in orphans:
         print(f"  {orphan.describe()}")
-        if arguments.kill:
-            try:
-                psutil.Process(orphan.pid).kill()
-                print(f"    killed {orphan.pid}")
-            except psutil.Error as error:
-                print(f"    could not kill {orphan.pid}: {error}")
+    print("Reported, not reaped — see this module's docstring for why (`T258-R4`).")
     return 1
 
 

@@ -5,11 +5,12 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-258` is built and moved to `## In Review`**: the window before
-a spawned worker installs its watchdog is reproduced on both platforms, POSIX is measured not to
-have it, and the application now contains itself in a Job object before any worker exists. Its
-Windows criterion is **owed by a CI run that has not been started**, which its entry says rather
-than implies. **This section's `## In Review` was duplicated byte-for-byte from `30b473d`** until
+**Last updated:** 2026-08-17 — **`T-258` is In Review and corrected**, after its first submission
+returned Changes requested with six blocking findings. The window before a spawned worker installs
+its watchdog is reproduced, POSIX is measured not to have it, and the application now contains
+itself in a Job object before any worker exists — through **one seam that refuses to spawn rather
+than warn**, at every product-owned spawn site rather than the manager's alone. **Three of its five
+criteria are unmet and the entry says which**; no Windows run exists. **This section's `## In Review` was duplicated byte-for-byte from `30b473d`** until
 2026-08-17 — six commits — and `T-096`'s gate passed on it throughout, because every duplicated
 status still matched its section.
 
@@ -390,14 +391,24 @@ makes possible.
 
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
-**Status:** **In Review — built 2026-08-17, and the Windows half of its evidence is owed by CI
-rather than by this session.** Four of the five criteria are met and measured on POSIX; the second
-— *on Windows specifically* — cannot be met without a push, and three tasks are awaiting a verdict,
-so the run has not been started. **What that criterion asks for is a job that has not run yet, not
-a check that was skipped.**
+**Status:** **In Review — corrected 2026-08-17 after `dbc1e6c` returned Changes requested with six
+blocking findings, all now addressed.** The review was right on every one, and two were defects
+rather than paperwork: containment **failed open**, and the fix covered only one of three
+product-owned spawn sites.
+
+**Two criteria are met; three are not, and the entry no longer says otherwise.** Criterion 3 is
+measured on POSIX. Criterion 4 holds. **Criteria 1 and 2 are unmet** — the reproduction and its
+negative control are written and run on both platforms, but **no Windows run of either exists**,
+and `T258-R2` is right that a green fixed-only run could not have satisfied them anyway.
+**Criterion 5 is unmet**: the scanner exists and nothing invokes it.
+
+*(This previously said "four of the five criteria are met and measured", and that the window was
+reproduced "on both platforms". Both were written while no Windows execution existed. `T258-R2`
+found them.)*
 
 *(Filed 2026-08-16 from five live observations on `STARBASE`. Not a hypothesis: the processes were
-found, measured, and killed, and the measurement says which gap they fell through.)*
+found, measured, and killed — though **which gap they fell through is bounded, not identified**;
+see below.)*
 **Owner:** Implementer
 **Priority:** High. `T-013`'s promise is *no orphan survives the parent*, and `T-019`'s criterion —
 *no surviving descendant, on any path* — has no exception clause. This is a path
@@ -406,8 +417,12 @@ found, measured, and killed, and the measurement says which gap they fell throug
 **Relevant context:** `worker._exit_when_the_parent_does`, `worker.prepare_this_worker`,
 `worker.py:889` (where it is called), `ARC-002`, `T-013`, `T-019`, `T019-R3`, `T-056`,
 `ORPHAN_EXIT_CODE`, `OPS-003`
-**Affected surfaces:** `src/tracks_and_trails/downloader/worker.py`, its tests. **Windows is where
-it was seen**; whether POSIX has the same window is part of the task
+**Affected surfaces:** `downloader/process_tree.py` (the seam and the outer job),
+`downloader/manager.py`, `downloader/ytdlp_resolution.py`, `_freeze_probe.py` (the three
+product-owned spawn sites), `tools/orphan_scan.py`, and their tests. **Not `worker.py`** — this
+entry named it until `T258-R6`, and no commit has changed it: the window is before the worker's
+own code runs, which is the point. **Windows is where it was seen**; whether POSIX has the same
+window was part of the task and is now answered
 **Risk:** Medium to fix, and the risk of leaving it is a machine that accumulates blocked
 interpreters nobody is looking at
 
@@ -432,22 +447,39 @@ of them ever reached the call.
 
 #### The gap, stated precisely
 
-`_exit_when_the_parent_does()` is installed by `prepare_this_worker()`, which `worker.py:889`
-calls **inside the spawned target**. `multiprocessing.spawn.spawn_main` only reaches that target
-after it has read and unpickled its payload from `pipe_handle`. **Between `CreateProcess` and that
-read, the child is running with no watchdog and no user code at all.** A parent that dies in that
-window leaves a child blocked on a pipe nothing will ever write to, and nothing in this
-application's design is watching — `daemon=True` does not help, because that is implemented by the
-parent's `atexit`, which a killed parent never runs. That is the reasoning
-`_exit_when_the_parent_does`'s own docstring gives for the watchdog existing; it just does not
-reach the window before the watchdog is installed.
+*(**Rewritten 2026-08-17 by `T258-R6`.** What stood here named a specific blocking point — *"a
+child blocked on a pipe nothing will ever write to"* — as established fact, and it is not
+established. The structural reading of `popen_spawn_win32` predicts the opposite: the parent holds
+the sole write handle on both platforms, so a killed parent should break that pipe and raise
+`EOFError`, which is exactly what POSIX was later measured doing. Stating a diagnosis this file
+does not have is the uncertainty rule in `AGENTS.md` §7, and correcting it also decides which
+records may repeat it.)*
 
-**The 40–55 MB working set agrees**: a worker that had imported PySide6 and yt-dlp is far larger,
-so these had not loaded the application.
+**What the observations establish, and no more.** `_exit_when_the_parent_does()` is installed by
+`prepare_this_worker()`, which `worker.py:889` calls **inside the spawned target**, and
+`multiprocessing.spawn.spawn_main` only reaches that target after it has read and unpickled its
+payload. So between the process existing and that read completing, **the child is running with no
+watchdog and no code of ours at all** — and `daemon=True` does not help, because it is implemented
+by the parent's `atexit`, which a killed parent never runs.
+
+**`threads=1` is the whole finding**: the watchdog starts a second thread, and all five had one, so
+none of them reached it. That bounds the block to *somewhere before* `_exit_when_the_parent_does()`
+— which leaves the payload read **or `contain_this_process()` itself**, and nothing measured so far
+separates the two.
+
+**Explicitly not established:**
+
+- **Which of those two it was.** No Windows run has looked
+- **That the five came through `DownloadManager`.** A `spawn_main` command line carries no target
+  identity (`T258-R3`), so the record cannot say which spawn site produced them — which is why the
+  fix is installed at every product-owned spawn site rather than at the manager
+- **That the working set agrees.** It was offered as corroboration and does not survive
+  comparison: a child reproduced in this window costs **14 MB and 0.01 s of CPU** here, against
+  **40–55 MB and ~2 s** on the five. Windows start-up and on-access scanning plausibly cover the
+  gap, and *plausibly* is as far as it goes
 
 *(A module-name probe was run and is **not** evidence either way — its pattern matched
-`python3*.dll` alongside Qt, so its count cannot distinguish the two. The thread count is what the
-conclusion rests on.)*
+`python3*.dll` alongside Qt, so its count cannot distinguish the two.)*
 
 #### Scope
 
@@ -481,7 +513,7 @@ Close the window, or prove it cannot be closed and say so.
 *inside* the window rather than stepping over it: the seam is the process-creation call itself —
 `util.spawnv_passfds` on POSIX, `_winapi.CreateProcess` on Windows — wrapped so it returns a live
 child to nobody, because `multiprocessing` writes the payload only after it returns. It runs on
-both platforms, and on Windows it is the reproduction criterion 1 asks for.
+both platforms; **it has run on one.**
 
 **The reproduced child matches the five exactly**: `spawn_main` command line, **one thread**,
 sleeping. It stays that way for as long as the parent lives, so its death is caused by the
@@ -499,43 +531,67 @@ sentence `test_killing_the_parent_does_not_leave_the_child_running` has carried 
 **The fix, on the maintainer's ruling of 2026-08-17: the application contains itself.**
 `process_tree.contain_this_application()` puts the application in a `KILL_ON_JOB_CLOSE` Job object
 **before any worker exists**, so every descendant inherits membership at creation and the kernel
-reaps the tree however the application dies. Called from `DownloadManager.__init__` — the object
-that spawns, so a process that creates workers is contained whether it is the GUI, a test driver
-or a script — and idempotent, because a manager is constructible more than once and a second job
-would be a second handle to leak rather than a second guarantee. A documented **no-op on POSIX**,
-where the measurement above says the window is already shut; deliberately not `setsid()` there,
-which would change what *"our own group"* means to every guard in the module to close a window
-that is not open.
+reaps the tree however the application dies. Idempotent, and a documented **no-op on POSIX**, where
+the measurement above says the window is already shut; deliberately not `setsid()` there, which
+would change what *"our own group"* means to every guard in the module to close a window that is
+not open.
+
+**`start_contained()` is the seam, and it is the correction `T258-R1` and `T258-R3` forced.** The
+first version called `contain_this_application()` from `DownloadManager.__init__`, **logged a
+warning when it failed, and spawned anyway** — the fail-open policy `T019-R3` had already rejected
+one level down, on a branch that is not hypothetical: `T-019`'s first Windows Job implementation
+returned `False` from this exact API boundary while every test passed. It now **raises
+`ContainmentUnavailableError` before the process exists**, which the manager turns into an ordinary
+visible failed start through `_abort_start`.
+
+**And it covers every product-owned spawn, not the manager's.** The window opens *before the
+target is unpickled*, so the child cannot know what it was going to be and a fix attached to one
+target cannot cover the class — while `ytdlp_resolution.resolve_in_a_child` and
+`_freeze_probe.run_probe` both spawned without a manager. All three now go through the seam, and
+`tests/unit/test_spawn_sites.py` fails if any module under `src/` calls `.start()` on a process it
+built, so a fourth site cannot reopen the class quietly.
 
 **The worker still contains itself, and that is not redundant**: its job nests inside this one and
 is what lets one worker be cancelled without touching its siblings, which killing the outer job
 cannot express. Criterion 4 holds — `T-019`'s guarantee, `T019-R3`'s refusal and both exit codes
 are untouched, and the 161 tests in `tests/integration/test_manager.py` pass unchanged.
 
-**Criterion 5 — `tools/orphan_scan.py`.** Finds spawned workers whose parent is gone, reports age,
-thread count and working set, exits non-zero on a find, and reaps with `--kill`. **Its
-known-positive test caught it reporting nothing**: the first rule was *the parent pid is 1*, and a
+**`tools/orphan_scan.py` — which does not close criterion 5, and no longer kills anything.** It
+finds spawned workers whose parent is gone, reports age, thread count and working set, and exits
+non-zero on a find. **`--kill` is removed** (`T258-R4`, Critical): it terminated every match, this
+tool cannot establish that a match is ours, and it acted on a bare integer pid recorded earlier —
+so a candidate that exited between scan and signal meant killing whatever had been given that pid
+since. That is the enumerate-then-signal race `process_tree.py`'s own docstring says kernel
+containment exists to avoid, rebuilt inside the containment task. **Its known-positive test caught
+it reporting nothing**: the first rule was *the parent pid is 1*, and a
 deliberately orphaned worker on this machine reparented to `systemd` at pid 2105, so the scanner
 answered *"no orphaned workers found"* against a live orphan it had been pointed at. The rule is
 now what the child's existence implies — a `spawn_main` child is created by a Python interpreter,
 so a parent that is not one cannot be the one that spawned it.
 
-#### What is not done, and is not a paperwork gap
+#### The three unmet criteria, and what each is waiting on
 
-- **Criterion 2 has no Windows run behind it.** The test is written and runs there; nothing has
-  executed it. **Its verdict is also the open question below**, so this is not only ceremony
-- **Why Windows kept the five is still unexplained.** The structural reading says its bootstrap
-  pipe should break exactly as POSIX's does — the parent holds the sole write handle on both — and
-  five orphans say it did not. `threads=1` puts the block before `_exit_when_the_parent_does()`,
-  which leaves only the payload read or `contain_this_process()` itself. **The fix does not depend
-  on the answer** — the kernel reaps the child wherever it is blocked — but the answer is worth
-  having, and the new test is what will give it
-- **The one figure that does not fit** the entry's reading: a child reproduced in this window costs
-  **0.01 s of CPU and 14 MB** here, against the **~2 s and 40–55 MB** measured on the five. Windows
-  process start-up and on-access scanning plausibly cover it, and *plausibly* is the honest word
-- **`tools/orphan_scan.py` is not wired into CI.** That means editing `.github/workflows/ci.yml`,
-  which is `T-259`'s surface and in review; left until that verdict lands rather than edited under
-  a reviewer
+- **Criteria 1 and 2 — no Windows run exists.** Both the reproduction and its **negative control**
+  are written: `test_an_uncontained_application_is_what_the_outer_job_prevents` runs the identical
+  driver with the outer Job suppressed and, **on Windows, asserts the child survives**. That pair
+  is the mutation evidence criterion 1 asks for, and `T258-R2` is right that a green fixed-only run
+  could not have supplied it — the child dies either way on POSIX, so a passing Linux run cannot
+  tell the Job object from the pipe. **Until it runs on Windows these are tests, not results.**
+- **Criterion 5 — the scanner is not invoked by anything** (`T258-R5`). A dormant script makes an
+  orphan inspectable once somebody suspects one; `OPS-003` says nobody logs in to that machine,
+  which is the whole distinction the criterion turns on. Wiring it means editing
+  `.github/workflows/ci.yml`, which is `T-259`'s surface and in review, so it waits on that
+  disposition rather than being edited under a reviewer. **Recorded unmet, not complete.**
+
+#### What is still not known
+
+- **Which pre-watchdog point the five were blocked at.** `threads=1` bounds it to the payload read
+  or `contain_this_process()`; nothing separates them, and the structural reading of
+  `popen_spawn_win32` predicts the pipe should have broken. **The fix does not depend on the
+  answer** — the kernel reaps the child wherever it is blocked — and the Windows run of the pair
+  above is what will give it
+- **Whether the five came through the manager at all.** A `spawn_main` command line carries no
+  target identity, which is why the seam now covers all three spawn sites rather than one
 - **A Windows-only risk this build cannot have exercised, stated before the run rather than
   after it.** `DownloadManager.__init__` is where the outer job is created, so on Windows **every
   process that constructs a manager is contained — including pytest**, and `tests/integration`

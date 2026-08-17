@@ -247,38 +247,37 @@ def test_containing_the_application_twice_keeps_the_first_job() -> None:
     )
 
 
-def test_the_manager_contains_the_application_before_it_can_spawn() -> None:
-    """`T-258`: constructing a manager is what installs the outer job, and it must be enough.
+def test_a_spawn_is_refused_rather_than_left_uncontained() -> None:
+    """`T258-R1`: containment that fails must stop the spawn, not warn about it.
 
-    The guarantee is *ordering* — the job has to exist before any worker does — so this asserts
-    against a manager that has been constructed and nothing more. Deleting the call from
-    `DownloadManager.__init__` fails here, which is the mutation that matters: every other test
-    in the suite spawns workers from a process that would still be uncontained.
+    **This is the fail-open branch the first version shipped.** `DownloadManager.__init__` logged
+    a warning when `contain_this_application()` returned `False` and constructed a usable manager
+    anyway, so a later worker could enter the pre-bootstrap window with nothing holding it — the
+    same reasoning `T019-R3` rejected one level down, where a worker that could not contain itself
+    was made to refuse the session rather than run it.
 
-    **It watches the call rather than the job**, because the job is a Windows object and this has
-    to fail on Linux too. Asserting on `_windows_application_job` would have made the whole test
-    vacuous on the platform that runs it most: POSIX containment is a no-op returning `True`, so
-    a deleted call would have looked identical to a made one.
+    The branch is realistic rather than defensive: `T-019`'s first Windows Job implementation
+    returned `False` from this exact API boundary while every test passed, because a truncated
+    `HANDLE` made each later call fail.
 
-    In a child for the usual reason, and because containing the test runner would outlive the
-    test.
+    **`Process.start()` must not be reached**, which is the assertion — not merely that something
+    raised. A refusal that still created the child would be the defect wearing an exception.
     """
     probe = (
-        "from PySide6.QtCore import QCoreApplication\n"
+        "import multiprocessing\n"
         "from tracks_and_trails.downloader import process_tree\n"
-        "from tests.integration.test_manager import FakeRepository\n"
-        "calls = []\n"
-        "real = process_tree.contain_this_application\n"
-        "def watched():\n"
-        "    calls.append(True)\n"
-        "    return real()\n"
-        "process_tree.contain_this_application = watched\n"
-        # Imported after the patch so the manager resolves it through the module, which is the
-        # binding production uses.
-        "from tracks_and_trails.downloader.manager import DownloadManager\n"
-        "QCoreApplication([])\n"
-        "DownloadManager(FakeRepository())\n"
-        "print(len(calls) == 1)\n"
+        "process_tree.contain_this_application = lambda: False\n"
+        "process_tree.application_containment_error = 'probe: forced failure'\n"
+        "started = []\n"
+        "class NeverStarts:\n"
+        "    def start(self):\n"
+        "        started.append(True)\n"
+        "raised = ''\n"
+        "try:\n"
+        "    process_tree.start_contained(NeverStarts())\n"
+        "except process_tree.ContainmentUnavailableError as error:\n"
+        "    raised = str(error)\n"
+        "print(bool(raised), not started, 'probe: forced failure' in raised)\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", probe],
@@ -288,9 +287,65 @@ def test_the_manager_contains_the_application_before_it_can_spawn() -> None:
         check=True,
     )
 
-    assert result.stdout.strip() == "True", (
-        f"constructing a manager did not contain the application: {result.stdout.strip()!r}. "
-        "The job must exist before the first worker, not alongside it."
+    assert result.stdout.strip() == "True True True", (
+        f"the refusal did not hold: {result.stdout.strip()!r}. Expected a raise, no `start()`, "
+        "and the underlying reason carried into the message a person will read."
+    )
+
+
+def test_the_manager_refuses_the_session_rather_than_spawning_uncontained() -> None:
+    """The same guarantee at the level the user meets it (`T258-R1`).
+
+    `start_contained` raising is only half the contract: the manager has to turn that into a
+    **visible failed start** rather than an unhandled exception or a silently dropped job. It does
+    it through `_abort_start`, the path every other spawn failure already takes.
+
+    Asserted by counting `Process.start()` calls, in a child, with containment forced to fail —
+    so this fails if a future edit catches the refusal and carries on.
+
+    **Two things here exist so that the failure is readable, and both were found by mutating.**
+    The counter does not call through to the real `start()` — it did at first, and under the
+    fail-open mutation the probe spawned a real worker and died with `SIGABRT`. And the probe is
+    **not** run with `check=True`: a manager that carries on past the refusal exits non-zero, and
+    `check=True` raised `CalledProcessError` before the assertion below could say what happened.
+    A test whose failure mode is a stack trace about `subprocess` reports the wrong defect.
+    """
+    probe = (
+        "from PySide6.QtCore import QCoreApplication\n"
+        "from tracks_and_trails.downloader import process_tree\n"
+        "from tests.integration.test_manager import FakeRepository, make_job\n"
+        "import multiprocessing.context as mp_context\n"
+        "started = []\n"
+        "def counted(self):\n"
+        "    started.append(True)\n"
+        "mp_context.Process.start = counted\n"
+        "process_tree.contain_this_application = lambda: False\n"
+        "process_tree.application_containment_error = 'probe: forced failure'\n"
+        "from tracks_and_trails.downloader.manager import DownloadManager\n"
+        "app = QCoreApplication([])\n"
+        "repository = FakeRepository()\n"
+        "repository.add(make_job('job-1', 'https://example.invalid/clip', '.'))\n"
+        "manager = DownloadManager(repository)\n"
+        "manager.start_queue()\n"
+        "try:\n"
+        "    manager.start('job-1')\n"
+        "except Exception:\n"
+        "    pass\n"
+        "for _ in range(20):\n"
+        "    app.processEvents()\n"
+        "print('NO PROCESS STARTED' if len(started) == 0 else 'STARTED %d' % len(started))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert "NO PROCESS STARTED" in result.stdout, (
+        "a worker process was started while the application was uncontained.\n"
+        f"stdout: {result.stdout.strip()!r}\nstderr: {result.stderr.strip()[-600:]!r}"
     )
 
 

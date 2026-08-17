@@ -61,9 +61,12 @@ The two platforms close it differently, and only one of them closes it for free:
   `spawn_main`. Measured, not assumed: a child stopped in this window dies within **0.02 s**
   of its parent being `SIGKILL`ed — the resolution of the poll, not a latency — in 8 of 8 runs.
   `test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` is that measurement, kept.
-- **Windows needs `contain_this_application()`**, below. The structural reading says its pipe
-  should break the same way, and the five orphans say it did not — so the guarantee is taken from
-  the kernel instead of from the pipe.
+- **Windows is why `contain_this_application()` exists**, below. Its pipe *should* break the same
+  way — the parent holds the sole write handle there too — and five orphans say it did not. **Why
+  is not established** (`T258-R6`): `threads=1` bounds the block to before the watchdog, which
+  leaves the payload read or `contain_this_process()` itself, and no Windows run has looked. The
+  guarantee is therefore taken from the kernel rather than from a diagnosis, so that it holds
+  whichever of the two it turns out to be.
 
 ## The rule that keeps this from killing the application
 
@@ -84,17 +87,34 @@ from __future__ import annotations
 import os
 import signal
 import sys
-from typing import Final
+from typing import Any, Final
 
 __all__ = [
     "GROUPS_ARE_SUPPORTED",
+    "ContainmentUnavailableError",
     "contain_this_application",
     "contain_this_process",
     "group_of",
     "kill_group",
     "kill_this_group",
+    "start_contained",
     "terminate_group",
 ]
+
+
+class ContainmentUnavailableError(RuntimeError):
+    """Raised instead of spawning a process the application could not guarantee it can reap.
+
+    **Fail closed, and `T019-R3` is why** (`T258-R1`). The first version of `T-258` logged this
+    and carried on, which is the same reasoning `T019-R3` rejected one level down: `T-019`'s
+    criterion — no surviving descendant, on any path — has no exception clause, and a spawn that
+    proceeds without outer containment is precisely the path the orphans took. The branch is not
+    hypothetical; `T-019`'s first Windows Job implementation failed quietly at this same API
+    boundary, returning `False` while every test passed.
+
+    A refusal is visible and recoverable. A worker nobody can reap is neither.
+    """
+
 
 #: Whether the parent can signal a worker's descendants as a group.
 #:
@@ -114,6 +134,31 @@ containment_error: str | None = None
 #: different processes, and a single variable would let the worker's reason overwrite the
 #: application's in the one process that can still act on either.
 application_containment_error: str | None = None
+
+
+def start_contained(process: Any) -> None:
+    """Start a product-owned process, or refuse to start it at all (`T-258`, `T258-R1`/`R3`).
+
+    **The one way this application starts a `multiprocessing.Process`**, and it exists because the
+    window `T-258` is about opens *before the child's target is unpickled* — so the child cannot
+    know what it was going to be, and a fix attached to any one target cannot cover the class.
+    `T258-R3` found the manager's spawn contained while `ytdlp_resolution.resolve_in_a_child` and
+    `_freeze_probe.run_probe` were not, and the five observed command lines carry no target
+    identity, so nothing in the record says the orphans came through the manager at all.
+
+    Containment first, then `start()`, and **the order is the guarantee**: this raises before the
+    process exists rather than after, so a failure cannot leave a child that outlives the refusal.
+
+    `tests/unit/test_spawn_sites.py` fails if any file under `src/` calls `.start()` on something
+    it built with `Process(...)`, which is what stops a new spawn site reopening the class.
+    """
+    if not contain_this_application():
+        raise ContainmentUnavailableError(
+            "This application could not put its child processes under a handle the operating "
+            f"system will reap ({application_containment_error}). A worker started now could "
+            "outlive it with nothing able to stop it, so it was not started."
+        )
+    process.start()
 
 
 def terminate_group(group: int) -> None:

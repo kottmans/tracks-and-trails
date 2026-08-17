@@ -33,6 +33,8 @@ from multiprocessing.queues import Queue as QueueType
 from pathlib import Path
 from typing import Any
 
+from tracks_and_trails.downloader import process_tree
+
 #: Names the file that records one line per top-level application start. Set by the caller
 #: (CI, or a test); when unset the probe still runs but the recursion count is not recorded.
 PROBE_LOG_ENV = "TT_PROBE_LOG"
@@ -89,7 +91,10 @@ def run_probe() -> int:
     queue: QueueType[Any] = context.Queue()
     child = context.Process(target=probe_child, args=(queue,), name="tt-freeze-probe")
 
-    child.start()
+    # `T258-R3`: the shipped `--spawn-probe` path spawns without a manager, and the pre-bootstrap
+    # window is not specific to a target. This is a product-owned `Process.start()` and goes
+    # through the same seam as the other two.
+    process_tree.start_contained(child)
     try:
         payload = queue.get(timeout=TIMEOUT_SECONDS)
     # Any failure at all is a probe failure; there is no exception here worth re-raising.

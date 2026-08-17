@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from tracks_and_trails.downloader import worker
+from tracks_and_trails.downloader import process_tree, worker
 from tracks_and_trails.downloader.protocol import ResolutionReport, WorkerFinished
 
 #: How long to wait for a child to import yt-dlp and answer. Generous: `spawn` re-imports the
@@ -94,7 +94,11 @@ def resolve_in_a_child(
     report: ResolutionReport | None = None
     started = False
     try:
-        child.start()
+        # `T258-R3`: this child is spawned without a `DownloadManager`, and the pre-bootstrap
+        # window does not care what the target was going to be — it opens before the target is
+        # unpickled. `spawn_resolution`'s "containment is not required" note covers descendants
+        # spawned *by* this child; it never covered this child being stranded before it runs.
+        process_tree.start_contained(child)
         started = True
         while True:
             try:

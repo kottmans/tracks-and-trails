@@ -514,22 +514,6 @@ class DownloadManager(QObject):
         entry_point: Callable[..., None] = worker.spawn_session,
     ) -> None:
         super().__init__(parent)
-        # **Before any worker exists** (`T-258`). This is the outer half of containment: the
-        # worker's own job is installed at the far end of its bootstrap, and a parent that dies
-        # before then leaves a child with nothing of ours in it. Here rather than in the
-        # application's entry point because *this* is the object that spawns, so a process that
-        # creates workers is contained whether it is the GUI, a test driver or a script.
-        # Idempotent, and a documented no-op on POSIX, where the bootstrap pipe already closes
-        # that window — measured, see `process_tree.contain_this_application`.
-        if not process_tree.contain_this_application():
-            # Logged rather than raised, matching the worker's own containment failure: an
-            # application that cannot make this guarantee still runs downloads, and the cost of
-            # silence would be an orphan nobody could explain afterwards.
-            logging.getLogger(f"{APP_SLUG}.manager").warning(
-                "this application is not contained, so a worker killed before it is prepared "
-                "could outlive it: %s",
-                process_tree.application_containment_error,
-            )
         self._repository = repository
         #: Jobs whose partial is to be thrown away once their process is gone, and the directory
         #: it lives in (`T113-R3`). **The directory is captured when the stop is asked for**, while
@@ -1624,7 +1608,13 @@ class DownloadManager(QObject):
             # closing the queue does not wake a reader already inside `get()` — all three
             # probed. Each start is recorded separately because the *other* order has a failure
             # too: a pump that will not start leaves a worker already running.
-            process.start()
+            # **`start_contained`, not `start()`** (`T-258`, `T258-R1`/`R3`). It establishes the
+            # outer Job object before the process exists and **raises rather than proceeding** if
+            # it cannot, so a worker is never created into the pre-bootstrap window uncontained.
+            # The raise lands in `_abort_start` below, which is what turns it into a visible
+            # failed start rather than a silent one — the fail-open branch this replaced logged a
+            # warning at construction and spawned anyway.
+            process_tree.start_contained(process)
             session.process_started = True
             pump.start()
             session.pump_started = True
