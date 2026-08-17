@@ -17760,3 +17760,88 @@ project requires the gate to prove that a helper's caller actually obtained the 
 as the existing acceptance criterion says, or accepts a parameter-name convention that a plain
 `None` satisfies. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff,
 source, decision, plan, status, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-260 authorized third focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-260
+**Previously reviewed implementation head:** d03c3af  **Correction:** 092a4b3
+**Intervening review-only commit:** df3de90
+**Authorization:** The maintainer authorized this third focused pass under AGENTS.md section 10;
+the task entry records that exception.
+**Platforms verified:** Linux. No Windows runtime, CI or real WinError 1314 execution claimed.
+**Verdict:** **Blocked.** The exact helper-`None`, defaulted-helper and definition-time survivors
+from the second review now fail, but `_pytest_managed` still accepts functions pytest does not
+manage, and the custom statement walker skips creation sites in deterministic AST shapes.
+`T260-R1` remains a blocking Medium. The authorization for this third pass does not implicitly
+authorize a fourth; the maintainer must again choose another focused pass, a narrowed rule,
+accepted risk, or a named follow-up.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| **T260-R1** | **Medium** | **Yes — the required static gate still has ordinary survivors** | **Partially resolved again.** The prior survivor verbatim, its defaulted variant, a decorator expression and a parameter default now fail, while a canonical `@pytest.fixture` requesting `symlinks` and the guarded closure remain accepted. The new inference still equates names with pytest ownership. First, any function named `test_*` is treated as managed without considering its file or lexical collection context. In an independent real-file probe, `zzhelper.py` defined `test_plant(path, symlinks)`, `test_driver.py` imported it under the non-test name `plant`, and the unguarded collected test called `plant(tmp_path, None)`. The shipped gate reported no faults; pytest collected only the driver and reached the simulated `[WinError 1314]`. Second, any decorator whose final name is `fixture` is accepted without resolving it to pytest. Both a local `@fixture` and a foreign `@framework.fixture` therefore pass the gate; an independent pytest run of the local case reached the same simulated error. The deliberately loose accepting direction is not safe here: it repeats the rejected assumption that syntax proves pytest supplied the value. Finally, `_walk` stops generically scanning a statement as soon as it contains a nested definition, then recurses only through immediate `ast.stmt` children. It consequently misses a creation call in an `if`/`while` condition when the body defines a helper, and misses definitions inside an `except` handler because `ast.ExceptHandler` is not an `ast.stmt`; all three probes returned no faults. | **Open — third pass incomplete; another pass requires maintainer authorization** |
+| **T260-R2** | **Low** | No | Resolved. Criterion 1 now describes the whole-tree, pytest-managed rule, and the detector summary now states fourteen rejected and five accepted shapes. | **Resolved at 092a4b3** |
+
+### Ruling on the requested design questions
+
+1. **`_pytest_managed` is too loose in the accepting direction.** A decorator's spelling is not
+   its provenance, and `test_` is not collection by itself. The gate should accept only collection
+   contexts it can establish from path/lexical structure and fixture decorators it can establish
+   as pytest's. It is acceptable for a renamed pytest import to produce a safe false positive; if
+   aliases are supported, derive them from imports rather than accepting every `.fixture` or
+   `fixture` spelling.
+2. **The nested-body attribution is incomplete.** The intent is right—function bodies need their
+   own guard chain while decorators/defaults execute in the parent scope—but branching on “this
+   statement contains a definition” drops sibling expressions and non-`stmt` containers. A generic
+   parent/context walk or a visitor that visits every field exactly once is a safer shape than a
+   hand-selected list of immediate statement children.
+3. **Refusing ordinary reusable helpers remains accepted.** No current test needs one, and a real
+   token/call-site design can be introduced if that changes. This re-review does not reopen the
+   shell-command boundary or require a call graph.
+
+### Required probes if another pass is authorized
+
+- A `test_*` raw creator in a non-collected helper module, imported under a non-test alias and
+  called with `None` by an unguarded collected test, must fail the gate.
+- A raw creator decorated by a local or foreign `fixture` spelling must fail; canonical
+  `@pytest.fixture` requesting `symlinks` must remain accepted.
+- A creation call in an `if`/`while` condition whose body contains a nested definition, and a
+  creation site inside a nested definition under an `except` handler, must all be visited.
+
+### Non-blocking cleanup
+
+| ID | Severity | Blocks approval | Owner / target | Follow-up |
+|---|---|---:|---|---|
+| **T260-F1** | **Low** | No | **T-260 correction if authorized; otherwise Planner follow-up** | Remove the rejected threading claim from `tests/unit/test_capability_guards.py:22-24` and its failure message at lines 187-188, which still tells a developer to “take it as an argument.” Merely taking the argument is the design this correction correctly rejects. Recount `ai/TASKS.md:210`, which still says thirteen detector shapes while the paragraph below correctly says fourteen rejected plus five accepted. |
+
+The one-line `ai/REVIEWS.md` change inside 092a4b3 only formats the prior mutation code block. It is
+review-record churn in an implementation commit and makes the handoff's “two files” count
+technically incorrect, but changes no verdict or evidence and is not a separate finding.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary / hygiene | `df3de90..092a4b3`; three files including one blank review-record line; `git diff --check` passed |
+| Prior survivor probes | Required helper fed `None`, defaulted helper, decorator expression and parameter default all fail; canonical guarded fixture passes |
+| Focused capability suite | **19 passed** |
+| Uncollected `test_*` helper mutation | **Gate reported no faults; pytest collected only the driver; simulated runtime failed with `[WinError 1314]`** |
+| Foreign/local fixture mutation | **Gate reported no faults; simulated pytest runtime failed with `[WinError 1314]`** |
+| Nested-statement probes | `if` condition, `while` condition and `except`-handler nested definition all passed the gate incorrectly |
+| Task placement | **14 passed** |
+| Ruff / formatting | Clean; corrected test file checked |
+| Direct mypy, host / Win32 | **1 source file clean** in both configurations |
+| Full unit suite | **2176 passed, 15 skipped; one sandbox-only localhost socket denial.** The denied test passed **1/1** with localhost permission; no product failure remains, and no single 2177-pass command is claimed |
+| Platform limits | Integration-wide and Windows execution were not repeated; the correction is static AST/test-ledger/review-record code only |
+
+### Readiness
+
+T-260 is not approved at `092a4b3`. Preserve the explicit pytest-ownership direction, the fixed
+helper/default/import-time cases and the accepted guarded fixture/closure. Approval still requires
+the gate to establish rather than guess its pytest-managed contexts and to visit every relevant AST
+field. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test, task, handoff, source, decision,
+plan, status, push or remote state was changed.
