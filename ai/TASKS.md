@@ -122,6 +122,95 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
+
+**Status:** **In Review — built 2026-08-17.** The five are guarded and the property is enforced
+by `tests/unit/test_capability_guards.py`, so the *next* symlink test cannot skip the guard either.
+Filed 2026-08-16 from a real Windows failure, run `31966531162`
+**Owner:** Implementer
+**Priority:** Medium. It costs a red Windows job and five unreadable errors whenever the privilege
+is absent, which is the ordinary state of a Windows machine
+**Phase:** Phase 4 maintenance. Gates nothing in the centre column
+**Depends on:** nothing
+**Relevant context:** `T-070` (Complete, approved 2026-07-28 — it built the guard),
+`tests/capabilities.py` (`can_create_symlinks`, the `symlinks` fixture), `tests/conftest.py`,
+`tests/integration/test_worker.py`, `tests/unit/test_paths.py`, `ai/TESTING.md` §12
+**Affected surfaces:** `tests/integration/test_worker.py`, and wherever the enforcing check lands.
+**No source**
+**Risk:** Low. The risk of the obvious fix is the opposite one — adding the fixture to five tests
+and calling it done, which is what leaves the sixth to be written next month
+
+#### What happened
+
+`SeCreateSymbolicLinkPrivilege` was absent on `STARBASE` and **five tests failed with a bare
+`OSError: [WinError 1314] A required privilege is not held by the client`** instead of skipping
+with the message that names the privilege.
+
+**`T-070`'s guard is not broken — it is simply not requested.** Of the nine tests that create a
+symlink, four take the `symlinks` fixture and **skipped correctly on the same run**; five do not
+and failed. Derived rather than eyeballed:
+
+| File | Guarded | Unguarded |
+|---|---|---|
+| `tests/unit/test_paths.py` | 3 | 0 |
+| `tests/integration/test_worker.py` | 1 | **5** |
+
+The five: `test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused`,
+`test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written`,
+`test_a_symlinked_staging_name_reports_no_partial_to_resume_from`,
+`test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused`,
+`test_a_symlink_planted_during_the_mkdir_is_still_caught`.
+
+**This is `T-070`'s own defect, re-instanced by tests written after it.** That task fixed four named
+tests and added a fixture; nothing makes a *later* symlink test use it. Fixing these five and
+stopping would be the same trade again — the list is not the property.
+
+*(The privilege went missing because the runner was restarted from a non-elevated session while
+`STARBASE` was being recovered on 2026-08-16. That is the trigger and **not** the defect: a Windows
+machine without Developer Mode or elevation is the ordinary case, and `T-070` exists because the
+suite must say so rather than erroring.)*
+
+#### Acceptance criteria
+
+- **A check enforces the property, not the list**: a test that creates a symlink and does not
+  request the capability **fails a gate**, wherever it is written. A nine-line `ast` walk over
+  `tests/` finds all nine of today's cases, so the mechanism is not the hard part
+- **It is proved by adding an unguarded symlink test and watching the gate fail**, then removing it
+  — the mutation, not the assertion
+- **The five gain the guard**, and on a machine without the privilege they **skip with
+  `NO_SYMLINKS`** rather than raising
+- **Coverage is not quietly reduced.** These five assert containment — `T-034`'s boundary — so a
+  skip on Windows is a real gap and must be visible as a skip count, never as a pass
+- The gate sits with the project's other static checks over its own tree (`test_layering.py`,
+  `test_task_placement.py`) rather than becoming a runtime `except OSError`, which would convert
+  every future privilege failure into a silent pass
+
+#### How each criterion was met — 2026-08-17
+
+| # | Criterion | Evidence |
+|---|---|---|
+| 1 | A check enforces the property, not the list | `tests/unit/test_capability_guards.py` walks every `test_*.py` with `ast` and fails on a `test_` function that calls `symlink_to`/`symlink` without the `symlinks` fixture. `tests/capabilities.py` is exempt — it *is* the probe |
+| 2 | **Proved by adding an unguarded test and watching the gate fail** | Done, and the failure named it: *"unit/test_zz_mutation_probe.py::test_an_unguarded_symlink_test"*. Removed, gate green again |
+| 3 | The five gain the guard and **skip** rather than raise | Forced the no-capability state by making `can_create_symlinks` return `False`: **6 skipped, 0 failed** across the six symlink tests, each naming the privilege and the Developer Mode setting |
+| 4 | Coverage is not quietly reduced | The skip is a skip, visible in the count. A second test asserts **at least nine** symlink-creating tests exist, so removing the coverage fails rather than satisfying the gate by emptying it |
+| 5 | A static gate, not a runtime `except OSError` | Static. A runtime catch would turn every future privilege failure into a silent pass — worse than the bare `OSError` this began with |
+
+**The detector is itself tested in both directions**, because a gate that stops recognising a
+symlink call passes silently: two parametrized cases assert an unguarded `path.symlink_to(...)` and
+`os.symlink(...)` are detected, and one asserts a guarded test is not flagged.
+
+**This was fixed after the privilege was restored, which is the point.** Developer Mode went on
+`STARBASE` on 2026-08-16, so the five pass there again and the gap became invisible — exactly why
+the entry was filed with its evidence rather than left for the next red run.
+
+#### Out of scope
+
+- Restoring the privilege on `STARBASE`. That is machine configuration, done separately — and if it
+  is restored first, **this defect stops being visible while still being present**, which is the
+  reason it is filed with its evidence rather than left to the next red run
+
+---
+
 ### T-256 — Rule the fifteen options no decision covers
 
 **Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
@@ -379,9 +468,277 @@ makes possible.
 
 ---
 
+### T-256 — Rule the fifteen options no decision covers
+
+**Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
+forbidden.** Filed the same day by `T-183`'s fifth criterion and answered the same day: the audit
+is reclassified, `excluded` is 23, the refusal list is **89** across five classes, and the gate
+derives both verdict sides from the decisions.
+
+**`T-184` is still blocked, and this entry is why.** `T183-R3` found a **sixteenth** option the
+audit had missed, so `unruled` is 1 rather than 0 — and three `SEC-003` corrections remain
+unanswered. *(This status previously said `unruled` is empty and `T-184` is unblocked, in the
+paragraph immediately above the one recording the sixteenth option. The re-review found it.)*
+
+> **`T183-R3` added a sixteenth option, and it is the first thing this entry now owes.**
+> `--legacy-server-connect` enables `SSL_OP_LEGACY_SERVER_CONNECT` and a compatibility cipher
+> policy — a transport-security downgrade of exactly the kind `SEC-004` forbids. **The audit missed
+> it**, so it was not in the fifteen the maintainer ruled on, and `SEC-004`'s scope is deliberately
+> bounded to what it names. It is `unruled` in the audit and **must not be swept in by inference**;
+> extending a ruling is the maintainer's, not the implementer's.
+>
+> **The three `SEC-003` corrections are NOT ruled, and this entry stays open for them.** The
+> maintainer's ruling answered *the fifteen*; it was not asked about `--netrc-cmd`,
+> `--client-certificate-password`, or the five-versus-seven count. `SEC-004` says so in its own
+> text rather than leaving the reader to infer the scope of what was decided.
+
+**Owner:** Planner proposes; **the maintainer rules**
+**Priority:** ~~Highest in the phase~~ — **the blocking half is done.** What remains are three
+corrections to an Accepted decision, which block nothing
+**Phase:** Phase 4.5
+**Depends on:** `T-183` approved
+**Relevant context:** `docs/YTDLP_OPTION_AUDIT.md` Findings 2, 3, 4 and 5; `SEC-003`; `ARC-010` §3
+and §4; `NFR-007`; `REQ-EXCL-002`, `-003`, `-005`; `T-034`
+**Affected surfaces:** `ai/DECISIONS.md` (a new `SEC-` entry, plus corrections to `SEC-003` and
+`ARC-010`), `docs/YTDLP_OPTION_AUDIT.md` (the fifteen move out of `unruled`)
+**Risk:** Medium. Three of the four families reach arbitrary code execution, and the cost of ruling
+them *permitted* without noticing is the cost `--exec` was forbidden to avoid
+
+#### Scope
+
+Four questions, and three record corrections that came with them.
+
+- **Code execution, seven options.** `--plugin-dirs`, `--no-plugin-dirs`, `--use-postprocessor`
+  (arbitrary Python from a named path), `--downloader`, `--downloader-args`, `--postprocessor-args`
+  (an external binary and its arguments), `--js-runtimes`, `--no-js-runtimes` (an external
+  interpreter). Each is the shape `SEC-003` forbade `--exec` for.
+- **`--remote-components`, `--no-remote-components`.** Fetches components at runtime from a remote
+  host: a destination `NFR-007` does not permit, and code this project did not ship.
+- **TLS: `--no-check-certificates`, `--prefer-insecure`.** No decision covers disabling certificate
+  validation.
+- **Credentials `SEC-003` did not name: `-2/--twofactor`, `--ap-username`, `--ap-password`.** The
+  `-u`/`-p` rationale reaches all three verbatim — a secret inside a frozen request that is
+  persisted and crosses a process boundary — and extending an accepted ruling is not the
+  implementer's to do.
+
+#### The three proposed corrections — **PROPOSED, nobody has ruled on these**
+
+1. **`SEC-003` permits `--netrc-cmd`, which executes a command**, on a rationale (*"the secret
+   lives in the user's own file"*) that does not reach it. Four rows below, the same table forbids
+   `--exec` for executing a command.
+2. **`SEC-003` permits `--client-certificate-password`, which is a secret rather than a path to
+   one** — the shape `_require_credential_free_proxy` makes unrepresentable.
+3. **`SEC-003`'s consequences say the refusal list gains *five* entries and then list *seven*.**
+   The list is right; the count is wrong.
+
+Also for the maintainer's attention, though it is a correction `T-183` has already made in the
+audit rather than one proposed here: **`ARC-010` §4 names `paths` among the application-owned keys
+and `build_options` has never set it.**
+
+#### Acceptance criteria
+
+- **Each of the fifteen is ruled**, into `hatch`, `excluded` or `typed`, with the reason recorded
+  in a `SEC-` decision rather than in a task or a commit
+- **The three `SEC-003` corrections are ruled on**, and if any is accepted the amendment is written
+  by the maintainer or attributed to their ruling — never self-headed (`T145-R1`, `T144-R1`)
+- **`docs/YTDLP_OPTION_AUDIT.md` has no `unruled` rows afterwards**, and its class table is
+  recounted rather than adjusted by hand
+- The audit's test still passes unchanged, which is what shows the reclassification did not quietly
+  move an option out of the application-owned class
+
+#### Out of scope
+
+- Building any refusal. `T-184` builds it; this decides what is on it
+- The 42 suppressed options as a class. Finding 4 makes them `T-184`'s acceptance criterion, since
+  the question there is *what the parser accepts*, not *what the documentation shows*
+
+---
+
+### T-259 — The Windows job's timeout had four minutes of headroom, and the suite grew into it
+
+**Status:** **In Review — raised 30 → 40 on 2026-08-16.** The number is changed; what is not done is
+the part that stops it happening again
+**Owner:** Implementer
+**Priority:** Medium. While it stands, **every Windows gate is unreadable** — `T-257`'s verdict and
+`T-246`'s Windows half both had to be read out of a killed job's log
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing
+**Relevant context:** `.github/workflows/ci.yml` (`windows desktop`), `T-073` (which last raised
+it), `T118-R10` and `T-083` — the same defect class one level down, `OPS-005`, `OPS-009`
+**Affected surfaces:** `.github/workflows/ci.yml`
+**Risk:** Low to raise. The risk is raising it **instead of** measuring, which is how a bound
+becomes a place defects hide
+
+#### What happened, measured rather than inferred
+
+Two consecutive runs died at exactly 30 minutes. GitHub reports a timeout as `cancelled`, which is
+why the first looked like somebody had stopped it.
+
+| Run | Result | Job duration |
+|---|---|---|
+| `31870203459` … `31851660329` (four runs) | success | **25.4 – 25.8 min** |
+| `31906562503` | failure | 27.4 min |
+| `31956224066` | **timeout** | 30.3 min |
+| `31956402888` | **timeout** | 30.3 min |
+
+**Four minutes of headroom on a 30-minute bound, for its whole recorded history.**
+
+**What crossed it was growth, not a hang.** Against the last healthy run at `26eb41c`: the suite
+collected **3506** items then and **3660** now — **154 more tests** — and the full-suite step took
+**23:51** then against a job budget of ~27.5 minutes after setup. Extrapolating the same shape (the
+run is lopsided: integration dominates the first 20%, and `26eb41c` went 40% → 100% in about a
+minute), the step now needs **~30 minutes** and the job **~32**.
+
+**Contention is ruled out**, and that is what the second run bought: it was re-run on a freshly
+restarted runner with the machine otherwise idle and five twelve-day-old orphaned processes
+cleared (`T-258`), and it died at the same wall. *(Those orphans were considered as a cause and
+rejected on measurement: 2 seconds of CPU and 223 MB across five processes.)*
+
+#### Why 40
+
+- **~32 minutes needed.** 35 restores the same ~9% margin that just failed; 40 is ~25%, which is
+  what the job had when it was healthy
+- **Not larger, because `STARBASE` has one slot.** A genuinely hung job holds every Windows gate for
+  the length of the bound, so this number is also the blast radius of a hang. The maintainer set the
+  ceiling at 35–40 on 2026-08-16 for that reason
+
+#### Scope
+
+Raising the number is done. **The task is open on the half that makes the next one visible early**,
+because this is `T118-R10`'s finding at the job level: a bound sitting just above measured runtime
+fails on growth rather than on faults, and it fails by looking like a hang.
+
+#### Acceptance criteria
+
+- ~~The next `windows desktop` run **completes**~~ — **met 2026-08-17, run `31985410889`**: 32 min
+  against the 40-minute bound, ~8 min of headroom, and the estimate that justified 40 was ~32. The
+  bound is sized correctly; what is still owed is the half that makes the *next* creep visible
+- **The job reports its own duration where somebody sees it** — a step that prints elapsed against
+  the bound, so the margin is a number in the log rather than something recoverable only by
+  comparing runs afterwards
+- **A run that lands within a stated margin of the bound says so** — a `::warning::`, so the creep
+  is visible while it is still creep
+- **The measurements above are re-derived rather than quoted** if the bound is touched again. The
+  reason this entry carries the numbers is that the last raise (`T-073`) recorded a reason and no
+  measurement, so nobody could tell later whether 30 had ever had margin
+
+#### Out of scope
+
+- Making the suite faster. A real target, and a different task — this one is about the gate being
+  readable, not about the 32 minutes being right
+- `T-258`'s orphans. Adjacent, on the same machine, **and not the cause** — checked, not assumed
+
+---
+
+### T-257 — The Windows job has been red since 2026-08-15, and the failure is the guard, not the product
+
+**Status:** **In Review — fixed 2026-08-16, and green on Windows 2026-08-17** (run
+`31985410889`). Found by the Phase 4 records sweep, not by anybody reading CI. **All acceptance
+criteria met.**
+**Owner:** Implementer
+**Priority:** **High.** It is the gate that evidences Phase 4 exit criterion 2's *"automated on
+**both** platforms"*, and while it is red that criterion has one platform
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T200-R7` (whose rule this is), `tests/ui/test_accessibility.py`,
+`tests/ui/test_windows_accessibility.py`, CI run `31906562503`, `IMPLEMENTATION_PLAN.md` §Phase 4
+exit criterion 2 as amended 2026-08-15
+**Affected surfaces:** `tests/ui/test_accessibility.py`. **No source — the product is not at
+fault**
+**Risk:** Low to fix. The risk it exposed is that **a red Windows job went unread for a day**
+
+#### What happened
+
+`test_no_control_is_named_only_by_the_value_it_happens_to_hold` ends with a vacuity guard —
+`assert checked` — so that a rule which inspects nothing cannot pass in silence. The condition it
+inspects is `QAccessibleComboBox::text` falling through `Name` to `Value`, and **that fall-through
+is `Q_OS_UNIX`-only**. The test's own comment says so, eleven lines above the guard.
+
+So on Windows `checked` is **0 by construction**, the guard fires, and the whole `windows desktop`
+job fails on a rule that is working exactly as designed. Measured on Linux for comparison: `checked`
+is **7**.
+
+**The failure is a harness defect and the product is unaffected** — the same product/harness
+question `T-238` exists to answer, settled here in one reading because the guard names its own
+condition.
+
+#### Why it was not noticed
+
+`083e5e3` was the last push to touch a path `ci.yml` watches. Everything after it — `955837d`,
+`5238a6b`, `c2b3b61` — was prose, correctly skipped by `paths-ignore`, so **no CI run has completed
+on `main` since the failure**. The run at `9be7433` was cancelled in flight. `STATUS.md` meanwhile
+said `T-246`'s *"Windows half is on the runner now … the CI run's verdict lands in the Actions
+log"*. **The verdict landed and nothing went back for it.**
+
+#### The fix
+
+Both platforms are asserted, neither is skipped: on Windows `checked` **must be 0**, and if Qt ever
+starts falling through there the assertion says so and asks for the rule to be widened. A
+`skipif` was rejected — a skip is indistinguishable from a pass, which is the reason `T200-R3`
+survived three rounds.
+
+#### Acceptance criteria
+
+- **The `windows desktop` job is green on a real run.** Linux passing proves nothing about the
+  branch that was failing, and this task is not closed by local evidence
+- The Linux guard still fails when the rule inspects nothing — unchanged, and it still reports 7
+- **The Windows branch is shown to be live rather than dead code.** Forced on Linux, where 7
+  controls match, it fails with its own message; done 2026-08-16 and restored
+- `T-246`'s Windows half — `test_each_menu_publishes_exactly_its_actions` — is read off the same
+  run, since that verdict is still outstanding
+
+#### Where it stands — 2026-08-16, run `31956402888`
+
+**The fix is verified on Windows and the task is not closed, and those are two different
+sentences.**
+
+| | |
+|---|---|
+| `test_no_control_is_named_only_by_the_value_it_happens_to_hold` | **PASSED on Windows**, 17:42:06 |
+| `T-246`'s `test_each_menu_publishes_exactly_its_actions` | **PASSED**, all three menus — File, Settings, Help. That verdict is no longer outstanding |
+| The `windows desktop` job | **Timed out at 30 min** — `T-259`, unrelated to this fix |
+
+#### Criterion 1 is met — run `31985410889`, 2026-08-17
+
+**All five jobs green**, `windows desktop` among them: **3597 passed, 30 skipped, 0 failed** in
+30:20, job total 32 min against the raised 40-minute bound. `T-257`'s test passed on Windows for
+the third time, and this time **the job completed**, which is what the criterion asked for.
+
+**Every acceptance criterion is now met.** Ready for review.
+
+*(The block below is what stood before that run, and is kept because the discipline in it is the
+point: the criterion was left unmet through three runs rather than re-read to fit the evidence.)*
+
+**Criterion 1 said the job is green, and the job was not green.** The test it names passed, seventeen
+minutes before the job was killed, and the kill was the suite outgrowing its bound rather than
+anything this task touched. **The criterion is left unmet rather than reinterpreted**: a criterion
+that gets re-read to match the evidence is `P2EXIT-R12`, and the whole reason this one was written
+that way is that a passing test on one platform had already been mistaken for a working gate.
+
+**It closes on the next `windows desktop` run that completes**, which `T-259`'s raised bound is what
+makes possible.
+
+#### Out of scope
+
+- The gap that let a red job go unread. That is worth its own entry if it happens twice; once is a
+  sweep finding, and the sweep is what caught it
+
+---
+
+## Complete
+
 ### T-183 — The option audit: classify every group, and decompose the phase
 
-**Status:** **In Review — corrected 2026-08-17 against `T183-R1`…`R5`.** The review
+**Status:** **Complete — Approved with follow-ups at `1d0caf6`**, 2026-08-17, after **three
+review rounds**. All five findings Resolved; the three exact mutations the reviewer built now fail
+at the intended assertions. Three Low follow-ups are assigned away rather than left here:
+**`T183-F1`** and **`T183-F2`** to `T-256`, **`T183-F3`** to `T-252`.
+
+**The reviewer ruled on all four uncertainties I raised, and one is a design decision worth
+keeping: the two exception maps stay in the test.** Moving their citations into the audit would
+mean testing the audit against itself, and would lose the independence that caught the mutations.
+
+*(Previous status, and the round it describes.)* The review
 (`5613af4`) returned **Changes requested** with four blocking findings, **two of them product
 defects rather than classification opinions**, and all five are addressed:
 
@@ -487,7 +844,7 @@ from the code side rather than the document side.
 ---
 
 
-## Complete
+
 
 ### T-240 — Nothing enforces the commit-message rules, and one of them has now been broken twice
 
@@ -6657,75 +7014,6 @@ reported six times, produced here by a tool rather than by inattention. **`T-096
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
 
-### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
-
-**Status:** **Ready — filed 2026-08-16 from a real Windows failure**, run `31966531162`
-**Owner:** Implementer
-**Priority:** Medium. It costs a red Windows job and five unreadable errors whenever the privilege
-is absent, which is the ordinary state of a Windows machine
-**Phase:** Phase 4 maintenance. Gates nothing in the centre column
-**Depends on:** nothing
-**Relevant context:** `T-070` (Complete, approved 2026-07-28 — it built the guard),
-`tests/capabilities.py` (`can_create_symlinks`, the `symlinks` fixture), `tests/conftest.py`,
-`tests/integration/test_worker.py`, `tests/unit/test_paths.py`, `ai/TESTING.md` §12
-**Affected surfaces:** `tests/integration/test_worker.py`, and wherever the enforcing check lands.
-**No source**
-**Risk:** Low. The risk of the obvious fix is the opposite one — adding the fixture to five tests
-and calling it done, which is what leaves the sixth to be written next month
-
-#### What happened
-
-`SeCreateSymbolicLinkPrivilege` was absent on `STARBASE` and **five tests failed with a bare
-`OSError: [WinError 1314] A required privilege is not held by the client`** instead of skipping
-with the message that names the privilege.
-
-**`T-070`'s guard is not broken — it is simply not requested.** Of the nine tests that create a
-symlink, four take the `symlinks` fixture and **skipped correctly on the same run**; five do not
-and failed. Derived rather than eyeballed:
-
-| File | Guarded | Unguarded |
-|---|---|---|
-| `tests/unit/test_paths.py` | 3 | 0 |
-| `tests/integration/test_worker.py` | 1 | **5** |
-
-The five: `test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused`,
-`test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written`,
-`test_a_symlinked_staging_name_reports_no_partial_to_resume_from`,
-`test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused`,
-`test_a_symlink_planted_during_the_mkdir_is_still_caught`.
-
-**This is `T-070`'s own defect, re-instanced by tests written after it.** That task fixed four named
-tests and added a fixture; nothing makes a *later* symlink test use it. Fixing these five and
-stopping would be the same trade again — the list is not the property.
-
-*(The privilege went missing because the runner was restarted from a non-elevated session while
-`STARBASE` was being recovered on 2026-08-16. That is the trigger and **not** the defect: a Windows
-machine without Developer Mode or elevation is the ordinary case, and `T-070` exists because the
-suite must say so rather than erroring.)*
-
-#### Acceptance criteria
-
-- **A check enforces the property, not the list**: a test that creates a symlink and does not
-  request the capability **fails a gate**, wherever it is written. A nine-line `ast` walk over
-  `tests/` finds all nine of today's cases, so the mechanism is not the hard part
-- **It is proved by adding an unguarded symlink test and watching the gate fail**, then removing it
-  — the mutation, not the assertion
-- **The five gain the guard**, and on a machine without the privilege they **skip with
-  `NO_SYMLINKS`** rather than raising
-- **Coverage is not quietly reduced.** These five assert containment — `T-034`'s boundary — so a
-  skip on Windows is a real gap and must be visible as a skip count, never as a pass
-- The gate sits with the project's other static checks over its own tree (`test_layering.py`,
-  `test_task_placement.py`) rather than becoming a runtime `except OSError`, which would convert
-  every future privilege failure into a silent pass
-
-#### Out of scope
-
-- Restoring the privilege on `STARBASE`. That is machine configuration, done separately — and if it
-  is restored first, **this defect stops being visible while still being present**, which is the
-  reason it is filed with its evidence rather than left to the next red run
-
----
-
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
 **Status:** **Ready — filed 2026-08-16 from five live observations on `STARBASE`.** Not a
@@ -7862,9 +8150,9 @@ descend from, and `T-183` is what turns them into the rest of the phase.)*
 
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
 
-**Status:** Proposed — filed 2026-08-07 with the phase. **Blocked on `T-256`**, which now owns a
-**sixteenth** unruled option (`--legacy-server-connect`, `T183-R3`) as well as the three `SEC-003`
-corrections. `T-183` delivered the classification and `SEC-004` ruled the original fifteen
+**Status:** Proposed — filed 2026-08-07 with the phase. **Blocked on `T-256`** for **one**
+disposition: `--legacy-server-connect` (`T183-R3`), the sixteenth option the audit surfaced and the
+only one still unruled. The three `SEC-003` corrections `T-256` also carries are **non-blocking**. `T-183` delivered the classification and `SEC-004` ruled the original fifteen
 forbidden, so the refusal list is the audit's `app:sets` + `app:contained` + `app:plumbing` +
 **`app:policy`** + `excluded` classes — **89 documented options** — but a refusal list cannot be
 final while any option is unruled. Nothing in this phase starts before Phase 4 exits.
@@ -7877,7 +8165,7 @@ normalized value as though it were the `SEC-003` bypass.)*
 **Owner:** Implementer
 **Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
 **Phase:** Phase 4.5
-**Depends on:** **`T-256`** — sixteen unruled options and three `SEC-003` corrections. `T-183` delivered the classification and `SEC-004` ruled the original fifteen; the refusal list is **89 documented options** across five refused classes, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
+**Depends on:** **`T-256`** — **one** unruled option, `--legacy-server-connect`. *(This said "sixteen unruled options and three `SEC-003` corrections"; fifteen were ruled by `SEC-004` and the three corrections are explicitly non-blocking — `T183-F1`.)* `T-183` delivered the classification and `SEC-004` ruled the original fifteen; the refusal list is **89 documented options** across five refused classes, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
 
 > **Four of `T-183`'s findings land here, and the first changes the design.**
 >

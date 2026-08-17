@@ -2237,7 +2237,9 @@ def test_a_sidecar_reported_through_a_dotdot_spelling_is_refused(tmp_path: Path)
     )
 
 
-def test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused(tmp_path: Path) -> None:
+def test_a_sidecar_that_is_a_symlink_out_of_staging_is_refused(
+    tmp_path: Path, symlinks: None
+) -> None:
     """The spelling a purely textual check cannot see at all.
 
     `is_contained` resolves, so the question asked is *where does this file live*, not *what does
@@ -2391,7 +2393,7 @@ def test_a_discard_refuses_a_staging_path_outside_its_directory(
 
 
 def test_a_symlink_at_the_staging_name_fails_the_session_before_anything_is_written(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, symlinks: None
 ) -> None:
     """**`T113-R1`, Critical.** A digest makes the *name* safe and says nothing about what is at it.
 
@@ -2475,7 +2477,9 @@ def test_an_existing_staging_directory_is_reused_with_its_partial_intact(tmp_pat
     assert worker_module.resumable_partial(downloads, "job-1") is not None
 
 
-def test_a_symlinked_staging_name_reports_no_partial_to_resume_from(tmp_path: Path) -> None:
+def test_a_symlinked_staging_name_reports_no_partial_to_resume_from(
+    tmp_path: Path, symlinks: None
+) -> None:
     """Reporting what is inside a foreign directory as *this job's partial* answers for a file the
     session never wrote — and it is the manager that reads this, to decide what to clean up."""
     downloads = tmp_path / "downloads"
@@ -2493,7 +2497,7 @@ def test_a_symlinked_staging_name_reports_no_partial_to_resume_from(tmp_path: Pa
 
 
 def test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused(
-    tmp_path: Path,
+    tmp_path: Path, symlinks: None
 ) -> None:
     """Containment alone is not enough, and a mutation is what said so.
 
@@ -2517,7 +2521,7 @@ def test_a_symlink_pointing_somewhere_else_inside_the_download_folder_is_refused
 
 
 def test_a_symlink_planted_during_the_mkdir_is_still_caught(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, symlinks: None
 ) -> None:
     """Why the check runs **after** the create as well as before it.
 
