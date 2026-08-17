@@ -17414,3 +17414,63 @@ grant; the recurring class — *incomplete or discarded evidence treated as succ
 is closed at every place it was found, and the last two instances were inside the fifth
 correction's own branches, which is the pattern worth remembering ahead of the Phase 4 exit
 review. Nothing in this range is pushed; `origin/main` is at `26eb41c`.
+
+---
+
+## 2026-08-16 — T-183 yt-dlp option audit
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-183`
+**Base:** `c2b3b61`  **Head:** `97358bf`
+**T-183 commits:** `39fcdbe`, `99386b6`
+**Platforms verified:** Linux. The option inventory and behavior probes used the pinned yt-dlp
+2026.07.04. Windows parser identity remains unverified as the audit records.
+**Verdict:** **Changes requested.** The inventory/count machinery is sound, but the classification
+and the plan built from it have three blocking defects. `7e376e7`'s maintainer ruling is not
+reviewed here on its merits; its reclassification is reviewed only for final-tree coherence.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| **T183-R1** | **Critical** | **Yes — `REQ-EXCL-002` / `SEC-003`** | Geo-bypass disposition | Finding 4 equates shared parser `dest` with shared meaning and makes refusal-by-`dest` T-184's design (`docs/YTDLP_OPTION_AUDIT.md:161`, `ai/TASKS.md:7841`). That catches explicit aliases but does not enforce the exclusion. At the pin, no option and `--xff default` both normalize to `geo_bypass=True`; `build_options` emits no `geo_bypass`; and `InfoExtractor.get_param("geo_bypass", True)` therefore enables yt-dlp's automatic fake-XFF retry. Conversely, suppressed `--no-geo-bypass` shares the same `dest` but normalizes to `False`, so the audit's statement that it reaches “the same” parameter behavior is false. Refusing strings or a destination leaves the forbidden behavior active when the user types nothing. | Make the application own the safe effective value: `build_options` must supply `geo_bypass=False` for probe and download unless a future maintainer ruling changes `REQ-EXCL-002`. Amend T-184 to test the normalized library options for the empty/default case and the suppressed aliases, and classify parser actions/values rather than treating destination equality as semantic equality. Sweep other refused `--no-*` aliases for the same action/value distinction. | **Open** |
+| **T183-R2** | **High** | **Yes — criterion 1 and `ARC-010` §4** | Application-owned classifications | The audit derives only literal keys emitted by `build_options`, then treats several options as hatch-reachable even while their reasons say the application owns or cannot represent the behavior. The clearest case is `-i/--ignore-errors` (`docs/YTDLP_OPTION_AUDIT.md:273`): yt-dlp suppresses `DownloadError`, records `_download_retcode = 1`, and returns the info dict after a post-processing failure; `_extract` never reads that return code, so the worker can continue to `Succeeded`. The same contradiction appears for `--skip-playlist-after-errors` (queue owns failure policy), `--playlist-random` (queue owns ordering), `--lazy-playlist` and `--concat-playlist` (conflict with the projected/one-row-per-entry model), and `--ignore-no-formats-error` (metadata-only extraction in a downloader). These are precisely options that fight the GUI for control of its process, which `ARC-010` says are refused; a key need not already appear in `build_options` for the application to own the policy. | Re-audit the hatch class for semantic ownership, starting with every reason that says “owns”, “conflicts”, or names a missing state. Refuse those options, or add an explicit task criterion proving the worker/queue model can represent their outcomes without a false success, reordered queue, missing media, or bypassed playlist projection. Add a normalized-behavior check for policy-owned options rather than limiting derivation to literal emitted keys. | **Open** |
+| **T183-R3** | **Critical** | **Yes — security boundary and criterion 5** | TLS classification | `--legacy-server-connect` remains `hatch` with the reason “Narrow TLS workaround” (`docs/YTDLP_OPTION_AUDIT.md:466`). The pin implements it with `SSL_OP_LEGACY_SERVER_CONNECT` and a compatibility cipher policy: it is a transport-security downgrade. At T-183's own head no decision covered it, so criterion 5 required it to join the unruled TLS options. At final HEAD, `SEC-004` says an option that weakens transport security is refused, but its deliberately bounded ruling names only the fifteen the audit surfaced; this sixteenth option is absent because the audit missed it. Treating it as hatch-reachable would ship the exact silent downgrade `SEC-004` rejects. | Move the row to `unruled`, correct the counts, and return this omitted option to the maintainer/T-256 boundary. If the maintainer extends `SEC-004` to it, classify it `excluded` and add it to T-184's disposition/refusal evidence. Do not infer that extension from a decision whose stated scope is the original fifteen. | **Open** |
+| **T183-R4** | **Medium** | **Yes — criteria 2–3 and the claimed gate** | Test overclaim | The audit says the test re-derives inventory, application ownership, and excluded families (`docs/YTDLP_OPTION_AUDIT.md:22-33`), and both the audit and task entry say it asserts the 44-row typed-task partition (`docs/YTDLP_OPTION_AUDIT.md:229`, `ai/TASKS.md:440`). It does neither. No test reads `SEC-003`/`SEC-004` or any `T-247`…`T-255` entry. The class/count tests only compare the audit to itself. An in-memory mutation moving `--no-check-certificates` from `excluded` to `hatch`, with the three counts recounted, passed all 14 tests. The `dest` comparison also misses CLI-to-library normalization: e.g. `--color` reaches library `color` while `build_options` emits legacy `no_color`, and CLI post-processing options build the `postprocessors` key the test calls unroutable. | Either implement the asserted derivations/partition checks against authoritative inputs, or narrow every claim to what the tests actually establish and independently prove the 44-row partition. Security dispositions need focused invariants that fail when a ruled option becomes hatch-reachable; a recounted self-description is not that evidence. Account for yt-dlp's `parse_options` normalization rather than comparing raw parser destinations directly to library keys. | **Open** |
+| **T183-R5** | **Low** | **No — correct in the T-183 correction batch** | Final-tree coherence | The later ruling was applied to the audit and plan but not to the current-truth headers/snapshot. `ai/STATUS.md:17-19` still says fifteen options are unclassified and T-256 is merely filed, and reports six mutations although the handoff/final test now records eight. `ai/TASKS.md:8-11` still says T-184 waits on T-256. The plan also says 36 of “64 refused” immediately after stating the final refusal count is 79 (`ai/IMPLEMENTATION_PLAN.md:811-818`). Finding 7's heading says “four hatch options” and lists five. | Reconcile the current-truth prose with `SEC-004` while preserving the historical fact that T-183 originally surfaced fifteen. Recount rather than patching isolated numbers. | **Open — target: T-183 correction** |
+
+`app:contained` itself is not a separate finding. `ARC-010` already names `paths` as application-
+owned because containment owns it; splitting the application-owned class into reasons while all
+three remain refused is a clarification of that accepted scheme. The problem is the incomplete
+semantic inventory of what the application owns, not the label used for the one row it noticed.
+
+The typed/hatch line remains partly product judgment. I found no authority strong enough to turn
+`--age-limit` or the long-tail tuning flags into blocking typed-field findings merely because a
+different reviewer might draw that line elsewhere. One concrete wording should still be corrected
+during the class re-audit: T-252 cannot call its seven rows “the whole retry policy” while
+`--file-access-retries` and `--retry-sleep` remain in the hatch.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Review boundary | `c2b3b61d63f53e9c1f280cec3f0b59023699e79d..97358bf8dd23a1dd0b088c1682382d2ffcd26042`; T-183's own commits independently identified as `39fcdbe` and `99386b6`; `7e376e7` treated as the later ruling boundary described above. |
+| Focused audit suite | **14 passed** in 0.15 s. |
+| Excluded-class survivor | **All 14 tests passed** after an in-memory `--no-check-certificates: excluded → hatch` mutation with hatch/excluded/refusal counts recounted. No repository file was changed. |
+| Geo normalization probe | `build_options_has_geo_bypass=False`; effective library default `True`; `parse_options([])` and `--xff default` normalize to `True`; `--xff never` and suppressed `--no-geo-bypass` normalize to `False`. |
+| Option/source inspection | Re-derived all 106 hatch rows with parser group, strings, destination and pinned help. Verified the pin maps `legacyserverconnect` to `SSL_OP_LEGACY_SERVER_CONNECT`, and verified yt-dlp's ignored-error path suppresses the exception and records a return code the worker does not inspect. |
+| Ruff / format | Focused test file clean: `ruff check` passed; `ruff format --check` reports **1 file already formatted**. |
+| Typing | Bare `mypy` passed: **147 source files**, no issues. |
+| Unit suite | **2150 passed, 15 skipped; one sandbox-only loopback bind denial.** The denied test then passed **1/1** with localhost permission. No product failure remains, and no single 2151-pass command is claimed. |
+| Diff hygiene | `git diff --check c2b3b61..97358bf` passed. |
+| Platform limits | Windows parser identity, real downloads exercising these future hatch options, CI, frozen builds and network behavior were not run or claimed. |
+
+### Readiness
+
+T-183 remains **In Review** and T-184 should not begin from the current classification. The
+correction batch should address all four blocking findings together: enforce the geo exclusion at
+the effective-library-option level; re-audit semantic application ownership across the hatch;
+return the legacy-TLS option to an honest unruled state; and make the gate claims match real
+evidence. Then reconcile the final-tree counts/current-truth prose and request one focused
+re-review. The Reviewer changed only `ai/REVIEWS.md`; no reviewed document, source, test, task,
+decision, plan, status, handoff, dependency, push or remote state was changed.
