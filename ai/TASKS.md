@@ -141,6 +141,17 @@ all, which is the point.
 > maintainer chose on 2026-08-17, the reviewer having proposed no further automatic round. The
 > capability-token design is the alternative the reviewer named in the second-round ruling.
 >
+> **A sixth pass was authorized the same day**, for the fifth review's finding: ordinary import
+> aliases bypassed both flat rules — `from os import symlink as make_link` renamed the local
+> binding a call-site ban keyed on, and `SymlinkCapability as Cap` did the same to the constructor
+> — and the exemption compared **basenames**, silently exempting every nested file named
+> `capabilities.py`. All three were reproduced before fixing. Now the *import itself* of a raw
+> name is banned under any alias (no test file has a sanctioned reason to hold one), an aliased
+> import of the capability class is banned outright (annotations need no rename), and the
+> exemption is the exact path `tests/capabilities.py`. The floor also pins the exempt file to
+> **exactly two** raw sites — the probe and `SymlinkCapability.create` — so a third site cannot
+> ride the exemption.
+>
 > **A claim from the second pass is withdrawn, not reinterpreted:** *"a helper that takes the
 > fixture as a parameter can only be called by something that has it."* False — `symlinks` returned
 > `None`, so any caller could fake it. Under the token design that forgery fails loudly on every

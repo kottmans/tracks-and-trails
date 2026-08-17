@@ -56,9 +56,10 @@ RAW_CALLS: Final = frozenset({"symlink_to", "symlink"})
 #: The capability class, whose *construction* is confined to the probe module.
 CONSTRUCTOR: Final = SymlinkCapability.__name__
 
-#: `tests/capabilities.py` is the probe: `can_create_symlinks` creates a link to find out whether
-#: it can, and the fixture constructs the capability. It is the one file both rules exempt.
-EXEMPT: Final = frozenset({"capabilities.py"})
+#: The one exempt file, **as a full path** — `tests/capabilities.py` exactly. The fifth review
+#: found this was a basename comparison, which silently exempted *every* file named
+#: `capabilities.py` anywhere under `tests/`; a nested one carrying raw creation passed the gate.
+EXEMPT: Final = frozenset({Path("capabilities.py")})
 
 
 def _calls(tree: ast.AST, names: frozenset[str]) -> list[ast.Call]:
@@ -70,22 +71,71 @@ def _calls(tree: ast.AST, names: frozenset[str]) -> list[ast.Call]:
     return [n for n in ast.walk(tree) if isinstance(n, ast.Call) and matches(n.func)]
 
 
+def _import_bindings(tree: ast.AST, originals: frozenset[str]) -> dict[str, ast.ImportFrom]:
+    """Every local name an `ImportFrom` binds to one of `originals`, aliased or not.
+
+    The fifth review's surviving spelling: `from os import symlink as make_link` renames the
+    *local* binding, so a call-site ban keyed on the original names never sees `make_link(...)`.
+    The import is where the original name is still visible, so that is where it is read.
+    """
+    found: dict[str, ast.ImportFrom] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name in originals:
+                    found[alias.asname or alias.name] = node
+    return found
+
+
 def _sources() -> list[Path]:
-    return sorted(p for p in TESTS.rglob("*.py") if p.name not in EXEMPT)
+    return sorted(p for p in TESTS.rglob("*.py") if p.relative_to(TESTS) not in EXEMPT)
 
 
 def _raw_faults(path: Path, source: str) -> list[str]:
-    return [
-        f"{path.name}:{call.lineno} creates a symlink directly"
-        for call in _calls(ast.parse(source), RAW_CALLS)
-    ]
+    """Raw creation, however spelled: attribute calls, direct-name calls, and aliased imports.
+
+    **The import itself is banned**, not only calls through it: no file in the test tree has a
+    sanctioned reason to import `symlink` under any name, because every raw call is banned anyway.
+    Flagging the import gives the fault a line the author just wrote, and closes the
+    imported-but-called-indirectly wriggle without any dataflow analysis.
+    """
+    tree = ast.parse(source)
+    faults = []
+    aliases = _import_bindings(tree, RAW_CALLS)
+    for name, node in sorted(aliases.items()):
+        faults.append(
+            f"{path.name}:{node.lineno} imports raw symlink creation as `{name}` — banned "
+            "however it is named"
+        )
+    for call in _calls(tree, RAW_CALLS | frozenset(aliases)):
+        faults.append(f"{path.name}:{call.lineno} creates a symlink directly")
+    return faults
 
 
 def _construction_faults(path: Path, source: str) -> list[str]:
-    return [
-        f"{path.name}:{call.lineno} constructs {CONSTRUCTOR} outside tests/capabilities.py"
-        for call in _calls(ast.parse(source), frozenset({CONSTRUCTOR}))
-    ]
+    """Construction of the capability, including through an aliased import of the class.
+
+    A plain `from tests.capabilities import SymlinkCapability` stays legal — annotations need it —
+    but an *aliased* import is flagged outright: annotations do not need a rename, and the alias
+    is how a constructor call escapes a name-keyed ban.
+    """
+    tree = ast.parse(source)
+    faults = []
+    aliased = {
+        name: node
+        for name, node in _import_bindings(tree, frozenset({CONSTRUCTOR})).items()
+        if name != CONSTRUCTOR
+    }
+    for name, node in sorted(aliased.items()):
+        faults.append(
+            f"{path.name}:{node.lineno} imports {CONSTRUCTOR} as `{name}` — the capability "
+            "class may not be renamed"
+        )
+    for call in _calls(tree, frozenset({CONSTRUCTOR}) | frozenset(aliased)):
+        faults.append(
+            f"{path.name}:{call.lineno} constructs {CONSTRUCTOR} outside tests/capabilities.py"
+        )
+    return faults
 
 
 def test_no_raw_symlink_creation_outside_the_capability_module() -> None:
@@ -134,9 +184,12 @@ def test_this_gate_is_looking_at_something() -> None:
     and say why.
     """
     probe = (TESTS / "capabilities.py").read_text(encoding="utf-8")
-    assert _calls(ast.parse(probe), RAW_CALLS), (
-        "tests/capabilities.py contains no raw symlink creation — the probe has changed shape, "
-        "so the names this gate bans may no longer be the names that matter"
+    raw_in_probe = _calls(ast.parse(probe), RAW_CALLS)
+    assert len(raw_in_probe) == 2, (
+        f"tests/capabilities.py holds {len(raw_in_probe)} raw creation sites, not the two the "
+        "exemption exists for — `can_create_symlinks`'s probe and `SymlinkCapability.create`. "
+        "A third raw site there is new machinery riding the exemption; fewer means the probe or "
+        "the capability changed shape and the banned names may no longer be the ones that matter."
     )
 
     created = 0
@@ -218,6 +271,13 @@ _RAW: Final = {
         "import pytest\n@pytest.fixture\ndef planted(tmp_path, symlinks):\n"
         "    (tmp_path / 'l').symlink_to(tmp_path)\n"
     ),
+    # The fifth review's survivors: an ordinary import alias renames the local binding, so a
+    # call-site ban keyed on the original names never fires. The import itself is banned now.
+    "round-5-aliased-raw-import": (
+        "from os import symlink as make_link\n"
+        "def test_x(tmp_path):\n    make_link(tmp_path, tmp_path / 'l')\n"
+    ),
+    "round-5-aliased-import-uncalled": "from os import symlink as make_link\n",
 }
 
 _SANCTIONED: Final = {
@@ -246,6 +306,16 @@ def test_every_raw_spelling_is_flagged(spelling: str) -> None:
     assert _raw_faults(Path("probe.py"), _RAW[spelling]), (
         f"the ban does not see {spelling}, so that spelling would ship"
     )
+
+
+def test_the_construction_ban_sees_the_aliased_class_import() -> None:
+    """The fifth review's other survivor: rename the class on import, construct under the alias."""
+    source = (
+        "from tests.capabilities import SymlinkCapability as Cap\n"
+        "def test_x(tmp_path):\n    Cap().create(tmp_path / 'l', tmp_path)\n"
+    )
+    faults = _construction_faults(Path("probe.py"), source)
+    assert len(faults) == 2, faults  # the import, and the call through it
 
 
 @pytest.mark.parametrize("spelling", sorted(_SANCTIONED), ids=sorted(_SANCTIONED))
