@@ -17617,3 +17617,65 @@ only on the maintainer's disposition of legacy-server-connect; the three propose
 corrections do not extend that blocker. The Reviewer changed only ai/REVIEWS.md; no reviewed
 source, test, audit, task, decision, plan, status, handoff, dependency, push or remote state was
 changed.
+
+---
+
+## 2026-08-17 — T-260 implementation review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-260
+**Base:** 5e4c04f  **Head:** 30b473d
+**Commit reviewed:** 30b473d only — three files, +511/-80. The large `ai/TASKS.md` movement is
+T-183 completion and its assigned T-184 dependency cleanup, both disclosed in the commit message.
+**Platforms verified:** Linux. The no-symlink state was forced deterministically; no Windows
+runtime or real WinError 1314 execution is claimed.
+**Verdict:** **Changes requested.** The five missed tests now request the capability, and the six
+worker containment cases both run and skip correctly. The static check does not yet enforce the
+property its task requires.
+
+### Finding
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T260-R1** | **Medium** | **Yes — acceptance criterion 1 and the claimed static gate** | `_symlink_tests` searches only `tests/**/test_*.py`, then only synchronous `test_` `FunctionDef`s whose own subtree contains an attribute call named `symlink` or `symlink_to` (`tests/unit/test_capability_guards.py:57-69`). A fixture in `conftest.py` or a helper in an ordinary test module can therefore create the link for an unguarded test without being examined. Two ordinary syntax variants also pass: `async def test_...` is an `AsyncFunctionDef`, and `from os import symlink; symlink(...)` calls an `ast.Name`. An in-memory probe against the shipped detector reported all four as undiscovered. Each can reproduce T-260's actual defect on an incapable Windows host: the test reaches link creation without the fixture and raises the same bare `OSError`. The `capabilities.py` exemption does not narrow this risk because that filename is already outside the `test_*.py` glob. | Make the enforcement boundary cover symlink creation throughout the test Python tree, including fixture/helper ownership, async functions and the direct-import spelling. The implementation may forbid unguarded raw creation sites, define a guarded helper/fixture rule, or use another enforceable design; it must not infer safety solely from a direct call inside a synchronous test body. Add mutations for at least a `conftest.py` fixture and an ordinary helper module, plus detector cases for direct import and async syntax. | **Open — target: T-260 correction** |
+
+This is not a request for a general Python call graph. It is a ruling on the task's own boundary:
+“wherever it is written” includes the fixture/helper paths that execute while a test is being set
+up. A small explicit restriction on where raw symlink creation may live is sufficient if the gate
+enforces that restriction.
+
+### Other requested judgments
+
+- **Skipping remains the correct incapable-host outcome.** These tests cannot construct their
+  adversarial precondition on such a host; reporting `SKIPPED` with the missing privilege and
+  Developer Mode named is honest. The same containment behavior remains required and passing on
+  Linux and capable CI/Windows hosts. No runtime exception was converted into a pass.
+- **The simulated refusal is sufficient for this correction's portable evidence.** It proves the
+  pre-existing fixture's skip path and exact message, not Windows privilege detection, and the task
+  and handoff preserve that limit. A real WinError 1314 run is useful operational confirmation but
+  is not required to establish these signature-only changes.
+- **The coordination diff is acceptable.** Moving the already-approved T-183 entry to Complete and
+  applying its assigned one-option T-184 dependency cleanup are coordination-file bookkeeping,
+  explicitly named in the commit. The task-placement suite passes. They do not conceal a second
+  product change or create a separate finding.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Review boundary / hygiene | `5e4c04f..30b473d`; `git diff --check` passed |
+| New capability-gate tests | **5 passed** |
+| Six worker symlink cases, capability present | **6 passed**, 103 deselected |
+| Same cases, capability forced absent | **6 skipped, 0 failed**; every skip names Administrator rights / Developer Mode |
+| Adversarial detector probe | **Four missed cases:** `conftest`/helper indirection, direct-import call and async test |
+| Task placement | **14 passed** |
+| Ruff / formatting | Clean; both changed Python files checked |
+| Full unit suite | **2162 passed, 15 skipped; one sandbox-only localhost socket denial.** The denied test passed **1/1** when rerun with localhost permission; no product failure remains, and no single 2163-pass command is claimed |
+| Platform limits | No Windows runtime, CI, integration-wide, network or frozen-build run claimed |
+
+### Readiness
+
+T-260 remains **In Review**. Preserve the five fixture additions and explicit six-skip behavior;
+broaden or redesign the gate so the helper, fixture and syntax mutations fail, then request one
+focused re-review of that correction commit. The Reviewer changed only `ai/REVIEWS.md`; no reviewed
+test, task, handoff, source, decision, plan, status, push or remote state was changed.
