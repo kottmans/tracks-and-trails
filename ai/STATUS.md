@@ -5,7 +5,9 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-258` is In Review, corrected after six blocking findings.**
+**Last updated:** 2026-08-17 — **`T-258` and `T-262` both came back Blocked**, each corrected again
+after its focused re-review and awaiting the next pass. `T-258` was corrected after six blocking
+findings.
 The pre-bootstrap window that orphaned five workers on `STARBASE` is reproduced, **POSIX is
 measured not to have it** (the child dies within 0.02 s of the parent, on its own broken bootstrap
 pipe), and the application now contains itself in a Job object before any worker exists — through
@@ -771,9 +773,11 @@ makes this a one-checkout, one-writer project committing straight to `main`; pul
 part of how the work is done, so the trigger was dead weight that happened to be the whole attack
 surface. Each removal carries its reason in the file, including what restoring it would require.
 
-**History was scanned before publishing and is clean** — 343 committed paths, no
-cookie/credential/key naming, no token-shaped strings in any commit. **A pattern scan, not a
-proof**, and recorded that way.
+**History was scanned before publishing and is clean** — **344** distinct committed paths at
+`1387e57`, no cookie/credential/key naming, no token-shaped strings in any commit. **A pattern
+scan, not a proof**, and recorded that way. (343 here was the pre-`test_spawn_sites.py` count
+quoted against a tree that already had it; `T262-R2`. The head is part of the claim now, because a
+count naming no tree cannot be rechecked.)
 
 **Two things are deliberately not done.** The repository is still private: this removes the
 blocker, and flipping it is the maintainer's. And `ai/` — 30 000 lines naming machines, timings and

@@ -5,8 +5,11 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-258` is In Review and corrected**, after its first submission
-returned Changes requested with six blocking findings. The window before a spawned worker installs
+**Last updated:** 2026-08-17 — **`T-258` and `T-262` are both In Review with a `Blocked`
+verdict, and both corrected again.** They stay under `## In Review` because that is where work
+awaiting a verdict lives; what is blocked is approval, pending a maintainer decision each.
+`T-258`'s first submission returned Changes requested with six blocking findings. The window
+before a spawned worker installs
 its watchdog is reproduced, POSIX is measured not to have it, and the application now contains
 itself in a Job object before any worker exists — through **one seam that refuses to spawn rather
 than warn**, at every product-owned spawn site rather than the manager's alone. **Three of its five
@@ -623,8 +626,15 @@ so a parent that is not one cannot be the one that spawned it.
 
 ### T-262 — Every CI job runs on the maintainer's own machines, and fork pull requests could too
 
-**Status:** **In Review — built 2026-08-17**, on the maintainer's direct instruction while
-preparing to make the repository public.
+**Status:** **In Review — Blocked at `b6a6d20`, 2026-08-17.** Built on the maintainer's direct
+instruction while preparing to make the repository public. Trigger behaviour is accepted; what blocked it was
+`T262-R1` — `ai/TESTING.md`'s CI-policy section still calling `STARBASE coverage` a hosted job
+fixed to `ubuntu-latest`, six days after `ci.yml:486` moved it to `LINUX_RUNNER`, which contradicts
+the all-self-hosted premise the same section's security argument rests on. **That row, the stale
+`prose.yml` and `frozen ubuntu-latest` names beside it, and `T262-R2`'s 343 in `ai/STATUS.md` are
+corrected here.** The ordinary correction pass is spent, so verifying this batch needs the
+maintainer's explicit §10 choice — authorize a focused pass, accept the risk, change scope, or
+carry the blocker to a named follow-up.
 **Owner:** Implementer
 **Priority:** **High while the repository is being made public**, and moot while it is private. The
 window is the moment of the visibility change, not a period afterwards

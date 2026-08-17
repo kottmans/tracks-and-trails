@@ -274,7 +274,7 @@ nobody runs is worse than one that omits it, because it is read as coverage.
 
 | Trigger | What runs |
 |---|---|
-| **push touching anything a test reads** | everything: Linux `check`, the full `windows desktop` suite, `frozen ubuntu-latest`, `frozen windows`, the coverage notice |
+| **push touching anything a test reads** | everything: Linux `check`, the full `windows desktop` suite, `frozen linux`, `frozen windows`, the coverage notice |
 | **push touching prose only** | **nothing** (`OPS-011`), except `prose.yml` when `ai/TASKS.md` changed |
 | **pull request** | **nothing at all** — no workflow carries the trigger (`T-262`) |
 | **nightly (06:00 UTC) and `workflow_dispatch`** | the same as the first row, plus it cannot be cancelled by a push |
@@ -285,7 +285,17 @@ nobody runs is worse than one that omits it, because it is read as coverage.
 |---|---|---|
 | `linux`, `frozen linux`, `prose` | the maintainer's Fedora desktop/laptop | `vars.LINUX_RUNNER` |
 | `windows desktop`, `frozen windows` | `STARBASE` | `vars.WINDOWS_RUNNER` |
-| `STARBASE coverage` | hosted `ubuntu-latest` — **the only hosted job left** | fixed |
+| `STARBASE coverage` | the maintainer's Fedora desktop/laptop | `vars.LINUX_RUNNER` |
+
+**No job is pinned to hosted compute**, as of the maintainer's 2026-08-11 ruling — *STARBASE and
+local machines exclusively*. `STARBASE coverage` was the last one that was, and this table went on
+saying so for six days after `ci.yml:486` moved it, which is what `T262-R1` found: the row
+contradicted the all-self-hosted premise this section's own security paragraph rests on. Hosted
+`ubuntu-latest` survives only as the unset-variable fallback inside each `runs-on`, which is what
+keeps a fresh clone runnable; it is not where this repository's runs land. What the ruling costs is
+stated in the job's own comment rather than here: a reporter whose whole purpose is to announce
+that self-hosted work did not run is now itself self-hosted, and what it still covers is `STARBASE`
+down while Fedora is up.
 
 **The Linux jobs are named `linux`, not after a distribution**, as of 2026-08-05. They were
 `ubuntu-latest`, which stopped being true the moment `LINUX_RUNNER` pointed them at Fedora — and a
@@ -383,7 +393,7 @@ decision, not tidying.
 
 **One gate read prose, and it moved rather than died.**
 `tests/unit/test_task_placement.py` (`T-096`) reads `ai/TASKS.md` — the only prose file the suite
-opens. It now runs in `.github/workflows/prose.yml`, alone, on `ubuntu-latest`, with `pytest` as
+opens. It now runs in `.github/workflows/prose.yml`, alone, on `vars.LINUX_RUNNER`, with `pytest` as
 its whole environment: no package install, no Qt, no Windows, seconds rather than ~19 minutes.
 Coverage unchanged; cost changed. If that test ever gains a dependency on the package, this
 arrangement stops being sufficient and `prose.yml` must say so rather than quietly widen.
