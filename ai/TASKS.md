@@ -632,9 +632,9 @@ instruction while preparing to make the repository public. Trigger behaviour is 
 fixed to `ubuntu-latest`, six days after `ci.yml:486` moved it to `LINUX_RUNNER`, which contradicts
 the all-self-hosted premise the same section's security argument rests on. **That row, the stale
 `prose.yml` and `frozen ubuntu-latest` names beside it, and `T262-R2`'s 343 in `ai/STATUS.md` are
-corrected here.** The ordinary correction pass is spent, so verifying this batch needs the
-maintainer's explicit §10 choice — authorize a focused pass, accept the risk, change scope, or
-carry the blocker to a named follow-up.
+corrected here.** The ordinary correction pass is spent, and **the maintainer authorized one more
+focused pass on 2026-08-17** under `AGENTS.md` §10, choosing a pass over accepting the risk,
+changing scope, or a named follow-up. Request: `ai/handoffs/2026-08-17-T-262-rereview-2-request.md`.
 **Owner:** Implementer
 **Priority:** **High while the repository is being made public**, and moot while it is private. The
 window is the moment of the visibility change, not a period afterwards
