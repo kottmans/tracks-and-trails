@@ -33,7 +33,7 @@ YTDLP_VERSION: Final = yt_dlp.version.__version__
 
 AUDIT = Path(__file__).resolve().parents[2] / "docs" / "YTDLP_OPTION_AUDIT.md"
 
-#: Classes whose options the escape hatch must refuse (`ARC-010` §4, `SEC-003`).
+#: Classes whose options the escape hatch must refuse (`ARC-010` §4, `SEC-003`, `SEC-004`).
 REFUSED: Final = frozenset({"app:sets", "app:contained", "app:plumbing", "excluded"})
 #: Classes that may legitimately name a key `build_options` sets.
 MAY_SET: Final = frozenset({"app:sets", "typed"})
@@ -203,6 +203,38 @@ def test_the_audit_states_the_documented_and_suppressed_split() -> None:
 def test_every_class_used_is_one_the_audit_defines() -> None:
     used = {cls for _, cls, _ in ROWS}
     assert used <= KNOWN_CLASSES, f"undefined classes in use: {sorted(used - KNOWN_CLASSES)}"
+
+
+def test_the_class_table_counts_what_the_tables_hold() -> None:
+    """The audit's summary must not drift from the audit (`T-256`, `SEC-004`).
+
+    `SEC-004` moved fifteen rows from `unruled` to `excluded`, and the summary at the top states a
+    count per class. A hand-maintained count beside a machine-checked table is the `T-212` row-count
+    shape — forty-one stated over a forty-seven row file — so it is derived here instead.
+    """
+    from collections import Counter
+
+    counted = Counter(cls for _, cls, _ in ROWS)
+    text = AUDIT.read_text("utf-8")
+    stated = {
+        match.group(1): int(match.group(2))
+        for match in re.finditer(r"^\| `([a-z:]+)` \| \*{0,2}(\d+)\*{0,2} \|", text, re.M)
+    }
+    assert stated, "the audit states no class counts at all"
+    wrong = {cls: (n, counted.get(cls, 0)) for cls, n in stated.items() if n != counted.get(cls, 0)}
+    assert not wrong, f"class table says {{cls: (stated, actual)}} {wrong}"
+    assert set(stated) == set(KNOWN_CLASSES), (
+        f"the class table and the defined classes disagree: "
+        f"{sorted(set(stated) ^ set(KNOWN_CLASSES))}"
+    )
+
+
+def test_the_refusal_list_size_is_stated_and_correct() -> None:
+    """What `T-184` enforces, counted rather than asserted in prose."""
+    refused = sum(1 for _, cls, _ in ROWS if cls in REFUSED)
+    assert f"— {refused} rows**" in AUDIT.read_text("utf-8"), (
+        f"the audit does not state its refusal list as {refused} rows"
+    )
 
 
 def test_every_row_carries_a_reason() -> None:

@@ -810,8 +810,8 @@ with their help suppressed. Classified:
 |---|---|
 | **65** get a typed control | **21 already have one**; the other **44** are nine tasks, `T-247`…`T-255` |
 | **106** are escape-hatch only | `T-184` |
-| **64** are refused | the application owns them or `SEC-003` forbids them |
-| **15** are unclassified | **no decision covers them**; `T-256` rules them, and `T-184` is blocked until it does |
+| **79** are refused | the application owns them, or `SEC-003`/`SEC-004` forbid them |
+| **15** were unclassified | **no decision covered them**; `SEC-004` ruled all fifteen **forbidden** on 2026-08-16, so the refused count is **79** and `T-184` is unblocked |
 
 **This phase is nine typed-field tasks, the hatch, and one ruling** — not "the rest of yt-dlp".
 `REQ-030` excludes the options that *are* the command line, and the audit found those to be 36 of
@@ -823,7 +823,7 @@ the 64 refused.
 |---|---|---|
 | ~~**The `REQ-EXCL` ruling**~~ — **taken 2026-08-07 as `SEC-003`**: `--netrc` and client certs in, `-u`/`-p` out; `--impersonate` and `--xff` out; `--geo-verification-proxy` in; `--exec` out; `--download-archive` in as a user-named file; SponsorBlock in, opt-in, with `NFR-007` amended | `T-182` | **Complete.** It blocked the phase and no longer does. It also corrected `ARC-010` §3, which claimed containment reaches `--exec` |
 | ~~**The option audit**~~ — **written 2026-08-16**, `docs/YTDLP_OPTION_AUDIT.md`: 250 options, each in exactly one class, against a named yt-dlp version, with the application-owned class derived from `build_options` and drift-checked by `tests/unit/test_option_audit.py` | `T-183` | **In review.** It returned seven findings, four of which change how `T-184` must be built |
-| **The fifteen unclassified options, ruled** — code execution, a runtime-fetched component, TLS validation and three credentials, none covered by `SEC-003`. Carries three proposed corrections to `SEC-003` and `ARC-010` | `T-256` | **Medium, and it blocks `T-184`.** A refusal list cannot be built while fifteen options have no ruling |
+| ~~**The fifteen unclassified options, ruled**~~ — **done 2026-08-16, `SEC-004`: all fifteen forbidden.** Code execution, a runtime-fetched component, TLS validation and three credentials, none covered by `SEC-003` | `T-256` | **In review.** Three proposed corrections to `SEC-003` itself are **still unruled** and block nothing |
 | **The escape hatch** (`REQ-031`): parsing, validation, containment, redaction, refusal list, precedence against typed fields | `T-184` | **High** — it is a new route to `T-034`'s containment boundary and `DAT-003`/`DAT-004`'s redaction boundary. Both are Critical-band if breached. **The refusal list keys on `dest`, not on option strings** — audit Finding 4 |
 | **Typed fields, nine tasks over 44 options**: `T-247` selection · `T-248` filenames · `T-249` sidecar writers · `T-250` format depth · `T-251` subtitle depth · `T-252` download tuning · `T-253` reachability · `T-254` SponsorBlock · `T-255` extractor arguments | `T-247`…`T-255` | Medium — breadth, and `NFR-008`'s churn lands on every one of them. Each is independent of the others and of the hatch |
 | Promotion of the options users actually type into the hatch | from `T-184` | Low — but it is what stops the hatch becoming the interface |
@@ -833,8 +833,9 @@ the 64 refused.
 - **The audit is complete and every option group is classified**, with the application-owned and
   excluded lists stated and testable rather than implied by absence — met by
   `docs/YTDLP_OPTION_AUDIT.md` and `tests/unit/test_option_audit.py` when `T-183` is approved
-- **Nothing is left in the `unruled` class.** The audit's fifteen are `T-256`'s, and a phase that
-  exits with an unclassified option has an unenforceable refusal list
+- **Nothing is left in the `unruled` class.** Met for the audit's original fifteen (`SEC-004`,
+  2026-08-16) and still binding: a phase that exits with an unclassified option has an
+  unenforceable refusal list
 - A download configured through typed fields and a download configured through the escape hatch
   produce the **same yt-dlp option dictionary** for the same intent — asserted, not reasoned about
 - **The escape hatch cannot escape containment**: an option that redirects output is refused or

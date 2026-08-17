@@ -120,6 +120,80 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+### T-256 — Rule the fifteen options no decision covers
+
+**Status:** **In Review — the ruling is taken, 2026-08-16: `SEC-004`, all fifteen forbidden.**
+Filed the same day by `T-183`'s fifth criterion and answered the same day. The audit is
+reclassified — `unruled` is empty, `excluded` is 23, the refusal list is **79** — and two new tests
+stop the audit's own summary drifting from its tables. **`T-184` is unblocked.**
+
+> **The three `SEC-003` corrections are NOT ruled, and this entry stays open for them.** The
+> maintainer's ruling answered *the fifteen*; it was not asked about `--netrc-cmd`,
+> `--client-certificate-password`, or the five-versus-seven count. `SEC-004` says so in its own
+> text rather than leaving the reader to infer the scope of what was decided.
+
+**Owner:** Planner proposes; **the maintainer rules**
+**Priority:** ~~Highest in the phase~~ — **the blocking half is done.** What remains are three
+corrections to an Accepted decision, which block nothing
+**Phase:** Phase 4.5
+**Depends on:** `T-183` approved
+**Relevant context:** `docs/YTDLP_OPTION_AUDIT.md` Findings 2, 3, 4 and 5; `SEC-003`; `ARC-010` §3
+and §4; `NFR-007`; `REQ-EXCL-002`, `-003`, `-005`; `T-034`
+**Affected surfaces:** `ai/DECISIONS.md` (a new `SEC-` entry, plus corrections to `SEC-003` and
+`ARC-010`), `docs/YTDLP_OPTION_AUDIT.md` (the fifteen move out of `unruled`)
+**Risk:** Medium. Three of the four families reach arbitrary code execution, and the cost of ruling
+them *permitted* without noticing is the cost `--exec` was forbidden to avoid
+
+#### Scope
+
+Four questions, and three record corrections that came with them.
+
+- **Code execution, seven options.** `--plugin-dirs`, `--no-plugin-dirs`, `--use-postprocessor`
+  (arbitrary Python from a named path), `--downloader`, `--downloader-args`, `--postprocessor-args`
+  (an external binary and its arguments), `--js-runtimes`, `--no-js-runtimes` (an external
+  interpreter). Each is the shape `SEC-003` forbade `--exec` for.
+- **`--remote-components`, `--no-remote-components`.** Fetches components at runtime from a remote
+  host: a destination `NFR-007` does not permit, and code this project did not ship.
+- **TLS: `--no-check-certificates`, `--prefer-insecure`.** No decision covers disabling certificate
+  validation.
+- **Credentials `SEC-003` did not name: `-2/--twofactor`, `--ap-username`, `--ap-password`.** The
+  `-u`/`-p` rationale reaches all three verbatim — a secret inside a frozen request that is
+  persisted and crosses a process boundary — and extending an accepted ruling is not the
+  implementer's to do.
+
+#### The three proposed corrections — **PROPOSED, nobody has ruled on these**
+
+1. **`SEC-003` permits `--netrc-cmd`, which executes a command**, on a rationale (*"the secret
+   lives in the user's own file"*) that does not reach it. Four rows below, the same table forbids
+   `--exec` for executing a command.
+2. **`SEC-003` permits `--client-certificate-password`, which is a secret rather than a path to
+   one** — the shape `_require_credential_free_proxy` makes unrepresentable.
+3. **`SEC-003`'s consequences say the refusal list gains *five* entries and then list *seven*.**
+   The list is right; the count is wrong.
+
+Also for the maintainer's attention, though it is a correction `T-183` has already made in the
+audit rather than one proposed here: **`ARC-010` §4 names `paths` among the application-owned keys
+and `build_options` has never set it.**
+
+#### Acceptance criteria
+
+- **Each of the fifteen is ruled**, into `hatch`, `excluded` or `typed`, with the reason recorded
+  in a `SEC-` decision rather than in a task or a commit
+- **The three `SEC-003` corrections are ruled on**, and if any is accepted the amendment is written
+  by the maintainer or attributed to their ruling — never self-headed (`T145-R1`, `T144-R1`)
+- **`docs/YTDLP_OPTION_AUDIT.md` has no `unruled` rows afterwards**, and its class table is
+  recounted rather than adjusted by hand
+- The audit's test still passes unchanged, which is what shows the reclassification did not quietly
+  move an option out of the application-owned class
+
+#### Out of scope
+
+- Building any refusal. `T-184` builds it; this decides what is on it
+- The 42 suppressed options as a class. Finding 4 makes them `T-184`'s acceptance criterion, since
+  the question there is *what the parser accepts*, not *what the documentation shows*
+
+---
+
 ### T-259 — The Windows job's timeout had four minutes of headroom, and the suite grew into it
 
 **Status:** **In Review — raised 30 → 40 on 2026-08-16.** The number is changed; what is not done is
@@ -7736,82 +7810,17 @@ run is the deliverable; the pass is only what it hopefully shows.
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
 descend from, and `T-183` is what turns them into the rest of the phase.)*
 
-### T-256 — Rule the fifteen options no decision covers
-
-**Status:** Proposed — filed 2026-08-16 by `T-183`'s fifth criterion
-**Owner:** Planner proposes; **the maintainer rules**
-**Priority:** **Highest in the phase. It blocks `T-184`**, which cannot build a refusal list while
-fifteen options have no ruling
-**Phase:** Phase 4.5
-**Depends on:** `T-183` approved
-**Relevant context:** `docs/YTDLP_OPTION_AUDIT.md` Findings 2, 3, 4 and 5; `SEC-003`; `ARC-010` §3
-and §4; `NFR-007`; `REQ-EXCL-002`, `-003`, `-005`; `T-034`
-**Affected surfaces:** `ai/DECISIONS.md` (a new `SEC-` entry, plus corrections to `SEC-003` and
-`ARC-010`), `docs/YTDLP_OPTION_AUDIT.md` (the fifteen move out of `unruled`)
-**Risk:** Medium. Three of the four families reach arbitrary code execution, and the cost of ruling
-them *permitted* without noticing is the cost `--exec` was forbidden to avoid
-
-#### Scope
-
-Four questions, and three record corrections that came with them.
-
-- **Code execution, seven options.** `--plugin-dirs`, `--no-plugin-dirs`, `--use-postprocessor`
-  (arbitrary Python from a named path), `--downloader`, `--downloader-args`, `--postprocessor-args`
-  (an external binary and its arguments), `--js-runtimes`, `--no-js-runtimes` (an external
-  interpreter). Each is the shape `SEC-003` forbade `--exec` for.
-- **`--remote-components`, `--no-remote-components`.** Fetches components at runtime from a remote
-  host: a destination `NFR-007` does not permit, and code this project did not ship.
-- **TLS: `--no-check-certificates`, `--prefer-insecure`.** No decision covers disabling certificate
-  validation.
-- **Credentials `SEC-003` did not name: `-2/--twofactor`, `--ap-username`, `--ap-password`.** The
-  `-u`/`-p` rationale reaches all three verbatim — a secret inside a frozen request that is
-  persisted and crosses a process boundary — and extending an accepted ruling is not the
-  implementer's to do.
-
-#### The three proposed corrections — **PROPOSED, nobody has ruled on these**
-
-1. **`SEC-003` permits `--netrc-cmd`, which executes a command**, on a rationale (*"the secret
-   lives in the user's own file"*) that does not reach it. Four rows below, the same table forbids
-   `--exec` for executing a command.
-2. **`SEC-003` permits `--client-certificate-password`, which is a secret rather than a path to
-   one** — the shape `_require_credential_free_proxy` makes unrepresentable.
-3. **`SEC-003`'s consequences say the refusal list gains *five* entries and then list *seven*.**
-   The list is right; the count is wrong.
-
-Also for the maintainer's attention, though it is a correction `T-183` has already made in the
-audit rather than one proposed here: **`ARC-010` §4 names `paths` among the application-owned keys
-and `build_options` has never set it.**
-
-#### Acceptance criteria
-
-- **Each of the fifteen is ruled**, into `hatch`, `excluded` or `typed`, with the reason recorded
-  in a `SEC-` decision rather than in a task or a commit
-- **The three `SEC-003` corrections are ruled on**, and if any is accepted the amendment is written
-  by the maintainer or attributed to their ruling — never self-headed (`T145-R1`, `T144-R1`)
-- **`docs/YTDLP_OPTION_AUDIT.md` has no `unruled` rows afterwards**, and its class table is
-  recounted rather than adjusted by hand
-- The audit's test still passes unchanged, which is what shows the reclassification did not quietly
-  move an option out of the application-owned class
-
-#### Out of scope
-
-- Building any refusal. `T-184` builds it; this decides what is on it
-- The 42 suppressed options as a class. Finding 4 makes them `T-184`'s acceptance criterion, since
-  the question there is *what the parser accepts*, not *what the documentation shows*
-
----
-
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
 
-**Status:** Proposed — filed 2026-08-07 with the phase. **It now waits on `T-256` as well as
-`T-183`:** the audit delivered the application-owned list on 2026-08-16 and, with it, fifteen
-options no decision covers, and a refusal list cannot be built while those are open. Recorded as a
-dependency rather than as `Blocked`, because nothing in this phase has started — the phase's
-prerequisite is Phase 4 approved.
+**Status:** Proposed — filed 2026-08-07 with the phase. **Both of its blockers are cleared.**
+`T-183` delivered the application-owned list on 2026-08-16 and, with it, fifteen options no
+decision covered; **`SEC-004` ruled all fifteen forbidden the same day**, so the refusal list is
+known: the audit's `app:sets` + `app:contained` + `app:plumbing` + `excluded` classes, **79
+documented options**. Nothing in this phase starts before Phase 4 exits.
 **Owner:** Implementer
 **Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
 **Phase:** Phase 4.5
-**Depends on:** **`T-256`** for the fifteen unruled options, and `T-183` for the application-owned list — **delivered 2026-08-16**: the refusal list is the audit's `app:sets` + `app:contained` + `app:plumbing` + `excluded` classes, **64 documented options**, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
+**Depends on:** nothing outstanding. `T-183` delivered the classification and **`SEC-004`** ruled the fifteen it refused to classify — the refusal list is **79 documented options**, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
 
 > **Four of `T-183`'s findings land here, and the first changes the design.**
 >

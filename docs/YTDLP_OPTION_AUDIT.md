@@ -4,9 +4,11 @@
 is a checked statement rather than an intention, and so Phase 4.5 can be decomposed from a list
 rather than from a blank page.
 **Authority:** Canonical for the classification. `ARC-010` is canonical for the *scheme*, `SEC-003`
-for the excluded families, and `build_options` for what the application owns.
+and `SEC-004` for the excluded families, and `build_options` for what the application owns.
 **Owner:** Planner · `T-183`
-**Status:** Written 2026-08-16.
+**Status:** Written 2026-08-16. **Reclassified the same day by `SEC-004`**, which ruled the fifteen
+options this audit refused to classify — all forbidden, so the `unruled` class is now empty and the
+refusal list is 79 rather than 64.
 **yt-dlp version:** **2026.07.04**, the exact pin in `pyproject.toml`. An audit of an unnamed
 version cannot be re-run when upstream moves, so the version is part of the claim and
 `tests/unit/test_option_audit.py` fails if the installed one stops matching.
@@ -24,7 +26,7 @@ keeps this document from being a list somebody wrote from memory:
 |---|---|---|
 | The option inventory | `yt_dlp.options.create_parser()` — the parser, not the README | Which options exist, their strings, their `dest` |
 | The application-owned keys | `build_options`, exercised over every branch | Which keys the application actually sets |
-| The excluded families | `SEC-003` | Which options are forbidden |
+| The excluded families | `SEC-003`, `SEC-004` | Which options are forbidden |
 
 `tests/unit/test_option_audit.py` re-derives all three and fails when this file disagrees with any
 of them. **It is the audit's only defence against the thing this project keeps finding** — a
@@ -53,10 +55,17 @@ gap.
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
 | `app:contained` | 1 | It redirects where files land, and `T-034` owns that |
-| `excluded` | 8 | Forbidden by `SEC-003` |
-| `unruled` | 15 | **No decision covers it, and the audit refuses to invent one** |
+| `excluded` | 23 | Forbidden — 8 by `SEC-003`, **15 by `SEC-004`** |
+| `unruled` | **0** | The class still exists, and is empty |
 
-**The refusal list is `app:sets` + `app:contained` + `app:plumbing` + `excluded` — 64 rows**, and it
+*(**The `unruled` class held 15 rows until 2026-08-16** — options that reach code execution, a
+runtime-fetched component, TLS validation or a credential, and which no decision covered. `SEC-004`
+ruled all fifteen **forbidden**, so they moved to `excluded`. The class is kept rather than deleted:
+the next yt-dlp version can produce another one, and a class that has to be re-invented under
+deadline is a class that gets skipped. Counts here are **recounted from the tables below**, not
+adjusted by hand — and a test asserts they agree.)*
+
+**The refusal list is `app:sets` + `app:contained` + `app:plumbing` + `excluded` — 79 rows**, and it
 is the list `T-184` enforces. `typed` is not refused: where a typed field and the hatch name the same
 user-owned key, `ARC-010`'s precedence rule applies and the typed field wins, because it is the one
 with a visible control.
@@ -73,7 +82,7 @@ The invariant the test actually enforces is the useful one, and it holds with no
 
 > **No key `build_options` sets is reachable through the hatch.** Every documented option whose
 > `dest` is a key `build_options` emits is classified `app:sets` or `typed` — never `hatch`,
-> `app:plumbing` or `unruled`.
+> `app:plumbing`, `excluded` or `unruled`.
 
 ---
 
@@ -113,8 +122,23 @@ memory" — and the derivation alone would still have been wrong.* `-P/--paths` 
 | `--no-check-certificates`, `--prefer-insecure` | Disables TLS validation | nothing |
 | `-2/--twofactor`, `--ap-username`, `--ap-password` | A credential inside the persisted request | `-u`/`-p`, forbidden |
 
-**These are filed unclassified rather than forced into a class**, per `T-183`'s fifth criterion.
-Deciding them is `T-256`, and `T-184` cannot build the refusal list without it.
+**These were filed unclassified rather than forced into a class**, per `T-183`'s fifth criterion —
+and **that is what got them ruled**. `SEC-004`, 2026-08-16, forbids all fifteen on one rule: *an
+option that runs code, fetches code, weakens transport security, or carries a secret is refused
+where it is typed, with the reason.* `T-184` is unblocked, and the refusal list is 79 rather than
+64.
+
+**`--downloader` is the one that cost something**, and the decision says so: `aria2c` is materially
+faster on fragmented downloads and is more constrained than `--exec`, since yt-dlp accepts a fixed
+set of downloader names as well as a path. It is refused anyway, with a **named lifting
+condition** — a user asks for it, and the permitted form is an allowlist of those names with no
+path form and `--downloader-args` still refused. That is `SEC-003`'s own pattern for
+`--download-archive` and `DAT-005` §1's for *Clear all*: a refusal that names what would change it
+is not a wall.
+
+*(**This section is left in the past tense rather than deleted.** The fifteen are what the audit's
+fifth criterion was for, and an audit that quietly showed 23 excluded rows would not show that
+fifteen of them were invisible until somebody read the parser.)*
 
 ### Finding 3 — `SEC-003` permits two options that its own rationale forbids
 
@@ -217,11 +241,12 @@ tasks — counted, and the test asserts the partition.
 | `T-253` | 4 | Network reachability: address family and politeness delays |
 | `T-254` | 3 | SponsorBlock, opt-in per preset |
 | `T-255` | 1 | Per-extractor arguments |
-| `T-256` | — | **Rules the fifteen unclassified options.** Blocks `T-184` |
+| ~~`T-256`~~ | — | **Done — `SEC-004`, 2026-08-16.** All fifteen forbidden; `T-184` unblocked |
 
-**`T-256` is first and `T-184` is second.** The hatch cannot be built before the refusal list is
-known, and the refusal list is not known while fifteen options that reach code execution have no
-ruling. Every typed-field task is independent of the rest and of the hatch.
+**`T-256` was first and is done; `T-184` is next.** The hatch could not be built before the
+refusal list was known, and it was not known while fifteen options that reach code execution had no
+ruling. `SEC-004` closed that on 2026-08-16. Every typed-field task is independent of the rest and
+of the hatch.
 
 ---
 
@@ -246,23 +271,23 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `-h` `--help` | `app:plumbing` | The command line's own help |
 | `--ignore-config` `--no-config` | `app:plumbing` | T-184 refuses config files as a second invisible source |
 | `-i` `--ignore-errors` | `hatch` | The queue owns per-job failure; T-110 owns per-entry |
-| `--js-runtimes` | `unruled` | Names an external interpreter to execute - unruled |
+| `--js-runtimes` | `excluded` | SEC-004: forbidden — Names an external interpreter to execute |
 | `--list-extractors` | `app:plumbing` | A listing command, not a download option |
 | `--live-from-start` | `typed` | Download tuning; T-183 names it thin |
 | `--mark-watched` | `hatch` | Needs site auth this application refuses to hold |
 | `--no-abort-on-error` | `hatch` | Counterpart of --ignore-errors |
 | `--no-config-locations` | `app:plumbing` | Config files are refused as an input route |
 | `--no-flat-playlist` | `app:sets` | Counterpart; same key |
-| `--no-js-runtimes` | `unruled` | Counterpart of --js-runtimes |
+| `--no-js-runtimes` | `excluded` | SEC-004: forbidden — Counterpart of --js-runtimes |
 | `--no-live-from-start` | `typed` | Counterpart of --live-from-start |
 | `--no-mark-watched` | `hatch` | Counterpart of --mark-watched |
-| `--no-plugin-dirs` | `unruled` | Counterpart of --plugin-dirs |
-| `--no-remote-components` | `unruled` | Counterpart of --remote-components |
+| `--no-plugin-dirs` | `excluded` | SEC-004: forbidden — Counterpart of --plugin-dirs |
+| `--no-remote-components` | `excluded` | SEC-004: forbidden — Counterpart of --remote-components |
 | `--no-update` | `app:plumbing` | Counterpart of --update |
 | `--no-wait-for-video` | `hatch` | Counterpart of --wait-for-video |
-| `--plugin-dirs` | `unruled` | Loads arbitrary Python from a directory - the --exec shape, unruled |
+| `--plugin-dirs` | `excluded` | SEC-004: forbidden — Loads arbitrary Python from a directory - the --exec shape |
 | `-t` `--preset-alias` | `app:plumbing` | core/presets.py owns presets |
-| `--remote-components` | `unruled` | Fetches code at runtime: a new destination under NFR-007 |
+| `--remote-components` | `excluded` | SEC-004: forbidden — Fetches code at runtime: a new destination under NFR-007 |
 | `-U` `--update` | `app:plumbing` | OPS-002 pins yt-dlp exactly; the application owns which one runs |
 | `--update-to` | `app:plumbing` | Counterpart of --update |
 | `--use-extractors` `--ies` | `hatch` | Expert extractor routing; nobody has asked |
@@ -323,8 +348,8 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--buffer-size` | `hatch` | Expert tuning |
 | `-N` `--concurrent-fragments` | `typed` | T-183 names it thin (-N) |
 | `--download-sections` | `typed` | T-183 names it thin |
-| `--downloader` `--external-downloader` | `unruled` | Executes an external binary the user names - the --exec shape |
-| `--downloader-args` `--external-downloader-args` | `unruled` | Arguments into that subprocess; same family |
+| `--downloader` `--external-downloader` | `excluded` | SEC-004: forbidden — Executes an external binary the user names - the --exec shape |
+| `--downloader-args` `--external-downloader-args` | `excluded` | SEC-004: forbidden — Arguments into that subprocess; same family |
 | `--file-access-retries` | `hatch` | Expert tuning |
 | `--fragment-retries` | `typed` | The adapter defers it here by name (T-196 comment) |
 | `--hls-use-mpegts` | `hatch` | Expert container choice |
@@ -440,8 +465,8 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--encoding` | `hatch` | Experimental, per yt-dlp's own help |
 | `--legacy-server-connect` | `hatch` | Narrow TLS workaround |
 | `--max-sleep-interval` | `typed` | Pairs with --sleep-interval |
-| `--no-check-certificates` | `unruled` | Disables TLS validation; no decision covers it |
-| `--prefer-insecure` `--prefer-unsecure` | `unruled` | Retrieves over plaintext; no decision covers it |
+| `--no-check-certificates` | `excluded` | SEC-004: forbidden — Disables TLS validation; no decision covers it |
+| `--prefer-insecure` `--prefer-unsecure` | `excluded` | SEC-004: forbidden — Retrieves over plaintext; no decision covers it |
 | `--sleep-interval` `--min-sleep-interval` | `typed` | Politeness delay is commonly reached for |
 | `--sleep-requests` | `hatch` | Expert politeness tuning |
 | `--sleep-subtitles` | `hatch` | Expert politeness tuning |
@@ -485,8 +510,8 @@ aliases and its `--no-` counterpart wherever they share one entry.
 |---|---|---|
 | `--ap-list-mso` | `app:plumbing` | A listing command |
 | `--ap-mso` | `hatch` | An operator identifier, not a secret |
-| `--ap-password` | `unruled` | A secret in the request; SEC-003 did not name it |
-| `--ap-username` | `unruled` | A credential; SEC-003's -u rationale applies but did not name it |
+| `--ap-password` | `excluded` | SEC-004: forbidden — A secret in the request; SEC-003 did not name it |
+| `--ap-username` | `excluded` | SEC-004: forbidden — A credential; SEC-003's -u rationale applies but did not name it |
 | `--client-certificate` | `hatch` | SEC-003: permitted - a path to the user's own file |
 | `--client-certificate-key` | `hatch` | SEC-003: permitted - a path to the user's own file |
 | `--client-certificate-password` | `hatch` | SEC-003 permits it, and it is a secret - see Finding 3 |
@@ -494,7 +519,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--netrc-cmd` | `hatch` | SEC-003 permits it, and it executes a command - see Finding 3 |
 | `--netrc-location` | `hatch` | SEC-003: permitted - a path to the user's own file |
 | `-p` `--password` | `excluded` | SEC-003: forbidden (REQ-EXCL-003) |
-| `-2` `--twofactor` | `unruled` | A secret in the request; SEC-003 did not name it |
+| `-2` `--twofactor` | `excluded` | SEC-004: forbidden — A secret in the request; SEC-003 did not name it |
 | `-u` `--username` | `excluded` | SEC-003: forbidden (REQ-EXCL-003) |
 | `--video-password` | `excluded` | SEC-003: forbidden (REQ-EXCL-003) |
 
@@ -531,13 +556,13 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--no-split-chapters` `--no-split-tracks` | `hatch` | Counterpart of --split-chapters |
 | `--parse-metadata` | `hatch` | Its own template language; REQ-009's argument applies |
 | `--post-overwrites` | `hatch` | Interacts with T-046's reservation; T-184 must test that |
-| `--postprocessor-args` `--ppa` | `unruled` | Arbitrary arguments into the ffmpeg subprocess - unruled |
+| `--postprocessor-args` `--ppa` | `excluded` | SEC-004: forbidden — Arbitrary arguments into the ffmpeg subprocess |
 | `--recode-video` | `typed` | DownloadRequest.recode_container exists |
 | `--remove-chapters` | `hatch` | Its own regex language; expert-only |
 | `--remux-video` | `typed` | DownloadRequest.remux_container exists |
 | `--replace-in-metadata` | `hatch` | Its own regex language; REQ-009's argument applies |
 | `--split-chapters` `--split-tracks` | `hatch` | Writes several files; T-184 must contain them |
-| `--use-postprocessor` | `unruled` | Enables plugin post-processors - the --plugin-dirs shape |
+| `--use-postprocessor` | `excluded` | SEC-004: forbidden — Enables plugin post-processors - the --plugin-dirs shape |
 | `--xattrs` `--xattr` | `hatch` | Nobody has asked; no Windows equivalent |
 
 ### SponsorBlock Options — 5

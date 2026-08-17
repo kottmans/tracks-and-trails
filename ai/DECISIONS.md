@@ -4450,6 +4450,107 @@ handle rather than assume away.
 
 ---
 
+## SEC-004 — The fifteen options `SEC-003` did not see are all forbidden
+
+**Status:** **Accepted** (2026-08-16) — maintainer decision, taken on the Planner's material for
+`T-256` after `T-183`'s audit surfaced them
+**Date:** 2026-08-16
+**Supersedes:** nothing. **Extends** `SEC-003` to option families it did not consider, on
+`SEC-003`'s own reasoning. **Does not amend it** — the three corrections `T-183` proposed against
+`SEC-003` itself are **still unruled**, and are listed at the end so they are not mistaken for
+part of this.
+
+### Context
+
+`T-183`'s audit classified all 250 documented options of yt-dlp 2026.07.04 and **refused to
+classify fifteen**, because each reaches something a written constraint forbids and no decision
+covered it. `SEC-003` ruled six families on 2026-08-07 and did not see these; they were found by
+reading the option parser rather than the README.
+
+**Filing them unclassified was the point.** `T-183`'s fifth criterion asks the audit to state what
+it could not classify rather than force a class, and `T-184`'s refusal list cannot be built while
+any option's disposition is unknown.
+
+### Decision
+
+**All fifteen are forbidden.** One rule, in the user's terms: *an option that runs code, fetches
+code, weakens transport security, or carries a secret is refused where it is typed, with the
+reason.*
+
+| Family | Options | Why |
+|---|---|---|
+| **Executes code or a binary** | `--plugin-dirs`, `--no-plugin-dirs`, `--use-postprocessor`, `--downloader`, `--downloader-args`, `--postprocessor-args`, `--js-runtimes`, `--no-js-runtimes` | `SEC-003` forbade `--exec` because *"the alternative cannot be built"* — `T-034` contains the paths yt-dlp **writes**, and a command writes wherever it likes. That reasoning reaches all eight without modification |
+| **Fetches code at runtime** | `--remote-components`, `--no-remote-components` | A network destination `NFR-007` does not permit, delivering code this project did not ship. yt-dlp's own help says it is not currently needed |
+| **Weakens TLS** | `--no-check-certificates`, `--prefer-insecure` | Through the hatch there is no control and therefore nothing that could show the downgrade. A security posture the user cannot see they changed is the shape `DAT-004` and `NFR-007` exist to prevent |
+| **Carries a secret** | `-2/--twofactor`, `--ap-username`, `--ap-password` | `REQ-EXCL-003` and the `-u`/`-p` ruling, applied verbatim: a secret inside a frozen request that is persisted and crosses a process boundary |
+
+### Rationale
+
+- **This is `SEC-003` applied, not extended.** Every one of the fifteen was already answered by
+  reasoning that decision wrote down; what was missing was somebody having looked at the option.
+- **Consistency is the cheap part and the valuable part.** A refusal list with `--exec` on it and
+  `--postprocessor-args` off it is not a boundary, it is a list of the things somebody happened to
+  think of.
+- **Nothing new has to be built.** Fifteen entries join a refusal list `T-184` is already building;
+  permitting any of them would have meant new validation at a boundary whose breach is
+  Critical-band.
+
+**The cost is real and is accepted knowingly**, in `SEC-003`'s own manner:
+
+- **`--downloader` is the one with genuine demand.** `aria2c` is materially faster on fragmented
+  downloads, and it is **more constrained than `--exec`** — yt-dlp accepts a fixed set of names as
+  well as a path, so an allowlist is buildable. It is refused anyway, and this is the option most
+  likely to be reopened.
+- **`--no-check-certificates` costs the corporate-MITM user.** They can still reach the site
+  through `--proxy`, or fix their trust store, which is the honest fix.
+
+**Every one of these is reopenable, and that is deliberate.** `SEC-003` permitted
+`--download-archive` *"as a user-named file only"*, and `DAT-005` §1 refused *Clear all* while
+naming its own lifting condition. **A refusal that names what would change it is not a wall.** The
+condition here is the same for all fifteen: *a user asks for it, and the permitted form can be
+stated narrowly enough to be validated* — for `--downloader`, an allowlist of yt-dlp's own
+downloader names with no path form and `--downloader-args` still refused.
+
+### Consequences
+
+- **`T-184` is unblocked.** Its refusal list is the audit's `app:sets` + `app:contained` +
+  `app:plumbing` + `excluded` classes, now **79 documented options** rather than 64.
+- **`docs/YTDLP_OPTION_AUDIT.md` has no `unruled` rows.** The fifteen move to `excluded` and the
+  class table is recounted rather than adjusted by hand.
+- **`REQ-030`'s parity promise gains fifteen named exclusions**, and Phase 4.5's exit criteria
+  already require the README to state what is refused rather than let it be silently absent.
+- **The refusal is keyed on `dest`, not on the option string** — `T-183` Finding 4. Four suppressed
+  spellings of `geo_bypass` reach what `SEC-003` forbids as `--xff`, and the same trap applies to
+  anything ruled here.
+- Nothing here is built.
+
+### Still unruled — **not** decided by this entry
+
+`T-183` raised three corrections **to `SEC-003` itself**. They were not part of the question this
+decision answers and **remain open**:
+
+1. **`SEC-003` permits `--netrc-cmd`, which executes a command** — on a rationale (*"the secret
+   lives in the user's own file"*) that does not reach it. The same table forbids `--exec` four
+   rows down for exactly that property.
+2. **`SEC-003` permits `--client-certificate-password`, which is a secret** rather than a path to
+   one — the shape `_require_credential_free_proxy` makes unrepresentable.
+3. **`SEC-003`'s consequences say the refusal list gains *five* entries and then list *seven*.**
+
+The audit classifies the first two `hatch` **because that is what the accepted decision says**, and
+will keep doing so until it is amended. `T-256` carries them.
+
+### Alternatives considered
+
+- **Permit `--downloader` from an allowlist.** Rejected *for now*, not on principle: it is the
+  first permitted option that starts a subprocess, and that is a boundary worth crossing on a
+  user's request rather than on a guess. Named above as the most likely reopening.
+- **Permit the two TLS options with a stated warning.** Rejected: there is no surface to state it
+  on. The hatch is a text field, and a warning nobody sees is the silent downgrade with extra steps.
+- **A separate decision per family.** Rejected: four entries would say the same sentence four times
+  and leave `T-184` blocked until the last one landed.
+
+---
+
 ## SEC-003 — The six yt-dlp option families that meet an exclusion, ruled
 
 **Status:** **Accepted** (2026-08-07) — maintainer decision, taken from the Planner's material for
