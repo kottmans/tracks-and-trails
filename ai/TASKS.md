@@ -299,101 +299,6 @@ fails on growth rather than on faults, and it fails by looking like a hang.
 
 ---
 
-### T-257 — The Windows job has been red since 2026-08-15, and the failure is the guard, not the product
-
-**Status:** **In Review — fixed 2026-08-16, and green on Windows 2026-08-17** (run
-`31985410889`). Found by the Phase 4 records sweep, not by anybody reading CI. **All acceptance
-criteria met.**
-**Owner:** Implementer
-**Priority:** **High.** It is the gate that evidences Phase 4 exit criterion 2's *"automated on
-**both** platforms"*, and while it is red that criterion has one platform
-**Phase:** Phase 4
-**Depends on:** nothing
-**Relevant context:** `T200-R7` (whose rule this is), `tests/ui/test_accessibility.py`,
-`tests/ui/test_windows_accessibility.py`, CI run `31906562503`, `IMPLEMENTATION_PLAN.md` §Phase 4
-exit criterion 2 as amended 2026-08-15
-**Affected surfaces:** `tests/ui/test_accessibility.py`. **No source — the product is not at
-fault**
-**Risk:** Low to fix. The risk it exposed is that **a red Windows job went unread for a day**
-
-#### What happened
-
-`test_no_control_is_named_only_by_the_value_it_happens_to_hold` ends with a vacuity guard —
-`assert checked` — so that a rule which inspects nothing cannot pass in silence. The condition it
-inspects is `QAccessibleComboBox::text` falling through `Name` to `Value`, and **that fall-through
-is `Q_OS_UNIX`-only**. The test's own comment says so, eleven lines above the guard.
-
-So on Windows `checked` is **0 by construction**, the guard fires, and the whole `windows desktop`
-job fails on a rule that is working exactly as designed. Measured on Linux for comparison: `checked`
-is **7**.
-
-**The failure is a harness defect and the product is unaffected** — the same product/harness
-question `T-238` exists to answer, settled here in one reading because the guard names its own
-condition.
-
-#### Why it was not noticed
-
-`083e5e3` was the last push to touch a path `ci.yml` watches. Everything after it — `955837d`,
-`5238a6b`, `c2b3b61` — was prose, correctly skipped by `paths-ignore`, so **no CI run has completed
-on `main` since the failure**. The run at `9be7433` was cancelled in flight. `STATUS.md` meanwhile
-said `T-246`'s *"Windows half is on the runner now … the CI run's verdict lands in the Actions
-log"*. **The verdict landed and nothing went back for it.**
-
-#### The fix
-
-Both platforms are asserted, neither is skipped: on Windows `checked` **must be 0**, and if Qt ever
-starts falling through there the assertion says so and asks for the rule to be widened. A
-`skipif` was rejected — a skip is indistinguishable from a pass, which is the reason `T200-R3`
-survived three rounds.
-
-#### Acceptance criteria
-
-- **The `windows desktop` job is green on a real run.** Linux passing proves nothing about the
-  branch that was failing, and this task is not closed by local evidence
-- The Linux guard still fails when the rule inspects nothing — unchanged, and it still reports 7
-- **The Windows branch is shown to be live rather than dead code.** Forced on Linux, where 7
-  controls match, it fails with its own message; done 2026-08-16 and restored
-- `T-246`'s Windows half — `test_each_menu_publishes_exactly_its_actions` — is read off the same
-  run, since that verdict is still outstanding
-
-#### Where it stands — 2026-08-16, run `31956402888`
-
-**The fix is verified on Windows and the task is not closed, and those are two different
-sentences.**
-
-| | |
-|---|---|
-| `test_no_control_is_named_only_by_the_value_it_happens_to_hold` | **PASSED on Windows**, 17:42:06 |
-| `T-246`'s `test_each_menu_publishes_exactly_its_actions` | **PASSED**, all three menus — File, Settings, Help. That verdict is no longer outstanding |
-| The `windows desktop` job | **Timed out at 30 min** — `T-259`, unrelated to this fix |
-
-#### Criterion 1 is met — run `31985410889`, 2026-08-17
-
-**All five jobs green**, `windows desktop` among them: **3597 passed, 30 skipped, 0 failed** in
-30:20, job total 32 min against the raised 40-minute bound. `T-257`'s test passed on Windows for
-the third time, and this time **the job completed**, which is what the criterion asked for.
-
-**Every acceptance criterion is now met.** Ready for review.
-
-*(The block below is what stood before that run, and is kept because the discipline in it is the
-point: the criterion was left unmet through three runs rather than re-read to fit the evidence.)*
-
-**Criterion 1 said the job is green, and the job was not green.** The test it names passed, seventeen
-minutes before the job was killed, and the kill was the suite outgrowing its bound rather than
-anything this task touched. **The criterion is left unmet rather than reinterpreted**: a criterion
-that gets re-read to match the evidence is `P2EXIT-R12`, and the whole reason this one was written
-that way is that a passing test on one platform had already been mistaken for a working gate.
-
-**It closes on the next `windows desktop` run that completes**, which `T-259`'s raised bound is what
-makes possible.
-
-#### Out of scope
-
-- The gap that let a red job go unread. That is worth its own entry if it happens twice; once is a
-  sweep finding, and the sweep is what caught it
-
----
-
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
 **Status:** **In Review — Blocked after the second focused pass, 2026-08-17.** `T258-R6` is
@@ -629,6 +534,106 @@ so a parent that is not one cannot be the one that spawned it.
 ---
 
 ## Complete
+
+### T-257 — The Windows job has been red since 2026-08-15, and the failure is the guard, not the product
+
+**Status:** **Complete — Approved at `ffa29c1`** on 2026-08-17, **no findings**, in the
+T-257/T-259 Windows-chain review (`476b745`). Fixed 2026-08-16 and green on Windows 2026-08-17 in
+run `31985410889` at head `7e376e7`, where the named test passed inside a suite of 3597 passed, 30
+skipped, 35 deselected. The reviewer also mutation-checked both local branches — an emptied Linux
+sweep produced the intended "inspected nothing" failure, and forcing `sys.platform = "win32"` on
+the same data produced the Windows branch rejecting the seven Unix fall-through matches — so both
+probes passed by seeing a failure. Found by the Phase 4 records sweep, not by anybody reading CI.
+**All acceptance criteria met.**
+**Owner:** Implementer
+**Priority:** **High.** It is the gate that evidences Phase 4 exit criterion 2's *"automated on
+**both** platforms"*, and while it is red that criterion has one platform
+**Phase:** Phase 4
+**Depends on:** nothing
+**Relevant context:** `T200-R7` (whose rule this is), `tests/ui/test_accessibility.py`,
+`tests/ui/test_windows_accessibility.py`, CI run `31906562503`, `IMPLEMENTATION_PLAN.md` §Phase 4
+exit criterion 2 as amended 2026-08-15
+**Affected surfaces:** `tests/ui/test_accessibility.py`. **No source — the product is not at
+fault**
+**Risk:** Low to fix. The risk it exposed is that **a red Windows job went unread for a day**
+
+#### What happened
+
+`test_no_control_is_named_only_by_the_value_it_happens_to_hold` ends with a vacuity guard —
+`assert checked` — so that a rule which inspects nothing cannot pass in silence. The condition it
+inspects is `QAccessibleComboBox::text` falling through `Name` to `Value`, and **that fall-through
+is `Q_OS_UNIX`-only**. The test's own comment says so, eleven lines above the guard.
+
+So on Windows `checked` is **0 by construction**, the guard fires, and the whole `windows desktop`
+job fails on a rule that is working exactly as designed. Measured on Linux for comparison: `checked`
+is **7**.
+
+**The failure is a harness defect and the product is unaffected** — the same product/harness
+question `T-238` exists to answer, settled here in one reading because the guard names its own
+condition.
+
+#### Why it was not noticed
+
+`083e5e3` was the last push to touch a path `ci.yml` watches. Everything after it — `955837d`,
+`5238a6b`, `c2b3b61` — was prose, correctly skipped by `paths-ignore`, so **no CI run has completed
+on `main` since the failure**. The run at `9be7433` was cancelled in flight. `STATUS.md` meanwhile
+said `T-246`'s *"Windows half is on the runner now … the CI run's verdict lands in the Actions
+log"*. **The verdict landed and nothing went back for it.**
+
+#### The fix
+
+Both platforms are asserted, neither is skipped: on Windows `checked` **must be 0**, and if Qt ever
+starts falling through there the assertion says so and asks for the rule to be widened. A
+`skipif` was rejected — a skip is indistinguishable from a pass, which is the reason `T200-R3`
+survived three rounds.
+
+#### Acceptance criteria
+
+- **The `windows desktop` job is green on a real run.** Linux passing proves nothing about the
+  branch that was failing, and this task is not closed by local evidence
+- The Linux guard still fails when the rule inspects nothing — unchanged, and it still reports 7
+- **The Windows branch is shown to be live rather than dead code.** Forced on Linux, where 7
+  controls match, it fails with its own message; done 2026-08-16 and restored
+- `T-246`'s Windows half — `test_each_menu_publishes_exactly_its_actions` — is read off the same
+  run, since that verdict is still outstanding
+
+#### Where it stands — 2026-08-16, run `31956402888`
+
+**The fix is verified on Windows and the task is not closed, and those are two different
+sentences.**
+
+| | |
+|---|---|
+| `test_no_control_is_named_only_by_the_value_it_happens_to_hold` | **PASSED on Windows**, 17:42:06 |
+| `T-246`'s `test_each_menu_publishes_exactly_its_actions` | **PASSED**, all three menus — File, Settings, Help. That verdict is no longer outstanding |
+| The `windows desktop` job | **Timed out at 30 min** — `T-259`, unrelated to this fix |
+
+#### Criterion 1 is met — run `31985410889`, 2026-08-17
+
+**All five jobs green**, `windows desktop` among them: **3597 passed, 30 skipped, 0 failed** in
+30:20, job total 32 min against the raised 40-minute bound. `T-257`'s test passed on Windows for
+the third time, and this time **the job completed**, which is what the criterion asked for.
+
+**Every acceptance criterion is now met.** Ready for review.
+
+*(The block below is what stood before that run, and is kept because the discipline in it is the
+point: the criterion was left unmet through three runs rather than re-read to fit the evidence.)*
+
+**Criterion 1 said the job is green, and the job was not green.** The test it names passed, seventeen
+minutes before the job was killed, and the kill was the suite outgrowing its bound rather than
+anything this task touched. **The criterion is left unmet rather than reinterpreted**: a criterion
+that gets re-read to match the evidence is `P2EXIT-R12`, and the whole reason this one was written
+that way is that a passing test on one platform had already been mistaken for a working gate.
+
+**It closes on the next `windows desktop` run that completes**, which `T-259`'s raised bound is what
+makes possible.
+
+#### Out of scope
+
+- The gap that let a red job go unread. That is worth its own entry if it happens twice; once is a
+  sweep finding, and the sweep is what caught it
+
+---
 
 ### T-262 — Every CI job runs on the maintainer's own machines, and fork pull requests could too
 
