@@ -1,4 +1,4 @@
-"""No workflow may carry a fork-triggerable event, and this is the half that fails closed (`T-264`).
+"""No workflow may carry a pull-request trigger, and this is the half that fails closed (`T-264`).
 
 `T-262` removed the `pull_request:` trigger from three workflows because **every runner this
 project uses is self-hosted**. On a public repository GitHub runs a fork's pull request with the
@@ -12,128 +12,149 @@ it silently against a green board. `tests/unit/test_commit_message_check.py` pin
 concurrency expression* in `commit-messages.yml`, which mentions `pull_request` and is deliberately
 unreachable; it says nothing about triggers, so adding `pull_request:` back leaves it green.
 
-## Why this reads the `on:` block rather than grepping the file
+## Why this parses the YAML instead of reading the text
 
-Grepping for `pull_request` fails in both directions here. It fires on
-`commit-messages.yml`'s retained concurrency expression, which is documented dormant restoration
-scaffolding and must stay; and it fires on every comment in this repository that explains *why*
-the trigger is gone — of which there are many, because each removal carries its reason in the file.
-A gate that cries wolf on its own documentation gets deleted. So the scan isolates the trigger
-block and reads only that.
+**The first version read the trigger block as text, and `T264-R2` broke it twice with valid GitHub
+Actions YAML.** An anchor defined elsewhere and aliased into the trigger list —
+`name: &fork_event pull_request` with `on: [push, *fork_event]` — resolves to a pull-request
+trigger that a text scan never sees, because the word does not appear in the block. And
+`on: {push: {branches: ["feature#1"]}, pull_request: null}` was truncated at the `#` inside a
+quoted string, dropping the forbidden event from the scanned text. Both are **accepting-direction**
+bypasses: the gate said clean about a workflow GitHub would run on a fork's code.
 
-## What is forbidden, and what this does not claim
+Refusing anchors outright was not available: `ci.yml`'s own `on:` block defines `&prose`, so a rule
+against them would reject the repository it protects. A gate that decides a security policy has to
+read the value GitHub executes, which means the parser GitHub's syntax is defined against. PyYAML
+is a declared dev dependency for exactly this, and it is imported plainly — never through
+`importorskip`, which would turn this into a test that skips on the machine that most needs it.
 
-`pull_request` and `pull_request_target`, which is the rule `T-264` states. `pull_request_target`
-matters more than it looks: it runs the *base* repository's workflow with a read-write token, and
-is the one people reach for when they want fork PRs to work.
+## What is forbidden
 
-**The wider set `T-262`'s manual audit covered — `workflow_run`, `issue_comment`,
-`repository_dispatch` — is checked separately below and is beyond `T-264`'s stated criteria.** It
-is split out rather than folded in so the reviewer can rule on the widening instead of finding it
-already applied.
+`pull_request` and `pull_request_target`, which is the rule `T-264` states and the whole of it.
+
+`pull_request_target` is forbidden for a different reason than `pull_request`, and `T264-R3`
+corrected this file for overstating it: it runs the **base branch's** workflow definition — trusted
+code — with a read-write token and access to secrets. It does not execute fork code by default. The
+danger is the transition, where a workflow under it checks out or runs the pull request's head; the
+combination of privilege and proximity to untrusted content is why it stays out of a repository
+whose runners are somebody's desktops.
+
+**Nothing wider is enforced here.** An earlier version also banned `workflow_run`, `issue_comment`
+and `repository_dispatch`. `T264-R3` removed it: their risk depends on what the workflow does with
+untrusted content rather than on the trigger existing, and enforcing them under this task's name
+made a policy nobody had authorized redden the required suite. A blanket event allowlist needs its
+own task and its own event-specific reasoning.
 """
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: The directory scanned. Rebound by `temporary_workflows` so the discovery tests can build a whole
+#: directory under `tmp_path` — see `T264-R1`, and `workflow_files` for why they must not use the
+#: real one.
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 
-#: The rule `T-264` states. Both put fork-authored code on a runner; the second also hands it a
-#: read-write token, because it runs the base repository's definition.
+#: The rule `T-264` states. See the module docstring for why the second is here and what it is not.
 FORBIDDEN = ("pull_request", "pull_request_target")
 
-#: Fork-reachable events `T-262`'s manual audit also checked. **Not part of `T-264`'s criteria** —
-#: see the module docstring. `issue_comment` fires on pull-request comments from anyone who can
-#: comment; `workflow_run` chains off a workflow that may itself have been fork-triggered;
-#: `repository_dispatch` needs a token today but is a trigger nobody reviews twice.
-ALSO_AUDITED = ("workflow_run", "issue_comment", "repository_dispatch")
+#: The `on` key, in the spellings YAML 1.1 produces. A bare `on` is the boolean `True` — every
+#: workflow in this repository lands here — and a quoted one stays a string.
+TRIGGER_KEYS = (True, "on", "On", "ON")
 
 
-def strip_comments(line: str) -> str:
-    """`line` without a trailing `#` comment.
+class UnreadableWorkflowError(Exception):
+    """The trigger block could not be resolved, which the gate must treat as a failure.
 
-    Naive about `#` inside quotes, and that is safe here: this only ever runs over a trigger block,
-    where the values are event names, globs and cron strings. A `#` inside one of those would be a
-    stranger thing than this gate mishandling it.
+    **Fail closed.** A workflow this cannot parse is one whose triggers are unknown, and an unknown
+    trigger set is exactly the state the gate exists to prevent being green.
     """
-    return line.split("#", 1)[0] if "#" in line else line
 
 
-def trigger_block(text: str) -> list[str]:
-    """The lines of the `on:` block, comments removed, or `[]` if the file declares no triggers.
+def declared_events(text: str) -> frozenset[str]:
+    """Every event the workflow triggers on, as GitHub resolves it.
 
-    YAML 1.1 reads a bare `on` as the boolean `true`, so a workflow may legitimately spell the key
-    `"on":` or `True:`. All three are accepted rather than assumed away — a scan that silently
-    skipped a file spelled differently would report the clean answer for a file it never read.
+    Accepts the three shapes the schema allows — `on: push`, `on: [push, ...]` and
+    `on: {push: ...}` — and raises rather than guessing at anything else. Aliases and quoted `#`
+    are the parser's problem now, which is the point of `T264-R2`.
     """
-    lines = text.splitlines()
-    start = next(
-        (
-            i
-            for i, line in enumerate(lines)
-            if re.match(r"""^(on|["']on["']|true|True)\s*:""", line)
-        ),
-        None,
-    )
-    if start is None:
-        return []
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise UnreadableWorkflowError(f"YAML did not parse: {error}") from error
 
-    block = [strip_comments(lines[start])]
-    for line in lines[start + 1 :]:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        # A non-indented line ends the block: the next top-level key.
-        if not line[:1].isspace():
-            break
-        block.append(strip_comments(line))
-    return block
+    if not isinstance(document, dict):
+        raise UnreadableWorkflowError(
+            f"the workflow is not a mapping, but {type(document).__name__}"
+        )
+
+    key = next((k for k in TRIGGER_KEYS if k in document), None)
+    if key is None:
+        raise UnreadableWorkflowError("no `on:` key; GitHub would reject this workflow")
+
+    triggers = document[key]
+    if isinstance(triggers, str):
+        return frozenset({triggers})
+    if isinstance(triggers, list):
+        return frozenset(str(event) for event in triggers)
+    if isinstance(triggers, dict):
+        return frozenset(str(event) for event in triggers)
+    raise UnreadableWorkflowError(f"`on:` is a {type(triggers).__name__}, which this cannot read")
 
 
-def forbidden_triggers_in(text: str, forbidden: tuple[str, ...] = FORBIDDEN) -> list[str]:
-    """Every forbidden event `text`'s trigger block declares.
-
-    Matches the mapping form (`  pull_request:`) and the inline form
-    (`on: [push, pull_request]`), which are the two `T-264` names. Word boundaries keep
-    `pull_request` from matching inside `pull_request_target`, so a file carrying the second is
-    reported as the second rather than as both.
-    """
-    block = "\n".join(trigger_block(text))
-    return [event for event in forbidden if re.search(rf"(?<![\w-]){event}(?![\w-])", block)]
+def forbidden_triggers_in(text: str) -> list[str]:
+    """Which of `FORBIDDEN` the workflow declares, in a stable order."""
+    declared = declared_events(text)
+    return [event for event in FORBIDDEN if event in declared]
 
 
 def workflow_files() -> list[Path]:
-    """Every workflow, found by extension rather than by name.
+    """Every workflow in `WORKFLOWS`, found by extension rather than by name.
 
     `T-264`'s fourth criterion: a new unsafe workflow must fail without anybody remembering to add
-    it to a list here.
+    it to a list here. The discovery tests exercise **this function**, with no file list supplied,
+    against a directory built under `tmp_path`.
     """
     return sorted(p for p in WORKFLOWS.iterdir() if p.suffix in {".yml", ".yaml"})
 
 
 @contextmanager
-def temporary_workflow(name: str, body: str) -> Iterator[Path]:
-    """A real file in the real directory, removed afterwards.
+def temporary_workflows(root: Path, files: dict[str, str]) -> Iterator[Path]:
+    """Point the scanner at a directory of `files` built under `tmp_path`.
 
-    Written to `.github/workflows/` rather than to `tmp_path` on purpose: what is under test is
-    that the scan *discovers* files, and a fixture handing it a path proves only that it can read
-    one it was given. `T-260` is four rounds of precedent for a gate that passed because the test
-    arranged the thing the gate was supposed to find.
+    **The first version wrote probes into the real `.github/workflows/`, and `T264-R1` is what that
+    cost.** `ai/TESTING.md` says tests write nowhere outside `tmp_path`, and CI runs
+    `pytest -n auto`: one worker listed a probe another worker had already deleted, and the file
+    failed 1 of 18 in the mode meant to carry it. Worse than the flake, the shared directory let one
+    worker's deliberately unsafe probe be seen by another worker's live gate — a security test that
+    can fail because of its own fixtures teaches people to re-run it.
     """
-    path = WORKFLOWS / name
-    assert not path.exists(), f"{name} already exists; this test would overwrite it"
-    path.write_text(body, encoding="utf-8")
-    try:
-        yield path
-    finally:
-        path.unlink(missing_ok=True)
+    root.mkdir(parents=True, exist_ok=True)
+    for name, body in files.items():
+        (root / name).write_text(body, encoding="utf-8")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(f"{__name__}.WORKFLOWS", root)
+        yield root
+
+
+SAFE = "on:\n  push:\n\njobs:\n  x:\n    runs-on: ubuntu-latest\n"
+
+#: `T264-R2`'s first probe, reproduced. The forbidden word never appears inside the trigger block.
+ALIASED = (
+    "name: &fork_event pull_request\n"
+    "on: [push, *fork_event]\n"
+    "\njobs:\n  x:\n    runs-on: [self-hosted]\n"
+)
+
+#: `T264-R2`'s second probe. A text scan truncates at the `#` and never reaches `pull_request`.
+QUOTED_HASH = 'on: {push: {branches: ["feature#1"]}, pull_request: null}\n\njobs: {}\n'
 
 
 # --- the live gate ---------------------------------------------------------------------------
@@ -141,11 +162,15 @@ def temporary_workflow(name: str, body: str) -> Iterator[Path]:
 
 def test_no_workflow_carries_a_pull_request_trigger() -> None:
     """The control itself. `T-262` closed this path; this is what keeps it closed."""
-    offenders = {
-        path.name: found
-        for path in workflow_files()
-        if (found := forbidden_triggers_in(path.read_text(encoding="utf-8")))
-    }
+    offenders = {}
+    for path in workflow_files():
+        try:
+            found = forbidden_triggers_in(path.read_text(encoding="utf-8"))
+        except UnreadableWorkflowError as error:
+            offenders[path.name] = [f"unreadable: {error}"]
+        else:
+            if found:
+                offenders[path.name] = found
 
     assert not offenders, (
         f"these workflows would run fork-authored code on self-hosted runners: {offenders}. "
@@ -160,7 +185,8 @@ def test_the_scan_actually_read_the_workflows() -> None:
     """A scan of nothing passes. That is the failure mode this file exists to avoid twice over.
 
     `T-262`'s audit was a person looking; if this replacement can return a clean answer from an
-    empty directory listing, it is worth less than the person was.
+    empty directory listing, it is worth less than the person was. Resolving every trigger set is
+    part of the claim: a file the parser could not read is not a file that was checked.
     """
     found = workflow_files()
 
@@ -168,12 +194,24 @@ def test_the_scan_actually_read_the_workflows() -> None:
     assert {"ci.yml", "commit-messages.yml", "prose.yml", "t074-repeat.yml"} <= {
         p.name for p in found
     }
-    assert all(trigger_block(p.read_text(encoding="utf-8")) for p in found), (
-        "a workflow declared no triggers this scan could find, so it was checked vacuously"
-    )
+    for path in found:
+        assert declared_events(path.read_text(encoding="utf-8")), f"{path.name} resolved no events"
 
 
-# --- the detector, case by case --------------------------------------------------------------
+def test_the_dormant_concurrency_expression_is_left_alone() -> None:
+    """Not a synthetic case: this text is in `commit-messages.yml` and `T-262` chose to keep it.
+
+    It is labelled dormant restoration scaffolding, and `test_commit_message_check.py` pins it. A
+    gate that failed on it would force a choice between this control and that record — which is
+    what a text scan would have done, and the second reason this one parses instead.
+    """
+    workflow = (WORKFLOWS / "commit-messages.yml").read_text(encoding="utf-8")
+
+    assert "pull_request" in workflow, "the dormant expression is gone; this test is now vacuous"
+    assert forbidden_triggers_in(workflow) == []
+
+
+# --- the detector, case by case ---------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -181,15 +219,16 @@ def test_the_scan_actually_read_the_workflows() -> None:
     [
         ("mapping form", "on:\n  push:\n  pull_request:\n\njobs: {}\n", ["pull_request"]),
         ("inline form", "on: [push, pull_request]\n\njobs: {}\n", ["pull_request"]),
-        (
-            "inline form, spaced",
-            "on: [ push , pull_request ]\n\njobs: {}\n",
-            ["pull_request"],
-        ),
+        ("scalar form", "on: pull_request\n\njobs: {}\n", ["pull_request"]),
         (
             "pull_request_target",
             "on:\n  pull_request_target:\n\njobs: {}\n",
             ["pull_request_target"],
+        ),
+        (
+            "both at once, reported in rule order",
+            "on:\n  pull_request:\n  pull_request_target:\n\njobs: {}\n",
+            ["pull_request", "pull_request_target"],
         ),
         (
             "with filters underneath",
@@ -197,11 +236,13 @@ def test_the_scan_actually_read_the_workflows() -> None:
             ["pull_request"],
         ),
         (
-            "quoted key, because YAML reads bare `on` as true",
+            "quoted key, because YAML 1.1 reads bare `on` as true",
             '"on":\n  pull_request:\n\njobs: {}\n',
             ["pull_request"],
         ),
-        ("safe: push only", "on:\n  push:\n\njobs: {}\n", []),
+        ("T264-R2: an alias resolving to the event", ALIASED, ["pull_request"]),
+        ("T264-R2: a quoted `#` before the event", QUOTED_HASH, ["pull_request"]),
+        ("safe: push only", SAFE, []),
         (
             "safe: dispatch and schedule",
             'on:\n  workflow_dispatch:\n  schedule:\n    - cron: "0 6 * * *"\n\njobs: {}\n',
@@ -224,107 +265,91 @@ def test_the_scan_actually_read_the_workflows() -> None:
             "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n\njobs: {}\n",
             [],
         ),
+        (
+            "safe: an anchor defined in the block, as ci.yml does",
+            'on:\n  push:\n    paths-ignore: &prose\n      - "ai/**"\n  workflow_dispatch:\n\n'
+            "jobs: {}\n",
+            [],
+        ),
     ],
 )
-def test_the_detector_reads_the_trigger_block_and_only_that(
+def test_the_detector_resolves_what_github_would_run(
     case: str, body: str, expected: list[str]
 ) -> None:
-    """Eleven cases: six that must be caught, five that must not.
+    """Fifteen cases: nine that must be caught, six that must not.
 
-    The five safe ones are the reason this is a parser and not a grep. Three of them are shapes
-    this repository actually contains — a comment explaining the absent trigger, a trailing comment
-    beside a live one, and `commit-messages.yml`'s dormant concurrency expression.
+    The two `T264-R2` rows are the ones that matter most — both were **accepted** by the text
+    scanner this replaced, and both are valid YAML that GitHub runs. The last safe row is the shape
+    that stops the obvious over-correction: `ci.yml` defines an anchor inside its own trigger block,
+    so a rule against anchors would reject the repository it protects.
     """
     assert forbidden_triggers_in(body) == expected, case
 
 
-def test_the_dormant_concurrency_expression_is_left_alone() -> None:
-    """Not a synthetic case: this text is in `commit-messages.yml` and `T-262` chose to keep it.
+@pytest.mark.parametrize(
+    ("case", "body"),
+    [
+        ("not YAML at all", "on: [push\n  bad: ["),
+        ("not a mapping", "- just\n- a list\n"),
+        ("no trigger key", "name: x\njobs: {}\n"),
+        ("a trigger shape this cannot read", "on: 42\n\njobs: {}\n"),
+    ],
+)
+def test_an_unresolvable_workflow_fails_closed(case: str, body: str) -> None:
+    """Unknown triggers are the state the gate exists to prevent being green.
 
-    It is labelled dormant restoration scaffolding, and `test_commit_message_check.py` pins it. A
-    gate that failed on it would force a choice between this control and that record.
+    Returning `[]` for a file nobody could parse is the accepting direction, and `T264-R2` is a
+    finding about exactly that: the gate said clean about workflows it had not understood.
     """
-    workflow = (WORKFLOWS / "commit-messages.yml").read_text(encoding="utf-8")
-
-    assert "pull_request" in workflow, "the dormant expression is gone; this test is now vacuous"
-    assert forbidden_triggers_in(workflow) == []
+    with pytest.raises(UnreadableWorkflowError):
+        forbidden_triggers_in(body)
 
 
-# --- the discovery half, proved with real files -----------------------------------------------
+# --- discovery, proved against a directory the scan has never seen -----------------------------
 
 
-def test_a_new_unsafe_workflow_is_caught_without_being_listed_here() -> None:
-    """`T-264`'s fourth criterion, proved by adding one rather than by asserting the glob.
+def test_a_new_unsafe_workflow_is_caught_without_being_listed_here(tmp_path: Path) -> None:
+    """`T-264`'s fourth criterion: discovery, not a filename list.
 
-    The file is created in the real directory, scanned by the same function the live gate calls,
-    and removed. If discovery were name-based this would pass silently.
+    Calls `workflow_files()` with no arguments, against a directory built here. Handing the scanner
+    a path would prove only that it can read one it was given.
     """
-    with temporary_workflow(
-        "zz-t264-probe.yml", "on:\n  pull_request:\n\njobs:\n  x:\n    runs-on: ubuntu-latest\n"
-    ) as path:
+    with temporary_workflows(
+        tmp_path / "workflows",
+        {"a-safe.yml": SAFE, "zz-unsafe.yml": "on:\n  pull_request:\n\njobs: {}\n"},
+    ):
         offenders = {
-            p.name: found
-            for p in workflow_files()
-            if (found := forbidden_triggers_in(p.read_text(encoding="utf-8")))
+            p.name: forbidden_triggers_in(p.read_text(encoding="utf-8")) for p in workflow_files()
         }
 
-        assert path.name in offenders, "a new pull-request-triggered workflow was not discovered"
-        assert offenders[path.name] == ["pull_request"]
-
-    assert not path.exists(), "the probe workflow outlived its test"
+    assert offenders == {"a-safe.yml": [], "zz-unsafe.yml": ["pull_request"]}
 
 
-def test_a_new_safe_workflow_does_not_trip_the_gate() -> None:
-    """The other direction, without which the gate could pass by rejecting everything.
-
-    **Asserts about the probe, not about the whole directory.** The first version asserted the
-    scan found nothing anywhere, so mutating an unrelated real workflow failed this test too — it
-    reported "a safe workflow tripped the gate" when no such thing had happened. A control that
-    fails for a reason other than the one it names sends the next reader to the wrong file.
-    """
-    name = "zz-t264-safe-probe.yml"
-    with temporary_workflow(
-        name,
-        "on:\n  workflow_dispatch:\n\njobs:\n  x:\n    runs-on: ubuntu-latest\n",
-    ) as path:
-        assert path in workflow_files(), "the safe probe was not discovered, so it proves nothing"
-        assert forbidden_triggers_in(path.read_text(encoding="utf-8")) == []
-
-
-def test_a_yaml_suffixed_workflow_is_scanned_too() -> None:
+def test_a_yaml_suffixed_workflow_is_scanned_too(tmp_path: Path) -> None:
     """GitHub accepts both suffixes; a scan that only globbed `*.yml` would miss half of them."""
-    name = "zz-t264-probe.yaml"
-    with temporary_workflow(name, "on:\n  pull_request_target:\n\njobs: {}\n"):
+    with temporary_workflows(
+        tmp_path / "workflows",
+        {"probe.yaml": "on:\n  pull_request_target:\n\njobs: {}\n", "other.txt": "not a workflow"},
+    ):
+        scanned = [p.name for p in workflow_files()]
         offenders = {
-            p.name: found
-            for p in workflow_files()
-            if (found := forbidden_triggers_in(p.read_text(encoding="utf-8")))
+            p.name: forbidden_triggers_in(p.read_text(encoding="utf-8")) for p in workflow_files()
         }
 
-    # Scoped to the probe for the reason the safe-probe test records: an unrelated real violation
-    # must fail `test_no_workflow_carries_a_pull_request_trigger`, not this one.
-    assert offenders.get(name) == ["pull_request_target"], (
-        f"the .yaml probe was not scanned; offenders were {offenders}"
-    )
+    assert scanned == ["probe.yaml"], "the `.txt` was scanned, or the `.yaml` was not"
+    assert offenders == {"probe.yaml": ["pull_request_target"]}
 
 
-# --- beyond T-264's criteria, split out so it can be ruled on ---------------------------------
+def test_the_alias_probe_is_caught_through_real_discovery(tmp_path: Path) -> None:
+    """`T264-R2`'s probe end to end, not only through the detector.
 
-
-def test_the_wider_fork_reachable_set_is_also_absent_today() -> None:
-    """`workflow_run`, `issue_comment`, `repository_dispatch` — `T-262`'s audit covered these.
-
-    **This is not `T-264`'s stated rule**, and it is a separate test so that a future task wanting
-    one of these fails here, reads this docstring, and makes a deliberate decision — rather than
-    finding the wider ban already merged under a narrower task's name.
+    The reviewer's version was a real file in the real directory and both gates passed it. This is
+    the same workflow, reached the same way — found by `workflow_files()`, read off disk — with the
+    checkout left alone.
     """
-    offenders = {
-        path.name: found
-        for path in workflow_files()
-        if (found := forbidden_triggers_in(path.read_text(encoding="utf-8"), ALSO_AUDITED))
-    }
+    with temporary_workflows(tmp_path / "workflows", {"aliased.yml": ALIASED}):
+        offenders = {
+            p.name: forbidden_triggers_in(p.read_text(encoding="utf-8")) for p in workflow_files()
+        }
 
-    assert not offenders, (
-        f"{offenders} — fork-reachable beyond T-264's rule. If one of these is wanted, rule on it "
-        "and change this test in the same commit."
-    )
+    assert offenders == {"aliased.yml": ["pull_request"]}

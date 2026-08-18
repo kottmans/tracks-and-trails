@@ -313,14 +313,12 @@ fails on growth rather than on faults, and it fails by looking like a hang.
 
 ### T-264 — Make the no-untrusted-PR workflow policy executable
 
-**Status:** **In Review — built 2026-08-17.** T-262 removes every pull-request trigger; this task
-makes that security control fail closed when a workflow is edited or added later.
-`tests/unit/test_workflow_triggers.py` reads each workflow's `on:` block — **not the file**, because
-grepping fires on `commit-messages.yml`'s dormant concurrency expression and on every comment
-explaining why the trigger is gone, and a gate that cries wolf on its own documentation gets
-deleted. **18 tests**: the live gate, eleven detector cases (six caught, five that must not be),
-and three real-file probes written into `.github/workflows/` and removed, which is what proves
-discovery rather than a hard-coded list.
+**Status:** **In Review — corrected 2026-08-17** after `cc17ff0` returned Changes requested with
+three blocking findings, **all three of which the first version got wrong in the accepting
+direction**. T-262 removes every pull-request trigger; this task makes that control fail closed
+when a workflow is edited or added later. `tests/unit/test_workflow_triggers.py` now **parses** each
+workflow with PyYAML and reads the trigger set GitHub would resolve. **25 tests**, passing serially
+and under `pytest -n auto`.
 **Owner:** Implementer
 **Priority:** Low while the trigger is absent; the consequence of regression is the Critical
 self-hosted-runner exposure T-262 records
@@ -356,24 +354,42 @@ change this policy and its mutations in the same reviewed commit rather than byp
 - Re-enabling pull-request CI or designing a trusted hosted PR tier
 - Runner hardening, isolation or GitHub repository settings; T-262 records those separately
 
-#### What was built — 2026-08-17
+#### What was built — 2026-08-17, corrected the same day
 
-**Mutations run, each seen.** Restoring `pull_request:` to `ci.yml`'s trigger block in the mapping
-form, and adding it to `t074-repeat.yml` in the inline form, each failed
-`test_no_workflow_carries_a_pull_request_trigger` and nothing else. Blinding the detector failed
-eight tests.
+**`T264-R1` — the probes wrote into the real `.github/workflows/`.** Under CI's `pytest -n auto`
+one worker listed a probe another had deleted: **1 failed, 17 passed** in the exact mode the gate
+was submitted to be carried by. It also broke `ai/TESTING.md`'s rule that tests write nowhere
+outside `tmp_path`, which the first version did not check. Discovery is now proved against a
+directory built under `tmp_path` with `WORKFLOWS` rebound — still calling `workflow_files()` with
+no file list, because handing the scanner a path proves only that it can read one it was given.
+**25 passed serially and 25 under `-n auto`**, and the checkout is untouched after the run.
 
-*(The first version of two probe tests asserted over the whole directory, so an unrelated mutated
-workflow failed them as well — a control reporting *"a safe workflow tripped the gate"* when no
-such thing had happened. Found by running the mutations, not by reading, and both are now scoped to
-their own probe. A control that fails for a reason other than the one it names sends the next
-reader to the wrong file.)*
+**`T264-R2` — the text scan accepted valid YAML that GitHub runs.** Two bypasses, both in the
+accepting direction: `name: &fork_event pull_request` aliased into `on: [push, *fork_event]`, where
+the forbidden word never appears in the block; and
+`on: {push: {branches: ["feature#1"]}, pull_request: null}`, truncated at a `#` inside a quoted
+string. **Refusing anchors was not available** — `ci.yml`'s own trigger block defines `&prose`, so
+that rule would reject the repository it protects. The detector parses with PyYAML, now a declared
+dev dependency, and **fails closed** on anything it cannot resolve: unparseable YAML, a
+non-mapping document, a missing `on:` key, or a trigger value of an unreadable shape. Both of the
+reviewer's probes are parametrized cases, and reverting the parser to a text scan fails five tests
+including both.
 
-**One decision left for the Reviewer rather than taken here.** `T-262`'s manual audit also checked
-`workflow_run`, `issue_comment` and `repository_dispatch`; this task's stated rule names only
-`pull_request` and `pull_request_target`. Banning the wider set is a **separate test**, labelled as
-beyond these criteria, so the widening can be ruled on instead of arriving under a narrower task's
-name. If it should be part of the rule, the rule text is what needs changing.
+**`T264-R3` — the wider ban is gone.** `workflow_run`, `issue_comment` and `repository_dispatch`
+are no longer enforced. Labelling the test *separate* did not make it observational: adding any one
+of those events would have reddened the required suite under a policy nobody authorized. The
+file's description of `pull_request_target` is also corrected — it runs **trusted base-branch
+code** with a read-write token, and the danger is a workflow under it fetching and executing the
+pull request's head, not fork code running by default. It stays forbidden, which `T-264`'s rule
+already required, for the privilege it carries next to untrusted content.
+
+**Mutations, each seen.** Restoring `pull_request:` to the real `ci.yml` fails the live gate **and
+nothing else**; dropping `.yaml` from discovery fails only the suffix test; failing open on
+unparseable YAML fails the fail-closed case; reverting to the text scan fails five.
+
+*(An earlier round of mutations found a defect in two probe tests, which asserted over the whole
+directory and so reported *"a safe workflow tripped the gate"* when an unrelated workflow was
+mutated. Fixed then; the `tmp_path` rebuild for `T264-R1` supersedes it.)*
 
 ---
 

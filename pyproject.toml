@@ -52,6 +52,15 @@ dev = [
     # manifest, so the CI that needs it most would have run the suite serially and silently.
     # Dev-only tooling, so no DECISIONS entry is required (AGENTS.md §7).
     "pytest-xdist>=3.6",
+    # `T264-R2`: `tests/unit/test_workflow_triggers.py` decides a security policy from a workflow's
+    # trigger block, and a hand-rolled reader accepted valid GitHub Actions YAML that resolves to a
+    # forbidden event — an anchor aliased into `on:`, and a `#` inside a quoted value. `ci.yml`'s
+    # own `on:` block defines an anchor, so refusing anchors outright was not available either. The
+    # gate has to read the value GitHub executes, which means the parser GitHub's syntax is defined
+    # against. Dev-only tooling, so no DECISIONS entry is required (AGENTS.md §7).
+    "PyYAML>=6.0",
+    # Stubs for the above; `mypy` covers `tests`, so an unstubbed import is an error there.
+    "types-PyYAML>=6.0",
     "ruff>=0.9",
 ]
 build = ["pyinstaller>=6.21"]

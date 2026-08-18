@@ -216,12 +216,16 @@ def test_the_report_file_carries_what_the_log_carried(
 
 # --- the wiring, which the calculation cannot check for itself -------------------------------
 #
-# **Read as text, not through a YAML parser.** PyYAML is not a declared dependency of this project,
-# so `importorskip` would turn these three into tests that skip on any machine that happens not to
-# have it — including a fresh CI environment. `tests/ui/test_windows_accessibility.py` already
-# settled the principle: a guard that quietly asserts nothing on the platform that runs it is how
-# a gate comes to be trusted for a check it never made. `test_commit_message_check.py` reads its
-# workflow the same way.
+# **Read as text, matching `test_commit_message_check.py`.** These three assert about the *wiring* —
+# that a step exists, carries `if: always()`, and is passed the same number the job declares — and
+# the text is what a person edits when they break it.
+#
+# *(This comment said PyYAML was not a declared dependency. It is one as of `T264-R2`, which needed
+# a real parser to close an alias bypass in a security gate. That does not make these three wrong,
+# but it removes the reason they gave: the argument is now suitability, not availability. If a
+# future edit wants the parsed value here, PyYAML is available and must be imported plainly —
+# never through `importorskip`, which is how a guard comes to be trusted for a check it never
+# made, per `tests/ui/test_windows_accessibility.py`.)*
 
 
 def windows_desktop_job() -> list[str]:
