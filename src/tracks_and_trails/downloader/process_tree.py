@@ -61,12 +61,19 @@ The two platforms close it differently, and only one of them closes it for free:
   `spawn_main`. Measured, not assumed: a child stopped in this window dies within **0.02 s**
   of its parent being `SIGKILL`ed — the resolution of the poll, not a latency — in 8 of 8 runs.
   `test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` is that measurement, kept.
-- **Windows is why `contain_this_application()` exists**, below. Its pipe *should* break the same
-  way — the parent holds the sole write handle there too — and five orphans say it did not. **Why
-  is not established** (`T258-R6`): `threads=1` bounds the block to before the watchdog, which
-  leaves the payload read or `contain_this_process()` itself, and no Windows run has looked. The
-  guarantee is therefore taken from the kernel rather than from a diagnosis, so that it holds
-  whichever of the two it turns out to be.
+- **Windows closes it too, and that is measured now** (`T-266`, run `32172384737`). Its pipe
+  *should* break the same way — the parent holds the sole write handle there too — and a child
+  stopped in this window on `STARBASE` died with **no outer Job in the driver at all**
+  (`driver_holds_a_job: false`), exit code 1. So `contain_this_application()` is **not** what
+  reaps a child in this window on either platform.
+
+  **It stays, as defence in depth, and the reason is the part that is still open.** Five orphans
+  were found alive on `STARBASE` after eleven days, and the window reproduced above is now known
+  not to be the one they fell through, because that window closes itself. Whatever did happen to
+  them is unexplained (`T-268`), so the kernel-held guarantee is kept rather than removed on the
+  strength of a mechanism that does not account for the observation that started this.
+  *(This read "five orphans say it did not … no Windows run has looked", which was true until
+  one looked.)*
 
 ## The rule that keeps this from killing the application
 

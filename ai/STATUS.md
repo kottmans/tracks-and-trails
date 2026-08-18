@@ -22,11 +22,14 @@ visible, arriving one day after the reporter was built.
 **`T-258`'s Windows evidence exists and the control failed.** The pair has run on `STARBASE` in
 every Windows job since 2026-08-17 — `32078697182`, `32086893887`, `32106718891`, one failure each
 time: the reproduction passes there, and the negative control — the outer Job suppressed — does
-**not** show the child surviving. So the fix works and nothing yet shows it is the fix that works. `T-266` owns deciding
-between the two candidates the test names, and on **2026-08-18 its instrument was built and has
-not been run**: the shared driver now reports, at the instant the child exists, whether a job
-handle was held in it — the one fact that separates the candidates — and the answer needs a
-`STARBASE` run nobody has taken. `T-259`'s approval settles the workflow disposition
+**not** show the child surviving. **`T-266` decided that on 2026-08-18, and the answer is that the
+fix is not what works.** Run `32172384737` measured `driver_holds_a_job: false` — the suppression
+suppressed — and the child died anyway, exit code 1. On Windows as on POSIX, a child stopped in
+this window is reaped by its own failed bootstrap; the outer Job is **defence in depth, not the
+demonstrated reaper**, and `T-258`'s criterion 2 is closed as unobtainable in that form. **What
+that opens is bigger than what it closed**: the five orphans did not come through the window
+`T-258` reproduces, because that window closes itself, so their cause is unexplained again and is
+now `T-268`. `T-259`'s approval settles the workflow disposition
 `T258-R5` was waiting on; the scanner itself is still wired to nothing.
 
 **`T-257`, `T-259`, `T-262` and `T-264` are Complete**, leaving `T-258` the only task In Review.
@@ -784,7 +787,64 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
-## 2026-08-18 (T-266): the control now reports what contains the child, and still decides nothing
+## 2026-08-18 (T-266, decided): the Job object is not what reaps the child, and the orphans are unexplained again
+
+**Run `32172384737` on `STARBASE` answered it**, and the answer is candidate 1:
+
+    {'pid': 10340, 'platform': 'win32', 'driver_holds_a_job': False,
+     'driver_in_any_job': True, 'child_in_any_job': True}   child exited [1]
+
+`driver_holds_a_job: false` is the whole thing. `KILL_ON_JOB_CLOSE` reaps when a job's **last
+handle** closes; the driver held none, so nothing its death closed could have reaped the child.
+The child died anyway. **Candidate 2 — "the suppression stopped suppressing" — is eliminated on a
+measurement rather than an argument**, which is the order `T-266` asked for, and the same run
+carries the positive control that makes the `false` mean something: the reproduction passed, and
+its Windows assertions are that the identical field reads `true` with the fix present.
+
+**Candidate 2's premise was true and its conclusion did not follow.** `driver_in_any_job` and
+`child_in_any_job` both read `true`, so the driver genuinely cannot leave the job it was born
+into — every process the suite spawns inherits `pytest`'s. That job reaped nothing either:
+`pytest` still held its handle and was still running, which is why there is a result to read.
+Inherited membership is not a handle whose closing the experiment triggers.
+
+**What it costs `T-258`.** The outer Job is defence in depth rather than the demonstrated reaper.
+Criterion 2 is closed as unobtainable in this form, with the reason recorded — it asks the Job to
+be what reaps a child in this window, and on Windows it is not. The control keeps its measurement
+and drops its refuted claim: it is
+`test_a_child_stopped_in_the_window_dies_with_no_outer_job_to_reap_it` now, asserting what was
+measured, with `driver_holds_a_job` asserted first so it cannot pass vacuously. **Nothing was
+weakened to make anything pass** — `T-260` is four rounds of precedent for that failure mode, and
+avoiding it is why the discriminator was built before the verdict was taken.
+
+**What it opens is larger, and it is `T-268`.** `T-258` exists because five real processes were
+found alive on `STARBASE` after eleven days. The window it reproduces is now measured to close
+itself on Windows — so **the five did not come through it**, or something stopped it closing for
+them, and nothing distinguishes those. The project's explanation for its own founding observation
+is now known to be the wrong one. The fix is unaffected; the understanding is missing, and
+`process_tree.py` says so where it used to say the opposite.
+
+**Not guessed at:** which part of the child's bootstrap fails. Exit code 1 is an unhandled Python
+exception, which fits both the `EOFError` POSIX was measured raising and an `OSError` duplicating
+a handle out of a dead parent. `popen_spawn_win32` creates the child with `bInheritHandles=False`,
+so its stderr is not captured and this run cannot separate them. Both are the child's own
+bootstrap failing because the parent is gone, which is the granularity the argument needs.
+
+**The first push produced no measurement at all, and the reason is worth keeping.** Run
+`32171578343` failed `ruff format --check` on one line, and in the `windows desktop` job that step
+sits **above** `Full suite` — so the only step that runs these tests was skipped, and a `STARBASE`
+slot went to a formatting error. The cause was a stale checkout: local `ruff` 0.16.0 against CI's
+0.16.3, which formats a multiple-`except` the PEP 758 way `process_tree.py` has always used. The
+same checkout had no `PyYAML`, so `mypy` and `tests/unit` had been unrunnable in it since `T-264`
+declared the dependency. **A gate passing on a stale toolchain is a weaker statement than a gate
+passing**, and it was reported as the stronger one. The venv now matches CI.
+
+**The Windows job took 30m39s — 80% of its 40-minute bound**, down from `T-259`'s 88% the day
+before, so no warning fired this time.
+
+## 2026-08-18 (T-266, instrument): the control now reports what contains the child
+
+*(**Answered the same day** by the entry above, on run `32172384737`. Left as written: it records
+what was reasoned before the measurement, and the reasoning is what the measurement confirmed.)*
 
 **`T-266` is In Progress. Its instrument is built; its question is unanswered.** I did not decide
 between the two candidates, because deciding them needs a Windows run and pushing is the

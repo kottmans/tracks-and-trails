@@ -9,12 +9,12 @@ The measurement below is `ctypes` against `kernel32`, and only the `windows desk
 it — so the one protection available before that run is `ruff` and `mypy --platform win32`, and
 neither reaches inside a string literal.
 
-## What it reports, and why `T-266` needs it
+## What it reports, and the question it answered
 
-The negative control `test_an_uncontained_application_is_what_the_outer_job_prevents` failed on
-`STARBASE`: with the outer Job suppressed, the child was reaped anyway. `T-266` names two
-candidates for that — **something other than the Job closes the window on Windows**, or **the
-suppression stopped suppressing** — and one fact told from inside the driver separates them:
+`T-258`'s negative control failed on `STARBASE`: with the outer Job suppressed, the child was
+reaped anyway. `T-266` named two candidates — **something other than the Job closes the window on
+Windows**, or **the suppression stopped suppressing** — and one fact told from inside the driver
+separates them:
 
     driver_holds_a_job — whether a job handle is held in this process at the moment the child
                          is created.
@@ -22,14 +22,22 @@ suppression stopped suppressing** — and one fact told from inside the driver s
 `KILL_ON_JOB_CLOSE` reaps a job's members when its **last handle** closes, and the driver's own
 handle is the only one whose closing the harness triggers when it kills the driver. So a driver
 holding none cannot be the process whose death closes a job, and a child that dies anyway died of
-something else. That is the second candidate eliminated, which is the order `T-266` asks for.
+something else.
+
+**Run `32172384737` answered it**: `driver_holds_a_job` came back `false`, and the child died
+regardless, exit code 1. The suppression suppresses; the Job is not the reaper. The control
+carries the measurement and is now
+`test_a_child_stopped_in_the_window_dies_with_no_outer_job_to_reap_it`, and
+`test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` asserts `true` for the
+same field with the fix present — which is what says the reading works rather than the reading
+being broken in the direction that happened to suit.
 
 `driver_in_any_job` and `child_in_any_job` are recorded beside it because they are the obvious
 objection rather than a decoration. On Windows every process the suite spawns inherits `pytest`'s
 own job — the tests that construct a `DownloadManager` put that process in one through
-`start_contained()`, and job membership is inherited at creation with no way to leave it.
-Inherited membership cannot do the reaping here, because `pytest` is still holding that job's
-handle and still running; the fields record it rather than arguing it away.
+`start_contained()`, and job membership is inherited at creation with no way to leave it. Both
+read `true`, as expected. Inherited membership did not do the reaping either: `pytest` was still
+holding that job's handle and still running, which is why there is a result to read.
 
 The facts are read from the kernel — `IsProcessInJob` — rather than inferred from our own
 bookkeeping, for everything except `driver_holds_a_job`, where our bookkeeping *is* the fact in
