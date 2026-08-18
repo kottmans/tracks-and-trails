@@ -5,9 +5,12 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-258` and `T-262` both came back Blocked**, each corrected again
-after its focused re-review and awaiting the next pass. `T-258` was corrected after six blocking
-findings.
+**Last updated:** 2026-08-17 — **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
+after a maintainer-authorized third pass; the remaining runner-inventory prose is `T-265`, and
+**the trigger removal is already on GitHub** — `origin/main` is `b6a6d20`. **`T-258` is still
+Blocked**: `T258-R6` is Resolved at `e3c259a`, and what stands is `T258-R2`'s missing Windows run
+and `T258-R5`, now behind a `T-259` that came back Changes requested itself. `T-258` was corrected
+after six blocking findings.
 The pre-bootstrap window that orphaned five workers on `STARBASE` is reproduced, **POSIX is
 measured not to have it** (the child dies within 0.02 s of the parent, on its own broken bootstrap
 pipe), and the application now contains itself in a Job object before any worker exists — through
@@ -751,6 +754,38 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-17 (approved): T-262 is Complete, and the control it added is already remote
+
+**`T-262` is Approved with follow-ups at `8ee106b`**, after three review rounds: the ordinary
+review, one ordinary correction re-review, and one focused pass the maintainer authorized under
+`AGENTS.md` §10 when the budget was spent with a blocking Medium still open. `T262-R1` and
+`T262-R2` are Resolved.
+
+**What the third pass was for was a document, not a workflow.** The trigger removal was accepted
+two rounds earlier; what blocked approval was `ai/TESTING.md` still calling `STARBASE coverage` a
+hosted `ubuntu-latest` job six days after `ci.yml:486` moved it to `LINUX_RUNNER` — inside the same
+section whose security argument rests on every configured runner being self-hosted. **A policy file
+that names the wrong machine is worse than one that names none**, because the wrong name is what
+gets cited. Two sibling sites were corrected with it — `prose.yml`'s runner and the `frozen
+ubuntu-latest` job name — and the reviewer ruled that in scope: §10 requires auditing sibling
+fields when a finding is a defect class rather than two lines.
+
+**`T262-R4` is what the approval does not cover**, and it is `T-265`: `windows desktop` and `frozen
+windows` are pinned to literal `STARBASE` labels rather than selected by `WINDOWS_RUNNER`, two jobs
+are missing from the table entirely, and one later sentence does not separate what a workflow *can*
+do from what the configured variables make it *do*. None of that changes which machines run the
+jobs, which is why it did not hold the task.
+
+**The security control is already on GitHub.** `origin/main` is `b6a6d20`, independently confirmed,
+and it contains `1387e57`'s trigger removal. The repository is still private and flipping it stays
+the maintainer's call — but the ordering constraint that flip was waiting on is satisfied, and what
+remains unpushed is documentation.
+
+**`T-258` did not move.** `T258-R6`'s last residual is Resolved at `e3c259a` — the containment
+docstring and its test now say idempotence is required because `start_contained()` runs on every
+spawn from all three sites, not because a manager can be built twice. `T258-R2` still has no
+Windows run, and `T258-R5` is behind `T-259`, which came back Changes requested on the same day.
 
 ## 2026-08-17 (T-262): making the repository public would have exposed two machines
 

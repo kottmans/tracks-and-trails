@@ -5,9 +5,11 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-258` and `T-262` are both In Review with a `Blocked`
-verdict, and both corrected again.** They stay under `## In Review` because that is where work
-awaiting a verdict lives; what is blocked is approval, pending a maintainer decision each.
+**Last updated:** 2026-08-17 — **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
+after a maintainer-authorized third pass; its non-blocking runner-inventory residue is `T-265`.
+**`T-258` stays In Review with a `Blocked` verdict**: `T258-R6` is Resolved at `e3c259a`, and the
+two standing blockers are `T258-R2` (no Windows run) and `T258-R5` (behind `T-259`, itself now
+Changes requested).
 `T-258`'s first submission returned Changes requested with six blocking findings. The window
 before a spawned worker installs
 its watchdog is reproduced, POSIX is measured not to have it, and the application now contains
@@ -626,22 +628,36 @@ so a parent that is not one cannot be the one that spawned it.
 
 ---
 
+## Complete
+
 ### T-262 — Every CI job runs on the maintainer's own machines, and fork pull requests could too
 
-**Status:** **In Review — Blocked at `b6a6d20`, 2026-08-17.** Built on the maintainer's direct
-instruction while preparing to make the repository public. Trigger behaviour is accepted; what blocked it was
-`T262-R1` — `ai/TESTING.md`'s CI-policy section still calling `STARBASE coverage` a hosted job
-fixed to `ubuntu-latest`, six days after `ci.yml:486` moved it to `LINUX_RUNNER`, which contradicts
-the all-self-hosted premise the same section's security argument rests on. **That row, the stale
-`prose.yml` and `frozen ubuntu-latest` names beside it, and `T262-R2`'s 343 in `ai/STATUS.md` are
-corrected here.** The ordinary correction pass is spent, and **the maintainer authorized one more
-focused pass on 2026-08-17** under `AGENTS.md` §10, choosing a pass over accepting the risk,
-changing scope, or a named follow-up.
+**Status:** **Complete — Approved with follow-ups at `8ee106b`**, 2026-08-17, after **three
+review rounds**: the ordinary review, one ordinary correction re-review, and one
+maintainer-authorized focused pass under `AGENTS.md` §10. `T262-R1` and `T262-R2` are **Resolved**;
+`T262-R3` is owned by `T-264` and `T262-R4` by `T-265`. Built on the maintainer's direct instruction
+while preparing to make the repository public.
+
+**What blocked it after the trigger behaviour was accepted** was `ai/TESTING.md`'s CI-policy section
+still calling `STARBASE coverage` a hosted job fixed to `ubuntu-latest`, six days after `ci.yml:486`
+moved it to `LINUX_RUNNER` — contradicting, in the same section, the all-self-hosted premise its
+security argument rests on. That row, `prose.yml`'s runner and the `frozen ubuntu-latest` job name
+beside it, and `T262-R2`'s 343 in `ai/STATUS.md` were corrected at `8ee106b`. **The two sibling
+sites were in scope**, on the reviewer's ruling: §10 requires auditing sibling fields and variants
+when a finding represents a defect class, which this one did.
+
+**The approval does not make the inventory exact, and `T262-R4` says where it is not.** `windows
+desktop` and `frozen windows` are pinned to literal `STARBASE` labels rather than selected by
+`WINDOWS_RUNNER`, the table omits `commit-messages.yml`'s `trailers` and `t074-repeat.yml`, and the
+later *"the hosted job"* comparison does not separate conditional capability from configured
+execution. None of it changes which machines run the jobs, so it is `T-265`'s.
 **Owner:** Implementer
 **Priority:** **High while the repository is being made public**, and moot while it is private. The
 window is the moment of the visibility change, not a period afterwards
 **Phase:** Phase 4 maintenance
-**Depends on:** nothing. **Blocks making the repository public**
+**Depends on:** nothing. **Blocked making the repository public** — lifted by this
+approval, and the control is already remote: `origin/main` is `b6a6d20`, which contains
+`1387e57`'s trigger removal. What is still unpushed is documentation
 **Relevant context:** `.github/workflows/ci.yml`, `prose.yml`, `commit-messages.yml`,
 `t074-repeat.yml`; repository variables `LINUX_RUNNER`, `WINDOWS_RUNNER`, `STARBASE_AVAILABLE`;
 `OPS-003`, `OPS-009`, `AGENTS.md` §7 (serial work mode)
@@ -714,8 +730,6 @@ does not silently reopen this.
   machines behind it
 
 ---
-
-## Complete
 
 ### T-260 — Five symlink tests bypass the guard `T-070` built, and fail bare on Windows
 
