@@ -5,26 +5,33 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-18 — **`origin/main` is `609d614`**, pushed on the maintainer's explicit
-authorization for that exact range; two commits stay local by the same instruction.
+**Last updated:** 2026-08-18 — **`T-264` is Approved at `609d614`.** The trigger gate had accepted
+an anchor aliased into `on:` and an event hidden behind a quoted `#` — valid YAML that GitHub runs
+— and its probes raced under `pytest -n auto` because they wrote into the real workflow directory.
+It parses with PyYAML now and fails closed on anything it cannot resolve. Adding that dependency is
+what made its own approval wait on Windows, and run `32106718891` supplied the evidence: PyYAML and
+`types-PyYAML` installed on `STARBASE`, all 25 trigger tests passed there, and the full suite came
+back **1 failed, 3683 passed, 30 skipped, 35 deselected** — the one failure being `T-266`'s
+unchanged negative control.
 
-**`T-264` is Blocked, and only on Windows.** `T264-R1` through `R3` are Resolved at `609d614`: the
-trigger gate had accepted an anchor aliased into `on:` and an event hidden behind a quoted `#` —
-valid YAML that GitHub runs — and its probes raced under `pytest -n auto` because they wrote into
-the real workflow directory. It parses with PyYAML now and fails closed on anything it cannot
-resolve. What blocks it is that PyYAML is a **new dependency**, and `ai/TESTING.md` requires a
-dependency addition to run the full default suite on both platforms.
+**`T-259`'s warning fired for the first time in that same run**, at **35.0 minutes of 40 — 88%**,
+past the 85% mark. Until then it had only ever fired in tests. The number is the point: the job
+took 32.3 minutes on 2026-08-17 and 35.0 on 2026-08-18, which is the creep `T-259` exists to make
+visible, arriving one day after the reporter was built.
 
-**`T-258`'s Windows evidence exists and the control failed.** The pair ran twice on `STARBASE`
-(`32078697182` at `b6a6d20`, `32086893887` at `08349bc`, one failure each time): the reproduction
-passes there, and the negative control — the outer Job suppressed — does **not** show the child
-surviving. So the fix works and nothing yet shows it is the fix that works. `T-266` owns deciding
+**`T-258`'s Windows evidence exists and the control failed.** The pair has run on `STARBASE` in
+every Windows job since 2026-08-17 — `32078697182`, `32086893887`, `32106718891`, one failure each
+time: the reproduction passes there, and the negative control — the outer Job suppressed — does
+**not** show the child surviving. So the fix works and nothing yet shows it is the fix that works. `T-266` owns deciding
 between the two candidates the test names. `T-259`'s approval settles the workflow disposition
 `T258-R5` was waiting on; the scanner itself is still wired to nothing.
 
-**`T-257`, `T-259` and `T-262` are Complete.** `T-259`'s duration report was verified on `STARBASE`
-— 32.3 min of 40, 81%, quiet as designed — and its unpinned CLI default is `T-267`. `T-262`'s
-remaining runner-inventory prose is `T-265`.
+**`T-257`, `T-259`, `T-262` and `T-264` are Complete**, leaving `T-258` the only task In Review.
+`T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining runner-inventory prose is `T-265`.
+
+**The live `origin/main` is deliberately not quoted here.** It was, and it was wrong within two
+pushes. Git is the authority for where the remote points; this file records the pushes as they
+happen, in the dated entries below.
 
 *(**This header was rewritten 2026-08-18 rather than appended to again.** It had reached the point
 of saying `T-259` was Complete *and* corrected-awaiting-re-review, that `T-258`'s Windows run

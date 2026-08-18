@@ -5,13 +5,13 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-18 — **`T-264` is Blocked** on one thing: `ai/TESTING.md` requires a
-dependency addition to run the full default suite on **both** platforms, and the PyYAML it adds has
-not run on Windows. `T264-R1` through `R3` are Resolved at `609d614`. **`T-257`, `T-259` and
-`T-262` are Complete**; `T-267` and `T-265` carry what the last two approvals did not cover.
-**`T-258` is In Review with a `Blocked` verdict**: `T258-R6` is Resolved at `e3c259a`; `T258-R2`'s
-Windows run now exists and the **negative control failed** there, which is `T-266`; and `T258-R5`'s
-dependency is settled by `T-259`'s approval, leaving the scanner itself unwired.
+**Last updated:** 2026-08-18 — **`T-257`, `T-259`, `T-262` and `T-264` are Complete.** `T-264`'s
+PyYAML installed and its 25 tests passed on `STARBASE` in run `32106718891`, which is what
+`T264-R4` was waiting for; `T-267` and `T-265` carry what the other approvals did not cover.
+**`T-258` is the only task left In Review, with a `Blocked` verdict**: `T258-R6` is Resolved at
+`e3c259a`; `T258-R2`'s Windows run exists and the **negative control failed** there, which is
+`T-266`; and `T258-R5` waits on nothing now — `T-259`'s approval settled the disposition, so what
+is left is wiring the scanner.
 
 *(**Rewritten 2026-08-18, because appending had made it self-contradicting.** In one paragraph this
 header said `T-259` was Complete *and* awaiting re-review, and that `T-258`'s Windows run existed
@@ -233,88 +233,6 @@ and `build_options` has never set it.**
 
 ---
 
-### T-264 — Make the no-untrusted-PR workflow policy executable
-
-**Status:** **In Review — corrected 2026-08-17** after `cc17ff0` returned Changes requested with
-three blocking findings, **all three of which the first version got wrong in the accepting
-direction**. T-262 removes every pull-request trigger; this task makes that control fail closed
-when a workflow is edited or added later. `tests/unit/test_workflow_triggers.py` now **parses** each
-workflow with PyYAML and reads the trigger set GitHub would resolve. **25 tests**, passing serially
-and under `pytest -n auto`.
-**Owner:** Implementer
-**Priority:** Low while the trigger is absent; the consequence of regression is the Critical
-self-hosted-runner exposure T-262 records
-**Phase:** CI security maintenance; blocks no current T-262 correction
-**Depends on:** T-262's trigger removal at `1387e57`
-**Relevant context:** `T262-R3`, `.github/workflows/*.yml`, GitHub's public-fork/self-hosted-runner
-warning, `AGENTS.md` §7
-**Affected surfaces:** a unit/static workflow-policy test; workflow files only if the gate exposes
-another trigger
-**Risk:** Low — a repository-local assertion over four workflow files
-
-#### Scope
-
-Turn the current policy — no pull-request-triggered workflow may reach these self-hosted runners —
-into a test over every file in `.github/workflows/`. Comments are not a gate, and
-`test_commit_message_check.py` currently pins only dormant concurrency text; adding
-`pull_request:` back leaves it green.
-
-The safest current rule is to forbid both `pull_request` and `pull_request_target` triggers. If a
-future task deliberately restores pull-request CI with same-repository job guards, that task must
-change this policy and its mutations in the same reviewed commit rather than bypass it ad hoc.
-
-#### Acceptance criteria
-
-- Both mapping (`pull_request:`) and inline (`on: [push, pull_request]`) trigger mutations fail
-- The scan covers every current and future `.yml`/`.yaml` workflow, including `t074-repeat.yml`
-- Comments mentioning the event do not produce a false failure
-- The current four workflows pass, and adding a new unsafe workflow fails without updating a
-  hard-coded filename list
-
-#### Out of scope
-
-- Re-enabling pull-request CI or designing a trusted hosted PR tier
-- Runner hardening, isolation or GitHub repository settings; T-262 records those separately
-
-#### What was built — 2026-08-17, corrected the same day
-
-**`T264-R1` — the probes wrote into the real `.github/workflows/`.** Under CI's `pytest -n auto`
-one worker listed a probe another had deleted: **1 failed, 17 passed** in the exact mode the gate
-was submitted to be carried by. It also broke `ai/TESTING.md`'s rule that tests write nowhere
-outside `tmp_path`, which the first version did not check. Discovery is now proved against a
-directory built under `tmp_path` with `WORKFLOWS` rebound — still calling `workflow_files()` with
-no file list, because handing the scanner a path proves only that it can read one it was given.
-**25 passed serially and 25 under `-n auto`**, and the checkout is untouched after the run.
-
-**`T264-R2` — the text scan accepted valid YAML that GitHub runs.** Two bypasses, both in the
-accepting direction: `name: &fork_event pull_request` aliased into `on: [push, *fork_event]`, where
-the forbidden word never appears in the block; and
-`on: {push: {branches: ["feature#1"]}, pull_request: null}`, truncated at a `#` inside a quoted
-string. **Refusing anchors was not available** — `ci.yml`'s own trigger block defines `&prose`, so
-that rule would reject the repository it protects. The detector parses with PyYAML, now a declared
-dev dependency, and **fails closed** on anything it cannot resolve: unparseable YAML, a
-non-mapping document, a missing `on:` key, or a trigger value of an unreadable shape. Both of the
-reviewer's probes are parametrized cases, and reverting the parser to a text scan fails five tests
-including both.
-
-**`T264-R3` — the wider ban is gone.** `workflow_run`, `issue_comment` and `repository_dispatch`
-are no longer enforced. Labelling the test *separate* did not make it observational: adding any one
-of those events would have reddened the required suite under a policy nobody authorized. The
-file's description of `pull_request_target` is also corrected — it runs **trusted base-branch
-code** with a read-write token, and the danger is a workflow under it fetching and executing the
-pull request's head, not fork code running by default. It stays forbidden, which `T-264`'s rule
-already required, for the privilege it carries next to untrusted content.
-
-**Mutations, each seen.** Restoring `pull_request:` to the real `ci.yml` fails the live gate **and
-nothing else**; dropping `.yaml` from discovery fails only the suffix test; failing open on
-unparseable YAML fails the fail-closed case; reverting to the text scan fails five.
-
-*(An earlier round of mutations found a defect in two probe tests, which asserted over the whole
-directory and so reported *"a safe workflow tripped the gate"* when an unrelated workflow was
-mutated. Fixed then; the `tmp_path` rebuild for `T264-R1` supersedes it.)*
-
----
-
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
 **Status:** **In Review — Blocked, and `T258-R2`'s Windows run now exists and is not green.**
@@ -322,9 +240,9 @@ mutated. Fixed then; the `tmp_path` rebuild for `T264-R1` supersedes it.)*
 `32078697182` at `b6a6d20` and `32086893887` at `08349bc`, single failure both times): the
 reproduction **passes** there and the negative control **fails** — with the outer Job suppressed
 the child was reaped anyway. That is `T-266`, and until it is decided, criterion 1's *"it must fail
-without the fix"* half is unmet on the platform the orphans were seen on. `T258-R5` still waits on
-`T-259`'s workflow disposition. `476b745` records that disposition as Changes
-requested, so the dependency moved further out rather than closer. The review was right on every
+without the fix"* half is unmet on the platform the orphans were seen on. **`T258-R5` is no longer
+waiting on anything**: `T-259` is Approved and Complete, which settles the workflow disposition,
+and what remains is wiring the scanner itself. The review was right on every
 original finding, and two were defects rather than paperwork: containment **failed open**, and the
 fix covered only one of three product-owned spawn sites. **`T258-R6`'s last residual was** —
 `process_tree.contain_this_application` and
@@ -513,17 +431,25 @@ so a parent that is not one cannot be the one that spawned it.
 
 #### The three unmet criteria, and what each is waiting on
 
-- **Criteria 1 and 2 — no Windows run exists.** Both the reproduction and its **negative control**
-  are written: `test_an_uncontained_application_is_what_the_outer_job_prevents` runs the identical
-  driver with the outer Job suppressed and, **on Windows, asserts the child survives**. That pair
-  is the mutation evidence criterion 1 asks for, and `T258-R2` is right that a green fixed-only run
-  could not have supplied it — the child dies either way on POSIX, so a passing Linux run cannot
-  tell the Job object from the pipe. **Until it runs on Windows these are tests, not results.**
+- **Criteria 1 and 2 — the Windows run exists now, and the control failed.** Both the reproduction
+  and its **negative control** are written:
+  `test_an_uncontained_application_is_what_the_outer_job_prevents` runs the identical driver with
+  the outer Job suppressed and, **on Windows, asserts the child survives**. That pair is the
+  mutation evidence criterion 1 asks for, and `T258-R2` was right that a green fixed-only run could
+  not have supplied it — the child dies either way on POSIX, so a passing Linux run cannot tell the
+  Job object from the pipe. *(**Corrected 2026-08-18.** This said *"no Windows run exists"* and
+  *"until it runs on Windows these are tests, not results"* for a day after it ran.)* It has now run
+  on `STARBASE` three times — `32078697182`, `32086893887`, `32106718891` — and the reproduction
+  **passes** while the control **fails**: with the Job suppressed the child was reaped anyway. So
+  criterion 1's *"it must fail without the fix"* half is unmet for a reason nobody predicted, and
+  `T-266` owns deciding whether something else closes the window or the suppression stopped
+  suppressing. **These are results now, and they are not the results this entry expected.**
 - **Criterion 5 — the scanner is not invoked by anything** (`T258-R5`). A dormant script makes an
   orphan inspectable once somebody suspects one; `OPS-003` says nobody logs in to that machine,
   which is the whole distinction the criterion turns on. Wiring it means editing
-  `.github/workflows/ci.yml`, which is `T-259`'s surface and in review, so it waits on that
-  disposition rather than being edited under a reviewer. **Recorded unmet, not complete.**
+  `.github/workflows/ci.yml`. *(That surface was `T-259`'s and in review, so this waited on the
+  disposition rather than being edited under a reviewer. **`T-259` is Complete as of 2026-08-17**,
+  so the wait is over and only the work remains.)* **Recorded unmet, not complete.**
 
 #### What is still not known
 
@@ -558,6 +484,107 @@ so a parent that is not one cannot be the one that spawned it.
 ---
 
 ## Complete
+
+### T-264 — Make the no-untrusted-PR workflow policy executable
+
+**Status:** **Complete — Approved at `609d614`**, 2026-08-18, after two review rounds and a
+Blocked pass for the dependency gate. `T264-R1` through `R4` are Resolved. Corrected after
+`cc17ff0` returned Changes requested with three blocking findings, **all three of which the first
+version got wrong in the accepting direction**. T-262 removes every pull-request trigger; this task makes that control fail closed
+when a workflow is edited or added later. `tests/unit/test_workflow_triggers.py` now **parses** each
+workflow with PyYAML and reads the trigger set GitHub would resolve. **25 tests**, passing serially
+and under `pytest -n auto`.
+**Owner:** Implementer
+**Priority:** Low while the trigger is absent; the consequence of regression is the Critical
+self-hosted-runner exposure T-262 records
+**Phase:** CI security maintenance; blocks no current T-262 correction
+**Depends on:** T-262's trigger removal at `1387e57`
+**Relevant context:** `T262-R3`, `.github/workflows/*.yml`, GitHub's public-fork/self-hosted-runner
+warning, `AGENTS.md` §7
+**Affected surfaces:** a unit/static workflow-policy test; workflow files only if the gate exposes
+another trigger
+**Risk:** Low — a repository-local assertion over four workflow files
+
+#### Scope
+
+Turn the current policy — no pull-request-triggered workflow may reach these self-hosted runners —
+into a test over every file in `.github/workflows/`. Comments are not a gate, and
+`test_commit_message_check.py` currently pins only dormant concurrency text; adding
+`pull_request:` back leaves it green.
+
+The safest current rule is to forbid both `pull_request` and `pull_request_target` triggers. If a
+future task deliberately restores pull-request CI with same-repository job guards, that task must
+change this policy and its mutations in the same reviewed commit rather than bypass it ad hoc.
+
+#### Acceptance criteria
+
+- Both mapping (`pull_request:`) and inline (`on: [push, pull_request]`) trigger mutations fail
+- The scan covers every current and future `.yml`/`.yaml` workflow, including `t074-repeat.yml`
+- Comments mentioning the event do not produce a false failure
+- The current four workflows pass, and adding a new unsafe workflow fails without updating a
+  hard-coded filename list
+
+#### Out of scope
+
+- Re-enabling pull-request CI or designing a trusted hosted PR tier
+- Runner hardening, isolation or GitHub repository settings; T-262 records those separately
+
+#### What was built — 2026-08-17, corrected the same day
+
+**`T264-R1` — the probes wrote into the real `.github/workflows/`.** Under CI's `pytest -n auto`
+one worker listed a probe another had deleted: **1 failed, 17 passed** in the exact mode the gate
+was submitted to be carried by. It also broke `ai/TESTING.md`'s rule that tests write nowhere
+outside `tmp_path`, which the first version did not check. Discovery is now proved against a
+directory built under `tmp_path` with `WORKFLOWS` rebound — still calling `workflow_files()` with
+no file list, because handing the scanner a path proves only that it can read one it was given.
+**25 passed serially and 25 under `-n auto`**, and the checkout is untouched after the run.
+
+**`T264-R2` — the text scan accepted valid YAML that GitHub runs.** Two bypasses, both in the
+accepting direction: `name: &fork_event pull_request` aliased into `on: [push, *fork_event]`, where
+the forbidden word never appears in the block; and
+`on: {push: {branches: ["feature#1"]}, pull_request: null}`, truncated at a `#` inside a quoted
+string. **Refusing anchors was not available** — `ci.yml`'s own trigger block defines `&prose`, so
+that rule would reject the repository it protects. The detector parses with PyYAML, now a declared
+dev dependency, and **fails closed** on anything it cannot resolve: unparseable YAML, a
+non-mapping document, a missing `on:` key, or a trigger value of an unreadable shape. Both of the
+reviewer's probes are parametrized cases, and reverting the parser to a text scan fails five tests
+including both.
+
+**`T264-R3` — the wider ban is gone.** `workflow_run`, `issue_comment` and `repository_dispatch`
+are no longer enforced. Labelling the test *separate* did not make it observational: adding any one
+of those events would have reddened the required suite under a policy nobody authorized. The
+file's description of `pull_request_target` is also corrected — it runs **trusted base-branch
+code** with a read-write token, and the danger is a workflow under it fetching and executing the
+pull request's head, not fork code running by default. It stays forbidden, which `T-264`'s rule
+already required, for the privilege it carries next to untrusted content.
+
+**Mutations, each seen.** Restoring `pull_request:` to the real `ci.yml` fails the live gate **and
+nothing else**; dropping `.yaml` from discovery fails only the suffix test; failing open on
+unparseable YAML fails the fail-closed case; reverting to the text scan fails five.
+
+*(An earlier round of mutations found a defect in two probe tests, which asserted over the whole
+directory and so reported *"a safe workflow tripped the gate"* when an unrelated workflow was
+mutated. Fixed then; the `tmp_path` rebuild for `T264-R1` supersedes it.)*
+
+#### `T264-R4` — the dependency ran on both platforms
+
+`ai/TESTING.md` requires a dependency addition to run the full default suite on **both** platforms,
+and adding PyYAML made this task's own approval wait on Windows. Run `32106718891` supplied it:
+
+| | |
+|---|---|
+| `PyYAML` and `types-PyYAML` on `STARBASE` | installed through `.[dev]` |
+| The 25 trigger tests, on Windows | **all passed** |
+| Full suite | **1 failed**, 3683 passed, 30 skipped, 35 deselected |
+| The one failure | `T-266`'s unchanged negative control — not this task's |
+
+**The same run fired `T-259`'s warning for the first time**, at 35.0 minutes of 40 — **88%**, past
+the 85% mark. Until then the warning path had only ever run in tests, and it was recorded as
+known-unverified in the review request. It is verified now, and the number is worth keeping: a run
+that took 32.3 minutes on 2026-08-17 took 35.0 on 2026-08-18. That is `T-259`'s whole argument
+arriving on schedule.
+
+---
 
 ### T-259 — The Windows job's timeout had four minutes of headroom, and the suite grew into it
 
