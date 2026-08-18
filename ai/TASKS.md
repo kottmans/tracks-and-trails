@@ -7332,20 +7332,38 @@ the headings themselves; do not rely on either collapsing parser to supply its o
 
 ### T-266 — `T-258`'s negative control fails on Windows: the child is reaped with the Job suppressed
 
-**Status:** **Ready — filed 2026-08-17 from two Windows runs, not from reading.** The pair
-`T258-R2` asked for has now run on `STARBASE`, and it does not say what it was written to say: the
-fix passes and **the control that was supposed to prove the fix is load-bearing fails**.
+**Status:** **In Progress — the instrument that decides it is built, 2026-08-18; the answer needs
+a `STARBASE` run and has not been taken.** The two candidates are separated by one fact, and the
+driver is now the thing that reports it: **whether a job handle was held in the driver at the
+moment the child was created.** `KILL_ON_JOB_CLOSE` reaps when a job's *last* handle closes, and
+the driver's own is the only handle whose closing killing the driver triggers — so a driver
+holding none cannot be what reaped the child, whatever else contains it. That is candidate 2
+eliminated or confirmed, which is the order this entry asks for, and it is asserted before the
+outcome assertion so a run answers it first.
+
+**Nothing is decided yet, and the entry does not pretend otherwise.** The measurement runs only on
+Windows; on Linux both new assertions are on the dead side of a `sys.platform` branch, so the
+local suite proves the plumbing and nothing about the mechanism. **The next step is a push and the
+`windows desktop` job** — the maintainer's, under `AGENTS.md` §7.
+
+*(Filed 2026-08-17 from two Windows runs, not from reading. The pair `T258-R2` asked for has run
+on `STARBASE`, and it does not say what it was written to say: the fix passes and **the control
+that was supposed to prove the fix is load-bearing fails**.)*
 **Owner:** Implementer
 **Priority:** High — it does not break the product, it breaks the *evidence*. While it stands,
 `T-258`'s criterion 2 cannot be met and the Job object's justification rests on a mechanism nothing
 has demonstrated
 **Phase:** Phase 4 maintenance. It blocks `T-258`'s approval and nothing else
 **Depends on:** nothing. **Blocks `T-258` criterion 2 and `T258-R2`**
-**Relevant context:** `tests/integration/test_manager.py:2388-2480`
-(`_WITHOUT_THE_OUTER_JOB`, `test_an_uncontained_application_is_what_the_outer_job_prevents`),
+**Relevant context:** `tests/integration/test_manager.py`
+(`_WITHOUT_THE_OUTER_JOB`, `test_an_uncontained_application_is_what_the_outer_job_prevents`,
+`_the_window_the_driver_stopped_in`), `tests/integration/_bootstrap_window.py`,
 `downloader/process_tree.py` (`start_contained`, `contain_this_application`), `T-258`, `T258-R2`,
-`T-238` (`KILL_ON_JOB_CLOSE` on an `xdist` worker), `OPS-009`
-**Affected surfaces:** the control test, and — depending on the answer — `T-258`'s stated
+`T-238` (`KILL_ON_JOB_CLOSE` on an `xdist` worker), `T-259` (the job's 88% margin), `OPS-009`
+*(This cited `test_manager.py:2388-2480`. Line numbers name a region that moves under the next
+edit — and this task's own edit moved it — so the entry names the symbols instead.)*
+**Affected surfaces:** the control test, the reproduction that shares its driver,
+`tests/integration/_bootstrap_window.py`, and — depending on the answer — `T-258`'s stated
 justification for the outer Job
 **Risk:** Medium. The trap is "fixing" the control until it passes: a control edited until it
 agrees is not a control, and this one is currently the only thing standing between a green suite
@@ -7411,6 +7429,59 @@ that it actually isolates the Job's absence, and then it answers criterion 2 for
 - **`T-258`'s records say which mechanism reaps the child**, and stop carrying the pipe question as
   open if this closes it
 - **The Windows suite is green**, or its remaining failure is a different one with its own entry
+
+#### What the instrument is, and what a run will say — built 2026-08-18, unrun
+
+The driver both tests share now reports one line of JSON at the instant the child exists, and the
+tests assert on it. `tests/integration/_bootstrap_window.py` is that driver, moved out of the `-c`
+string it used to be spliced into: the measurement is `ctypes` against `kernel32`, only
+`STARBASE` runs it, and **`ruff` and `mypy --platform win32` reach a module while neither reaches
+inside a string literal** — which is the only protection available for code that cannot be run
+here.
+
+| Field | What it answers |
+|---|---|
+| `driver_holds_a_job` | Read from `process_tree._windows_application_job`. **The discriminator.** |
+| `driver_in_any_job` | `IsProcessInJob`, the driver. Expected `true` — see below |
+| `child_in_any_job` | `IsProcessInJob`, the child. Expected `true` for the same reason |
+
+**The two `IsProcessInJob` fields are there to answer the obvious objection, not to decorate.**
+Every process the suite spawns on Windows inherits `pytest`'s own job, because the tests that
+construct a `DownloadManager` put that process in one through `start_contained()` and membership
+is inherited at creation with no way to leave it. That is candidate 2's premise and it is
+expected to read `true` in **both** tests. **It does not follow that the control is
+contaminated**: `KILL_ON_JOB_CLOSE` fires when a job's *last handle* closes, `pytest` holds that
+handle and is still running — demonstrably, since it is `pytest` that reports the result — so the
+inherited job cannot be what reaps anything here. The fields record the inheritance rather than
+arguing it away, and `driver_holds_a_job` is the field that decides.
+
+So a Windows run says one of two things:
+
+- **`driver_holds_a_job: false` and the child dies anyway** — candidate 1. No handle the driver
+  held could have closed, so the Job object did not do the reaping, and `T-258`'s justification
+  is restated as defence in depth. The control's failure message carries the child's exit status
+  for corroboration.
+- **`driver_holds_a_job: true`** — candidate 2, and its own assertion fires *before* the outcome
+  assertion, so the run says "the suppression did not suppress" rather than reporting an outcome
+  from an experiment that did not run.
+
+The reproduction carries the positive control on the instrument itself: with the fix present it
+asserts `driver_holds_a_job` is `true` and `child_in_any_job` is `true`. Without it, a broken
+reading would report `false` in the control and be mistaken for a working suppression.
+
+**Unverified until that run**, and stated here rather than in a commit message because it is the
+live caveat: on Linux every one of those assertions is on the dead side of a `sys.platform`
+branch. What the local suite proves is that the driver reaches the window and its report is read
+— checked by mutation, twice: a driver that reports nothing fails in 8s under a shortened
+deadline instead of hanging, and a report carrying the wrong pid fails on `NoSuchProcess`.
+
+*(The first version of the report was two lines, pid then facts, and the harness read two. The
+mutation check found what that costs: a driver delivering only the first line leaves the reader
+blocked in `readline()` on a process that will never write again and never exit, so the job dies
+on its own limit and produces **no** result — the worst outcome available here, since the
+control's failure message is where the measurement is carried. One line now, and the read is
+bounded at 120s besides, which also closes the pre-existing case of a driver that reaches neither
+the window nor an exit.)*
 
 #### Out of scope
 

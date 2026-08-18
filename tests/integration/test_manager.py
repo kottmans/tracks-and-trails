@@ -19,6 +19,7 @@ the instant it is signalled, and a process inside yt-dlp's download loop does no
 """
 
 import contextlib
+import json
 import multiprocessing as mp
 import os
 import subprocess
@@ -2268,48 +2269,65 @@ def test_killing_the_parent_takes_the_grandchild_too(tmp_path: Path) -> None:
     )
 
 
-#: Stop the application inside the window `T-258` is about, and stay there to be killed.
+#: Hold the driver inside `T-258`'s pre-bootstrap window, and have it report what contains it.
 #:
-#: The window is between the worker existing and the worker having read its bootstrap payload.
-#: `prepare_this_worker()` — and therefore the watchdog — runs at the far end of it, so a parent
-#: that dies inside it dies with nothing of ours installed in the child.
-#:
-#: **The seam is the process-creation call itself**, wrapped so it returns a live child to
-#: nobody: the payload is written only after it returns, so blocking there leaves the child
-#: created and unfed. Each platform has its own, because `multiprocessing` creates the process
-#: differently and the window is on the opposite side of the serialisation:
-#:
-#: - **POSIX** serialises the payload *before* the fork and writes it *after* `spawnv_passfds`
-#:   returns. The resource tracker is spawned through the same call and is not the subject,
-#:   hence the `--multiprocessing-fork` filter.
-#: - **Windows** creates the process first and pickles into the pipe afterwards, inside the
-#:   `with open(wfd, 'wb')` block, so `_winapi.CreateProcess` is the same seam one call later.
+#: **The body moved to `tests/integration/_bootstrap_window.py` for `T-266`**, which added a
+#: `ctypes` measurement that only the `windows desktop` job runs. `ruff` and
+#: `mypy --platform win32` reach a module; neither reaches inside a string literal, and a typo in
+#: Windows-only code spliced into a `-c` driver surfaces nowhere but `STARBASE`.
 _STOP_INSIDE_THE_WINDOW = (
-    "import sys\n"
-    "def _stop(pid):\n"
-    "    print(pid, flush=True)\n"
-    "    import time\n"
-    "    while True:\n"
-    "        time.sleep(3600)\n"
-    "if sys.platform == 'win32':\n"
-    "    import _winapi\n"
-    "    _real = _winapi.CreateProcess\n"
-    "    def _create(app, cmd, *rest):\n"
-    "        result = _real(app, cmd, *rest)\n"
-    "        if '--multiprocessing-fork' not in (cmd or ''):\n"
-    "            return result\n"
-    "        _stop(result[2])\n"
-    "    _winapi.CreateProcess = _create\n"
-    "else:\n"
-    "    import multiprocessing.util\n"
-    "    _real = multiprocessing.util.spawnv_passfds\n"
-    "    def _spawn(path, args, passfds):\n"
-    "        pid = _real(path, args, passfds)\n"
-    "        if '--multiprocessing-fork' not in args:\n"
-    "            return pid\n"
-    "        _stop(pid)\n"
-    "    multiprocessing.util.spawnv_passfds = _spawn\n"
+    "from tests.integration._bootstrap_window import stop_inside_the_window\n"
+    "stop_inside_the_window()\n"
 )
+
+
+#: How long a driver gets to reach the window before the harness stops waiting for it.
+#:
+#: Generous — it covers importing Qt, building a `QCoreApplication` and constructing a manager on
+#: a cold Windows machine — because the number only ever matters when something is already wrong.
+_THE_DRIVER_REACHES_THE_WINDOW_IN = 120.0
+
+
+def _the_window_the_driver_stopped_in(
+    parent: subprocess.Popen[str],
+) -> tuple[psutil.Process, dict[str, Any]]:
+    """The child the driver created, and what contained it — both read from the driver's report.
+
+    **One line of JSON, read once.** Shared by the reproduction and its negative control so the
+    two cannot drift into reading different reports, which is how two halves of one experiment
+    stop being one experiment.
+
+    **The read is bounded, and a bare `readline()` is what it replaces.** A driver that reaches
+    neither the window nor an exit — a refused spawn leaves one looping in `processEvents()`
+    forever — blocks the reader with nothing to time it out, so the whole job dies on its own
+    limit and produces no result at all. That is the worst available outcome here: the negative
+    control's *failure message* is where `T-266`'s measurement is carried, and a timed-out job
+    carries nothing. `T-259` measured the `windows desktop` job at 88% of its 40 minutes, so the
+    room for a silent 40-minute wait does not exist either.
+    """
+    assert parent.stdout is not None
+    stdout = parent.stdout
+    reported: list[str] = []
+    # Daemon, so a reader still blocked on a driver that outlives the assertion below cannot keep
+    # the interpreter up. It unblocks on the `kill()`, which closes the pipe.
+    reader = threading.Thread(target=lambda: reported.append(stdout.readline()))
+    reader.daemon = True
+    reader.start()
+    reader.join(timeout=_THE_DRIVER_REACHES_THE_WINDOW_IN)
+
+    try:
+        facts = json.loads(reported[0] if reported else "")
+    except (IndexError, json.JSONDecodeError):
+        parent.kill()
+        parent.wait(timeout=30)
+        reader.join(timeout=30)
+        said = reported[0].strip() if reported else "nothing"
+        assert parent.stderr is not None
+        raise AssertionError(
+            f"the driver never reached the window within {_THE_DRIVER_REACHES_THE_WINDOW_IN}s, "
+            f"and said {said!r} instead of a report:\n{parent.stderr.read()}"
+        ) from None
+    return psutil.Process(int(facts["pid"])), facts
 
 
 def test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing(tmp_path: Path) -> None:
@@ -2356,16 +2374,23 @@ def test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing(tmp_pat
         text=True,
     )
     child: psutil.Process | None = None
+    facts: dict[str, Any] = {}
     try:
-        assert parent.stdout is not None
-        announced = parent.stdout.readline().strip()
-        if not announced.isdigit():
-            parent.kill()
-            raise AssertionError(f"the driver never reached the window:\n{parent.communicate()[1]}")
-        child = psutil.Process(int(announced))
+        child, facts = _the_window_the_driver_stopped_in(parent)
         assert "--multiprocessing-fork" in " ".join(child.cmdline()), (
             f"the pid announced from the window is not a spawned worker: {child.cmdline()}"
         )
+        if sys.platform == "win32":
+            # `T-266`'s positive control on the measurement itself. Without this the same probe
+            # could report `driver_holds_a_job: False` in the negative control because the
+            # reading is broken rather than because the suppression worked.
+            assert facts["driver_holds_a_job"] is True, (
+                "the application under test established no outer Job, so this run measures an "
+                f"unfixed application rather than the fixed one: {facts}"
+            )
+            assert facts["child_in_any_job"] is True, (
+                f"the child was created outside every job, with the fix in place: {facts}"
+            )
 
         psutil.Process(parent.pid).kill()
         _, alive = psutil.wait_procs([child], timeout=30)
@@ -2381,7 +2406,7 @@ def test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing(tmp_pat
         f"{alive} outlived the application that created it, having never read its bootstrap "
         "payload. Nothing of this application's had run in it yet — the watchdog is installed "
         "by `prepare_this_worker()`, at the far end of this window — so containment cannot "
-        "depend on the child reaching our code."
+        f"depend on the child reaching our code. Measured: {facts}."
     )
 
 
@@ -2441,16 +2466,12 @@ def test_an_uncontained_application_is_what_the_outer_job_prevents(tmp_path: Pat
         text=True,
     )
     child: psutil.Process | None = None
+    facts: dict[str, Any] = {}
     try:
-        assert parent.stdout is not None
-        announced = parent.stdout.readline().strip()
-        if not announced.isdigit():
-            parent.kill()
-            raise AssertionError(f"the driver never reached the window:\n{parent.communicate()[1]}")
-        child = psutil.Process(int(announced))
+        child, facts = _the_window_the_driver_stopped_in(parent)
 
         psutil.Process(parent.pid).kill()
-        _, alive = psutil.wait_procs([child], timeout=15)
+        gone, alive = psutil.wait_procs([child], timeout=15)
     finally:
         parent.kill()
         parent.wait(timeout=30)
@@ -2462,11 +2483,22 @@ def test_an_uncontained_application_is_what_the_outer_job_prevents(tmp_path: Pat
             psutil.wait_procs([child], timeout=30)
 
     if sys.platform == "win32":
+        # **`T-266`'s second candidate, eliminated first**, because it is cheap and because if it
+        # holds then the first candidate was never tested. `KILL_ON_JOB_CLOSE` reaps when a job's
+        # last handle closes, and the driver's own is the only handle whose closing killing the
+        # driver triggers — so a driver holding none cannot be what reaped the child, whatever
+        # else contains it.
+        assert facts["driver_holds_a_job"] is False, (
+            "`_WITHOUT_THE_OUTER_JOB` did not suppress: a job handle was held in the driver at "
+            f"the moment the child was created ({facts}), so this run is not a run without the "
+            "outer Job and says nothing about what reaps the child."
+        )
         assert alive, (
             "with the outer Job suppressed the child was reaped anyway, so this run is not "
-            "evidence that the Job object is what reaps it. Either something else now closes the "
-            "window — in which case the fix needs re-justifying — or the suppression above no "
-            "longer suppresses anything."
+            "evidence that the Job object is what reaps it. The driver held no job of its own "
+            f"({facts}) and the child exited {[process.returncode for process in gone]}, which "
+            "leaves `T-266`'s first candidate: something else closes this window on Windows too, "
+            "and the fix needs re-justifying as defence in depth rather than the reaper."
         )
     else:
         assert not alive, (

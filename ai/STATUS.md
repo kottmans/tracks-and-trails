@@ -23,7 +23,10 @@ visible, arriving one day after the reporter was built.
 every Windows job since 2026-08-17 — `32078697182`, `32086893887`, `32106718891`, one failure each
 time: the reproduction passes there, and the negative control — the outer Job suppressed — does
 **not** show the child surviving. So the fix works and nothing yet shows it is the fix that works. `T-266` owns deciding
-between the two candidates the test names. `T-259`'s approval settles the workflow disposition
+between the two candidates the test names, and on **2026-08-18 its instrument was built and has
+not been run**: the shared driver now reports, at the instant the child exists, whether a job
+handle was held in it — the one fact that separates the candidates — and the answer needs a
+`STARBASE` run nobody has taken. `T-259`'s approval settles the workflow disposition
 `T258-R5` was waiting on; the scanner itself is still wired to nothing.
 
 **`T-257`, `T-259`, `T-262` and `T-264` are Complete**, leaving `T-258` the only task In Review.
@@ -780,6 +783,58 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-18 (T-266): the control now reports what contains the child, and still decides nothing
+
+**`T-266` is In Progress. Its instrument is built; its question is unanswered.** I did not decide
+between the two candidates, because deciding them needs a Windows run and pushing is the
+maintainer's (`AGENTS.md` §7). What is committed is the thing that makes one run enough.
+
+**The discriminator is one fact, and it is smaller than the question looked.** `T-266` frames the
+control's failure as *either* something else closes the window on Windows *or* the suppression
+stopped suppressing, and asks for candidate 2 first. Candidate 2's premise is true and its
+conclusion does not follow, which is worth writing down before the run rather than after:
+
+- **True**: on Windows every process the suite spawns inherits `pytest`'s job. The tests that
+  construct a `DownloadManager` put that process in one through `start_contained()`, and job
+  membership is inherited at creation with no way out. So the control's driver is in a job no
+  matter what `_WITHOUT_THE_OUTER_JOB` does, and it cannot demonstrate *no job anywhere*.
+- **Does not follow**: `KILL_ON_JOB_CLOSE` reaps when a job's **last handle** closes. `pytest`
+  holds the inherited job's handle and is still running — demonstrably, since `pytest` is what
+  reported the failure — so that job reaped nothing. The only handle whose closing killing the
+  driver triggers is one the driver holds itself.
+
+So the question is not *is the driver in a job* but **did the driver hold one**, and the driver is
+now what answers it: `tests/integration/_bootstrap_window.py` reports
+`driver_holds_a_job` — read from `process_tree._windows_application_job` — beside two
+`IsProcessInJob` readings that record the inherited membership rather than arguing it away. The
+control asserts the discriminator **before** it asserts the outcome, so a run that finds the
+suppression broken says so instead of reporting an outcome from an experiment that did not run.
+The reproduction asserts the mirror image with the fix present, which is the positive control on
+the instrument: without it, a broken reading would report `false` in the control and pass for a
+working suppression.
+
+**The driver stopped being a string.** It was spliced into a `-c` command, and the measurement it
+now carries is `ctypes` against `kernel32` that only `STARBASE` executes. `ruff` and
+`mypy --platform win32` reach a module; neither reaches inside a string literal. Both passed on
+the new file, which is the whole reason it is a file.
+
+**The mutation check found a defect in my own instrument, and it was the expensive kind.** The
+first version reported two lines — pid, then facts — and the harness read two. Suppressing the
+second line did not fail the test: it **hung**, because a driver that reaches the window and then
+never writes again and never exits leaves the reader blocked in `readline()` with nothing to time
+it out. That is a job dying on its own limit and producing no result, on a `windows desktop` job
+`T-259` measured at 88% of its 40 minutes one day earlier — and the control's *failure message* is
+where this task's measurement is carried, so a timeout would have thrown away the entire round.
+One line now, and the read is bounded at 120 s besides, which also closes the pre-existing case of
+a driver that reaches neither the window nor an exit. Re-checked after the fix: the same mutation
+fails in 8.4 s under a shortened deadline, and a report carrying the wrong pid fails on
+`NoSuchProcess`.
+
+**What is unverified, precisely.** Every assertion added here is on the dead side of a
+`sys.platform` branch on Linux. The local suite proves the driver reaches the window and its report
+is read; it proves nothing about job membership, because there are no jobs to be a member of. The
+next step is a push and the `windows desktop` job.
 
 ## 2026-08-17 (approved): T-262 is Complete, and the control it added is already remote
 
