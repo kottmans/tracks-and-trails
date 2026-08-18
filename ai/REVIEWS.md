@@ -18682,3 +18682,50 @@ T-264 tests execute, the Reviewer can disposition T264-R4 from that external evi
 known T-266 failure must be isolated rather than attributed to this task. No review pass is being
 held for a third code inspection. The Reviewer changed only this append-only review record; the
 working tree was restored after all mutations, and no remote state changed.
+
+---
+
+## 2026-08-18 — T-264 Windows dependency evidence disposition
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-264
+**Approved implementation head:** `609d614c8538b245b7daf3c1a354aebb684e0e32`
+**Evidence:** CI run `32106718891`, `windows desktop` job `95617544942`, on self-hosted STARBASE
+**Verdict:** **Approved.** T264-R4 is Resolved. The correction's fresh pyproject-keyed Windows
+environment installed both new dev dependencies and ran the full default suite. Every T-264 test
+passed on Windows. The job's sole failure is T-266's already-owned negative control; it is neither
+in the T-264 boundary nor evidence against the parser, discovery, or dependency installation.
+
+### T264-R4 result
+
+| Required evidence | Windows result |
+|---|---|
+| Fresh dependency installation | `pip install -e ".[dev]"` downloaded and installed **PyYAML 6.0.3** (`cp314-win_amd64`) and **types-PyYAML 6.0.12.20260815** successfully |
+| Windows static gate | `Types under the Windows platform` passed before the suite |
+| T-264 execution | All **25** `test_workflow_triggers.py` cases passed: live gate, both accepting-direction reviewer probes, all four fail-closed rows, isolated discovery, `.yaml` suffix and alias-through-discovery |
+| Full default suite | **1 failed, 3683 passed, 30 skipped, 35 deselected** in 30:51 |
+| Failure isolation | Sole failure: `test_an_uncontained_application_is_what_the_outer_job_prevents`; assertion says the child was reaped with the outer Job suppressed. This is the unchanged T-266 result previously seen on STARBASE |
+| Job completion | Windows job completed in 35m18s; evidence upload and duration report succeeded. The report measured **35.0 / 40 minutes, 88%, 5.0 minutes remaining** and correctly emitted T-259's warning |
+| Same pushed tree on Linux | The run's Linux job passed in 9m42s; frozen Linux passed. Frozen Windows was still using STARBASE after the completed desktop evidence and is not part of T264-R4 |
+
+T264-R4 is **Resolved by run `32106718891`**. T264-R1 through R3 were already Resolved at
+`609d614`, so no open finding remains and T-264 may move to Complete at that implementation head.
+The red workflow conclusion must continue to be attributed to T-266, not T-264.
+
+### Coordination follow-through checked alongside the evidence
+
+`ac9bde4` improves the current headers and replaces T-262's rotting live-head claim with the dated
+push event. It does **not** close every synchronization site identified in the focused review:
+
+- the active T-258 entry still says T258-R5 waits on T-259's disposition, even though the header
+  correctly says that dependency is settled;
+- the active `The three unmet criteria` section still says no Windows run exists and that the
+  scanner waits on T-259, despite the same file recording the opposite above; and
+- `STATUS.md`'s new header says two commits stay local, although `ac9bde4` itself made local main
+  three commits ahead of `609d614`. Name the two earlier commits, or avoid a count that becomes
+  false in the commit introducing it.
+
+The dated `2026-08-17` T-262 approval entry's statement that `origin/main` was `b6a6d20` is
+historical and remains correct in its dated context; it should not be rewritten. The active T-264
+headers now also need their normal approval/Complete synchronization. None of these coordination
+residuals changes the approval of T-264's exact implementation head.
