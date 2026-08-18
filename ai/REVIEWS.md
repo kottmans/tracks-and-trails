@@ -18619,3 +18619,66 @@ remove the unauthorized wider-event gate while keeping the task's two-event rule
 focused correction re-review remains available. `cc17ff0` is still local and need not be pushed
 for that pass. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test/task, workflow,
 handoff, push or remote state was changed.
+
+---
+
+## 2026-08-18 — T-264 workflow-trigger policy focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-264
+**Previously reviewed head:** `cc17ff0e0e9d974eb4bb6797d2ac4c9a28b856d1`
+**Correction:** `609d614c8538b245b7daf3c1a354aebb684e0e32` — the only implementation
+commit re-reviewed
+**Platforms verified:** Linux. Windows remains required because the correction adds two declared
+dev dependencies; `ai/TESTING.md` §3 requires the full default suite on both platforms for a
+dependency addition
+**Verdict:** **Blocked.** T264-R1 through T264-R3 are Resolved: the isolated discovery probes are
+stable under xdist, PyYAML resolves both accepting-direction bypasses and fails closed, and the
+unauthorized wider event policy is gone. Approval now waits only on the correction's fresh Windows
+dependency installation and default-suite evidence. That external evidence could not be started:
+after a fresh fetch `origin/main` remained `848ce34`, and no remote state was changed.
+
+### Focused findings
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T264-R1** | **Medium** | Yes | Each discovery case builds its complete workflow directory under `tmp_path`, rebinds `WORKFLOWS` inside a `MonkeyPatch` context, and still calls `workflow_files()` without a supplied file list. The file passed **25/25 serially** and **25/25 under 14 xdist workers**. Hashes of all four tracked workflow files were identical before and after every run and mutation. | **Resolved at `609d614`** |
+| **T264-R2** | **Medium** | Yes | `yaml.safe_load` now resolves the alias and quoted-`#` probes the prior text scan accepted. The detector handles PyYAML's YAML-1.1 spelling of bare `on`, accepts the schema's scalar/list/mapping trigger shapes, and raises `UnreadableWorkflowError` for invalid YAML, a non-mapping document, a missing trigger key or an unreadable trigger shape. The live gate records those exceptions as offenders. PyYAML and its stubs are declared plainly in the dev extra. | **Resolved at `609d614`** |
+| **T264-R3** | **Medium** | Yes | `FORBIDDEN` contains only `pull_request` and `pull_request_target`; no test enforces `workflow_run`, `issue_comment` or `repository_dispatch`. The module description now says accurately that `pull_request_target` starts from trusted base-branch code with privilege, and identifies fetching/executing the head as the dangerous transition. No blanket-event task was filed without authority. | **Resolved at `609d614`** |
+| **T264-R4** | **Medium** | **Yes — required dependency-change evidence is absent on the project's only Windows environment** | The correction adds `PyYAML` and `types-PyYAML` to `.[dev]`. They are dev-only, so `AGENTS.md` §7 requires no decision entry; that does not remove `ai/TESTING.md` §3's requirement to run the full default suite on both platforms for a dependency addition. Linux is green. No run at `609d614` has built the new pyproject-keyed Windows virtualenv, installed the two dependencies and executed the default suite. | **Open — push through `609d614` and read the Windows run; no code correction requested** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | `609d614` changes only T-264's task entry, `pyproject.toml`, `test_workflow_triggers.py`, and a comment in `test_job_duration_report.py`; `git show --check 609d614` and `git diff --check cc17ff0..609d614` passed |
+| Focused tests | Trigger gate plus the adjacent approved T-259 test: **37 passed**. Trigger file alone: **25 passed** serially and **25 passed** under `-n auto` with 14 workers |
+| Full Linux dependency gate | The unrestricted default command passed **3698, skipped 18, deselected 2** in 23:00. The first sandboxed attempt failed 54 tests because the sandbox denied every loopback server with `PermissionError: [Errno 1]`; the same integration files passed when rerun with loopback permitted |
+| Static/style gates | `ruff check .`: passed; `ruff format --check .`: 200 files formatted; bare `mypy`: no issues in 152 files; `mypy --platform win32`: no issues in 152 files |
+| Live workflow mutation | Restoring `pull_request:` to the real `ci.yml` produced **1 failed, 24 passed**; only the live gate failed and named `ci.yml: pull_request`. The inverse patch restored the original SHA-256 |
+| Discovery/fail-closed mutations | Dropping `.yaml` discovery produced **1 failed, 24 passed**, only the suffix test. Returning an empty set on malformed YAML produced **1 failed, 24 passed**, only the invalid-YAML parameter. Both mutations were restored |
+| Current workflow bytes | The four tracked hashes remained `f2a6883d` (`ci.yml`), `3edbfcde` (`commit-messages.yml`), `447ec303` (`prose.yml`) and `3aab4ad5` (`t074-repeat.yml`) |
+
+### Scope rulings and adjacent synchronization
+
+- **The T-259 comment edit is in scope and does not reopen T-259 behavior.** Declaring PyYAML made
+  the approved test's old availability rationale false. `609d614` changes only that comment and
+  replaces it with the still-valid suitability reason for testing workflow wiring as edited text.
+- **`47bb521` correctly moves T-259 to Complete and records the Windows numbers and T-267, but it
+  does not complete the current-truth synchronization.** In the same current headers and active
+  T-258 entry, `TASKS.md` still says T-259 is corrected and awaiting re-review, says no Windows run
+  exists, and says T258-R5 still waits on T-259's disposition. `STATUS.md` repeats those three
+  superseded claims and also says `origin/main` is `b6a6d20`; the fresh fetch for this review found
+  `848ce34`. Those contradictions should be corrected before `47bb521` is pushed. They do not alter
+  T-259's approved implementation head or reopen T-264.
+
+### Readiness
+
+T-264's three requested corrections are accepted at `609d614`; no further implementation change
+is requested. The task remains **Blocked** only on T264-R4's Windows dependency/default-suite
+evidence. Pushing exactly `848ce34..609d614` would start that evidence while leaving the incomplete
+`47bb521` coordination sync local. Once the Windows run shows the new environment installs and the
+T-264 tests execute, the Reviewer can disposition T264-R4 from that external evidence; an unrelated
+known T-266 failure must be isolated rather than attributed to this task. No review pass is being
+held for a third code inspection. The Reviewer changed only this append-only review record; the
+working tree was restored after all mutations, and no remote state changed.
