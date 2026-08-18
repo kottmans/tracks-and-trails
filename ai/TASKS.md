@@ -5,11 +5,13 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
+**Last updated:** 2026-08-17 — **`T-264` is built and In Review**: the no-fork-trigger control
+is a test now, not a habit. **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
 after a maintainer-authorized third pass; its non-blocking runner-inventory residue is `T-265`.
 **`T-258` stays In Review with a `Blocked` verdict**: `T258-R6` is Resolved at `e3c259a`, and the
-two standing blockers are `T258-R2` (no Windows run) and `T258-R5` (behind `T-259`, itself now
-Changes requested).
+two standing blockers are `T258-R2` — whose Windows run now exists and **failed on the negative
+control**, which is `T-266` — and `T258-R5`, behind a `T-259` that is itself corrected and awaiting
+re-review.
 `T-258`'s first submission returned Changes requested with six blocking findings. The window
 before a spawned worker installs
 its watchdog is reproduced, POSIX is measured not to have it, and the application now contains
@@ -306,6 +308,72 @@ fails on growth rather than on faults, and it fails by looking like a hang.
 - Making the suite faster. A real target, and a different task — this one is about the gate being
   readable, not about the 32 minutes being right
 - `T-258`'s orphans. Adjacent, on the same machine, **and not the cause** — checked, not assumed
+
+---
+
+### T-264 — Make the no-untrusted-PR workflow policy executable
+
+**Status:** **In Review — built 2026-08-17.** T-262 removes every pull-request trigger; this task
+makes that security control fail closed when a workflow is edited or added later.
+`tests/unit/test_workflow_triggers.py` reads each workflow's `on:` block — **not the file**, because
+grepping fires on `commit-messages.yml`'s dormant concurrency expression and on every comment
+explaining why the trigger is gone, and a gate that cries wolf on its own documentation gets
+deleted. **18 tests**: the live gate, eleven detector cases (six caught, five that must not be),
+and three real-file probes written into `.github/workflows/` and removed, which is what proves
+discovery rather than a hard-coded list.
+**Owner:** Implementer
+**Priority:** Low while the trigger is absent; the consequence of regression is the Critical
+self-hosted-runner exposure T-262 records
+**Phase:** CI security maintenance; blocks no current T-262 correction
+**Depends on:** T-262's trigger removal at `1387e57`
+**Relevant context:** `T262-R3`, `.github/workflows/*.yml`, GitHub's public-fork/self-hosted-runner
+warning, `AGENTS.md` §7
+**Affected surfaces:** a unit/static workflow-policy test; workflow files only if the gate exposes
+another trigger
+**Risk:** Low — a repository-local assertion over four workflow files
+
+#### Scope
+
+Turn the current policy — no pull-request-triggered workflow may reach these self-hosted runners —
+into a test over every file in `.github/workflows/`. Comments are not a gate, and
+`test_commit_message_check.py` currently pins only dormant concurrency text; adding
+`pull_request:` back leaves it green.
+
+The safest current rule is to forbid both `pull_request` and `pull_request_target` triggers. If a
+future task deliberately restores pull-request CI with same-repository job guards, that task must
+change this policy and its mutations in the same reviewed commit rather than bypass it ad hoc.
+
+#### Acceptance criteria
+
+- Both mapping (`pull_request:`) and inline (`on: [push, pull_request]`) trigger mutations fail
+- The scan covers every current and future `.yml`/`.yaml` workflow, including `t074-repeat.yml`
+- Comments mentioning the event do not produce a false failure
+- The current four workflows pass, and adding a new unsafe workflow fails without updating a
+  hard-coded filename list
+
+#### Out of scope
+
+- Re-enabling pull-request CI or designing a trusted hosted PR tier
+- Runner hardening, isolation or GitHub repository settings; T-262 records those separately
+
+#### What was built — 2026-08-17
+
+**Mutations run, each seen.** Restoring `pull_request:` to `ci.yml`'s trigger block in the mapping
+form, and adding it to `t074-repeat.yml` in the inline form, each failed
+`test_no_workflow_carries_a_pull_request_trigger` and nothing else. Blinding the detector failed
+eight tests.
+
+*(The first version of two probe tests asserted over the whole directory, so an unrelated mutated
+workflow failed them as well — a control reporting *"a safe workflow tripped the gate"* when no
+such thing had happened. Found by running the mutations, not by reading, and both are now scoped to
+their own probe. A control that fails for a reason other than the one it names sends the next
+reader to the wrong file.)*
+
+**One decision left for the Reviewer rather than taken here.** `T-262`'s manual audit also checked
+`workflow_run`, `issue_comment` and `repository_dispatch`; this task's stated rule names only
+`pull_request` and `pull_request_target`. Banning the wider set is a **separate test**, labelled as
+beyond these criteria, so the widening can be ruled on instead of arriving under a narrower task's
+name. If it should be part of the rule, the rule text is what needs changing.
 
 ---
 
@@ -7338,45 +7406,6 @@ policy is unchanged
 
 - Changing the Job-object design, the three current spawn callers, or T-258's Windows evidence
 - General Python data-flow analysis for arbitrary process factories and aliases
-
-### T-264 — Make the no-untrusted-PR workflow policy executable
-
-**Status:** **Ready — filed 2026-08-17 from `T262-R3`.** T-262 removes every pull-request trigger;
-this task makes that security control fail closed when a workflow is edited or added later.
-**Owner:** Implementer
-**Priority:** Low while the trigger is absent; the consequence of regression is the Critical
-self-hosted-runner exposure T-262 records
-**Phase:** CI security maintenance; blocks no current T-262 correction
-**Depends on:** T-262's trigger removal at `1387e57`
-**Relevant context:** `T262-R3`, `.github/workflows/*.yml`, GitHub's public-fork/self-hosted-runner
-warning, `AGENTS.md` §7
-**Affected surfaces:** a unit/static workflow-policy test; workflow files only if the gate exposes
-another trigger
-**Risk:** Low — a repository-local assertion over four workflow files
-
-#### Scope
-
-Turn the current policy — no pull-request-triggered workflow may reach these self-hosted runners —
-into a test over every file in `.github/workflows/`. Comments are not a gate, and
-`test_commit_message_check.py` currently pins only dormant concurrency text; adding
-`pull_request:` back leaves it green.
-
-The safest current rule is to forbid both `pull_request` and `pull_request_target` triggers. If a
-future task deliberately restores pull-request CI with same-repository job guards, that task must
-change this policy and its mutations in the same reviewed commit rather than bypass it ad hoc.
-
-#### Acceptance criteria
-
-- Both mapping (`pull_request:`) and inline (`on: [push, pull_request]`) trigger mutations fail
-- The scan covers every current and future `.yml`/`.yaml` workflow, including `t074-repeat.yml`
-- Comments mentioning the event do not produce a false failure
-- The current four workflows pass, and adding a new unsafe workflow fails without updating a
-  hard-coded filename list
-
-#### Out of scope
-
-- Re-enabling pull-request CI or designing a trusted hosted PR tier
-- Runner hardening, isolation or GitHub repository settings; T-262 records those separately
 
 ### T-265 — Make the CI runner inventory describe every job exactly
 
