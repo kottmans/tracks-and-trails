@@ -18519,3 +18519,46 @@ its eventual focused verification continues under `AGENTS.md` §10 without separ
 The Reviewer updated T-258's status, corrected its self-contradictory platform sentence and removed
 the transient handoff pointer because `AGENTS.md` §6 forbids durable records from citing handoffs.
 No reviewed source/test, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-17 — T-259 duration-report correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-259
+**Previously reviewed head:** `3be67584652cefaea7d27971ca464b5a5b0bbe2a`
+**Correction:** `322a5339c4e20b3375fb06bf2a14052979eeb93e` — the only implementation
+commit reviewed
+**Later Windows evidence:** run `32091868834` at `848ce3497f6698ff5e73586485fe6b196207777c`;
+the T-259 workflow, tool and tests are unchanged from `322a533`
+**Platforms verified:** Linux locally and the real `windows desktop` job on STARBASE
+**Verdict:** **Approved with follow-ups.** T259-R1 is resolved: the job now reports elapsed time,
+bound, remaining margin and percentage from its own start stamp, warns at the stated 85% threshold,
+and did so on Windows after a failed suite. The run's red result is solely T-258's independently
+owned negative-control failure. One Low wiring-test gap moves to T-267.
+
+### Focused results
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T259-R1** | **High** | Yes | The `if: always()` terminal step calls a testable Python reporter with the job's pinned 40-minute bound. Run `32091868834` printed **32.3 min elapsed / 40 min bound / 7.7 min remaining / 81% used** with no warning, independently verifying the workflow path rather than inferring it from Actions' duration display. The 85% threshold is accepted: it is 34 minutes, about two minutes beyond the healthy measurement and six minutes before the bound. An unreadable stamp should emit `::warning::` and exit 0; diagnostic loss is then visible without falsely turning a product/test result red. | **Resolved at `322a533` with Windows evidence at `848ce34`** |
+| **T259-R2** | **Low** | No | The threshold calculation is tested at 85%, but those tests pass 85 directly while the workflow relies on the CLI default. Changing only `argparse`'s default from 85 to 90 left all **12 tests green**, so the configured threshold can drift without moving the direct cases. Current production behavior remains 85 and is correct. | **Open — T-267; no T-259 re-review required** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | `322a533` changes only `ci.yml`, `job_duration_report.py`, its unit test and T-259's task entry; `git diff --check 3be6758..322a533` and `git show --check 322a533` passed |
+| Focused local scope | Duration reporter plus task-placement and commit-message tests: **78 passed**; changed Python files also pass Ruff and format checks |
+| Windows step | `Report the duration against the bound` ran after the failed full suite and succeeded with the exact 32.3 / 40 / 7.7 / 81% output; the artifact-upload step then succeeded |
+| Run isolation | Run `32091868834`'s sole failure was `test_an_uncontained_application_is_what_the_outer_job_prevents`; summary **1 failed, 3658 passed, 30 skipped, 35 deselected**. T-266 owns it; no T-259 file or assertion failed |
+| Threshold mutation | `--warn-at-percent` CLI default 85 → 90: **12 passed**, establishing T259-R2; tree restored before recording the review |
+| Real warning rendering | Not observed. The Windows run used 81%; unit tests cover the warning branch at and beyond 85% |
+
+### Readiness
+
+T-259 is **approved with follow-ups at `322a533`** and may move to Complete. T-267 owns only the
+threshold-wiring regression; it does not hold the task. This approval settles the workflow
+disposition T258-R5 was waiting for, but it does not itself wire T-258's scanner. Completion
+synchronization in `TASKS.md` and `STATUS.md` is owed. No workflow, tool, reviewed test, handoff,
+push or remote state was changed by the Reviewer.

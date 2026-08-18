@@ -7363,6 +7363,44 @@ that it actually isolates the Job's absence, and then it answers criterion 2 for
 
 ---
 
+### T-267 — Pin the warning threshold the Windows workflow actually uses
+
+**Status:** **Ready — filed 2026-08-17 from `T259-R2`.** T-259's reporter currently warns at the
+approved 85% threshold and the real Windows run verified its quiet 81% path. The gap is regression
+strength: the direct tests supply 85 themselves rather than proving that the CLI default used by
+the workflow is 85.
+**Owner:** Implementer
+**Priority:** Low — current behavior is correct; an accidental threshold drift can stay green
+**Phase:** CI test maintenance; blocks neither T-259 nor another task
+**Depends on:** T-259 approved at `322a533`
+**Relevant context:** `T259-R2`, `tools/job_duration_report.py`,
+`tests/unit/test_job_duration_report.py`, `.github/workflows/ci.yml`
+**Affected surfaces:** the duration reporter's CLI/wiring test and, if made explicit, its workflow
+argument
+**Risk:** Low — test/wiring only; do not change the accepted 85% policy under this task
+
+#### Scope
+
+Pin the threshold at the same boundary production uses. Today the workflow omits
+`--warn-at-percent`, so `argparse`'s default is production configuration; the calculation tests
+call `report(..., 85)` directly and bypass it. A reviewer mutation changing that default from 85
+to 90 left all twelve focused tests green.
+
+Either pass `--warn-at-percent 85` explicitly from the workflow and assert it, or drive `main()`
+at 34 minutes and require the warning. The proof must fail when the workflow-used value changes to
+90 while the direct calculation remains untouched.
+
+#### Acceptance criteria
+
+- The workflow-used threshold is visibly and executably pinned to 85%
+- Changing only that configured value from 85 to 90 fails the focused suite
+- A future deliberate threshold change has one obvious test and policy value to update together
+
+#### Out of scope
+
+- Choosing a new threshold, changing the 40-minute job bound or re-measuring STARBASE
+- Treating the reporter warning as a product-test failure; T259-R1 resolved that policy
+
 ### T-263 — Close the residual gaps around the outer-containment spawn seam
 
 **Status:** **Ready — filed 2026-08-17 from `T258-R7` through `T258-R9`.** The current three
