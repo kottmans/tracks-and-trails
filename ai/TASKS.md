@@ -5,21 +5,27 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-259` is Complete**, Approved with follow-ups at `322a533`;
-its unpinned CLI default is `T-267`. **`T-264` is corrected and In Review**: the no-fork-trigger
-control is a test now, and after `T264-R2` it reads the YAML GitHub resolves rather than the text
-a person wrote. **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
-after a maintainer-authorized third pass; its non-blocking runner-inventory residue is `T-265`.
-**`T-258` stays In Review with a `Blocked` verdict**: `T258-R6` is Resolved at `e3c259a`, and the
-two standing blockers are `T258-R2` — whose Windows run now exists and **failed on the negative
-control**, which is `T-266` — and `T258-R5`, behind a `T-259` that is itself corrected and awaiting
-re-review.
-`T-258`'s first submission returned Changes requested with six blocking findings. The window
-before a spawned worker installs
-its watchdog is reproduced, POSIX is measured not to have it, and the application now contains
-itself in a Job object before any worker exists — through **one seam that refuses to spawn rather
-than warn**, at every product-owned spawn site rather than the manager's alone. **Three of its five
-criteria are unmet and the entry says which**; no Windows run exists. **This section's `## In Review` was duplicated byte-for-byte from `30b473d`** until
+**Last updated:** 2026-08-18 — **`T-264` is Blocked** on one thing: `ai/TESTING.md` requires a
+dependency addition to run the full default suite on **both** platforms, and the PyYAML it adds has
+not run on Windows. `T264-R1` through `R3` are Resolved at `609d614`. **`T-257`, `T-259` and
+`T-262` are Complete**; `T-267` and `T-265` carry what the last two approvals did not cover.
+**`T-258` is In Review with a `Blocked` verdict**: `T258-R6` is Resolved at `e3c259a`; `T258-R2`'s
+Windows run now exists and the **negative control failed** there, which is `T-266`; and `T258-R5`'s
+dependency is settled by `T-259`'s approval, leaving the scanner itself unwired.
+
+*(**Rewritten 2026-08-18, because appending had made it self-contradicting.** In one paragraph this
+header said `T-259` was Complete *and* awaiting re-review, and that `T-258`'s Windows run existed
+*and* that no Windows run existed. Every sentence was true when it was added and none was removed
+when it stopped being — three appends in a day. A current-truth summary that is only appended to
+becomes a record of every state the project has held, which is what `ai/STATUS.md` is for. Found by
+review, not by reading it back.)*
+
+`T-258`'s first submission returned Changes requested with six blocking findings. The window before
+a spawned worker installs its watchdog is reproduced, POSIX is measured not to have it, and the
+application now contains itself in a Job object before any worker exists — through **one seam that
+refuses to spawn rather than warn**, at every product-owned spawn site rather than the manager's
+alone. **Three of its five criteria are unmet and the entry says which.**
+**This section's `## In Review` was duplicated byte-for-byte from `30b473d`** until
 2026-08-17 — six commits — and `T-096`'s gate passed on it throughout, because every duplicated
 status still matched its section.
 
@@ -771,8 +777,9 @@ execution. None of it changes which machines run the jobs, so it is `T-265`'s.
 window is the moment of the visibility change, not a period afterwards
 **Phase:** Phase 4 maintenance
 **Depends on:** nothing. **Blocked making the repository public** — lifted by this
-approval, and the control is already remote: `origin/main` is `b6a6d20`, which contains
-`1387e57`'s trigger removal. What is still unpushed is documentation
+approval, and the control has been remote **since `b6a6d20` was pushed**, which is where
+`1387e57`'s trigger removal reached `origin/main`. Stated as the event rather than as the current
+head, because the head moves and this claim does not
 **Relevant context:** `.github/workflows/ci.yml`, `prose.yml`, `commit-messages.yml`,
 `t074-repeat.yml`; repository variables `LINUX_RUNNER`, `WINDOWS_RUNNER`, `STARBASE_AVAILABLE`;
 `OPS-003`, `OPS-009`, `AGENTS.md` §7 (serial work mode)

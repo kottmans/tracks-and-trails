@@ -5,31 +5,39 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-259` is Complete** at `322a533`, its duration report verified
-on `STARBASE` (32.3 min of 40, 81%, quiet as designed); the unpinned CLI default is `T-267`.
-**`T-264` came back with three blocking findings and is corrected**: the trigger gate accepted an
-anchor aliased into `on:` and an event hidden behind a quoted `#` — valid YAML that GitHub runs —
-and its probes raced under `pytest -n auto` because they wrote into the real workflow directory. It
-parses with PyYAML now and fails closed on anything it cannot resolve.
-**`T-258`'s Windows evidence exists and the control failed.** The
-pair ran twice on `STARBASE` (`32078697182` at `b6a6d20`, `32086893887` at `08349bc`, one failure
-each time): the reproduction passes there, and the negative control — the outer Job suppressed —
-does **not** show the child surviving. So the fix works and nothing yet shows it is the fix that
-works. `T-266` owns deciding between the two candidates the test names. **`T-257` is Complete** and
-**`T-259` is corrected** with the duration report built. **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
-after a maintainer-authorized third pass; the remaining runner-inventory prose is `T-265`, and
-**the trigger removal is already on GitHub** — `origin/main` is `b6a6d20`. **`T-258` is still
-Blocked**: `T258-R6` is Resolved at `e3c259a`, and what stands is `T258-R2`'s missing Windows run
-and `T258-R5`, now behind a `T-259` that came back Changes requested itself. `T-258` was corrected
-after six blocking findings.
+**Last updated:** 2026-08-18 — **`origin/main` is `609d614`**, pushed on the maintainer's explicit
+authorization for that exact range; two commits stay local by the same instruction.
+
+**`T-264` is Blocked, and only on Windows.** `T264-R1` through `R3` are Resolved at `609d614`: the
+trigger gate had accepted an anchor aliased into `on:` and an event hidden behind a quoted `#` —
+valid YAML that GitHub runs — and its probes raced under `pytest -n auto` because they wrote into
+the real workflow directory. It parses with PyYAML now and fails closed on anything it cannot
+resolve. What blocks it is that PyYAML is a **new dependency**, and `ai/TESTING.md` requires a
+dependency addition to run the full default suite on both platforms.
+
+**`T-258`'s Windows evidence exists and the control failed.** The pair ran twice on `STARBASE`
+(`32078697182` at `b6a6d20`, `32086893887` at `08349bc`, one failure each time): the reproduction
+passes there, and the negative control — the outer Job suppressed — does **not** show the child
+surviving. So the fix works and nothing yet shows it is the fix that works. `T-266` owns deciding
+between the two candidates the test names. `T-259`'s approval settles the workflow disposition
+`T258-R5` was waiting on; the scanner itself is still wired to nothing.
+
+**`T-257`, `T-259` and `T-262` are Complete.** `T-259`'s duration report was verified on `STARBASE`
+— 32.3 min of 40, 81%, quiet as designed — and its unpinned CLI default is `T-267`. `T-262`'s
+remaining runner-inventory prose is `T-265`.
+
+*(**This header was rewritten 2026-08-18 rather than appended to again.** It had reached the point
+of saying `T-259` was Complete *and* corrected-awaiting-re-review, that `T-258`'s Windows run
+existed *and* that no Windows run existed, and that `origin/main` was `b6a6d20` two pushes later.
+Each clause was true when written; none was removed when it stopped being. Found by review.)*
+
 The pre-bootstrap window that orphaned five workers on `STARBASE` is reproduced, **POSIX is
 measured not to have it** (the child dies within 0.02 s of the parent, on its own broken bootstrap
 pipe), and the application now contains itself in a Job object before any worker exists — through
 **one seam that refuses to spawn rather than warn**, at **all three** product-owned spawn sites.
 The review found the first version failing open and covering only the manager, and it was right.
-**Three of five criteria are unmet and the entry now says so**: no Windows run exists for the
-reproduction or its new negative control, and the orphan scanner is invoked by nothing. `ai/TASKS.md`'s `## In Review` section was also found duplicated
-byte-for-byte since `30b473d`, under a placement gate that passes on duplicates.
+`ai/TASKS.md`'s `## In Review` section was also found duplicated byte-for-byte since `30b473d`,
+under a placement gate that passes on duplicates.
 
 *(Previously, 2026-08-16 — **`T-183`, Phase 4.5's option audit, was built and In Review**; it is
 now **Complete**, approved with follow-ups at `1d0caf6` on 2026-08-17.)* It is at
