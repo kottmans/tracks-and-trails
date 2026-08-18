@@ -818,6 +818,31 @@ jobs:
           $lines | Set-Content $report
           Write-Host ($lines -join "`n")
 
+      # **`T-259`. The margin is a number in the log, not something recovered by comparing runs.**
+      #
+      # This bound has been crossed once already, and the way it was crossed is the reason this
+      # step exists: 154 new tests walked a 30-minute bound with four minutes of headroom into two
+      # consecutive timeouts, and GitHub reports a timeout as `cancelled`, so the first one read as
+      # somebody having stopped the job. Nobody was watching the margin because reading it meant
+      # comparing durations across runs by hand.
+      #
+      # **`if: always()`, because the run that most needs its duration printed is the one that
+      # failed.** A step that only reports on success is absent exactly when the job is slow enough
+      # to be worth measuring.
+      #
+      # **The decision is in Python, not in this block.** `T240-R1` is the precedent: logic written
+      # in a workflow step cannot be tested where it is written, and both of that finding's
+      # bypasses lived in twenty lines of `bash`. `tests/unit/test_job_duration_report.py` drives
+      # the normal, warning and unreadable-stamp paths, and pins the bound below against this
+      # job's own `timeout-minutes` so the two cannot drift apart.
+      - name: Report the duration against the bound
+        if: always()
+        run: |
+          python tools/job_duration_report.py \
+            --started-at "$JOB_STARTED_AT" \
+            --bound-minutes 40 \
+            --report reports/job-duration.txt
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7

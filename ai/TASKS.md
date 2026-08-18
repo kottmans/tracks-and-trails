@@ -225,8 +225,15 @@ and `build_options` has never set it.**
 
 ### T-259 — The Windows job's timeout had four minutes of headroom, and the suite grew into it
 
-**Status:** **In Review — raised 30 → 40 on 2026-08-16.** The number is changed; what is not done is
-the part that stops it happening again
+**Status:** **In Review — corrected 2026-08-17** after `T259-R1` returned Changes requested for the
+two acceptance criteria the raise did not cover. The bound went 30 → 40 on 2026-08-16 and the run
+at `31985410889` confirmed the sizing; **the half that makes the next creep visible is now built**:
+`tools/job_duration_report.py` prints elapsed, the bound, the remaining margin and the percentage
+used, and emits a `::warning::` at 85% — 34 minutes of 40, two minutes clear of the healthy
+32-minute measurement and six minutes of notice before the bound. The `windows desktop` job calls
+it under `if: always()`, so the run most worth measuring is not the one that skips the report.
+**Awaiting re-review, and awaiting its first Windows run** — `T259-R1` asked for the step to be
+verified there rather than inferred, and the local evidence cannot supply that
 **Owner:** Implementer
 **Priority:** Medium. While it stands, **every Windows gate is unreadable** — `T-257`'s verdict and
 `T-246`'s Windows half both had to be read out of a killed job's log
@@ -282,11 +289,14 @@ fails on growth rather than on faults, and it fails by looking like a hang.
 - ~~The next `windows desktop` run **completes**~~ — **met 2026-08-17, run `31985410889`**: 32 min
   against the 40-minute bound, ~8 min of headroom, and the estimate that justified 40 was ~32. The
   bound is sized correctly; what is still owed is the half that makes the *next* creep visible
-- **The job reports its own duration where somebody sees it** — a step that prints elapsed against
-  the bound, so the margin is a number in the log rather than something recoverable only by
-  comparing runs afterwards
-- **A run that lands within a stated margin of the bound says so** — a `::warning::`, so the creep
-  is visible while it is still creep
+- ~~**The job reports its own duration where somebody sees it**~~ — **built 2026-08-17**, and the
+  numbers go to `reports/job-duration.txt` as well as the log, so the retained evidence and the
+  scrollback cannot disagree. Pending its first Windows run
+- ~~**A run that lands within a stated margin of the bound says so**~~ — **built 2026-08-17** at
+  **85% of the bound**, stated in the tool and pinned by test. The threshold sits clear of the
+  healthy run rather than on it: putting it at the measured margin would reproduce `T118-R10` — a
+  bound that flaps on how fast the runner feels that morning — inside the fix for it. Pending its
+  first Windows run
 - **The measurements above are re-derived rather than quoted** if the bound is touched again. The
   reason this entry carries the numbers is that the last raise (`T-073`) recorded a reason and no
   measurement, so nobody could tell later whether 30 had ever had margin
