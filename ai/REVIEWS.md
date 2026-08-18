@@ -18562,3 +18562,60 @@ threshold-wiring regression; it does not hold the task. This approval settles th
 disposition T258-R5 was waiting for, but it does not itself wire T-258's scanner. Completion
 synchronization in `TASKS.md` and `STATUS.md` is owed. No workflow, tool, reviewed test, handoff,
 push or remote state was changed by the Reviewer.
+
+---
+
+## 2026-08-17 — T-264 workflow-trigger policy review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-264
+**Base:** `848ce3497f6698ff5e73586485fe6b196207777c`
+**Head:** `cc17ff0e0e9d974eb4bb6797d2ac4c9a28b856d1`
+**Platforms verified:** Linux. The gate is text/YAML policy with no platform branch; Windows was
+not run and is not required for these findings
+**Verdict:** **Changes requested.** The live rule correctly rejects the repository's ordinary
+mapping and inline pull-request forms, but the submitted fail-closed claim is not yet true. The
+test probes race under the repository's actual parallel CI command, and the detector accepts valid
+GitHub Actions YAML that resolves to a forbidden event. A separate test also enforces a wider
+event policy than T-264 authorizes.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| **T264-R1** | **Medium** | **Yes — the new gate fails in the Linux CI mode that is meant to carry it** | Three discovery probes create and delete files inside the real `.github/workflows/` directory. That violates `ai/TESTING.md`'s rule that tests write nowhere outside `tmp_path`, and under CI's `pytest -n auto tests/unit tests/ui` the workers race. The first reviewer run failed **1 of 18**: one worker listed `zz-t264-safe-probe.yml` after another had deleted it, producing `FileNotFoundError`. The same shared-directory design can also let the live gate observe another worker's deliberately unsafe probe. | Build a complete workflow directory under `tmp_path` and monkeypatch the directory root used by `workflow_files()`. Still call the production discovery function with no supplied file list, so the test proves discovery without mutating the checkout. Run this file under `-n auto` as well as serially. | **Open — T-264 correction** |
+| **T264-R2** | **Medium** | **Yes — the security gate accepts valid forbidden triggers** | The detector scans unresolved text rather than the YAML value GitHub executes. A real probe workflow used `name: &fork_event pull_request` and `on: [push, *fork_event]`; GitHub Actions supports YAML anchors/aliases, yet both the live gate and its “scan read something” guard passed. Separately, `strip_comments()` truncates inside quotes: `on: {push: {branches: ["feature#1"]}, pull_request: null}` parses with a `pull_request` event but the detector returns `[]`. These are accepting-direction bypasses of the rule, not false alarms. | Parse the trigger value with a declared YAML parser that preserves the `on` key and resolves aliases, or reject every unsupported/ambiguous construct fail-closed. Add both probes as positive mutations. A quote-aware comment stripper alone does not close the alias path. | **Open — T-264 correction** |
+| **T264-R3** | **Medium** | **Yes — the commit enforces an event policy outside the task's authorized rule** | T-264 names `pull_request` and `pull_request_target`; `test_the_wider_fork_reachable_set_is_also_absent_today` additionally bans `workflow_run`, `issue_comment` and `repository_dispatch`. Calling the test separate does not make it observational: adding any one now reddens the required unit suite. The premise is also too broad. GitHub documents `pull_request_target` as running trusted base-branch code by default, and `workflow_run` / `issue_comment` become pwn-request paths when they fetch and execute untrusted content, not merely by existing; `repository_dispatch` requires an authorized caller. | Remove the wider enforcement from T-264. If the maintainer wants a blanket event allowlist, file and authorize that policy as its own task with event-specific reasoning. Keep `pull_request_target` forbidden here as T-264 already requires, but describe its privileged context accurately rather than saying it executes fork code by default. | **Open — T-264 correction** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | `cc17ff0` changes only T-264's task entry and new `test_workflow_triggers.py`; `git diff --check 848ce34..cc17ff0` and `git show --check cc17ff0` passed |
+| Serial focused file | **18 passed** |
+| Actual Linux CI mode | `pytest -n auto tests/unit/test_workflow_triggers.py`: **1 failed, 17 passed** with the cross-worker `FileNotFoundError` in T264-R1 |
+| YAML-alias mutation | Added a real `.yml` workflow resolving `*fork_event` to `pull_request` and running on `[self-hosted]`; both live/positive-set gates passed (**2 passed**). Probe removed and tree restored |
+| Quoted-`#` flow probe | A YAML base loader resolved the line to `push` plus `pull_request`; `trigger_block()` truncated it at `#` and `forbidden_triggers_in()` returned `[]` |
+| Ruff / format | Changed test file and the adjacent T-259 files: **All checks passed; 3 files already formatted** |
+| Current workflows | The four tracked workflows pass the narrow live detector in serial mode; dormant concurrency prose does not false-fire |
+| External syntax check | GitHub's official [workflow reuse reference](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#yaml-anchors-and-aliases) confirms Actions supports anchors and aliases. Its [`pull_request_target` security reference](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target) confirms base-branch code runs by default and identifies fetching/executing the fork head as the dangerous transition |
+
+### Scope rulings
+
+- **The gate belongs in the unit suite.** Workflow-file pushes are not prose-ignored, and the Linux
+  unit/UI command is the right automatic carrier once T264-R1 makes the tests isolated.
+- **Do not widen T-264 to the three additional events.** Their risk depends on what the workflow
+  does with untrusted content. A blanket policy needs its own authority and acceptance tests.
+- **No task is filed for `t074-repeat.yml`'s dispatch input.** Only write-holders can dispatch it,
+  and a write-holder can already push executable workflow/code changes to these same runners. It
+  creates no additional trust-boundary crossing under the current repository model; revisit if
+  dispatch authority changes.
+
+### Readiness
+
+T-264 is **not approved at `cc17ff0`**. Correct T264-R1 through R3 in one focused batch: isolate
+the discovery tests, make YAML interpretation fail closed across aliases and quoted comments, and
+remove the unauthorized wider-event gate while keeping the task's two-event rule. The ordinary
+focused correction re-review remains available. `cc17ff0` is still local and need not be pushed
+for that pass. The Reviewer changed only `ai/REVIEWS.md`; no reviewed test/task, workflow,
+handoff, push or remote state was changed.
