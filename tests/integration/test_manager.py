@@ -2317,7 +2317,7 @@ def _the_window_the_driver_stopped_in(
 
     try:
         facts = json.loads(reported[0] if reported else "")
-    except (IndexError, json.JSONDecodeError):
+    except IndexError, json.JSONDecodeError:
         parent.kill()
         parent.wait(timeout=30)
         reader.join(timeout=30)
