@@ -5,7 +5,13 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-258`'s Windows evidence exists and the control failed.** The
+**Last updated:** 2026-08-17 — **`T-259` is Complete** at `322a533`, its duration report verified
+on `STARBASE` (32.3 min of 40, 81%, quiet as designed); the unpinned CLI default is `T-267`.
+**`T-264` came back with three blocking findings and is corrected**: the trigger gate accepted an
+anchor aliased into `on:` and an event hidden behind a quoted `#` — valid YAML that GitHub runs —
+and its probes raced under `pytest -n auto` because they wrote into the real workflow directory. It
+parses with PyYAML now and fails closed on anything it cannot resolve.
+**`T-258`'s Windows evidence exists and the control failed.** The
 pair ran twice on `STARBASE` (`32078697182` at `b6a6d20`, `32086893887` at `08349bc`, one failure
 each time): the reproduction passes there, and the negative control — the outer Job suppressed —
 does **not** show the child surviving. So the fix works and nothing yet shows it is the fix that

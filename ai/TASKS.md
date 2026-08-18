@@ -5,8 +5,10 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-264` is built and In Review**: the no-fork-trigger control
-is a test now, not a habit. **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
+**Last updated:** 2026-08-17 — **`T-259` is Complete**, Approved with follow-ups at `322a533`;
+its unpinned CLI default is `T-267`. **`T-264` is corrected and In Review**: the no-fork-trigger
+control is a test now, and after `T264-R2` it reads the YAML GitHub resolves rather than the text
+a person wrote. **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
 after a maintainer-authorized third pass; its non-blocking runner-inventory residue is `T-265`.
 **`T-258` stays In Review with a `Blocked` verdict**: `T258-R6` is Resolved at `e3c259a`, and the
 two standing blockers are `T258-R2` — whose Windows run now exists and **failed on the negative
@@ -222,92 +224,6 @@ and `build_options` has never set it.**
 - Building any refusal. `T-184` builds it; this decides what is on it
 - The 42 suppressed options as a class. Finding 4 makes them `T-184`'s acceptance criterion, since
   the question there is *what the parser accepts*, not *what the documentation shows*
-
----
-
-### T-259 — The Windows job's timeout had four minutes of headroom, and the suite grew into it
-
-**Status:** **In Review — corrected 2026-08-17** after `T259-R1` returned Changes requested for the
-two acceptance criteria the raise did not cover. The bound went 30 → 40 on 2026-08-16 and the run
-at `31985410889` confirmed the sizing; **the half that makes the next creep visible is now built**:
-`tools/job_duration_report.py` prints elapsed, the bound, the remaining margin and the percentage
-used, and emits a `::warning::` at 85% — 34 minutes of 40, two minutes clear of the healthy
-32-minute measurement and six minutes of notice before the bound. The `windows desktop` job calls
-it under `if: always()`, so the run most worth measuring is not the one that skips the report.
-**Awaiting re-review, and awaiting its first Windows run** — `T259-R1` asked for the step to be
-verified there rather than inferred, and the local evidence cannot supply that
-**Owner:** Implementer
-**Priority:** Medium. While it stands, **every Windows gate is unreadable** — `T-257`'s verdict and
-`T-246`'s Windows half both had to be read out of a killed job's log
-**Phase:** Phase 4 maintenance
-**Depends on:** nothing
-**Relevant context:** `.github/workflows/ci.yml` (`windows desktop`), `T-073` (which last raised
-it), `T118-R10` and `T-083` — the same defect class one level down, `OPS-005`, `OPS-009`
-**Affected surfaces:** `.github/workflows/ci.yml`
-**Risk:** Low to raise. The risk is raising it **instead of** measuring, which is how a bound
-becomes a place defects hide
-
-#### What happened, measured rather than inferred
-
-Two consecutive runs died at exactly 30 minutes. GitHub reports a timeout as `cancelled`, which is
-why the first looked like somebody had stopped it.
-
-| Run | Result | Job duration |
-|---|---|---|
-| `31870203459` … `31851660329` (four runs) | success | **25.4 – 25.8 min** |
-| `31906562503` | failure | 27.4 min |
-| `31956224066` | **timeout** | 30.3 min |
-| `31956402888` | **timeout** | 30.3 min |
-
-**Four minutes of headroom on a 30-minute bound, for its whole recorded history.**
-
-**What crossed it was growth, not a hang.** Against the last healthy run at `26eb41c`: the suite
-collected **3506** items then and **3660** now — **154 more tests** — and the full-suite step took
-**23:51** then against a job budget of ~27.5 minutes after setup. Extrapolating the same shape (the
-run is lopsided: integration dominates the first 20%, and `26eb41c` went 40% → 100% in about a
-minute), the step now needs **~30 minutes** and the job **~32**.
-
-**Contention is ruled out**, and that is what the second run bought: it was re-run on a freshly
-restarted runner with the machine otherwise idle and five twelve-day-old orphaned processes
-cleared (`T-258`), and it died at the same wall. *(Those orphans were considered as a cause and
-rejected on measurement: 2 seconds of CPU and 223 MB across five processes.)*
-
-#### Why 40
-
-- **~32 minutes needed.** 35 restores the same ~9% margin that just failed; 40 is ~25%, which is
-  what the job had when it was healthy
-- **Not larger, because `STARBASE` has one slot.** A genuinely hung job holds every Windows gate for
-  the length of the bound, so this number is also the blast radius of a hang. The maintainer set the
-  ceiling at 35–40 on 2026-08-16 for that reason
-
-#### Scope
-
-Raising the number is done. **The task is open on the half that makes the next one visible early**,
-because this is `T118-R10`'s finding at the job level: a bound sitting just above measured runtime
-fails on growth rather than on faults, and it fails by looking like a hang.
-
-#### Acceptance criteria
-
-- ~~The next `windows desktop` run **completes**~~ — **met 2026-08-17, run `31985410889`**: 32 min
-  against the 40-minute bound, ~8 min of headroom, and the estimate that justified 40 was ~32. The
-  bound is sized correctly; what is still owed is the half that makes the *next* creep visible
-- ~~**The job reports its own duration where somebody sees it**~~ — **built 2026-08-17**, and the
-  numbers go to `reports/job-duration.txt` as well as the log, so the retained evidence and the
-  scrollback cannot disagree. Pending its first Windows run
-- ~~**A run that lands within a stated margin of the bound says so**~~ — **built 2026-08-17** at
-  **85% of the bound**, stated in the tool and pinned by test. The threshold sits clear of the
-  healthy run rather than on it: putting it at the measured margin would reproduce `T118-R10` — a
-  bound that flaps on how fast the runner feels that morning — inside the fix for it. Pending its
-  first Windows run
-- **The measurements above are re-derived rather than quoted** if the bound is touched again. The
-  reason this entry carries the numbers is that the last raise (`T-073`) recorded a reason and no
-  measurement, so nobody could tell later whether 30 had ever had margin
-
-#### Out of scope
-
-- Making the suite faster. A real target, and a different task — this one is about the gate being
-  readable, not about the 32 minutes being right
-- `T-258`'s orphans. Adjacent, on the same machine, **and not the cause** — checked, not assumed
 
 ---
 
@@ -636,6 +552,98 @@ so a parent that is not one cannot be the one that spawned it.
 ---
 
 ## Complete
+
+### T-259 — The Windows job's timeout had four minutes of headroom, and the suite grew into it
+
+**Status:** **Complete — Approved with follow-ups at `322a533`**, 2026-08-17, after two review
+rounds. `T259-R1` is Resolved; `T259-R2` is non-blocking and owned by `T-267`. Corrected after
+`T259-R1` returned Changes requested for the two acceptance criteria the raise did not cover. The bound went 30 → 40 on 2026-08-16 and the run
+at `31985410889` confirmed the sizing; **the half that makes the next creep visible is now built**:
+`tools/job_duration_report.py` prints elapsed, the bound, the remaining margin and the percentage
+used, and emits a `::warning::` at 85% — 34 minutes of 40, two minutes clear of the healthy
+32-minute measurement and six minutes of notice before the bound. The `windows desktop` job calls
+it under `if: always()`, so the run most worth measuring is not the one that skips the report.
+**Verified on Windows rather than inferred**, which is what `T259-R1` asked for: run
+`32091868834` at head `848ce34` printed `Elapsed: 32.3 min / Bound: 40 min / Remaining: 7.7 min /
+Used: 81%` and stayed quiet, 81% being under the 85% mark. That run's only failure is `T-258`'s
+negative control (`T-266`) and belongs to neither this task nor its step.
+
+**`T-267` is what the approval does not cover**: the direct tests pass `85` in themselves, so
+changing the CLI default leaves all twelve green — the workflow's actual threshold is unpinned.
+Non-blocking, and it does not hold this task
+**Owner:** Implementer
+**Priority:** Medium. While it stands, **every Windows gate is unreadable** — `T-257`'s verdict and
+`T-246`'s Windows half both had to be read out of a killed job's log
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing
+**Relevant context:** `.github/workflows/ci.yml` (`windows desktop`), `T-073` (which last raised
+it), `T118-R10` and `T-083` — the same defect class one level down, `OPS-005`, `OPS-009`
+**Affected surfaces:** `.github/workflows/ci.yml`
+**Risk:** Low to raise. The risk is raising it **instead of** measuring, which is how a bound
+becomes a place defects hide
+
+#### What happened, measured rather than inferred
+
+Two consecutive runs died at exactly 30 minutes. GitHub reports a timeout as `cancelled`, which is
+why the first looked like somebody had stopped it.
+
+| Run | Result | Job duration |
+|---|---|---|
+| `31870203459` … `31851660329` (four runs) | success | **25.4 – 25.8 min** |
+| `31906562503` | failure | 27.4 min |
+| `31956224066` | **timeout** | 30.3 min |
+| `31956402888` | **timeout** | 30.3 min |
+
+**Four minutes of headroom on a 30-minute bound, for its whole recorded history.**
+
+**What crossed it was growth, not a hang.** Against the last healthy run at `26eb41c`: the suite
+collected **3506** items then and **3660** now — **154 more tests** — and the full-suite step took
+**23:51** then against a job budget of ~27.5 minutes after setup. Extrapolating the same shape (the
+run is lopsided: integration dominates the first 20%, and `26eb41c` went 40% → 100% in about a
+minute), the step now needs **~30 minutes** and the job **~32**.
+
+**Contention is ruled out**, and that is what the second run bought: it was re-run on a freshly
+restarted runner with the machine otherwise idle and five twelve-day-old orphaned processes
+cleared (`T-258`), and it died at the same wall. *(Those orphans were considered as a cause and
+rejected on measurement: 2 seconds of CPU and 223 MB across five processes.)*
+
+#### Why 40
+
+- **~32 minutes needed.** 35 restores the same ~9% margin that just failed; 40 is ~25%, which is
+  what the job had when it was healthy
+- **Not larger, because `STARBASE` has one slot.** A genuinely hung job holds every Windows gate for
+  the length of the bound, so this number is also the blast radius of a hang. The maintainer set the
+  ceiling at 35–40 on 2026-08-16 for that reason
+
+#### Scope
+
+Raising the number is done. **The task is open on the half that makes the next one visible early**,
+because this is `T118-R10`'s finding at the job level: a bound sitting just above measured runtime
+fails on growth rather than on faults, and it fails by looking like a hang.
+
+#### Acceptance criteria
+
+- ~~The next `windows desktop` run **completes**~~ — **met 2026-08-17, run `31985410889`**: 32 min
+  against the 40-minute bound, ~8 min of headroom, and the estimate that justified 40 was ~32. The
+  bound is sized correctly; what is still owed is the half that makes the *next* creep visible
+- ~~**The job reports its own duration where somebody sees it**~~ — **built 2026-08-17**, and the
+  numbers go to `reports/job-duration.txt` as well as the log, so the retained evidence and the
+  scrollback cannot disagree. Pending its first Windows run
+- ~~**A run that lands within a stated margin of the bound says so**~~ — **built 2026-08-17** at
+  **85% of the bound**, stated in the tool and pinned by test. The threshold sits clear of the
+  healthy run rather than on it: putting it at the measured margin would reproduce `T118-R10` — a
+  bound that flaps on how fast the runner feels that morning — inside the fix for it. Pending its
+  first Windows run
+- **The measurements above are re-derived rather than quoted** if the bound is touched again. The
+  reason this entry carries the numbers is that the last raise (`T-073`) recorded a reason and no
+  measurement, so nobody could tell later whether 30 had ever had margin
+
+#### Out of scope
+
+- Making the suite faster. A real target, and a different task — this one is about the gate being
+  readable, not about the 32 minutes being right
+- `T-258`'s orphans. Adjacent, on the same machine, **and not the cause** — checked, not assumed
+---
 
 ### T-257 — The Windows job has been red since 2026-08-15, and the failure is the guard, not the product
 
