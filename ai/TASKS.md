@@ -311,9 +311,13 @@ fails on growth rather than on faults, and it fails by looking like a hang.
 
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
-**Status:** **In Review — Blocked after the second focused pass, 2026-08-17.** `T258-R6` is
-Resolved at `e3c259a`; two blockers are unchanged: `T258-R2` (High) has no Windows run, and
-`T258-R5` waits on `T-259`'s workflow disposition. `476b745` records that disposition as Changes
+**Status:** **In Review — Blocked, and `T258-R2`'s Windows run now exists and is not green.**
+`T258-R6` is Resolved at `e3c259a`. **The pair ran on `STARBASE` on 2026-08-17** (runs
+`32078697182` at `b6a6d20` and `32086893887` at `08349bc`, single failure both times): the
+reproduction **passes** there and the negative control **fails** — with the outer Job suppressed
+the child was reaped anyway. That is `T-266`, and until it is decided, criterion 1's *"it must fail
+without the fix"* half is unmet on the platform the orphans were seen on. `T258-R5` still waits on
+`T-259`'s workflow disposition. `476b745` records that disposition as Changes
 requested, so the dependency moved further out rather than closer. The review was right on every
 original finding, and two were defects rather than paperwork: containment **failed open**, and the
 fix covered only one of three product-owned spawn sites. **`T258-R6`'s last residual was** —
@@ -324,10 +328,13 @@ it on **every** spawn from all three sites. `T258-R2` being High, its eventual v
 continues under `AGENTS.md` §10 without a separate pass authorization.
 
 **Two criteria are met; three are not, and the entry no longer says otherwise.** Criterion 3 is
-measured on POSIX. Criterion 4 holds. **Criteria 1 and 2 are unmet** — the reproduction and its
-negative control are written for both platforms but have run only on POSIX; **no Windows run of
-either exists**, and `T258-R2` is right that a green fixed-only run could not have satisfied them
-anyway.
+measured on POSIX. Criterion 4 holds. **Criteria 1 and 2 remain unmet, and the reason changed on
+2026-08-17**: both halves have now run on Windows, so the *"no Windows run exists"* this entry
+carried is no longer the blocker. The reproduction passed there. **The negative control failed**,
+which means the fix is not demonstrated to be what does the reaping — `T-266` owns deciding
+whether something else closes the window or the suppression stopped suppressing. `T258-R2` was
+right that a green fixed-only run could not have satisfied these, and the run proved it in the
+sharpest available way: the fixed half is green and the control is not.
 **Criterion 5 is unmet**: the scanner exists and nothing invokes it.
 
 *(This previously said "four of the five criteria are met and measured", and that the window was
@@ -441,7 +448,8 @@ Close the window, or prove it cannot be closed and say so.
 *inside* the window rather than stepping over it: the seam is the process-creation call itself —
 `util.spawnv_passfds` on POSIX, `_winapi.CreateProcess` on Windows — wrapped so it returns a live
 child to nobody, because `multiprocessing` writes the payload only after it returns. It runs on
-both platforms; **it has run on one.**
+both platforms, and **it has now run on both** — passing on Windows in runs `32078697182` and
+`32086893887`. Its negative control did not; see `T-266`.
 
 **The reproduced child matches the five exactly**: `spawn_main` command line, **one thread**,
 sleeping. It stays that way for as long as the parent lives, so its death is caused by the
@@ -7195,6 +7203,97 @@ the headings themselves; do not rely on either collapsing parser to supply its o
 
 - Reopening `T-096` or changing its status/section vocabulary
 - Rechecking historical prose mentions of a task ID; only live `### T-NNN` entry headings count
+
+### T-266 — `T-258`'s negative control fails on Windows: the child is reaped with the Job suppressed
+
+**Status:** **Ready — filed 2026-08-17 from two Windows runs, not from reading.** The pair
+`T258-R2` asked for has now run on `STARBASE`, and it does not say what it was written to say: the
+fix passes and **the control that was supposed to prove the fix is load-bearing fails**.
+**Owner:** Implementer
+**Priority:** High — it does not break the product, it breaks the *evidence*. While it stands,
+`T-258`'s criterion 2 cannot be met and the Job object's justification rests on a mechanism nothing
+has demonstrated
+**Phase:** Phase 4 maintenance. It blocks `T-258`'s approval and nothing else
+**Depends on:** nothing. **Blocks `T-258` criterion 2 and `T258-R2`**
+**Relevant context:** `tests/integration/test_manager.py:2388-2480`
+(`_WITHOUT_THE_OUTER_JOB`, `test_an_uncontained_application_is_what_the_outer_job_prevents`),
+`downloader/process_tree.py` (`start_contained`, `contain_this_application`), `T-258`, `T258-R2`,
+`T-238` (`KILL_ON_JOB_CLOSE` on an `xdist` worker), `OPS-009`
+**Affected surfaces:** the control test, and — depending on the answer — `T-258`'s stated
+justification for the outer Job
+**Risk:** Medium. The trap is "fixing" the control until it passes: a control edited until it
+agrees is not a control, and this one is currently the only thing standing between a green suite
+and a fix nobody has shown to be necessary
+
+#### What was observed, on the machine rather than in a test
+
+Reproduced across two heads and two runs, single failure both times, nothing else red:
+
+| Run | Head | `windows desktop` | Result |
+|---|---|---|---|
+| `32078697182` | `b6a6d20` | 32m44s | **1 failed**, 3646 passed, 30 skipped, 35 deselected |
+| `32086893887` | `08349bc` | 32m38s | **1 failed**, 3646 passed, 30 skipped, 35 deselected |
+
+| Test | `linux` | `windows desktop` |
+|---|---|---|
+| `test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` (the fix) | PASSED | **PASSED** |
+| `test_an_uncontained_application_is_what_the_outer_job_prevents` (the control) | PASSED | **FAILED** |
+
+**The Linux pass on the control means nothing and the test says so itself**: on POSIX
+`contain_this_application()` is a documented no-op, so both halves measure the same thing. Only the
+Windows branch was ever evidence, and it is the branch that failed.
+
+The failure is the control's own assertion:
+
+> with the outer Job suppressed the child was reaped anyway, so this run is not evidence that the
+> Job object is what reaps it.
+
+#### The two candidates, which the test names and this task has to decide between
+
+1. **Something else closes the window on Windows too.** `T-258`'s own records already predict this
+   and leave it open: *the structural reading of `popen_spawn_win32` says the parent holds the sole
+   write handle on both platforms, so a killed parent should break the bootstrap pipe and raise
+   `EOFError`* — which is exactly what POSIX was measured doing. If this is the answer, the five
+   observed orphans had some other cause, and the Job object is **defence in depth rather than the
+   demonstrated reaper**. That is a defensible thing to ship; it is not what `T-258` currently says.
+2. **The suppression no longer suppresses.** `_WITHOUT_THE_OUTER_JOB` rebinds
+   `process_tree.contain_this_application` to `lambda: True` in the driver. `start_contained`
+   resolves that name at call time, so the rebinding should take — but the driver is spawned by
+   the pytest process, which on Windows is itself contained now that `T258-R1` moved containment
+   into `start_contained`, and **job membership is inherited at creation**. A driver that cannot
+   leave the job it was born into cannot demonstrate the absence of one.
+
+**Candidate 2 is the one to eliminate first**, because it is cheap and because if it is true then
+candidate 1 was never tested. `T-258`'s entry already flags the inheritance reach — *"on Windows
+every process that actually spawns is contained, including pytest"* — as a risk it accepted
+without measuring.
+
+#### Scope
+
+Decide which candidate holds, on `STARBASE`, and make the records say the answer rather than the
+question. If candidate 1 holds, `T-258`'s justification is restated and criterion 2 is closed as
+unobtainable-in-this-form with the reason recorded. If candidate 2 holds, the control is rebuilt so
+that it actually isolates the Job's absence, and then it answers criterion 2 for real.
+
+#### Acceptance criteria
+
+- **The mechanism is measured on Windows, not inferred from source.** Whichever candidate holds, a
+  run on `STARBASE` shows it — the same standard `T-258` was held to for POSIX
+- **The control either isolates the Job's absence or is retired with its reason.** A control that
+  passes because it was weakened until it did is worse than no control, and `T-260` is four rounds
+  of precedent for that failure mode
+- **`T-258`'s records say which mechanism reaps the child**, and stop carrying the pipe question as
+  open if this closes it
+- **The Windows suite is green**, or its remaining failure is a different one with its own entry
+
+#### Out of scope
+
+- Changing `contain_this_application()` or `start_contained()` because the control is red. The
+  product behaviour is not in question here; the evidence for it is
+- `T-238`'s `xdist` segfault. Adjacent — both turn on `KILL_ON_JOB_CLOSE` and job inheritance —
+  and **not claimed as the same defect**
+
+---
 
 ### T-263 — Close the residual gaps around the outer-containment spawn seam
 

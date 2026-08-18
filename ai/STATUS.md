@@ -5,7 +5,12 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-17 — **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
+**Last updated:** 2026-08-17 — **`T-258`'s Windows evidence exists and the control failed.** The
+pair ran twice on `STARBASE` (`32078697182` at `b6a6d20`, `32086893887` at `08349bc`, one failure
+each time): the reproduction passes there, and the negative control — the outer Job suppressed —
+does **not** show the child surviving. So the fix works and nothing yet shows it is the fix that
+works. `T-266` owns deciding between the two candidates the test names. **`T-257` is Complete** and
+**`T-259` is corrected** with the duration report built. **`T-262` is Complete**, Approved with follow-ups at `8ee106b`
 after a maintainer-authorized third pass; the remaining runner-inventory prose is `T-265`, and
 **the trigger removal is already on GitHub** — `origin/main` is `b6a6d20`. **`T-258` is still
 Blocked**: `T258-R6` is Resolved at `e3c259a`, and what stands is `T258-R2`'s missing Windows run
