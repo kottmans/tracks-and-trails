@@ -18803,3 +18803,64 @@ counterfactual and corrected record, but this verdict does not approve T-258: T2
 scanner integration remains open. Completion synchronization in `TASKS.md` and `STATUS.md` is
 owed. No reviewed source/test, workflow, handoff, push or remote setting was changed by the
 Reviewer.
+
+---
+
+## 2026-08-19 — T-268 diagnosis review, reopened by live specimens
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-268
+**Base:** `5e6661fe1757fc6a4b97f15c1aec9356975ac7f4`
+**Measurement implementation:** `f987e88737550d10cdc2f72bd8037fb18efb13b8`
+**Answered record:** `dc7584388420bacbba258aa1ebcb198e7586162a`
+**Record correction:** `14ac396d5b3a1fe9864a057155c44654fd8f5c36`
+**Reopening evidence:** `1b31aac72580da8c5dae6f56e2cb31932bf48dde`
+**Platforms verified:** Linux locally; self-hosted Windows run `32209108844`; the scanner's
+Windows run `32214730271`
+**Verdict:** **Blocked.** The submitted three-way measurement stands and the original answer was
+honest at `dc75843`: it bounds the five past their payload read, proves the outer Job reaps a child
+in that region, and does not invent a mechanism the evidence cannot name. It cannot be approved as
+a closed answer now. Its own explicit reopening condition — another one-thread orphan on
+`STARBASE` — fired twice before the initial review, and both processes remain available for the
+machine-local inspection the answer said a later candidate would require.
+
+### Finding
+
+| ID | Severity | Blocks approval | Finding | Required disposition | Status |
+|---|---|---:|---|---|---|
+| **T268-R1** | **Medium** | **Yes — the task's own closure condition fired while the evidence is still inspectable** | Run `32214730271` found PIDs `3400` and `6924`, each with one thread and dead parent `1204`. That exactly matches the entry's written reopening condition. The result does not refute containment: the `1d10h` age at 04:48Z places creation between 17:48Z and 18:48Z on 2026-08-17, before both `dbc1e6c` at 19:28Z and fail-closed `1853acf` at 20:32Z. It does make “cannot be identified” provisional again because there are now two live specimens and two candidate runs in the hour-wide window. | Preserve the specimens long enough for a person at `STARBASE` to capture the process/thread wait or suspend state and other non-destructive identity evidence. Record what that establishes, or why it still cannot. Then revalidate PID, create time, command and parent identity immediately before any selected termination. | **Open — external machine-local inspection** |
+
+### Evidence and acceptance results
+
+| Check | Review result |
+|---|---|
+| Three-way Windows measurement | GitHub independently reports run `32209108844` successful at exact head `f987e88`; the `windows desktop` full-suite step and every other job completed successfully. The submitted test distinguishes pre-read/no Job, post-read/no Job and post-read/Job paths rather than inferring the Job from one green result. |
+| Local current-tree behavior | The unrestricted default suite passed **3715, skipped 18, deselected 2** in 10m11s, including both manager measurements. Ruff, format, bare mypy and `mypy --platform win32` are clean. |
+| Scanner execution | Run `32214730271` is a `workflow_dispatch` at exact head `dc75843`. All ordinary jobs succeeded. `STARBASE orphans` alone failed, after printing seven matches and uploading the report. This is a detection result, not merely tested wiring. |
+| New-pair timing | Scanner output at 04:48:12Z says `1d10h`; `Orphan.describe()` truncates days/hours, yielding the recorded 17:48Z–18:48Z creation interval. Git records `dbc1e6c` at 19:28Z and `1853acf` at 20:32Z. The pair predates both. |
+| Instrument cleanup | The local measurement cleanup kills and waits for its deliberately surviving child in `finally`. No reviewed mutation or test run left the working tree dirty. |
+
+### Scope rulings
+
+- **Preserve `3400` and `6924` for the inspection, then reap deliberately.** Approximately 156 MB
+  on a 32 GB machine is not enough to justify destroying the first inspectable evidence before the
+  person-only step. The scanner does not prove project ownership, so this is not authority for a
+  bulk kill. After evidence capture, terminate only explicitly selected, identity-revalidated
+  processes; do not add a destructive scanner mode.
+- **Do not file a second diagnosis task yet.** The new pair has the same discriminating signature
+  that T-268 named, so T-268 is the current owner and is now Blocked on the narrower external step.
+  A new task is warranted only if inspection separates a distinct defect or produces implementable
+  remediation that should not be buried inside diagnosis.
+- **T-092 is precedent, not the owner.** It proves that a task can be Blocked on somebody at
+  `STARBASE`, but its scope is WER capture for a different access violation. T-268 should name its
+  own machine-local dependency rather than widening T-092.
+- **The 77–79 MB versus 42–57 MB difference remains an observation only.** It neither indicts the
+  fix nor identifies what the processes are waiting on.
+
+### Readiness
+
+T-268 is **not approved at `1b31aac`**. Its Windows measurement needs no repeat, and no source
+correction is requested. Preserve the two live processes, perform the narrowed local inspection,
+and return that evidence for focused disposition of T268-R1. No separate recurrence task is filed
+by this review. The Reviewer changed only this append-only record; no reviewed source/test,
+workflow, task/status file, process on `STARBASE`, push or remote setting was changed.
