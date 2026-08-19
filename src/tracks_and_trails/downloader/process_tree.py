@@ -76,13 +76,24 @@ The two platforms close it differently, and only one of them closes it for free:
   *(`T266-R1`. This read "no outer Job in the driver at all", which the same run's own membership
   fields contradict.)*
 
-  **It stays, as defence in depth, and the reason is the part that is still open.** Five orphans
-  were found alive on `STARBASE` after eleven days, and the reproduced parent-death path is now
-  known not to explain them, because that window closes itself. Whatever did happen to them is
-  unexplained (`T-268`), so the kernel-held guarantee is kept rather than removed on the strength
-  of a mechanism that does not account for the observation that started this.
+  **It stays, and `T-268` measured that it earns its place on the far side of this window rather
+  than inside it.** Run `32209108844` on `STARBASE`, three stops and one kill each: a child stopped
+  **before** the payload read dies with no Job to reap it; a child stopped **past** it survives its
+  parent with a single thread — the signature of the five; and the same child **with this Job in
+  place is reaped**. So the guarantee below is load-bearing, just not for the window it was written
+  for.
+
+  **No mechanism accounts for the five, and that is the recorded answer rather than an open
+  bullet** (`T-268`). Four things are eliminated: both payload reads, by measurement and by
+  `popen_spawn_win32` giving the parent the sole write handle on a non-inheritable pipe; a second
+  process holding that handle, which `bInheritHandles=False` makes impossible; this application's
+  entry blocking a re-import, whose module level is three lines; and `contain_this_process()`
+  hanging, which is three kernel calls that never wait — reasoned, not measured. What is left is a
+  **location** — `spawn.prepare()` and the stretch up to `prepare_this_worker()` — and a candidate
+  outside the interpreter that needs somebody at the machine (`T-092`).
   *(This read "five orphans say it did not … no Windows run has looked", which was true until
-  one looked.)*
+  one looked; then "whatever did happen to them is unexplained", which was true until `T-268`
+  bounded it.)*
 
 ## The rule that keeps this from killing the application
 

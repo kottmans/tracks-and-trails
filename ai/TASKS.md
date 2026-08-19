@@ -13,7 +13,9 @@ control* and kept as a regression test. `T266-R1` is Resolved; `T266-R2` is `T-2
 blocked on **one** thing: `T258-R5`, wiring the orphan scanner to something. `T258-R2` is
 **Resolved at `4ec5747`** — its mechanism question is answered, and the answer cost criterion 2,
 which is closed as unobtainable in that form. `T258-R6` is Resolved at `e3c259a`.
-**`T-268` is the open question `T-266` left**, and it is larger than the one it closed.
+**`T-268` is answered and In Review**: the region is measured on Windows, the outer Job is
+measured to reap it, and *what* blocked the five is recorded as not identifiable with the four
+eliminations behind that.
 
 *(**Rewritten 2026-08-18, because appending had made it self-contradicting.** In one paragraph this
 header said `T-259` was Complete *and* awaiting re-review, and that `T-258`'s Windows run existed
@@ -148,6 +150,265 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 **The exit review is complete**: approved at `ccdbd0f` on 2026-08-09, all six criteria met, after
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
+
+### T-268 — The reproduced parent-death path does not explain the five orphans
+
+**Status:** **In Review — measured on Windows in run `32209108844`, and the answer to *what
+blocked them* is that it cannot be identified.** That is the third acceptance criterion taken
+deliberately, not a shortfall dressed up: the region is bounded, four candidates are eliminated,
+and what survives is outside the interpreter.
+
+**The three-way discrimination, all on `STARBASE`, all in one run:**
+
+| Where the child is stopped | Outer Job | Outcome |
+|---|---|---|
+| **Before** the payload read | suppressed | **dies** — `T-266`, its own test |
+| **Past** the payload read | suppressed | **survives, one thread** — the five's signature |
+| **Past** the payload read | present | **reaped** |
+
+**Row two is the finding**: the signature of the five — a survivor of its parent's death with a
+single thread, past a payload read it is measured to have completed — is reproducible on Windows,
+and **only** on that side of the read. Row one is the same kill with the opposite outcome, which
+is what makes this a discrimination rather than a demonstration.
+
+**Row three is what it means for the product, and it is the first evidence of it**: `T-258`'s outer
+Job **does** reap a child in the region the orphans were actually in. The fix was built for a
+window that turned out to close itself (`T-266`), and it covers the window they came through
+anyway. **That is luck being recorded as luck** — the reasoning that produced the fix was wrong and
+is documented as wrong in `T-258` — but the coverage is measured.
+
+**Filed 2026-08-18 from `T-266`'s measurement, which closed one question by opening this one.** `T-258` was filed from five real processes found alive on `STARBASE` eleven
+and twelve days after the run that spawned them, and it reproduced *a* pre-bootstrap window and
+closed it. `T-266` has now measured that **that window closes itself on Windows**: a child stopped
+there dies when its parent is killed, with no application Job handle held by the driver even
+though its inherited Job membership remains, exit code 1 — run `32172384737`. **So the reproduced
+parent-death path does not explain the five.** Either they were blocked somewhere else, or
+something prevented the self-closure in their case, and nothing distinguishes those.
+**Owner:** Implementer
+**Priority:** High — five blocked interpreters accumulated unnoticed for twelve days on the
+machine that runs every Windows job, and the explanation the project has for them is now known to
+be the wrong one. The *fix* is unaffected; the *understanding* is what is missing
+**Phase:** Phase 4 maintenance. It gates nothing in the centre column
+**Depends on:** nothing. `T-258`'s seam and `T-266`'s instrument both already exist
+**Relevant context:** `T-258` (the five observations, and `threads=1`), `T-266`
+(`driver_holds_a_job`, the run), `tests/integration/_bootstrap_window.py`,
+`downloader/process_tree.py`, `popen_spawn_win32`, `tools/orphan_scan.py`, `T-092` (crash dumps
+on `STARBASE`, blocked on a person), `OPS-003`
+**Affected surfaces:** none in `src/`, as filed — this is a diagnosis and it has stayed one.
+`tests/integration/_bootstrap_window.py` and `tests/integration/test_manager.py` carry the
+measurement
+**Risk:** Medium, and mostly the risk of answering it badly. The tempting move is to declare the
+orphans explained by whatever the next Windows run happens to show; five processes with
+`threads=1` and a known creation time are a narrow enough observation to be matched against a
+candidate rather than have one fitted to them
+
+#### What is known, and it is not much
+
+| | |
+|---|---|
+| The five | `python.exe -c "…spawn_main(parent_pid=…, pipe_handle=…)" --multiprocessing-fork` |
+| Threads each | **1** — so none reached `prepare_this_worker()`'s watchdog |
+| CPU consumed | ~2 seconds each over twelve days — blocked, not spinning |
+| Parents | all gone; three of the five shared parent `9176`, created in the same second |
+| The reproduced parent-death path | **closes itself** on Windows (`T-266`), so by itself it does not explain the five |
+
+**`threads=1` still bounds it** to before the watchdog, which leaves the payload read or
+`contain_this_process()` itself. `T-266` narrowed one of those and not the other: a child killed
+*while the parent dies* raises out of its bootstrap, but that says nothing about a child whose
+parent is alive and merely never writes, or one whose pipe handle stayed open somewhere.
+
+#### What was established here, 2026-08-18
+
+**The five were past their payload read, and that is a bound rather than a diagnosis.** Two
+independent arguments meet at it:
+
+1. **The read cannot hold a survivor, from the source rather than from a run.**
+   `popen_spawn_win32.Popen.__init__` creates the payload pipe with `_winapi.CreatePipe(None, 0)`
+   — `None` security attributes, so **neither handle is inheritable** — and creates the child with
+   `_winapi.CreateProcess(..., None, None, False, ...)`, whose fifth argument is
+   `bInheritHandles=False`. The child obtains the **read** end by duplicating it out of the parent
+   inside `spawn_main`; nothing anywhere duplicates the **write** end. So the parent holds the sole
+   write handle, **no sibling can hold a copy**, and the parent's death closes the pipe by
+   construction. That is candidate 1's handle-duplication form ruled out as something this code
+   cannot produce — not as something a run failed to show. `T-266` measured the same conclusion
+   from the other direction.
+2. **`threads=1` bounds them before the watchdog**, as it always did.
+
+Between those is one region: **the payload read has completed, the target is running, and
+`prepare_this_worker()` has not been called.**
+`test_a_child_past_the_payload_read_carries_the_five_s_signature` stops a real spawned child there
+and reproduces the signature — **survives its parent's death, one thread, payload read
+demonstrably complete**, the read proved by the child writing its marker from *inside* its target,
+which `multiprocessing` does not reach until it has unpickled one. The identical kill on the
+other side of the read produces the opposite outcome
+(`test_a_child_stopped_in_the_window_dies_with_no_outer_job_to_reap_it`), which is what makes the
+pair a discrimination rather than a demonstration.
+
+**Mutation, and it is the useful one**: make the stopped child call `prepare_this_worker()` first
+and the test fails with *"the child reached its target with 2 threads, so this stop point is not
+a candidate for five processes that each had one"*. The thread count is doing the work, and the
+watchdog is the region's far bound.
+
+**`as-the-five-were` suppresses the outer Job because the five predate it** — created 2026-08-04
+and 2026-08-05 against an application that had none. The `with-the-fix` parameter is the current
+application, and on Windows it asserts the child is reaped: **the first evidence that `T-258`'s
+fix covers the region the orphans were actually in**, rather than the region it was built for.
+**That assertion has not run on Windows yet** and is the outstanding measurement — on POSIX
+`contain_this_application()` is a documented no-op, so both parameters measure the same thing
+there and the test says so rather than reading as if they did not.
+
+**What is still not identified, and is not guessed at:** *what* blocked them inside that region.
+It contains `spawn.prepare()` importing the main module, the second `pickle.load` rebuilding
+whatever the payload carried, and `contain_this_process()`. ~2 s of CPU is consistent with
+interpreter start and imports and does not separate them. **Three of the five share a parent and
+one second**, which still looks like a single parent-side event and still has no mechanism behind
+it.
+
+#### The answer: no mechanism accounts for the five, and this is what that is based on
+
+**Written as the answer because the criteria ask for it in this form** — *"if it cannot be
+identified, that is written down as the answer, with what was ruled out and how"* — and not because
+the work stopped. Four eliminations, each with its own evidence, are below and in the section after
+this one.
+
+| Ruled out | How |
+|---|---|
+| **Both payload reads** | Same pipe, same `with`, parent holds the sole write handle. Measured (`T-266`, run `32172384737`) and structural (`CreatePipe(None, 0)`, `bInheritHandles=False`) |
+| **A second process holding the write end** | Cannot exist: neither pipe handle is inheritable and the child is created with `bInheritHandles=False` |
+| **The application's entry blocking on re-import** | Inspection: `__main__.py`'s module level is three lines, everything else behind `if __name__ == "__main__"` |
+| **`contain_this_process()` hanging** | Three kernel calls that return or fail and never wait. **Reasoned, not measured** |
+
+**What remains is a location, not a mechanism**: `prepare()` between the two reads, and the stretch
+from the second read to `prepare_this_worker()`. The measurement above proves a process *can* be
+stopped there, survive its parent and show one thread — it does not say what stopped the five.
+
+**The strongest surviving candidate is outside the interpreter and cannot be settled from inside
+it.** A suspended process presents as one thread, CPU accumulated then frozen, alive indefinitely,
+indifferent to its parent's death; three siblings entering that state in one second is what
+synchronous scan-on-process-creation looks like. **Nothing points at it.** It is named because it
+is what the eliminations leave, and confirming or refuting it needs somebody at the machine —
+`T-092`, which is Blocked on exactly that and is the precedent this criterion names.
+
+**Why this is not left as an open bullet.** `T-258` carried *"which gap they fell through is
+bounded, not identified"* for two days while three separate records asserted three different
+mechanisms. The bound is now much tighter and the eliminations are written down, so the next person
+starts from four closed doors rather than from the same question.
+
+**What would reopen it, stated so that it is recognisable**: another orphan on `STARBASE` with
+**one** thread. The one found on the maintainer's Linux machine on 2026-08-18 has two and 145 s of
+CPU, and is recorded below as a different class rather than as a lead.
+
+#### What is ruled out, and how — the region narrowed again, 2026-08-18
+
+**The second `pickle.load` goes with the first, and that was missed until the source was read
+properly.** `multiprocessing.spawn._main` is five lines:
+
+    with os.fdopen(fd, 'rb', closefd=True) as from_parent:
+        preparation_data = reduction.pickle.load(from_parent)
+        prepare(preparation_data)
+        self = reduction.pickle.load(from_parent)
+    return self._bootstrap(parent_sentinel)
+
+**Both loads read the same pipe, inside the same `with`.** So the elimination that `T-266`
+measured against the first applies unchanged to the second: a child blocked in either dies when
+its parent does, because the parent holds the sole write handle. That leaves **`prepare()` between
+them** as the only survivable slot before `_bootstrap`, plus everything after the `with` closes.
+
+**`prepare()`'s blocking candidate is eliminated by inspection.** Its expensive step is
+`_fixup_main_from_path`, which re-imports the parent's main module under the name `__mp_main__`.
+For this application that module is `src/tracks_and_trails/__main__.py`, and **its entire module
+level is `import multiprocessing`, `import sys` and `freeze_support()`** — everything else,
+including the single-instance handling, sits behind `if __name__ == "__main__"`, which a re-import
+as `__mp_main__` does not run. **So the application's own entry cannot block a child there.**
+*(Worth stating because the opposite would have been an excellent fit: three siblings blocking in
+one second on one shared lock is exactly what a single-instance mechanism at import time looks
+like. It is not what this code does.)*
+
+**`contain_this_process()` does not hang, and this one is reasoned rather than measured.** Its
+Windows body is `CreateJobObjectW`, `SetInformationJobObject` and `AssignProcessToJobObject` — three
+calls that return or fail, none of which waits on anything. A failure is recorded in
+`containment_error` and returns `False`. It can be wrong; it cannot be where a process spends
+twelve days. **Flagged as an argument, not a run**, because `T-019` did once see this boundary fail
+silently and an argument is what was wrong then.
+
+**What that leaves, and it is not a mechanism.** `prepare()`'s remaining work and the stretch
+between the second load and `prepare_this_worker()`, with nothing in either identified as able to
+block. **~2 s of CPU is consistent with `_fixup_main_from_path` importing the parent's main module
+and does not discriminate anything** — for a `pytest` parent, which is what `STARBASE` runs, that
+import is `pytest` itself.
+
+**The candidate consistent with every observation is the one outside the application.** A
+**suspended** process presents as exactly what was seen: one thread, CPU accumulated and then
+frozen, alive indefinitely, indifferent to its parent's death. **Three siblings entering that state
+in the same second is what synchronous scan-on-process-creation looks like**, and it is the only
+remaining candidate that explains the shared second without a mechanism inside the interpreter.
+**Nothing here establishes it.** It is named because it survives the eliminations above, not
+because anything points at it, and confirming or refuting it needs the machine — which is
+`T-092`'s territory and `OPS-003`'s constraint.
+
+#### A live orphan on the maintainer's Linux machine — found 2026-08-18, and **not** one of the five
+
+Found by running `tools/orphan_scan.py` while wiring it for `T258-R5`. **The first non-synthetic
+find this tool has made**, which is worth recording as evidence that the instrument works outside
+its own known-positive:
+
+| | |
+|---|---|
+| Created | **2026-08-16 01:12:15**, found 2026-08-18 — **2d 20h** |
+| Command line | `spawn_main(tracker_fd=16, pipe_handle=40) --multiprocessing-fork` |
+| **Threads** | **2** |
+| CPU | **145 s** (92.7 user, 52.8 system) |
+| Parent | `2139`, gone |
+| State | sleeping, 30 MB |
+
+**Its signature is the opposite of the five's on both discriminating fields**, and that is why it
+is filed here rather than folded in: **two threads**, so it *did* reach
+`_exit_when_the_parent_does()` and has a watchdog, and **145 seconds of CPU** against their ~2.
+So it is an orphan of a different class — one that installed the guard and outlived its parent
+anyway — on the platform where `contain_this_application()` is a documented no-op.
+
+**Nothing here explains it and nothing here should be read as trying to.** It is recorded because
+it is a live counterexample to *"the watchdog closes this"*, on a machine somebody can still
+inspect, and because a find that goes unwritten is the failure `T-258` was filed from. **Not
+reaped** — `T258-R4` makes that a person's decision with the report in front of them, and this
+one is still running as of the commit that records it.
+
+#### Candidates worth separating, and where each now stands
+
+1. **The parent did not die the way the test kills it.** `T-266`'s driver is `TerminateProcess`'d,
+   which closes every handle at once. A parent that hangs, or that exits while some other process
+   holds a duplicate of the write handle, leaves a pipe that never signals EOF — and the child
+   blocks exactly as observed. **Three of the five share a parent and a second**, which is what a
+   single parent-side event looks like. *(**The handle-duplication half is ruled out above**: the
+   pipe's handles are non-inheritable and the child is created with `bInheritHandles=False`, so
+   there is no path by which a second process comes to hold the write end. The
+   parent-that-hangs half is untouched by that and remains open — but it no longer explains a
+   survivor, because a hung parent that is later killed still closes the pipe.)*
+2. **The block is not the payload read at all.** `contain_this_process()` is the other side of the
+   `threads=1` bound, and it is a `ctypes` call into `kernel32` that `T-019` has already seen fail
+   silently once at this boundary.
+3. **Something outside the application.** Windows Defender, a debugger attach, or a suspended
+   process would all present as one blocked thread and no CPU.
+
+#### Acceptance criteria
+
+- **The five are matched against a candidate, not a candidate against the five.** Whatever is
+  proposed must account for `threads=1`, ~2 s of CPU over twelve days, and three children of one
+  parent in one second
+- **Measured on Windows** — the standard `T-258` and `T-266` were both held to
+- **If it cannot be identified, that is written down as the answer** with what was ruled out and
+  how, rather than left as an open bullet in `T-258`. `T-092` is the precedent for a diagnosis
+  that needs a person at the machine, and this may be another
+- **`T-258`'s and `process_tree.py`'s records say which mechanism accounts for the five**, or say
+  that none does
+
+#### Out of scope
+
+- Removing or weakening `contain_this_application()`. The outer Job is defence in depth against an
+  observation nobody has explained, which is the strongest reason to keep it, not to drop it
+- `T-266`'s decision. That is measured and closed; this is the question it left
+
+---
 
 ### T-256 — Rule the fifteen options no decision covers
 
@@ -7562,169 +7823,6 @@ while each said Ready: the exact status-versus-section class `COORD-R5` through 
 reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
-
-### T-268 — The reproduced parent-death path does not explain the five orphans
-
-**Status:** **In Progress — the region is bounded, 2026-08-18, and the mechanism inside it is
-not identified.** The five were **past their payload read**: that read cannot hold a survivor,
-because `popen_spawn_win32` creates the pipe non-inheritable and the child with
-`bInheritHandles=False`, so the parent holds the sole write handle and its death closes it by
-construction — and `threads=1` still bounds them before the watchdog.
-`test_a_child_past_the_payload_read_carries_the_five_s_signature` reproduces the signature in that
-region on POSIX — survivor, one thread, read demonstrably complete — and the identical kill on the
-other side of the read kills the child, which is the discrimination.
-**Two things are outstanding**: the Windows run, which is the standard `T-258` and `T-266` were
-both held to, and *what* blocks a child inside the region. **Filed 2026-08-18 from `T-266`'s
-measurement, which closed one question by opening this one.** `T-258` was filed from five real processes found alive on `STARBASE` eleven
-and twelve days after the run that spawned them, and it reproduced *a* pre-bootstrap window and
-closed it. `T-266` has now measured that **that window closes itself on Windows**: a child stopped
-there dies when its parent is killed, with no application Job handle held by the driver even
-though its inherited Job membership remains, exit code 1 — run `32172384737`. **So the reproduced
-parent-death path does not explain the five.** Either they were blocked somewhere else, or
-something prevented the self-closure in their case, and nothing distinguishes those.
-**Owner:** Implementer
-**Priority:** High — five blocked interpreters accumulated unnoticed for twelve days on the
-machine that runs every Windows job, and the explanation the project has for them is now known to
-be the wrong one. The *fix* is unaffected; the *understanding* is what is missing
-**Phase:** Phase 4 maintenance. It gates nothing in the centre column
-**Depends on:** nothing. `T-258`'s seam and `T-266`'s instrument both already exist
-**Relevant context:** `T-258` (the five observations, and `threads=1`), `T-266`
-(`driver_holds_a_job`, the run), `tests/integration/_bootstrap_window.py`,
-`downloader/process_tree.py`, `popen_spawn_win32`, `tools/orphan_scan.py`, `T-092` (crash dumps
-on `STARBASE`, blocked on a person), `OPS-003`
-**Affected surfaces:** none in `src/`, as filed — this is a diagnosis and it has stayed one.
-`tests/integration/_bootstrap_window.py` and `tests/integration/test_manager.py` carry the
-measurement
-**Risk:** Medium, and mostly the risk of answering it badly. The tempting move is to declare the
-orphans explained by whatever the next Windows run happens to show; five processes with
-`threads=1` and a known creation time are a narrow enough observation to be matched against a
-candidate rather than have one fitted to them
-
-#### What is known, and it is not much
-
-| | |
-|---|---|
-| The five | `python.exe -c "…spawn_main(parent_pid=…, pipe_handle=…)" --multiprocessing-fork` |
-| Threads each | **1** — so none reached `prepare_this_worker()`'s watchdog |
-| CPU consumed | ~2 seconds each over twelve days — blocked, not spinning |
-| Parents | all gone; three of the five shared parent `9176`, created in the same second |
-| The reproduced parent-death path | **closes itself** on Windows (`T-266`), so by itself it does not explain the five |
-
-**`threads=1` still bounds it** to before the watchdog, which leaves the payload read or
-`contain_this_process()` itself. `T-266` narrowed one of those and not the other: a child killed
-*while the parent dies* raises out of its bootstrap, but that says nothing about a child whose
-parent is alive and merely never writes, or one whose pipe handle stayed open somewhere.
-
-#### What was established here, 2026-08-18
-
-**The five were past their payload read, and that is a bound rather than a diagnosis.** Two
-independent arguments meet at it:
-
-1. **The read cannot hold a survivor, from the source rather than from a run.**
-   `popen_spawn_win32.Popen.__init__` creates the payload pipe with `_winapi.CreatePipe(None, 0)`
-   — `None` security attributes, so **neither handle is inheritable** — and creates the child with
-   `_winapi.CreateProcess(..., None, None, False, ...)`, whose fifth argument is
-   `bInheritHandles=False`. The child obtains the **read** end by duplicating it out of the parent
-   inside `spawn_main`; nothing anywhere duplicates the **write** end. So the parent holds the sole
-   write handle, **no sibling can hold a copy**, and the parent's death closes the pipe by
-   construction. That is candidate 1's handle-duplication form ruled out as something this code
-   cannot produce — not as something a run failed to show. `T-266` measured the same conclusion
-   from the other direction.
-2. **`threads=1` bounds them before the watchdog**, as it always did.
-
-Between those is one region: **the payload read has completed, the target is running, and
-`prepare_this_worker()` has not been called.**
-`test_a_child_past_the_payload_read_carries_the_five_s_signature` stops a real spawned child there
-and reproduces the signature — **survives its parent's death, one thread, payload read
-demonstrably complete**, the read proved by the child writing its marker from *inside* its target,
-which `multiprocessing` does not reach until it has unpickled one. The identical kill on the
-other side of the read produces the opposite outcome
-(`test_a_child_stopped_in_the_window_dies_with_no_outer_job_to_reap_it`), which is what makes the
-pair a discrimination rather than a demonstration.
-
-**Mutation, and it is the useful one**: make the stopped child call `prepare_this_worker()` first
-and the test fails with *"the child reached its target with 2 threads, so this stop point is not
-a candidate for five processes that each had one"*. The thread count is doing the work, and the
-watchdog is the region's far bound.
-
-**`as-the-five-were` suppresses the outer Job because the five predate it** — created 2026-08-04
-and 2026-08-05 against an application that had none. The `with-the-fix` parameter is the current
-application, and on Windows it asserts the child is reaped: **the first evidence that `T-258`'s
-fix covers the region the orphans were actually in**, rather than the region it was built for.
-**That assertion has not run on Windows yet** and is the outstanding measurement — on POSIX
-`contain_this_application()` is a documented no-op, so both parameters measure the same thing
-there and the test says so rather than reading as if they did not.
-
-**What is still not identified, and is not guessed at:** *what* blocked them inside that region.
-It contains `spawn.prepare()` importing the main module, the second `pickle.load` rebuilding
-whatever the payload carried, and `contain_this_process()`. ~2 s of CPU is consistent with
-interpreter start and imports and does not separate them. **Three of the five share a parent and
-one second**, which still looks like a single parent-side event and still has no mechanism behind
-it.
-
-#### A live orphan on the maintainer's Linux machine — found 2026-08-18, and **not** one of the five
-
-Found by running `tools/orphan_scan.py` while wiring it for `T258-R5`. **The first non-synthetic
-find this tool has made**, which is worth recording as evidence that the instrument works outside
-its own known-positive:
-
-| | |
-|---|---|
-| Created | **2026-08-16 01:12:15**, found 2026-08-18 — **2d 20h** |
-| Command line | `spawn_main(tracker_fd=16, pipe_handle=40) --multiprocessing-fork` |
-| **Threads** | **2** |
-| CPU | **145 s** (92.7 user, 52.8 system) |
-| Parent | `2139`, gone |
-| State | sleeping, 30 MB |
-
-**Its signature is the opposite of the five's on both discriminating fields**, and that is why it
-is filed here rather than folded in: **two threads**, so it *did* reach
-`_exit_when_the_parent_does()` and has a watchdog, and **145 seconds of CPU** against their ~2.
-So it is an orphan of a different class — one that installed the guard and outlived its parent
-anyway — on the platform where `contain_this_application()` is a documented no-op.
-
-**Nothing here explains it and nothing here should be read as trying to.** It is recorded because
-it is a live counterexample to *"the watchdog closes this"*, on a machine somebody can still
-inspect, and because a find that goes unwritten is the failure `T-258` was filed from. **Not
-reaped** — `T258-R4` makes that a person's decision with the report in front of them, and this
-one is still running as of the commit that records it.
-
-#### Candidates worth separating, and where each now stands
-
-1. **The parent did not die the way the test kills it.** `T-266`'s driver is `TerminateProcess`'d,
-   which closes every handle at once. A parent that hangs, or that exits while some other process
-   holds a duplicate of the write handle, leaves a pipe that never signals EOF — and the child
-   blocks exactly as observed. **Three of the five share a parent and a second**, which is what a
-   single parent-side event looks like. *(**The handle-duplication half is ruled out above**: the
-   pipe's handles are non-inheritable and the child is created with `bInheritHandles=False`, so
-   there is no path by which a second process comes to hold the write end. The
-   parent-that-hangs half is untouched by that and remains open — but it no longer explains a
-   survivor, because a hung parent that is later killed still closes the pipe.)*
-2. **The block is not the payload read at all.** `contain_this_process()` is the other side of the
-   `threads=1` bound, and it is a `ctypes` call into `kernel32` that `T-019` has already seen fail
-   silently once at this boundary.
-3. **Something outside the application.** Windows Defender, a debugger attach, or a suspended
-   process would all present as one blocked thread and no CPU.
-
-#### Acceptance criteria
-
-- **The five are matched against a candidate, not a candidate against the five.** Whatever is
-  proposed must account for `threads=1`, ~2 s of CPU over twelve days, and three children of one
-  parent in one second
-- **Measured on Windows** — the standard `T-258` and `T-266` were both held to
-- **If it cannot be identified, that is written down as the answer** with what was ruled out and
-  how, rather than left as an open bullet in `T-258`. `T-092` is the precedent for a diagnosis
-  that needs a person at the machine, and this may be another
-- **`T-258`'s and `process_tree.py`'s records say which mechanism accounts for the five**, or say
-  that none does
-
-#### Out of scope
-
-- Removing or weakening `contain_this_application()`. The outer Job is defence in depth against an
-  observation nobody has explained, which is the strongest reason to keep it, not to drop it
-- `T-266`'s decision. That is measured and closed; this is the question it left
-
----
 
 ### T-269 — Make the formatter and type-checker versions reproducible
 

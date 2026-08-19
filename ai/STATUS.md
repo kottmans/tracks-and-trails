@@ -789,6 +789,56 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
+## 2026-08-19 (T-268, answered): the region is measured on Windows, and the mechanism is not identifiable
+
+**Run `32209108844`, `windows desktop`, green: 3691 passed, 30 skipped, 35 deselected.** Three
+stops, one kill each, all on `STARBASE`:
+
+| Where the child is stopped | Outer Job | Outcome |
+|---|---|---|
+| **Before** the payload read | suppressed | **dies** |
+| **Past** the payload read | suppressed | **survives, one thread** |
+| **Past** the payload read | present | **reaped** |
+
+**Row two is the five's signature and it only exists on that side of the read.** Row one is the
+identical kill with the opposite outcome, which is what makes the pair a discrimination.
+
+**Row three is the product result: `T-258`'s outer Job reaps a child in the region the orphans were
+actually in.** The fix was built for a window that closes itself, and covers the one they came
+through anyway. **That is luck, and it is recorded as luck** — the reasoning behind the fix was
+wrong, `T-266` measured it wrong, and `T-258` says so — but the coverage is now measured rather
+than assumed.
+
+**The answer to *what blocked them* is that it cannot be identified**, written down in that form
+because `T-268`'s third criterion asks for it and because the alternative is another open bullet
+sitting in three records saying three different things, which is what `T-258` did for two days.
+**Four eliminations, each with its evidence**: both payload reads (measured and structural — the
+parent holds the sole write handle on a non-inheritable pipe); a second process holding that
+handle (impossible, `bInheritHandles=False`); the application's entry blocking a re-import
+(inspection — its module level is three lines); and `contain_this_process()` hanging (three kernel
+calls that never wait — **reasoned, not measured**, and flagged as such because `T-019` once saw
+that boundary fail silently and an argument is what was wrong then).
+
+**What is left is a location, not a mechanism** — `spawn.prepare()` and the stretch to
+`prepare_this_worker()` — and the one candidate that survives everything is **outside the
+interpreter**: a suspended process presents as one thread, CPU accumulated then frozen, alive
+indefinitely, indifferent to its parent's death, and three siblings entering that in one second is
+what synchronous scan-on-process-creation looks like. **Nothing points at it.** Settling it needs
+somebody at the machine, which is `T-092` — Blocked on exactly that, and the precedent the
+criterion names.
+
+**What would reopen it, stated so it is recognisable:** another `STARBASE` orphan with **one**
+thread. The live one found on the maintainer's Linux machine has two and 145 s of CPU, and is
+recorded as a different class rather than as a lead.
+
+**`T-259` warned at 85.0% — 33.9 minutes of 40.** The series is now 32.3, 35.0, 32.3, 33.9, and
+this run added seven tests. The reporter is doing its job; `T-267` is the task that stops the
+threshold itself drifting.
+
+**`STARBASE orphans` was skipped, as designed**, and that is the first useful thing it has said:
+the job's condition parsed and evaluated on a real push, restricting it to the nightly. It has
+still never *run*, which is why `T-258`'s criterion 5 stays recorded as wired and unmet.
+
 ## 2026-08-18 (T-268): the five were past their payload read, and what blocked them is still unnamed
 
 **`T-266` left the project without an explanation for its own founding observation.** The window
