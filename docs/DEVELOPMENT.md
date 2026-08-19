@@ -229,6 +229,13 @@ python -m pip install -e ".[dev]"
 `[dev]` adds ruff, mypy, pytest, pytest-qt and pytest-xdist. Add `[build]` when you need
 PyInstaller.
 
+**Ruff and mypy are pinned exactly, and re-running the install is how you stay on them**
+(`T-269`). They are gates rather than libraries: a different formatter version fails CI on code
+your own `ruff format --check` called clean, and that has cost this project a whole Windows
+measurement round. Everything else in `[dev]` is a floor, so this line is cheap to repeat — run it
+again after a pull that touches `pyproject.toml`, and `pytest tests/unit/test_toolchain_versions.py`
+tells you in a second whether your environment matches what the repository declares.
+
 Verify:
 
 ```bash

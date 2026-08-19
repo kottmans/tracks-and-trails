@@ -316,6 +316,15 @@ jobs:
             # not a reason to fail the step that records it.
             command -v ffmpeg || echo "ffmpeg: NOT FOUND"
             ffmpeg -version 2>&1 | head -1 || true
+            # `T-269`: the two versions that decide whether a change may land, on their own
+            # lines. `pip list` already contains them, buried among sixty others — and comparing
+            # two runs' formatter versions was the thing nobody could do quickly when `T-266`'s
+            # round was lost to a 0.16.0/0.16.3 split. Neither number is written here; both are
+            # whatever `pyproject.toml`'s exact pins installed, and
+            # `tests/unit/test_toolchain_versions.py` fails if they are not.
+            echo "--- gates ---"
+            ruff --version
+            mypy --version
             echo "--- installed ---"
             python -m pip list
           } | tee "reports/environment.txt"
@@ -734,6 +743,15 @@ jobs:
             echo "--- ffmpeg ---"
             command -v ffmpeg || echo "ffmpeg: NOT FOUND — this run measured the no-ffmpeg configuration"
             ffmpeg -version 2>&1 | head -1 || true
+            # `T-269`: the two versions that decide whether a change may land, on their own
+            # lines. `pip list` already contains them, buried among sixty others — and comparing
+            # two runs' formatter versions was the thing nobody could do quickly when `T-266`'s
+            # round was lost to a 0.16.0/0.16.3 split. Neither number is written here; both are
+            # whatever `pyproject.toml`'s exact pins installed, and
+            # `tests/unit/test_toolchain_versions.py` fails if they are not.
+            echo "--- gates ---"
+            ruff --version
+            mypy --version
             echo "--- installed ---"
             python -m pip list
           } | tee "reports/environment.txt"

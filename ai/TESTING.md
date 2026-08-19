@@ -62,6 +62,12 @@ failures (`AGENTS.md` §8).
 Established by `T-001`; kept in sync here as the authoritative list.
 `docs/DEVELOPMENT.md` may repeat them as convenience shortcuts but must not redefine policy.
 
+**Ruff and mypy have to be the versions `pyproject.toml` pins** (`T-269`). They are exact rather
+than floors because they decide whether a change lands, and two versions are two gates: `T-266`
+lost a `STARBASE` round to a checkout formatting at Ruff 0.16.0 while CI rebuilt at 0.16.3.
+`pip install -e ".[dev]"` reaches them; `pytest tests/unit/test_toolchain_versions.py` says whether
+the environment you are about to report a result from actually did.
+
 ```bash
 ruff check .                 # lint
 ruff format --check .        # formatting

@@ -44,7 +44,7 @@ condition has proved on a real event. `T-258`'s criterion 5 is recorded **wired,
 mechanism that has never executed is a test rather than a result (`T258-R2`).
 
 **`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
-`T-263` and `T-268` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
+`T-263`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
 `T258-R5`'s first execution alone. `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining
 runner-inventory prose is `T-265`; `T-266`'s unreproducible toolchain is `T-269`.
 
@@ -805,6 +805,44 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-19 (T-269): the two gates are pinned, and the environment is checked against the pin
+
+**`ruff==0.16.3` and `mypy==2.3.1` in the `dev` extra, exact rather than floors.** A floor is
+satisfied by whatever is already installed, so `pip install -e ".[dev]"` upgraded nothing and a
+green local formatter said nothing about the CI formatter. `T-266` paid for that with a whole
+`STARBASE` round — the checkout formatted at 0.16.0, CI rebuilt at 0.16.3, and the two disagree
+about a multiple-exception clause — spent before the measurement the round existed to take could
+run. `pyproject.toml` is the only place either version is written; CI names neither.
+
+**The pin fixes the install, and an install nobody ran is the other half.** A checkout from before
+the pin, a venv built against an older `pyproject.toml`, a tool installed globally and shadowing
+the venv: in each the declaration is right and the running tool is not.
+`tests/unit/test_toolchain_versions.py` compares `importlib.metadata` against the pins **parsed out
+of `pyproject.toml`** — never a copy of the numbers, because a second place for a version is this
+task's own defect reproduced inside its gate. It also asserts that both are still `==` at all, so
+relaxing one back to a floor fails loudly rather than leaving the comparison with nothing to
+compare.
+
+**Measured, not argued.** Ruff was downgraded to 0.16.0 in a real environment: the new test failed
+naming both versions, `pip install -e ".[dev]"` reported *"Uninstalling ruff-0.16.0 … Successfully
+installed ruff-0.16.3"*, and it passed. **The same install pulled in `pytest-xdist`, declared since
+`T-123` and absent** — this checkout had been running the suite serially against a manifest that
+names it, which is the identical class of defect one dependency over and was invisible until an
+install actually reconciled the environment with the file.
+
+**Both environment artifacts now carry a `--- gates ---` block** with `ruff --version` and
+`mypy --version` on their own lines. `pip list` already held them sixty entries deep, and comparing
+two runs' formatter versions quickly is exactly what nobody could do when the round was lost.
+
+**Windows needs no separate proof of the mechanism**: the persistent virtualenv's cache key is
+`sha256sum pyproject.toml`, so pinning re-keys it and `windows desktop` rebuilds rather than
+keeping the old tool. The first Windows run after this lands is the confirmation, and its
+`--- gates ---` block is where to read it.
+
+**All four gates pass at the declared versions** — `ruff check .`, `ruff format --check .` (202
+files), bare `mypy` and `mypy --platform win32` (154 source files each) — and `tests/unit` is
+**2247 passed, 15 skipped**.
 
 ## 2026-08-19 (T-263): a gate that was patching a class the manager never touches
 

@@ -40,7 +40,20 @@ dev = [
     # own QAccessible view, which would be Qt reporting on itself. Windows-only by nature.
     # Dev-only tooling, so no DECISIONS entry is required (AGENTS.md §7).
     "comtypes>=1.4; sys_platform == 'win32'",
-    "mypy>=1.14",
+    # **Exact, not a floor** (`T-269`, from `T266-R2`). A floor is satisfied by whatever is
+    # already installed, so `pip install -e ".[dev]"` upgrades nothing in an existing
+    # environment and a green local gate says nothing about the CI gate. `T-266` lost a whole
+    # `STARBASE` round to that: the checkout formatted at Ruff 0.16.0 while CI rebuilt at
+    # 0.16.3, and the two disagree about a multiple-exception clause. `==` is what makes the
+    # install reach the version rather than accept an older one.
+    #
+    # **This is the one place either version is declared.** CI names neither; it installs this
+    # extra. `tests/unit/test_toolchain_versions.py` fails when the running interpreter's tools
+    # do not match what is written here, which is what turns the declaration into a gate rather
+    # than a request. Bumping one is a deliberate edit in one file — and it re-keys the Windows
+    # job's persistent virtualenv, whose cache key is this file's hash, so the runner rebuilds
+    # instead of quietly keeping the old tool.
+    "mypy==2.3.1",
     # Used only by packaging/frozen_smoke.py, to assert no process survives the T-020 frozen
     # run. Dev-only tooling, so no DECISIONS entry is required (AGENTS.md §7).
     "psutil>=6.0",
@@ -61,7 +74,8 @@ dev = [
     "PyYAML>=6.0",
     # Stubs for the above; `mypy` covers `tests`, so an unstubbed import is an error there.
     "types-PyYAML>=6.0",
-    "ruff>=0.9",
+    # Exact for the reason given at `mypy` above — this is the version that split.
+    "ruff==0.16.3",
 ]
 build = ["pyinstaller>=6.21"]
 

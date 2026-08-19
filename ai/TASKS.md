@@ -485,6 +485,68 @@ policy is unchanged
 - Changing the Job-object design, the three current spawn callers, or T-258's Windows evidence
 - General Python data-flow analysis for arbitrary process factories and aliases
 
+### T-269 — Make the formatter and type-checker versions reproducible
+
+**Status:** **In Review — built 2026-08-19. `ruff==0.16.3` and `mypy==2.3.1` in the `dev` extra,
+and a test that fails when the environment is not on them.** The pins are the canonical source and
+CI names neither version; it installs the extra. What the pins alone do not cover is an environment
+nobody reinstalled — a checkout from before the pin, a venv built against an older
+`pyproject.toml`, a tool installed globally and shadowing the venv — where the declaration is right
+and the running tool is not, which is exactly the state that was expensive. So
+`tests/unit/test_toolchain_versions.py` compares `importlib.metadata` against the pins **parsed out
+of `pyproject.toml`**, never a copy of the numbers: a test carrying its own copy would be the
+second place a version lives, which is this task's own defect reproduced inside its gate.
+
+**Criterion 2 is measured rather than argued.** Ruff was downgraded to 0.16.0 in a real
+environment; the new test failed naming both versions, `pip install -e ".[dev]"` then reported
+*"Uninstalling ruff-0.16.0 … Successfully installed ruff-0.16.3"*, and the test passed. **That
+install also pulled in `pytest-xdist`, which was declared and absent** — the local environment had
+been running the suite serially against a manifest that names it since `T-123`.
+
+**The `--- gates ---` block in both environment artifacts** prints `ruff --version` and
+`mypy --version` on their own lines. `pip list` already carried them, sixty entries deep, and
+comparing two runs' formatter versions quickly was precisely what nobody could do when `T-266`'s
+round was lost.
+
+**Windows is not measured and the mechanism is why it does not need a separate proof**: the
+persistent virtualenv's cache key is `sha256sum pyproject.toml`, so pinning re-keys it and that
+job rebuilds rather than keeping the old tool. The first Windows run after this lands is the
+confirmation.
+
+**All four gates pass at the declared versions**: `ruff check .`, `ruff format --check .` (202
+files), bare `mypy` and `mypy --platform win32` (154 source files each), and `tests/unit` is 2247
+passed, 15 skipped.
+**Owner:** Implementer
+**Priority:** Low — product behavior is unaffected, but a locally green formatter already spent a
+scarce Windows measurement round before the task it was meant to measure could run
+**Phase:** Documentation/tooling maintenance; blocks no product task or phase
+**Depends on:** none
+**Relevant context:** `T266-R2`, `pyproject.toml`'s `dev` extra, `.github/workflows/ci.yml`'s fresh
+and persistent virtualenv paths, `ai/TESTING.md` §3
+**Affected surfaces:** `pyproject.toml` and the development/CI installation path chosen to keep the
+two environments aligned
+**Risk:** Low. The trap is pinning a number in two places or fixing only a fresh install while the
+Windows job deliberately reuses its environment
+
+#### Acceptance criteria
+
+- Ruff and mypy have one canonical version source used by both local setup and CI
+- Installing into an existing environment reaches those versions rather than accepting older
+  already-satisfied floors
+- The Linux and persistent-Windows CI paths still install successfully, and their environment
+  records show the same formatter and type-checker versions
+- `ruff check`, `ruff format --check`, bare `mypy`, and `mypy --platform win32` pass at the declared
+  versions
+
+#### Out of scope
+
+- Reordering the Windows job so the full suite runs before style gates. That spends the long
+  runner slot before reporting a deterministic formatting failure; it does not make the gates
+  reproducible
+- Pinning runtime dependencies or changing their update policy
+
+---
+
 ### T-256 — Rule the fifteen options no decision covers
 
 **Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
@@ -7898,45 +7960,6 @@ while each said Ready: the exact status-versus-section class `COORD-R5` through 
 reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
-
-### T-269 — Make the formatter and type-checker versions reproducible
-
-**Status:** **Ready — filed 2026-08-18 from `T266-R2`.** `T-266` lost one full `STARBASE` round
-because the local checkout ran Ruff 0.16.0 while CI rebuilt at 0.16.3, and the two versions format
-the same multiple-exception clause differently. The checkout also held mypy 2.3.0 while CI used
-2.3.1. `pip install -e ".[dev]"` satisfies the current `ruff>=0.9` and `mypy>=1.14` floors without
-upgrading an existing environment, so a successful install does not make the local and CI gates
-the same gates.
-**Owner:** Implementer
-**Priority:** Low — product behavior is unaffected, but a locally green formatter already spent a
-scarce Windows measurement round before the task it was meant to measure could run
-**Phase:** Documentation/tooling maintenance; blocks no product task or phase
-**Depends on:** none
-**Relevant context:** `T266-R2`, `pyproject.toml`'s `dev` extra, `.github/workflows/ci.yml`'s fresh
-and persistent virtualenv paths, `ai/TESTING.md` §3
-**Affected surfaces:** `pyproject.toml` and the development/CI installation path chosen to keep the
-two environments aligned
-**Risk:** Low. The trap is pinning a number in two places or fixing only a fresh install while the
-Windows job deliberately reuses its environment
-
-#### Acceptance criteria
-
-- Ruff and mypy have one canonical version source used by both local setup and CI
-- Installing into an existing environment reaches those versions rather than accepting older
-  already-satisfied floors
-- The Linux and persistent-Windows CI paths still install successfully, and their environment
-  records show the same formatter and type-checker versions
-- `ruff check`, `ruff format --check`, bare `mypy`, and `mypy --platform win32` pass at the declared
-  versions
-
-#### Out of scope
-
-- Reordering the Windows job so the full suite runs before style gates. That spends the long
-  runner slot before reporting a deterministic formatting failure; it does not make the gates
-  reproducible
-- Pinning runtime dependencies or changing their update policy
-
----
 
 ### T-261 — Make task placement reject duplicate task IDs
 
