@@ -44,7 +44,7 @@ condition has proved on a real event. `T-258`'s criterion 5 is recorded **wired,
 mechanism that has never executed is a test rather than a result (`T258-R2`).
 
 **`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
-`T-263`, `T-265`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
+`T-263`, `T-265`, `T-267`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
 `T258-R5`'s first execution alone. `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining
 runner-inventory prose is `T-265`; `T-266`'s unreproducible toolchain is `T-269`.
 
@@ -805,6 +805,30 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-19 (T-267): the threshold the workflow runs at is now measured, not supplied
+
+**Twelve focused tests were green against a mutated threshold, and that is the whole finding.**
+`T259-R2`: every calculation case hands `report()` a `warn_at` of its own, so changing `main`'s
+`--warn-at-percent` default from 85 to 90 broke nothing. The workflow passes no threshold, which
+means that default **is** the production policy — and nothing measured it.
+
+**The scope offered two fixes and the second is the one that does not create a second copy.**
+Passing `--warn-at-percent 85` from the workflow would put the number in the YAML *and* in a test,
+and the task's own Risk line names pinning a number in two places as the trap. So the threshold is
+pinned by driving `main()` with no threshold argument, at the boundary production crosses.
+
+**Two cases, one either side.** 34.0 of 40 minutes is exactly 85.0% and the comparison is `>=`, so
+it must warn; 33.9 minutes is 84.75% and must not. **Both mutations were run**: a default of 90
+fails the first, 80 fails the second. A single case pins one side and leaves the other free.
+
+**And the default is production configuration only while nothing overrides it**, so a second test
+allows the step to pass `--warn-at-percent` and requires the value to agree if it ever does —
+otherwise the pin would quietly describe a default CI had stopped using, which is this task's own
+defect one move later.
+
+**The 85% policy is unchanged.** What changed is that moving it now fails a test whose message
+names the measurement `T-259` requires to be re-recorded.
 
 ## 2026-08-19 (T-265): the runner table names all ten jobs, and stops guessing at a variable
 

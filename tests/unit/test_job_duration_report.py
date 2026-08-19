@@ -73,6 +73,36 @@ def warning_in(lines: list[str]) -> str | None:
     return next((line for line in lines if WARNING in line), None)
 
 
+#: The threshold the workflow runs at. **Not a second copy of the policy** — the workflow passes
+#: no `--warn-at-percent`, so `main`'s `argparse` default *is* the production value, and
+#: `test_the_step_leaves_the_threshold_at_its_default` is what keeps that true. This constant is
+#: only what the cases below are derived from, and `test_the_default_threshold_is_the_one_the_job
+#: _runs_at` is what compares it to the code (`T-267`).
+DECLARED_THRESHOLD = 85.0
+
+
+def main_lines(minutes: float, capsys: pytest.CaptureFixture[str], *extra: str) -> list[str]:
+    """The reporter driven through `main`, which is the entry point the workflow invokes.
+
+    `T259-R2` is why this exists at all: every calculation case in this file passes `warn_at`
+    to `report()` itself, so a mutation of `main`'s default from 85 to 90 left all twelve green.
+    Those tests prove the arithmetic; only this one goes through the argument the workflow does
+    not pass.
+    """
+    argv = [
+        "--started-at",
+        STARTED.isoformat(),
+        "--bound-minutes",
+        f"{BOUND:g}",
+        "--now",
+        (STARTED + timedelta(minutes=minutes)).isoformat(),
+        *extra,
+    ]
+    exit_code: int = reporter.main(argv)
+    assert exit_code == 0, f"the reporter exited {exit_code}; it must never fail the job"
+    return capsys.readouterr().out.splitlines()
+
+
 def test_a_healthy_run_reports_its_margin_and_says_nothing_else() -> None:
     """The 2026-08-17 measurement — 32 minutes against 40 — must print numbers and not warn.
 
@@ -309,3 +339,58 @@ def test_the_stamp_the_step_reads_is_the_one_the_job_writes() -> None:
     )
 
     assert written < read, "the duration report runs before the stamp is written"
+
+
+def test_the_default_threshold_is_the_one_the_job_runs_at(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`T-267`: the value production uses, pinned at the boundary production crosses.
+
+    **The mutation this exists for**: change `main`'s `--warn-at-percent` default from 85 to 90 and
+    every other test in this file stays green, because they all hand `report()` a threshold
+    themselves. `T259-R2` found exactly that. The workflow hands it nothing, so the default *is*
+    the configuration, and until now nothing measured it.
+
+    Two cases, one either side of the line, both driven through `main` with no threshold argument:
+
+    - **34.0 of 40 minutes is 85.0%**, and the comparison is `>=`, so this must warn. Raising the
+      default to anything above 85 makes it silent and fails here.
+    - **33.9 minutes is 84.75%** and must not. Lowering the default below 85 makes it warn and
+      fails here.
+
+    So the pair fixes the threshold from both sides rather than asserting it is *at least* strict
+    enough, which a single case would.
+    """
+    at_the_mark = main_lines(DECLARED_THRESHOLD / 100 * BOUND, capsys)
+    just_below = main_lines(33.9, capsys)
+
+    assert warning_in(at_the_mark) is not None, (
+        f"a job at exactly {DECLARED_THRESHOLD:g}% of its bound did not warn, so the threshold "
+        f"`main` defaults to is above {DECLARED_THRESHOLD:g}. The workflow passes no "
+        "--warn-at-percent, so that default is the production policy and T-259's warning now "
+        "fires later than the decision says."
+    )
+    assert warning_in(just_below) is None, (
+        f"a job at 84.75% warned, so `main`'s default threshold is below {DECLARED_THRESHOLD:g}. "
+        "A warning that fires under the mark spends the signal it exists to preserve."
+    )
+
+
+def test_the_step_leaves_the_threshold_at_its_default() -> None:
+    """The other half: the default is only production configuration while nothing overrides it.
+
+    If the step ever starts passing `--warn-at-percent`, the test above stops describing what CI
+    does — it would be pinning a default the workflow no longer uses, which is the same shape of
+    silent drift `T-267` was filed to close. This allows the override to exist, and requires it to
+    agree.
+    """
+    step = step_containing(windows_desktop_job(), SCRIPT)
+    override = re.search(r"--warn-at-percent\s+(\d+(?:\.\d+)?)", "\n".join(step))
+
+    if override is None:
+        return
+    assert float(override.group(1)) == DECLARED_THRESHOLD, (
+        f"the step now passes --warn-at-percent {override.group(1)}, so the job does not run at "
+        f"{DECLARED_THRESHOLD:g}% and the cases above pin a value nothing uses. Change both "
+        "together, and record the new threshold's measurement as T-259's entry requires."
+    )

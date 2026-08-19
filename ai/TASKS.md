@@ -619,6 +619,59 @@ Make *Where each platform runs* an exact inventory rather than a representative 
 - Changing a workflow, repository variable, runner label, trigger or GitHub setting
 - Reopening T-262's approved trigger removal or T-264's executable regression guard
 
+### T-267 — Pin the warning threshold the Windows workflow actually uses
+
+**Status:** **In Review — built 2026-08-19, and the second option in the scope was taken.**
+The threshold is pinned by **driving `main()`**, not by passing `--warn-at-percent 85` from the
+workflow: the workflow passing it would put the number in a second place, and the scope's own Risk
+line names that as the trap. With nothing passed, `argparse`'s default *is* the production policy,
+and `test_the_default_threshold_is_the_one_the_job_runs_at` is what measures it.
+
+**Two cases, one either side of the line**, both through `main` with no threshold argument:
+**34.0 of 40 minutes is exactly 85.0%** and the comparison is `>=`, so it must warn — raising the
+default to anything above 85 makes it silent and fails; **33.9 minutes is 84.75%** and must not —
+lowering the default below 85 makes it warn and fails. Both mutations were run: 90 fails the
+first, 80 fails the second. A single case would have pinned only one side.
+
+**`test_the_step_leaves_the_threshold_at_its_default` is the other half.** The default is
+production configuration *only while nothing overrides it*, so if the step ever starts passing
+`--warn-at-percent` the test requires the value to agree — rather than silently pinning a default
+CI no longer uses, which is this task's own defect one move later.
+
+**The policy value did not change and this task did not touch it.** 85% is where `T-259` put it;
+what changed is that moving it now fails a test that names the decision to re-record.
+**Owner:** Implementer
+**Priority:** Low — current behavior is correct; an accidental threshold drift can stay green
+**Phase:** CI test maintenance; blocks neither T-259 nor another task
+**Depends on:** T-259 approved at `322a533`
+**Relevant context:** `T259-R2`, `tools/job_duration_report.py`,
+`tests/unit/test_job_duration_report.py`, `.github/workflows/ci.yml`
+**Affected surfaces:** the duration reporter's CLI/wiring test and, if made explicit, its workflow
+argument
+**Risk:** Low — test/wiring only; do not change the accepted 85% policy under this task
+
+#### Scope
+
+Pin the threshold at the same boundary production uses. Today the workflow omits
+`--warn-at-percent`, so `argparse`'s default is production configuration; the calculation tests
+call `report(..., 85)` directly and bypass it. A reviewer mutation changing that default from 85
+to 90 left all twelve focused tests green.
+
+Either pass `--warn-at-percent 85` explicitly from the workflow and assert it, or drive `main()`
+at 34 minutes and require the warning. The proof must fail when the workflow-used value changes to
+90 while the direct calculation remains untouched.
+
+#### Acceptance criteria
+
+- The workflow-used threshold is visibly and executably pinned to 85%
+- Changing only that configured value from 85 to 90 fails the focused suite
+- A future deliberate threshold change has one obvious test and policy value to update together
+
+#### Out of scope
+
+- Choosing a new threshold, changing the 40-minute job bound or re-measuring STARBASE
+- Treating the reporter warning as a product-test failure; T259-R1 resolved that policy
+
 ### T-256 — Rule the fifteen options no decision covers
 
 **Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
@@ -8064,44 +8117,6 @@ the headings themselves; do not rely on either collapsing parser to supply its o
 
 - Reopening `T-096` or changing its status/section vocabulary
 - Rechecking historical prose mentions of a task ID; only live `### T-NNN` entry headings count
-
-### T-267 — Pin the warning threshold the Windows workflow actually uses
-
-**Status:** **Ready — filed 2026-08-17 from `T259-R2`.** T-259's reporter currently warns at the
-approved 85% threshold and the real Windows run verified its quiet 81% path. The gap is regression
-strength: the direct tests supply 85 themselves rather than proving that the CLI default used by
-the workflow is 85.
-**Owner:** Implementer
-**Priority:** Low — current behavior is correct; an accidental threshold drift can stay green
-**Phase:** CI test maintenance; blocks neither T-259 nor another task
-**Depends on:** T-259 approved at `322a533`
-**Relevant context:** `T259-R2`, `tools/job_duration_report.py`,
-`tests/unit/test_job_duration_report.py`, `.github/workflows/ci.yml`
-**Affected surfaces:** the duration reporter's CLI/wiring test and, if made explicit, its workflow
-argument
-**Risk:** Low — test/wiring only; do not change the accepted 85% policy under this task
-
-#### Scope
-
-Pin the threshold at the same boundary production uses. Today the workflow omits
-`--warn-at-percent`, so `argparse`'s default is production configuration; the calculation tests
-call `report(..., 85)` directly and bypass it. A reviewer mutation changing that default from 85
-to 90 left all twelve focused tests green.
-
-Either pass `--warn-at-percent 85` explicitly from the workflow and assert it, or drive `main()`
-at 34 minutes and require the warning. The proof must fail when the workflow-used value changes to
-90 while the direct calculation remains untouched.
-
-#### Acceptance criteria
-
-- The workflow-used threshold is visibly and executably pinned to 85%
-- Changing only that configured value from 85 to 90 fails the focused suite
-- A future deliberate threshold change has one obvious test and policy value to update together
-
-#### Out of scope
-
-- Choosing a new threshold, changing the 40-minute job bound or re-measuring STARBASE
-- Treating the reporter warning as a product-test failure; T259-R1 resolved that policy
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
