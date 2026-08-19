@@ -19012,3 +19012,44 @@ pin design, then obtain the re-keyed Windows evidence for T269-R2. One focused c
 available and should inspect only those two blockers and the correction diff. T266-R2 remains Open
 until both are resolved. The Reviewer changed only this append-only record; no reviewed source,
 test, workflow, dependency, task/status file, push or remote setting was changed.
+
+---
+
+## 2026-08-19 — T-265 CI runner-inventory review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-265
+**Base:** `3c2692c8dd5e71dca4ba41a20f54465ba52686eb`
+**Head:** `d7a2d0f601eda33c4b3f236fc6531d8973fd8168`
+**Verdict:** **Approved. No findings.** The table now represents every current board job, quotes
+the actual runner expression or literal labels, and separates destination from the condition that
+makes a job exist. It no longer infers live repository-variable values from workflow text.
+
+### Acceptance results
+
+| Criterion | Review result |
+|---|---|
+| Every current job represented | **Met.** `ci.yml` expands to `linux`, conditional `windows-latest`, `STARBASE coverage`, `windows desktop`, `STARBASE orphans`, `frozen linux` and `frozen windows`. The other three workflows add `trailers`, `task placement` and `repeat on STARBASE`: ten rows, no omission. |
+| Exact selector and enabling condition | **Met.** The two desktop jobs, frozen Windows and manual repeat use literal labels. `WINDOWS_RUNNER` controls the optional hosted check leg, not those destinations. Linux selectors and each `if`/matrix/trigger condition match the workflow files. |
+| Tenses separated | **Met.** File semantics, current GitHub variable state and historical run names are explicitly distinct. The table claims only the first; it points to `gh variable list` for the second and preserves the third. |
+| Hosted comparison made exact | **Met.** The later prose names `check (windows-latest)` and says why that matrix leg does not exist while `WINDOWS_RUNNER` is set. |
+
+### Independent checks and scope ruling
+
+`rg`/source inspection over all four workflow files confirmed the ten displayed names, their
+`runs-on` values, job-level `if` expressions, matrix conditions and workflow triggers. The change
+is documentation-only; `git show --check d7a2d0f` and `git diff --check` pass. The current default
+suite is also green, though no behavior gate was required for this docs-only correction.
+
+**Do not build the missing executable inventory gate inside T-265.** Its affected surface and
+acceptance criteria are the exact current `ai/TESTING.md` inventory, not a new parser coupling
+policy prose to four workflow schemas. The implementer's scope judgment was correct. The absence
+does not block this accurate snapshot. Given how quickly `STARBASE orphans` became a fourth
+omission, a Planner may file a separate drift-gate task, with its own supported YAML boundary and
+mutation requirements; this review does not create one implicitly.
+
+### Readiness
+
+T-265 is **approved at `d7a2d0f`** and may move to Complete. T262-R4 is Resolved and requires no
+T-262 re-review. The Reviewer changed only this append-only record; no workflow, task/status file,
+repository variable, push or remote setting was changed.
