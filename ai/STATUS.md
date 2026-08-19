@@ -44,7 +44,7 @@ condition has proved on a real event. `T-258`'s criterion 5 is recorded **wired,
 mechanism that has never executed is a test rather than a result (`T258-R2`).
 
 **`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
-`T-263`, `T-265`, `T-267`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
+`T-261`, `T-263`, `T-265`, `T-267`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
 `T258-R5`'s first execution alone. `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining
 runner-inventory prose is `T-265`; `T-266`'s unreproducible toolchain is `T-269`.
 
@@ -805,6 +805,30 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-19 (T-261): the placement gate can now see a task that appears twice
+
+**Fourteen checks were green while three tasks were duplicated, and that is the finding.**
+`e61152d` removed a second copy of `T-256`, `T-259` and `T-257` from current truth; nothing in
+`tests/unit/test_task_placement.py` had objected, because `live_entries()` keeps a `seen` set and
+`status_line_counts()` keys a dictionary by task id. Both collapse the second heading into the
+first, so every assertion in the file was asking its question of a set that had already thrown the
+evidence away. The copies were also well-formed — same section, identical status line — so there
+was nothing else to catch them by.
+
+**A third parse, not a flag on either existing one.** `heading_occurrences()` returns every
+`### T-NNN` heading in file order as a list of `(id, line, section)` and deduplicates nothing. A
+parser asked to both collapse and not collapse is one refactor away from doing neither.
+
+**Mutated with the exact `e61152d` shape** — a complete entry duplicated under the same section
+with an identical status line. The new test fails naming the id and both line numbers; the other
+fourteen stay green, which is the board's real state while the duplicates existed, reproduced on
+purpose rather than described.
+
+**And the vacuous case is closed.** *"No id appears twice"* is satisfied perfectly by an empty
+list, so the file's positive control now covers all three parsers: breaking only the occurrence
+scan's regex fails with *"0 headings seen in file order against 267 unique ids"* rather than
+passing quietly. That is `T-096`'s own failure mode, which is the reason this file exists.
 
 ## 2026-08-19 (T-267): the threshold the workflow runs at is now measured, not supplied
 

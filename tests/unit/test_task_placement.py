@@ -103,9 +103,22 @@ def live_entries() -> list[tuple[str, str, str]]:
 
 
 def test_the_file_has_entries_to_check() -> None:
-    """Guards every assertion below against a parser that silently matched nothing."""
+    """Guards every assertion below against a parser that silently matched nothing.
+
+    **All three parsers, not just the first** (`T-261`). `heading_occurrences()` is the only one
+    that can report a duplicate, and it is also the only one whose failure mode is an empty list
+    that satisfies a uniqueness assertion perfectly. A gate that proves *"no ID appears twice"*
+    over nothing at all is the exact shape `T-096` exists for.
+    """
     entries = live_entries()
+    headings = status_line_counts()
+    occurrences = heading_occurrences()
     assert len(entries) > 50, f"only {len(entries)} entries parsed; the format probably changed"
+    assert len(headings) > 50, f"only {len(headings)} headings parsed; the format probably changed"
+    assert len(occurrences) >= len(headings), (
+        f"{len(occurrences)} headings seen in file order against {len(headings)} unique ids. The "
+        "occurrence scan cannot see fewer than the collapsing one does; its regex has drifted."
+    )
 
 
 def test_every_section_is_mapped() -> None:
@@ -149,6 +162,33 @@ def test_every_entry_sits_under_the_section_its_status_names() -> None:
         + "\n  ".join(wrong)
         + "\nMove the entry, or correct its status — whichever matches the task's real disposition."
     )
+
+
+def heading_occurrences() -> list[tuple[str, int, str]]:
+    """Every `### T-NNN` heading in file order, as `(task id, 1-based line, section)`.
+
+    **A list, and that is the entire point** (`T-261`, from `COORD-R23`). `live_entries()` keeps a
+    `seen` set and `status_line_counts()` writes into a dictionary keyed by task id, so both
+    *collapse* a second heading for the same task into the first. `e61152d` had to remove a second
+    copy of `T-256`, `T-259` and `T-257` from current truth, and **all fourteen checks in this file
+    were green the whole time they existed** — each one asked its question of a set that had
+    already discarded the evidence.
+
+    So this reports occurrences rather than tasks, and nothing here deduplicates. It is a third
+    parse rather than a flag on either existing one, because a parser that must both collapse and
+    not collapse is a parser one refactor away from doing neither.
+    """
+    heading = re.compile(r"^### (T-\d+) — ")
+    section = ""
+    found: list[tuple[str, int, str]] = []
+    for number, line in enumerate(TASKS.read_text(encoding="utf-8").split("\n"), start=1):
+        if line.startswith("## "):
+            section = line[3:].strip()
+            continue
+        match = heading.match(line)
+        if match:
+            found.append((match.group(1), number, section))
+    return found
 
 
 def status_line_counts() -> dict[str, int]:
@@ -218,3 +258,35 @@ def test_the_vocabulary_matches_what_the_file_declares(term: str) -> None:
         if line.startswith("Statuses:")
     )
     assert term in declared, f"{term!r} is enforced here but no longer declared in TASKS.md"
+
+
+def test_no_task_id_has_two_entries() -> None:
+    """One task, one entry — the invariant every other test in this file assumes (`T-261`).
+
+    **`COORD-R23` is why this is not covered by what was already here.** `e61152d` removed a
+    duplicated `T-256`, `T-259` and `T-257`; while the copies were in the file, the placement gate
+    was green, because `live_entries()` and `status_line_counts()` both key by task id and the
+    second copy landed on top of the first. **The copies were also perfectly well-formed** — same
+    section, same valid status line — so no other assertion here had anything to object to.
+
+    A duplicate is not cosmetic. `ai/TASKS.md` is current truth, and two entries for one task are
+    two answers to *"what is its status"* that can drift apart independently, which is the class
+    `AGENTS.md` §6 is written against. This is the only check that can see one.
+    """
+    positions: dict[str, list[tuple[int, str]]] = {}
+    for task, line, section in heading_occurrences():
+        positions.setdefault(task, []).append((line, section))
+
+    duplicated = {task: where for task, where in positions.items() if len(where) > 1}
+
+    assert not duplicated, (
+        "these task ids have more than one `### T-NNN` entry: "
+        + "; ".join(
+            f"{task} at "
+            + ", ".join(f"line {line} under `## {section}`" for line, section in where)
+            for task, where in sorted(duplicated.items())
+        )
+        + ".\nTASKS.md is current truth, so two entries are two answers about one task. Keep the "
+        "one that is right and delete the other — the rest of this file cannot see the difference, "
+        "because both of its other parsers key by task id and collapse the copies."
+    )
