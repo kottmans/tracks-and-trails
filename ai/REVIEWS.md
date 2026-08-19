@@ -18961,3 +18961,54 @@ bodies. This is different from T-269, whose own criterion requires the persisten
 T-263 is **approved at `3b847d8`** and may move to Complete. T258-R7 through T258-R9 are Resolved;
 they required no T-258 re-review and do not affect T258-R10. The Reviewer changed only this
 append-only record; no reviewed source/test, task/status file, push or remote setting was changed.
+
+---
+
+## 2026-08-19 — T-269 reproducible-toolchain review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-269
+**Base:** `3b847d82be2196c3c01389b3bd9011796642f668`
+**Head:** `3c2692c8dd5e71dca4ba41a20f54465ba52686eb`
+**Platforms verified:** Linux locally. No Windows run contains this commit.
+**Verdict:** **Changes requested.** Exact pins in one canonical source are the right install
+mechanism, and the CI artifacts now expose both versions prominently. The environment test does
+not measure the executables the authoritative commands run, and the task's required persistent-
+Windows installation/default-suite evidence does not yet exist.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T269-R1** | **Medium** | **Yes — the environment gate can approve different executables from the gates that actually run** | `test_toolchain_versions.py` compares `importlib.metadata.version()` in the pytest interpreter. `ai/TESTING.md` and CI invoke bare `ruff` and `mypy`, which resolve through `PATH`. A reviewer put different executables first on `PATH`; all **3 tests passed**, while `ruff --version` selected the injected executable. This is also one of the file's claimed scenarios: a globally installed tool shadowing the venv. The docstring dismisses `PATH` even though `PATH` is the production command boundary. | Execute the same bare commands the gates use, parse their reported versions and compare them with the pyproject pins. Retain the metadata check only if it adds a separately stated invariant. Mutation-check a shadow executable, not only a mismatched installed distribution. | **Open** |
+| **T269-R2** | **Medium** | **Yes — the task's Windows installation criterion and required major-tool bump gate are unverified** | The cited run `32214730271` has `headSha: dc75843`, before `3c2692c`. It therefore says nothing about the re-keyed persistent Windows venv, installation of exact Ruff/Mypy versions, the new test on Windows, or the new `--- gates ---` artifact block. The change raises mypy's minimum across a major version and the acceptance criteria explicitly require the persistent-Windows path. | After T269-R1 is corrected, push the exact correction head and read a fresh `windows desktop` run: venv build/install succeeds, both bare versions match the pins in the artifact, the new test executes, and the default suite completes. | **Open — external evidence after correction** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Declared/local versions | `pyproject.toml` pins Ruff 0.16.3 and Mypy 2.3.1; the current venv's metadata and direct `.venv/bin/ruff --version` / `.venv/bin/mypy --version` agree. `pytest-xdist` 3.8.0 is now installed as the already-declared extra. |
+| Current tests | The toolchain file's **3 tests pass**, and the 65-test focused batch passes. |
+| PATH-shadow mutation | Symlinks named `ruff` and `mypy` were placed first on a temporary `PATH`. All **3 toolchain tests passed** while the bare command selected the injected executable, establishing T269-R1. The temporary directory was removed. |
+| Linux gates | Ruff check and format pass; bare mypy and Windows-platform mypy pass; the unrestricted default suite passes **3715 / 18 / 2**. |
+| Boundary/hygiene | `git show --check 3c2692c` and `git diff --check` pass. The pins are declared only in `pyproject.toml`; the workflow does not duplicate their numbers. |
+
+### Scope rulings
+
+- **The unexpected xdist install is environment drift, not a repository dependency defect.**
+  `pytest-xdist` was already declared. Reinstalling the extra brought this checkout into agreement;
+  no new task or decision entry is needed.
+- **The expected first Windows warning is not runtime creep.** Re-keying the persistent venv adds
+  roughly 1m56s against the last reused run, putting a comparable 32.9-minute run near 35 minutes,
+  or 88% of the 40-minute bound. T-259 should warn at 85%; the review should attribute that
+  one-time installation cost rather than weaken the reporter or bound.
+- **Dev-only pins need no runtime-dependency decision.** They do still need the cross-platform
+  execution evidence required by `ai/TESTING.md` and this task's own criterion.
+
+### Readiness
+
+T-269 is **not approved at `3c2692c`**. Correct T269-R1 in one batch, preserving the one-source
+pin design, then obtain the re-keyed Windows evidence for T269-R2. One focused correction review is
+available and should inspect only those two blockers and the correction diff. T266-R2 remains Open
+until both are resolved. The Reviewer changed only this append-only record; no reviewed source,
+test, workflow, dependency, task/status file, push or remote setting was changed.
