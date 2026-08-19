@@ -689,8 +689,20 @@ and `build_options` has never set it.**
 
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
-**Status:** **In Review — Blocked, and what it is blocked on changed on 2026-08-18: `T-266`
-answered the control's failure, and the answer costs this task its justification.**
+**Status:** **In Review — Blocked on `T258-R10` and a maintainer authorization, 2026-08-19.**
+**`T258-R5` is Resolved**: the scanner executed on `STARBASE` in run `32214730271`, found seven
+stale workers and made the job red while its evidence artifact still uploaded, so the detection
+path detected rather than merely existing. **What blocks the task is its own record**, not its
+behaviour — `T258-R10` found this file saying criterion 5 was met in the header while the
+criterion's own subsection still said *"has not executed yet"* and *"Not yet met"*, which is one
+current-truth document giving both answers about whether the last required gate had run. Both
+sites are corrected here. The task has **exhausted its ordinary Medium pass budget** under
+`AGENTS.md` §10, so the record-only focused verification needs maintainer authorization and the
+automatic loop is stopped. **`T-268` is not a dependency**: that diagnosis gates nothing in the
+centre column.
+
+**What it was blocked on before changed on 2026-08-18: `T-266` answered the control's failure, and
+the answer costs this task its justification.**
 `T258-R6` is Resolved at `e3c259a`. The pair has run on `STARBASE` four times; the reproduction
 **passes** every time and the negative control **fails** every time, and run `32172384737`
 measured why — **the suppression worked** (`driver_holds_a_job: false`) and the child died anyway,
@@ -726,13 +738,12 @@ fix covered only one of three product-owned spawn sites. **`T258-R6`'s last resi
 it on **every** spawn from all three sites. `T258-R2` being High, its eventual verification
 continues under `AGENTS.md` §10 without a separate pass authorization.
 
-**Two criteria are met, one is closed as unobtainable, one is wired and unexecuted, and one
-is met.** Criterion 3 is
-measured on POSIX. Criterion 4 holds. **Criterion 2 is closed with its reason** — it asks the
-outer Job to be what reaps a child in this window, and `T-266` measured on Windows that it is not;
-no run can meet it as written. **Criterion 1 is met on both platforms for the reproduction half**
-and its *"it must fail without the fix"* half goes with criterion 2. **Criterion 5 is wired and unexecuted**: the
-`STARBASE orphans` job invokes the scanner nightly, and being schedule-gated it has not run yet.
+**Four criteria are met and one is closed as unobtainable.** Criterion 3 is measured on POSIX.
+Criterion 4 holds. **Criterion 2 is closed with its reason** — it asks the outer Job to be what
+reaps a child in this window, and `T-266` measured on Windows that it is not; no run can meet it as
+written. **Criterion 1 is met on both platforms for the reproduction half** and its *"it must fail
+without the fix"* half goes with criterion 2. **Criterion 5 is met**: the `STARBASE orphans` job
+ran on dispatch in run `32214730271`, found seven stale workers and exited 1.
 `T258-R2` was right that a green fixed-only run could not
 have satisfied these, and the pair proved it in the sharpest available way — by refuting the
 assumption the task was built on rather than confirming it.
@@ -941,7 +952,8 @@ so a parent that is not one cannot be the one that spawned it.
   *(**Corrected 2026-08-18.** This said *"no Windows run exists"* and *"until it runs on Windows
   these are tests, not results"* for a day after it ran; it then said criterion 1 was unmet *"for
   a reason nobody predicted"*, which stood until the reason was measured.)*
-- **Criterion 5 — wired 2026-08-18, and the wiring has not executed yet** (`T258-R5`). The
+- **Criterion 5 — met 2026-08-19, by the scanner detecting rather than by the wiring existing**
+  (`T258-R5`, **Resolved by the reviewer on run `32214730271`**). The
   `STARBASE orphans` job in `.github/workflows/ci.yml` runs `tools/orphan_scan.py` on the
   self-hosted Windows runner and lets its non-zero exit fail the job. **Its own job, not a step on
   `windows desktop`**, because a find is a statement about the *machine* rather than about the
@@ -958,11 +970,17 @@ so a parent that is not one cannot be the one that spawned it.
   widened to every push. **Deleting the step leaves the five tool tests green** — which is the
   state `T258-R5` found and the reason a wiring test had to exist at all.
 
-  **Not yet met, and the gap is named rather than glossed.** The job is schedule- and
-  dispatch-gated, so nothing has run it: this is wiring with a test behind it, not a detection
-  path that has detected. `T258-R2`'s standard applies to it — *a mechanism that has never
-  executed is a test, not a result* — and the first nightly on `STARBASE`, or one
-  `workflow_dispatch`, is what converts it.
+  **It has now detected, which is what converts it.** Run `32214730271` — a `workflow_dispatch`
+  at `dc75843` — located the pyproject-keyed environment, printed **seven** matches, exited 1 and
+  still uploaded `evidence-starbase-orphans`; every other job in that run succeeded. Five of the
+  seven are the original five, still alive; the other two are new and belong to `T-268`. So
+  `T258-R2`'s standard — *a mechanism that has never executed is a test, not a result* — is
+  satisfied on its own terms rather than waived.
+
+  *(**This subsection said "the wiring has not executed yet" and "Not yet met" for one commit
+  after `1b31aac` recorded the run**, while the header three screens above said criterion 5 was
+  met. `T258-R10`: one current-truth file giving both answers about whether the last required
+  gate had run. Found by review, corrected here.)*
 
 #### What is still not known
 
