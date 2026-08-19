@@ -304,6 +304,43 @@ starts from four closed doors rather than from the same question.
 **one** thread. The one found on the maintainer's Linux machine on 2026-08-18 has two and 145 s of
 CPU, and is recorded below as a different class rather than as a lead.
 
+#### That condition fired the next day — two of them, and they are still running
+
+**Run `32214730271`, 2026-08-19T04:48Z: the `STARBASE orphans` job's first real execution found
+seven, not five.** The extra two are `3400` and `6924` — **one thread each**, sharing dead parent
+`1204`, aged `1d10h`. The scanner truncates hours, so that places their creation between
+**2026-08-17 17:48Z and 18:48Z**. Two `STARBASE` runs fall inside that window and the rounding does
+not separate them: `32052469434`, **cancelled** at 18:07:54Z, and `32053409826`, which **failed**
+between 18:07:34Z and 18:45:01Z. *(`always()` on the scan job exists for exactly this: a suite that
+failed or was cancelled is the likelier leaker.)*
+
+**They are not evidence that the fix failed, and saying so is the point of writing the times
+down.** `dbc1e6c` — the commit that first contains the application — is 2026-08-17T19:28Z, and
+`1853acf`, which makes the seam fail closed at all three spawn sites, is 20:32Z. **Both are after
+the window.** Whatever produced this pair ran against an application that had no outer Job, exactly
+as the original five did.
+
+**What is new is that the phenomenon is not a one-off from 2026-08-04/05.** It happened again
+thirteen days later, on a different parent, and nobody knew until an automated scan said so — which
+is `T-258`'s criterion 5 doing the only job it was built for, on its first run.
+
+**And this is the first inspectable specimen anybody has had.** `T-268`'s answer above ends by
+naming a candidate outside the interpreter and saying that confirming or refuting it *"needs
+somebody at the machine — `T-092`, which is Blocked on exactly that"*. `3400` and `6924` are
+**alive now**, on that machine, with a creation window under an hour wide and two candidate runs.
+That is a materially better starting position than the five, whose parents and runs were long gone
+before anybody looked.
+
+**Not reaped.** `T258-R4` makes that a person's decision with the report in front of them, and the
+report is `reports/orphan-scan.txt` in run `32214730271`'s
+`evidence-starbase-orphans` artifact. **Reaping them destroys the specimen**, so the decision is
+not only about tidiness this time.
+
+**One observation recorded without a conclusion attached**: the new pair's resident set is 77 and
+79 MB against the original five's 42 to 57. Nothing here explains that, and it is written down
+because a difference noticed later and not recorded is how the five came to be described three
+different ways.
+
 #### What is ruled out, and how — the region narrowed again, 2026-08-18
 
 **The second `pickle.load` goes with the first, and that was missed until the source was read
@@ -818,10 +855,26 @@ exit code 1. So on Windows, as on POSIX, a child stopped in this window is reape
 failed bootstrap and **not** by the outer Job. **Criterion 2 is closed as unobtainable in this
 form** and the outer Job is restated as **defence in depth rather than the demonstrated reaper**.
 What is left open is larger than what closed: the five orphans did not come through the window
-this task reproduces, because that window closes itself — `T-268`. **`T258-R5`'s scanner is wired**, 2026-08-18:
-the `STARBASE orphans` job runs it nightly on the self-hosted runner and a find fails that job.
-Six mutations fail, and **the wiring has not executed yet** — it is schedule-gated, so criterion 5
-is recorded as *wired, unmet* until the first nightly or dispatch runs it. The review was right on every
+this task reproduces, because that window closes itself — `T-268`. **`T258-R5`'s scanner is wired *and has executed*, and criterion 5 is met**, 2026-08-19: the
+`STARBASE orphans` job runs `tools/orphan_scan.py` nightly and on dispatch on the self-hosted
+runner, a find fails that job, and six mutations fail. **Its first real execution — run
+`32214730271`, `workflow_dispatch` — found seven orphans and exited 1.** That is the criterion in
+its own terms: *"a stale orphan is detectable rather than only preventable"*, detected by the
+mechanism rather than by somebody looking for something else twelve days later.
+
+| pid | age | dead parent | threads | rss |
+|---|---|---|---|---|
+| 2432 | 13d11h | 9176 | 1 | 45 MB |
+| 3408 | 13d11h | 9176 | 1 | 42 MB |
+| 11000 | 13d11h | 9176 | 1 | 45 MB |
+| 7028 | 14d03h | 1052 | 1 | 45 MB |
+| 10524 | 14d04h | 12144 | 1 | 57 MB |
+| **3400** | **1d10h** | **1204** | **1** | **79 MB** |
+| **6924** | **1d10h** | **1204** | **1** | **77 MB** |
+
+**The top five are the original five, still alive** — three sharing parent `9176`, which is the
+detail `T-268` records about them, at ages consistent with 2026-08-04 and 2026-08-05. **The bottom
+two are new, and they are `T-268`'s stated reopening condition**: see that task. The review was right on every
 original finding, and two were defects rather than paperwork: containment **failed open**, and the
 fix covered only one of three product-owned spawn sites. **`T258-R6`'s last residual was** —
 `process_tree.contain_this_application` and

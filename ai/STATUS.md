@@ -5,7 +5,14 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-19 — **`T-268` is In Review: the region is measured on Windows, and the
+**Last updated:** 2026-08-19 — **the orphan scanner ran for the first time and found seven, two of
+them new.** `T-258`'s criterion 5 is met by the mechanism doing its job rather than existing, and
+`T-268`'s stated reopening condition — another `STARBASE` orphan with one thread — fired twice, on
+processes that are **still alive and have not been reaped**. They predate the containment fix, so
+they do not indict it; what they establish is that the phenomenon recurred on 2026-08-17 and that
+somebody finally has a specimen to inspect. The dated entry below has the times and the reasoning.
+
+**`T-268` is In Review, and its measurement stands: the region is measured on Windows and the
 mechanism is not identifiable.** Run `32209108844` on `STARBASE` stopped a real spawned child at
 three points and killed its parent each time. **Before** the payload read with the outer Job
 suppressed the child **dies**; **past** the read it **survives with one thread** — the signature of
@@ -37,11 +44,12 @@ reopen it:** another `STARBASE` orphan with **one** thread.
 33.9, and that run added seven tests. The reporter is doing what it was built for; `T-267` is what
 stops the threshold itself drifting.
 
-**`T258-R5`'s scanner is wired, and it has not executed.** The `STARBASE orphans` job runs
-`tools/orphan_scan.py` on the self-hosted runner nightly and on dispatch, and a find fails that
-job; six mutations fail. It **skipped** on the last push, as designed — the first thing its
-condition has proved on a real event. `T-258`'s criterion 5 is recorded **wired, unmet**, because a
-mechanism that has never executed is a test rather than a result (`T258-R2`).
+**`T258-R5`'s scanner has executed, and criterion 5 is met.** The `STARBASE orphans` job ran on
+dispatch in run `32214730271` and **found seven orphans, exiting 1** — five of them the original
+five, still alive, and **two new ones with one thread each**, which is `T-268`'s own stated
+reopening condition. They are **still running and not reaped**: `T258-R4` makes that a person's
+decision, and this time reaping destroys the first inspectable specimen anybody has had. See the
+dated entry below.
 
 **`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
 `T-261`, `T-263`, `T-265`, `T-267`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
@@ -805,6 +813,55 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-19 (T-258 criterion 5, T-268 reopened): the scanner ran once and found seven
+
+**`STARBASE orphans` executed for the first time — run `32214730271`, dispatched — and exited 1
+with seven orphans.** `T-258`'s criterion 5 asked that *"a stale orphan is detectable rather than
+only preventable"*, and it is now met by the mechanism doing it rather than by the mechanism
+existing: the original five were found by accident, twelve days late, by somebody diagnosing
+something else.
+
+| pid | age | dead parent | threads | rss |
+|---|---|---|---|---|
+| 2432 | 13d11h | 9176 | 1 | 45 MB |
+| 3408 | 13d11h | 9176 | 1 | 42 MB |
+| 11000 | 13d11h | 9176 | 1 | 45 MB |
+| 7028 | 14d03h | 1052 | 1 | 45 MB |
+| 10524 | 14d04h | 12144 | 1 | 57 MB |
+| **3400** | **1d10h** | **1204** | **1** | **79 MB** |
+| **6924** | **1d10h** | **1204** | **1** | **77 MB** |
+
+**The top five are the five**, still alive — three sharing parent `9176`, which is the detail
+`T-268` records about them.
+
+**The bottom two are new, and they are `T-268`'s reopening condition, verbatim.** That task wrote
+*"what would reopen it, stated so that it is recognisable: another orphan on `STARBASE` with one
+thread"* on 2026-08-18. Two arrived on the first scan after it was written.
+
+**They do not indict the fix, and the times are why that can be said.** Age truncates to whole
+hours, so `1d10h` places their creation between **2026-08-17 17:48Z and 18:48Z**. `dbc1e6c`, which
+first contains the application, is **19:28Z**; `1853acf`, which makes the seam fail closed at all
+three spawn sites, is **20:32Z**. Both are after the window, so this pair ran against an
+application with no outer Job — the same conditions the original five had. Two `STARBASE` runs sit
+inside the window and the rounding does not separate them: `32052469434`, **cancelled** at
+18:07:54Z, and `32053409826`, which **failed** from 18:07:34Z to 18:45:01Z. The scan job's
+`always()` was chosen for precisely that reason — a failed or cancelled suite is the likelier
+leaker.
+
+**What actually changed is that this is no longer a one-off from 2026-08-04/05.** It recurred
+thirteen days later, on a different parent, and nothing noticed until an automated scan said so.
+
+**And for the first time there is something to look at.** `T-268` concluded that the surviving
+candidate is outside the interpreter and that settling it *needs somebody at the machine* —
+`T-092`, Blocked on exactly that. `3400` and `6924` are alive on that machine right now, with a
+creation window under an hour wide and two candidate runs. That is a far better starting position
+than five processes whose parents and runs were gone before anybody looked. **Reaping them ends
+it**, which makes `T258-R4`'s person-decides rule load-bearing rather than procedural this time.
+
+**Recorded without a conclusion attached**: the new pair's resident set is 77 and 79 MB against the
+original five's 42 to 57. Nothing explains that. It is written down because a difference noticed
+later and left unrecorded is how the five came to be described three different ways.
 
 ## 2026-08-19 (T-261): the placement gate can now see a task that appears twice
 
