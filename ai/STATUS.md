@@ -818,6 +818,27 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
+## 2026-08-19 (T267-R1, corrected): two behaviour points bracket an interval, not a value
+
+**The reviewer set the threshold default to 84.9 and all fourteen tests passed.** The first version
+pinned it with 85.0% must-warn and 84.75% must-not and described that as fixing the value *"from
+both sides"*. It fixes an **interval** — `(84.75, 85]` — and the difference matters because the
+production threshold is a decision `T-259` recorded, so anything inside that interval is an
+unrecorded change to it sitting green.
+
+**Tightening the lower case would not have closed it.** A `>=` comparison can always hide a
+difference smaller than the case beneath it, so sampling behaviour narrows the interval indefinitely
+and never reaches a value. That is the part worth keeping: the defect was the *method*, not the
+numbers chosen.
+
+**The correction reads the argument instead of sampling the behaviour.** `report` is replaced by a
+spy, and what `main` passes with the workflow's own empty argument list is asserted to be exactly
+`85.0`. Mutations run: 90, the reviewer's 84.9, and 85.001 all fail.
+
+**The end-to-end case is kept, and is not redundant.** A spy proves what `main` *passes* and cannot
+see `report` ceasing to act on it — making the comparison ignore its own parameter leaves the
+exact-value assertion green and fails the behaviour one. Two tests, two different jobs.
+
 ## 2026-08-19 (T-258 criterion 5, T-268 reopened): the scanner ran once and found seven
 
 **`STARBASE orphans` executed for the first time — run `32214730271`, dispatched — and exited 1

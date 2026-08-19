@@ -517,17 +517,27 @@ Windows job deliberately reuses its environment
 
 ### T-267 — Pin the warning threshold the Windows workflow actually uses
 
-**Status:** **In Review — built 2026-08-19, and the second option in the scope was taken.**
-The threshold is pinned by **driving `main()`**, not by passing `--warn-at-percent 85` from the
-workflow: the workflow passing it would put the number in a second place, and the scope's own Risk
-line names that as the trap. With nothing passed, `argparse`'s default *is* the production policy,
-and `test_the_default_threshold_is_the_one_the_job_runs_at` is what measures it.
+**Status:** **In Review — corrected 2026-08-19 for `T267-R1`, which was right and is the same
+mistake in a smaller font.** The first version pinned the threshold with **two behaviour points**,
+85.0% must-warn and 84.75% must-not, and called that fixing it *"from both sides"*. It is not:
+those bracket the interval `(84.75, 85]`, and the reviewer set the default to **84.9** and watched
+all fourteen tests pass. **Tightening the lower case would never have closed it** — a `>=`
+comparison can always hide a difference smaller than the case beneath it, so sampling behaviour
+can narrow the interval indefinitely and never reach a value.
 
-**Two cases, one either side of the line**, both through `main` with no threshold argument:
-**34.0 of 40 minutes is exactly 85.0%** and the comparison is `>=`, so it must warn — raising the
-default to anything above 85 makes it silent and fails; **33.9 minutes is 84.75%** and must not —
-lowering the default below 85 makes it warn and fails. Both mutations were run: 90 fails the
-first, 80 fails the second. A single case would have pinned only one side.
+**So the correction stops sampling and reads the argument.** `report` is replaced by a spy and
+`test_the_default_threshold_is_exactly_the_declared_one` asserts that what `main` hands it,
+with the workflow's own empty argument list, is exactly `85.0`. Mutations run: **90**, the
+reviewer's **84.9**, and **85.001** all fail it.
+
+**`test_the_default_threshold_still_warns_end_to_end` is kept and is not redundant.** A spy proves
+what `main` *passes*; it cannot see `report` ceasing to act on it. Making the comparison ignore its
+own parameter leaves the exact-value assertion green and fails this one, which is the pair doing
+two different jobs.
+
+**The scope's second option still stands.** The threshold is pinned by driving `main()`, not by
+passing `--warn-at-percent 85` from the workflow — that would put the number in a second place,
+which the scope's Risk line names as the trap — and the override-agreement test is unchanged.
 
 **`test_the_step_leaves_the_threshold_at_its_default` is the other half.** The default is
 production configuration *only while nothing overrides it*, so if the step ever starts passing

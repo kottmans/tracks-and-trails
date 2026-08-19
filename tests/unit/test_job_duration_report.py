@@ -341,38 +341,77 @@ def test_the_stamp_the_step_reads_is_the_one_the_job_writes() -> None:
     assert written < read, "the duration report runs before the stamp is written"
 
 
-def test_the_default_threshold_is_the_one_the_job_runs_at(
+def test_the_default_threshold_is_exactly_the_declared_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T267-R1`: the **exact** value `main` hands `report()` when the workflow passes nothing.
+
+    **Two behaviour points bracket an interval, and an interval is not a value.** The first
+    version of this test used 85.0% (must warn) and 84.75% (must not), which together prove only
+    that the default lies in `(84.75, 85]`. The reviewer changed the default to **84.9** and all
+    fourteen tests passed — a policy drift nobody recorded, sitting green. Tightening the lower
+    case would only narrow the interval; it would never close it, because a `>=` comparison can
+    always hide a difference smaller than the case below it.
+
+    So this stops sampling behaviour and reads the argument. `report` is replaced with a spy, and
+    what `main` passes as `warn_at_percent` is compared to the declared policy value exactly.
+    `test_the_default_threshold_still_warns_end_to_end` keeps a real warning path, so this cannot
+    pass by pinning a number `report` has stopped honouring.
+    """
+    passed: list[float] = []
+    # Bound before the patch, or the spy calls itself: `main` looks `report` up on the module, and
+    # so would `reporter.report` from inside here.
+    original = reporter.report
+
+    def spy(started_at: str, now: datetime, bound: float, warn_at: float) -> list[str]:
+        passed.append(warn_at)
+        lines: list[str] = original(started_at, now, bound, warn_at)
+        return lines
+
+    monkeypatch.setattr(reporter, "report", spy)
+    exit_code: int = reporter.main(
+        [
+            "--started-at",
+            STARTED.isoformat(),
+            "--bound-minutes",
+            f"{BOUND:g}",
+            "--now",
+            (STARTED + timedelta(minutes=1)).isoformat(),
+        ]
+    )
+
+    assert exit_code == 0
+    assert passed == [DECLARED_THRESHOLD], (
+        f"`main` passed {passed} to `report` where the declared policy is "
+        f"{DECLARED_THRESHOLD:g}. The workflow supplies no --warn-at-percent, so this argument is "
+        "the production threshold: T-259 decided 85%, and a different number here is an "
+        "unrecorded change to that decision."
+    )
+
+
+def test_the_default_threshold_still_warns_end_to_end(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`T-267`: the value production uses, pinned at the boundary production crosses.
+    """The behaviour half, kept so the exact-value check above cannot pass over a dead argument.
 
-    **The mutation this exists for**: change `main`'s `--warn-at-percent` default from 85 to 90 and
-    every other test in this file stays green, because they all hand `report()` a threshold
-    themselves. `T259-R2` found exactly that. The workflow hands it nothing, so the default *is*
-    the configuration, and until now nothing measured it.
+    A spy proves what `main` *passes*. If `report` ever stopped acting on it — a refactor that
+    reads the threshold from somewhere else, or ignores the parameter — the assertion above would
+    still hold while the warning stopped working. This drives the real path with no threshold
+    argument at all:
 
-    Two cases, one either side of the line, both driven through `main` with no threshold argument:
-
-    - **34.0 of 40 minutes is 85.0%**, and the comparison is `>=`, so this must warn. Raising the
-      default to anything above 85 makes it silent and fails here.
-    - **33.9 minutes is 84.75%** and must not. Lowering the default below 85 makes it warn and
-      fails here.
-
-    So the pair fixes the threshold from both sides rather than asserting it is *at least* strict
-    enough, which a single case would.
+    - **34.0 of 40 minutes is 85.0%**, and the comparison is `>=`, so it must warn.
+    - **33.9 minutes is 84.75%** and must not, which also keeps the boundary's direction pinned.
     """
     at_the_mark = main_lines(DECLARED_THRESHOLD / 100 * BOUND, capsys)
     just_below = main_lines(33.9, capsys)
 
     assert warning_in(at_the_mark) is not None, (
-        f"a job at exactly {DECLARED_THRESHOLD:g}% of its bound did not warn, so the threshold "
-        f"`main` defaults to is above {DECLARED_THRESHOLD:g}. The workflow passes no "
-        "--warn-at-percent, so that default is the production policy and T-259's warning now "
-        "fires later than the decision says."
+        f"a job at exactly {DECLARED_THRESHOLD:g}% of its bound did not warn. `main` passes the "
+        "declared threshold — the test above checks that — so `report` has stopped acting on it."
     )
     assert warning_in(just_below) is None, (
-        f"a job at 84.75% warned, so `main`'s default threshold is below {DECLARED_THRESHOLD:g}. "
-        "A warning that fires under the mark spends the signal it exists to preserve."
+        "a job at 84.75% warned, so the warning fires under the mark and spends the signal it "
+        "exists to preserve."
     )
 
 
