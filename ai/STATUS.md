@@ -5,12 +5,13 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-19 — **the orphan scanner ran for the first time and found seven, two of
-them new.** `T-258`'s criterion 5 is met by the mechanism doing its job rather than existing, and
-`T-268`'s stated reopening condition — another `STARBASE` orphan with one thread — fired twice, on
-processes that are **still alive and have not been reaped**. They predate the containment fix, so
-they do not indict it; what they establish is that the phenomenon recurred on 2026-08-17 and that
-somebody finally has a specimen to inspect. The dated entry below has the times and the reasoning.
+**Last updated:** 2026-08-19 — **`T-268` is Blocked on a person at `STARBASE`, and that is the one
+thing on this board nobody at a keyboard can move.** The orphan scanner's first run found seven,
+two of them new, and `T-268`'s own written reopening condition — another `STARBASE` orphan with one
+thread — fired on both. They predate the containment fix and do not indict it. What they establish
+is that the phenomenon recurred on 2026-08-17 and that **there are finally live specimens**: `3400`
+and `6924` are to be **preserved**, inspected for what they are waiting on, and identity-revalidated
+before any deliberate termination. `T-258`'s criterion 5 is met by that same run.
 
 **`T-268` is In Review, and its measurement stands: the region is measured on Windows and the
 mechanism is not identifiable.** Run `32209108844` on `STARBASE` stopped a real spawned child at
@@ -52,7 +53,7 @@ decision, and this time reaping destroys the first inspectable specimen anybody 
 dated entry below.
 
 **`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
-`T-267`, `T-268` and `T-269` In Review. **`T-261`, `T-263` and `T-265` are Complete** — approved
+`T-267` and `T-269` In Review, and **`T-268` Blocked**. **`T-261`, `T-263` and `T-265` are Complete** — approved
 at `ca2f278`, `3b847d8` and `d7a2d0f` on 2026-08-19, all three with **no findings**. `T-263`'s
 review ruled its Linux verification sufficient, because nothing it changed sits inside a platform
 guard; `T-265`'s ruled the executable inventory gate out of that task's scope, leaving it for a
@@ -827,6 +828,35 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-19 (T268-R1): the measurement is approved, and the answer is provisional again
+
+**The reviewer approved the measurement and asked for no source correction.** Run `32209108844` is
+confirmed at exact head `f987e88`, the three-way discrimination is ruled sound, and the original
+answer *"was honest at `dc75843`"*: it bounds the five past their payload read, proves the outer
+Job reaps a child in that region, and does not invent a mechanism the evidence cannot name.
+
+**What it cannot be is closed.** `T-268` wrote its own reopening condition and then met it: `3400`
+and `6924`, one thread each, found before the review began. *"Cannot be identified"* is provisional
+again — not because the four eliminations weakened, but because there are now **live specimens and
+a candidate window** where before there was neither.
+
+**The dependency is named on `T-268` rather than folded into `T-092`.** `T-092` is precedent that a
+task may be Blocked on somebody at `STARBASE`; its scope is WER capture for a different access
+violation, and the reviewer ruled it is not the owner. What this needs is narrow and
+non-destructive: **capture what the two are waiting on** — thread wait reason or suspend count —
+record what that establishes *or why it still cannot be*, **preserve them until then**, and
+**revalidate pid, create time, command and parent immediately before** any deliberate termination.
+The scanner does not prove project ownership, so none of it authorizes a bulk kill and no
+destructive scanner mode is to be added.
+
+**Their live state is assumed, not re-checked.** The reviewer recorded that they did not
+independently query whether the two are still running, and nobody has since. The preservation
+ruling rests on the 04:48Z scan.
+
+**No recurrence task was filed, deliberately.** The new pair carries the same discriminating
+signature `T-268` named, so `T-268` owns it; a second task is warranted only if the inspection
+separates a distinct defect or produces remediation that should not sit inside a diagnosis.
 
 ## 2026-08-19 (T258-R10, corrected): the record gave both answers about its own last gate
 
