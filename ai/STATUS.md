@@ -789,6 +789,53 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
+## 2026-08-18 (T-268): the five were past their payload read, and what blocked them is still unnamed
+
+**`T-266` left the project without an explanation for its own founding observation.** The window
+`T-258` reproduces closes itself, so the five processes found alive on `STARBASE` after eleven days
+did not stop there. This narrows where they *did*, and does not claim more than that.
+
+**The payload read cannot hold a survivor, and this is from the source rather than from a run.**
+`popen_spawn_win32.Popen.__init__` creates the pipe with `_winapi.CreatePipe(None, 0)` — `None`
+security attributes, so **neither handle is inheritable** — and creates the child with
+`_winapi.CreateProcess(..., None, None, False, ...)`, whose fifth argument is
+`bInheritHandles=False`. The child duplicates the **read** end out of the parent inside
+`spawn_main`; nothing duplicates the **write** end anywhere. So the parent holds the sole write
+handle, **no sibling can hold a copy**, and its death closes the pipe by construction.
+**`T-268`'s first candidate is eliminated in its handle-duplication form** — *"a parent that exits
+while some other process holds a duplicate of the write handle"* — as something this code cannot
+produce, which is a stronger statement than a run that failed to show it. It agrees with what
+`T-266` measured from the other end.
+
+**With `threads=1` still bounding them before the watchdog, one region is left**: the payload read
+has completed, the target is running, `prepare_this_worker()` has not been called.
+`test_a_child_past_the_payload_read_carries_the_five_s_signature` stops a real spawned child there
+and reproduces the signature — **survives its parent's death, one thread, and its payload read is
+demonstrably complete**, because the marker is written by the child from *inside* its target and
+`multiprocessing` does not reach a target until it has unpickled one. **The identical kill on the
+other side of the read produces the opposite outcome**, which is what makes the pair a
+discrimination rather than a demonstration.
+
+**The mutation is the part worth keeping.** Make the stopped child call `prepare_this_worker()`
+first and the test fails with *"the child reached its target with 2 threads, so this stop point is
+not a candidate for five processes that each had one."* The thread count is doing the work, and
+the watchdog is the far bound of the region.
+
+**`as-the-five-were` suppresses the outer Job because the five predate it** — 2026-08-04 and
+2026-08-05, against an application that had none. The `with-the-fix` parameter is today's
+application and asserts on Windows that the child is reaped, which would be **the first evidence
+that `T-258`'s fix covers the region the orphans were actually in** rather than the region it was
+built for. **That has not run on Windows.** On POSIX `contain_this_application()` is a documented
+no-op, so both parameters measure the same thing here and the test says so.
+
+**What is still not identified.** *What* blocks a child inside that region. It contains
+`spawn.prepare()` importing the main module, the second `pickle.load` rebuilding whatever the
+payload carried, and `contain_this_process()`; ~2 s of CPU is consistent with interpreter start
+and imports and does not separate them. **Three of the five share a parent and one second**, which
+still looks like a single parent-side event with no mechanism behind it. `T-268` is In Progress,
+not Complete, and its criteria permit *"this cannot be identified"* as an answer — that is not
+being claimed either, because the Windows half has not run.
+
 ## 2026-08-18 (T258-R5): the scanner has an invoker, and it has not run yet
 
 **`tools/orphan_scan.py` was written on 2026-08-17 and invoked by nothing for a day.** That is the

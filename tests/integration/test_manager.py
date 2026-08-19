@@ -7392,3 +7392,129 @@ def test_releasing_the_hold_releases_only_the_hold(
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- `T-268`: which side of the payload read the five orphans were on -------------------------
+#
+# `T-266` closed one question and opened this one. The window `T-258` reproduces **closes itself**
+# — a child stopped before its payload read dies when its parent does, measured on Windows in run
+# `32172384737` and on POSIX at 0.02 s — so the five processes found alive on `STARBASE` after
+# eleven days were not blocked there. `threads=1` bounds them to before
+# `_exit_when_the_parent_does()`. Between those two bounds is one region, and this pair asks
+# whether the five's signature is reproducible in it.
+#
+# **The five predate `T-258`'s fix**, created 2026-08-04 and 2026-08-05 against an application
+# with no outer Job at all, so `_WITHOUT_THE_OUTER_JOB` is not a control here — it is what makes
+# the driver the application as it stood when they were made.
+
+#: A worker target stopped past its payload read, reporting through a file the child can write.
+_STOP_PAST_THE_PAYLOAD_READ = (
+    "import multiprocessing as mp, sys, time\n"
+    "from tests.integration._bootstrap_window import block_past_the_payload_read\n"
+    "from tracks_and_trails.downloader import process_tree\n"
+    "marker = sys.argv[1]\n"
+    "child = mp.get_context('spawn').Process(\n"
+    "    target=block_past_the_payload_read, args=(marker,), daemon=False\n"
+    ")\n"
+    "process_tree.start_contained(child)\n"
+    "print(child.pid, flush=True)\n"
+    "while True:\n"
+    "    time.sleep(3600)\n"
+)
+
+
+def _the_child_that_reached_its_target(
+    parent: subprocess.Popen[str], marker: Path
+) -> tuple[psutil.Process, dict[str, Any]]:
+    """The spawned child, once it has proved it is past the payload read.
+
+    Proved rather than assumed: the marker is written **by the child**, from inside its own
+    target, and `multiprocessing` does not reach a target until it has unpickled one. So the file
+    existing is the payload read having completed, which is the bound this whole pair turns on.
+    """
+    assert parent.stdout is not None
+    announced = parent.stdout.readline().strip()
+    assert announced.isdigit(), f"the driver never spawned: {parent.communicate()[1]}"
+    child = psutil.Process(int(announced))
+
+    deadline = time.monotonic() + _THE_DRIVER_REACHES_THE_WINDOW_IN
+    while time.monotonic() < deadline and not marker.exists():
+        time.sleep(0.05)
+    assert marker.exists(), (
+        f"the child at pid {child.pid} never reached its target within "
+        f"{_THE_DRIVER_REACHES_THE_WINDOW_IN}s, so this run does not measure the region past "
+        "the payload read at all"
+    )
+    reported: dict[str, Any] = json.loads(marker.read_text(encoding="utf-8"))
+    return child, reported
+
+
+@pytest.mark.parametrize("outer_job", [False, True], ids=["as-the-five-were", "with-the-fix"])
+def test_a_child_past_the_payload_read_carries_the_five_s_signature(
+    tmp_path: Path, outer_job: bool
+) -> None:
+    """`T-268`: the five's signature is reproducible past the read, and only there.
+
+    **What is asserted is the signature, not a story.** A survivor of its parent's death, with
+    **one thread**, whose payload read demonstrably completed. That is what the five were: one
+    thread each, ~2 s of CPU over twelve days, parents all gone. The companion
+    `test_a_child_stopped_in_the_window_dies_with_no_outer_job_to_reap_it` measures the other side
+    of the read and gets the opposite outcome from the identical kill, which is what makes this a
+    discrimination rather than a demonstration.
+
+    **`as-the-five-were` suppresses the outer Job**, because the five predate it. **`with-the-fix`
+    is the current application**, and on Windows it is expected to reap the child — which is the
+    first evidence that `T-258`'s fix covers the region the orphans were actually in, as opposed
+    to the region it was built for. On POSIX `contain_this_application()` is a documented no-op,
+    so both parameters measure the same thing there and the assertion says so rather than reading
+    as if it did not.
+
+    **This does not identify what blocked the five**, and nothing here should be read as claiming
+    it. It bounds *where*: past the payload read, before the watchdog. `T-268`'s entry carries
+    what is still unidentified inside that region.
+    """
+    marker = tmp_path / "the-child-reached-its-target.json"
+    driver = (
+        _STOP_PAST_THE_PAYLOAD_READ
+        if outer_job
+        else _WITHOUT_THE_OUTER_JOB + _STOP_PAST_THE_PAYLOAD_READ
+    )
+    parent = subprocess.Popen(
+        [sys.executable, "-c", driver, str(marker)],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    child: psutil.Process | None = None
+    try:
+        child, reported = _the_child_that_reached_its_target(parent, marker)
+        assert reported["threads"] == 1, (
+            f"the child reached its target with {reported['threads']} threads, so this stop "
+            "point is not a candidate for five processes that each had one"
+        )
+
+        psutil.Process(parent.pid).kill()
+        _, alive = psutil.wait_procs([child], timeout=30)
+    finally:
+        parent.kill()
+        parent.wait(timeout=30)
+        if child is not None and child.is_running():
+            with contextlib.suppress(psutil.NoSuchProcess):
+                child.kill()
+            psutil.wait_procs([child], timeout=30)
+
+    if outer_job and sys.platform == "win32":
+        assert not alive, (
+            "the child survived past the payload read with the outer Job in place. That is the "
+            "region T-268 places the five orphans in, so T-258's fix failing to reap it would "
+            "mean the fix does not cover the only window the observations are consistent with"
+        )
+        return
+    assert alive, (
+        f"the child at pid {child.pid} did not survive its parent, past a payload read it is "
+        f"measured to have completed and with {reported['threads']} thread. The five orphans had "
+        "exactly that signature, so a run where it is not reproducible leaves T-268 without the "
+        "region it bounds them to — and, on Windows without the outer Job, contradicts T-266's "
+        "measurement that only the pre-read window closes itself"
+    )

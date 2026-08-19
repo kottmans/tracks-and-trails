@@ -47,8 +47,11 @@ question.
 from __future__ import annotations
 
 import json
+import os
 import sys
+import threading
 import time
+from pathlib import Path
 from typing import Any, NoReturn
 
 
@@ -188,3 +191,50 @@ else:
             _announce_and_block(pid, _what_contains_them())
 
         multiprocessing.util.spawnv_passfds = spawn
+
+
+# --- `T-268`: the other side of the payload read --------------------------------------------
+#
+# **The window above is not the one the five orphans fell through, and this is where they must
+# have been instead.** `T-266` measured that a child stopped *before* its payload read dies when
+# its parent does, on both platforms, so a survivor cannot have been blocked there. `threads=1`
+# already bounds the five to *before* `_exit_when_the_parent_does()`. What is left between those
+# two bounds is the region this half stops in: the payload has been read, the target is running,
+# and `prepare_this_worker()` has not been called yet.
+#
+# **Why the read cannot be where they were, from the source rather than from the run.**
+# `popen_spawn_win32.Popen.__init__` creates the payload pipe with `_winapi.CreatePipe(None, 0)`
+# — `None` for security attributes, so **neither handle is inheritable** — and creates the child
+# with `_winapi.CreateProcess(..., None, None, False, ...)`, whose fifth argument is
+# `bInheritHandles=False`. The child obtains the *read* end by duplicating it out of the parent
+# in `spawn_main`, and nothing duplicates the *write* end anywhere. So the parent holds the sole
+# write handle, no sibling can hold a copy, and its death closes the pipe by construction.
+# **That rules out `T-268`'s first candidate in its handle-duplication form** — *"a parent that
+# exits while some other process holds a duplicate of the write handle"* — as something this code
+# cannot produce, rather than as something a run did not happen to show.
+
+
+def block_past_the_payload_read(marker: str) -> NoReturn:
+    """A worker target that reports the five's signature and then stays in it forever.
+
+    **Deliberately does not call `prepare_this_worker()`**, which is the whole point: a real
+    worker installs containment and then the watchdog at the far end of this region, and every
+    one of the five had **one thread**, so none of them reached it. Running as a target at all
+    proves the payload read completed, because `multiprocessing` does not reach a target until
+    it has unpickled one.
+
+    Reports its own thread count beside its pid because that is the observation being matched:
+    five processes, one thread each, ~2 s of CPU over twelve days. A stop point that produced a
+    second thread would not be a candidate for them however well it survived.
+
+    **Reports through a file rather than through `stdout`, and the reason is the same fact this
+    module is about.** `popen_spawn_win32` creates the child with `bInheritHandles=False`, so a
+    spawned worker on Windows inherits none of the driver's handles and anything it prints goes
+    nowhere. The driver above can print because it is an ordinary `subprocess`; this runs in the
+    worker, and a marker file is the one channel both platforms give it.
+    """
+    Path(marker).write_text(
+        json.dumps({"pid": os.getpid(), "threads": threading.active_count()}), encoding="utf-8"
+    )
+    while True:
+        time.sleep(3600)
