@@ -416,6 +416,75 @@ one is still running as of the commit that records it.
 
 ---
 
+### T-263 — Close the residual gaps around the outer-containment spawn seam
+
+**Status:** **In Review — built 2026-08-19. All four scope items are done, and each is
+mutation-checked rather than asserted to work.** `T258-R7`'s finding was the substantive one: the
+manager refusal probe patched `multiprocessing.context.Process.start`, and the manager builds its
+worker from a **spawn** context, whose `.Process` is `SpawnProcess`. Both inherit `start` from
+`BaseProcess` and neither subclasses the other, so **the counter was watching a class the manager
+never touches** — a fail-open mutation left it empty because the patch missed, not because nothing
+spawned. The probe now patches `SpawnProcess`, and asserts that the patched attribute *is* what
+`manager._context.Process` resolves, so the instrument cannot come apart silently again. Under the
+fail-open mutation it now prints `STARTED 1` and fails on that.
+
+**The other three, each with the mutation that fails without it:**
+
+| Scope item | What it does now | Mutation that fails |
+|---|---|---|
+| Manager outcome | Asserts the durable `FAILED` row and the reason in `job_failed`'s message | Skip the persist → `STORED probing`; drop `{error!r}` from the reason → `REASON LOST` |
+| Static gate | Reads `ast.AnnAssign` and inline `Process(...).start()`, not `ast.Assign` alone | Remove either → the `annotated` or `inline` spelling walks past |
+| Service reason | `resolve_in_a_child` translates `ContainmentUnavailableError` into `ResolutionUnavailableError`, which the service already reports verbatim | Drop the translation → *"The operation could not be completed (ContainmentUnavailableError)."* |
+
+**The static rule's boundary is now asserted rather than described.** A factory return and an
+alias both escape it, and `test_the_rule_s_boundary_is_a_fact_not_a_claim` fails if either stops
+escaping — so the docstring's limit and the code cannot drift apart. Following those would be
+data-flow analysis, which the scope explicitly excludes; what covers them is `start_contained`
+refusing at run time whatever spelling reached it.
+
+**Not measured on Windows.** Nothing here is platform-guarded — the static gate is `ast` over
+source, the probes force containment to fail rather than exercising the real Job object — so the
+Linux run is the evidence. Ruff, `ruff format --check`, `mypy src` and `mypy --platform win32`
+are clean; the unit suite is 2244 passed, 15 skipped.
+**Owner:** Implementer
+**Priority:** Medium — one asserted manager gate cannot observe the class it patches, the static
+gate accepts two ordinary spawn spellings, and one user-facing caller discards the refusal reason
+**Phase:** Phase 4 maintenance; blocks no T-258 approval criterion
+**Depends on:** T-258's `start_contained()` seam at `1853acf`
+**Relevant context:** `T258-R7`, `T258-R8`, `T258-R9`, `tests/unit/test_process_tree.py`,
+`tests/unit/test_spawn_sites.py`, `downloader/ytdlp_resolution.py`, `downloader/ytdlp_service.py`
+**Affected surfaces:** those tests and yt-dlp resolution/service modules; production containment
+policy is unchanged
+**Risk:** Low to make; narrow tests and error translation around one existing seam
+
+#### Scope
+
+- Make the manager refusal test patch the class the spawn context actually constructs. Patching
+  `multiprocessing.context.Process.start` does not intercept `SpawnProcess.start`; both classes
+  inherit the same original method from `BaseProcess`, but neither subclasses the other
+- Assert the manager-level outcome as well as the absence of a start: the job becomes durably
+  `FAILED` and the containment reason reaches its visible failure signal
+- Strengthen the static spawn-site rule beyond plain `ast.Assign`. An annotated assignment and an
+  inline `context.Process(...).start()` both evade the current scan. State the supported syntax
+  boundary explicitly rather than claiming arbitrary data-flow analysis
+- Preserve `ContainmentUnavailableError`'s actionable reason through `YtdlpService`; today its
+  broad unexpected-error branch reduces it to the exception type alone
+
+#### Acceptance criteria
+
+- A fail-open manager mutation fails by observing a real attempted `SpawnProcess.start`, without
+  spawning an operating-system child or aborting the probe
+- Manager containment refusal leaves zero starts, a durable failed row and a user-visible reason
+- Direct, annotated and inline `Process(...)` start mutations all fail the static gate; any
+  deliberately unsupported alias/factory form is named as a limit
+- A forced containment refusal from the yt-dlp resolution path reaches the service's `failed`
+  signal with its reason and starts no child
+
+#### Out of scope
+
+- Changing the Job-object design, the three current spawn callers, or T-258's Windows evidence
+- General Python data-flow analysis for arbitrary process factories and aliases
+
 ### T-256 — Rule the fifteen options no decision covers
 
 **Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
@@ -7938,50 +8007,6 @@ at 34 minutes and require the warning. The proof must fail when the workflow-use
 
 - Choosing a new threshold, changing the 40-minute job bound or re-measuring STARBASE
 - Treating the reporter warning as a product-test failure; T259-R1 resolved that policy
-
-### T-263 — Close the residual gaps around the outer-containment spawn seam
-
-**Status:** **Ready — filed 2026-08-17 from `T258-R7` through `T258-R9`.** The current three
-product spawn sites use `start_contained()` correctly; this is regression strength and failure
-reporting around that correct behavior, not a reason to reopen it.
-**Owner:** Implementer
-**Priority:** Medium — one asserted manager gate cannot observe the class it patches, the static
-gate accepts two ordinary spawn spellings, and one user-facing caller discards the refusal reason
-**Phase:** Phase 4 maintenance; blocks no T-258 approval criterion
-**Depends on:** T-258's `start_contained()` seam at `1853acf`
-**Relevant context:** `T258-R7`, `T258-R8`, `T258-R9`, `tests/unit/test_process_tree.py`,
-`tests/unit/test_spawn_sites.py`, `downloader/ytdlp_resolution.py`, `downloader/ytdlp_service.py`
-**Affected surfaces:** those tests and yt-dlp resolution/service modules; production containment
-policy is unchanged
-**Risk:** Low to make; narrow tests and error translation around one existing seam
-
-#### Scope
-
-- Make the manager refusal test patch the class the spawn context actually constructs. Patching
-  `multiprocessing.context.Process.start` does not intercept `SpawnProcess.start`; both classes
-  inherit the same original method from `BaseProcess`, but neither subclasses the other
-- Assert the manager-level outcome as well as the absence of a start: the job becomes durably
-  `FAILED` and the containment reason reaches its visible failure signal
-- Strengthen the static spawn-site rule beyond plain `ast.Assign`. An annotated assignment and an
-  inline `context.Process(...).start()` both evade the current scan. State the supported syntax
-  boundary explicitly rather than claiming arbitrary data-flow analysis
-- Preserve `ContainmentUnavailableError`'s actionable reason through `YtdlpService`; today its
-  broad unexpected-error branch reduces it to the exception type alone
-
-#### Acceptance criteria
-
-- A fail-open manager mutation fails by observing a real attempted `SpawnProcess.start`, without
-  spawning an operating-system child or aborting the probe
-- Manager containment refusal leaves zero starts, a durable failed row and a user-visible reason
-- Direct, annotated and inline `Process(...)` start mutations all fail the static gate; any
-  deliberately unsupported alias/factory form is named as a limit
-- A forced containment refusal from the yt-dlp resolution path reaches the service's `failed`
-  signal with its reason and starts no child
-
-#### Out of scope
-
-- Changing the Job-object design, the three current spawn callers, or T-258's Windows evidence
-- General Python data-flow analysis for arbitrary process factories and aliases
 
 ### T-265 — Make the CI runner inventory describe every job exactly
 

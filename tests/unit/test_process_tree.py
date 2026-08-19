@@ -297,14 +297,25 @@ def test_a_spawn_is_refused_rather_than_left_uncontained() -> None:
 
 
 def test_the_manager_refuses_the_session_rather_than_spawning_uncontained() -> None:
-    """The same guarantee at the level the user meets it (`T258-R1`).
+    """The same guarantee at the level the user meets it (`T258-R1`, `T258-R7`, `T-263`).
 
     `start_contained` raising is only half the contract: the manager has to turn that into a
     **visible failed start** rather than an unhandled exception or a silently dropped job. It does
-    it through `_abort_start`, the path every other spawn failure already takes.
+    it through `_abort_start`, the path every other spawn failure already takes. So three things
+    are asserted, not one — **no start, a durable `FAILED` row, and the reason in the message the
+    user is shown** — because a refusal that loses the job or loses the reason is a different
+    defect wearing the same green tick.
 
-    Asserted by counting `Process.start()` calls, in a child, with containment forced to fail —
-    so this fails if a future edit catches the refusal and carries on.
+    **The counter patches the class the manager's context actually constructs, and it did not
+    before** (`T258-R7`). The first version assigned to `multiprocessing.context.Process.start`;
+    the manager's context is a spawn context, whose `.Process` is `SpawnProcess`. Both inherit
+    `start` from `BaseProcess` and **neither subclasses the other**, so the patch landed on a
+    class the manager never touches and the counter could not observe the call it existed to
+    count. Under the fail-open mutation it stayed empty for that reason rather than because
+    nothing spawned — a gate that cannot see the class it is patching passes for the wrong
+    reason, which is `ai/TESTING.md`'s instrument rule at a patch boundary. `PATCH REACHES
+    MANAGER` below closes that: it asserts the patched attribute *is* the one
+    `manager._context.Process` resolves, so this cannot silently come apart again.
 
     **Two things here exist so that the failure is readable, and both were found by mutating.**
     The counter does not call through to the real `start()` — it did at first, and under the
@@ -314,14 +325,18 @@ def test_the_manager_refuses_the_session_rather_than_spawning_uncontained() -> N
     A test whose failure mode is a stack trace about `subprocess` reports the wrong defect.
     """
     probe = (
+        "import os\n"
         "from PySide6.QtCore import QCoreApplication\n"
+        "from tracks_and_trails.core.job_state import JobStatus\n"
         "from tracks_and_trails.downloader import process_tree\n"
         "from tests.integration.test_manager import FakeRepository, make_job\n"
         "import multiprocessing.context as mp_context\n"
         "started = []\n"
         "def counted(self):\n"
         "    started.append(True)\n"
-        "mp_context.Process.start = counted\n"
+        # `SpawnProcess`, not `Process`: see the docstring. The manager builds its worker from a
+        # spawn context, and that is the only class whose `start` it can reach.
+        "mp_context.SpawnProcess.start = counted\n"
         "process_tree.contain_this_application = lambda: False\n"
         "process_tree.application_containment_error = 'probe: forced failure'\n"
         "from tracks_and_trails.downloader.manager import DownloadManager\n"
@@ -329,6 +344,12 @@ def test_the_manager_refuses_the_session_rather_than_spawning_uncontained() -> N
         "repository = FakeRepository()\n"
         "repository.add(make_job('job-1', 'https://example.invalid/clip', '.'))\n"
         "manager = DownloadManager(repository)\n"
+        "reported = []\n"
+        "manager.job_failed.connect(lambda job_id, kind, message: reported.append(message))\n"
+        # The instrument checking itself: if the manager's context ever stops resolving to the
+        # class patched above, say so here rather than reporting a quiet zero.
+        "reaches = manager._context.Process.start is counted\n"
+        "print('PATCH REACHES MANAGER' if reaches else 'PATCH MISSED THE CLASS', flush=True)\n"
         "manager.start_queue()\n"
         "try:\n"
         "    manager.start('job-1')\n"
@@ -336,7 +357,22 @@ def test_the_manager_refuses_the_session_rather_than_spawning_uncontained() -> N
         "    pass\n"
         "for _ in range(20):\n"
         "    app.processEvents()\n"
-        "print('NO PROCESS STARTED' if len(started) == 0 else 'STARTED %d' % len(started))\n"
+        "started_line = 'NO PROCESS STARTED' if not started else 'STARTED %d' % len(started)\n"
+        "print(started_line, flush=True)\n"
+        "stored = repository.jobs['job-1'].status\n"
+        "print('DURABLY FAILED' if stored is JobStatus.FAILED else 'STORED %s' % stored, "
+        "flush=True)\n"
+        "carried = any('probe: forced failure' in message for message in reported)\n"
+        "print('REASON REACHED THE USER' if carried else 'REASON LOST %r' % reported, flush=True)\n"
+        # **Exit before Qt tears itself down, and this is load-bearing under the mutation rather
+        # than tidiness.** A manager that fails open reaches `pump.start()`, so a real `QThread`
+        # is running at interpreter exit; Qt aborts on that — `SIGABRT`, returncode -6 — and an
+        # abort discards whatever the probe had already measured. Every line above is flushed and
+        # then this leaves immediately, so the mutated run reports *"STARTED 1"* and fails on the
+        # defect, instead of reporting an empty stdout and failing on the first assertion that
+        # happens to look at it. `T-263`'s first criterion asks for exactly that: observed, not
+        # aborted.
+        "os._exit(0)\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", probe],
@@ -345,10 +381,22 @@ def test_the_manager_refuses_the_session_rather_than_spawning_uncontained() -> N
         text=True,
         check=False,
     )
+    context = f"stdout: {result.stdout.strip()!r}\nstderr: {result.stderr.strip()[-600:]!r}"
 
+    assert "PATCH REACHES MANAGER" in result.stdout, (
+        "the counter was installed on a class the manager does not use, so a zero count below "
+        f"would mean nothing. This is `T258-R7` recurring.\n{context}"
+    )
     assert "NO PROCESS STARTED" in result.stdout, (
-        "a worker process was started while the application was uncontained.\n"
-        f"stdout: {result.stdout.strip()!r}\nstderr: {result.stderr.strip()[-600:]!r}"
+        f"a worker process was started while the application was uncontained.\n{context}"
+    )
+    assert "DURABLY FAILED" in result.stdout, (
+        "the refused job did not end up recorded as failed. A spawn the manager refuses has to "
+        f"leave the row terminal, or the job is lost rather than failed.\n{context}"
+    )
+    assert "REASON REACHED THE USER" in result.stdout, (
+        "the containment reason did not reach `job_failed`'s message. The refusal is only "
+        f"actionable if what could not be guaranteed is in the sentence a person reads.\n{context}"
     )
 
 

@@ -43,8 +43,8 @@ job; six mutations fail. It **skipped** on the last push, as designed — the fi
 condition has proved on a real event. `T-258`'s criterion 5 is recorded **wired, unmet**, because a
 mechanism that has never executed is a test rather than a result (`T258-R2`).
 
-**`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258` and
-`T-268` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
+**`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
+`T-263` and `T-268` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
 `T258-R5`'s first execution alone. `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining
 runner-inventory prose is `T-265`; `T-266`'s unreproducible toolchain is `T-269`.
 
@@ -805,6 +805,52 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-19 (T-263): a gate that was patching a class the manager never touches
+
+**`T258-R7` was the finding worth having, and it is the same class as the negative control
+`T-266` retired.** `test_the_manager_refuses_the_session_rather_than_spawning_uncontained`
+counted `Process.start()` calls to prove a refused spawn starts nothing — by assigning to
+`multiprocessing.context.Process.start`. The manager builds its worker from a **spawn** context,
+whose `.Process` is `SpawnProcess`; both inherit `start` from `BaseProcess` and **neither
+subclasses the other**. So the counter sat on a class the manager never touches, and under a
+fail-open mutation it stayed empty *because the patch missed*, not because nothing spawned. The
+test passed for a reason unrelated to what it asserts, which is `ai/TESTING.md`'s instrument rule
+arriving at a patch boundary rather than at a probe.
+
+**The probe now patches `SpawnProcess` and checks its own instrument**: it asserts that the
+patched attribute *is* what `manager._context.Process` resolves, and prints `PATCH REACHES
+MANAGER` before it does anything else. Under the fail-open mutation it prints `STARTED 1` and
+fails on that. It also flushes every line and leaves through `os._exit(0)` — a manager that fails
+open reaches `pump.start()`, and Qt aborting on a live `QThread` at exit was discarding the
+measurement the probe had already taken, so the mutated run failed with an empty stdout and the
+wrong diagnosis.
+
+**Two more assertions at the manager level, each mutation-checked separately**: the refused job is
+durably `FAILED`, and the containment reason reaches `job_failed`'s message. Skipping the persist
+gives `STORED probing`; dropping `{error!r}` from the reason gives `REASON LOST`.
+
+**The static spawn-site gate read one shape and claimed a class.** `T258-R8`: it matched a plain
+`ast.Assign` binding a `Process(...)` call, so an **annotated** assignment — a different node
+type entirely — and an **inline** `context.Process(...).start()`, which binds no name to look up,
+both walked past it. Both are caught now, as three named spellings with a mutation each. **And
+the rule's limit is asserted rather than described**: a factory return and an alias still escape
+it, and a test fails if either stops escaping, so the docstring's boundary and the code cannot
+drift apart. Following those would be data-flow analysis, which is out of scope; what covers them
+is `start_contained` refusing at run time whatever spelling reached it.
+
+**`T258-R9`: the refusal's sentence was being thrown away one layer up.**
+`ContainmentUnavailableError` reached `YtdlpService`'s broad pool-thread branch — which exists so
+nothing escapes onto a pool thread with no handler — and came out as *"The operation could not be
+completed (ContainmentUnavailableError)."* The screen said something went wrong and nothing about
+what, for a failure whose entire value is naming the boundary that failed.
+`resolve_in_a_child` now translates it into `ResolutionUnavailableError`, which the service
+already reports verbatim, chained with `from` so the original stays in the traceback.
+
+**Not measured on Windows, and it does not need to be.** Nothing here is platform-guarded: the
+gate is `ast` over source, and both probes force containment to fail rather than exercising a
+real Job object. Ruff, `ruff format --check`, `mypy src` and `mypy --platform win32` are clean;
+the unit suite is **2244 passed, 15 skipped**.
 
 ## 2026-08-19 (T-268, answered): the region is measured on Windows, and the mechanism is not identifiable
 

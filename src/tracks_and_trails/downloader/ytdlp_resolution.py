@@ -98,7 +98,17 @@ def resolve_in_a_child(
         # window does not care what the target was going to be — it opens before the target is
         # unpickled. `spawn_resolution`'s "containment is not required" note covers descendants
         # spawned *by* this child; it never covered this child being stranded before it runs.
-        process_tree.start_contained(child)
+        #
+        # **Translated rather than allowed to escape** (`T258-R9`, `T-263`). A refusal here is a
+        # reason the user can act on — it names the boundary that failed — and this function's
+        # documented failure is `ResolutionUnavailableError`. Left as itself it reached
+        # `YtdlpService`'s broad branch, which reports the exception's *type* and drops the
+        # sentence: *"The operation could not be completed (ContainmentUnavailableError)."*
+        # Chained with `from`, so the original is still in the traceback for a log to carry.
+        try:
+            process_tree.start_contained(child)
+        except process_tree.ContainmentUnavailableError as error:
+            raise ResolutionUnavailableError(str(error)) from error
         started = True
         while True:
             try:

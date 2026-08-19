@@ -16,6 +16,7 @@ here is the *resolution*, not the download.
 import hashlib
 import io
 import json
+import multiprocessing.context as mp_context
 import threading
 import time
 import zipfile
@@ -27,6 +28,7 @@ from typing import IO, Any
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader import ytdlp_service as service_module
 from tracks_and_trails.downloader.environment import (
     BASELINE_YTDLP_VERSION,
@@ -255,6 +257,59 @@ def test_the_service_delivers_a_resolution_through_its_signal(qapp: Any, tmp_pat
     assert isinstance(seen[0], Resolution)
     assert seen[0].version == INSTALLED_VERSION
     assert service.busy is False, "the service stayed busy after finishing"
+
+
+def test_a_containment_refusal_reaches_the_user_with_its_reason(
+    qapp: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T258-R9`, `T-263`: the refusal is only useful if the sentence survives the trip.
+
+    `resolve_in_a_child` spawns through `process_tree.start_contained`, which raises
+    `ContainmentUnavailableError` rather than starting a child the application cannot guarantee it
+    can reap. That exception used to travel as itself, and `_Task.run`'s broad branch — which
+    exists so nothing escapes onto a pool thread — reduced it to *"The operation could not be
+    completed (ContainmentUnavailableError)."* The screen then said something had gone wrong and
+    nothing about what, for a failure whose whole value is naming the boundary that failed.
+
+    So the resolution path translates it into `ResolutionUnavailableError`, which the service
+    already knows how to report verbatim. **Both halves are asserted here**: the reason arrives,
+    and no child was started — a message that arrives after a child was spawned anyway would be
+    the fail-open defect with better prose.
+    """
+    started: list[str] = []
+
+    def counted(self: Any) -> None:
+        started.append(type(self).__name__)
+
+    # The class a spawn context actually constructs (`T258-R7`). Patching
+    # `multiprocessing.context.Process` instead would land on a class nothing here uses.
+    monkeypatch.setattr(mp_context.SpawnProcess, "start", counted)
+    monkeypatch.setattr(process_tree, "contain_this_application", lambda: False)
+    monkeypatch.setattr(process_tree, "application_containment_error", "probe: forced failure")
+
+    service = YtdlpService(directory=tmp_path / "ytdlp", entry_point=_reports_a_version)
+    seen: list[Any] = []
+    problems: list[str] = []
+    service.reported.connect(seen.append)
+    service.failed.connect(problems.append)
+
+    service.refresh()
+
+    deadline = time.monotonic() + 30.0
+    while not seen and not problems and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+
+    assert not started, (
+        f"a child was started while the application was uncontained: {started}. The refusal has "
+        "to happen before the process exists, which is the whole order `start_contained` keeps."
+    )
+    assert not seen, f"a resolution was delivered by a refused spawn: {seen}"
+    assert problems, "the refusal reached the user as nothing at all"
+    assert "probe: forced failure" in problems[0], (
+        "the containment reason did not survive the trip to the user. Got: "
+        f"{problems[0]!r} — which is the broad branch reporting a type instead of the sentence."
+    )
 
 
 def test_a_second_operation_is_refused_while_one_is_running(qapp: Any, tmp_path: Path) -> None:
