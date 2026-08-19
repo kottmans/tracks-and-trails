@@ -9263,9 +9263,16 @@ capture for a different access violation, and the reviewer ruled it is not the o
   terminate only explicitly selected processes. The scanner does not prove project ownership, so
   none of this is authority for a bulk kill, and no destructive scanner mode is to be added.
 
-*(**Their live state is assumed, not re-checked.** The reviewer recorded that they did not
-independently query whether the two are still running; neither has anybody since. The
-preservation ruling rests on the 04:48Z scan.)*
+**Their live state is confirmed, and not by the run that found them.** The reviewer recorded that
+they had not independently queried whether the two were still running, so the preservation ruling
+rested on the 04:48Z dispatch alone. **The 06:00 UTC nightly — run `32225163769`, scan at
+07:31:08Z — reports all seven again**, `3400` and `6924` among them at `1d13h`, with resident sets
+**unchanged at 79 and 77 MB** across the intervening 2h43m. They are alive, they are not growing,
+and the specimens are intact.
+
+*(That run is also `T258-R5`'s **schedule** path executing for the first time. The 04:48Z run
+proved the `workflow_dispatch` half of the trigger; this proves the half that matters
+operationally, since `OPS-003` means nobody is there to dispatch anything.)*
 
 **The answer below stands as written** — the region is bounded, four candidates are eliminated, and
 what survives is outside the interpreter. That is the third acceptance criterion taken

@@ -850,9 +850,16 @@ record what that establishes *or why it still cannot be*, **preserve them until 
 The scanner does not prove project ownership, so none of it authorizes a bulk kill and no
 destructive scanner mode is to be added.
 
-**Their live state is assumed, not re-checked.** The reviewer recorded that they did not
-independently query whether the two are still running, and nobody has since. The preservation
-ruling rests on the 04:48Z scan.
+**Their live state is confirmed, by a run nobody asked for.** The reviewer had recorded that they
+did not independently query whether the two were still running. The **06:00 UTC nightly** —
+`32225163769`, scanning at 07:31:08Z — found all seven again, `3400` and `6924` at `1d13h` with
+resident sets **unchanged at 79 and 77 MB** over the intervening 2h43m. Alive, not growing,
+specimens intact.
+
+**That is also `T258-R5`'s schedule path executing for the first time.** The 04:48Z dispatch proved
+one half of the trigger; the nightly proves the half that matters operationally, because `OPS-003`
+means nobody is there to dispatch anything. The detection path has now reported twice, unattended,
+without anybody asking it to.
 
 **No recurrence task was filed, deliberately.** The new pair carries the same discriminating
 signature `T-268` named, so `T-268` owns it; a second task is warranted only if the inspection
