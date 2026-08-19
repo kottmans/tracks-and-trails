@@ -285,21 +285,56 @@ nobody runs is worse than one that omits it, because it is read as coverage.
 | **pull request** | **nothing at all** — no workflow carries the trigger (`T-262`) |
 | **nightly (06:00 UTC) and `workflow_dispatch`** | the same as the first row, plus it cannot be cancelled by a push |
 
-### Where each platform runs (`OPS-012`, 2026-08-05)
+### Where each job runs (`OPS-012`, 2026-08-05; made exact 2026-08-19 by `T-265`)
 
-| Leg | Runs on | Selected by |
-|---|---|---|
-| `linux`, `frozen linux`, `prose` | the maintainer's Fedora desktop/laptop | `vars.LINUX_RUNNER` |
-| `windows desktop`, `frozen windows` | `STARBASE` | `vars.WINDOWS_RUNNER` |
-| `STARBASE coverage` | the maintainer's Fedora desktop/laptop | `vars.LINUX_RUNNER` |
+**Every job in every workflow is below.** The previous version of this table was a representative
+list of five legs, which `T262-R4` found saying two things that were not true: that
+`windows desktop` and `frozen windows` are *"selected by `vars.WINDOWS_RUNNER`"* — they are pinned
+to literal labels and that variable does not reach them — and, by omission, that `trailers`,
+`task placement` and `repeat on STARBASE` do not exist. `STARBASE orphans` was added on 2026-08-18
+and would have been the fourth omission.
 
-**No job is pinned to hosted compute**, as of the maintainer's 2026-08-11 ruling — *STARBASE and
-local machines exclusively*. `STARBASE coverage` was the last one that was, and this table went on
-saying so for six days after `ci.yml:486` moved it, which is what `T262-R1` found: the row
-contradicted the all-self-hosted premise this section's own security paragraph rests on. Hosted
-`ubuntu-latest` survives only as the unset-variable fallback inside each `runs-on`, which is what
-keeps a fresh clone runnable; it is not where this repository's runs land. What the ruling costs is
-stated in the job's own comment rather than here: a reporter whose whole purpose is to announce
+**Two columns, because they are two different things.** *Selector* is what the workflow file
+computes into `runs-on`. *Enabled by* is the separate condition deciding whether the job exists on
+a given run at all. Collapsing them is how a variable that controls one job's **existence** gets
+read as controlling another job's **destination**.
+
+| Job (board name) | Workflow | `runs-on` selector | Enabled by |
+|---|---|---|---|
+| `linux` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | always — the matrix's `ubuntu-latest` leg is unconditional |
+| `windows-latest` | `ci.yml` | `fromJSON(vars.WINDOWS_RUNNER \|\| '"windows-latest"')` | **only when `WINDOWS_RUNNER` is unset.** Setting it removes this leg from the matrix rather than redirecting it |
+| `STARBASE coverage` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | `if: always()` |
+| `windows desktop` | `ci.yml` | literal `[self-hosted, windows, desktop]` | `vars.STARBASE_AVAILABLE == 'true'` |
+| `STARBASE orphans` | `ci.yml` | literal `[self-hosted, windows, desktop]` | `always() && STARBASE_AVAILABLE == 'true' && (schedule \|\| workflow_dispatch)`, after `needs: windows-desktop` |
+| `frozen linux` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | matrix leg, unconditional |
+| `frozen windows` | `ci.yml` | literal `[self-hosted, windows, desktop]` | matrix leg, unconditional |
+| `trailers` | `commit-messages.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | every push |
+| `task placement` | `prose.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | push touching `ai/TASKS.md`, its test, or that workflow |
+| `repeat on STARBASE` | `t074-repeat.yml` | literal `[self-hosted, windows, desktop]` | `workflow_dispatch` only — never on a push or a schedule |
+
+**Three tenses live in that table and must not be flattened into one.**
+
+1. **What the files say** — the selectors above. Readable from this repository, and the only column
+   this document can prove.
+2. **What the repository is configured to** — whether `LINUX_RUNNER`, `WINDOWS_RUNNER` and
+   `STARBASE_AVAILABLE` are set, and to what. That is GitHub state, **not a fact about these
+   files**: `gh variable list` is the authority, and no sentence here should assert a value it
+   cannot see. What the configuration was on 2026-08-05 is in `OPS-012`; what it is today is a
+   command away.
+3. **What ran historically** — `check (ubuntu-latest)` and `frozen ubuntu-latest` in older records
+   name runs that did happen on Ubuntu. `AGENTS.md` §6 keeps those as written.
+
+**The hosted fallbacks are real and are what a fresh clone gets.** Every `fromJSON(vars.X || ...)`
+above resolves to a hosted image when its variable is unset, which is what keeps this workflow
+runnable by somebody who has neither of these machines. The four literal-label rows have no
+fallback at all: with no self-hosted Windows runner online they queue rather than degrade.
+
+**With the self-hosted variables set, no job resolves to hosted compute**, which is the maintainer's
+2026-08-11 ruling — *STARBASE and local machines exclusively* — and is the premise the security
+paragraph at the top of this section rests on. `STARBASE coverage` was the last job pinned to
+`ubuntu-latest`, and this table went on saying so for six days after `ci.yml:486` moved it, which is
+what `T262-R1` found. What the ruling costs is
+stated in that job's own comment rather than here: a reporter whose whole purpose is to announce
 that self-hosted work did not run is now itself self-hosted, and what it still covers is `STARBASE`
 down while Fedora is up.
 
@@ -547,7 +582,11 @@ not started since the Actions quota ran out, leaving Phase 1's *verified on Wind
 with nowhere to be measured; `OPS-005` made `STARBASE` that place. The job keeps its name because
 the desktop role above is still true and still why it exists.
 
-Two things still differ from the hosted job, and neither is papered over:
+Two things still differ from `check (windows-latest)`, and neither is papered over. **That job is
+the comparison, and while `WINDOWS_RUNNER` is set it does not exist** — the matrix drops the leg
+rather than redirecting it, so this is a difference from a job the board is not currently showing.
+It is kept because unsetting the variable brings that leg straight back, and because the two
+differences below are why this job is not simply the hosted one moved:
 
 - **ffmpeg is recorded, not installed.** `check` runs `choco install ffmpeg`; this job must never
   provision the machine it runs on, so it reports what is there. The default suite does not need

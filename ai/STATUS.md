@@ -44,7 +44,7 @@ condition has proved on a real event. `T-258`'s criterion 5 is recorded **wired,
 mechanism that has never executed is a test rather than a result (`T258-R2`).
 
 **`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
-`T-263`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
+`T-263`, `T-265`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
 `T258-R5`'s first execution alone. `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining
 runner-inventory prose is `T-265`; `T-266`'s unreproducible toolchain is `T-269`.
 
@@ -805,6 +805,37 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-19 (T-265): the runner table names all ten jobs, and stops guessing at a variable
+
+**The old table named five legs and got two wrong.** `windows desktop` and `frozen windows` were
+described as *"selected by `vars.WINDOWS_RUNNER`"*; both are pinned to literal
+`[self-hosted, windows, desktop]` labels, and that variable never reaches them. What it actually
+controls is whether `check`'s Windows matrix leg **exists at all** — setting it drops the leg
+rather than redirecting it. One variable's effect on a job's *existence* was being read as its
+effect on a different job's *destination*, so the table now carries the `runs-on` selector and the
+enabling condition in separate columns.
+
+**Four jobs were missing.** `T262-R4` named three — `trailers`, `task placement` and the
+dispatch-only `repeat on STARBASE` — and **`STARBASE orphans` would have been the fourth**, added
+by `T258-R5` the day before. A representative list acquires an omission roughly as fast as jobs are
+added, which is the argument for an inventory over a sample.
+
+**Three tenses, separated rather than qualified.** What the workflow *files* say is the only thing
+this document can prove and is all the table quotes. What the repository is *configured* to —
+whether `LINUX_RUNNER`, `WINDOWS_RUNNER` and `STARBASE_AVAILABLE` are set, and to what — is GitHub
+state that `gh variable list` answers and no sentence here asserts. What *ran historically* stays
+as written under `AGENTS.md` §6.
+
+**And *"Two things still differ from the hosted job"* now says which job.** It is
+`check (windows-latest)`, which does not exist while `WINDOWS_RUNNER` is set — a comparison against
+a job the board is not showing. Kept, because unsetting the variable brings it straight back, but
+no longer written as though it were running.
+
+**Nothing executable holds the table to the workflows**, and that is stated in the task rather than
+quietly accepted: the next job added lands exactly where `STARBASE orphans` was this morning. A
+gate that parses the four workflow files and asserts the row set is the obvious follow-up, and it
+is outside this task's affected surfaces.
 
 ## 2026-08-19 (T-269): the two gates are pinned, and the environment is checked against the pin
 

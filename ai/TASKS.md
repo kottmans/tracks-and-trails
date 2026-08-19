@@ -547,6 +547,78 @@ Windows job deliberately reuses its environment
 
 ---
 
+### T-265 — Make the CI runner inventory describe every job exactly
+
+**Status:** **In Review — rewritten 2026-08-19. *Where each platform runs* is now *Where each
+job runs*, and it lists all ten.** The old table named five legs and got two of them wrong:
+`windows desktop` and `frozen windows` were said to be *"selected by `vars.WINDOWS_RUNNER`"* when
+both are pinned to literal `[self-hosted, windows, desktop]` labels that variable never reaches.
+What `WINDOWS_RUNNER` actually controls is whether `check`'s Windows matrix leg **exists** — set
+it and the leg is dropped, not redirected — so one variable's effect on a job's *existence* was
+being read as its effect on another job's *destination*. The table now has separate `runs-on`
+selector and *Enabled by* columns for exactly that reason.
+
+**Four jobs were missing**, three named by `T262-R4` — `trailers` (`commit-messages.yml`),
+`task placement` (`prose.yml`), `repeat on STARBASE` (`t074-repeat.yml`, `workflow_dispatch` only)
+— and **`STARBASE orphans`, added by `T258-R5` on 2026-08-18**, which would have been the fourth
+omission of a job younger than the finding.
+
+**The three tenses are separated rather than qualified.** What the *files* say is the only column
+this document can prove; what the repository is *configured* to is GitHub state that `gh variable
+list` answers and no sentence here asserts; what *ran historically* stays as written under
+`AGENTS.md` §6. That is criterion 4 satisfied by construction — the table quotes selectors, never
+values.
+
+**The *"Two things still differ from the hosted job"* sentence is qualified rather than
+rewritten.** The job it compares against is `check (windows-latest)`, and while `WINDOWS_RUNNER`
+is set that leg does not exist — so the sentence now says which job it means and that the board is
+not currently showing it, and says why the comparison is kept: unsetting the variable brings it
+straight back.
+
+**Documentation only; no workflow, variable, label or trigger was touched.** `ai/TESTING.md` is
+the single surface. `docs/DEVELOPMENT.md` was checked for a duplicate inventory and has none.
+
+**One residual risk, stated rather than fixed:** nothing executable holds this table to the
+workflow files, so the next job added lands in exactly the position `STARBASE orphans` was in this
+morning. A gate could parse the four workflows and assert the row set, and that is a follow-up
+worth filing — it is outside this task's *Affected surfaces*, which name `ai/TESTING.md` alone.
+**Owner:** Documentation Maintainer
+**Priority:** Low — the destinations that matter to T-262 are stated correctly; this closes
+smaller current-truth errors about selectors, omitted jobs and conditional history
+**Phase:** CI documentation maintenance; blocks neither T-262 nor repository visibility
+**Depends on:** T-262 approved at `8ee106b`
+**Relevant context:** `T262-R4`, `ai/TESTING.md` §10, `.github/workflows/*.yml`, `OPS-012`,
+`AGENTS.md` §6
+**Affected surfaces:** `ai/TESTING.md`
+**Risk:** Low — documentation only; the trap is turning configured repository state into an
+unqualified property of a workflow whose hosted fallbacks still exist
+
+#### Scope
+
+Make *Where each platform runs* an exact inventory rather than a representative list:
+
+- `windows desktop` is enabled by `STARBASE_AVAILABLE` and pinned to the literal self-hosted
+  labels; `frozen windows` is pinned to the same labels. Neither runner is selected by
+  `WINDOWS_RUNNER`, which instead controls the optional Windows matrix leg of `check`
+- Add the Linux `trailers` job from `commit-messages.yml` and the manual-only `repeat on STARBASE`
+  job from `t074-repeat.yml`, or state an explicit table boundary that honestly excludes them
+- Rewrite or qualify the later *Two things still differ from the hosted job* sentence so a reader
+  can distinguish the optional hosted `check` leg from the repository's configured current runs
+
+#### Acceptance criteria
+
+- Every current workflow job is represented, or an explicit scope rule explains every omission
+- Each row names the actual `runs-on` selector or literal labels and separately names any enable
+  condition such as `STARBASE_AVAILABLE`
+- Configured self-hosted state, unset-variable hosted fallbacks and historical behavior are not
+  collapsed into one tense
+- No repository setting is asserted from the workflow files alone
+
+#### Out of scope
+
+- Changing a workflow, repository variable, runner label, trigger or GitHub setting
+- Reopening T-262's approved trigger removal or T-264's executable regression guard
+
 ### T-256 — Rule the fifteen options no decision covers
 
 **Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
@@ -8030,49 +8102,6 @@ at 34 minutes and require the warning. The proof must fail when the workflow-use
 
 - Choosing a new threshold, changing the 40-minute job bound or re-measuring STARBASE
 - Treating the reporter warning as a product-test failure; T259-R1 resolved that policy
-
-### T-265 — Make the CI runner inventory describe every job exactly
-
-**Status:** **Ready — filed 2026-08-17 from `T262-R4`.** T-262's blocking contradiction is
-resolved: the policy now places `STARBASE coverage` on `LINUX_RUNNER`, and no job is pinned to
-hosted compute under the configured repository variables. This is the non-blocking inventory
-residue around that corrected safety statement.
-**Owner:** Documentation Maintainer
-**Priority:** Low — the destinations that matter to T-262 are stated correctly; this closes
-smaller current-truth errors about selectors, omitted jobs and conditional history
-**Phase:** CI documentation maintenance; blocks neither T-262 nor repository visibility
-**Depends on:** T-262 approved at `8ee106b`
-**Relevant context:** `T262-R4`, `ai/TESTING.md` §10, `.github/workflows/*.yml`, `OPS-012`,
-`AGENTS.md` §6
-**Affected surfaces:** `ai/TESTING.md`
-**Risk:** Low — documentation only; the trap is turning configured repository state into an
-unqualified property of a workflow whose hosted fallbacks still exist
-
-#### Scope
-
-Make *Where each platform runs* an exact inventory rather than a representative list:
-
-- `windows desktop` is enabled by `STARBASE_AVAILABLE` and pinned to the literal self-hosted
-  labels; `frozen windows` is pinned to the same labels. Neither runner is selected by
-  `WINDOWS_RUNNER`, which instead controls the optional Windows matrix leg of `check`
-- Add the Linux `trailers` job from `commit-messages.yml` and the manual-only `repeat on STARBASE`
-  job from `t074-repeat.yml`, or state an explicit table boundary that honestly excludes them
-- Rewrite or qualify the later *Two things still differ from the hosted job* sentence so a reader
-  can distinguish the optional hosted `check` leg from the repository's configured current runs
-
-#### Acceptance criteria
-
-- Every current workflow job is represented, or an explicit scope rule explains every omission
-- Each row names the actual `runs-on` selector or literal labels and separately names any enable
-  condition such as `STARBASE_AVAILABLE`
-- Configured self-hosted state, unset-variable hosted fallbacks and historical behavior are not
-  collapsed into one tense
-- No repository setting is asserted from the workflow files alone
-
-#### Out of scope
-
-- Changing a workflow, repository variable, runner label, trigger or GitHub setting
-- Reopening T-262's approved trigger removal or T-264's executable regression guard
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
