@@ -5,55 +5,72 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-18 — **`T-264` is Approved at `609d614`.** The trigger gate had accepted
-an anchor aliased into `on:` and an event hidden behind a quoted `#` — valid YAML that GitHub runs
-— and its probes raced under `pytest -n auto` because they wrote into the real workflow directory.
-It parses with PyYAML now and fails closed on anything it cannot resolve. Adding that dependency is
-what made its own approval wait on Windows, and run `32106718891` supplied the evidence: PyYAML and
-`types-PyYAML` installed on `STARBASE`, all 25 trigger tests passed there, and the full suite came
-back **1 failed, 3683 passed, 30 skipped, 35 deselected** — the one failure being `T-266`'s
-unchanged negative control.
+**Last updated:** 2026-08-19 — **`T-268` is In Review: the region is measured on Windows, and the
+mechanism is not identifiable.** Run `32209108844` on `STARBASE` stopped a real spawned child at
+three points and killed its parent each time. **Before** the payload read with the outer Job
+suppressed the child **dies**; **past** the read it **survives with one thread** — the signature of
+the five; **past** the read with the Job **present** it is **reaped**. The middle result exists
+only on that side of the read, and the identical kill on the other side produces the opposite
+outcome, which is what makes the pair a discrimination rather than a demonstration. The suite came
+back **3691 passed, 30 skipped, 35 deselected**.
 
-**`T-259`'s warning fired for the first time in that same run**, at **35.0 minutes of 40 — 88%**,
-past the 85% mark. Until then it had only ever fired in tests. The number is the point: the job
-took 32.3 minutes on 2026-08-17 and 35.0 on 2026-08-18, which is the creep `T-259` exists to make
-visible, arriving one day after the reporter was built.
+**The third row is the product result, and it is luck recorded as luck.** `T-258`'s outer Job reaps
+a child in the region the orphans were **actually** in. The fix was built for a window that closes
+itself — `T-266` measured that in run `32172384737`, where `driver_holds_a_job: false` recorded the
+suppression working and the child died regardless, exit code 1 — and it covers the window they came
+through anyway. The
+reasoning behind the fix was wrong and `T-258` says so; the coverage is now measured rather than
+assumed. `T-258`'s criterion 2 stays closed as unobtainable in that form, and the outer Job is
+**defence in depth, not the demonstrated reaper**.
 
-**`T-258`'s Windows evidence exists and the control failed.** The pair has run on `STARBASE` in
-every Windows job since 2026-08-17 — `32078697182`, `32086893887`, `32106718891`, one failure each
-time: the reproduction passes there, and the negative control — the outer Job suppressed — does
-**not** show the child surviving. **`T-266` decided that on 2026-08-18, and the answer is that the
-fix is not what works.** Run `32172384737` measured `driver_holds_a_job: false` — the suppression
-suppressed — and the child died anyway, exit code 1. On Windows as on POSIX, a child stopped in
-this window is reaped by its own failed bootstrap; the outer Job is **defence in depth, not the
-demonstrated reaper**, and `T-258`'s criterion 2 is closed as unobtainable in that form. **What
-that opens is bigger than what it closed**: the five orphans did not come through the window
-`T-258` reproduces, because that window closes itself, so their cause is unexplained again and is
-now `T-268`. `T-259`'s approval settles the workflow disposition
-`T258-R5` was waiting on; the scanner itself is still wired to nothing.
+**What blocked the five cannot be identified, and that is the answer rather than an open bullet** —
+`T-268`'s third criterion asks for it in that form. Four eliminations carry it: **both payload
+reads** (measured, and structural — the parent holds the sole write handle on a pipe whose handles
+are non-inheritable), **a second process holding that write handle** (`bInheritHandles=False`
+forbids it), **the application's entry blocking a re-import** (its module level is three lines),
+and **`contain_this_process()` hanging** (three kernel calls that never wait — **reasoned, not
+measured**, and flagged as such). What is left is a location, not a mechanism, and the one
+surviving candidate is outside the interpreter, where `T-092` and `OPS-003` apply. **What would
+reopen it:** another `STARBASE` orphan with **one** thread.
 
-**`T-257`, `T-259`, `T-262`, `T-264` and now `T-266` are Complete**, leaving `T-256` and `T-258`
-In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on `T258-R5` alone.
-`T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining runner-inventory prose is `T-265`;
-`T-266`'s unreproducible toolchain is `T-269`.
+**`T-259`'s warning fired again at 85.0% — 33.9 minutes of 40.** The series is 32.3, 35.0, 32.3,
+33.9, and that run added seven tests. The reporter is doing what it was built for; `T-267` is what
+stops the threshold itself drifting.
+
+**`T258-R5`'s scanner is wired, and it has not executed.** The `STARBASE orphans` job runs
+`tools/orphan_scan.py` on the self-hosted runner nightly and on dispatch, and a find fails that
+job; six mutations fail. It **skipped** on the last push, as designed — the first thing its
+condition has proved on a real event. `T-258`'s criterion 5 is recorded **wired, unmet**, because a
+mechanism that has never executed is a test rather than a result (`T258-R2`).
+
+**`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258` and
+`T-268` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
+`T258-R5`'s first execution alone. `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining
+runner-inventory prose is `T-265`; `T-266`'s unreproducible toolchain is `T-269`.
 
 **The live `origin/main` is deliberately not quoted here.** It was, and it was wrong within two
 pushes. Git is the authority for where the remote points; this file records the pushes as they
 happen, in the dated entries below.
 
-*(**This header was rewritten 2026-08-18 rather than appended to again.** It had reached the point
-of saying `T-259` was Complete *and* corrected-awaiting-re-review, that `T-258`'s Windows run
-existed *and* that no Windows run existed, and that `origin/main` was `b6a6d20` two pushes later.
-Each clause was true when written; none was removed when it stopped being. Found by review.)*
+*(**This header was rewritten again on 2026-08-19, one day after the last rewrite, and for the same
+reason.** Within a single day it had gone back to saying `T258-R5`'s scanner was *"still wired to
+nothing"* after `5e6661f` wired it, that `T-256` and `T-258` were the only tasks In Review with
+`T-268` sitting in that section, and — below — that the reproduced window is *"the"* window that
+orphaned the five, which is the causation `T-266` disproved. **Each clause was true when written;
+none was removed when it stopped being**, which is the failure the 2026-08-18 rewrite recorded and
+did not prevent. The earlier rewrite's own list is kept here because it is the same list: `T-259`
+Complete *and* awaiting re-review, `T-258`'s Windows run existing *and* not existing, `origin/main`
+two pushes out of date.)*
 
-The pre-bootstrap window that orphaned five workers on `STARBASE` is reproduced, **POSIX is
-measured not to have it** (the child dies within 0.02 s of the parent, on its own broken bootstrap
-pipe), and the application now contains itself in a Job object before any worker exists — through
-**one seam that refuses to spawn rather than warn**, at **all three** product-owned spawn sites.
-The review found the first version failing open and covering only the manager, and it was right.
-`ai/TASKS.md`'s `## In Review` section was also found duplicated byte-for-byte since `30b473d`,
-under a placement gate that passes on duplicates.
-
+**A pre-bootstrap window is reproduced — and it is not the one the five came through.** `T-266`
+measured that window closing itself, so it explains nothing about them; what covers their actual
+region is the outer Job, by luck, per `T-268` above. **POSIX is measured not to have the reproduced
+window at all** (the child dies within 0.02 s of the parent, on its own broken bootstrap pipe), and
+the application contains itself in a Job object before any worker exists — through **one seam that
+refuses to spawn rather than warn**, at **all three** product-owned spawn sites. The review found
+the first version failing open and covering only the manager, and it was right. `ai/TASKS.md`'s
+`## In Review` section was also found duplicated byte-for-byte since `30b473d`, under a placement
+gate that passes on duplicates.
 *(Previously, 2026-08-16 — **`T-183`, Phase 4.5's option audit, was built and In Review**; it is
 now **Complete**, approved with follow-ups at `1d0caf6` on 2026-08-17.)* It is at
 `docs/YTDLP_OPTION_AUDIT.md`: 250 documented yt-dlp options against the pinned 2026.07.04, each in

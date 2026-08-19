@@ -253,9 +253,15 @@ watchdog is the region's far bound.
 and 2026-08-05 against an application that had none. The `with-the-fix` parameter is the current
 application, and on Windows it asserts the child is reaped: **the first evidence that `T-258`'s
 fix covers the region the orphans were actually in**, rather than the region it was built for.
-**That assertion has not run on Windows yet** and is the outstanding measurement — on POSIX
-`contain_this_application()` is a documented no-op, so both parameters measure the same thing
-there and the test says so rather than reading as if they did not.
+**That assertion has now run on Windows** — run `32209108844`, the third row of the table above —
+so the evidence exists rather than being outstanding. On POSIX `contain_this_application()` is a
+documented no-op, so both parameters measure the same thing there and the test says so rather than
+reading as if they did not.
+
+*(**This paragraph said the assertion "has not run on Windows yet" for one commit after the run
+that made it false.** `dc75843` added the table three screens above and did not remove the
+sentence the table contradicted — the same class of residue the `## In Review` preface above and
+`STATUS.md`'s header were both rewritten for.)*
 
 **What is still not identified, and is not guessed at:** *what* blocked them inside that region.
 It contains `spawn.prepare()` importing the main module, the second `pickle.load` rebuilding
