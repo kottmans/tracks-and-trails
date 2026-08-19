@@ -5,8 +5,14 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-19 — **`T-268` is Blocked on a person at `STARBASE`, and that is the one
-thing on this board nobody at a keyboard can move.** The orphan scanner's first run found seven,
+**Last updated:** 2026-08-19 — **the `windows desktop` job is red, and the failure is the product
+this time.** `T-270`: `QKeySequence.StandardKey.Quit` resolves to an empty sequence under PySide6
+6.11.2, so Quit carries no accelerator on Windows — and because that step runs before lint, format,
+the Qt baseline and the full suite, **all four are skipped and `STARBASE` is producing no Windows
+evidence at all**. `T-269`'s pin re-keyed the persistent virtualenv, the fresh resolve floated
+PySide6 from 6.11.1 on a `>=6.11,<7` floor, and a latent defect surfaced. `T269-R2` is blocked
+behind it. **`T-268` is Blocked on a person at `STARBASE`**, and that remains the one thing on this
+board nobody at a keyboard can move. The orphan scanner's first run found seven,
 two of them new, and `T-268`'s own written reopening condition — another `STARBASE` orphan with one
 thread — fired on both. They predate the containment fix and do not indict it. What they establish
 is that the phenomenon recurred on 2026-08-17 and that **there are finally live specimens**: `3400`
@@ -827,6 +833,51 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-19 (T-270): the pin re-keyed a virtualenv and a Windows defect fell out
+
+**Run `32268124069`: `1 failed, 32 passed` where the two runs earlier the same day were `33
+passed`.** `test_the_quit_shortcut_is_bound` fails on `STARBASE` — `QKeySequence.StandardKey.Quit`
+resolves to an **empty** sequence, so the application's Quit action has no accelerator on Windows.
+
+| Run | Time | Desktop suite | PySide6 |
+|---|---|---|---|
+| `32214730271` | 04:11Z | 33 passed | **6.11.1** |
+| `32225163769` | 06:58Z | 33 passed | 6.11.1 |
+| `32268124069` | 15:11Z | **1 failed, 32 passed** | **6.11.2** |
+
+**Nothing about the application changed in between.** The batch touched tests, dev pins, a
+workflow's environment record and prose; its single `src/` change is exception translation in
+`ytdlp_resolution.py`, which no UI test reaches.
+
+**What changed is the environment, and `T-269` is why.** The persistent venv's cache key is
+`sha256sum pyproject.toml`, so pinning Ruff and mypy re-keyed it and the runner resolved
+dependencies afresh for the first time in weeks. **`PySide6>=6.11,<7` is a floor**, so that resolve
+took 6.11.2 where the old venv had been holding 6.11.1.
+
+**`T-269` did not cause this and could not have avoided it.** It uncovered a latent defect in the
+only way it was ever going to be uncovered — by forcing an honest resolve. A new contributor, a new
+runner or a release build would each have met it cold. **The pin itself worked**: `ruff-0.16.3` and
+`mypy-2.3.1` installed on `STARBASE`, which is half of `T269-R2`.
+
+**The other half never ran, and that is the expensive part.** `Windows desktop suite` sits *before*
+`Record the environment`, `Lint`, `Format check`, `Qt baseline` and `Full suite`, so all five were
+skipped: no `--- gates ---` block, no Windows execution of the toolchain test, no default suite.
+**`STARBASE` is currently producing no Windows evidence for anything**, which is the `T-257`
+situation again with the polarity reversed — that time the failure was the guard, this time it is
+the product.
+
+**The test predicted its own failure.** Its docstring says *"Qt may resolve it to nothing at all"*.
+The test anticipated the case; the product never guarded it.
+
+**`T-270` is filed Ready and names the decision it does not take.** Pinning PySide6 is a **runtime**
+dependency change — `AGENTS.md` §7 wants a `DECISIONS.md` entry, and `T-269`'s scope explicitly
+excludes it. Pinning alone would also make the board green while leaving the defect, since the
+constraint's next allowed upgrade reintroduces it. **Second time in one day that a floor turned out
+to be load-bearing.**
+
+**The scan ran again in that same run** — 15:16:32Z, seven orphans, `3400` and `6924` at `1d21h`,
+79 and 77 MB. Third unattended report, specimens unchanged.
 
 ## 2026-08-19 (pushed): `dc75843..53edb19`, twenty-two commits
 

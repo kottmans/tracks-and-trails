@@ -171,10 +171,15 @@ one**, because it decides whether a change lands). The reviewer's shadow mutatio
 both bare commands now fail, and the message names both resolutions, because *"0.16.0 is
 installed"* and *"the `ruff` on your `PATH` is 0.16.0"* have different fixes.
 
-**`T269-R2` is not correctable from here.** Run `32214730271` has `headSha: dc75843`, so it says
-nothing about the re-keyed persistent venv, the exact versions installing on Windows, this test
-running there, or the `--- gates ---` artifact block. That evidence requires the correction head to
-be **pushed**, which is the maintainer's call and has not been made.
+**`T269-R2` was attempted and is now blocked behind `T-270`.** The head was pushed and run
+`32268124069` dispatched at `53edb19`. **The re-key worked exactly as predicted** — the runner
+resolved dependencies afresh and installed `ruff-0.16.3` and `mypy-2.3.1` on `STARBASE`, which is
+half of what this finding asks for. **The other half never ran**: the same fresh resolve floated
+`PySide6` from 6.11.1 to 6.11.2 on a `>=6.11,<7` floor, `test_the_quit_shortcut_is_bound` failed,
+and the `Windows desktop suite` step runs **before** `Record the environment`, `Lint`,
+`Format check`, `Qt baseline` and `Full suite` — so all five were skipped. There is therefore no
+`--- gates ---` block, no Windows execution of `test_toolchain_versions.py`, and no default suite
+from that run. **`T-270` owns the red**; `T269-R2` needs one green `windows desktop` job after it.
 
 **`ruff==0.16.3` and `mypy==2.3.1` in the `dev` extra, and a test that fails when the environment
 is not on them.** The pins are the canonical source and
@@ -7949,6 +7954,84 @@ while each said Ready: the exact status-versus-section class `COORD-R5` through 
 reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
+
+### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
+
+**Status:** **Ready — filed 2026-08-19 from run `32268124069`.** `test_the_quit_shortcut_is_bound`
+fails on `STARBASE`: `QKeySequence.StandardKey.Quit` resolves to an **empty** sequence, so the
+application's Quit action carries no accelerator on Windows at all. **The test's own docstring
+predicted this** — *"Qt may resolve it to nothing at all"* — and the product never guarded it.
+**Owner:** Implementer
+**Priority:** **High.** Two reasons, and the second is the urgent one. It is a user-facing keyboard
+gap on the platform `T-200`'s accessibility pass is measured on; and the `Windows desktop suite`
+step runs **before** lint, format, the Qt baseline and the full suite, so its failure **skips all
+four**. `STARBASE` is the only Windows evidence this project has (`OPS-005`), and it currently
+produces none
+**Phase:** Phase 4 maintenance, and it blocks Windows evidence for everything else
+**Depends on:** nothing
+**Relevant context:** `ui/main_window.py:1427`, `tests/ui/test_windows_desktop.py`, `T-269` (which
+exposed it), `T-200`, `T-257` (the last time this job was red for days), `OPS-005`
+**Affected surfaces:** the Quit action's shortcut, and possibly `pyproject.toml`'s PySide6
+constraint — see *The decision that is not mine* below
+**Risk:** Low to fix, and the trap is fixing the wrong half: pinning the dependency makes the board
+green while leaving the product depending on a resolution Qt is entitled to leave empty
+
+#### What changed, and the evidence it rests on
+
+| | |
+|---|---|
+| 2026-08-19 **04:11Z**, run `32214730271` | **33 passed**, PySide6 **6.11.1** (its environment record) |
+| 2026-08-19 **06:58Z**, run `32225163769` | **33 passed**, same venv |
+| 2026-08-19 **15:11Z**, run `32268124069` | **1 failed, 32 passed**, PySide6 **6.11.2** |
+
+**Nothing about the application changed between them.** The batch in between touched tests, dev
+pins, a workflow's environment record and prose; its one `src/` change is exception translation in
+`ytdlp_resolution.py`, which no UI test reaches.
+
+**What changed is the interpreter's environment, and `T-269` is why.** The persistent virtualenv's
+cache key is `sha256sum pyproject.toml`, so pinning Ruff and mypy re-keyed it and the runner built
+a fresh one. **`PySide6>=6.11,<7` is a floor**, so the fresh resolve took **6.11.2** where the old
+venv had been holding **6.11.1** since before the pin. The dispatch's install log shows
+`pyside6-6.11.2` being downloaded rather than found.
+
+**So `T-269` did not cause this defect; it uncovered it** — and it uncovered it in the only way it
+could ever have been uncovered, by forcing the first honest dependency resolve on that machine in
+weeks. A new contributor, a new runner, or a release build would each have hit it cold.
+
+#### The decision that is not mine
+
+Two fixes exist and they are not alternatives:
+
+1. **Bind the shortcut explicitly** rather than relying on a per-platform standard key Qt is
+   entitled to resolve to nothing. This is the product fix, and the test's docstring already says
+   why it is needed.
+2. **Pin or narrow `PySide6`.** That is a **runtime** dependency, so `AGENTS.md` §7 requires a
+   `DECISIONS.md` entry, and `T-269`'s scope explicitly excludes *"pinning runtime dependencies or
+   changing their update policy"*. **Nothing here does it.**
+
+**Fixing only (2) would make the board green and leave the defect**, because the constraint's next
+allowed upgrade reintroduces it. Fixing only (1) leaves the wider question open: the same floor
+governs every runtime dependency, and this is the second time in one day that a floor turned out to
+be load-bearing.
+
+#### Acceptance criteria
+
+- **Quit carries a non-empty shortcut on Windows**, asserted by the existing test on `STARBASE`
+- **The `windows desktop` job is green end to end**, so its lint, format, Qt baseline and full-suite
+  steps run again rather than being skipped behind a failure
+- **Whatever is decided about the PySide6 constraint is recorded where that kind of decision
+  lives** — a `DECISIONS.md` entry if the constraint changes, and an explicit note if it
+  deliberately does not
+- **The fix does not weaken the test.** *"`Quit` may resolve to nothing"* is the finding, not a
+  reason to stop asserting that it does not
+
+#### Out of scope
+
+- `T-200`'s accessibility pass, beyond this one accelerator
+- Changing which step order the Windows job uses. Running the suite before the style gates was
+  ruled against in `T-269`'s own scope for a different reason and is not reopened here
+
+---
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
