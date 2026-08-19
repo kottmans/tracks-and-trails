@@ -52,7 +52,8 @@ decision, and this time reaping destroys the first inspectable specimen anybody 
 dated entry below.
 
 **`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
-`T-261`, `T-263`, `T-265`, `T-267`, `T-268` and `T-269` In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
+`T-263`, `T-265`, `T-267`, `T-268` and `T-269` In Review, and **`T-261` Complete — approved at
+`ca2f278` on 2026-08-19 with no findings**. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
 `T258-R5`'s first execution alone. `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining
 runner-inventory prose is `T-265`; `T-266`'s unreproducible toolchain is `T-269`.
 

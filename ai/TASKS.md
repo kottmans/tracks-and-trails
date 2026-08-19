@@ -709,55 +709,6 @@ at 34 minutes and require the warning. The proof must fail when the workflow-use
 - Choosing a new threshold, changing the 40-minute job bound or re-measuring STARBASE
 - Treating the reporter warning as a product-test failure; T259-R1 resolved that policy
 
-### T-261 — Make task placement reject duplicate task IDs
-
-**Status:** **In Review — built 2026-08-19, as a third parse rather than a flag on either
-existing one.** `heading_occurrences()` returns every `### T-NNN` heading in file order as a
-**list** of `(id, line, section)`; nothing in it deduplicates. `live_entries()` keeps a `seen` set
-and `status_line_counts()` keys a dictionary by task id, so both discard the second copy before
-any assertion sees it — a parser asked to both collapse and not collapse is one refactor from
-doing neither.
-
-**Mutation-checked against the exact `e61152d` shape**: a complete entry duplicated under the
-*same* section with an *identical* status line. The new test fails naming the id and both line
-numbers, and **the other fourteen stay green** — which is the state the board was actually in
-while three tasks were duplicated, reproduced deliberately.
-
-**The vacuous case is closed too.** A uniqueness assertion is satisfied perfectly by an empty
-list, so `test_the_file_has_entries_to_check` now guards all three parsers: breaking only the
-occurrence scan's regex fails with *"0 headings seen in file order against 267 unique ids"*
-instead of passing.
-
-**Nothing about `T-096`'s vocabulary or sections changed**, and historical prose mentions of an id
-are untouched — only live `### T-NNN` headings are counted, which is the scope's own boundary.
-**Owner:** Implementer
-**Priority:** Low — current truth is repaired; this prevents another scripted edit from making
-one task appear twice while the board's structural gate stays green
-**Phase:** Documentation infrastructure; blocks no product task or phase
-**Depends on:** none
-**Relevant context:** `COORD-R23`, `T-096`, `tests/unit/test_task_placement.py`, `AGENTS.md` §6
-**Affected surfaces:** `tests/unit/test_task_placement.py`
-**Risk:** Low — a narrow invariant over headings in one Markdown file
-
-#### Scope
-
-`live_entries()` keeps a `seen` set and `status_line_counts()` writes into a dictionary keyed by
-task ID. Both therefore collapse a later `### T-NNN` heading into the first instead of reporting
-that current truth contains two entries for one task. Add an independent uniqueness assertion over
-the headings themselves; do not rely on either collapsing parser to supply its own positive set.
-
-#### Acceptance criteria
-
-- Duplicating a complete task entry under the same valid section fails the gate and names the ID
-- The mutation remains caught when both copies have valid, identical status lines, which is the
-  exact `e61152d` case
-- The unchanged board passes and every current `### T-NNN` heading is unique
-
-#### Out of scope
-
-- Reopening `T-096` or changing its status/section vocabulary
-- Rechecking historical prose mentions of a task ID; only live `### T-NNN` entry headings count
-
 ### T-256 — Rule the fifteen options no decision covers
 
 **Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
@@ -1159,6 +1110,56 @@ so a parent that is not one cannot be the one that spawned it.
 ---
 
 ## Complete
+
+### T-261 — Make task placement reject duplicate task IDs
+
+**Status:** **Complete — Approved at `ca2f278`**, 2026-08-19, **no findings**, on one review
+round. `COORD-R23` is Resolved. **Built as a third parse rather than a flag on either existing
+one**: `heading_occurrences()` returns every `### T-NNN` heading in file order as a **list** of
+`(id, line, section)`, and nothing in it deduplicates. `live_entries()` keeps a `seen` set
+and `status_line_counts()` keys a dictionary by task id, so both discard the second copy before
+any assertion sees it — a parser asked to both collapse and not collapse is one refactor from
+doing neither.
+
+**Mutation-checked against the exact `e61152d` shape**: a complete entry duplicated under the
+*same* section with an *identical* status line. The new test fails naming the id and both line
+numbers, and **the other fourteen stay green** — which is the state the board was actually in
+while three tasks were duplicated, reproduced deliberately.
+
+**The vacuous case is closed too.** A uniqueness assertion is satisfied perfectly by an empty
+list, so `test_the_file_has_entries_to_check` now guards all three parsers: breaking only the
+occurrence scan's regex fails with *"0 headings seen in file order against 267 unique ids"*
+instead of passing.
+
+**Nothing about `T-096`'s vocabulary or sections changed**, and historical prose mentions of an id
+are untouched — only live `### T-NNN` headings are counted, which is the scope's own boundary.
+**Owner:** Implementer
+**Priority:** Low — current truth is repaired; this prevents another scripted edit from making
+one task appear twice while the board's structural gate stays green
+**Phase:** Documentation infrastructure; blocks no product task or phase
+**Depends on:** none
+**Relevant context:** `COORD-R23`, `T-096`, `tests/unit/test_task_placement.py`, `AGENTS.md` §6
+**Affected surfaces:** `tests/unit/test_task_placement.py`
+**Risk:** Low — a narrow invariant over headings in one Markdown file
+
+#### Scope
+
+`live_entries()` keeps a `seen` set and `status_line_counts()` writes into a dictionary keyed by
+task ID. Both therefore collapse a later `### T-NNN` heading into the first instead of reporting
+that current truth contains two entries for one task. Add an independent uniqueness assertion over
+the headings themselves; do not rely on either collapsing parser to supply its own positive set.
+
+#### Acceptance criteria
+
+- Duplicating a complete task entry under the same valid section fails the gate and names the ID
+- The mutation remains caught when both copies have valid, identical status lines, which is the
+  exact `e61152d` case
+- The unchanged board passes and every current `### T-NNN` heading is unique
+
+#### Out of scope
+
+- Reopening `T-096` or changing its status/section vocabulary
+- Rechecking historical prose mentions of a task ID; only live `### T-NNN` entry headings count
 
 ### T-266 — `T-258`'s negative control fails on Windows: the child is reaped with the Job suppressed
 
