@@ -18914,3 +18914,50 @@ detection behavior. T-258 remains **Blocked** solely on T258-R10 plus the requir
 authorization for its focused record-only verification. The Reviewer changed only this append-only
 record; no reviewed source/test, workflow, task/status file, process, push or remote setting was
 changed.
+
+---
+
+## 2026-08-19 — T-263 containment-seam follow-up review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-263
+**Base:** `14ac396d5b3a1fe9864a057155c44654fd8f5c36`
+**Head:** `3b847d82be2196c3c01389b3bd9011796642f668`
+**Platforms verified:** Linux behavior; Windows-platform static typing
+**Verdict:** **Approved. No findings.** The manager probe now watches the exact `SpawnProcess`
+class its spawn context constructs and proves that patch identity before trusting a zero. It also
+asserts the durable failed row and visible reason. The static gate catches the three supported
+direct spellings while stating and testing its data-flow boundary, and the resolution service
+preserves containment refusal text without starting a child.
+
+### Original-finding disposition
+
+| Finding | Review result |
+|---|---|
+| **T258-R7** | **Resolved at `3b847d8`.** A reviewer fail-open mutation produced `PATCH REACHES MANAGER`, `STARTED 1`, `STORED probing` and `REASON LOST []`; the test failed on the attempted start instead of aborting or reporting a meaningless empty counter. |
+| **T258-R8** | **Resolved at `3b847d8`.** `ast.Assign`, `ast.AnnAssign` and inline `Process(...).start()` are all exercised as named mutations. Factory and alias flow remain explicitly outside this syntactic gate and are covered by the runtime refusal rather than misdescribed as statically proven. |
+| **T258-R9** | **Resolved at `3b847d8`.** `resolve_in_a_child` translates `ContainmentUnavailableError` into the boundary's documented `ResolutionUnavailableError`, retains exception chaining, and the service test asserts both the actionable reason and zero starts. |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Focused current behavior | The changed process-tree, spawn-site and yt-dlp service files passed in the 65-test focused set. |
+| Fail-open mutation | Changing `start_contained` to continue after failed containment made the exact manager test fail with `STARTED 1`; the probe flushed useful output and exited without Qt replacing the diagnosis with `SIGABRT`. Mutation restored. |
+| Static/style/type gates | Ruff check and format pass over 202 files; bare mypy and `mypy --platform win32` each pass 154 source files. |
+| Required broad Linux gate | The unrestricted default suite passes **3715, skipped 18, deselected 2** in 10m11s, covering the full unit and integration layers required for a downloader source change. |
+| Boundary/hygiene | `git show --check 3b847d8` and `git diff --check` pass; no runtime dependency or product containment policy changed. |
+
+### Platform ruling
+
+T-263 does **not** require a fresh Windows behavior run. None of its changed behavior is inside a
+platform guard: the AST gate reads source, the manager and service probes force the shared
+containment seam to refuse before an OS child exists, and the only production change is exception
+translation at that shared boundary. Windows-platform mypy still covers the alternate guarded
+bodies. This is different from T-269, whose own criterion requires the persistent Windows install.
+
+### Readiness
+
+T-263 is **approved at `3b847d8`** and may move to Complete. T258-R7 through T258-R9 are Resolved;
+they required no T-258 re-review and do not affect T258-R10. The Reviewer changed only this
+append-only record; no reviewed source/test, task/status file, push or remote setting was changed.
