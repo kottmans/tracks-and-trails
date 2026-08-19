@@ -842,9 +842,10 @@ passing**, and it was reported as the stronger one. The venv now matches CI.
 before, so no warning fired this time.
 
 **The corrected control ran green**, run `32200375666` at `4ec5747`: **3684 passed, 30 skipped, 35
-deselected, no failures**, 32.3 min and 81% of the bound. `linux`, `frozen linux` and `STARBASE
-coverage` all passed alongside it. **The `windows desktop` job had been red since 2026-08-15** —
-`T-257`'s vacuity guard, then this control — and is not any more.
+deselected, no failures**, 32.3 min and 81% of the bound. **The run concluded green on all five
+jobs** — `linux`, `windows desktop`, `frozen linux`, `frozen windows` and `STARBASE coverage`.
+**The `windows desktop` job had been red since 2026-08-15** — `T-257`'s vacuity guard, then this
+control — and is not any more.
 
 ## 2026-08-18 (T-266, instrument): the control now reports what contains the child
 
