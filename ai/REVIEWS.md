@@ -19053,3 +19053,37 @@ mutation requirements; this review does not create one implicitly.
 T-265 is **approved at `d7a2d0f`** and may move to Complete. T262-R4 is Resolved and requires no
 T-262 re-review. The Reviewer changed only this append-only record; no workflow, task/status file,
 repository variable, push or remote setting was changed.
+
+---
+
+## 2026-08-19 — T-267 workflow-threshold review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-267
+**Base:** `d7a2d0f601eda33c4b3f236fc6531d8973fd8168`
+**Head:** `b7ed63fcc947b6624021fbcbe235b8e738405fd3`
+**Verdict:** **Changes requested.** Driving `main()` at the workflow boundary is the right option,
+and the workflow-override check prevents the default becoming dead configuration. The two behavior
+points do not pin the default exactly to 85 as the task and test claim.
+
+### Finding
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T267-R1** | **Medium** | **Yes — the executable gate does not pin the accepted policy value exactly** | The 85.0% case proves the default is at most 85; the 84.75% case proves it is greater than 84.75. Any value in `(84.75, 85]` passes. A reviewer changed only `argparse`'s default from `85.0` to `84.9`; all **14 tests passed**. That contradicts the status claim that the pair fixes the threshold from both sides and leaves an unrecorded policy drift green. | Assert the exact value `main()` passes to `report()` when no override is supplied, while retaining at least one end-to-end warning case and the workflow-override agreement check. Mutation-check both the original 90 case and a near-lower value such as 84.9. | **Open** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Current focused file | **14 passed.** The exact-85 warning and 84.75 no-warning behavior are correct. |
+| Reviewer mutation | Default `85.0` → `84.9`: **14 passed**, establishing the unguarded interval. The source was restored before recording the review. |
+| Workflow boundary | The current `windows desktop` step supplies no `--warn-at-percent`; the default remains production configuration. The added override scan would require an explicit future value to agree. |
+| Broad/static gates | Ruff, format, both mypy modes and the unrestricted **3715 / 18 / 2** default suite pass on the restored tree. `git show --check b7ed63f` passes. |
+
+### Readiness
+
+T-267 is **not approved at `b7ed63f`**. Correct T267-R1 without changing the accepted 85% policy or
+duplicating it into the workflow. One focused correction re-review is available. T259-R2 remains
+Open until that exact-value proof passes. The Reviewer changed only this append-only record; no
+reviewed test, tool, workflow, policy value, task/status file, push or remote setting was changed.
