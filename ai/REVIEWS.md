@@ -18864,3 +18864,53 @@ correction is requested. Preserve the two live processes, perform the narrowed l
 and return that evidence for focused disposition of T268-R1. No separate recurrence task is filed
 by this review. The Reviewer changed only this append-only record; no reviewed source/test,
 workflow, task/status file, process on `STARBASE`, push or remote setting was changed.
+
+---
+
+## 2026-08-19 — T-258 scanner evidence disposition
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-258
+**Previously reviewed implementation:** `e3c259a`
+**Scanner wiring:** `5e6661fe1757fc6a4b97f15c1aec9356975ac7f4`
+**Execution/evidence record:** `1b31aac72580da8c5dae6f56e2cb31932bf48dde`
+**External evidence:** run `32214730271` at `dc7584388420bacbba258aa1ebcb198e7586162a`
+**Verdict:** **Blocked.** T258-R5 is technically Resolved: the unattended scanner ran on
+`STARBASE`, found the stale workers and made the job red, while its evidence artifact still
+uploaded. T-258 is not approved because the same evidence commit leaves its active acceptance
+record saying the wiring has not executed and the criterion is not met. That is a material
+misstatement of the last required gate, not ordinary Complete-status synchronization.
+
+### Focused results
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T258-R5** | **Medium** | Yes | Run `32214730271` is a real `workflow_dispatch` at `dc75843`. The `STARBASE orphans` job located the pyproject-keyed environment, printed all seven matches, exited 1, and uploaded `evidence-starbase-orphans`. Every ordinary job completed successfully. The detection path therefore detected rather than merely existing. | **Resolved by run `32214730271`** |
+| **T258-R10** | **Medium** | **Yes — current truth materially misstates the required gate that now permits disposition** | The T-258 header says criterion 5 is met, but its active “Criterion 5” subsection still says the wiring “has not executed yet” and “Not yet met.” The STATUS header likewise records the successful scan and then says T-258 “is blocked on T258-R5's first execution alone.” One current-truth file gives both answers to whether the last gate ran. | Replace the superseded criterion text with the exact run/result and state that T258-R5 is reviewer-Resolved. Make T-258's status describe its actual review disposition, without making T-268 a dependency; that diagnosis explicitly gates nothing in the centre column. | **Open — record correction; focused pass requires maintainer authorization** |
+
+### Independent evidence
+
+| Check | Result |
+|---|---|
+| Exact run boundary | GitHub reports `event: workflow_dispatch`, `headSha: dc75843`, overall failure, with every job successful except `STARBASE orphans`. The batch's later five implementation commits have no Windows evidence from this run. |
+| Scanner output | The job log reports seven processes, the five original PIDs plus `3400` and `6924`; all have one thread. It prints “Reported, not reaped” and exits 1. |
+| Artifact path | The evidence upload runs under the failed scan and succeeds, so the red result does not discard the report needed for human disposition. |
+| Current-tree Linux gate | Ruff and formatting pass; bare mypy and Windows-platform mypy each report 154 source files clean; the unrestricted default suite passes **3715 / 18 / 2**. |
+
+### Pass-budget ruling
+
+T-258 has already consumed its initial review and ordinary focused correction pass, with further
+passes used for the High/continuing containment defects under `AGENTS.md` §10. T258-R10 is Medium
+and the same stale-gate condition is present in two current-truth locations. The automatic loop
+therefore stops here. The recommended maintainer choice is to authorize one **record-only focused
+pass** after both sites are corrected; no source, workflow or test re-review is needed. Accepting
+the contradictory gate record as risk would leave the canonical task unable to answer whether its
+own criterion ran.
+
+### Readiness
+
+T258-R5 is **Resolved**, and T-268's reopened diagnosis does not invalidate T-258's containment or
+detection behavior. T-258 remains **Blocked** solely on T258-R10 plus the required maintainer
+authorization for its focused record-only verification. The Reviewer changed only this append-only
+record; no reviewed source/test, workflow, task/status file, process, push or remote setting was
+changed.
