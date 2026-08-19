@@ -854,6 +854,84 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+  # **`T-258` criterion 5, and `T258-R5`. The scanner was written and invoked by nothing.**
+  #
+  # `tools/orphan_scan.py` finds spawned workers whose parent is gone. It existed for a day
+  # reporting to nobody, which is a script rather than a detection path: `OPS-003` says nobody logs
+  # in to `STARBASE`, and the five orphans that prompted the task were found by accident, eleven
+  # and twelve days after the run that spawned them, by somebody diagnosing an unrelated symptom.
+  #
+  # **Its own job, not a step on `windows desktop`, and that is the whole design.** A find here is
+  # a statement about the *machine*, not about the commit that happened to push. The tool's own
+  # docstring draws the line — "the non-zero exit lets a scheduled run fail the machine rather than
+  # the build's subject" — and a step inside the suite job would do exactly the opposite: an orphan
+  # leaked days ago would fail whatever is being tested today, and the `windows desktop` job is the
+  # one thing standing between a change and its Windows evidence.
+  #
+  # **Nightly and on demand, not on every push.** Accumulation is measured in days: five processes
+  # over two days, unnoticed for twelve. A nightly scan would have reported the first one within
+  # 24 hours, which is the entire distance between this and what happened. Running per-push would
+  # buy at most a day of latency and would attribute an earlier run's leak to an unrelated commit.
+  #
+  # **`needs: windows-desktop`, because `STARBASE` has one runner slot.** Two Windows jobs do not
+  # run in parallel there; they queue. Ordering this after the suite costs nothing and gains
+  # something — the scan then also sees anything *that* run leaked, while the workers are still
+  # young enough to connect to a cause. `always()`, because a failed or cancelled suite is a more
+  # likely leaker than a green one, not a less likely one.
+  #
+  # The wiring is pinned by `tests/unit/test_orphan_scan.py`, which also holds the known-positive
+  # that stops this reporting a confident "none found" while measuring nothing.
+  starbase-orphans:
+    name: STARBASE orphans
+    needs: windows-desktop
+    runs-on: [self-hosted, windows, desktop]
+    if: >-
+      ${{ always() && vars.STARBASE_AVAILABLE == 'true'
+      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    # Seconds of work. The bound is here so that a scan wedged on an uninspectable process cannot
+    # hold the one Windows slot the way an unbounded job would.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Find the persistent virtualenv
+        # **Located, not built.** `needs: windows-desktop` guarantees that job has already run on
+        # this machine and built or reused the venv keyed by this `pyproject.toml`, so the only
+        # thing to do here is put it on `PATH`. If it is absent something is wrong with that
+        # assumption, and this fails saying so rather than quietly building a second environment
+        # that proves nothing about the one the suite used.
+        run: |
+          want=$(sha256sum pyproject.toml | cut -c1-12)
+          venv="$RUNNER_TOOL_CACHE/tt-venv-$want"
+          if [ ! -x "$venv/Scripts/python.exe" ] && [ ! -x "$venv/bin/python" ]; then
+            echo "no venv for pyproject $want — the windows desktop job did not leave one" >&2
+            exit 1
+          fi
+          if [ -d "$venv/Scripts" ]; then
+            cygpath -w "$venv/Scripts" >> "$GITHUB_PATH"
+          else
+            echo "$venv/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Scan for orphaned workers
+        # **The exit code is the alarm and is deliberately not swallowed.** No `continue-on-error`,
+        # no `|| true`: a red job on the nightly is the visible signal `T258-R5` asked for, and the
+        # thing it is red about is the machine. Reaping stays a person's decision with the report in
+        # front of them (`T258-R4`) — this tool cannot prove a match is ours, and the `--kill` that
+        # assumed it could was the Critical finding of that round.
+        run: |
+          mkdir -p reports
+          python tools/orphan_scan.py 2>&1 | tee "reports/orphan-scan.txt"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-starbase-orphans
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn
+
   # T-020. A separate job, not extra steps on `check`: the build is far slower than the test
   # suite, and folding it in would hide that cost inside T-006's ~10 minute budget. Its own
   # runtime is therefore recorded independently, which the task permits.

@@ -246,9 +246,10 @@ exit code 1. So on Windows, as on POSIX, a child stopped in this window is reape
 failed bootstrap and **not** by the outer Job. **Criterion 2 is closed as unobtainable in this
 form** and the outer Job is restated as **defence in depth rather than the demonstrated reaper**.
 What is left open is larger than what closed: the five orphans did not come through the window
-this task reproduces, because that window closes itself — `T-268`. **`T258-R5` is no longer
-waiting on anything**: `T-259` is Approved and Complete, which settles the workflow disposition,
-and what remains is wiring the scanner itself. The review was right on every
+this task reproduces, because that window closes itself — `T-268`. **`T258-R5`'s scanner is wired**, 2026-08-18:
+the `STARBASE orphans` job runs it nightly on the self-hosted runner and a find fails that job.
+Six mutations fail, and **the wiring has not executed yet** — it is schedule-gated, so criterion 5
+is recorded as *wired, unmet* until the first nightly or dispatch runs it. The review was right on every
 original finding, and two were defects rather than paperwork: containment **failed open**, and the
 fix covered only one of three product-owned spawn sites. **`T258-R6`'s last residual was** —
 `process_tree.contain_this_application` and
@@ -257,12 +258,14 @@ fix covered only one of three product-owned spawn sites. **`T258-R6`'s last resi
 it on **every** spawn from all three sites. `T258-R2` being High, its eventual verification
 continues under `AGENTS.md` §10 without a separate pass authorization.
 
-**Two criteria are met, one is closed as unobtainable, and two are not met.** Criterion 3 is
+**Two criteria are met, one is closed as unobtainable, one is wired and unexecuted, and one
+is met.** Criterion 3 is
 measured on POSIX. Criterion 4 holds. **Criterion 2 is closed with its reason** — it asks the
 outer Job to be what reaps a child in this window, and `T-266` measured on Windows that it is not;
 no run can meet it as written. **Criterion 1 is met on both platforms for the reproduction half**
-and its *"it must fail without the fix"* half goes with criterion 2. **Criterion 5 is unmet**: the
-scanner exists and nothing invokes it. `T258-R2` was right that a green fixed-only run could not
+and its *"it must fail without the fix"* half goes with criterion 2. **Criterion 5 is wired and unexecuted**: the
+`STARBASE orphans` job invokes the scanner nightly, and being schedule-gated it has not run yet.
+`T258-R2` was right that a green fixed-only run could not
 have satisfied these, and the pair proved it in the sharpest available way — by refuting the
 assumption the task was built on rather than confirming it.
 
@@ -421,7 +424,9 @@ is what lets one worker be cancelled without touching its siblings, which killin
 cannot express. Criterion 4 holds — `T-019`'s guarantee, `T019-R3`'s refusal and both exit codes
 are untouched, and the 161 tests in `tests/integration/test_manager.py` pass unchanged.
 
-**`tools/orphan_scan.py` — which does not close criterion 5, and no longer kills anything.** It
+**`tools/orphan_scan.py` — which did not close criterion 5 on its own, and no longer kills
+anything.** *(What it lacked was an invoker; the `STARBASE orphans` job is that, added
+2026-08-18 — see criterion 5 below.)* It
 finds spawned workers whose parent is gone, reports age, thread count and working set, and exits
 non-zero on a find. **`--kill` is removed** (`T258-R4`, Critical): it terminated every match, this
 tool cannot establish that a match is ours, and it acted on a bare integer pid recorded earlier —
@@ -468,12 +473,28 @@ so a parent that is not one cannot be the one that spawned it.
   *(**Corrected 2026-08-18.** This said *"no Windows run exists"* and *"until it runs on Windows
   these are tests, not results"* for a day after it ran; it then said criterion 1 was unmet *"for
   a reason nobody predicted"*, which stood until the reason was measured.)*
-- **Criterion 5 — the scanner is not invoked by anything** (`T258-R5`). A dormant script makes an
-  orphan inspectable once somebody suspects one; `OPS-003` says nobody logs in to that machine,
-  which is the whole distinction the criterion turns on. Wiring it means editing
-  `.github/workflows/ci.yml`. *(That surface was `T-259`'s and in review, so this waited on the
-  disposition rather than being edited under a reviewer. **`T-259` is Complete as of 2026-08-17**,
-  so the wait is over and only the work remains.)* **Recorded unmet, not complete.**
+- **Criterion 5 — wired 2026-08-18, and the wiring has not executed yet** (`T258-R5`). The
+  `STARBASE orphans` job in `.github/workflows/ci.yml` runs `tools/orphan_scan.py` on the
+  self-hosted Windows runner and lets its non-zero exit fail the job. **Its own job, not a step on
+  `windows desktop`**, because a find is a statement about the *machine* rather than about the
+  commit being pushed — the tool's docstring already drew that line and a step inside the suite job
+  would do the opposite. **Nightly and on demand, not per push**: accumulation is measured in days
+  — five processes over two days, unnoticed for twelve — so a nightly reports the first within 24
+  hours, while a per-push scan would buy a day of latency and pay for it by failing an unrelated
+  commit for an old leak. **`needs: windows-desktop` with `always()`**, because `STARBASE` has one
+  slot and two Windows jobs queue rather than race, and because a suite that failed or was
+  cancelled is a *more* likely leaker than a green one.
+
+  **Six mutations, each failing its own test**: the step deleted, moved to `ubuntu-latest`,
+  `|| true` appended, `continue-on-error: true` added, `always()` dropped, and the event filter
+  widened to every push. **Deleting the step leaves the five tool tests green** — which is the
+  state `T258-R5` found and the reason a wiring test had to exist at all.
+
+  **Not yet met, and the gap is named rather than glossed.** The job is schedule- and
+  dispatch-gated, so nothing has run it: this is wiring with a test behind it, not a detection
+  path that has detected. `T258-R2`'s standard applies to it — *a mechanism that has never
+  executed is a test, not a result* — and the first nightly on `STARBASE`, or one
+  `workflow_dispatch`, is what converts it.
 
 #### What is still not known
 

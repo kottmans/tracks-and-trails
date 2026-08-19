@@ -789,6 +789,42 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
+## 2026-08-18 (T258-R5): the scanner has an invoker, and it has not run yet
+
+**`tools/orphan_scan.py` was written on 2026-08-17 and invoked by nothing for a day.** That is the
+whole of `T258-R5`, and it was blocking: `OPS-003` means nobody logs in to `STARBASE`, so a script
+somebody could run is not a detection path. The five orphans were found by accident, twelve days
+late, by somebody looking for something else.
+
+**The `STARBASE orphans` job is the invoker**, and three of its choices are the design rather than
+configuration:
+
+- **Its own job, not a step on `windows desktop`.** A find is a statement about the *machine*, not
+  about the commit being pushed. The tool's own docstring drew that line — *"the non-zero exit lets
+  a scheduled run fail the machine rather than the build's subject"* — and a step inside the suite
+  job would do exactly the opposite, failing whatever is being tested today for something leaked
+  days ago, in the one job standing between a change and its Windows evidence.
+- **Nightly and on demand, not per push.** Accumulation is measured in days: five processes over
+  two days, unnoticed for twelve. A nightly would have reported the first within 24 hours, which is
+  the entire distance between this and what happened. Per-push buys a day of latency and pays for
+  it in misattribution.
+- **`needs: windows-desktop`, with `always()`.** `STARBASE` has one slot, so two Windows jobs queue
+  rather than race; ordering the scan after the suite costs nothing and gains the leak *that run*
+  produced, while it is still young enough to connect to a cause. `always()` because a suite that
+  failed or was cancelled is a **more** likely leaker than a green one.
+
+**Six mutations, each failing its own test**: the step deleted, moved to `ubuntu-latest`,
+`|| true` appended, `continue-on-error: true` added, `always()` dropped, the event filter widened
+to every push. **Under the first, the five tool tests stay green** — the scanner works, its known
+positive passes, and nothing invokes it. That is the exact state the review found, and now one test
+says so.
+
+**Criterion 5 is recorded wired and unmet, not met.** The job is schedule- and dispatch-gated, so
+nothing has executed it. `T258-R2`'s standard is the one that applies — *a mechanism that has never
+executed is a test, not a result* — and this task's own history is why: it claimed four of five
+criteria met while no Windows run existed. The first nightly on `STARBASE`, or one
+`workflow_dispatch`, is what converts it.
+
 ## 2026-08-18 (approved): T-266 is Complete, and the control is retired rather than repaired
 
 **Approved with follow-ups at `0c6a2b8`**, one round, verdict recorded at `fcf463f`. All four

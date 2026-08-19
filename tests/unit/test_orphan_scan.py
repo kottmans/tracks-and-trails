@@ -142,3 +142,140 @@ def test_the_exit_code_is_clean_when_nothing_is_found(
     monkeypatch.setattr(orphan_scan, "find_orphans", lambda *_, **__: [])
 
     assert orphan_scan.main([]) == 0
+
+
+# --- the wiring, which is what `T258-R5` was about -------------------------------------------
+#
+# **A scanner nothing invokes is a script, not a detection path.** The finding was blocking for
+# exactly that reason, and everything above this line was already true while it stood: the tool
+# worked, its known positive passed, and no run on the machine it exists for had ever executed it.
+# So these read `ci.yml` and assert about the *invocation*.
+#
+# **Parsed with PyYAML rather than matched as text**, which is `T-264`'s precedent at the same
+# surface: that gate accepted an anchor aliased into `on:` and an event hidden behind a quoted `#`,
+# both valid YAML that GitHub runs, and the fix was to stop reading workflows as prose. Imported
+# plainly — never through `importorskip`, which is how a guard comes to be trusted for a check it
+# never made.
+
+import yaml  # noqa: E402 — the wiring half of this file, deliberately below the tool tests
+
+CI_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
+
+#: The path the step must invoke, not the bare filename — which also matches this test file.
+SCRIPT = "tools/orphan_scan.py"
+
+#: Where the orphans are. A hosted runner is destroyed after every job and has no history to
+#: accumulate one, so a scan there would be a green check about a machine that cannot have the
+#: condition.
+STARBASE = ["self-hosted", "windows", "desktop"]
+
+
+def workflow() -> dict[str, object]:
+    parsed = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+    assert isinstance(parsed, dict)
+    return parsed
+
+
+def scanning_jobs() -> dict[str, dict[str, object]]:
+    """Every job with a step that runs the scanner, keyed by job id."""
+    found: dict[str, dict[str, object]] = {}
+    jobs = workflow()["jobs"]
+    assert isinstance(jobs, dict)
+    for job_id, job in jobs.items():
+        steps = job.get("steps") or []
+        if any(SCRIPT in str(step.get("run", "")) for step in steps):
+            found[str(job_id)] = job
+    return found
+
+
+def the_scanning_job() -> dict[str, object]:
+    jobs = scanning_jobs()
+    assert len(jobs) == 1, (
+        f"expected exactly one job to invoke {SCRIPT}, found {sorted(jobs)}. Two scans can "
+        "disagree about the same machine, and nobody would know which to believe"
+    )
+    return next(iter(jobs.values()))
+
+
+def the_scanning_step(job: dict[str, object]) -> dict[str, object]:
+    steps = job["steps"]
+    assert isinstance(steps, list)
+    running: list[dict[str, object]] = [
+        step for step in steps if isinstance(step, dict) and SCRIPT in str(step.get("run", ""))
+    ]
+    assert len(running) == 1, f"{len(running)} steps in one job run {SCRIPT}"
+    return running[0]
+
+
+def test_something_actually_invokes_the_scanner() -> None:
+    """`T258-R5`: the whole finding, as one assertion.
+
+    Deleting the step leaves every other test in this file green, because they all drive
+    `find_orphans` and `main` directly. That is precisely the state the review found and this
+    is the test that would have reported it.
+    """
+    assert scanning_jobs(), (
+        f"no job in ci.yml runs {SCRIPT}. The scanner is then a script somebody could run, "
+        "which is what T-258 criterion 5 already had and what T258-R5 refused"
+    )
+
+
+def test_the_scan_runs_on_the_machine_that_accumulates_orphans() -> None:
+    """A hosted runner cannot hold a twelve-day-old orphan; only `STARBASE` can."""
+    job = the_scanning_job()
+
+    assert job.get("runs-on") == STARBASE, (
+        f"the scan runs on {job.get('runs-on')!r} rather than {STARBASE!r}. A fresh hosted "
+        "runner has no history, so a clean result there says nothing about the machine where "
+        "five orphans sat for twelve days"
+    )
+
+
+def test_a_find_fails_the_job() -> None:
+    """The non-zero exit is the alarm, and swallowing it is the way this silently stops working."""
+    job = the_scanning_job()
+    step = the_scanning_step(job)
+
+    assert not step.get("continue-on-error"), (
+        "the scanning step is continue-on-error, so a find leaves the job green and the report "
+        "sits unread — which is the condition T258-R5 named, with an extra step in front of it"
+    )
+    assert not job.get("continue-on-error"), "the scanning job is continue-on-error"
+    command = str(step["run"])
+    for swallow in ("|| true", "exit 0", "continue-on-error"):
+        assert swallow not in command, (
+            f"the scan's command contains {swallow!r}, which discards the exit code the whole "
+            "tool is built around"
+        )
+
+
+def test_the_scan_still_runs_when_the_suite_did_not_pass() -> None:
+    """A failed or cancelled suite is a *more* likely leaker, not a less likely one."""
+    job = the_scanning_job()
+    condition = str(job.get("if", ""))
+
+    assert "always()" in condition, (
+        f"the scanning job's condition is {condition!r}, which does not contain `always()`. It "
+        "`needs` the suite job, so without it a red suite skips the scan — and the run that "
+        "crashed mid-spawn is the one most likely to have left something behind"
+    )
+
+
+def test_a_machine_condition_cannot_fail_somebody_s_commit() -> None:
+    """The scan answers about the machine, so it must not sit in the path of a push.
+
+    An orphan leaked days ago is not evidence about the commit being pushed now, and failing that
+    push would teach everyone to ignore the signal. It also keeps the one `STARBASE` slot free:
+    the suite job is what a change is waiting on.
+    """
+    job = the_scanning_job()
+    condition = str(job.get("if", ""))
+
+    assert "schedule" in condition, (
+        f"the scanning job's condition is {condition!r}, which does not restrict it to the "
+        "nightly. Accumulation is measured in days; a per-push scan buys a day of latency and "
+        "pays for it by attributing an old leak to an unrelated commit"
+    )
+    assert "github.event_name == 'push'" not in condition and " push" not in condition, (
+        f"the scanning job's condition is {condition!r}, which reaches push runs"
+    )
