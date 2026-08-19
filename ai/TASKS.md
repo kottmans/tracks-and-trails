@@ -394,9 +394,10 @@ path detected rather than merely existing. **What blocks the task is its own rec
 behaviour — `T258-R10` found this file saying criterion 5 was met in the header while the
 criterion's own subsection still said *"has not executed yet"* and *"Not yet met"*, which is one
 current-truth document giving both answers about whether the last required gate had run. Both
-sites are corrected here. The task has **exhausted its ordinary Medium pass budget** under
-`AGENTS.md` §10, so the record-only focused verification needs maintainer authorization and the
-automatic loop is stopped. **`T-268` is not a dependency**: that diagnosis gates nothing in the
+sites are corrected here. The task had **exhausted its ordinary Medium pass budget** under
+`AGENTS.md` §10, and **the maintainer authorized one record-only focused pass on 2026-08-19** —
+recorded here with the finding, as §10 requires. That pass verifies the corrected records only: no
+source, workflow or test re-review is in its scope. **`T-268` is not a dependency**: that diagnosis gates nothing in the
 centre column.
 
 **What it was blocked on before changed on 2026-08-18: `T-266` answered the control's failure, and

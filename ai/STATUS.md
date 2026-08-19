@@ -63,9 +63,8 @@ Planner to file. `T-266` is Approved with follow-ups at `0c6a2b8`.
 The scanner executed and detected, so the last gate has run; what blocks the task is that its own
 record gave **both answers** about whether it had — the header said criterion 5 was met while the
 criterion's own subsection still said *"has not executed yet"* and *"Not yet met"*. That is
-corrected. `T-258` has exhausted its ordinary Medium pass budget under `AGENTS.md` §10, so the
-record-only focused verification needs the maintainer to authorize it; the automatic loop stops
-here. **`T-268` is not a dependency of `T-258`** — that diagnosis gates nothing in the centre
+corrected. `T-258` had exhausted its ordinary Medium pass budget under `AGENTS.md` §10, and **the maintainer
+authorized one record-only focused pass on 2026-08-19**, scoped to the corrected records alone. **`T-268` is not a dependency of `T-258`** — that diagnosis gates nothing in the centre
 column, and the reviewer said so explicitly.
 
 `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining runner-inventory prose is `T-265`;
@@ -829,6 +828,24 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
+## 2026-08-19 (pushed): `dc75843..53edb19`, twenty-two commits
+
+**The first push since the review round**, carrying seven implementation commits, the reviewer's
+seven review records, and eight corrections and closures. `T-261`, `T-263` and `T-265` are Complete;
+`T-267` and `T-269` carry corrected blocking findings; `T-258` and `T-268` are Blocked on a record
+pass and on a person respectively.
+
+**Pushed and then dispatched, deliberately.** A push run does not include `STARBASE orphans` — that
+job is gated to `schedule` and `workflow_dispatch` — so the push alone would have produced
+`T269-R2`'s Windows evidence and no fresh statement about `3400` and `6924`. The dispatch gets both
+out of one occupation of the single Windows slot.
+
+**Expect the Windows job to run about two minutes long and `T-259` to warn near 88%.** The
+toolchain pin re-keys the persistent virtualenv, whose cache key is `pyproject.toml`'s hash, so
+that job rebuilds rather than reusing. Measured on the last re-key: venv build 21s plus install
+2m01s, against 13s reused. **That is one-time installation cost and not runtime creep**, and it is
+written down here so the warning is read as what it is.
+
 ## 2026-08-19 (T268-R1): the measurement is approved, and the answer is provisional again
 
 **The reviewer approved the measurement and asked for no source correction.** Run `32209108844` is
@@ -880,10 +897,10 @@ first execution alone"*.
 finding named**, which is worth recording: a claim repeated in a summary is a third copy, and
 correcting the two that were quoted would have left the tally contradicting them.
 
-**What is not corrected here is the pass budget.** `T-258` has spent its initial review and its
-ordinary focused correction pass, so under `AGENTS.md` §10 a Medium finding does not authorize
-another one. The reviewer's recommendation is a record-only focused pass, and **that is the
-maintainer's choice to make** — the automatic loop stops here rather than assuming it.
+**The pass budget was spent, and the maintainer chose.** `T-258` has used its initial review and
+its ordinary focused correction pass, so under `AGENTS.md` §10 a Medium finding authorizes no
+further one by itself. **One record-only focused pass was authorized on 2026-08-19**, scoped to the
+corrected records — no source, workflow or test re-review.
 
 **`T-268` is explicitly not a dependency of `T-258`**, which the header had never claimed but the
 proximity invited: that diagnosis gates nothing in the centre column.
