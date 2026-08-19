@@ -676,9 +676,10 @@ so a parent that is not one cannot be the one that spawned it.
   closer one.** `threads=1` bounds it to the payload read or `contain_this_process()`, and the
   structural reading of `popen_spawn_win32` predicted the pipe should have broken. `T-266`
   measured that on Windows it **does** break: a child stopped in this window dies when its parent
-  is killed, with no Job anywhere in the driver. **So the five did not fall through the window
-  this task reproduces**, or something stopped that window from closing for them, and neither is
-  established. `T-268` owns it. **The fix does not depend on the answer** — the kernel reaps the
+  is killed, with no application Job handle held by the driver even though its inherited Job
+  membership remains. **So this reproduced parent-death path does not explain the five**, or
+  something stopped that window from closing for them, and neither is established. `T-268` owns
+  it. **The fix does not depend on the answer** — the kernel reaps the
   child wherever it is blocked — but the justification does, which is why the outer Job is now
   recorded as defence in depth rather than the demonstrated reaper
 - **Whether the five came through the manager at all.** A `spawn_main` command line carries no
@@ -7521,16 +7522,16 @@ reported six times, produced here by a tool rather than by inattention. **`T-096
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
 
-### T-268 — The five orphans did not come through the window `T-258` reproduces
+### T-268 — The reproduced parent-death path does not explain the five orphans
 
 **Status:** **Ready — filed 2026-08-18 from `T-266`'s measurement, which closed one question by
 opening this one.** `T-258` was filed from five real processes found alive on `STARBASE` eleven
 and twelve days after the run that spawned them, and it reproduced *a* pre-bootstrap window and
 closed it. `T-266` has now measured that **that window closes itself on Windows**: a child stopped
-there dies when its parent is killed, with no Job anywhere in the driver, exit code 1 — run
-`32172384737`. **So the reproduction is not the mechanism that produced the five.** Either they
-were blocked somewhere else, or something prevented the self-closure in their case, and nothing
-distinguishes those.
+there dies when its parent is killed, with no application Job handle held by the driver even
+though its inherited Job membership remains, exit code 1 — run `32172384737`. **So the reproduced
+parent-death path does not explain the five.** Either they were blocked somewhere else, or
+something prevented the self-closure in their case, and nothing distinguishes those.
 **Owner:** Implementer
 **Priority:** High — five blocked interpreters accumulated unnoticed for twelve days on the
 machine that runs every Windows job, and the explanation the project has for them is now known to
@@ -7556,7 +7557,7 @@ candidate rather than have one fitted to them
 | Threads each | **1** — so none reached `prepare_this_worker()`'s watchdog |
 | CPU consumed | ~2 seconds each over twelve days — blocked, not spinning |
 | Parents | all gone; three of the five shared parent `9176`, created in the same second |
-| The reproduced window | **closes itself** on Windows (`T-266`), so it is not this |
+| The reproduced parent-death path | **closes itself** on Windows (`T-266`), so by itself it does not explain the five |
 
 **`threads=1` still bounds it** to before the watchdog, which leaves the payload read or
 `contain_this_process()` itself. `T-266` narrowed one of those and not the other: a child killed
@@ -7593,6 +7594,45 @@ parent is alive and merely never writes, or one whose pipe handle stayed open so
 - Removing or weakening `contain_this_application()`. The outer Job is defence in depth against an
   observation nobody has explained, which is the strongest reason to keep it, not to drop it
 - `T-266`'s decision. That is measured and closed; this is the question it left
+
+---
+
+### T-269 — Make the formatter and type-checker versions reproducible
+
+**Status:** **Ready — filed 2026-08-18 from `T266-R2`.** `T-266` lost one full `STARBASE` round
+because the local checkout ran Ruff 0.16.0 while CI rebuilt at 0.16.3, and the two versions format
+the same multiple-exception clause differently. The checkout also held mypy 2.3.0 while CI used
+2.3.1. `pip install -e ".[dev]"` satisfies the current `ruff>=0.9` and `mypy>=1.14` floors without
+upgrading an existing environment, so a successful install does not make the local and CI gates
+the same gates.
+**Owner:** Implementer
+**Priority:** Low — product behavior is unaffected, but a locally green formatter already spent a
+scarce Windows measurement round before the task it was meant to measure could run
+**Phase:** Documentation/tooling maintenance; blocks no product task or phase
+**Depends on:** none
+**Relevant context:** `T266-R2`, `pyproject.toml`'s `dev` extra, `.github/workflows/ci.yml`'s fresh
+and persistent virtualenv paths, `ai/TESTING.md` §3
+**Affected surfaces:** `pyproject.toml` and the development/CI installation path chosen to keep the
+two environments aligned
+**Risk:** Low. The trap is pinning a number in two places or fixing only a fresh install while the
+Windows job deliberately reuses its environment
+
+#### Acceptance criteria
+
+- Ruff and mypy have one canonical version source used by both local setup and CI
+- Installing into an existing environment reaches those versions rather than accepting older
+  already-satisfied floors
+- The Linux and persistent-Windows CI paths still install successfully, and their environment
+  records show the same formatter and type-checker versions
+- `ruff check`, `ruff format --check`, bare `mypy`, and `mypy --platform win32` pass at the declared
+  versions
+
+#### Out of scope
+
+- Reordering the Windows job so the full suite runs before style gates. That spends the long
+  runner slot before reporting a deterministic formatting failure; it does not make the gates
+  reproducible
+- Pinning runtime dependencies or changing their update policy
 
 ---
 

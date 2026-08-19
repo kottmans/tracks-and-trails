@@ -18729,3 +18729,77 @@ The dated `2026-08-17` T-262 approval entry's statement that `origin/main` was `
 historical and remains correct in its dated context; it should not be rewritten. The active T-264
 headers now also need their normal approval/Complete synchronization. None of these coordination
 residuals changes the approval of T-264's exact implementation head.
+
+---
+
+## 2026-08-18 — T-266 Windows mechanism review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-266
+**Base:** `6b81a28601f9173dc5013c01a8859db932a47729`
+**Head:** `0c6a2b888fd3d59c0036482b566a55e96060613a`
+**Implementation/evidence head:** `4ec5747e800a215679c81040a136adb610adb154`;
+`462a055` and `0c6a2b8` are coordination-only evidence corrections
+**Platforms verified:** Linux locally; the real `windows desktop` job on self-hosted STARBASE in
+runs `32172384737` and `32200375666`
+**Verdict:** **Approved with follow-ups.** All four T-266 acceptance criteria are met. The old
+negative control did not get weakened until green: it disproved its premise, was retired *as a
+control*, and now preserves the measured self-closing behavior as a regression test. The exact
+pre-inversion Windows run is the counterfactual — after `driver_holds_a_job is False` passed, its
+`alive` assertion failed. The current test asserts the observed `not alive`, with the discriminator
+still first, and the contained counterpart supplies the positive instrument reading. T258-R2's
+mechanism question is therefore Resolved at `4ec5747`; T-258 remains blocked independently on
+T258-R5's unattended scanner wiring.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Disposition | Status |
+|---|---|---:|---|---|---|
+| **T266-R1** | **Low** | **No** | Two T-258/T-268 sentences said the driver had “no Job anywhere,” while the cited facts say `driver_in_any_job: True`. The experiment establishes the narrower and sufficient fact: the driver held no **application Job handle** whose closing could trigger `KILL_ON_JOB_CLOSE`; inherited membership remained. The categorical T-268 title also excluded its own candidate that the same window failed to self-close under a different parent/handle condition. | Current truth now says the reproduced parent-death path does not explain the five and distinguishes held handle from inherited membership. T-268 remains Ready. | **Resolved in this review-only coordination update** |
+| **T266-R2** | **Low** | **No** | `ruff>=0.9` and `mypy>=1.14` let an existing environment satisfy `.[dev]` without reaching the versions CI uses. That produced the real 0.16.0/0.16.3 formatter split and spent run `32171578343` before the measurement could execute. | T-269 owns one canonical formatter/type-checker version source and fresh/existing-environment parity. | **Open — T-269; no T-266 re-review required** |
+
+### Acceptance results
+
+| Criterion | Review result |
+|---|---|
+| Windows measurement, not source inference | Run `32172384737` at `f137886` reported `driver_holds_a_job: False`, `driver_in_any_job: True`, `child_in_any_job: True`, then child exit code 1. The discriminator assertion passed before the old `alive` assertion failed. |
+| Control isolates absence or is retired with reason | **Met by retirement.** The test is no longer treated as evidence that removing the outer Job changes the outcome. It is a regression for the measured opposite outcome, retains the `False` discriminator, and is paired with the contained test's `True` reading. |
+| T-258 records the mechanism | T-258 and `process_tree.py` now say the reproduced child exits through failed bootstrap after its parent dies, not through the application Job. They preserve the exact unverified branch — `EOFError` versus handle-duplication `OSError` — and T-268 owns why the historical five did not self-close. |
+| Windows suite green | Run `32200375666` at `4ec5747` is successful. `windows desktop` reports **3684 passed, 30 skipped, 35 deselected**; both window tests passed. Linux, frozen Linux, frozen Windows and STARBASE coverage also concluded success. |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary / hygiene | `6b81a28..0c6a2b8` is five commits and five files; `git diff --check` and every commit's `git show --check` passed. Only the first three commits touch code/tests; `4ec5747..0c6a2b8` changes `TASKS.md` and `STATUS.md` only. |
+| Static/style gates | Ruff 0.16.3 check and format check passed on all three changed Python files; bare mypy 2.3.1 and `mypy --platform win32` each reported no issues in **153 source files**. |
+| Focused local behavior | Both window tests passed on Linux: **2 passed, 160 deselected**. Task-placement and commit-message checks: **66 passed**. Linux does not exercise the Windows assertions and is not counted as Windows evidence. |
+| Windows measurement | The `32172384737` log independently confirms the fixed-side test passed, the pre-inversion control failed only at `assert alive`, and the failure carried the exact JSON and exit code 1. |
+| Windows corrected behavior | The `32200375666` log independently confirms both named tests passed and the full-suite count was **3684 / 30 / 35** in 30:45; duration reporting read 32.3 minutes / 81%. |
+| Job semantics | Microsoft's `CreateJobObjectW` contract says a handle created with null security attributes is not inheritable; its Job-limit contract says `KILL_ON_JOB_CLOSE` triggers only when the last handle closes. That supports the submission's distinction between inherited membership and a driver-held handle. |
+
+### Scope rulings
+
+- **T-268 is correctly Ready, not blocked behind T-092.** T-092 arms crash dumps and requires a
+  person at STARBASE; it cannot retroactively diagnose the five exited processes. T-268 already
+  has CI-executable candidates and explicitly permits “not identified” as a measured result. If a
+  later candidate genuinely requires machine-local action, T-268 can record and block on that
+  narrower dependency then; blocking the whole diagnosis now would be premature.
+- **The five-commit boundary violates `AGENTS.md`'s one-commit-per-task rule.** It does not alter
+  the technical verdict and cannot safely be repaired because all five commits are published.
+  Rewriting that history would violate the stronger no-rewrite rule. The avoidable formatting
+  split is carried by T-269; the instrument, Windows verdict and later evidence records remain an
+  auditable sequence rather than being excused as one commit.
+- **The exact bootstrap exception remains unverified and need not block.** T-266 needed to
+  distinguish Job-object termination from self-exit after the parent vanished. The measured held
+  handle, process state and exit code establish that distinction; T-268 may capture stderr only if
+  the exception identity separates one of its candidates.
+
+### Readiness
+
+T-266 is **approved with follow-ups at `0c6a2b8`** and may move to Complete. T266-R1 is corrected;
+T266-R2 moves to T-269 and requires no T-266 re-review. T258-R2 is resolved by the Windows
+counterfactual and corrected record, but this verdict does not approve T-258: T258-R5's unattended
+scanner integration remains open. Completion synchronization in `TASKS.md` and `STATUS.md` is
+owed. No reviewed source/test, workflow, handoff, push or remote setting was changed by the
+Reviewer.
