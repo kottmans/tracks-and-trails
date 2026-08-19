@@ -52,10 +52,11 @@ decision, and this time reaping destroys the first inspectable specimen anybody 
 dated entry below.
 
 **`T-257`, `T-259`, `T-262`, `T-264` and `T-266` are Complete**, leaving `T-256`, `T-258`,
-`T-265`, `T-267`, `T-268` and `T-269` In Review. **`T-261` and `T-263` are Complete** — approved
-at `ca2f278` and `3b847d8` on 2026-08-19, both with **no findings**; `T-263`'s review also ruled
-that its Linux verification is sufficient, because nothing it changed sits inside a platform
-guard. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
+`T-267`, `T-268` and `T-269` In Review. **`T-261`, `T-263` and `T-265` are Complete** — approved
+at `ca2f278`, `3b847d8` and `d7a2d0f` on 2026-08-19, all three with **no findings**. `T-263`'s
+review ruled its Linux verification sufficient, because nothing it changed sits inside a platform
+guard; `T-265`'s ruled the executable inventory gate out of that task's scope, leaving it for a
+Planner to file. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on
 `T258-R5`'s first execution alone. `T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining
 runner-inventory prose is `T-265`; `T-266`'s unreproducible toolchain is `T-269`.
 
