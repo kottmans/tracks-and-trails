@@ -63,15 +63,24 @@ The two platforms close it differently, and only one of them closes it for free:
   `test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` is that measurement, kept.
 - **Windows closes it too, and that is measured now** (`T-266`, run `32172384737`). Its pipe
   *should* break the same way — the parent holds the sole write handle there too — and a child
-  stopped in this window on `STARBASE` died with **no outer Job in the driver at all**
+  stopped in this window on `STARBASE` died while the driver **held no application Job handle**
   (`driver_holds_a_job: false`), exit code 1. So `contain_this_application()` is **not** what
   reaps a child in this window on either platform.
 
+  **Held handle, not membership, and the difference is the whole argument.** The same run read
+  `driver_in_any_job: true` and `child_in_any_job: true`: every process the suite spawns inherits
+  `pytest`'s job and cannot leave it. `KILL_ON_JOB_CLOSE` fires when a job's *last handle* closes,
+  and the handle the harness's kill would have closed is one the driver did not hold — while
+  `pytest` still held the inherited job's and was still running. So the narrower fact is the
+  sufficient one, and the categorical reading is not available.
+  *(`T266-R1`. This read "no outer Job in the driver at all", which the same run's own membership
+  fields contradict.)*
+
   **It stays, as defence in depth, and the reason is the part that is still open.** Five orphans
-  were found alive on `STARBASE` after eleven days, and the window reproduced above is now known
-  not to be the one they fell through, because that window closes itself. Whatever did happen to
-  them is unexplained (`T-268`), so the kernel-held guarantee is kept rather than removed on the
-  strength of a mechanism that does not account for the observation that started this.
+  were found alive on `STARBASE` after eleven days, and the reproduced parent-death path is now
+  known not to explain them, because that window closes itself. Whatever did happen to them is
+  unexplained (`T-268`), so the kernel-held guarantee is kept rather than removed on the strength
+  of a mechanism that does not account for the observation that started this.
   *(This read "five orphans say it did not … no Windows run has looked", which was true until
   one looked.)*
 

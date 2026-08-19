@@ -32,8 +32,10 @@ that opens is bigger than what it closed**: the five orphans did not come throug
 now `T-268`. `T-259`'s approval settles the workflow disposition
 `T258-R5` was waiting on; the scanner itself is still wired to nothing.
 
-**`T-257`, `T-259`, `T-262` and `T-264` are Complete**, leaving `T-258` the only task In Review.
-`T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining runner-inventory prose is `T-265`.
+**`T-257`, `T-259`, `T-262`, `T-264` and now `T-266` are Complete**, leaving `T-256` and `T-258`
+In Review. `T-266` is Approved with follow-ups at `0c6a2b8`; `T-258` is blocked on `T258-R5` alone.
+`T-259`'s unpinned CLI default is `T-267`; `T-262`'s remaining runner-inventory prose is `T-265`;
+`T-266`'s unreproducible toolchain is `T-269`.
 
 **The live `origin/main` is deliberately not quoted here.** It was, and it was wrong within two
 pushes. Git is the authority for where the remote points; this file records the pushes as they
@@ -786,6 +788,39 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 `T-213`/`T-218`/`T-219` is unblocked. **The first plan deliverable is built**: `T-146`'s settings
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
+
+## 2026-08-18 (approved): T-266 is Complete, and the control is retired rather than repaired
+
+**Approved with follow-ups at `0c6a2b8`**, one round, verdict recorded at `fcf463f`. All four
+acceptance criteria met, and the reviewer's own words are the part worth keeping:
+
+> The old negative control did not get weakened until green: it disproved its premise, was retired
+> *as a control*, and now preserves the measured self-closing behavior as a regression test.
+
+**The counterfactual is the failed run itself.** In `32172384737` the discriminator
+`driver_holds_a_job is False` **passed** and the `alive` assertion **failed** after it — so the
+experiment ran, and the outcome it reported is the one the inverted test now asserts. That is why
+the inversion is not the failure mode `T-260` is four rounds of precedent for. Independent checks:
+Ruff and both `mypy` platforms, the two window tests 2 of 2, board and commit gates 66 of 66.
+
+**`T266-R1` — "no Job anywhere" was the wrong claim, and the right one is narrower.** The same run
+read `driver_in_any_job: true`: every process the suite spawns inherits `pytest`'s job and cannot
+leave it. What the experiment established is that the driver held **no application Job handle**
+whose closing could trigger `KILL_ON_JOB_CLOSE` — sufficient, because `pytest` still held the
+inherited job's handle and was still running. Two `ai/` sentences were corrected in the review's own
+commit; **`process_tree.py` carried a third and is corrected here**, because the finding is the
+claim, not the two places it was noticed. `T-268`'s title lost its categorical form for the same
+reason: *the reproduced parent-death path does not explain the five* leaves room for the candidate
+that the window failed to self-close under a different parent or handle condition.
+
+**`T266-R2` is `T-269`.** `ruff>=0.9` and `mypy>=1.14` let `pip install -e ".[dev]"` satisfy the
+floors without reaching CI's versions, so a successful install does not make the local and CI gates
+the same gates. That is what spent run `32171578343` on a formatting error before the measurement
+could execute. **The trap named in the entry**: pinning the number in two places, or fixing a fresh
+install while the Windows job deliberately reuses its environment.
+
+**`T258-R2` is Resolved at `4ec5747`.** `T-258` stays In Review and is now blocked on one thing —
+`T258-R5`, the scanner that exists and is wired to nothing.
 
 ## 2026-08-18 (T-266, decided): the Job object is not what reaps the child, and the orphans are unexplained again
 
