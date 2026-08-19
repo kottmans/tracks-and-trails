@@ -818,6 +818,28 @@ maintainer's report disposition, `T-221` on the maintainer's display, and the sa
 screen, In Review at `b9caa40` — which unblocks `T-195`–`T-199`, the four settings tasks that
 were waiting on a screen to put their keys on.
 
+## 2026-08-19 (T269-R1, corrected): the gate approved a binary the gates do not run
+
+**`PATH` is the production boundary and the test was not measuring it.** It compared
+`importlib.metadata.version()` — the distribution installed for the interpreter running pytest —
+while `ai/TESTING.md` §4 and every CI step invoke bare `ruff` and `mypy`. The reviewer put
+different executables first on `PATH`: all three tests passed while `ruff --version` reported the
+injected one. **The docstring had listed "a tool installed globally and shadowing the venv" as a
+case the file covered**, which makes this the same class as `T258-R7` — a check that ran, reported
+success, and was watching something production does not use.
+
+**Two invariants now, and they are kept apart because their disagreement is the defect**: what
+`pip install -e ".[dev]"` reached, which is what an exact pin controls and what fails when nobody
+reinstalled; and what the documented commands resolve to on `PATH`, which is what actually decides
+whether a change lands. The shadow mutation is reproduced — both bare commands fail — and the
+message prints both resolutions, since *"0.16.0 is installed"* and *"the `ruff` on your `PATH` is
+0.16.0"* need different fixes.
+
+**`T269-R2` cannot be closed from this machine.** Run `32214730271` is at `dc75843`, before the
+pin existed, so nothing in it speaks to the re-keyed Windows venv, the exact versions installing
+there, this test running, or the `--- gates ---` block. That needs the correction head pushed and a
+fresh `windows desktop` run, and the push is the maintainer's.
+
 ## 2026-08-19 (T267-R1, corrected): two behaviour points bracket an interval, not a value
 
 **The reviewer set the threshold default to 84.9 and all fourteen tests passed.** The first version

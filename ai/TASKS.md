@@ -455,8 +455,31 @@ one is still running as of the commit that records it.
 
 ### T-269 — Make the formatter and type-checker versions reproducible
 
-**Status:** **In Review — built 2026-08-19. `ruff==0.16.3` and `mypy==2.3.1` in the `dev` extra,
-and a test that fails when the environment is not on them.** The pins are the canonical source and
+**Status:** **In Review — corrected 2026-08-19 for `T269-R1`, and `T269-R2` needs a Windows run
+this tree has not had.**
+
+**`T269-R1` was right, and the docstring convicted itself.** The test compared
+`importlib.metadata.version()` — the distribution installed for the interpreter running pytest —
+while `ai/TESTING.md` §4 and every CI step invoke **bare `ruff` and `mypy`, which resolve through
+`PATH`**. The reviewer put different executables first on `PATH` and all three tests passed while
+`ruff --version` reported the injected one. The file had *listed* "a tool installed globally and
+shadowing the venv" as a case it covered. **Same class as `T258-R7`**: the check ran, reported
+success, and was measuring something production does not use.
+
+**Two invariants now, stated separately because their disagreement is the defect.** What
+`pip install -e ".[dev]"` reached (metadata — what an exact pin controls, and what fails when
+nobody reinstalled), and what the documented commands resolve to on `PATH` (**the authoritative
+one**, because it decides whether a change lands). The reviewer's shadow mutation is reproduced:
+both bare commands now fail, and the message names both resolutions, because *"0.16.0 is
+installed"* and *"the `ruff` on your `PATH` is 0.16.0"* have different fixes.
+
+**`T269-R2` is not correctable from here.** Run `32214730271` has `headSha: dc75843`, so it says
+nothing about the re-keyed persistent venv, the exact versions installing on Windows, this test
+running there, or the `--- gates ---` artifact block. That evidence requires the correction head to
+be **pushed**, which is the maintainer's call and has not been made.
+
+**`ruff==0.16.3` and `mypy==2.3.1` in the `dev` extra, and a test that fails when the environment
+is not on them.** The pins are the canonical source and
 CI names neither version; it installs the extra. What the pins alone do not cover is an environment
 nobody reinstalled — a checkout from before the pin, a venv built against an older
 `pyproject.toml`, a tool installed globally and shadowing the venv — where the declaration is right
