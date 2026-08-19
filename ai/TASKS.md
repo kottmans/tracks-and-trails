@@ -235,7 +235,13 @@ and `build_options` has never set it.**
 
 ### T-266 — `T-258`'s negative control fails on Windows: the child is reaped with the Job suppressed
 
-**Status:** **In Review — decided 2026-08-18 on run `32172384737`, and candidate 1 holds.**
+**Status:** **In Review — decided 2026-08-18 on run `32172384737`, and candidate 1 holds. The
+corrected records and control ran green on `STARBASE` in run `32200375666`: 3684 passed, 30
+skipped, 35 deselected, **no failures**, with both
+`test_killing_the_parent_before_the_worker_is_prepared_leaves_nothing` and the renamed
+`test_a_child_stopped_in_the_window_dies_with_no_outer_job_to_reap_it` passing. That is the fourth
+acceptance criterion — the `windows desktop` job has been red since 2026-08-15 and is not any
+more.**
 The negative control's failure is not a broken suppression. The suppression works, and the child
 dies of something that is not the Job object:
 
