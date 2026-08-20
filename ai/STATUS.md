@@ -20,7 +20,14 @@ passed**.
 before any row or count is consulted — so no arrangement of the audit rescues the wrong reading, and
 every consumer errors together. That is the property the finding asked for, and it is structural
 rather than a test predicting which counts a future mutation would pick. **Reproducing the
-reviewer's exact mutation now fails 5 where it passed 19.**
+reviewer's exact mutation now fails 3 where it passed 19.**
+
+*(**This said "fails 5", and 5 was the result of a botched mutation** — `T256-R3`. My script's
+`--netrc` row replacement matched nothing, because `--netrc` has no documented row: only
+`--netrc-cmd` and `--netrc-location` do. I changed the class totals as though two rows had moved
+when one had, so **two of the five failures were stale-count failures rather than the fail-closed
+property**. The correct figure is **3 failed, 17 passed**, and it is smaller than what I claimed —
+which is the direction that matters, since I reported a stronger gate than the fix earns.)*
 
 **`T256-R2` is the sibling class again, and this time it was seven sites.** `T-256`'s priority still
 said three corrections remained; its lower heading read *"PROPOSED, nobody has ruled"*; its

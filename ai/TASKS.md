@@ -495,10 +495,14 @@ CI no longer uses, which is this task's own defect one move later.
 **The policy value did not change and this task did not touch it.** 85% is where `T-259` put it;
 what changed is that moving it now fails a test that names the decision to re-record.
 
-**Approved follow-up `T267-R2` (Low, non-blocking):** the `DECLARED_THRESHOLD` comment still
-backtick-references `test_the_default_threshold_is_the_one_the_job_runs_at`, the name replaced by
-this correction. Update that cross-reference when moving T-267 to Complete. **Owner:** Implementer.
-**Target:** T-267 completion synchronization.
+**`T267-R2` (Low, non-blocking) is Resolved at completion**, 2026-08-21, which is where it was
+targeted: the `DECLARED_THRESHOLD` comment backtick-referenced
+`test_the_default_threshold_is_the_one_the_job_runs_at`, the name this correction replaced, and it
+now names `test_the_default_threshold_is_exactly_the_declared_one`.
+
+*(This paragraph read *"Update that cross-reference when moving T-267 to Complete"* after the move
+had happened — an instruction outliving its own completion, which is the same stale-sibling shape
+one size down.)*
 **Owner:** Implementer
 **Priority:** Low — current behavior is correct; an accidental threshold drift can stay green
 **Phase:** CI test maintenance; blocks neither T-259 nor another task

@@ -4,7 +4,8 @@
 is a checked statement rather than an intention, and so Phase 4.5 can be decomposed from a list
 rather than from a blank page.
 **Authority:** Canonical for the classification. `ARC-010` is canonical for the *scheme*, `SEC-003`
-and `SEC-004` for the excluded families, and `build_options` for what the application owns.
+**as amended 2026-08-21**, `SEC-004` and `SEC-005` for the excluded families, and `build_options`
+for what the application owns.
 **Owner:** Planner · `T-183`
 **Status:** Written 2026-08-16; **corrected 2026-08-17 for the `T-183` review** (`T183-R1`…`R5`).
 `SEC-004` ruled the fifteen this audit refused to classify — all forbidden. The review then found
@@ -12,7 +13,13 @@ that refusing an option is not the same as enforcing an exclusion (`geo_bypass` 
 application), that `hatch` rows the application actually owns were reachable, and that one
 transport-security downgrade had been missed. A focused re-review then found the gate still
 permitted three mutations, the downstream `T-184` still carried the rejected design, and one of the
-ten policy refusals was not supported by evidence — all corrected. **The refusal list is 89.**
+ten policy refusals was not supported by evidence — all corrected. **Then the rulings landed**:
+`SEC-005` forbade the sixteenth option on 2026-08-21 and `SEC-003`'s amendment withdrew two
+permissions the same day. **The refusal list is 92.**
+
+*(**This header said 89 and named only `SEC-003` and `SEC-004` while the summary below said 92 and
+named `SEC-005`** — one document giving both the pre-ruling and post-ruling answer to the question
+`T-184` consumes. `T256-R2`, and the second time that finding had to be written for this file.)*
 **yt-dlp version:** **2026.07.04**, the exact pin in `pyproject.toml`. An audit of an unnamed
 version cannot be re-run when upstream moves, so the version is part of the claim and
 `tests/unit/test_option_audit.py` fails if the installed one stops matching.
