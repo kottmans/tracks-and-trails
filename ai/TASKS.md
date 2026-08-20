@@ -210,8 +210,14 @@ have caught its absence.
 `LINUX_RUNNER` gate from its condition (**1 failed**, the both-platforms test), and appending
 `|| true` to its scan command (**1 failed**, the exit-code test). `12 passed` restored.
 
-**Not verified on a runner.** Nothing is pushed, so the job has never executed; what is proved is
-the wiring, by tests that fail without it.
+**The steps are verified, the job is not.** Nothing is pushed, so it has never executed on a
+runner — but its mechanism was run by hand on `kirk`, exactly as written: `python3 -m venv`,
+`pip install psutil`, then `tools/orphan_scan.py`, which printed `no orphaned workers found` and
+exited **0**. The scanner imports **`argparse`, `sys`, `time`, `dataclasses` and `psutil`** and
+nothing else, so the one-dependency environment is sufficient rather than merely believed to be.
+**What remains unproved is the runner half**: that `LINUX_RUNNER` resolves, that `needs: check`
+orders it after the suite, and that a find turns the job red. Those are wiring, and the tests that
+fail without them are the evidence until a nightly runs.
 
 #### What was measured
 
