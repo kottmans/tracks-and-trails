@@ -5,6 +5,85 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-20 — **The evidence batch came back Changes requested, all four findings
+are corrected, and the three blocking ones were the same defect wearing three hats.** `T074-R5`,
+`T238-R4` and `T272-R1` (Medium, blocking) and `T272-R2` (Low) are answered at `36677b8`, `cc8dd89`
+and `d50eef9`. The range is **documentation only** — `ai/TASKS.md` and two files under
+`ai/evidence/`, no `src/`, test, workflow, dependency or build path — so nothing about the product
+moved and nothing about it needed to.
+
+**The shape they share is the one this project keeps finding.** Each was a *summary* sentence
+contradicting evidence **retained lower in the same document**: T-074 quoted a rate over a tree that
+had changed underneath it, T-238 called a lever untried two paragraphs above its own table of having
+tried it, T-272 read two processes as one shape. That is `T258-R10`'s class again — **a claim
+repeated in a summary is a separate copy, and the copy is what goes stale.** Worth recording as a
+pattern rather than three unrelated slips.
+
+**`T074-R5` — the observation stands, the ceiling does not.** **0 of 105 completed `Full suite`
+steps** is verified (92 success + 13 failure, every failure ending in an ordinary pytest tally
+rather than a native death), and so is `T238-R2`'s non-discrimination argument, which never used the
+bound. **Withdrawn:** the rule-of-three **2.9% per-run ceiling**, which assumes trials sharing one
+probability — these span sixteen days and many heads, with **2 886 insertions and 622 deletions**
+across the manager and test-lifecycle surfaces alone between `bd4dde8` and `06745fa`. **`T074-R1`
+had already ruled exactly this**, which makes it the same error re-made from the other direction.
+The enumeration now reconciles to **145**: 92 + 13 + 22 cancelled + 14 skipped + **4 runs with no
+`windows desktop` job at all**, the four the first telling did not account for. `T-074` stays
+**Blocked on `T-092`**, downgraded **High → Medium**, repetition spent at **466 attempts**;
+`OPS-007`'s accepted residual is untouched and never rested on the ceiling.
+
+**`T238-R4` — 30 *additional* contended runs, not an untried lever.** The cumulative record is
+**90 runs across four conditions, 50 of them contended**: 40 idle, 12 under 20 busy loops, 8 beside
+an `-n auto` integration batch, plus these 30. What the new design adds is stated rather than
+implied — three `pytest tests/integration -n 4` batches restarted continuously, so every measured
+run was contended **end to end by real Python allocation and Qt teardown** instead of by spinning
+arithmetic, load on 20 cores median **21.4**, and every run `3276 passed, 18 skipped`. **It does not
+reproduce the fault either.** Criterion 4's next step is **not** the guard firing — the 2026-08-16
+ruling moved it on, and its two named steps stand: the probe against a **real session on a display**,
+and whether any `QWidget` here participates in a **reference cycle**. `T-238` stays **Ready**.
+
+**`T272-R1` — two pipes, two processes, and the causal claim rested on conflating them.**
+`pipe:[1629660]` is the **resource-tracker channel**: `popen_spawn_posix._launch()` passes
+`resource_tracker.getfd()` in the child's pass-FD set **independently of** the payload `pipe_handle`,
+so a POSIX worker holding the tracker's writer is documented behaviour. `T-268` eliminates a peer on
+the **Windows spawn payload pipe**, which `popen_spawn_win32` creates with `bInheritHandles=False`.
+**Different channel, different platform, different pair** — so this is not `T-268`'s cause, and not
+for the reason first given. **Withdrawn with it:** that the five's **one-thread** shape was
+reproduced outside Windows. The one thread and 0 s of CPU are the **tracker**; the **worker** has
+**two threads and 157 s of CPU**, and their union is not a process shape. `T272-R2` is folded in —
+the artifact is in `ai/evidence/README.md`'s inventory with its cannot-be-regenerated reason.
+
+**`T-272` is on this board for the first time, and its specimens are already gone** (`f20876a`).
+Filed 2026-08-20: `tools/orphan_scan.py` **already detects Linux orphans, unmodified**, and nothing
+schedules it here — the detection `T-258` built is pointed at one of the two platforms this project
+supports. Re-scanned on `kirk` at **2026-08-20T06:20:48Z**: **`no orphaned workers found`, exit 0**,
+both PIDs absent from `ps`, and the host **has not rebooted** — up since 2026-08-10, which predates
+their creation. Both scans were report-only. **Why they ended is not established**: the worker sat
+in a `time.sleep`, finite by construction, so the sleep elapsing is the only candidate needing
+nothing external — **unverified**, with an outside kill on a shared machine neither observed nor
+excluded. **The preservation criterion is overtaken by events rather than met or waived**: what
+`T258-R4` protects was spent without anyone deciding to spend it, and the capture is now the whole
+of what survives. **Nothing observed while they ran is withdrawn**, and the scheduling gap is
+unchanged — a scheduled Linux scan would have reported the pair on **2026-08-16** instead of leaving
+them to be noticed four days later and lost hours after that.
+
+**`T-268` is untouched by every line of this, and the distinction is the point.** `3400` and `6924`
+are on Windows, on the payload channel, with the one-thread shape; the `kirk` pair were on POSIX, on
+the tracker channel, and were not that shape. `T-268` remains **Blocked on a person at `STARBASE`**
+and is still the one thing on this board nobody at a keyboard can move.
+
+**Gates at `f20876a` on `kirk`:** `ruff check .` clean, `ruff format --check .` **203 files**, task
+placement **16 passed, 2 skipped**, commit-message checker over the correction range clean, and no
+AI co-author trailer anywhere in it. **The full suite was not re-run and does not apply** — no
+executable file changed since the last green run. **Also In Review and unmoved by this batch:**
+`T-267`, `T-256`, `T-258`.
+
+**`origin/main` is `d50eef9`. `f20876a` and this entry are committed and held.** A focused
+re-review is what the reviewer offered, scoped to the four findings and the correction diff; the
+specimen record is one commit past that scope and is flagged as such in the handoff, because it was
+not knowable when the review was written.
+
+---
+
 **Last updated:** 2026-08-20 — **`STARBASE` is producing Windows evidence again, and `T-270`'s
 fix is proved on the version that broke it.** Run `32319665394` on `06745fa`: **`windows desktop`
 green end to end in 34m47s**, `test_the_quit_shortcut_is_bound` **PASSED**, under **PySide6
