@@ -19591,3 +19591,58 @@ measurement, design change or broad audit.
 The combined head remains held and unpushed. No correction to T-272, T-273's filing, or any settled
 finding is requested. The Reviewer changed only this append-only record; no reviewed tool,
 current-truth file, test, workflow, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-21 — T238-R5 authorised final re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-238
+**Authorisation:** The maintainer explicitly authorised one additional focused pass after 1b51beb
+**Correction base:** 1b51beb1613dfaa5adfb253384bcfd4ab46c2d2b
+**Correction head:** b204f88
+**Focused boundary:** two held, unpushed commits changing the probe, TASKS and STATUS only
+**Verdict:** **Approved. T238-R5 is Resolved; no new findings.** The probe and every live summary
+now stop at the observed counts, identify the missing identity evidence, and leave criterion 4
+unanswered.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Authorised-pass result | Status |
+|---|---|---:|---|---|
+| **T238-R5** | **Medium** | Yes | The refusal now says the live count did not decrease, then immediately defines that as a count rather than an identity and says it does not establish that the same widgets remain. “No released widget to classify” is read in that explicit evidentiary context: the run produced no identified released specimen, not a claim that no release occurred. The unreached branch reports only a **net** count fall and says which widgets changed is unknown because the probe tracks no identities. STATUS's lead and body both say criterion 4 remains unanswered. T-273's criterion says the second step was attempted and refused, not answered around the retention. T-238's earlier summary now records the attempt and points to the refusal section. | **Resolved at b204f88** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary | 1b51beb..b204f88 changes only ai/STATUS.md, ai/TASKS.md and tools/t238_widget_cycle_probe.py. T-272's workflow/tests, T-273's filing and all three resolved Low findings are untouched. |
+| Probe | Both controls pass; **159 / 159**, **30 total / 0 widgets**; refusal exit **3**. Output says count, not identity, and criterion 4 unanswered. |
+| Semantic sweep | No operative route-closed, not-garbage, harness-answer or aggregate-to-identity conclusion remains across the probe, TASKS, STATUS and TESTING. The surviving “a run that answered” language is expressly conditional and describes evidence not yet obtained. |
+| Focused tests | Task-placement plus orphan-scan tests: **27 passed**. |
+| Lint and formatting | Ruff check passed; Ruff format reports **204 files already formatted**. |
+| Static types | Bare mypy and mypy under the Win32 platform each pass over **154 source files**. |
+| Commit and boundary checks | Commit-message checker: **2 commits checked**. git diff --check passed; both commits name Sean Kottman and contain no AI authorship trailer. |
+| Full suite | Not run by Implementer or Reviewer. The only executable edit is a standalone probe the suite does not collect; its direct run plus focused and static gates are proportionate. |
+
+### Review judgments
+
+- **The fourth summary correction is in scope.** Commit 7b07fde predates the Implementer's reading
+  of the blocking verdict, but it changes the same answer/unanswered class inside T-238 and was
+  explicitly included in the authorised exact-diff submission. Its provenance does not alter the
+  review boundary.
+- **The refusal is now internally consistent.** It supplies no widget identity and claims none; it
+  records the aggregate, explains why the aggregate cannot answer the criterion, and exits 3.
+- **No settled task moved.** T-238 remains Ready with criterion 4 open. T-273 remains a Proposed
+  retention investigation, not a T-238 diagnosis. T-272 remains approved, and its first actual
+  Linux-runner execution remains the disclosed nightly follow-up after push.
+
+### Readiness
+
+T238-R5 is Resolved and the T-238 correction is **Approved at b204f88**. T272-R4, T238-R6 and
+COORD-R25 remain Resolved. No blocking or non-blocking finding remains from this correction round,
+and no further review pass is requested.
+
+The combined local head remains held and unpushed; origin/main remains 5aab82d. The Reviewer changed
+only this append-only record and did not modify any reviewed file, handoff, test, workflow, push or
+remote state.
