@@ -7,7 +7,12 @@
 **Status:** Active
 **Last updated:** 2026-08-21 — **`T-238`'s criterion 4 has its second answer, `T-272` is built, and
 `T-273` came out of a probe refusing to report.** Overnight work, authorized by the maintainer,
-**nothing pushed**: `origin/main` is still `5aab82d` and **seven commits are held**.
+**nothing pushed**: `origin/main` is still **`5aab82d`**, and every commit since it is held.
+*(This carried a count of held commits and a count of how many were corrections, and both were
+wrong by one at the head that was submitted — `COORD-R25`. They are **removed rather than
+re-derived**, which is the option the finding offered: a snapshot recording `n commits` is stale the
+next time anybody commits, and this entry was written mid-batch. The base is exact and does not
+drift.)*
 
 **`T-238`, criterion 4, second step — the run refused and criterion 4 is unanswered.**
 `tools/t238_widget_cycle_probe.py` measures *what freed a widget* rather than whether it sits in a
@@ -71,11 +76,13 @@ different process shape — and now different lifetimes.
 `ruff check` clean · `ruff format --check` **204 files** · `mypy` **154 source files**, no issues ·
 task placement **15 passed** · commit-message checker clean over the range.
 
-**Three of the seven commits are corrections to the other four**, all self-caught before handoff:
-a figure quoted from a scratch diagnostic that was **holding the objects it was counting**
+**A run of these commits are corrections to earlier ones in the same batch**, self-caught before
+handoff: a figure quoted from a scratch diagnostic that was **holding the objects it was counting**
 (`gc.get_referrers` returned the very lists), a design decision that read as invented when
 `prose.yml` already made it, and a claim about the sibling probe's history repeated from that
-probe's own docstring where only half of it holds.
+probe's own docstring where only half of it holds. **What review then caught is the class none of
+them were**: the conclusion the probe itself refused to support (`T238-R5`), and two more sibling
+copies of accounts already corrected elsewhere (`T238-R6`, `T272-R4`).
 
 ---
 
