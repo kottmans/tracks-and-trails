@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QAction, QGuiApplication
+from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -35,6 +35,7 @@ from tracks_and_trails.ui.main_window import (
     APP_NAME,
     CLEAR_FINISHED_SHORTCUT,
     DEFAULT_SIZE,
+    QUIT_SHORTCUT_FALLBACK,
     RUN_SHORTCUT,
     TOOLBAR_SPACER_PROPERTY,
     MainWindow,
@@ -42,6 +43,7 @@ from tracks_and_trails.ui.main_window import (
     geometry_path,
     load_geometry,
     moved_onto_a_screen,
+    resolve_quit_shortcut,
     save_geometry,
 )
 from tracks_and_trails.ui.row_verbs import Verb
@@ -136,6 +138,45 @@ def test_the_queue_verbs_are_on_the_file_menu_as_the_same_actions(qapp: QApplica
 
     assert run.shortcut().toString() == RUN_SHORTCUT
     assert clear.shortcut().toString() == CLEAR_FINISHED_SHORTCUT
+
+
+# --- `Quit`'s accelerator survives a platform that does not name one (`T-270`) -----------------
+#
+# The gap was found on Windows and cannot be *reproduced* there from here, so these drive the
+# resolver directly with the sequence Qt hands back rather than waiting for a runner. The Windows
+# desktop suite keeps asserting the built window on the real platform; that is the observation,
+# and this is the gate that fails on any machine when the fallback stops working.
+
+
+def test_the_quit_action_carries_a_shortcut(window: MainWindow) -> None:
+    """The whole point of `T-270`: `Quit` must be reachable from the keyboard.
+
+    Offscreen this passes on the pre-fix code too — the headless theme answers `Qt.Key_Exit`,
+    which is non-empty — so it is the two resolver tests below that carry the defect. This one
+    holds the product-level claim in the suite every platform runs.
+    """
+    actions = {action.objectName(): action for action in window.findChildren(QAction)}
+    assert not actions["actionQuit"].shortcut().isEmpty(), "Quit has no keyboard shortcut"
+
+
+def test_the_quit_shortcut_falls_back_when_the_platform_names_none() -> None:
+    """The Windows condition, driven on any platform: an empty standard key must not survive.
+
+    This is the failure from run `32268124069` reproduced without a runner. Deleting the
+    `isEmpty()` branch returns the empty sequence and fails here.
+    """
+    assert resolve_quit_shortcut(QKeySequence()).toString() == QUIT_SHORTCUT_FALLBACK
+
+
+def test_the_quit_shortcut_keeps_what_the_platform_answers(qapp: QApplication) -> None:
+    """A fallback, not a replacement — and this is the half that says so.
+
+    Binding `QUIT_SHORTCUT_FALLBACK` unconditionally would leave the test above green while
+    discarding every theme's opinion, including the `Ctrl+Q` that `xcb` and `wayland` already
+    answer. Handing in a sequence Qt would never pick keeps this from passing by coincidence.
+    """
+    theirs = QKeySequence("Ctrl+Shift+F9")
+    assert resolve_quit_shortcut(theirs).toString() == "Ctrl+Shift+F9"
 
 
 def test_the_run_items_label_follows_the_queue_from_the_menu_too(qapp: QApplication) -> None:

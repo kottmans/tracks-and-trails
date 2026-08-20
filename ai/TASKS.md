@@ -5,17 +5,27 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-18 — **`T-266` is Complete**, Approved with follow-ups at `0c6a2b8`,
-joining `T-257`, `T-259`, `T-262` and `T-264`. It measured that the outer Job is **not** what reaps
-a child in `T-258`'s window on Windows, so the control it was filed against is retired *as a
-control* and kept as a regression test. `T266-R1` is Resolved; `T266-R2` is `T-269`.
-**`T-256` and `T-258` are what remain In Review.** `T-258` carries a `Blocked` verdict and is now
-blocked on **one** thing: `T258-R5`, wiring the orphan scanner to something. `T258-R2` is
-**Resolved at `4ec5747`** — its mechanism question is answered, and the answer cost criterion 2,
-which is closed as unobtainable in that form. `T258-R6` is Resolved at `e3c259a`.
-**`T-268` is answered and In Review**: the region is measured on Windows, the outer Job is
-measured to reap it, and *what* blocked the five is recorded as not identifiable with the four
-eliminations behind that.
+**Last updated:** 2026-08-19 — **`T-270` is built and In Review.** `Quit` no longer depends on a
+per-platform standard key Qt is entitled to resolve to nothing: it keeps whatever the platform
+theme answers and falls back to `Ctrl+Q` when the answer is **empty**, which is what Windows
+answers. **Its second criterion is not met and cannot be met from here** — *"the `windows desktop`
+job is green end to end"* is an observation on `STARBASE`, and this tree has not had one. `T269-R2`
+waits behind that same run. **The `PySide6` constraint is deliberately unchanged**, with the
+question it leaves recorded in the entry rather than decided there; it is a runtime dependency, so
+`AGENTS.md` §7 makes it the maintainer's. `T-271` is filed for the neighbouring `StandardKey.New`,
+which is the same unguarded reliance and is **not** observed broken.
+
+**What is awaiting a verdict is `## In Review`, and this header does not say what is in it.**
+
+*(**The removed paragraph enumerated that section and was wrong again**, which is the failure
+`T204-R2` named. It read *"`T-256` and `T-258` are what remain In Review"* while `T-267` and
+`T-269` sat there too; it said `T-258` was *"blocked on **one** thing: `T258-R5`"* after `T258-R5`
+was Resolved; and it said **`T-268` is answered and In Review** after `T-268` went **Blocked**.
+Every sentence was true the day it was written. `T-270` did not make them stale — it made the first
+one **falser**, by adding a fifth entry — and the paragraph is removed rather than corrected,
+because the file already states the rule it was breaking: a header that lists a section's contents
+is a second copy of the section, and the copy is what rots. What it recorded about `T-266` is not
+lost; it is in `T-266`'s own entry under `## Complete`.)*
 
 *(**Rewritten 2026-08-18, because appending had made it self-contradicting.** In one paragraph this
 header said `T-259` was Complete *and* awaiting re-review, and that `T-258`'s Windows run existed
@@ -150,6 +160,123 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 **The exit review is complete**: approved at `ccdbd0f` on 2026-08-09, all six criteria met, after
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
+
+### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
+
+**Status:** **In Review — built 2026-08-19. The product half is done; the dependency half is
+deliberately not, and says so.** `Quit` now resolves through `resolve_quit_shortcut()`, which keeps
+whatever the platform theme answers and substitutes `Ctrl+Q` when it answers **nothing**. **The
+`PySide6` constraint is unchanged** — see *The constraint deliberately does not change* below,
+which is this task's third criterion in the form it permits.
+
+**Criterion 2 cannot be met from here and is the one thing outstanding.** *"The `windows desktop`
+job is green end to end"* is an observation on `STARBASE`, and this tree has not had one. The fix
+is measured against the **condition** rather than the platform: `resolve_quit_shortcut(QKeySequence())`
+is the empty sequence Windows produces, driven on Linux. **A green Windows run is still owed**, and
+`T269-R2` is waiting behind the same run.
+
+#### What was built
+
+**One resolver, and the seam is the parameter.** `QUIT_SHORTCUT_FALLBACK: Final = "Ctrl+Q"` and
+`resolve_quit_shortcut(standard: QKeySequence | None = None)` in `ui/main_window.py`. Left `None` it
+asks Qt; handed a sequence it uses that one, which is how the Windows condition is reproducible on a
+machine that is not Windows. The call site at `main_window.py:1459` is a one-line change.
+
+**Why a fallback and not an explicit binding.** The task offered *"bind the shortcut explicitly"*,
+and binding `Ctrl+Q` unconditionally would pass every test in this task while discarding a theme's
+opinion wherever it has one — a wider change than the defect. What is bound explicitly is the
+**hole**: an empty resolution, and nothing else.
+
+**Measured, across four platform plugins on PySide6 6.11.1 (`kirk`):**
+
+| plugin | `StandardKey.Quit` resolves to | empty |
+|---|---|---|
+| `xcb` | `Ctrl+Q` | no |
+| `wayland` | `Ctrl+Q` | no |
+| `minimal` | `Exit` (`Qt.Key_Exit`) | no |
+| `offscreen` | `Exit` (`Qt.Key_Exit`) | no |
+
+**The two rows that matter are the bottom two, and they are why this was only ever findable on
+Windows.** The headless themes answer a bare `Qt.Key_Exit` — a dedicated hardware key almost no
+keyboard has. It is **non-empty**, so an offscreen `isEmpty()` assertion passes over it, and the
+built window under `offscreen` still reports `Exit` after this fix. The offscreen suite could not
+have caught the Windows gap before and does not catch it now; that is a property of the assertion,
+not of this change, and `T-200` owns whether a bare hardware key is an acceptable accelerator at
+all.
+
+**On the two platforms this project supports, nothing a user sees changes except on Windows.** Real
+Linux desktops resolve `Ctrl+Q` and keep it; Windows resolved nothing and now gets `Ctrl+Q`. The
+built window was checked under all three available plugins rather than reasoned about.
+
+#### The tests, and what each one fails on
+
+Three in `tests/ui/test_main_window.py`, in the suite **both** platforms run — the gate that fails on
+any machine, rather than one that needs a scarce Windows round.
+
+- `test_the_quit_shortcut_falls_back_when_the_platform_names_none` — hands in the empty sequence.
+  **Mutation: deleting the `isEmpty()` branch** fails it with `assert '' == 'Ctrl+Q'`, which is run
+  `32268124069`'s failure reproduced on Linux.
+- `test_the_quit_shortcut_keeps_what_the_platform_answers` — hands in `Ctrl+Shift+F9`, which Qt
+  would never pick. **Mutation: binding `QUIT_SHORTCUT_FALLBACK` unconditionally** leaves the test
+  above green and fails this one. The pair does two jobs; either alone admits a wrong fix.
+- `test_the_quit_action_carries_a_shortcut` — the product claim on the built window. **This one
+  passes on the pre-fix code offscreen**, for the `Qt.Key_Exit` reason above, and the entry says so
+  rather than counting it as evidence.
+
+**`tests/ui/test_windows_desktop.py` is untouched**, `git diff --exit-code` confirms it. The fourth
+criterion forbids weakening it and nothing here touches the assertion that found the defect.
+
+#### The constraint deliberately does not change
+
+**No `DECISIONS.md` entry is added, because none is mine to add.** `PySide6` is a runtime
+dependency, so `AGENTS.md` §7 requires an *accepted* decision to constrain it differently, and
+`AGENTS.md` §7 *Scope* forbids proposing architecture changes into place. The criterion's own
+wording allows exactly this: *"an explicit note if it deliberately does not"*.
+
+**What the maintainer is being asked to rule on, recorded so the question is not lost:** the floor
+`PySide6>=6.11,<7` let a patch release change a keyboard binding, and this is the second time in one
+day a floor turned out to be load-bearing (`T-269`'s venv re-key was the first). The question is not
+*"pin 6.11.2"* — that would freeze the defect's environment and fix nothing, since this task's fix
+makes 6.11.2 correct. It is whether runtime floors are the right policy at all, against `OPS-002`,
+which already pins `yt-dlp` exactly for this reason. **`ARC-001` chose PySide6 and says nothing
+about how its version is constrained**, so there is no existing entry this belongs under.
+
+#### Evidence
+
+Gates run on `kirk` at the pinned toolchain (`ruff 0.16.3`, `mypy 2.3.1`), each read before the
+commit:
+
+| gate | result |
+|---|---|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 202 files already formatted |
+| `mypy` | no issues, 154 source files |
+| `mypy --platform win32` | no issues, 154 source files |
+| `tests/ui` | 1023 passed, 3 skipped |
+| `tests/unit` | 2253 passed, 15 skipped |
+
+#### Acceptance criteria
+
+- ~~**Quit carries a non-empty shortcut on Windows**~~ — **built, and measured against the
+  condition rather than the platform.** The empty resolution is driven directly; the Windows
+  observation is criterion 2's.
+- **The `windows desktop` job is green end to end** — **not met, and not obtainable here.** Needs
+  one run on `STARBASE`.
+- ~~**Whatever is decided about the PySide6 constraint is recorded where that kind of decision
+  lives**~~ — **met in its second form**: the constraint does not change, and the note above says so
+  and says what is left for the maintainer.
+- ~~**The fix does not weaken the test**~~ — `tests/ui/test_windows_desktop.py` is byte-identical.
+
+#### Out of scope
+
+- `T-200`'s accessibility pass, beyond this one accelerator
+- Changing which step order the Windows job uses. Running the suite before the style gates was
+  ruled against in `T-269`'s own scope for a different reason and is not reopened here
+- **`StandardKey.New` on the `Add URLs...` action**, which is the same unguarded reliance 27 lines
+  up. Filed as `T-271` rather than fixed here, per `AGENTS.md` §7 — and filed as *unguarded and
+  untested*, not as broken: no run has ever asserted its shortcut on Windows.
+
+---
 
 ### T-269 — Make the formatter and type-checker versions reproducible
 
@@ -7955,84 +8082,6 @@ reported six times, produced here by a tool rather than by inattention. **`T-096
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
 
-### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
-
-**Status:** **Ready — filed 2026-08-19 from run `32268124069`.** `test_the_quit_shortcut_is_bound`
-fails on `STARBASE`: `QKeySequence.StandardKey.Quit` resolves to an **empty** sequence, so the
-application's Quit action carries no accelerator on Windows at all. **The test's own docstring
-predicted this** — *"Qt may resolve it to nothing at all"* — and the product never guarded it.
-**Owner:** Implementer
-**Priority:** **High.** Two reasons, and the second is the urgent one. It is a user-facing keyboard
-gap on the platform `T-200`'s accessibility pass is measured on; and the `Windows desktop suite`
-step runs **before** lint, format, the Qt baseline and the full suite, so its failure **skips all
-four**. `STARBASE` is the only Windows evidence this project has (`OPS-005`), and it currently
-produces none
-**Phase:** Phase 4 maintenance, and it blocks Windows evidence for everything else
-**Depends on:** nothing
-**Relevant context:** `ui/main_window.py:1427`, `tests/ui/test_windows_desktop.py`, `T-269` (which
-exposed it), `T-200`, `T-257` (the last time this job was red for days), `OPS-005`
-**Affected surfaces:** the Quit action's shortcut, and possibly `pyproject.toml`'s PySide6
-constraint — see *The decision that is not mine* below
-**Risk:** Low to fix, and the trap is fixing the wrong half: pinning the dependency makes the board
-green while leaving the product depending on a resolution Qt is entitled to leave empty
-
-#### What changed, and the evidence it rests on
-
-| | |
-|---|---|
-| 2026-08-19 **04:11Z**, run `32214730271` | **33 passed**, PySide6 **6.11.1** (its environment record) |
-| 2026-08-19 **06:58Z**, run `32225163769` | **33 passed**, same venv |
-| 2026-08-19 **15:11Z**, run `32268124069` | **1 failed, 32 passed**, PySide6 **6.11.2** |
-
-**Nothing about the application changed between them.** The batch in between touched tests, dev
-pins, a workflow's environment record and prose; its one `src/` change is exception translation in
-`ytdlp_resolution.py`, which no UI test reaches.
-
-**What changed is the interpreter's environment, and `T-269` is why.** The persistent virtualenv's
-cache key is `sha256sum pyproject.toml`, so pinning Ruff and mypy re-keyed it and the runner built
-a fresh one. **`PySide6>=6.11,<7` is a floor**, so the fresh resolve took **6.11.2** where the old
-venv had been holding **6.11.1** since before the pin. The dispatch's install log shows
-`pyside6-6.11.2` being downloaded rather than found.
-
-**So `T-269` did not cause this defect; it uncovered it** — and it uncovered it in the only way it
-could ever have been uncovered, by forcing the first honest dependency resolve on that machine in
-weeks. A new contributor, a new runner, or a release build would each have hit it cold.
-
-#### The decision that is not mine
-
-Two fixes exist and they are not alternatives:
-
-1. **Bind the shortcut explicitly** rather than relying on a per-platform standard key Qt is
-   entitled to resolve to nothing. This is the product fix, and the test's docstring already says
-   why it is needed.
-2. **Pin or narrow `PySide6`.** That is a **runtime** dependency, so `AGENTS.md` §7 requires a
-   `DECISIONS.md` entry, and `T-269`'s scope explicitly excludes *"pinning runtime dependencies or
-   changing their update policy"*. **Nothing here does it.**
-
-**Fixing only (2) would make the board green and leave the defect**, because the constraint's next
-allowed upgrade reintroduces it. Fixing only (1) leaves the wider question open: the same floor
-governs every runtime dependency, and this is the second time in one day that a floor turned out to
-be load-bearing.
-
-#### Acceptance criteria
-
-- **Quit carries a non-empty shortcut on Windows**, asserted by the existing test on `STARBASE`
-- **The `windows desktop` job is green end to end**, so its lint, format, Qt baseline and full-suite
-  steps run again rather than being skipped behind a failure
-- **Whatever is decided about the PySide6 constraint is recorded where that kind of decision
-  lives** — a `DECISIONS.md` entry if the constraint changes, and an explicit note if it
-  deliberately does not
-- **The fix does not weaken the test.** *"`Quit` may resolve to nothing"* is the finding, not a
-  reason to stop asserting that it does not
-
-#### Out of scope
-
-- `T-200`'s accessibility pass, beyond this one accelerator
-- Changing which step order the Windows job uses. Running the suite before the style gates was
-  ruled against in `T-269`'s own scope for a different reason and is not reopened here
-
----
-
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
 **Status:** **Ready — the guard is Approved at `9e5feae`, and the task stays open against
@@ -9000,6 +9049,58 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
+
+### T-271 — `Add URLs...` relies on the same unguarded standard key `T-270` was filed for
+
+**Status:** **Proposed — filed 2026-08-19 by `T-270`, which fixed the neighbouring line and is
+forbidden from fixing this one.** `main_window.py:1432` binds `QKeySequence.StandardKey.New`
+exactly as `Quit` bound `StandardKey.Quit` twenty-seven lines below it: the platform theme is asked,
+and whatever it answers — including **nothing** — is bound unexamined.
+**Owner:** Planner, to prioritize
+**Priority:** **Low, and the honest reason is that nobody knows.** `T-270`'s defect was High because
+it was *observed* red on `STARBASE`. This one is **not observed broken anywhere**, and it is also
+**not observed working on Windows**, because no test has ever asserted this action's shortcut on any
+platform. It is filed as a *gap in evidence*, not as a defect.
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-270`'s `resolve_quit_shortcut()` is a `Quit`-shaped helper, not a
+general one; whoever takes this decides whether it generalizes
+**Relevant context:** `ui/main_window.py:1432`, `T-270`, `T-200`, `tests/ui/test_main_window.py`
+**Affected surfaces:** the `Add URLs...` accelerator, and whether this project keeps trusting
+per-platform standard keys anywhere without a test
+**Risk:** Low. The trap is the one `T-270` measured — **`isEmpty()` is not the only failure**. The
+headless themes answer `StandardKey.Quit` with a bare `Qt.Key_Exit`, which is non-empty and
+unusable, so a test that only asserts non-empty can pass over a shortcut no keyboard can type
+
+#### What is known, and what is not
+
+**Known, measured on `kirk` at PySide6 6.11.1 across four plugins** (`T-270`'s probe): `xcb`,
+`wayland`, `minimal` and `offscreen` all resolve `StandardKey.New` to **`Ctrl+N`**. On Linux this
+action is fine.
+
+**Not known: what Windows answers.** `STARBASE` has never run an assertion on it. Run
+`32268124069` reported *1 failed, 32 passed* and the one failure was `Quit` — which says the other
+32 tests passed, **not** that this shortcut resolves, because none of them looks at it.
+
+**Why `T-270` did not simply fix it too.** `AGENTS.md` §7 *Scope*: *"If you find an adjacent
+problem, file a task; don't fix it inline."* `T-270`'s own Out of scope also bounds it to *"this one
+accelerator"*. Fixing a second action on the strength of a resemblance would also have shipped an
+unmeasured claim — that `New` resolves empty on Windows — which nothing supports.
+
+#### Suggested acceptance criteria
+
+- **`Add URLs...` carries a usable accelerator on both supported platforms**, asserted rather than
+  assumed — where *usable* is decided against the `Qt.Key_Exit` case, not by `isEmpty()` alone
+- **The decision is made once, for every standard key this project binds**, rather than per action:
+  either they are all guarded by one seam, or the two that exist are bound explicitly and the
+  pattern stops being used
+- **One test fails on Windows if either accelerator regresses**, in the suite both platforms run
+
+#### Out of scope
+
+- `T-200`'s wider accessibility pass
+- Re-opening `T-270`'s `Ctrl+Q` fallback, which is measured and approved separately
+
+---
 
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 

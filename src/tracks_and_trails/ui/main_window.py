@@ -102,6 +102,38 @@ ADD_URLS_BUTTON: Final = "+ Add URLs"
 RUN_SHORTCUT: Final = "Ctrl+R"
 CLEAR_FINISHED_SHORTCUT: Final = "Ctrl+Shift+C"
 
+#: What `Quit` falls back to when Qt's per-platform standard key resolves to nothing (`T-270`).
+#:
+#: **`QKeySequence.StandardKey.Quit` is a request, not a guarantee.** Qt answers it from the
+#: platform theme, and the Windows theme has no entry for it: on `STARBASE` it resolves **empty**,
+#: so `Quit` carried no accelerator there at all. Measured in run `32268124069`, where
+#: `test_the_quit_shortcut_is_bound` failed on PySide6 6.11.2 after a fresh resolve floated it off
+#: the `>=6.11,<7` floor. That test's own docstring had predicted it — *"Qt may resolve it to
+#: nothing at all"* — and the product never guarded it.
+#:
+#: **`Ctrl+Q` is what the platform that does answer already says.** Measured across four plugins on
+#: PySide6 6.11.1: `xcb` and `wayland` both resolve `Quit` to `Ctrl+Q`, so on the two platforms this
+#: project supports the fallback either agrees with the theme or replaces nothing. The headless
+#: `minimal` and `offscreen` themes answer `Qt.Key_Exit` — a bare hardware key, non-empty and
+#: unusable — which is why the offscreen suite could never have caught the Windows gap.
+#:
+#: **Kept as a fallback rather than a replacement.** Binding `Ctrl+Q` unconditionally would discard
+#: a theme's opinion wherever it has one, which is a wider change than the defect; this guards only
+#: the hole the defect came through.
+QUIT_SHORTCUT_FALLBACK: Final = "Ctrl+Q"
+
+
+def resolve_quit_shortcut(standard: QKeySequence | None = None) -> QKeySequence:
+    """Return the platform's `Quit` sequence, or `QUIT_SHORTCUT_FALLBACK` if it has none.
+
+    `standard` exists so a test can hand in the **empty** sequence Windows produces and drive the
+    fallback on any platform. Left `None`, it asks Qt, which needs a `QGuiApplication` to answer.
+    """
+    if standard is None:
+        standard = QKeySequence(QKeySequence.StandardKey.Quit)
+    return QKeySequence(QUIT_SHORTCUT_FALLBACK) if standard.isEmpty() else standard
+
+
 #: The dynamic property the style sheet fills a toolbar's primary button against (`T-132`).
 #:
 #: **A role, not a name.** `theme.py` must style by class so a widget nobody remembered still gets
@@ -1424,7 +1456,7 @@ class MainWindow(QMainWindow):
         self._before_quit = file_menu.addSeparator()
 
         quit_action = QAction("&Quit", self)
-        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        quit_action.setShortcut(resolve_quit_shortcut())
         # Without NoRole, Qt may treat this as an OS-level quit item and relocate or hide it.
         # This window is the whole application; keep the item where the user put their cursor.
         quit_action.setMenuRole(QAction.MenuRole.NoRole)

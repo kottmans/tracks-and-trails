@@ -5,13 +5,32 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-19 — **the `windows desktop` job is red, and the failure is the product
-this time.** `T-270`: `QKeySequence.StandardKey.Quit` resolves to an empty sequence under PySide6
-6.11.2, so Quit carries no accelerator on Windows — and because that step runs before lint, format,
-the Qt baseline and the full suite, **all four are skipped and `STARBASE` is producing no Windows
-evidence at all**. `T-269`'s pin re-keyed the persistent virtualenv, the fresh resolve floated
-PySide6 from 6.11.1 on a `>=6.11,<7` floor, and a latent defect surfaced. `T269-R2` is blocked
-behind it. **`T-268` is Blocked on a person at `STARBASE`**, and that remains the one thing on this
+**Last updated:** 2026-08-19 — **`T-270` is built, and the red it was filed for is not cleared
+until a runner says so.** `Quit` no longer trusts a per-platform standard key: it keeps whatever the
+platform theme answers and substitutes `Ctrl+Q` when the answer is **empty**, which is what Windows
+answers. The four gates and both suites are green on `kirk` — **1023 passed, 3 skipped** in
+`tests/ui`, **2253 passed, 15 skipped** in `tests/unit` — and the Windows condition is driven
+directly rather than waited for: the empty sequence is handed to the resolver on Linux, and deleting
+the fallback fails that test with `assert '' == 'Ctrl+Q'`.
+
+**What is still owed is an observation, and it is the same one two tasks are waiting on.** *"The
+`windows desktop` job is green end to end"* is `T-270`'s second criterion and cannot be met from a
+Linux tree; `T269-R2` needs that identical run. Until it happens **`STARBASE` is still producing no
+Windows evidence**, because the failing step runs before lint, format, the Qt baseline and the full
+suite and skips all four.
+
+**The `PySide6` constraint is deliberately unchanged, and that is a decision waiting on the
+maintainer rather than a gap.** The floor `>=6.11,<7` let a patch release change a keyboard binding;
+pinning it now would freeze the defect's environment and fix nothing, since `T-270` makes 6.11.2
+correct. Whether runtime floors are the right policy at all — against `OPS-002`, which pins `yt-dlp`
+exactly for this reason — is an `AGENTS.md` §7 decision, and `ARC-001` chose PySide6 without saying
+anything about how its version is constrained. `T-271` is filed for `StandardKey.New`, the same
+unguarded reliance on the `Add URLs...` action, **not** observed broken and never asserted on
+Windows.
+
+*(This said the failure was **the product this time** and that `T-269`'s re-key had surfaced a
+latent defect. Both are still true and are why the task existed; what has changed is that the
+product half is fixed and the evidence half is not.)* **`T-268` is Blocked on a person at `STARBASE`**, and that remains the one thing on this
 board nobody at a keyboard can move. The orphan scanner's first run found seven,
 two of them new, and `T-268`'s own written reopening condition — another `STARBASE` orphan with one
 thread — fired on both. They predate the containment fix and do not indict it. What they establish
