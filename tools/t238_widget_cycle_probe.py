@@ -254,12 +254,13 @@ def main() -> int:
     print(f"  QWidget subclasses freed by the collector: {len(freed)}")
     if after >= before:
         print(
-            f"\nREFUSED. The surfaces are still standing — {before} widgets before the teardown "
-            f"and {after} after — so no widget was freed by anything and the {len(freed)} above is "
-            "not a result about cycles. It is also not a result about their absence: a retained "
-            "graph is not classified by the collector at all, so it may contain any number of "
-            f"cycles. The {collected} other objects say the collector ran in this window; they do "
-            "not say which objects, and they do not cover the post-result collection in `finally`."
+            f"\nREFUSED. The live widget count did not decrease across the teardown — {before} "
+            f"before, {after} after — so this run has no released widget to classify. That is a "
+            "count, not an identity: it does not say these are the same widgets, and the "
+            f"{len(freed)} above is neither a result about cycles nor about their absence, since a "
+            "retained graph is not classified by the collector at all and may contain any number. "
+            f"The {collected} other objects say the collector ran in this window; they do not say "
+            "which objects, and they do not cover the post-result collection in `finally`."
             "\n\nCriterion 4 is unanswered by this run. See the module docstring for what a run "
             "that answered it would have to do."
         )
@@ -276,11 +277,11 @@ def main() -> int:
         )
     else:
         print(
-            f"\nNo widget this application builds turned up in the collector's garbage, and "
-            f"{before - after} widgets were released. That is evidence about **these** surfaces "
-            "and about the widgets this run tracked; it does not close the gc route for the "
-            "application, which has screens this probe does not open. Read it with the module "
-            "docstring's limits in hand."
+            f"\nNo widget turned up in the collector's garbage, and the live count fell by a net "
+            f"{before - after}. **Which** widgets those were is not established — this run tracks "
+            "no identities, only counts — so this does not close the gc route, for these surfaces "
+            "or for the application, which has screens this probe does not open. Read it with the "
+            "module docstring's limits in hand."
         )
     return 0
 

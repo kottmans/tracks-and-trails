@@ -5,8 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-21 — **`T-238`'s criterion 4 has its second answer, `T-272` is built, and
-`T-273` came out of a probe refusing to report.** Overnight work, authorized by the maintainer,
+**Last updated:** 2026-08-21 — **`T-238`'s criterion 4 stays unanswered — its second step was
+attempted and the run refused — `T-272` is built, and `T-273` came out of that refusal.** Overnight work, authorized by the maintainer,
 **nothing pushed**: `origin/main` is still **`5aab82d`**, and every commit since it is held.
 *(This carried a count of held commits and a count of how many were corrections, and both were
 wrong by one at the head that was submitted — `COORD-R25`. They are **removed rather than

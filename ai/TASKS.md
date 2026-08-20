@@ -9138,8 +9138,9 @@ just never freed — so the predicate is not met and the suite is honestly green
   acceptable outcomes; silently making the number smaller is not
 - **A check fails when trees accumulate**, so the next reader learns it from a red suite rather than
   from a probe written for another task
-- **`T-238`'s criterion 4 is re-read afterwards**, because its second step was answered *around* this
-  rather than through it
+- **`T-238`'s criterion 4 is re-read afterwards.** Its second step was **attempted and refused**
+  because of this retention, and remains unanswered; a run that could answer it needs the retention
+  controlled first, which is what this task is for
 
 #### Out of scope
 
