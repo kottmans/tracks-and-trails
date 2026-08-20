@@ -19530,3 +19530,64 @@ rather than fix, or the earlier T272-R1 through T272-R3 round.
 
 The Reviewer changed only this append-only record. No reviewed workflow, source, test, task/status
 file, probe, handoff, live process, repository variable, push or remote state was changed.
+
+---
+
+## 2026-08-21 — T238-R5 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-238; non-blocking T272-R4, T238-R6 and COORD-R25
+**Initial reviewed head:** b2ebc6b72e168c1494e8960a8cd6ae56b204edf9
+**Initial review record:** 9b08a2cd691303fe48abd864a2d8a4109d0cf2dd
+**Correction head:** 44a633cd4ff14962a5ffc802ca0266a768222737
+**Focused boundary:** four held, unpushed commits changing the probe and current-truth prose only
+**Verdict:** **Blocked — T238-R5's correction is incomplete.** T272-R4, T238-R6 and COORD-R25
+are Resolved. The same Medium blocker survives this ordinary focused pass, so AGENTS.md §10
+requires a maintainer choice before another review pass.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T238-R5** | **Medium** | **Yes — criterion 4's second step** | The task's main measurement section now correctly withdraws the route-closed, not-garbage and harness-branch claims; states all four limits; keeps criterion 4 open; and narrows T-273 to observed retention. Three operative siblings still answer after the refusal. The probe says equal aggregates do not establish identity at tools/t238_widget_cycle_probe.py:38-40, then its current refusal infers **“159 … and 159 … so no widget was freed by anything”** at :254-255. Its other branch similarly turns the net count difference into **“widgets were released”** and refers to identities “this run tracked” although it tracks none (:276-279). STATUS's leading sentence still says criterion 4 **“has its second answer”** at STATUS.md:8, contradicting its corrected **“criterion 4 is unanswered”** at :17. T-273's acceptance criterion still says the second step **“was answered around”** the retention at TASKS.md:9133-9134, contradicting T-238's corrected heading at :8646. | If another pass is authorised, make the output state only the observations: the live count did not decrease, or fell by a net amount; it does not establish which widgets were released. Remove “this run tracked” unless identities are actually tracked. Make the STATUS header and T-273 criterion say the step was attempted and remains unanswered. Audit these exact answer/unanswered siblings once more. | **Open — correction incomplete** |
+| **T272-R4** | **Low** | No | TESTING now includes the exact Linux-orphans row with the LINUX_RUNNER selector, non-empty-variable gate, schedule/dispatch condition and needs: check. The preface records why the complete inventory drifted. No workflow or test changed. | **Resolved at 11bdcb1** |
+| **T238-R6** | **Low** | No | TESTING now distinguishes the quiet clean-looking zero from the loud fivefold over-count caught by wall-clock, matching the corrected account named by the finding. | **Resolved at 2903f21** |
+| **COORD-R25** | **Low** | No | STATUS removes both volatile held-commit counts, preserves exact base 5aab82d, and therefore cannot become false on the next local commit. | **Resolved at 44a633c** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction scope | 9b08a2c..44a633c changes only ai/STATUS.md, ai/TASKS.md, ai/TESTING.md and tools/t238_widget_cycle_probe.py. No T-272 workflow or unit test changed. |
+| Corrected probe | Both controls pass; **159 / 159**, **30 total / 0 widgets**, expected exit **3**. The printed refusal contains the surviving aggregate-to-identity inference quoted in T238-R5 above. |
+| Focused tests | pytest over task placement and orphan scan: **27 passed**. |
+| Lint and formatting | ruff check: passed. ruff format --check: **204 files already formatted**. |
+| Static types | Bare mypy: **154 source files**, passed. mypy --platform win32: **154 source files**, passed. |
+| Commit and boundary checks | Commit-message checker: **4 commits checked**. git diff --check passed; all commits name Sean Kottman and contain no AI authorship trailer. |
+| Full suite | Not run by Implementer or Reviewer. The correction changes one standalone tool that the suite does not collect plus documentation; the focused, static and direct-probe checks are proportionate. |
+
+### Review judgments
+
+- **The central reasoning is corrected; its final propagation is not.** Retention is no longer
+  presented as absence of cycles, the post-result collection is explicitly unobserved, the missing
+  screens are honestly bounded, and T-273 no longer depends on a garbage classification. The
+  surviving sentences are nevertheless live answers of the exact class T238-R5 required auditing.
+- **The handoff-only T272-R3 repetition is corrected.** The current submission states only that the
+  nightly scan reported seven, preserved its non-zero exit and reaped nothing. It makes no global
+  claim about other inspection or signals, and the superseded message was never committed.
+- **T-272 remains approved.** This range does not reopen its workflow or tests, and T272-R4's only
+  documentation follow-up is now closed. Actual Linux-runner execution remains the disclosed first
+  nightly after an approved head is pushed, not evidence this unpushed range claims to have.
+
+### Convergence and readiness
+
+This was the one ordinary focused correction re-review after the initial comprehensive pass.
+T238-R5 remains a blocking Medium, so the automatic loop stops here. The maintainer must choose:
+authorise one additional focused pass, accept the documented risk, change scope, or carry the work
+to a named follow-up. **The Reviewer recommends one additional focused pass** because the remaining
+work is a narrow wording correction in three identified sites and does not require a new
+measurement, design change or broad audit.
+
+The combined head remains held and unpushed. No correction to T-272, T-273's filing, or any settled
+finding is requested. The Reviewer changed only this append-only record; no reviewed tool,
+current-truth file, test, workflow, handoff, push or remote state was changed.
