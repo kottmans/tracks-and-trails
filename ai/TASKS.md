@@ -9316,12 +9316,19 @@ descend from, and `T-183` is what turns them into the rest of the phase.)*
 
 ### T-184 — The escape hatch: additional yt-dlp options, parsed and bounded
 
-**Status:** Proposed — filed 2026-08-07 with the phase. **Blocked on `T-256`** for **one**
-disposition: `--legacy-server-connect` (`T183-R3`), the sixteenth option the audit surfaced and the
-only one still unruled. The three `SEC-003` corrections `T-256` also carries are **non-blocking**. `T-183` delivered the classification and `SEC-004` ruled the original fifteen
-forbidden, so the refusal list is the audit's `app:sets` + `app:contained` + `app:plumbing` +
-**`app:policy`** + `excluded` classes — **89 documented options** — but a refusal list cannot be
-final while any option is unruled. Nothing in this phase starts before Phase 4 exits.
+**Status:** Proposed — filed 2026-08-07 with the phase. **Unblocked 2026-08-21**: `SEC-005` ruled
+`--legacy-server-connect`, the one disposition this waited on (`T183-R3`, the sixteenth option the
+audit surfaced), and **`unruled` is now 0** — every documented option has a class, which is the
+condition a final refusal list needs. The three `SEC-003` corrections `T-256` also carried were
+non-blocking and were ruled the same day; two of them **add** to this list. `T-183` delivered the
+classification and `SEC-004` ruled the original fifteen forbidden, so the refusal list is the
+audit's `app:sets` + `app:contained` + `app:plumbing` + **`app:policy`** + `excluded` classes —
+**92 documented options**, up from 89 by `--legacy-server-connect`, `--netrc-cmd` and
+`--client-certificate-password`. **Nothing in this phase starts before Phase 4 exits**, so this is
+unblocked rather than startable.
+
+**`Depends on:` is satisfied rather than removed.** `T-256` is still In Review; what it owed this
+task is taken, and a reviewer disposing `T-256` differently would reach this line.
 
 *(**This entry said "both blockers are cleared", "nothing outstanding" and "79 documented options",
 and required a destination-keyed refusal, after `T183-R1`…`R5` had changed all four.** The
@@ -9331,7 +9338,8 @@ normalized value as though it were the `SEC-003` bypass.)*
 **Owner:** Implementer
 **Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
 **Phase:** Phase 4.5
-**Depends on:** **`T-256`** — **one** unruled option, `--legacy-server-connect`. *(This said "sixteen unruled options and three `SEC-003` corrections"; fifteen were ruled by `SEC-004` and the three corrections are explicitly non-blocking — `T183-F1`.)* `T-183` delivered the classification and `SEC-004` ruled the original fifteen; the refusal list is **89 documented options** across five refused classes, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
+**Depends on:** ~~**`T-256`** — **one** unruled option, `--legacy-server-connect`~~ — **satisfied
+2026-08-21 by `SEC-005`**. *(This said "sixteen unruled options and three `SEC-003` corrections"; fifteen were ruled by `SEC-004` and the three corrections are explicitly non-blocking — `T183-F1`.)* `T-183` delivered the classification and `SEC-004` ruled the original fifteen; the refusal list is **89 documented options** across five refused classes, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
 
 > **Four of `T-183`'s findings land here, and the first changes the design.**
 >
