@@ -5,6 +5,55 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-21 — **`T-256`'s four rulings are taken, `unruled` reaches zero, and
+`T-184` is unblocked.** The maintainer ruled on all four options the Planner put up, taking every
+recommendation. **`T-272`'s `Linux orphans` job also ran for the first time and passed** — on
+`kirk`, in **8 seconds** — which closes the one item that review left open.
+
+**`SEC-005` forbids `--legacy-server-connect`**, applying `SEC-004`'s TLS sentence to the sixteenth
+option `T183-R3` found *after* that ruling. It was deliberately never swept in by inference, and it
+has been the single `unruled` row since 2026-08-16 and the only thing blocking `T-184`.
+
+**`SEC-003` is amended, not rewritten.** `--netrc-cmd` is forbidden because it **executes a
+command** — the property `--exec` is forbidden for four rows above it in the same table — and
+`--client-certificate-password` because it **carries a secret** rather than naming a file that holds
+one. The refusal count in its Consequences now reads **seven**, matching the seven the list beside it
+already named. **`--client-certificate` and `--client-certificate-key` are untouched**: they name
+files, which is what the original reasoning covers, and forbidding the family wholesale was the
+over-broad reading and was not taken.
+
+**The counter-argument on the passphrase is recorded rather than dismissed**, because it is a good
+one: it unlocks a **local file** and is not a site credential. It is forbidden anyway — persistence
+and the process boundary are what the rule names, and neither changes with what the secret unlocks.
+
+**The audit followed the decisions rather than leading them**, which is the ordering `T-183`'s
+Finding 3 exists to protect: those two options were classified `hatch` **because that is what the
+accepted decision said**, and they moved only once it said otherwise. Now: **`unruled` 0**,
+**`excluded` 26**, **`hatch` 93**, refusal list **92 rows**.
+
+**The gate had to learn to read an amendment, and that is the part worth keeping.**
+`tests/unit/test_option_audit.py` read each decision's verdict table **once**. `AGENTS.md` §6 makes
+`ai/DECISIONS.md` append-only, so an amendment is a *second* table inside the same entry — and a
+parser reading only the first would have gone on reporting the superseded verdict while every count
+around it agreed with the new one. It now reads **every** table in document order and lets the later
+one win. **Mutations: parser back to the first table alone fails 2, `SEC-005`'s verdict row deleted
+fails 1, the class count left at 23 fails 1.**
+
+**`Linux orphans`, first execution, dispatch run `32381523921`:** runner **`kirk`**, `14:48:12Z` →
+`14:48:20Z`, all five steps green. That proves the three things no local run could: **`LINUX_RUNNER`
+resolves** to the maintainer's machine rather than a hosted image, **`needs: check` ordered it after
+the suite**, and the throwaway one-package environment builds on a real runner. The argument for
+keeping the job was that it costs nothing; **eight seconds** is that argument measured.
+
+**Board:** `T-256` **In Review** with nothing owed by a person. `T-184` **Proposed and unblocked** —
+Phase 4.5, so it starts after Phase 4 exits. `T-272` **In Review**, its last open item closed.
+`T-267` and `T-258` **In Review with passes owed** — both corrected on 2026-08-19, both waiting on a
+reviewer; `T-258`'s pass was **authorized that day and has never run**. `T-238` **Ready**, criterion
+4 unanswered. `T-273` **Proposed**. `T-268` **Blocked on a person at `STARBASE`**. `T-212` is still
+the only thing between this phase and its exit review.
+
+---
+
 **Last updated:** 2026-08-21 — **The overnight batch is approved end to end, and `T-238`'s criterion
 4 is still open — which is the correct outcome rather than a shortfall.** `T238-R5` is Resolved at
 `b204f88`, and `T-272`'s workflow and tests, `T-273`'s filing, `T272-R4`, `T238-R6` and `COORD-R25`
