@@ -56,8 +56,13 @@ from typing import Any
 from PySide6.QtWidgets import QApplication, QListView, QWidget
 
 
-def _widgets_the_collector_freed(collect: Any) -> list[str]:
+def _widgets_the_collector_freed(collect: Any) -> tuple[list[str], int]:
     """Run `collect()` with `DEBUG_SAVEALL` armed and name every `QWidget` the collector freed.
+
+    Returns the widget names **and the total object count**, because "no widget was collected" and
+    "nothing was collected" are different findings and only the second says the collector had
+    nothing to do. Quoting the total from anywhere but this function is how it gets quoted from a
+    diagnostic that was holding the objects it was counting.
 
     `gc.garbage` is cleared and the debug flag lowered before returning, so the caller is left with
     an ordinary interpreter. Only `type(...).__name__` is read off the parked objects: their C++
@@ -69,11 +74,12 @@ def _widgets_the_collector_freed(collect: Any) -> list[str]:
     try:
         collect()
         found = [type(obj).__name__ for obj in gc.garbage if isinstance(obj, QWidget)]
+        total = len(gc.garbage)
     finally:
         gc.garbage.clear()
         gc.set_debug(0)
         gc.collect()
-    return found
+    return found, total
 
 
 def _self_test() -> tuple[bool, bool, list[str]]:
@@ -97,8 +103,9 @@ def _self_test() -> tuple[bool, bool, list[str]]:
         first.other, second.other = second, first  # type: ignore[attr-defined]
         first.view = QListView()  # type: ignore[attr-defined]
 
-    saw_the_positive = "QListView" in _widgets_the_collector_freed(
-        lambda: (build_a_cycle_holding_a_widget(), gc.collect())
+    saw_the_positive = (
+        "QListView"
+        in _widgets_the_collector_freed(lambda: (build_a_cycle_holding_a_widget(), gc.collect()))[0]
     )
     notes.append(
         "positive: a widget reachable only from a cycle was "
@@ -109,8 +116,11 @@ def _self_test() -> tuple[bool, bool, list[str]]:
         view = QListView()
         del view
 
-    flagged_the_negative = "QListView" in _widgets_the_collector_freed(
-        lambda: (build_and_drop_an_uncycled_widget(), gc.collect())
+    flagged_the_negative = (
+        "QListView"
+        in _widgets_the_collector_freed(
+            lambda: (build_and_drop_an_uncycled_widget(), gc.collect())
+        )[0]
     )
     notes.append(
         "negative: a widget freed by refcount was "
@@ -119,7 +129,7 @@ def _self_test() -> tuple[bool, bool, list[str]]:
     return saw_the_positive, not flagged_the_negative, notes
 
 
-def measure_the_application() -> tuple[list[str], int, int]:
+def measure_the_application() -> tuple[list[str], int, int, int]:
     """Compose the application, drive its own routes, tear it down, and read the collector.
 
     The teardown is `composition.shutdown.begin()` — the route the application takes when a user
@@ -190,12 +200,12 @@ def measure_the_application() -> tuple[list[str], int, int]:
             assert composition.shutdown.finished, "composition never finished shutting down"
             app.processEvents()
 
-        freed = _widgets_the_collector_freed(compose_open_and_shut)
+        freed, collected = _widgets_the_collector_freed(compose_open_and_shut)
         # Read after the helper's final `gc.collect()`, so deferred deletions and the collector
         # have both had their turn and this is the settled count rather than a mid-teardown one.
         app.processEvents()
         counted["after"] = len(QApplication.allWidgets())
-        return freed, counted.get("before", -1), counted["after"]
+        return freed, collected, counted.get("before", -1), counted["after"]
 
 
 def main() -> int:
@@ -214,14 +224,18 @@ def main() -> int:
         print("\nSELF-TEST FAILED. The measurement below is not evidence of anything.")
         return 2
 
-    freed, before, after = measure_the_application()
+    freed, collected, before, after = measure_the_application()
     print(f"\n  live QWidgets with every surface open:     {before}")
     print(f"  live QWidgets after shutdown:             {after}")
+    print(f"  objects freed by the collector:            {collected}")
     print(f"  QWidget subclasses freed by the collector: {len(freed)}")
     if after >= before:
         print(
-            "\nThe surfaces are still standing, so nothing was freed by anything and the number "
-            "above is not a result. Fix the teardown before reading it."
+            f"\nThe surfaces are still standing — {before} widgets before the teardown and {after} "
+            f"after — so no widget was freed by anything, and the {len(freed)} above is not a "
+            "result about cycles. The collector was not idle while that happened: it "
+            f"freed {collected} other objects in the same window, so this is the teardown "
+            "releasing no widget rather than the collector never running."
         )
         return 3
     if freed:

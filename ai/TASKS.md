@@ -8653,11 +8653,18 @@ shape `demonstrate_the_gc_route()` demonstrates.
 | `QWidget`s live with every route open | **159** |
 | `QWidget`s live after the application's own shutdown | **159** |
 | `QWidget`s freed by the cyclic collector | **0** |
-| Objects freed by a forced `SAVEALL` collection | **0** |
+| **Other** objects freed by the collector in the same window | **30** |
+
+*(**That last row read "0 objects" for one commit and was wrong.** It was quoted from a scratch
+diagnostic that was holding the objects it was counting — `gc.get_referrers` returned the very
+lists I had put them in — rather than from the probe. The probe reports it now, which is the only
+place it can be read from honestly. The correction **strengthens** the result rather than softening
+it: the collector was **not** idle during the measurement, so *no widget was collected* is a fact
+about widgets and not about the collector having nothing to do.)*
 
 **The zero is real and it does not mean what the criterion expected.** Nothing takes the `gc` route
-through these surfaces — **because nothing is freed at all.** The tree is not cyclic garbage; it is
-not garbage. A widget that never becomes garbage can never be decref'd by `gc` on a pool thread, so
+through these surfaces — **because no widget is freed at all.** The tree is not cyclic garbage; it
+is not garbage. A widget that never becomes garbage can never be decref'd by `gc` on a pool thread, so
 the `gc` route is **not reachable through these surfaces** — criterion 4's *harness* branch, arrived
 at by a road the criterion did not anticipate, and the difference is worth keeping rather than
 rounding to "no cycles found".
@@ -9053,8 +9060,9 @@ each:**
 
 **Monotonic, ~159 per test, and none of it is released.** `tools/t238_widget_cycle_probe.py`
 reproduces it outside pytest — three compose/open/shutdown cycles in one process give **159, 318,
-477** — so it is the composition rather than the fixture. A forced `gc.collect()` with
-`DEBUG_SAVEALL` frees **0 objects**: the trees are not cyclic garbage, they are not garbage.
+477** — so it is the composition rather than the fixture. The cyclic collector runs during that
+window and frees **30 objects, none of them a `QWidget`**: the trees are not cyclic garbage, they
+are not garbage, and the collector is not merely idle.
 
 **The existing guard cannot see this, and that is not a defect in the guard.**
 `assert_no_orphaned_views` looks for item views that are alive **with no parent**, which is the
