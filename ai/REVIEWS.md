@@ -19221,3 +19221,43 @@ T-270 is **approved at implementation `c047767`**, with its required Windows evi
 `06745fa`. The PySide6 constraint remains unchanged as already ruled; the broader runtime-pinning
 policy is separate. T-271 and T-268 remain untouched. The Reviewer changed only this append-only
 record; no reviewed source/test, task/status file, process, push or remote setting was changed.
+
+---
+
+## 2026-08-20 — T269-R1 / T269-R2 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-269
+**Initial reviewed head:** `3c2692c8dd5e71dca4ba41a20f54465ba52686eb`
+**Correction head:** `166ce398481f8cac9e6f6c8020abb7f9e60b71dc`
+**Evidence head:** `06745fa12016c134aa359e56ea96eada3eef2ed1`
+**Evidence record:** `6bf3bd30fd37c7e4a271d3823bd38b0dce0bf0fa`
+**External evidence:** run `32319665394`, job `96279141688`
+**Verdict:** **Approved. No new findings.** The correction now measures the same PATH-resolved
+executables as the documented gates, and the persistent Windows path executes that correction with
+the exact declared tools. T269-R1 and T269-R2 are Resolved; T266-R2 is Resolved with them.
+
+### Original-finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T269-R1** | **Medium** | Yes | `test_the_command_the_gates_run_is_the_declared_one` uses `shutil.which(tool)` and the bare `[tool, "--version"]` subprocess boundary. The installed-distribution check remains separate, so disagreement cannot hide behind either resolution. With fake Ruff/Mypy executables first on PATH, exactly the two command tests fail and name the shadow paths and reported versions while the three pin/metadata checks pass. | **Resolved at `166ce39`** |
+| **T269-R2** | **Medium** | Yes | On `STARBASE`, project installation succeeds; the environment block reports Ruff 0.16.3 and Mypy 2.3.1 from the bare commands; all five toolchain tests execute and pass; and the default suite completes **3707 passed, 30 skipped, 35 deselected**. | **Resolved by run `32319665394`** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary | `166ce39` changes the toolchain test and its task/status records. No later change through evidence head `06745fa` touches `pyproject.toml`, `tests/unit/test_toolchain_versions.py` or `.github/workflows/ci.yml`; the run therefore exercises the submitted correction and declared install path. |
+| PATH-shadow mutation | Temporary executables named `ruff` and `mypy`, each reporting GNU `printf` 9.10, were put first on PATH. Result: **2 failed, 3 passed**; only the two command-resolution assertions fail, reporting the shadow paths against declared 0.16.3/2.3.1. The temporary directory was removed. |
+| Restored focused checks | With the project virtualenv first on PATH, the five toolchain tests and fifteen placement tests pass: **20 passed**. |
+| Windows command boundary | The `--- gates ---` block reports **ruff 0.16.3** and **mypy 2.3.1**. The full-suite log separately records all five `test_toolchain_versions.py` cases passing, including both command-resolution parameters. |
+| Windows installation and suite | `Reuse the persistent virtualenv` and `Install the project` conclude success. The Windows desktop job is green end to end, and its full suite completes in 32m22s. |
+| Current static and commit gates | Ruff passes; Ruff format reports **202 files already formatted**; `tests/unit/test_commit_message_check.py` passes **52 tests**. The two submitted evidence-record subjects are 49 and 28 characters and retain their Task/Review trailers. |
+
+### Readiness
+
+T-269 is **approved at correction `166ce39`**, with its persistent-Windows evidence at `06745fa`.
+The exact dev pins remain canonical in `pyproject.toml`, the workflow duplicates no version, and
+T266-R2 is Resolved. The Reviewer changed only this append-only record; no reviewed test,
+task/status file, dependency, workflow, push or remote setting was changed.
