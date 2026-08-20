@@ -968,7 +968,10 @@ jobs:
   # there is no environment left behind to locate — this builds a throwaway one with the single
   # dependency the scanner has. It deliberately does **not** `pip install -e ".[dev]"`: that is a
   # minute of work to run a script that needs `psutil`, and this job's whole point is that it costs
-  # nothing to keep.
+  # nothing to keep. **This is `prose.yml`'s pattern rather than a new one** — that workflow builds
+  # `.venv-prose` with `pytest` alone for the same two reasons, stated there: never write into a
+  # host's `site-packages`, and do not pull ~250 MB of PySide6 wheels for a job that does not import
+  # them.
   linux-orphans:
     name: Linux orphans
     needs: check

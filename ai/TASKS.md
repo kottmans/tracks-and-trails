@@ -187,8 +187,11 @@ and differing in exactly three places, each commented where it differs:
 3. **A throwaway `python3 -m venv` with `psutil` alone**, because the Linux legs install per job and
    leave no persistent environment to locate. Not `pip install -e ".[dev]"`: that is a minute of
    work to run a script with one dependency, and this job's whole argument is that it costs nothing
-   to keep. `actions/setup-python` is avoided deliberately — it deleted the tool cache under a
-   running job on these machines once already, run `30823595744`.
+   to keep. **This is `prose.yml`'s existing pattern rather than a new one** — it builds
+   `.venv-prose` with `pytest` alone, for the two reasons stated there: never write into a host's
+   `site-packages`, and do not pull ~250 MB of PySide6 wheels for a job that does not import them.
+   `actions/setup-python` is avoided deliberately — it deleted the tool cache under a running job on
+   these machines once already, run `30823595744`.
 
 **The wiring tests now ask both jobs, and the assertion that had to go is the interesting part.**
 `tests/unit/test_orphan_scan.py` asserted **exactly one** job invoked the scanner, on the reasoning
