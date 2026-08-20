@@ -19116,3 +19116,63 @@ set from satisfying uniqueness vacuously.
 T-261 is **approved at `ca2f278`** and may move to Complete. COORD-R23 is Resolved; no historical
 prose mention or T-096 vocabulary was widened. The Reviewer changed only this append-only record;
 no task/status file, reviewed test, push or remote setting was changed.
+
+---
+
+## 2026-08-19 — T-270 quit-shortcut initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-270
+**Base:** `ffb6fd2c8775a34f43806f62c16e30ebed493856`
+**Head:** `c047767422f32fb4023bee4a9adadb8b022439ca`
+**Platforms verified:** Linux behavior and Windows-platform static typing. No Windows run contains
+this commit.
+**Verdict:** **Blocked. No implementation finding.** The resolver corrects the observed defect
+without overriding a non-empty platform answer, and both intended wrong fixes are rejected by the
+tests. Approval still requires the task's explicit `STARBASE` observation; the same green
+`windows desktop` run can close both T-270's Windows criteria and T269-R2.
+
+### Evidence blocker
+
+| ID | Severity | Blocks approval | Evidence still required | Status |
+|---|---|---:|---|---|
+| **T270-R1** | **Medium** | **Yes — two acceptance criteria explicitly require the supported Windows platform and an end-to-end job** | Push a head containing exact implementation `c047767` with no later implementation change, then read the `windows desktop` job on `STARBASE`: `test_the_quit_shortcut_is_bound` passes with a non-empty action shortcut, and the later environment, lint, format, Qt-baseline and full-suite steps all execute successfully. Confirm the environment record reports the declared Ruff/Mypy versions so the same run also disposes T269-R2. | **Open — external evidence** |
+
+### Acceptance results
+
+| Criterion | Review result |
+|---|---|
+| Quit carries a non-empty shortcut on Windows, asserted on `STARBASE` | **Mechanism proved; platform observation open.** Supplying the empty sequence returns `Ctrl+Q`, and `MainWindow` uses that resolver. The criterion's explicit Windows assertion has not run at this head, so the task entry's strikethrough is not approval evidence yet. It will close with T270-R1. |
+| `windows desktop` is green end to end | **Open — T270-R1.** The previous run predates this fix and stopped at the desktop suite. |
+| PySide6 constraint disposition is recorded | **Met for T-270.** The runtime constraint is deliberately unchanged and that fact is explicit. Whether all runtime floors should become pins is a broader maintainer decision; it is not silently decided here and does not block this product correction. |
+| Existing Windows test is not weakened | **Met.** `tests/ui/test_windows_desktop.py` is byte-identical across the review boundary. |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Focused behavior and board placement | The three T-270 tests plus `tests/unit/test_task_placement.py` pass: **18 passed** total. The Windows-desktop module skips collection on Linux, correctly providing no substitute Windows evidence. |
+| Reviewer mutations | A resolver that returns the supplied empty sequence is rejected by the fallback test. A resolver that always returns `Ctrl+Q` is rejected by the platform-answer preservation test. |
+| Complete UI suite | **1023 passed, 3 skipped** in 5m04s under `QT_QPA_PLATFORM=offscreen`; 17 existing warnings were reported. |
+| Static gates | Ruff check passes; Ruff format reports **202 files already formatted**; native and `--platform win32` mypy each report **154 source files** clean. |
+| Boundary and hygiene | `git show --check c047767` and `git diff --check ffb6fd2..c047767` pass. The boundary is one commit and four files; no dependency, workflow or Windows assertion changed. |
+
+### Scope rulings
+
+- Filing T-271 instead of changing `StandardKey.New` is correct. Its Windows behavior is unknown,
+  and widening this High-priority repair would turn resemblance into an unsupported defect claim.
+- The headless `Qt.Key_Exit` result is non-empty and therefore outside T-270's observed empty-answer
+  defect. Whether that sequence is usable belongs to T-200/T-271 and does not invalidate this
+  fallback.
+- The broad PySide6 version-policy question belongs to the maintainer. T-270 satisfies its own
+  constraint criterion by recording the deliberate no-change choice; a pin is not required to make
+  this fix correct.
+
+### Readiness
+
+T-270 is **not approved at `c047767`** solely because T270-R1 is external and still open. The
+implementation needs no correction before the run. Push the current review-only successor of
+implementation head `c047767`, preserve that implementation boundary, and return the resulting
+`windows desktop` URL/result for a focused evidence re-review.
+The Reviewer changed only this append-only record; no reviewed source/test, task/status file,
+dependency, process, push or remote setting was changed.
