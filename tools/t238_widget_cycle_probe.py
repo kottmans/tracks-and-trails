@@ -1,7 +1,10 @@
 """Does any `QWidget` this application builds get freed by the cyclic collector? (`T-238` crit. 4)
 
-**What this answers.** `T-238`'s criterion 4 has two named next steps and this is the second:
-*establish whether any `QWidget` in this application participates in a reference cycle.* The
+**What this is for, and what it has so far refused to answer.** `T-238`'s criterion 4 has two named
+next steps and this addresses the second: *establish whether any `QWidget` in this application
+participates in a reference cycle.* **As of 2026-08-20 it has not answered it** — the surfaces stay
+retained through teardown, so the run exits 3 rather than reporting; see the limits below before
+reading any number this prints. The
 `t238_widget_thread_probe` sibling established that the segfault's precondition needs **no thread
 to hold a widget at all** — Python's cyclic collector runs on whichever thread crosses the
 allocation threshold, so a widget freed by `gc` is decref'd wherever `gc` happens to run. That made

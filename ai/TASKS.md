@@ -8309,8 +8309,16 @@ first version of this section said it was (`T238-R4`): the 2026-08-16 measuremen
 on, and its two named next steps stand — **run the probe against a real session on a display**,
 which `tests/integration` cannot answer because a `QCoreApplication` process has no widgets for the
 probe's own control, and **establish whether any `QWidget` here participates in a reference cycle**.
-If none does the `gc` route closes and the harness reading returns. A guard firing on a real test
-would still be evidence; it is not the plan. `T238-R1`, `T238-R2` and `T238-R3` are all **Resolved**. What is delivered is a
+A guard firing on a real test would still be evidence; it is not the plan.
+
+**The second of those was attempted on 2026-08-20 and the run refused** (`T238-R5`) — the surfaces
+were still retained at the end, so the collector never classified them and its zero says nothing
+about cycles either way. **The step is not done and the criterion is not answered**; what the
+attempt did produce is `T-273` and a written list of what a run that answered it would have to do.
+See *The second step, attempted 2026-08-20* below. *(This paragraph said the two steps "stand", full
+stop, for two commits after one of them had been tried — a summary going stale against evidence
+lower in the same entry, which is `T238-R4`'s finding recurring in the paragraph `T238-R4`
+corrected.)* `T238-R1`, `T238-R2` and `T238-R3` are all **Resolved**. What is delivered is a
 harness guard, not a diagnosis: **product-versus-harness is still unestablished**, and this entry
 sits under `## Ready` rather than `## Complete` for exactly that reason.
 
