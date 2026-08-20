@@ -86,7 +86,9 @@ gap.
 | `excluded` | 26 | Forbidden — 8 by `SEC-003`, **15 by `SEC-004`**, 2 by `SEC-003`'s 2026-08-21 amendment, **1 by `SEC-005`** |
 | `unruled` | **0** | No decision covers it, and the audit refuses to invent one. **Empty since 2026-08-21**, and the class stays defined: a heading that disappears when it empties is one nobody notices coming back |
 
-*(**`app:policy` and the one remaining `unruled` row are `T183-R2` and `T183-R3`.** The audit
+*(**`app:policy` and the `unruled` row that `T183-R3` added are the two classes this paragraph
+explains. `unruled` reached 0 on 2026-08-21** when `SEC-005` ruled that row; the sentence below is
+kept because it is why the class exists at all. The audit
 originally derived application ownership from the *literal keys `build_options` emits*, which is
 too narrow: an option can fight the application for control of its own process without naming a key
 the application happens to set. Ten `hatch` rows said so **in their own reasons** — *"the queue
@@ -202,9 +204,11 @@ own file, which this application neither reads nor writes."*
 - **`--client-certificate-password` is a secret**, not a path to one. It is the shape
   `_require_credential_free_proxy` makes unrepresentable, and the shape `-u`/`-p` were forbidden for.
 
-Both are classified `hatch` here **because that is what the accepted decision says**, and this
-document does not overrule a decision. A **proposed** amendment is in `T-256`; nobody has ruled on
-it.
+**Both were classified `hatch` here until 2026-08-21 — because that is what the accepted decision
+said, and this document does not overrule a decision.** `SEC-003`'s amendment of that date forbids
+both, so **their rows now read `excluded`** and this finding is the record of why they moved rather
+than a live proposal. **The ordering is the point**: the audit followed the decision in both
+directions and never led it.
 
 ### Finding 4 — a refusal list keyed on option strings is routed around by six deprecated aliases
 
@@ -278,8 +282,9 @@ parenthetical into the finding above.)*
 Its consequences read: *"`T-184`'s refusal list gains five entries: `-u`, `-p`, `--video-password`,
 `--impersonate`, `--xff`, `--exec` and `--exec-before-download`."* **That is seven strings.** The
 list is right and the count is wrong — the same shape as `T-212`'s row count, which said forty-one
-from an estimate and was forty-seven when counted. Correcting it is a records fix in an Accepted
-decision, so it is proposed in `T-256` rather than made here.
+from an estimate and was forty-seven when counted. Correcting it was a records fix in an Accepted
+decision, so it was proposed in `T-256` rather than made here — **and taken on 2026-08-21**:
+`SEC-003`'s amendment now reads *seven*.
 
 ### Finding 6 — `--write-thumbnail` is a capability the application refuses, and it shares a key with one it sets
 
@@ -321,12 +326,14 @@ tasks — counted, and the test asserts the partition.
 | `T-253` | 4 | Network reachability: address family and politeness delays |
 | `T-254` | 3 | SponsorBlock, opt-in per preset |
 | `T-255` | 1 | Per-extractor arguments |
-| ~~`T-256`~~ | — | **Done — `SEC-004`, 2026-08-16.** All fifteen forbidden; `T-184` unblocked |
+| ~~`T-256`~~ | — | **Done — `SEC-004` 2026-08-16, then `SEC-005` and `SEC-003`'s amendment 2026-08-21.** All sixteen forbidden, two permissions withdrawn; `T-184` unblocked |
 
-**`T-256` was first and is done; `T-184` is next.** The hatch could not be built before the
-refusal list was known, and it was not known while fifteen options that reach code execution had no
-ruling. `SEC-004` closed that on 2026-08-16. Every typed-field task is independent of the rest and
-of the hatch.
+**`T-256` was first and is done; `T-184` is next.** The hatch could not be built before the refusal
+list was known, and it was not known while options that reach code execution had no ruling.
+**`SEC-004` closed fifteen of them on 2026-08-16 and `T-184` stayed blocked for five more days**,
+because `T183-R3` then found a sixteenth — `--legacy-server-connect` — which was deliberately left
+`unruled` rather than swept in. `SEC-005` ruled it on 2026-08-21, and that is the date `T-184`
+actually unblocked. Every typed-field task is independent of the rest and of the hatch.
 
 
 ### The 21 typed options that already have a field

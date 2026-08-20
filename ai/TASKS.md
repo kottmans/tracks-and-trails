@@ -431,6 +431,10 @@ a **sixteenth** option the audit had missed, so `unruled` sat at 1 rather than 0
 `SEC-003` corrections were unanswered. **All four were ruled on 2026-08-21**; `unruled` is 0. *(This status previously said `unruled` is empty and `T-184` is unblocked, in the
 paragraph immediately above the one recording the sixteenth option. The re-review found it.)*
 
+> *(**Historical — this blockquote is the state on 2026-08-16, kept because what was deliberately
+> not ruled is as load-bearing as what was.** Every question it raises was answered on 2026-08-21;
+> see the status above. `T256-R2` found it being read as current.)*
+>
 > **`T183-R3` added a sixteenth option, and it is the first thing this entry now owes.**
 > `--legacy-server-connect` enables `SSL_OP_LEGACY_SERVER_CONNECT` and a compatibility cipher
 > policy — a transport-security downgrade of exactly the kind `SEC-004` forbids. **The audit missed
@@ -444,8 +448,9 @@ paragraph immediately above the one recording the sixteenth option. The re-revie
 > text rather than leaving the reader to infer the scope of what was decided.
 
 **Owner:** Planner proposes; **the maintainer rules**
-**Priority:** ~~Highest in the phase~~ — **the blocking half is done.** What remains are three
-corrections to an Accepted decision, which block nothing
+**Priority:** ~~Highest in the phase~~ — ~~**the blocking half is done.** What remains are three
+corrections to an Accepted decision, which block nothing~~ **Nothing remains.** All four were ruled
+2026-08-21 (`T256-R2`)
 **Phase:** Phase 4.5
 **Depends on:** `T-183` approved
 **Relevant context:** `docs/YTDLP_OPTION_AUDIT.md` Findings 2, 3, 4 and 5; `SEC-003`; `ARC-010` §3
@@ -472,7 +477,7 @@ Four questions, and three record corrections that came with them.
   persisted and crosses a process boundary — and extending an accepted ruling is not the
   implementer's to do.
 
-#### The three proposed corrections — **PROPOSED, nobody has ruled on these**
+#### The three corrections — **ruled 2026-08-21; this section is the proposal as it stood**
 
 1. **`SEC-003` permits `--netrc-cmd`, which executes a command**, on a rationale (*"the secret
    lives in the user's own file"*) that does not reach it. Four rows below, the same table forbids
@@ -494,7 +499,11 @@ and `build_options` has never set it.**
   by the maintainer or attributed to their ruling — never self-headed (`T145-R1`, `T144-R1`)
 - **`docs/YTDLP_OPTION_AUDIT.md` has no `unruled` rows afterwards**, and its class table is
   recounted rather than adjusted by hand
-- The audit's test still passes unchanged, which is what shows the reclassification did not quietly
+- The audit's gate passes, and **it did not pass unchanged** (`T256-R2`): the rulings arrived as an
+  `### Amended` table inside an append-only entry, so the parser had to learn to read **every**
+  verdict table in document order and derive the **effective later** verdict, and then to refuse a
+  clause naming both dispositions (`T256-R1`). What the gate must show is that the reclassification
+  did not quietly
   move an option out of the application-owned class
 
 #### Out of scope
@@ -9355,6 +9364,11 @@ unblocked rather than startable.
 **`Depends on:` is satisfied rather than removed.** `T-256` is still In Review; what it owed this
 task is taken, and a reviewer disposing `T-256` differently would reach this line.
 
+**The refusal list is 92 and this entry gave two numbers** (`T256-R2`). Its `Depends on:` line still
+carried the pre-ruling **89**, so an implementer could read both the three newly refused options and
+the old list that omits them — from the same entry. **92 is the live figure**, and 89 survives below
+only inside the struck dependency, as what it was.
+
 *(**This entry said "both blockers are cleared", "nothing outstanding" and "79 documented options",
 and required a destination-keyed refusal, after `T183-R1`…`R5` had changed all four.** The
 re-review found it: correcting the audit and leaving the task that consumes it is how an
@@ -9364,7 +9378,7 @@ normalized value as though it were the `SEC-003` bypass.)*
 **Priority:** High within the phase — it is what makes `REQ-030` true before the typed fields exist
 **Phase:** Phase 4.5
 **Depends on:** ~~**`T-256`** — **one** unruled option, `--legacy-server-connect`~~ — **satisfied
-2026-08-21 by `SEC-005`**. *(This said "sixteen unruled options and three `SEC-003` corrections"; fifteen were ruled by `SEC-004` and the three corrections are explicitly non-blocking — `T183-F1`.)* `T-183` delivered the classification and `SEC-004` ruled the original fifteen; the refusal list is **89 documented options** across five refused classes, in `docs/YTDLP_OPTION_AUDIT.md`. *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
+2026-08-21 by `SEC-005`**. *(This said "sixteen unruled options and three `SEC-003` corrections"; fifteen were ruled by `SEC-004` and the three corrections are explicitly non-blocking — `T183-F1`.)* `T-183` delivered the classification, `SEC-004` ruled the original fifteen and `SEC-005` the sixteenth, with `SEC-003`'s amendment withdrawing two permissions; the refusal list is **92 documented options** across five refused classes, in `docs/YTDLP_OPTION_AUDIT.md`. *(This line said **89** while the status above said 92, so one entry gave both the pre-ruling and post-ruling list to whoever builds it — `T256-R2`.)* *(It also waited on `T-182`, which ruled on 2026-08-07: the refusal list starts with `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`, `--exec` and `--exec-before-download` — `SEC-003`.)*
 
 > **Four of `T-183`'s findings land here, and the first changes the design.**
 >
