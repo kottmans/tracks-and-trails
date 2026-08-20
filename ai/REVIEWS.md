@@ -19322,3 +19322,80 @@ re-review is available and should inspect only those four findings and the corre
 must not reopen T-269/T-270, T-074's accepted board move, or T-238's disposition. The Reviewer
 changed only this append-only record. No reviewed task/status/evidence file, source, test,
 workflow, dependency, live process, push or remote state was changed.
+
+---
+
+## 2026-08-20 — session evidence focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-074`, `T-238`, `T-272`
+**Initial reviewed head:** `bf766b3dffce042607c65e2157cdacf20497911f`
+**Review-record base:** `2835a30c3400cc1db86de463248b8e5672720e18`
+**Correction head:** `d50eef9299d4a6036b736ca39f23f14312847387`
+**Additional record head:** `d5b95c5e9adb27a3a0d50c8118a2e5d205367152`
+**Verdict:** **Changes requested at `d5b95c5`.** The offered correction is approved at
+`d50eef9`: T074-R5, T238-R4, T272-R1 and T272-R2 are Resolved. The two later commits were
+explicitly outside that offer, so they are treated as a small initial review of a new record
+boundary rather than silently folded into the spent focused pass. They introduce one blocking
+uncertainty contradiction in T-272 and one non-blocking false gate tally in STATUS.
+
+### Scope ruling
+
+The focused correction boundary is `2835a30..d50eef9`. `f20876a` records a state change that was
+not knowable when the initial review was written, and `d5b95c5` brings canonical STATUS across the
+same correction round. Reading them is warranted because they change the same T-272 task/evidence
+surfaces and copy the corrected claims into current truth; approving only the superseded head would
+leave the actual handoff head unreviewed. This additional review does not reopen T-269/T-270,
+T-074's accepted board move, T-238's disposition, or any source/test behavior.
+
+### Original-finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T074-R5** | **Medium** | Yes | The entry accounts separately for the four runs with no Windows-desktop job, reconciles all 145 runs, keeps the verified 0/105 completed-step observation and nondiscrimination argument, and explicitly withdraws the 2.9% pooled ceiling because these changed heads are not one established population. OPS-007 and the Blocked-on-T-092 disposition remain independent of that ceiling. | **Resolved at `36677b8`** |
+| **T238-R4** | **Medium** | Yes | The new campaign is 30 **additional** contended runs: 90 total over four conditions, 50 contended. The entry distinguishes continuous real Python/Qt contention from the earlier busy loops and one finite integration batch, and restores the real-session probe plus widget-cycle question as criterion 4's next work. T-238 remains Ready. | **Resolved at `cc8dd89`** |
+| **T272-R1** | **Medium** | Yes | The task and evidence file now distinguish the POSIX resource-tracker channel from the Windows spawn-payload channel, assign one thread/0 CPU to the tracker and two threads/157 seconds to the worker, and withdraw both the eliminated-mechanism and reproduced-shape claims. The surviving scheduling observation remains accurately narrow. | **Resolved at `d50eef9`** |
+| **T272-R2** | **Low** | No | The evidence inventory names the Linux-orphan artifact and states why the vanished live-process state cannot be regenerated. | **Resolved at `d50eef9`** |
+
+### New findings on the additional record boundary
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T272-R3** | **Medium** | **Yes — current truth converts an explicitly unexcluded intervention into a natural-exit fact** | The measurement establishes that both PIDs later disappeared, the host did not reboot, both scans were report-only and nothing **in this session** signalled them. It explicitly says an outside kill or cleanup on the shared machine was neither observed nor excluded. The same T-272 entry then says both processes “ended on their own before anyone inspected or released them”; its opening says they “expired anyway.” The evidence file says the specimen was lost “without anyone deciding to spend it,” the inventory abbreviates the result to “nothing signalled” and “expired anyway,” and STATUS repeats that nobody decided. Those are global causal/intent claims the retained evidence disclaims, and whether an unknown external actor inspected or deliberately released the pair cannot be recovered after the fact. | Across the task, evidence inventory, evidence conclusion and STATUS, state only what was observed: the PIDs are gone, no reboot occurred, and this session did not signal them. Keep external termination, inspection and deliberate release unknown. The preservation criterion can be overtaken because no specimen remains available; it cannot say nobody fulfilled or deliberately ended it. Audit every sibling copy as one defect class. | **Open — additional-record correction** |
+| **COORD-R24** | **Low** | No | STATUS reports task placement as **16 passed, 2 skipped** at `f20876a`. `tests/unit/test_task_placement.py` collects and passes **15 tests, with no skips**; `d5b95c5` changes only STATUS, so the board input and test file are identical at both heads. The gate passed, but the recorded exact result is not its result. | Replace the tally with the actual **15 passed**, or name the different command whose result was recorded. **Owner/target:** Documentation Maintainer, the T272-R3 correction batch; no separate re-review required. | **Open, non-blocking** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary | `2835a30..d50eef9` is documentation only: one task file plus the T-272 evidence artifact and inventory. The three commits remain separated by owning task and answer only the four reviewed findings. |
+| T-074 correction | The unsupported ceiling appears only as a withdrawn claim; 92 + 13 + 22 + 14 + 4 reconciles to 145, while the completed population remains 105. The pre/post zero comparison is still explicitly nondiscriminating. |
+| T-238 correction | The retained conditions now agree at 40 idle + 12 busy-loop + 8 concurrent-integration + 30 continuously contended = 90, with 50 contended. The later criterion-4 ruling and the new summary name the same two next steps. |
+| T-272 correction | Both corrected records name the two channels and two process roles separately. No surviving sentence presents the one-thread tracker and 157-second worker as one shape or calls the tracker channel T-268's eliminated payload mechanism. |
+| Later specimen state | PID absence plus a no-reboot observation proves that this Linux pair had finite process lifetimes. It does **not** identify why either process ended or exclude another session's signal, inspection or cleanup. |
+| Boundary hygiene | `git diff --check 2835a30..d5b95c5` passed. The five commits change only `ai/TASKS.md`, `ai/STATUS.md` and two files under `ai/evidence/`; no source, test, workflow, dependency or build path changed. |
+| Current focused gates | Task placement: **15 passed**. Ruff: passed. Ruff format: **203 files already formatted**. Commit-message checker: **5 commits checked** in `2835a30..d5b95c5`. The full suite was not run and is not required for this documentation-only boundary. |
+
+### Review judgments
+
+- **The “did not persist indefinitely” sentence is sound.** Both PIDs were present and later
+  absent without a reboot, so this pair's lifetimes were finite. The sentence confines that fact to
+  Linux and expressly says it does not explain the distinct Windows specimens. T272-R3 concerns
+  the stronger sibling claims about *why* they ended and whether anybody acted.
+- **The shared stale-summary pattern is a fair synthesis, but not the whole of T272-R1.** Each of
+  the three blocking corrections did repair a summary contradicted by retained evidence. T272-R1
+  additionally required identifying two different platform channels; STATUS preserves that
+  technical correction explicitly, so the synthesis does not erase it.
+- **The extra boundary receives its own pass budget.** T272-R3 is the initial finding on
+  `d50eef9..d5b95c5`, not a new Medium discovery charged to the completed focused pass on the four
+  original findings. One focused correction re-review is available for it.
+
+### Readiness
+
+The original evidence correction is **approved at `d50eef9`**. T-074 and T-238 need no further
+review from this batch, and T272-R1/R2 are Resolved. The actual handoff head `d5b95c5` is **not
+approved**: correct T272-R3 across all copies and fold in COORD-R24's tally. The next pass is focused
+only on those two items and their correction diff.
+
+The Reviewer changed only this append-only record. No reviewed task/status/evidence file, source,
+test, workflow, dependency, live process, push or remote state was changed.
