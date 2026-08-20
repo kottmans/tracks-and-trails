@@ -379,14 +379,51 @@ at 34 minutes and require the warning. The proof must fail when the workflow-use
 
 ### T-256 — Rule the fifteen options no decision covers
 
-**Status:** **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all fifteen
-forbidden.** Filed the same day by `T-183`'s fifth criterion and answered the same day: the audit
+**Status:** **In Review — all four rulings are taken. `SEC-004` (2026-08-16) forbade the fifteen;
+`SEC-005` and `SEC-003`'s amendment (2026-08-21) closed the rest.** Nothing on this entry is now
+waiting on a person.
+
+**What the maintainer ruled on 2026-08-21, on the Planner's four options.** Each was recommended and
+each was taken:
+
+1. **`--legacy-server-connect` is forbidden** — `SEC-005`, which applies `SEC-004`'s TLS sentence to
+   the sixteenth option without modification. **This is the one that unblocks `T-184`**, whose
+   dependency named exactly this option.
+2. **`--netrc-cmd` is forbidden** — it executes a command, which is what `--exec` is forbidden for
+   four rows above it in the same table.
+3. **`--client-certificate-password` is forbidden** — it carries a secret rather than naming a file
+   that holds one. **The counter-argument is recorded rather than dismissed** in the amendment: the
+   passphrase unlocks a local file and is not a site credential. It is forbidden anyway, because
+   persistence and the process boundary are what the rule names.
+4. **The refusal-list count reads seven, not five** — the list beside it already named seven, so the
+   number was the error.
+
+**`--client-certificate` and `--client-certificate-key` are untouched.** They name files, which is
+what `SEC-003`'s original reasoning actually covers; forbidding the family wholesale would have been
+the over-broad reading and was not taken.
+
+**The audit follows the decisions rather than leading them**, which is the order this task exists to
+preserve: `--netrc-cmd` and `--client-certificate-password` were classified `hatch` **because that
+is what the accepted decision said**, and they move to `excluded` only now that it says otherwise.
+`unruled` reaches **0**, `excluded` **26**, `hatch` **93**, and the refusal list **92 rows**.
+
+**The gate had to learn to read an amendment.** `tests/unit/test_option_audit.py` read `SEC-003`'s
+verdict table and `SEC-004`'s, once each. `AGENTS.md` §6 makes this file append-only, so the
+amendment is a second table inside the same entry rather than a rewrite of the first — and a parser
+that reads only the first table would have kept reporting the superseded verdict. It now reads
+**every** table in document order and lets the later one win, which is the only reading under which
+an amendment is the decision and the original is history. Mutations: reverting the parser to the
+first table alone **fails 2**, deleting `SEC-005`'s verdict row **fails 1**, and leaving the class
+count at 23 **fails 1**.
+
+*(The original status line read: **In Review — the first ruling is taken, 2026-08-16: `SEC-004`, all
+fifteen forbidden.**)* Filed the same day by `T-183`'s fifth criterion and answered the same day: the audit
 is reclassified, `excluded` is 23, the refusal list is **89** across five classes, and the gate
 derives both verdict sides from the decisions.
 
-**`T-184` is still blocked, and this entry is why.** `T183-R3` found a **sixteenth** option the
-audit had missed, so `unruled` is 1 rather than 0 — and three `SEC-003` corrections remain
-unanswered. *(This status previously said `unruled` is empty and `T-184` is unblocked, in the
+**`T-184` was blocked and is not any more, and this entry is why on both counts.** `T183-R3` found
+a **sixteenth** option the audit had missed, so `unruled` sat at 1 rather than 0 — and three
+`SEC-003` corrections were unanswered. **All four were ruled on 2026-08-21**; `unruled` is 0. *(This status previously said `unruled` is empty and `T-184` is unblocked, in the
 paragraph immediately above the one recording the sixteenth option. The re-review found it.)*
 
 > **`T183-R3` added a sixteenth option, and it is the first thing this entry now owes.**

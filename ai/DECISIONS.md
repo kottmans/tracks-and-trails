@@ -4551,6 +4551,70 @@ will keep doing so until it is amended. `T-256` carries them.
 
 ---
 
+## SEC-005 — `--legacy-server-connect` is forbidden, on `SEC-004`'s own TLS reasoning
+
+**Status:** **Accepted** (2026-08-21) — maintainer decision, taken on the Planner's material for
+`T-256` after `T183-R3` surfaced a sixteenth option
+**Date:** 2026-08-21
+**Supersedes:** nothing. **Extends** `SEC-004` to one option it did not see, exactly as `SEC-004`
+extended `SEC-003`. **Does not amend it.**
+
+### Context
+
+`SEC-004` ruled the fifteen options `T-183`'s audit had refused to classify. **`T183-R3` then found a
+sixteenth** — `--legacy-server-connect` — which the audit had missed, so it was **not** among the
+fifteen the maintainer was asked about.
+
+**It was left `unruled` rather than swept in, and that was the right call.** `SEC-004`'s scope is
+bounded to the options it names; extending a ruling by inference is the maintainer's to do or not
+do, and an audit that quietly widened a refusal would be the same defect as one that quietly
+narrowed it. It has been the single `unruled` row since 2026-08-16 and the only thing blocking
+`T-184`.
+
+### Decision
+
+**Forbidden.**
+
+| Family | Options | Why |
+|---|---|---|
+| **Weakens TLS** | `--legacy-server-connect` | Enables `SSL_OP_LEGACY_SERVER_CONNECT` and a compatibility cipher policy — a transport-security downgrade. **`SEC-004`'s own sentence reaches it without modification**: *"through the hatch there is no control and therefore nothing that could show the downgrade. A security posture the user cannot see they changed is the shape `DAT-004` and `NFR-007` exist to prevent"* |
+
+### Rationale
+
+- **This is `SEC-004` applied, not extended in substance.** `--no-check-certificates` and
+  `--prefer-insecure` are already forbidden for being TLS downgrades reachable through a text field
+  with no surface to warn on. Nothing about this option is different in the way the rule cares
+  about.
+- **A refusal list with two of the three TLS downgrades on it is not a boundary.** It is a list of
+  the ones somebody happened to look at — which is `SEC-004`'s own argument for consistency, and the
+  reason `T-183` was told to state what it could not classify rather than force a class.
+- **The cost is named and accepted, in `SEC-003`'s manner.** A user talking to an old or misconfigured
+  server that needs legacy renegotiation cannot reach it through this application. The honest fixes
+  are the server's configuration or a proxy — the same answer `SEC-004` gave the corporate-MITM user
+  it costs.
+
+**Reopenable, like every entry in this family.** If a real user meets a real server that needs it,
+that is new evidence and this decision is where it gets revisited.
+
+### Consequences
+
+- **`docs/YTDLP_OPTION_AUDIT.md`'s `unruled` class reaches zero.** The class stays defined: a
+  heading that disappears when it empties is one nobody notices coming back, and the audit's own
+  rule is that it must be able to say *"no decision covers this"* when that is true.
+- **`T-184` unblocks.** Its dependency read *"one unruled option, `--legacy-server-connect`"*, and
+  the refusal list it enforces can now be built with every documented option classified.
+- Nothing here is built.
+
+### Alternatives considered
+
+- **Permit it, with a warning.** Rejected on `SEC-004`'s own ground: the hatch is a text field and
+  there is no surface to state a warning on. A warning nobody sees is the silent downgrade with
+  extra steps.
+- **Fold it into `SEC-004` by editing that entry.** Rejected: this file is appended to, and a ruling
+  the maintainer took on 2026-08-21 must not be backdated into one taken on 2026-08-16.
+- **Leave it `unruled` and let `T-184` refuse it as unclassified.** Rejected: that is a refusal
+  nobody decided, arriving at the user as a refusal somebody did.
+
 ## SEC-003 — The six yt-dlp option families that meet an exclusion, ruled
 
 **Status:** **Accepted** (2026-08-07) — maintainer decision, taken from the Planner's material for
@@ -4657,6 +4721,57 @@ network destination, which is a poor trade against a lookup that already reveals
 - **A default `--download-archive` path.** Rejected: that is the application keeping records again
   under a different filename.
 - **A configurable SponsorBlock endpoint.** Rejected, as above.
+
+### Amended 2026-08-21 — two options this entry permitted are forbidden, and the count corrected (`T-256`)
+
+**Status:** **Accepted** (2026-08-21) — maintainer decision, taken on the Planner's material for
+`T-256`
+**Amends:** the *Decision* section's verdict table (the **Site credentials** row) and the
+*Consequences* section's count. The decision itself — the six families, and the reasoning that
+a secret living in a user's own file asks this application for nothing — is unchanged and is what
+the rest of this entry still rests on.
+
+**Amended rather than rewritten in place**, on the `DAT-002` precedent and `AGENTS.md` §6: this file
+is appended to, never silently corrected. The original table stays legible above so the change is
+readable as a change.
+
+**`T-183`'s Finding 3 was right, and it was right for two different reasons.** This entry permitted
+four site-credential options on one sentence — *"a `--netrc` flag asks for nothing: the secret lives
+in the user's own file, which this application neither reads nor writes"* — and that sentence
+reaches `--netrc` and `--netrc-location` and does not reach the other two.
+
+| Family | Ruled |
+|---|---|
+| **Site credentials** *(amended)* | **`--netrc` and `--netrc-location` are permitted. `--netrc-cmd` and `--client-certificate-password` are forbidden.** `--client-certificate` and `--client-certificate-key` remain permitted. `-u`/`-p`/`--video-password` remain forbidden. |
+
+- **`--netrc-cmd` executes a command.** yt-dlp's own help reads *"Command to execute to get the
+  credentials for an extractor"*. That is the property `--exec` is forbidden for **four rows above**,
+  and the property `SEC-004`'s whole *executes code or a binary* family turns on. The honest
+  argument for permitting it — that it runs the **user's own** command to fetch the **user's own**
+  credentials, the way a password-manager hook does — **does not survive the delivery mechanism**:
+  `REQ-031`'s hatch is a free-text field, and *"the user's own command"* and *"an arbitrary
+  command"* are the same string there.
+- **`--client-certificate-password` carries a secret**, rather than naming a file that holds one. It
+  is the shape `_require_credential_free_proxy` makes unrepresentable and the shape `-u`/`-p` were
+  forbidden for, and `SEC-004` then forbade `-2/--twofactor`, `--ap-username` and `--ap-password` on
+  exactly that wording — *a secret inside a frozen request that is persisted and crosses a process
+  boundary*. **The counter-argument is real and is recorded rather than dismissed**: this passphrase
+  unlocks a **local file** and is not a site credential, so a reader may think it belongs with
+  `--client-certificate` itself. It is forbidden anyway, because persistence and the process
+  boundary are what the rule names, and neither is changed by what the secret unlocks.
+- **`--client-certificate` and `--client-certificate-key` are untouched.** They name files, which is
+  what the original reasoning actually covers. Forbidding the family wholesale would have been the
+  over-broad reading, and this entry does not take it.
+
+**The `Consequences` count is corrected: the refusal list gains *seven* entries, not five.** The
+list beside it already names seven — `-u`, `-p`, `--video-password`, `--impersonate`, `--xff`,
+`--exec`, `--exec-before-download` — and every one is forbidden elsewhere in this entry. **The list
+is the operative half and the number was the error**, which is why the number moved.
+
+**Consequences of this amendment.** `docs/YTDLP_OPTION_AUDIT.md` moves `--netrc-cmd` and
+`--client-certificate-password` from `hatch` to `excluded` — it had classified them `hatch` **because
+that is what this decision said**, and said so in its own text rather than overruling a decision.
+`T-184`'s refusal list gains two entries. Nothing is built by this.
 
 ## OPS-013 — A recorded-evidence criterion binds where the source reports it, and nowhere else
 

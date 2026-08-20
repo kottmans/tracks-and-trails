@@ -375,30 +375,50 @@ def _ruled_options() -> tuple[set[str], set[str]]:
     """
     forbidden: set[str] = set()
     permitted: set[str] = set()
+
+    def rule(named: set[str], verdict: str) -> None:
+        """Apply one clause, **overriding** whatever an earlier table said about the same option.
+
+        The override is what lets an `### Amended` subsection mean something. `SEC-003`'s original
+        table permits `--netrc-cmd`; its 2026-08-21 amendment forbids it, and both live in the file
+        because `AGENTS.md` §6 makes this record append-only. Reading them in order and letting the
+        later one win is the only reading under which the amendment is the decision and the original
+        is history — and it keeps the both-ways assertion below meaningful, since that fires only
+        when a *single* clause says both.
+        """
+        if "forbidden" in verdict:
+            forbidden.update(named)
+            permitted.difference_update(named)
+        elif "permitted" in verdict:
+            permitted.update(named)
+            forbidden.difference_update(named)
+
     for name, header in (
         ("SEC-003", "| Family | Ruled |"),
         ("SEC-004", "| Family | Options | Why |"),
+        ("SEC-005", "| Family | Options | Why |"),
     ):
         body = _decision(name)
-        start_of = body.index(header)
-        table = body[start_of : body.index("\n\n", start_of)]
-        for line in table.split("\n")[2:]:
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) < 2:
-                continue
-            family, verdict = cells[0], cells[1]
-            if name == "SEC-004":
-                # Every option in SEC-004's table is forbidden; the third column is reasoning.
-                forbidden |= {s for e in _OPTION.findall(verdict) for s in e.split("/")}
-                continue
-            for clause in re.split(r"[.;]", verdict):
-                named = {s for e in _OPTION.findall(clause) for s in e.split("/")}
-                if not named:
-                    named = {s for e in _OPTION.findall(family) for s in e.split("/")}
-                if "forbidden" in clause.lower():
-                    forbidden |= named
-                elif "permitted" in clause.lower():
-                    permitted |= named
+        # **Every** table with this header, in document order — not just the first. `SEC-003` has
+        # two: the original verdict table and the amendment's.
+        at = body.find(header)
+        while at != -1:
+            table = body[at : body.index("\n\n", at)]
+            for line in table.split("\n")[2:]:
+                cells = [c.strip() for c in line.strip().strip("|").split("|")]
+                if len(cells) < 2:
+                    continue
+                family, verdict = cells[0], cells[1]
+                if name in ("SEC-004", "SEC-005"):
+                    # Every option in these tables is forbidden; the third column is reasoning.
+                    rule({s for e in _OPTION.findall(verdict) for s in e.split("/")}, "forbidden")
+                    continue
+                for clause in re.split(r"[.;]", verdict):
+                    named = {s for e in _OPTION.findall(clause) for s in e.split("/")}
+                    if not named:
+                        named = {s for e in _OPTION.findall(family) for s in e.split("/")}
+                    rule(named, clause.lower())
+            at = body.find(header, at + len(header))
     assert not forbidden & permitted, (
         f"a decision both forbids and permits: {forbidden & permitted}"
     )

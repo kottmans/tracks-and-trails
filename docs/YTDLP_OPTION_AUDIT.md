@@ -78,13 +78,13 @@ gap.
 | Class | Rows | What it means |
 |---|---|---|
 | `typed` | 65 | Gets a control, an owner task and a phase position. 21 already have one |
-| `hatch` | 95 | Reachable through `REQ-031` only. Every row carries a reason |
+| `hatch` | 93 | Reachable through `REQ-031` only. Every row carries a reason |
 | `app:sets` | 19 | **`build_options` sets this key.** Derived, and drift-checked in both directions |
 | `app:plumbing` | 36 | It *is* the command line rather than a capability — `REQ-030`'s own words |
 | `app:policy` | 10 | **The application owns the behaviour, and its model cannot represent the outcome** |
 | `app:contained` | 1 | It redirects where files land, and `T-034` owns that |
-| `excluded` | 23 | Forbidden — 8 by `SEC-003`, **15 by `SEC-004`** |
-| `unruled` | **1** | No decision covers it, and the audit refuses to invent one |
+| `excluded` | 26 | Forbidden — 8 by `SEC-003`, **15 by `SEC-004`**, 2 by `SEC-003`'s 2026-08-21 amendment, **1 by `SEC-005`** |
+| `unruled` | **0** | No decision covers it, and the audit refuses to invent one. **Empty since 2026-08-21**, and the class stays defined: a heading that disappears when it empties is one nobody notices coming back |
 
 *(**`app:policy` and the one remaining `unruled` row are `T183-R2` and `T183-R3`.** The audit
 originally derived application ownership from the *literal keys `build_options` emits*, which is
@@ -96,6 +96,11 @@ sharpest is `-i/--ignore-errors`: yt-dlp suppresses the error, records a return 
 never reads, and returns the info dict, so the row can reach **`Succeeded` after a post-processing
 failure**.)*
 
+*(**The `unruled` class reached zero on 2026-08-21**, when `SEC-005` ruled
+`--legacy-server-connect` — the sixteenth option, which `T183-R3` found *after* `SEC-004` and which
+was deliberately **not** swept into that ruling by inference. Every documented option now has a
+class, which is what `T-184` was waiting for.)*
+
 *(**The `unruled` class held 15 rows until 2026-08-16** — options that reach code execution, a
 runtime-fetched component, TLS validation or a credential, and which no decision covered. `SEC-004`
 ruled all fifteen **forbidden**, so they moved to `excluded`. The class is kept rather than deleted:
@@ -104,7 +109,7 @@ deadline is a class that gets skipped. Counts here are **recounted from the tabl
 adjusted by hand — and a test asserts they agree.)*
 
 **The refusal list is `app:sets` + `app:contained` + `app:plumbing` + `app:policy` + `excluded` —
-89 rows**, and it is the list `T-184` enforces. `typed` is not refused: where a typed field and the hatch name the same
+92 rows**, and it is the list `T-184` enforces. `typed` is not refused: where a typed field and the hatch name the same
 user-owned key, `ARC-010`'s precedence rule applies and the typed field wins, because it is the one
 with a visible control.
 
@@ -572,7 +577,7 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--add-headers` | `hatch` | Can carry a secret; T-184 must redact the value (DAT-004) |
 | `--bidi-workaround` | `app:plumbing` | A terminal workaround; there is no terminal |
 | `--encoding` | `hatch` | Experimental, per yt-dlp's own help |
-| `--legacy-server-connect` | `unruled` | Enables SSL_OP_LEGACY_SERVER_CONNECT and a compatibility cipher policy - a transport-security downgrade. SEC-004's scope is the fifteen this audit surfaced and does not reach it (T183-R3) |
+| `--legacy-server-connect` | `excluded` | Enables SSL_OP_LEGACY_SERVER_CONNECT and a compatibility cipher policy - a transport-security downgrade. Forbidden by SEC-005, which applies SEC-004's TLS reasoning to the sixteenth option T183-R3 surfaced after that ruling |
 | `--max-sleep-interval` | `typed` | Pairs with --sleep-interval |
 | `--no-check-certificates` | `excluded` | SEC-004: forbidden — Disables TLS validation; no decision covers it |
 | `--prefer-insecure` `--prefer-unsecure` | `excluded` | SEC-004: forbidden — Retrieves over plaintext; no decision covers it |
@@ -623,9 +628,9 @@ aliases and its `--no-` counterpart wherever they share one entry.
 | `--ap-username` | `excluded` | SEC-004: forbidden — A credential; SEC-003's -u rationale applies but did not name it |
 | `--client-certificate` | `hatch` | SEC-003: permitted - a path to the user's own file |
 | `--client-certificate-key` | `hatch` | SEC-003: permitted - a path to the user's own file |
-| `--client-certificate-password` | `hatch` | SEC-003 permits it, and it is a secret - see Finding 3 |
+| `--client-certificate-password` | `excluded` | It carries a secret rather than naming a file that holds one. SEC-003 permitted it; its 2026-08-21 amendment forbids it, on the wording SEC-004 used for --ap-password - see Finding 3 |
 | `-n` `--netrc` | `hatch` | SEC-003: permitted - the secret stays in the user's own file |
-| `--netrc-cmd` | `hatch` | SEC-003 permits it, and it executes a command - see Finding 3 |
+| `--netrc-cmd` | `excluded` | It executes a command, which is what --exec is forbidden for. SEC-003 permitted it; its 2026-08-21 amendment forbids it - see Finding 3 |
 | `--netrc-location` | `hatch` | SEC-003: permitted - a path to the user's own file |
 | `-p` `--password` | `excluded` | SEC-003: forbidden (REQ-EXCL-003) |
 | `-2` `--twofactor` | `excluded` | SEC-004: forbidden — A secret in the request; SEC-003 did not name it |
