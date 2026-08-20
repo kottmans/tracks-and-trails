@@ -19757,3 +19757,62 @@ synchronization; it does not consume another review pass or keep the task In Rev
 
 The Reviewer changed `ai/REVIEWS.md` and added only the approved follow-up to T-267's task entry.
 No reviewed test, tool, workflow, policy value, push or remote state was changed.
+
+---
+
+## 2026-08-21 — T-256 ruling-batch review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-256; T-184 dependency synchronization
+**Base:** `a3e9058274777739d3af74701d4593aa468d2662`
+**Batch head:** `f4dcb05717b1fe6f929e9bbf7ce2a29c21becd1e`
+**Substantive commits:** `f026c0c` (decisions, audit and gate), `5b16a00` (T-184), `965ebf5`
+(STATUS)
+**Verdict:** **Changes requested.** The four maintainer rulings are recorded faithfully, the audit's
+operative rows match them, and the gate catches a parser reverted to the superseded first table.
+Two blocking Medium findings remain: the gate silently accepts a mixed-verdict clause, and the
+current-truth records retain several pre-ruling answers about the same options and refusal count.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T256-R1** | **Medium** | **Yes — the executable gate can approve an audit that contradicts an accepted security decision** | `rule()` checks for `"forbidden"` and then `elif "permitted"` (`tests/unit/test_option_audit.py:379-394`). A clause containing both words is therefore treated wholly as forbidden; the opposite set is removed, so the intersection assertion at :422 can never detect the case its docstring says it catches. The Reviewer joined the amendment's permitted and forbidden phrases into one clause, moved permitted `--netrc` and `--netrc-location` to `excluded`, and updated the class/refusal counts to 91/28/94. **All 19 tests passed.** The gate accepted a refusal wider than the decision while every count agreed. | Reject a clause containing both verdict words before applying either one, or parse the verdict into an equally fail-closed structure. Add a regression that combines permitted and forbidden options in one clause and demonstrates that the gate fails even when the audit rows and all counts are changed to agree with the parser's wrong reading. Keep later-table override behavior for separate clauses. | **Open** |
+| **T256-R2** | **Medium** | **Yes — canonical task/audit records give both the pre-ruling and post-ruling security dispositions** | T-256's lead says all four rulings are taken, but its active priority still says three corrections remain and its lower heading says **“PROPOSED, nobody has ruled”** (`ai/TASKS.md:447-448,475-483`); its historical blockquote is not introduced as historical, and criterion 4 still says the audit test passes unchanged although `f026c0c` had to change it. The audit says `unruled` is 0 at :87 and one remains at :89; Finding 3 says the two options are `hatch` and nobody ruled at :205-207 although its rows classify them `excluded`; Finding 5 still calls the count correction proposed at :276-282; and the decomposition credits only SEC-004 and says T-184 was already unblocked at :324-328. T-184's lead gives the current **92**, while its active `Depends on` line still gives **89** (`ai/TASKS.md:9351,9366-9367`). These are current-truth files, not the historical original verdict retained correctly in DECISIONS. A T-184 implementer can read both the three newly refused options and the old list that omits them. | Sweep the active T-256 entry, the audit's summaries/findings/decomposition, and T-184's dependency text. State the post-ruling disposition and 92-row list once at each live consumer; either remove superseded claims or mark them explicitly as historical quotations. Update criterion 4 to acknowledge the necessary gate amendment and require that it derives the effective later verdict. Do not rewrite SEC-003's original historical table; its appended amendment is the correct preservation mechanism. | **Open** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Batch scope | `a3e9058..f4dcb05` contains seven commits and changes six files. T-256's substance is confined to `f026c0c`, `5b16a00` and the T-256 portion of `965ebf5`. `15d9a80` records T-272 operations; `e401779` is this Reviewer's T-258 verdict; `ed19578` and `f4dcb05` apply and record that verdict. None changes T-256's decision or gate. |
+| Restored focused gates | Option audit plus task placement: **34 passed** (19 + 15). Ruff check passed for the changed test; Ruff format reports **1 file already formatted**. |
+| Superseded-table mutation | Replacing the amendment scan with first-table-only produced **2 failed, 17 passed**: `--netrc-cmd` remained permitted and both amended exclusions lacked decision support. This is the central amendment case, and it is covered. |
+| Permitted-family mutation | Moving `--client-certificate` from `hatch` to `excluded` failed `test_no_option_a_decision_permits_is_excluded`. The amendment therefore preserves the two file-path options rather than silently forbidding the whole family. |
+| Mixed-verdict mutation | Joining permitted and forbidden phrases into one clause, moving `--netrc`/`--netrc-location` to `excluded`, and updating all class/refusal counts produced **19 passed**. This establishes T256-R1. All mutated files were restored; the baseline returned to **19 passed** and the worktree was clean before this review record. |
+| Commit and boundary checks | Commit-message checker: **7 commits clean** over the submitted range; `git diff --check a3e9058..f4dcb05` passed. |
+| Broad gates | The Implementer reran `tests/unit` at the submitted head (**2255 passed, 15 skipped**), Ruff and format over 204 files, and both mypy modes over 154 source files. The Reviewer did not rerun those broad gates. |
+
+### Review judgments
+
+- **The rulings themselves are accepted as recorded.** SEC-005 applies the existing TLS rule to
+  `--legacy-server-connect`; SEC-003's amendment forbids the command-bearing and secret-bearing
+  options; and its file-path certificate options remain permitted. This is consistent with
+  REQ-EXCL-003 and ARC-010's refusal boundary and does not widen the family wholesale.
+- **The historical form is sound.** SEC-003's original verdict remains legible and the amendment
+  follows it; SEC-005 is a distinct later decision rather than a backdated SEC-004 edit. T256-R2
+  requests synchronization only in current-truth consumers, not rewriting either historical table.
+- **T-184 need not be re-blocked on the maintainer's ruling.** SEC-005 exists and disposes the one
+  dependency. Its current entry must, however, stop carrying the old 89-row implementation input
+  beside the new 92-row one.
+- **The later four commits do not expand this review.** T-272's first Linux execution and T-258's
+  already-approved completion are inspected only for boundary separation; no new verdict on those
+  tasks is made here.
+
+### Readiness
+
+T-256 is **not approved at `f4dcb05`**. Correct T256-R1 and T256-R2 in one batch, mutation-check the
+mixed-clause guard, and return the correction diff for the ordinary focused re-review available
+under AGENTS.md §10. No maintainer decision or new security ruling is required.
+
+The Reviewer changed only this append-only review record. No decision, audit, gate, task/status
+file, workflow, source, handoff, push or remote state was changed.
