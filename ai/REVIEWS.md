@@ -19452,3 +19452,81 @@ unpushed; `origin/main` remains `d50eef9`.
 
 The Reviewer changed only this append-only record. No reviewed task/status/evidence file, source,
 test, workflow, dependency, live process, push or remote state was changed.
+
+---
+
+## 2026-08-21 — T-238 criterion-4 / T-272 Linux-scan review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-238`, `T-272`; `T-273` filing inspected with the measurement that created it
+**Base:** `5aab82de0b43f21af3fa41bb3c8eb47baf68fbd3`
+**Head:** `b2ebc6b72e168c1494e8960a8cd6ae56b204edf9`
+**Boundary:** eight held, unpushed commits; workflow, one unit-test file, one probe and current-truth
+task/status prose
+**Verdict:** **Changes requested on T-238. T-272's workflow and test implementation is Approved
+with follow-up at `b2ebc6b`.** The combined head is not approved: the probe correctly exits 3 when
+its subject remains retained, while the task and status convert that refusal into criterion 4's
+harness-branch answer.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T238-R5** | **Medium** | **Yes — criterion 4's second step** | The independent run returns **159 before, 159 after, 30 collected objects, 0 widgets**, then exits **3** and says the zero “is not a result about cycles.” That refusal is correct. `_widgets_the_collector_freed()` reads `gc.garbage` immediately after the callback and performs its explicit post-callback `gc.collect()` only in `finally`, after clearing `DEBUG_SAVEALL` and after the recorded result (`tools/t238_widget_cycle_probe.py:75-85`). The measurement therefore does not record what the forced collection after its application locals are released collected. Equal aggregate counts also do not establish widget identity, and a still-reachable object graph may itself contain cycles; retention prevents the collector from classifying it. Finally, the probe deliberately omits five product-reachable screens while the retained criterion asks whether **any** application widget participates in a cycle (`:23-30`; `TASKS.md:8642-8644`). Nevertheless `TASKS.md:8674-8679`, `STATUS.md:12-20`, the T-273 premise at `TASKS.md:9075-9079` and the submission call the route closed, the trees “not garbage,” and the harness branch selected. | Preserve the observed counts and T-273's filed retention phenomenon, but withdraw every live route-closed / not-garbage / harness-branch conclusion. Make the probe's docstring, output, T-238, T-273 and STATUS agree that this run refused to answer criterion 4 because the surfaces remained retained. Keep criterion 4 open unless a new measurement releases or otherwise controls the retention root, tracks the relevant widget identities, observes the post-release collector result, and covers the criterion's application-widget scope. Do not diagnose or fix T-273 inside this correction. | **Open** |
+| **T272-R4** | **Low** | No | `ai/TESTING.md:290` promises that every job in every workflow appears in the OPS-012 inventory. Its ten-row table omits the new `Linux orphans` job immediately after T-265 made that inventory exact. The workflow behavior is still correct and the omission does not weaken its executable tests. | Add the exact `Linux orphans` row: `ci.yml`, the `LINUX_RUNNER` selector, its non-empty-variable gate, schedule/dispatch condition and `needs: check`. **Owner/target:** Documentation Maintainer, this focused correction batch or the next coordination update before push. | **Open, non-blocking** |
+| **T238-R6** | **Low** | No | The correction at `9c25b69` accurately distinguishes the sibling probe's quiet first defect from its loud fivefold over-count. Authoritative current-truth `ai/TESTING.md:395-404` still says it produced a clean result twice and that neither defect was visible in output. This is a pre-existing sibling that the correction-class audit missed. | Apply the already-correct tool/TASKS account to TESTING: one clean-looking zero; then one fivefold over-count exposed by the three-times-longer run. **Owner/target:** Documentation Maintainer, the T238-R5 correction batch; no separate re-review required. | **Open, non-blocking** |
+| **COORD-R25** | **Low** | No | At the exact eight-commit head, current STATUS says **seven** commits are held (`:8-10`) and **three of seven** are corrections (`:72`). The submitted boundary and history contain eight commits, four explicitly identified as corrections. | Correct the current snapshot to eight/four, or remove the volatile derived counts while retaining the exact base/head. **Owner/target:** Documentation Maintainer, the focused correction batch; no separate re-review required. | **Open, non-blocking** |
+
+### T-272 acceptance and implementation judgment
+
+| Criterion | Review result |
+|---|---|
+| Linux scheduling is deliberate | **Met in the workflow.** `linux-orphans` resolves through `vars.LINUX_RUNNER`, exists only when that variable is non-empty, runs only on schedule or dispatch, and follows `check` with `always()` so a failed suite cannot hide the more likely leak. |
+| A find is visible | **Met by wiring and regression evidence.** Bash runs with `-e -o pipefail`; neither job nor step is continue-on-error, the scan command has no exit-code swallow, and the evidence upload remains `always()`. The existing scanner's non-zero find behavior is independently demonstrated by the referenced nightly. |
+| Report-only safety | **Met.** Both scanning jobs are asserted free of `--kill`; no destructive scanner mode or signal path is added. |
+| Platform coverage test | **Met.** The former exactly-one assertion is correctly replaced with the exact two job IDs and shared behavior checks over both. Removing the Linux job, its variable gate or its exit-code propagation reaches a directly load-bearing assertion by inspection. |
+| Actual Linux runner execution | **Explicitly unverified, not disguised as green.** The implementation is unpushed. The referenced nightly ran at base `5aab82d`, before `linux-orphans` existed, so it cannot prove repository-variable resolution or the new job's runner behavior. Retain this as the first-nightly operational follow-up after an approved head is pushed. |
+
+The workflow's three platform-specific choices are supported: a persistent Linux machine is the
+only useful target, `needs: check` observes what that run may leave, and the throwaway one-package
+environment follows the existing prose-workflow pattern. The executable change needs no correction.
+T272-R4 is an inventory follow-up, so T-272 is Approved with follow-up at this exact head; a later
+T-238/current-truth-only correction does not reopen its workflow or unit tests.
+
+### Independent evidence
+
+| Check | Result |
+|---|---|
+| T-238 probe | `QT_QPA_PLATFORM=offscreen .venv/bin/python tools/t238_widget_cycle_probe.py`: both controls pass; **159 / 159**, **30 total / 0 widgets**, then expected refusal exit **3**. Three calls in one process reproduced `159, 318, 477`; only the first recorded 30 other objects, with zero on the later two. This confirms accumulation, not its retention root or cycle classification. |
+| Focused tests | `pytest -q tests/unit/test_orphan_scan.py tests/unit/test_task_placement.py`: **27 passed**. |
+| Lint and formatting | `ruff check .`: passed. `ruff format --check .`: **204 files already formatted**. |
+| Static types | `mypy src`: **56 source files**, passed. Bare `mypy`: **154 source files**, passed. The submission did not report the test-file gate's required `mypy --platform win32`; the Reviewer ran it: **154 source files**, passed. |
+| Submitted full suite | Reported at this head as **3,723 passed, 18 skipped, 2 deselected in 10m04s**. The Reviewer did not rerun the full suite; the required focused and static gates above are independently green. |
+| Nightly `32341438295` | Independently queried: scheduled, exact head `5aab82d`; `linux`, `windows desktop`, both frozen jobs and `STARBASE coverage` succeeded. `STARBASE orphans` failed at its scan with exactly the seven reported one-thread PIDs, preserved the non-zero exit and uploaded evidence. It proves the existing Windows alarm, not the unpushed Linux job. |
+| Boundary / commits | `git diff --check 5aab82d..b2ebc6b` passed. The commit checker reports **8 commits checked**; all eight name Sean Kottman and contain no AI authorship trailer. The five changed paths exactly match the submitted table. |
+
+### Scope and submission audit
+
+- **T-273 remains a valid filing, not a diagnosis.** Successive compose/shutdown calls leave a
+  reproducible and monotonically growing live-widget count, and the parentless-view guard is not
+  meant to catch an intact retained tree. The task should keep those observations while dropping
+  the stronger garbage/cycle classification T238-R5 identifies.
+- **The four correction commits remain individually reviewable.** Their separation exposes rather
+  than hides the figure, precedent, verification-tense and sibling-history corrections. The stale
+  TESTING sibling and STATUS count show that the class audit still did not reach every live copy.
+- **The submission message itself repeats T272-R3 once more.** “Nothing was signalled, inspected or
+  reaped” is broader than the evidence; the nightly scanner itself inspected process metadata, and
+  report-only wiring proves only that this job signalled and reaped nothing. Conduct elsewhere on
+  the shared machine is not established. The message is untracked and outside the durable boundary,
+  so this does not add a blocking finding; correct it before the message is reused.
+
+### Readiness
+
+The combined `5aab82d..b2ebc6b` head remains held and unpushed. Correct T238-R5 across the probe and
+all current-truth siblings, and fold in T272-R4, T238-R6 and COORD-R25 while those files are already
+open. One focused correction re-review remains; it should inspect those four findings and the
+correction diff, not reopen T-272's settled workflow/test implementation, T-273's decision to file
+rather than fix, or the earlier T272-R1 through T272-R3 round.
+
+The Reviewer changed only this append-only record. No reviewed workflow, source, test, task/status
+file, probe, handoff, live process, repository variable, push or remote state was changed.
