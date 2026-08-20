@@ -19816,3 +19816,71 @@ under AGENTS.md §10. No maintainer decision or new security ruling is required.
 
 The Reviewer changed only this append-only review record. No decision, audit, gate, task/status
 file, workflow, source, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-21 — T256-R1/R2 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-256; T-267 completion synchronization
+**Base:** `f0e0bdf865d9ad2dc90123dc82a5c39ed04c64fb`
+**Head:** `e15cd7ced083c34a91179169ef20293ab2d25934`
+**Correction commits:** `81ee14a` (T256-R1), `fb70cd8` (T256-R2), `b56d462`
+(T267-R2 and completion), `e15cd7c` (STATUS)
+**Verdict:** **Blocked. T256-R1 is Resolved; T256-R2 remains blocking.** The mixed-verdict parser
+now refuses before applying either disposition, but the current audit header still gives the
+pre-ruling 89-row refusal list and omits SEC-005 while the live class table gives 92. This focused
+pass exhausts the ordinary review budget, so another correction verification requires the
+maintainer's choice under AGENTS.md §10.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T256-R1** | **Medium** | Yes | `MixedVerdictClauseError` is raised before either set is updated when one clause contains both verdict words. The synthetic regression also proves that the same content remains readable when split into separate clauses. Reapplying the Reviewer's mixed clause and aligning the audit rows and totals to 91/28/94 now fails every real-record verdict consumer rather than accepting the wider refusal. | **Resolved at `81ee14a`** |
+| **T256-R2** | **Medium** | **Yes — the canonical audit still supplies both pre-ruling and post-ruling implementation inputs** | The specifically cited T-256, Finding 3, Finding 5, decomposition and T-184 sites were corrected. The sibling sweep stopped below the audit header: `docs/YTDLP_OPTION_AUDIT.md:6-15` still names only SEC-003/SEC-004 as authority and says **“The refusal list is 89”**, while its live class/refusal summary at :78-114 includes SEC-005 and says **92**. The derivation table at :34 likewise says only SEC-003/SEC-004 are parsed, although the gate parses SEC-005. The gate comments at `tests/unit/test_option_audit.py:37,365-366` repeat that superseded two-decision description. This is the same one-defect/two-answers class T256-R2 required the correction to sweep. | **Open — partially corrected at `fb70cd8`** |
+| **T256-R3** | **Low** | No | STATUS says the Reviewer's exact, fully re-derived mutation now gives **5 failed, 15 passed**. Independently changing the decision clause, both audit rows, the class totals to 91/28 and the refusal total to 94 gives **3 failed, 17 passed**. Five failures result only if two count summaries are left stale, which is not the original mutation. The fail-closed property is real; only the recorded result is wrong. | **Open — Implementer; next T-256 record synchronization** |
+| **T267-R2** | **Low** | No | The `DECLARED_THRESHOLD` comment now names `test_the_default_threshold_is_exactly_the_declared_one`; the original stale cross-reference is corrected. | **Resolved at `b56d462`** |
+| **T267-R3** | **Low** | No | T-267's completed entry says T267-R2 is done at :453-466, then repeats the former live follow-up at :498-501: the comment **still** names the old test and must be updated when moving the task to Complete. The behavior, test proof and approved disposition are unaffected, so this does not reopen T-267. | **Open — Implementer; next coordination synchronization** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction scope | `f0e0bdf..e15cd7c` is **4 commits** changing five files: the option-audit test, audit, TASKS, duration-report test and STATUS. The accepted decisions, product source and workflow are unchanged by the submitted range. |
+| Focused baseline | `pytest -q tests/unit/test_option_audit.py tests/unit/test_job_duration_report.py`: **35 passed** (20 + 15). |
+| Exact T256-R1 mutation | Joining the amendment's two dispositions into one clause, moving `--netrc` and `--netrc-location` to `excluded`, and re-deriving the class/refusal totals to 91/28/94 produced **3 failed, 17 passed**. Each failure raises `MixedVerdictClauseError` before row or count agreement is consulted. The mutation was restored and the option-audit file returned to **20 passed**. |
+| T256-R2 sibling audit | The corrected operative sites agree on 92, but the audit's live status at :15 still says 89; its authority and derivation summaries omit SEC-005 even though the live class table and parser include it. The original historical SEC-003 table remains untouched, as required. |
+| T-267 completion | `tests/unit/test_job_duration_report.py` is behaviorally unchanged in this range; only T267-R2's comment is corrected. The completed task's later open-follow-up paragraph is stale prose, not an executable regression. |
+| Placement and formatting | `pytest -q tests/unit/test_task_placement.py`: **15 passed**. Ruff check passed for both changed test files; Ruff format reports **2 files already formatted**. |
+| Commit and boundary checks | Commit-message checker: **4 commits checked**. `git diff --check f0e0bdf..e15cd7c` passed. The worktree was clean after restoring the mutation. |
+| Broad gates | The Implementer reports `tests/unit` at **2256 passed, 15 skipped**, Ruff/format clean over 204 files, and both mypy modes clean over 154 source files. The Reviewer did not rerun those broad gates or the full suite. |
+
+### Review judgments
+
+- **T256-R1 is structurally closed.** A mixed clause cannot be converted into either effective
+  disposition, and separate later clauses still override the historical table in document order.
+  The independently observed failure count is three rather than five, but the safety property does
+  not depend on the number of consumers.
+- **T256-R2 is not closed by fixing only the sites named in its evidence column.** Its required
+  correction explicitly called for a sweep of the audit's summaries and one post-ruling answer at
+  each live consumer. The audit header is the first summary a T-184 implementer reads, and it still
+  supplies 89 beside the operative 92.
+- **T-267 remains Complete and approved.** Its executable follow-up is resolved. T267-R3 records a
+  stale lower paragraph in the completion move; as a new Low it is non-blocking and does not consume
+  another pass or reopen the task.
+- **The ordinary T-256 review budget is exhausted.** The initial comprehensive review and this
+  focused correction pass have run. Because the remaining blocker is Medium, the Reviewer cannot
+  start a third pass without explicit maintainer authorization, acceptance of the documented risk,
+  a scope change, or a named follow-up disposition.
+
+### Readiness
+
+T-256 is **Blocked at `e15cd7c` pending the maintainer's §10 choice**. The narrow correction is to
+finish T256-R2's live-summary sweep, correct the mutation result in STATUS, and synchronize the
+stale T-267 completion paragraph. If the maintainer authorizes another focused pass, it must inspect
+only those unresolved record corrections and their exact diff; T256-R1 is settled and is not to be
+re-audited.
+
+The Reviewer changed only this append-only review record. No reviewed decision, audit, gate,
+task/status file, test, workflow, source, handoff, push or remote state was changed.
