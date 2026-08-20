@@ -5,6 +5,41 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-21 — **The overnight batch is approved end to end, and `T-238`'s criterion
+4 is still open — which is the correct outcome rather than a shortfall.** `T238-R5` is Resolved at
+`b204f88`, and `T-272`'s workflow and tests, `T-273`'s filing, `T272-R4`, `T238-R6` and `COORD-R25`
+were resolved before it. **Nothing is pushed**; `origin/main` is **`5aab82d`**.
+
+**What the round produced is one closed question, one built job, one new task and one refusal.**
+`T-272` is In Review-approved and needs only its first Linux nightly, which needs a push. `T-273` is
+filed on directly observed retention. **`T-238` gained no answer and lost three claims it should
+never have made** — and the entry is more useful for it: criterion 4 now records what a run that
+answered it would have to do, which it did not before.
+
+**`T238-R5` took three passes and the reason is worth keeping.** The probe was right on the first
+pass — it exits 3 and says its zero is not a result. What kept failing was **everything downstream
+of the refusal**: a heading, a summary, a STATUS lead, a task criterion, and a **branch of the probe
+that has never executed**. Each pass corrected the sites that had been named and left the siblings,
+which is the same class four times: `T258-R10`, `T272-R3`, `T238-R6`, and this. **The correction
+lands where the defect was found; the copies are somewhere else, and one of them was in dead code
+that would have printed a confident sentence the first time it ran.**
+
+**The rule this leaves**: when a claim is withdrawn, the withdrawal is not done until every
+paragraph that *depends* on it is re-read — including summaries above it, criteria in other tasks,
+and output that no run has produced yet.
+
+**Board:** `T-238` **Ready**, criterion 4 unanswered, next step named. `T-272` **In Review**,
+approved, awaiting its first nightly. `T-273` **Proposed**, unprioritized. `T-268` **Blocked on a
+person at `STARBASE`** — seven orphans reported 2026-08-20, `3400` and `6924` alive at 2d13h.
+`T-074` **Blocked on `T-092`**. `T-267`, `T-256`, `T-258` In Review, untouched by all of this.
+`T-212` is still the only thing between this phase and its exit review, and still needs a display
+and a person.
+
+**What is owed is a push**, which is the maintainer's (`AGENTS.md` §7) and which is the only way
+`T-272`'s Linux job has ever run.
+
+---
+
 **Last updated:** 2026-08-21 — **`T-238`'s criterion 4 stays unanswered — its second step was
 attempted and the run refused — `T-272` is built, and `T-273` came out of that refusal.** Overnight work, authorized by the maintainer,
 **nothing pushed**: `origin/main` is still **`5aab82d`**, and every commit since it is held.
