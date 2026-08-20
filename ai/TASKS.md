@@ -8114,15 +8114,30 @@ being necessary.)*
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
-**Status:** **Ready — the guard is Approved at `9e5feae`, the task stays open against criterion 4,
-and the load avenue this entry named is now spent too.**
+**Status:** **Ready — the guard is Approved at `9e5feae`, and the task stays open against
+criterion 4, whose next step is the real-session probe below rather than any further repetition.**
 
-**30 runs under deliberate host load, 2026-08-20: zero crashes.** This entry said *"the next attempt
-should reproduce under deliberate host load, as `T-228`'s did"*, and that had never been tried —
-the 40 previous runs were idle. Three competing `pytest tests/integration -n 4` batches ran
-continuously so every measured run was contended **end to end**, and the target was the supported
-command, `pytest -n auto tests/unit tests/ui`. Load actually achieved on 20 cores: **median 21.4,
-max 23.9, min 14.2**. Every run: `3276 passed, 18 skipped`.
+**30 *additional* contended runs, 2026-08-20: zero crashes. The cumulative record is 90 runs, 50 of
+them contended.** 40 idle, **12 under 20 busy loops**, **8 beside an `-n auto` integration batch**
+— all three rows already in the conditions table below — plus these 30.
+
+*(**The first version of this section said load "had never been tried" and put the total at 70.
+Both were wrong, and the entry itself said so** — `T238-R4`. Rows two and three of its own
+conditions table are 20 loaded runs, and the paragraph beneath them records that saturation
+**refuted** the recommendation to try load. **I acted on the recommendation and not on the
+refutation two paragraphs below it**, which is this project's most-documented failure shape: the
+sentence most likely to be stale is the one that says what to do next. Nothing was measured wrongly;
+the campaign was described as pulling an untried lever when it was adding a fourth condition to
+three.)*
+
+**What the design adds over the prior 20, which is the only reason to keep the runs.** The earlier
+loaded rows used 20 busy loops (CPU pressure without allocator or GIL contention) and a single
+`-n auto` integration batch that **finishes and leaves the target running unopposed**. This ran
+**three** `pytest tests/integration -n 4` batches **continuously**, restarting each as it ended, so
+every measured run was contended **end to end by real Python allocation and Qt teardown** rather
+than by spinning arithmetic. Load achieved on 20 cores: **median 21.4, max 23.9, min 14.2**. Every
+run: `3276 passed, 18 skipped`. **It does not reproduce the fault either**, which is the fourth
+condition to say so.
 
 **The instrument was proved before the zero was believed.** `T238-R1`'s inverted-order reproduction
 was re-run first: swapping the two calls in `tests/ui/conftest.py` still kills the helper subprocess
@@ -8137,11 +8152,14 @@ batch per iteration and waited for it, so the 39-second target finished and then
 for the rest of the iteration — a load experiment measuring an idle machine. Recorded because a
 negative result from that design would have looked identical to this one.)*
 
-**So repetition is now spent at 70 runs across both conditions** — 40 idle, 30 contended — and
-**criterion 4 is unchanged**: product-versus-harness is still unestablished, and the guard firing on
-a real test remains the only thing that would establish it. The maintainer's 2026-08-13 ruling
-already anticipated this shape; what is new is that the one untried lever named in this entry has
-been pulled. `T238-R1`, `T238-R2` and `T238-R3` are all **Resolved**. What is delivered is a
+**So repetition is spent at 90 runs across four conditions**, and **criterion 4 is unchanged** —
+product-versus-harness is still unestablished. **What it needs is not the guard firing**, and the
+first version of this section said it was (`T238-R4`): the 2026-08-16 measurement moved criterion 4
+on, and its two named next steps stand — **run the probe against a real session on a display**,
+which `tests/integration` cannot answer because a `QCoreApplication` process has no widgets for the
+probe's own control, and **establish whether any `QWidget` here participates in a reference cycle**.
+If none does the `gc` route closes and the harness reading returns. A guard firing on a real test
+would still be evidence; it is not the plan. `T238-R1`, `T238-R2` and `T238-R3` are all **Resolved**. What is delivered is a
 harness guard, not a diagnosis: **product-versus-harness is still unestablished**, and this entry
 sits under `## Ready` rather than `## Complete` for exactly that reason.
 
