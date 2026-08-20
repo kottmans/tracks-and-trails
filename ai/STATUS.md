@@ -5,6 +5,40 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-20 — **The round is closed: approved at `1624f10`, no findings left
+anywhere in it.** `T272-R3` is Resolved at `c929bc4` and `COORD-R24` at `1624f10`; the original
+correction was approved at `d50eef9`, where `T074-R5`, `T238-R4`, `T272-R1` and `T272-R2` are
+Resolved. **Six findings, three review passes, and nothing product-facing moved** — the whole round
+is `ai/TASKS.md`, `ai/STATUS.md` and two files under `ai/evidence/`.
+
+**The last two findings were both mine and both were about the gap between a record and its
+evidence**, which is what this round turned out to be about end to end. `T272-R3`: the measurement
+said an outside kill was *neither observed nor excluded*, and four summary copies then said the
+specimens ended on their own. `COORD-R24`: the gate is
+`pytest tests/unit/test_task_placement.py` — **15 passed, no skips** — and I recorded **16 passed,
+2 skipped** from `pytest tests -k placement`, a filter that resembles it. **The reviewer ran the
+substituted command and reproduced 16/2**, so the account of the stale tally is verified rather than
+taken on my word.
+
+**One ruling worth keeping.** The preservation criterion's *"never met"* stands as an **evidentiary
+gate disposition** — a criterion requiring recorded identity revalidation before termination is not
+met without that record, whatever an unobserved actor may have done. That is distinct from a claim
+about conduct, and the sentence before it leaves conduct expressly unknowable. **Overtaken by
+events** now means only that **no specimen remains available**.
+
+**Nothing is pushed and nothing has changed on the board.** `origin/main` is **`d50eef9`**; six
+commits are held locally — `f20876a`, `d5b95c5`, `30c78a3`, `c929bc4`, `1624f10`, `d28fec2`.
+**`T-074` Blocked on `T-092`** (Medium, `OPS-007` residual accepted), **`T-238` Ready** with
+criterion 4 open on the real-session probe and the widget-cycle question, **`T-272` Proposed** and
+waiting on the Planner to prioritize, **`T-268` Blocked on a person at `STARBASE`**, and `T-267`,
+`T-256` and `T-258` still In Review, untouched by this round.
+
+**What is owed next is a decision, not work.** The push is the maintainer's call (`AGENTS.md` §7),
+and `T-272` — the scan that runs on one of two platforms — is filed, corrected, approved and
+unprioritized.
+
+---
+
 **Last updated:** 2026-08-20 — **The evidence batch came back Changes requested, all four findings
 are corrected, and the three blocking ones were the same defect wearing three hats.** `T074-R5`,
 `T238-R4` and `T272-R1` (Medium, blocking) and `T272-R2` (Low) are answered at `36677b8`, `cc8dd89`
