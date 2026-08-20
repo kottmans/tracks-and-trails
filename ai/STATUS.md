@@ -5,6 +5,78 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-21 — **`T-238`'s criterion 4 has its second answer, `T-272` is built, and
+`T-273` came out of a probe refusing to report.** Overnight work, authorized by the maintainer,
+**nothing pushed**: `origin/main` is still `5aab82d` and **seven commits are held**.
+
+**`T-238`, criterion 4, second step — the answer is neither branch the criterion wrote.**
+`tools/t238_widget_cycle_probe.py` measures *what freed a widget* rather than whether it sits in a
+cycle, because a widget held **by** a cycle is not **in** one and is still freed by `gc`, still
+decref'd on whatever thread collected. Offscreen on `kirk`: **159** widgets live with every route
+open, **159** still live after the application's own shutdown, **0** freed by the collector, and
+**30 other objects freed by it in the same window**. So nothing takes the `gc` route through these
+surfaces — **because no widget is freed at all**, and not because the collector was idle. That
+closes the route here, which is criterion 4's *harness* branch, **arrived at by a road the criterion
+did not describe**. `T-238` stays `Ready`.
+
+**`T-273` is what the probe found while refusing to answer.** Its first run printed `0 freed` with
+159 widgets still standing, and *nothing was freed by the collector* and *nothing was freed at all*
+are the same zero and opposite answers — so the instrument now carries before/after counts and
+**exits 3 rather than reporting**. What it exposed: **every composed window outlives its own
+shutdown.** `tests/ui/test_accessibility.py` runs **159 → 1538** live widgets across twelve tests,
+monotonic, and three compose/shutdown cycles outside pytest give **159, 318, 477** — so it is the
+composition rather than the fixture. `assert_no_orphaned_views` is honestly green throughout:
+retained views keep their parents, so its predicate is not met. **Filed, not fixed** (§7), and
+**not** claimed as a diagnosis of `T-238` — a worker accumulating trees is a memory story and
+`T-238`'s crash is a native one, and nothing measured here connects them.
+
+**`T-272` is built and In Review.** A `Linux orphans` job mirroring `STARBASE orphans`, gated on
+`vars.LINUX_RUNNER` for the same reason `STARBASE_AVAILABLE` gates the other — unset means a hosted
+image, and a clean scan of a machine destroyed after every job is a green check about nothing.
+**The wiring tests had to lose an assertion**: they required **exactly one** job to invoke the
+scanner, on the reasoning that two scans could disagree about the same machine. Two scans of
+*different* machines do not disagree, they cover — **that assertion was enforcing the gap**, and the
+test written to forbid a second job is the one that would otherwise have caught its absence.
+Mutations all caught: the job removed (**6 failed**), its `LINUX_RUNNER` gate dropped, and `|| true`
+on its scan. **The steps are verified and the job is not** — its mechanism was run by hand on `kirk`
+exactly as written and exited 0; what is unproved is that `LINUX_RUNNER` resolves and that a find
+turns the job red, which needs a nightly after a push.
+
+**The nightly ran while that was being built, and the specimens are alive.** Run `32341438295`,
+scheduled, **all five suite jobs green** — and **`STARBASE orphans` failed by design**, which is the
+alarm `T258-R5` asked for doing exactly what it is for. **Seven orphans, one thread each**:
+
+| pid | age | rss |
+|---|---|---|
+| `2432`, `3408`, `11000` | **14d14h**, parent `9176` | 45, 42, 45 MB |
+| `7028`, `10524` | **15d06h** | 45, 57 MB |
+| **`3400`, `6924`** | **2d13h**, parent `1204` | **79 and 77 MB — unchanged** |
+
+**Fourth unattended report, and `T-268`'s two specimens are intact**: same resident sets as
+2026-08-19, still one thread each. **`T-268` remains Blocked on a person at `STARBASE`.**
+
+**The contrast with `T-272`'s `kirk` pair is the distinction `T272-R1` insisted on, and it now has
+numbers on both sides.** The `STARBASE` seven are **one thread each** and have lasted **two to
+fifteen days**; the `kirk` pair were a **two-thread worker** and a one-thread **tracker** on a
+different channel, and they **ended within four days**. Different platform, different pipe,
+different process shape — and now different lifetimes.
+
+**`T-259` read 34m33s, 86% of the 40-minute bound.** The series is 32.3 · 35.0 · 32.3 · 33.9 · 34.5
+· **34.6**. Growth in family rather than a jump, which is what the annotation says to read it as;
+`T-267` is what stops the threshold itself drifting and is In Review.
+
+**Gates on `kirk` at `9c25b69`:** full suite **3 723 passed, 18 skipped, 2 deselected** in 10m04s ·
+`ruff check` clean · `ruff format --check` **204 files** · `mypy` **154 source files**, no issues ·
+task placement **15 passed** · commit-message checker clean over the range.
+
+**Three of the seven commits are corrections to the other four**, all self-caught before handoff:
+a figure quoted from a scratch diagnostic that was **holding the objects it was counting**
+(`gc.get_referrers` returned the very lists), a design decision that read as invented when
+`prose.yml` already made it, and a claim about the sibling probe's history repeated from that
+probe's own docstring where only half of it holds.
+
+---
+
 **Last updated:** 2026-08-20 — **The round is closed: approved at `1624f10`, no findings left
 anywhere in it.** `T272-R3` is Resolved at `c929bc4` and `COORD-R24` at `1624f10`; the original
 correction was approved at `d50eef9`, where `T074-R5`, `T238-R4`, `T272-R1` and `T272-R2` are
