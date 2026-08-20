@@ -8835,9 +8835,13 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
 
-**Status:** **Proposed — filed 2026-08-20 from two live specimens on `kirk`.** Found by accident
-while setting up `T-238`'s load campaign, which is how the original five were found on `STARBASE`.
-**Both are preserved**, on `T258-R4`'s reasoning: `ai/evidence/2026-08-20-linux-orphans-on-kirk.md`.
+**Status:** **Proposed — filed 2026-08-20 from two specimens on `kirk` that have since ended.**
+Found by accident while setting up `T-238`'s load campaign, which is how the original five were
+found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning and expired anyway**, within
+hours of being written up: `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is now the whole of
+what survives of them. **The scheduling gap this task is filed for is untouched by that** — if
+anything the loss is what the gap costs, since a scheduled Linux scan would have reported the pair
+on 2026-08-16 rather than leaving them to be noticed four days later.
 **Owner:** Planner, to prioritize
 **Priority:** **Medium.** Not because these two processes matter — 37 MB — but because
 `tools/orphan_scan.py` **already detects them, on Linux, unmodified**, and nothing runs it here.
@@ -8863,6 +8867,18 @@ A second process, `432922`, is **retained by** it: both hold `pipe:[1629660]`, t
 write end, and the `resource_tracker` reading it for EOF therefore never exits. The scanner
 correctly reports only the worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a
 consequence rather than an orphan of that class.
+
+**Re-scanned 2026-08-20T06:20:48Z on `kirk`: `no orphaned workers found`, exit 0.** Both PIDs are
+gone from `ps`, and `kirk` has not rebooted — up since 2026-08-10, which predates their creation.
+Nothing here signalled them; both scans were report-only and `--kill` does not exist. **Why they
+ended is not established**: the worker was in a `time.sleep`, which is finite by construction, so
+the sleep elapsing and the worker exiting is the only candidate needing nothing external — and it
+is **unverified**, with an outside kill on a shared machine neither observed nor excluded. The
+tracker's exit follows from the retention chain above once the write end closes, which is an
+inference and not a watched sequence. **The specimens cannot be inspected**, and the preservation
+criterion below is **overtaken by events rather than met or waived** — what `T258-R4` protects was
+spent without anyone deciding to spend it. Recorded in the evidence file under *What became of
+them*; nothing captured while they ran is withdrawn by their ending.
 
 **`pipe:[1629660]` is the resource-tracker channel, not a payload pipe, and that distinction carries
 the whole causal claim** (`T272-R1`). `popen_spawn_posix._launch()` takes `resource_tracker.getfd()`
@@ -8899,8 +8915,12 @@ been reproduced outside Windows. **It has not been.**
   platform is enough — the asymmetry is deliberate rather than inherited
 - **A find on either platform is visible without somebody noticing a stray process**, which is the
   criterion `T-258` wrote for `STARBASE` and is currently met on one platform
-- **The two specimens are preserved until inspected or deliberately released**, and revalidated by
-  pid, create time, command line and parent before any termination — `T258-R4`, unchanged
+- ~~**The two specimens are preserved until inspected or deliberately released**, and revalidated by
+  pid, create time, command line and parent before any termination — `T258-R4`, unchanged~~
+  **Overtaken by events 2026-08-20**: both ended on their own before anyone inspected or released
+  them. The rule it states is unchanged and still binds the next specimen; there is simply no
+  longer anything here for it to protect. **It is struck rather than deleted** because a criterion
+  that was never met and never waived is a different history from one that never existed
 - **No destructive scanner mode is added.** `--kill` was removed for the enumerate-then-signal race
   and does not come back
 

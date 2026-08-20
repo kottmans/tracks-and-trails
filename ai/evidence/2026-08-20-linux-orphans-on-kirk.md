@@ -8,6 +8,10 @@ Python processes that were not mine. **Preserved, not reaped**, on the same reas
 Captured non-destructively: `/proc`, `ps`, and `eu-stack` (read-only). No debugger was
 attached, nothing was signalled, and the project scanner was run in its report-only form.
 
+> **Both processes ended between this capture and 2026-08-20T06:20:48Z, and this file is now the
+> only record of them.** See *What became of them* at the bottom. Everything above is retained
+> exactly as captured; nothing in it is revised by their ending.
+
 ## What they are
 
 ```
@@ -113,3 +117,44 @@ its identity with it. That is the same product-versus-harness question `T-238` c
 the **spawned worker** — the process `T-268` classifies — has **two threads and 157 s of CPU**. The
 union of the two is not a process shape, and the tracker channel is not the payload channel `T-268`
 eliminated a peer from. Nothing here bears on why the five looked as they did.
+
+## What became of them
+
+**Both are gone.** `ps -o pid,ppid,etime,nlwp,time,rss,stat,args -p 432922,434366` on `kirk` at
+**2026-08-20T06:20:48Z** returns a header and no rows, and `tools/orphan_scan.py` reports
+**`no orphaned workers found`, exit 0** where the capture above recorded one worker and exit 1.
+
+**It was not a reboot.** `kirk` has been up since **2026-08-10 09:04:32**, 9 days 16 hours — the
+specimens were created on 2026-08-16 and the host has not restarted since before that. **Nothing in
+this session signalled them**; both scanner runs were report-only, and `--kill` does not exist.
+
+**Why they exited is not established, and the two candidates are not equally supported.**
+
+- **The worker's sleep elapsed.** `434366` was blocked in `hrtimer_nanosleep` — a `time.sleep`,
+  which is **finite by construction**. A sleep ending, the worker running to completion and exiting
+  is the only candidate that requires nothing outside the process. **Unverified**: no duration was
+  recoverable from the capture, and a stack is not a cause.
+- **Something outside ended it.** Another session on `kirk`, an OOM kill, or a user-level cleanup.
+  Not observed, and not excluded — `kirk` is a shared working machine.
+
+**The tracker's exit follows from the mechanism this file already recorded**, whichever ended the
+worker: `432922` was blocked reading `pipe:[1629660]` for EOF and `434366` held the write end, so
+the worker's exit closes it and the tracker's read returns. That is an **inference from the recorded
+retention chain**, not an observation — the order of the two deaths was not watched.
+
+**What this costs and what it changes.**
+
+- **The specimens cannot be inspected.** `T-272`'s preservation criterion is **overtaken by events**
+  rather than met or waived, and no ruling was ever needed. What `T258-R4` protects — a live
+  instance being worth more than the memory it costs — is exactly what was lost, without anyone
+  deciding to spend it.
+- **This one did not persist indefinitely**, and that is worth stating against `T-258`'s title.
+  On Linux, this pair lasted roughly **four days and then ended without intervention being
+  observed**. It says nothing about `3400` and `6924` on `STARBASE`, which are a different platform,
+  a different channel and a different process shape — the distinction `T272-R1` required.
+- **Nothing above is withdrawn.** The 3d20h existence, the scanner finding it unmodified on Linux,
+  the absent Linux schedule, and the unproved product reachability are all observations of a window
+  that closed; their ending does not reach back into them.
+- **The scheduling gap `T-272` is filed for is unchanged, and this is what it looks like.** A
+  scheduled Linux scan would have reported this pair on 2026-08-16. Nobody was looking, it was found
+  by accident four days later, and the subject expired within hours of being written up.
