@@ -8490,329 +8490,6 @@ to produce rather than on the question it was filed to answer.
 
 ---
 
-### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
-
-**Status:** **Ready — still undiagnosed, no longer blocking Phase 1** (`OPS-007`, maintainer risk
-decision 2026-07-29). Downgraded **High → Medium**. The faulting object of the access violation is
-unknown, product-versus-harness is unresolved, and the crash has never been reproduced: the
-recorded **0 in 36** deliberate full-suite runs, plus **0/15 at `35fc7ec`** (run `30478557533`,
-post-`T-090`) — **51 full-suite runs** in total, with 60 clean runs of the crashing test and 250
-clean in-process iterations beside them. **361 attempts, zero events**, across three shapes and two
-heads.
-
-**`T-128` is diagnosed as of 2026-08-04, and it was a *harness* defect** — a fixture teardown
-dropping a `QObject` that still owned a running `QTimer`, so the dispatcher followed a pointer into
-freed memory. Two core dumps and a sub-second reproduction establish it; `src/` is not implicated,
-because nothing there reads `is_idle` and the application holds one manager for the life of the
-process.
-
-**The free-evidence strategy below was tried on 2026-08-20 and it does not work. The runs were
-gathered; what they cannot do is discriminate.** Measured rather than assumed: **105 completed
-full-suite Windows runs** on `STARBASE` between 2026-08-04 and 2026-08-20, **zero native crashes**.
-Method, so it can be re-run: every `CI` run since the `T-128` teardown fix at `bd4dde8`, taking the
-`windows desktop` job's **`Full suite` step conclusion** rather than the job's — 92 `success` plus
-**13 `failure`**, and the 13 count because each one **ran to completion with an ordinary pytest
-tally**, which a process death cannot produce. 22 `cancelled` and 14 `skipped` are excluded because
-the suite did not finish; the 14 are `T-270`'s window, where the step never ran.
-
-**Why that settles nothing, and it is this task's own arithmetic that says so.** The pre-fix sample
-was **0 events in 51 full-suite runs**. The post-fix sample is **0 events in 105**. *"If the crash
-stops recurring"* cannot be observed as a change, **because it had already stopped recurring before
-the fix landed** — there is no measured pre-fix rate to beat, so the comparison is undefined. All
-the runs buy is a tighter ceiling: a 95% upper bound of **5.9% → 2.9%** per run by the rule of
-three, on a defect whose rate nobody has ever measured above zero.
-
-**This is `T238-R2`'s ruling arriving at a second task, and neither entry saw it coming.** That
-finding replaced `T-238`'s criterion 6 because *"a larger clean sample cannot distinguish **the
-guard worked** from **the crash was always this rare**"*. **The sentence transfers verbatim**: swap
-*guard* for *corrected teardown* and it is the paragraph below. Two tasks proposed the same
-instrument against the same class of defect, and one of them had already had it ruled out.
-
-**So what would actually move this is `T-092`, and nothing cheaper.** Clean runs cannot supply
-criterion 2; only a **recurrence with a dump** can, which is what `T-092` arms `STARBASE` to
-capture. Until then the honest position is unchanged: the residual is accepted under `OPS-007`, and
-**the accumulating-runs plan is recorded as tried and insufficient rather than left open as
-available**.
-
-*(The paragraph below proposed that plan and is kept, because it is what was tried. It was
-reasonable when written — what it missed is that its own Status paragraph already recorded the
-pre-fix sample as clean, which is the fact that makes it unable to discriminate.)*
-
-**That is a lead here, and it is the strongest one this task has ever had.** The Windows crash
-recorded above happened in
-`test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget` — **the same file and the
-same `manager` fixture** whose teardown `T-128` found at fault, with the same `ResultPump` thread
-alive in the traceback. The corrected teardown is now on both platforms.
-
-**It is still not established as the same defect, and the bar has not moved.** Windows produced an
-access violation and `T-128` a SIGSEGV; this task's faulting object was never determined, so there
-is still nothing to compare against; and *a stack is not a cause* — this task's own words, which
-apply to the resemblance as much as to the stack. What can be done now is cheap and was not before:
-**`STARBASE` runs the full suite on every push (`OPS-010`), so repeated green Windows runs against
-the corrected teardown are evidence that costs nothing extra to gather.** If the crash stops
-recurring there over a meaningful number of runs, that is the first positive evidence this task has
-had; if it recurs, the harness fix is ruled out as its cause and that is worth just as much.
-
-*(This block read "A candidate reproduction exists … `T-128` owns finding out". `T-128` has now
-found out, and what it found does not implicate the product.)*
-
-**The four acceptance criteria below stay unmet, deliberately not rewritten.** All four presuppose
-a deliberate reproduction, which is the one thing no instrument has produced, so `OPS-007` accepts
-the residual rather than redefining the bar. `T-092` arms `STARBASE` to capture a crash dump so a
-recurrence supplies criterion 2 — *a stack is not a cause* — instead of another anecdote.
-
-*(This read "Ready — still undiagnosed and still blocking Phase 1" until `OPS-007`. Before that it
-read "In Review — diagnosed and fixed", which `T074-R4` found unsupported; what was fixed is
-`T-090`, and `T-090` is **not** established as this crash's cause — the pre-fix sample was equally
-clean, so a clean post-fix run carries no causal weight.)*
-
-**A separate defect was found on the way and is `T-090`.** The `T-038` log listener could be left
-reading a queue that something else had closed — a real race on the same thread the crash
-traceback names, now fixed with tests. **That is not this task.** Calling it "diagnosed and fixed"
-claimed a causal link to the historical access violation that no evidence supports, which is what
-`T074-R4` reports. This task's acceptance criteria remain unmet.
-
-*(Superseded, and worth keeping: this block read "diagnosed and fixed" on 2026-07-29. Finding a
-real defect near a crash is not the same as finding the crash's cause, and the wording did not
-keep them apart.)*
-`0/12 at ea53c71` (run `30429327464`). That is evidence against the original 25% anecdote and is
-**not** a rate: the four original observations came from materially different heads, so they are
-not one population, and a single event gives no bound worth quoting (`T074-R1`). The faulting
-object is unknown, product-pump versus harness is unresolved, and there is no correction mutation.
-**Phase 1's Windows criterion stays unverified.** *(This block claimed "1 in 16, not 1 in 4"; that
-promoted samples from changed heads into a stable rate.)*
-**Owner:** Implementer
-**Priority:** **Medium** — downgraded from High by `OPS-007`. It is still an access violation in a
-module under `src/`, in the suite `OPS-005` and `T-073` made Phase 1's only Windows gate; what
-changed is that 361 attempts produced no reproduction, so there is no work left that repetition can
-do. It returns to High the moment it recurs
-**Phase:** Phase 1
-**Depends on:** nothing. It needs the Windows runner, which exists
-**Relevant context:** `T-073`, `OPS-005`, `ARC-002`, `src/tracks_and_trails/downloader/result_pump.py`
-**Affected surfaces:** unknown — `downloader/result_pump.py` and/or
-`tests/integration/test_manager.py`
-**Risk:** **High to leave.** An intermittent crash makes every green Windows run mean less than it
-appears to
-
-#### Scope
-
-The full suite on `STARBASE` died with exit **139**:
-
-```
-tests/integration/test_manager.py::test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget
-Windows fatal exception: access violation
-Thread 0x00000c88 [ResultPump] (most recent call first):
-Thread 0x000024dc [Thread-50 (_monitor)] (most recent call first):
-  File "...\tests\integration\test_manager.py", line 1028 in
-    test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget
-Segmentation fault
-```
-
-**It is intermittent, and the evidence for that is unusually clean.** The failing run was
-`30416495270` at `454b80e` — a **documentation-only** commit whose code is byte-identical to
-`38650dd`, which had passed the same suite minutes earlier.
-
-| Run | Head | Full suite |
-|---|---|---|
-| `30415333608` | `c41e2ef` | pass |
-| `30416156751` | `38650dd` | pass |
-| `30416495270` | `454b80e` | **access violation** |
-| `30416723791` | `32f9bd2` | pass |
-
-**One in four**, with no code difference between a pass and the failure.
-
-**Line 1028 is before the cancellation**, which narrows this usefully. It is
-`assert spin(lambda: bool(recorder.progress), timeout=60)` — the wait for the *first progress
-message*, three lines above `download.cancel()`. So the crash is not in the escalation path the
-test is named for. It is in ordinary message delivery: `ResultPump` is a `QThread` emitting Qt
-signals carrying Python objects from its `run()`, while the main thread sits in `spin()` calling
-`app.processEvents()`.
-
-#### What is not known
-
-Everything about the cause. Recorded as a question rather than a hypothesis dressed as one:
-
-- Whether the fault is in **product code** (`result_pump.py`, in `src/`, so `ARC-002`'s pump is a
-  candidate) or in the **test harness** (fixture teardown ordering, a receiver outliving or
-  predeceasing a queued emission).
-- Whether it is specific to `child_ignoring_cancellation`, which is the one worker in the suite
-  that deliberately refuses to stop, or reachable by any job.
-- Whether it reproduces at all outside `STARBASE`. It has never been seen on Linux across many
-  full-suite runs, but Linux has never been where this project's process faults show up.
-
-#### Diagnostic progress, 2026-07-29 — two things narrowed, cause still unknown
-
-**It does not reproduce on Linux.** Two attempts, both clean:
-
-| Attempt | Result |
-|---|---|
-| The crashing test alone, 40 iterations | **40 passed, 0 non-zero exits** |
-| `tests/integration/test_manager.py` entire, 5 runs | **5 × 71 passed**, no crash, no fatal exception |
-
-That is a negative result and is worth exactly what a negative result is worth. It does **not**
-clear Linux: `T-069` was ordering-dependent and failed only when one specific test ran first, and
-the Windows crash happened inside a full-suite run, not a module run. What it does establish is
-that the fault is not reachable by simple repetition of the failing test on this platform, so
-whatever it is depends on the platform, on suite-wide ordering, or on both.
-
-**The most obvious cause is already defended against, and this is the more useful half.** The
-classic PySide6 access violation of this shape is a `QThread` object being destroyed while its
-`run()` is still executing — and `ResultPump` emits `session_ended` from *inside* `run()`, so a
-slot that dropped the last reference would do exactly that. It cannot: `_release()` in
-`manager.py` refuses to drop a session while its pump is live —
-
-```python
-if session.pump_started and not (session.pump_finished or session.pump.isFinished()):
-    return
-```
-
-— and `_sessions.pop()` is the only thing holding the pump. `_Session` even documents the two
-moments as distinct: "the thread emits `session_ended` from inside `run()`." So the first
-hypothesis anyone would reach for is not it, which is worth recording so nobody spends the
-afternoon re-deriving it.
-
-**Still open.** The crash traceback named two threads — `[ResultPump]` and
-`Thread-50 (_monitor)`, which is `multiprocessing`'s — and the fault was at the wait for the first
-progress message. Whether it is the pump, the queue read beneath it, the interaction between them,
-or the harness remains unanswered. Nothing here should be read as narrowing it to product code.
-
-#### The ordering hypothesis, tested — 2026-07-29
-
-The earlier attempts ran the crashing test alone and its module. The Windows failure happened
-inside a **full-suite** run, and `T-069`'s precedent is that suite ordering was the entire story,
-so that was the remaining Linux hypothesis. Six deliberate full-suite runs:
-
-| Attempt | Result |
-|---|---|
-| Crashing test alone, 40 iterations | 40 passed |
-| `test_manager.py` entire, 5 runs | 5 × 71 passed |
-| **Full suite, 6 runs** | **6 × 1401 passed, every exit code 0** |
-
-**Linux is now exhausted as a route to this defect**, at least by repetition. Three shapes of
-attempt, none of which reproduced it. That is not proof of a Windows-only fault — it is the
-absence of a Linux reproduction after looking in the three places worth looking.
-
-**So the measurement has to happen on the machine that shows it.** `.github/workflows/t074-repeat.yml`
-runs the suite N times on `STARBASE` and reports a rate. Three things about it are deliberate:
-
-- **Manual dispatch, in its own workflow.** `ci.yml` is a gate and runs on every push; this is an
-  instrument. Folding it in would mean paying its cost on every push or making a gate
-  conditional.
-- **It does not stop on the first crash.** A rate needs every iteration attempted; stopping early
-  turns it back into an anecdote.
-- **It separates crashes from failures by exit code.** `pytest` exits 1 for a failing assertion.
-  A crash takes the interpreter with it, so the code is a signal or an access violation — and
-  `T-074` is not a failing assertion. Counting them together would let an ordinary red test
-  inflate the crash rate.
-
-"About one in four" came from four ordinary CI runs, where the denominator was however many times
-the gate happened to run. This makes the denominator a choice, which is what the acceptance
-criteria ask for.
-
-#### The instrument ran — 2026-07-29, run `30429327464`
-
-Twelve full-suite iterations on `STARBASE`, every one attempted:
-
-| Iterations | Crashes | Failures |
-|---|---|---|
-| **12** | **0** | 0 — `1395 passed, 20 skipped, 32 deselected` each time, 209-217 s |
-
-**"About one in four" was a denominator of four**, and this batch is not a replacement for it.
-`0/12 at ea53c71` says the crash is not reliably reproducible at that head. It does **not**
-establish a rate (`T074-R1`): the four earlier runs and these twelve are not one controlled
-population — the manager and the full-suite composition changed materially between them, including
-new integration tests — and after a single event an aggregate point estimate is not a bound. A
-clean run is unremarkable under a 25% failure probability and under a 6% one alike.
-
-The crash is real. It happened with a traceback naming `[ResultPump]` and `multiprocessing`'s
-`_monitor`, on a documentation-only commit whose code was byte-identical to a passing run.
-
-**It stays a Phase 1 blocker, and the reason is where it landed.** The only observed native crash
-is in ordinary `ResultPump` delivery — the exact `ARC-002` path Phase 1 exists to prove — so the
-uncertainty cannot be resolved in favour of product safety by counting clean runs. Downgrading it
-or accepting the risk is the maintainer's explicit decision to record, not an inference this task
-may draw.
-
-**Still unknown: the cause.** Nothing here narrows it. A larger batch is running to either bound
-the rate further or catch one with fresh diagnostics; the workflow keeps every iteration's output,
-so a crash caught there arrives with its traceback rather than as a count.
-
-*(Superseded: this section previously read "Not yet run. The job is authored and pushed;
-executing it needs `STARBASE` and is the next step on this task." It has now run.)*
-
-#### Diagnostic session, 2026-07-29 — narrowed, not diagnosed
-
-**Both threads named in the crash are ours.** The traceback listed `[ResultPump]` and
-`Thread-50 (_monitor)`, and `_monitor` was read as `multiprocessing`'s. It is not: `multiprocessing`
-declares no such function, and `_monitor` is
-`core/logging.py`'s `_ToWhicheverHandlersWeHaveNow._monitor` — the `T-038` log listener's thread
-body. So the crash happened with the result pump and the **logging listener** both live, which
-points somewhere the earlier notes did not.
-
-**A mechanism worth testing, stated as a hypothesis.** `_monitor()`'s `finally` closes the worker
-log queue — a `multiprocessing.Queue` — and `stop_listening_for_worker_logs()` **waits for
-nothing**, deliberately (`T038-R2`, and it is right to: the GUI thread must not block on a slow
-handler). So the close runs on the listener thread while parent threads may still be logging into
-that queue and a spawned writer may still hold the other end. Closing a multiprocessing queue
-under a concurrent user is the kind of thing that faults natively instead of raising, which is the
-shape this crash took. The crashing test is also the one that **kills** a worker rather than
-asking it to stop, so a writer dying mid-record is in scope there and almost nowhere else.
-
-**Nothing here demonstrates that.** It is a mechanism that fits, and the file it implicates has a
-recorded reason for the behaviour. It is written down so the next attempt starts from a candidate
-rather than from the whole suite.
-
-**What was attempted, and what it cost:**
-
-| Attempt | Result |
-|---|---|
-| Repeat batch, 24 full-suite iterations on `STARBASE` | **0 crashes** (run `30454206697`) |
-| Both batches together, recent heads | **0 in 36** |
-| Repeat batch, 15 full-suite iterations at `35fc7ec`, **post-`T-090`** | **0 crashes, 0 failures** (run `30478557533`) |
-| The crashing test alone, 60 iterations on Windows | **60 passed, 0 failed, 0 crashed** |
-| A direct stress of the logging-teardown race | **unusable — it hung on Linux before its first iteration** |
-
-The last row is the honest one. The harness drives a parent thread logging continuously while a
-spawned writer is killed and the listener is torn down; it never reached a print, so it deadlocked
-in its own setup rather than measuring anything. A failed instrument is not a negative result, and
-it is recorded as neither.
-
-**Classification is unchanged: product versus harness is still unresolved**, and `T-074` remains a
-High Phase 1 blocker. What has changed is where to look — logging teardown alongside the pump,
-rather than the pump alone.
-
-#### What the diagnostic session produced — 2026-07-29
-
-It found a **different** defect, now filed as `T-090`: the log listener could be left reading a
-queue something else had closed. The evidence for that moved there with it.
-
-**What it did not produce is anything about this crash.** The access violation has never been
-reproduced — 0 in 36 full-suite runs, 60 clean runs of the crashing test alone, 250 clean
-in-process iterations — so its faulting object is still unknown and it is still unclassified
-between product and harness. `T074-R4`: a real race on the same thread is a candidate, not a
-cause, and the crash's absence cannot distinguish them when it was already absent every time.
-
-**What is genuinely narrowed** is that `_monitor` in the traceback is the `T-038` log listener
-rather than anything in `multiprocessing`, so the next attempt has two of our own threads to
-account for rather than one.
-
-#### Acceptance criteria
-
-- The failure is **reproduced deliberately**, with a rate, rather than waited for
-- The faulting thread and the object it touched are identified — a stack is not a cause
-- The fix is proven by a mutation that restores the crash, not only by runs that stop crashing
-- If it turns out to be the harness rather than the pump, that is recorded explicitly, because
-  the opposite conclusion is the one a reader would assume from the file it crashed in
-
-#### Out of scope
-
-- Retrying, `xfail`, or a rerun plugin. `T-069` established the rule: an intermittent failure gets
-  its trigger found, not its symptom hidden. The one time this project reached for a retry the
-  reviewer's instruction was explicit — *do not retry or xfail*
-- `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
-
----
-
 ## Proposed — Phase 0
 
 *(Empty since 2026-08-15, when `T-021` — the only entry it ever held after the phase was formally
@@ -9910,6 +9587,350 @@ one is still running as of the commit that records it.
 - Removing or weakening `contain_this_application()`. The outer Job is defence in depth against an
   observation nobody has explained, which is the strongest reason to keep it, not to drop it
 - `T-266`'s decision. That is measured and closed; this is the question it left
+
+---
+
+### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
+
+**Status:** **Blocked — on `T-092`, 2026-08-20. Still undiagnosed, still not blocking Phase 1**
+(`OPS-007`, maintainer risk decision 2026-07-29). Downgraded **High → Medium**.
+
+**The dependency was always there; the entry just never said it.** This task's own text already
+concluded that only a **recurrence carrying a dump** can supply criterion 2 — *a stack is not a
+cause* — and arming `STARBASE` to capture that dump **is** `T-092`. Meanwhile `Depends on:` read
+*"nothing"* and the entry sat under `## Ready`, which asserts somebody can pick it up and make
+progress. **Nobody can.** Repetition is spent at **466 attempts** — this entry's 361 plus the 105
+full-suite Windows runs counted on 2026-08-20, which are more of the same shape rather than a new
+one — and the one plan that remained — accumulating clean Windows runs — was measured on 2026-08-20 and
+**cannot discriminate**, because the pre-fix sample is equally clean.
+
+**What this changes is the board, not the risk.** The residual `OPS-007` accepted is unchanged and
+still accepted; the four criteria are still deliberately not rewritten; and **the detection is in
+the code rather than in this entry** — a recurrence turns the `windows desktop` job red whether or
+not anybody is holding this task open. What moves is the honest label: this is waiting on a
+machine being armed, which is `T-092`, which is waiting on a person.
+
+*(Filed as a correction rather than a re-triage: nothing about the defect changed on 2026-08-20.
+What changed is that the last avenue this entry proposed was tried and recorded as insufficient,
+which left `Ready` claiming work that does not exist.)* The faulting object of the access violation is
+unknown, product-versus-harness is unresolved, and the crash has never been reproduced: the
+recorded **0 in 36** deliberate full-suite runs, plus **0/15 at `35fc7ec`** (run `30478557533`,
+post-`T-090`) — **51 full-suite runs** in total, with 60 clean runs of the crashing test and 250
+clean in-process iterations beside them. **361 attempts, zero events**, across three shapes and two
+heads.
+
+**`T-128` is diagnosed as of 2026-08-04, and it was a *harness* defect** — a fixture teardown
+dropping a `QObject` that still owned a running `QTimer`, so the dispatcher followed a pointer into
+freed memory. Two core dumps and a sub-second reproduction establish it; `src/` is not implicated,
+because nothing there reads `is_idle` and the application holds one manager for the life of the
+process.
+
+**The free-evidence strategy below was tried on 2026-08-20 and it does not work. The runs were
+gathered; what they cannot do is discriminate.** Measured rather than assumed: **105 completed
+full-suite Windows runs** on `STARBASE` between 2026-08-04 and 2026-08-20, **zero native crashes**.
+Method, so it can be re-run: every `CI` run since the `T-128` teardown fix at `bd4dde8`, taking the
+`windows desktop` job's **`Full suite` step conclusion** rather than the job's — 92 `success` plus
+**13 `failure`**, and the 13 count because each one **ran to completion with an ordinary pytest
+tally**, which a process death cannot produce. 22 `cancelled` and 14 `skipped` are excluded because
+the suite did not finish; the 14 are `T-270`'s window, where the step never ran.
+
+**Why that settles nothing, and it is this task's own arithmetic that says so.** The pre-fix sample
+was **0 events in 51 full-suite runs**. The post-fix sample is **0 events in 105**. *"If the crash
+stops recurring"* cannot be observed as a change, **because it had already stopped recurring before
+the fix landed** — there is no measured pre-fix rate to beat, so the comparison is undefined. All
+the runs buy is a tighter ceiling: a 95% upper bound of **5.9% → 2.9%** per run by the rule of
+three, on a defect whose rate nobody has ever measured above zero.
+
+**This is `T238-R2`'s ruling arriving at a second task, and neither entry saw it coming.** That
+finding replaced `T-238`'s criterion 6 because *"a larger clean sample cannot distinguish **the
+guard worked** from **the crash was always this rare**"*. **The sentence transfers verbatim**: swap
+*guard* for *corrected teardown* and it is the paragraph below. Two tasks proposed the same
+instrument against the same class of defect, and one of them had already had it ruled out.
+
+**So what would actually move this is `T-092`, and nothing cheaper.** Clean runs cannot supply
+criterion 2; only a **recurrence with a dump** can, which is what `T-092` arms `STARBASE` to
+capture. Until then the honest position is unchanged: the residual is accepted under `OPS-007`, and
+**the accumulating-runs plan is recorded as tried and insufficient rather than left open as
+available**.
+
+*(The paragraph below proposed that plan and is kept, because it is what was tried. It was
+reasonable when written — what it missed is that its own Status paragraph already recorded the
+pre-fix sample as clean, which is the fact that makes it unable to discriminate.)*
+
+**That is a lead here, and it is the strongest one this task has ever had.** The Windows crash
+recorded above happened in
+`test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget` — **the same file and the
+same `manager` fixture** whose teardown `T-128` found at fault, with the same `ResultPump` thread
+alive in the traceback. The corrected teardown is now on both platforms.
+
+**It is still not established as the same defect, and the bar has not moved.** Windows produced an
+access violation and `T-128` a SIGSEGV; this task's faulting object was never determined, so there
+is still nothing to compare against; and *a stack is not a cause* — this task's own words, which
+apply to the resemblance as much as to the stack. What can be done now is cheap and was not before:
+**`STARBASE` runs the full suite on every push (`OPS-010`), so repeated green Windows runs against
+the corrected teardown are evidence that costs nothing extra to gather.** If the crash stops
+recurring there over a meaningful number of runs, that is the first positive evidence this task has
+had; if it recurs, the harness fix is ruled out as its cause and that is worth just as much.
+
+*(This block read "A candidate reproduction exists … `T-128` owns finding out". `T-128` has now
+found out, and what it found does not implicate the product.)*
+
+**The four acceptance criteria below stay unmet, deliberately not rewritten.** All four presuppose
+a deliberate reproduction, which is the one thing no instrument has produced, so `OPS-007` accepts
+the residual rather than redefining the bar. `T-092` arms `STARBASE` to capture a crash dump so a
+recurrence supplies criterion 2 — *a stack is not a cause* — instead of another anecdote.
+
+*(This read "Ready — still undiagnosed and still blocking Phase 1" until `OPS-007`. Before that it
+read "In Review — diagnosed and fixed", which `T074-R4` found unsupported; what was fixed is
+`T-090`, and `T-090` is **not** established as this crash's cause — the pre-fix sample was equally
+clean, so a clean post-fix run carries no causal weight.)*
+
+**A separate defect was found on the way and is `T-090`.** The `T-038` log listener could be left
+reading a queue that something else had closed — a real race on the same thread the crash
+traceback names, now fixed with tests. **That is not this task.** Calling it "diagnosed and fixed"
+claimed a causal link to the historical access violation that no evidence supports, which is what
+`T074-R4` reports. This task's acceptance criteria remain unmet.
+
+*(Superseded, and worth keeping: this block read "diagnosed and fixed" on 2026-07-29. Finding a
+real defect near a crash is not the same as finding the crash's cause, and the wording did not
+keep them apart.)*
+`0/12 at ea53c71` (run `30429327464`). That is evidence against the original 25% anecdote and is
+**not** a rate: the four original observations came from materially different heads, so they are
+not one population, and a single event gives no bound worth quoting (`T074-R1`). The faulting
+object is unknown, product-pump versus harness is unresolved, and there is no correction mutation.
+**Phase 1's Windows criterion stays unverified.** *(This block claimed "1 in 16, not 1 in 4"; that
+promoted samples from changed heads into a stable rate.)*
+**Owner:** Implementer
+**Priority:** **Medium** — downgraded from High by `OPS-007`. It is still an access violation in a
+module under `src/`, in the suite `OPS-005` and `T-073` made Phase 1's only Windows gate; what
+changed is that 361 attempts produced no reproduction, so there is no work left that repetition can
+do. It returns to High the moment it recurs
+**Phase:** Phase 1
+**Depends on:** **`T-092`** — which is itself Blocked on somebody at `STARBASE`. The Windows
+runner exists; what does not exist is a configured crash dump, and without one a recurrence
+produces another anecdote rather than criterion 2
+**Relevant context:** `T-073`, `OPS-005`, `ARC-002`, `src/tracks_and_trails/downloader/result_pump.py`
+**Affected surfaces:** unknown — `downloader/result_pump.py` and/or
+`tests/integration/test_manager.py`
+**Risk:** **High to leave.** An intermittent crash makes every green Windows run mean less than it
+appears to
+
+#### Scope
+
+The full suite on `STARBASE` died with exit **139**:
+
+```
+tests/integration/test_manager.py::test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget
+Windows fatal exception: access violation
+Thread 0x00000c88 [ResultPump] (most recent call first):
+Thread 0x000024dc [Thread-50 (_monitor)] (most recent call first):
+  File "...\tests\integration\test_manager.py", line 1028 in
+    test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget
+Segmentation fault
+```
+
+**It is intermittent, and the evidence for that is unusually clean.** The failing run was
+`30416495270` at `454b80e` — a **documentation-only** commit whose code is byte-identical to
+`38650dd`, which had passed the same suite minutes earlier.
+
+| Run | Head | Full suite |
+|---|---|---|
+| `30415333608` | `c41e2ef` | pass |
+| `30416156751` | `38650dd` | pass |
+| `30416495270` | `454b80e` | **access violation** |
+| `30416723791` | `32f9bd2` | pass |
+
+**One in four**, with no code difference between a pass and the failure.
+
+**Line 1028 is before the cancellation**, which narrows this usefully. It is
+`assert spin(lambda: bool(recorder.progress), timeout=60)` — the wait for the *first progress
+message*, three lines above `download.cancel()`. So the crash is not in the escalation path the
+test is named for. It is in ordinary message delivery: `ResultPump` is a `QThread` emitting Qt
+signals carrying Python objects from its `run()`, while the main thread sits in `spin()` calling
+`app.processEvents()`.
+
+#### What is not known
+
+Everything about the cause. Recorded as a question rather than a hypothesis dressed as one:
+
+- Whether the fault is in **product code** (`result_pump.py`, in `src/`, so `ARC-002`'s pump is a
+  candidate) or in the **test harness** (fixture teardown ordering, a receiver outliving or
+  predeceasing a queued emission).
+- Whether it is specific to `child_ignoring_cancellation`, which is the one worker in the suite
+  that deliberately refuses to stop, or reachable by any job.
+- Whether it reproduces at all outside `STARBASE`. It has never been seen on Linux across many
+  full-suite runs, but Linux has never been where this project's process faults show up.
+
+#### Diagnostic progress, 2026-07-29 — two things narrowed, cause still unknown
+
+**It does not reproduce on Linux.** Two attempts, both clean:
+
+| Attempt | Result |
+|---|---|
+| The crashing test alone, 40 iterations | **40 passed, 0 non-zero exits** |
+| `tests/integration/test_manager.py` entire, 5 runs | **5 × 71 passed**, no crash, no fatal exception |
+
+That is a negative result and is worth exactly what a negative result is worth. It does **not**
+clear Linux: `T-069` was ordering-dependent and failed only when one specific test ran first, and
+the Windows crash happened inside a full-suite run, not a module run. What it does establish is
+that the fault is not reachable by simple repetition of the failing test on this platform, so
+whatever it is depends on the platform, on suite-wide ordering, or on both.
+
+**The most obvious cause is already defended against, and this is the more useful half.** The
+classic PySide6 access violation of this shape is a `QThread` object being destroyed while its
+`run()` is still executing — and `ResultPump` emits `session_ended` from *inside* `run()`, so a
+slot that dropped the last reference would do exactly that. It cannot: `_release()` in
+`manager.py` refuses to drop a session while its pump is live —
+
+```python
+if session.pump_started and not (session.pump_finished or session.pump.isFinished()):
+    return
+```
+
+— and `_sessions.pop()` is the only thing holding the pump. `_Session` even documents the two
+moments as distinct: "the thread emits `session_ended` from inside `run()`." So the first
+hypothesis anyone would reach for is not it, which is worth recording so nobody spends the
+afternoon re-deriving it.
+
+**Still open.** The crash traceback named two threads — `[ResultPump]` and
+`Thread-50 (_monitor)`, which is `multiprocessing`'s — and the fault was at the wait for the first
+progress message. Whether it is the pump, the queue read beneath it, the interaction between them,
+or the harness remains unanswered. Nothing here should be read as narrowing it to product code.
+
+#### The ordering hypothesis, tested — 2026-07-29
+
+The earlier attempts ran the crashing test alone and its module. The Windows failure happened
+inside a **full-suite** run, and `T-069`'s precedent is that suite ordering was the entire story,
+so that was the remaining Linux hypothesis. Six deliberate full-suite runs:
+
+| Attempt | Result |
+|---|---|
+| Crashing test alone, 40 iterations | 40 passed |
+| `test_manager.py` entire, 5 runs | 5 × 71 passed |
+| **Full suite, 6 runs** | **6 × 1401 passed, every exit code 0** |
+
+**Linux is now exhausted as a route to this defect**, at least by repetition. Three shapes of
+attempt, none of which reproduced it. That is not proof of a Windows-only fault — it is the
+absence of a Linux reproduction after looking in the three places worth looking.
+
+**So the measurement has to happen on the machine that shows it.** `.github/workflows/t074-repeat.yml`
+runs the suite N times on `STARBASE` and reports a rate. Three things about it are deliberate:
+
+- **Manual dispatch, in its own workflow.** `ci.yml` is a gate and runs on every push; this is an
+  instrument. Folding it in would mean paying its cost on every push or making a gate
+  conditional.
+- **It does not stop on the first crash.** A rate needs every iteration attempted; stopping early
+  turns it back into an anecdote.
+- **It separates crashes from failures by exit code.** `pytest` exits 1 for a failing assertion.
+  A crash takes the interpreter with it, so the code is a signal or an access violation — and
+  `T-074` is not a failing assertion. Counting them together would let an ordinary red test
+  inflate the crash rate.
+
+"About one in four" came from four ordinary CI runs, where the denominator was however many times
+the gate happened to run. This makes the denominator a choice, which is what the acceptance
+criteria ask for.
+
+#### The instrument ran — 2026-07-29, run `30429327464`
+
+Twelve full-suite iterations on `STARBASE`, every one attempted:
+
+| Iterations | Crashes | Failures |
+|---|---|---|
+| **12** | **0** | 0 — `1395 passed, 20 skipped, 32 deselected` each time, 209-217 s |
+
+**"About one in four" was a denominator of four**, and this batch is not a replacement for it.
+`0/12 at ea53c71` says the crash is not reliably reproducible at that head. It does **not**
+establish a rate (`T074-R1`): the four earlier runs and these twelve are not one controlled
+population — the manager and the full-suite composition changed materially between them, including
+new integration tests — and after a single event an aggregate point estimate is not a bound. A
+clean run is unremarkable under a 25% failure probability and under a 6% one alike.
+
+The crash is real. It happened with a traceback naming `[ResultPump]` and `multiprocessing`'s
+`_monitor`, on a documentation-only commit whose code was byte-identical to a passing run.
+
+**It stays a Phase 1 blocker, and the reason is where it landed.** The only observed native crash
+is in ordinary `ResultPump` delivery — the exact `ARC-002` path Phase 1 exists to prove — so the
+uncertainty cannot be resolved in favour of product safety by counting clean runs. Downgrading it
+or accepting the risk is the maintainer's explicit decision to record, not an inference this task
+may draw.
+
+**Still unknown: the cause.** Nothing here narrows it. A larger batch is running to either bound
+the rate further or catch one with fresh diagnostics; the workflow keeps every iteration's output,
+so a crash caught there arrives with its traceback rather than as a count.
+
+*(Superseded: this section previously read "Not yet run. The job is authored and pushed;
+executing it needs `STARBASE` and is the next step on this task." It has now run.)*
+
+#### Diagnostic session, 2026-07-29 — narrowed, not diagnosed
+
+**Both threads named in the crash are ours.** The traceback listed `[ResultPump]` and
+`Thread-50 (_monitor)`, and `_monitor` was read as `multiprocessing`'s. It is not: `multiprocessing`
+declares no such function, and `_monitor` is
+`core/logging.py`'s `_ToWhicheverHandlersWeHaveNow._monitor` — the `T-038` log listener's thread
+body. So the crash happened with the result pump and the **logging listener** both live, which
+points somewhere the earlier notes did not.
+
+**A mechanism worth testing, stated as a hypothesis.** `_monitor()`'s `finally` closes the worker
+log queue — a `multiprocessing.Queue` — and `stop_listening_for_worker_logs()` **waits for
+nothing**, deliberately (`T038-R2`, and it is right to: the GUI thread must not block on a slow
+handler). So the close runs on the listener thread while parent threads may still be logging into
+that queue and a spawned writer may still hold the other end. Closing a multiprocessing queue
+under a concurrent user is the kind of thing that faults natively instead of raising, which is the
+shape this crash took. The crashing test is also the one that **kills** a worker rather than
+asking it to stop, so a writer dying mid-record is in scope there and almost nowhere else.
+
+**Nothing here demonstrates that.** It is a mechanism that fits, and the file it implicates has a
+recorded reason for the behaviour. It is written down so the next attempt starts from a candidate
+rather than from the whole suite.
+
+**What was attempted, and what it cost:**
+
+| Attempt | Result |
+|---|---|
+| Repeat batch, 24 full-suite iterations on `STARBASE` | **0 crashes** (run `30454206697`) |
+| Both batches together, recent heads | **0 in 36** |
+| Repeat batch, 15 full-suite iterations at `35fc7ec`, **post-`T-090`** | **0 crashes, 0 failures** (run `30478557533`) |
+| The crashing test alone, 60 iterations on Windows | **60 passed, 0 failed, 0 crashed** |
+| A direct stress of the logging-teardown race | **unusable — it hung on Linux before its first iteration** |
+
+The last row is the honest one. The harness drives a parent thread logging continuously while a
+spawned writer is killed and the listener is torn down; it never reached a print, so it deadlocked
+in its own setup rather than measuring anything. A failed instrument is not a negative result, and
+it is recorded as neither.
+
+**Classification is unchanged: product versus harness is still unresolved**, and `T-074` remains a
+High Phase 1 blocker. What has changed is where to look — logging teardown alongside the pump,
+rather than the pump alone.
+
+#### What the diagnostic session produced — 2026-07-29
+
+It found a **different** defect, now filed as `T-090`: the log listener could be left reading a
+queue something else had closed. The evidence for that moved there with it.
+
+**What it did not produce is anything about this crash.** The access violation has never been
+reproduced — 0 in 36 full-suite runs, 60 clean runs of the crashing test alone, 250 clean
+in-process iterations — so its faulting object is still unknown and it is still unclassified
+between product and harness. `T074-R4`: a real race on the same thread is a candidate, not a
+cause, and the crash's absence cannot distinguish them when it was already absent every time.
+
+**What is genuinely narrowed** is that `_monitor` in the traceback is the `T-038` log listener
+rather than anything in `multiprocessing`, so the next attempt has two of our own threads to
+account for rather than one.
+
+#### Acceptance criteria
+
+- The failure is **reproduced deliberately**, with a rate, rather than waited for
+- The faulting thread and the object it touched are identified — a stack is not a cause
+- The fix is proven by a mutation that restores the crash, not only by runs that stop crashing
+- If it turns out to be the harness rather than the pump, that is recorded explicitly, because
+  the opposite conclusion is the one a reader would assume from the file it crashed in
+
+#### Out of scope
+
+- Retrying, `xfail`, or a rerun plugin. `T-069` established the rule: an intermittent failure gets
+  its trigger found, not its symptom hidden. The one time this project reached for a retry the
+  reviewer's instruction was explicit — *do not retry or xfail*
+- `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
 
 ---
 
