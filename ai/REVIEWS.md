@@ -19646,3 +19646,61 @@ and no further review pass is requested.
 The combined local head remains held and unpushed; origin/main remains 5aab82d. The Reviewer changed
 only this append-only record and did not modify any reviewed file, handoff, test, workflow, push or
 remote state.
+
+---
+
+## 2026-08-21 — T258-R10 authorised record-only re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-258
+**Original evidence record:** `1b31aac72580da8c5dae6f56e2cb31932bf48dde`
+**Correction commit:** `39478586ba9a4350bef2a2109e849a0391837b35`
+**Exact correction boundary:** `166ce398481f8cac9e6f6c8020abb7f9e60b71dc..3947858`
+**Authorisation:** The maintainer authorised one record-only focused pass on 2026-08-19, recorded
+at `3436b9920a1fe8fbff6bca9778b79d3e32d91326`
+**Verdict:** **Approved. T258-R10 is Resolved; no new findings.** All three operative copies now
+give the same answer: criterion 5 executed and is met, T258-R5 is Resolved, and T-268 is not a
+dependency of T-258.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Authorised-pass result | Status |
+|---|---|---:|---|---|
+| **T258-R10** | **Medium** | Yes | The T-258 status names the successful scanner run and T258-R5's resolution. The acceptance-criteria tally now says four criteria are met and one is closed as unobtainable. Criterion 5 records run `32214730271`, its seven matches, exit 1 and successful evidence upload, rather than saying the wiring has not executed. STATUS likewise records the resolved gate and the record-only review disposition. Both records say T-268 gates nothing in T-258. | **Resolved at `3947858`** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Before-state reproduction | At `1b31aac`, T-258's header says criterion 5 is met while its tally says “wired and unexecuted” and its criterion subsection says “has not executed yet” and “Not yet met”; STATUS also records the run and then says the task waits on that first execution. |
+| Exact correction scope | `3947858^..3947858` changes only `ai/TASKS.md` and `ai/STATUS.md`. No source, workflow, test, dependency or build file changed. |
+| Sibling audit | The T-258 header, criteria tally and criterion 5 subsection all say the scanner executed and criterion 5 is met. The matching STATUS header and dated correction entry agree. Searches for the withdrawn strings return only expressly historical quotations describing the defect. |
+| Current-tree continuity | From `3947858` to the current tree, the only change inside T-258's task entry records the maintainer's authorisation and the pass scope. It does not change the corrected gate result. |
+| Task placement | `pytest -q tests/unit/test_task_placement.py`: **15 passed**. |
+| Commit and boundary checks | Commit-message checker: **1 commit checked** over `3947858^..3947858`; `git diff --check` passed. |
+| Full suite | Not run. This authorised pass is record-only, and AGENTS.md §8 requires no test gate for documentation-only changes. |
+
+### Boundary ruling
+
+The handoff labels `1b31aac..3947858` a one-commit boundary. Git contains **13 commits** in that
+range. `1b31aac` is the useful before-state because it introduced the contradictory evidence
+record, but it is not the parent of the correction. This review therefore verifies the original
+finding against `1b31aac`, reviews the exact one-commit correction
+`166ce398481f8cac9e6f6c8020abb7f9e60b71dc..3947858`, and extends no approval to the twelve
+intervening commits. The handoff is a transient message, so its range error does not require a
+durable-record correction or block T-258.
+
+The later authorisation record at `3436b99` changes the relevant sentences only from “authorisation
+needed” to “authorised” and narrows the pass to the corrected records. That is the pass performed
+here. Historical quotations of the withdrawn wording remain useful descriptions of T258-R10 and
+are not live answers to criterion 5.
+
+### Readiness
+
+T258-R10 is Resolved and **T-258 is Approved at `3947858`** under the authorisation recorded at
+`3436b99`. T258-R5 remains Resolved. No blocking or non-blocking finding remains from this pass,
+and T-258 may move to Complete. T-268 remains a separate blocked diagnosis and is neither reviewed
+nor changed here.
+
+The Reviewer changed only this append-only record. No reviewed current-truth file, source, test,
+workflow, handoff, live process, push or remote state was changed.
