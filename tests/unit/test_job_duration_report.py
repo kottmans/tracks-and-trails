@@ -76,8 +76,8 @@ def warning_in(lines: list[str]) -> str | None:
 #: The threshold the workflow runs at. **Not a second copy of the policy** — the workflow passes
 #: no `--warn-at-percent`, so `main`'s `argparse` default *is* the production value, and
 #: `test_the_step_leaves_the_threshold_at_its_default` is what keeps that true. This constant is
-#: only what the cases below are derived from, and `test_the_default_threshold_is_the_one_the_job
-#: _runs_at` is what compares it to the code (`T-267`).
+#: only what the cases below are derived from, and `test_the_default_threshold_is_exactly_the
+#: _declared_one` is what compares it to the code (`T-267`).
 DECLARED_THRESHOLD = 85.0
 
 

@@ -314,74 +314,6 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
-### T-267 — Pin the warning threshold the Windows workflow actually uses
-
-**Status:** **In Review — corrected 2026-08-19 for `T267-R1`, which was right and is the same
-mistake in a smaller font.** The first version pinned the threshold with **two behaviour points**,
-85.0% must-warn and 84.75% must-not, and called that fixing it *"from both sides"*. It is not:
-those bracket the interval `(84.75, 85]`, and the reviewer set the default to **84.9** and watched
-all fourteen tests pass. **Tightening the lower case would never have closed it** — a `>=`
-comparison can always hide a difference smaller than the case beneath it, so sampling behaviour
-can narrow the interval indefinitely and never reach a value.
-
-**So the correction stops sampling and reads the argument.** `report` is replaced by a spy and
-`test_the_default_threshold_is_exactly_the_declared_one` asserts that what `main` hands it,
-with the workflow's own empty argument list, is exactly `85.0`. Mutations run: **90**, the
-reviewer's **84.9**, and **85.001** all fail it.
-
-**`test_the_default_threshold_still_warns_end_to_end` is kept and is not redundant.** A spy proves
-what `main` *passes*; it cannot see `report` ceasing to act on it. Making the comparison ignore its
-own parameter leaves the exact-value assertion green and fails this one, which is the pair doing
-two different jobs.
-
-**The scope's second option still stands.** The threshold is pinned by driving `main()`, not by
-passing `--warn-at-percent 85` from the workflow — that would put the number in a second place,
-which the scope's Risk line names as the trap — and the override-agreement test is unchanged.
-
-**`test_the_step_leaves_the_threshold_at_its_default` is the other half.** The default is
-production configuration *only while nothing overrides it*, so if the step ever starts passing
-`--warn-at-percent` the test requires the value to agree — rather than silently pinning a default
-CI no longer uses, which is this task's own defect one move later.
-
-**The policy value did not change and this task did not touch it.** 85% is where `T-259` put it;
-what changed is that moving it now fails a test that names the decision to re-record.
-
-**Approved follow-up `T267-R2` (Low, non-blocking):** the `DECLARED_THRESHOLD` comment still
-backtick-references `test_the_default_threshold_is_the_one_the_job_runs_at`, the name replaced by
-this correction. Update that cross-reference when moving T-267 to Complete. **Owner:** Implementer.
-**Target:** T-267 completion synchronization.
-**Owner:** Implementer
-**Priority:** Low — current behavior is correct; an accidental threshold drift can stay green
-**Phase:** CI test maintenance; blocks neither T-259 nor another task
-**Depends on:** T-259 approved at `322a533`
-**Relevant context:** `T259-R2`, `tools/job_duration_report.py`,
-`tests/unit/test_job_duration_report.py`, `.github/workflows/ci.yml`
-**Affected surfaces:** the duration reporter's CLI/wiring test and, if made explicit, its workflow
-argument
-**Risk:** Low — test/wiring only; do not change the accepted 85% policy under this task
-
-#### Scope
-
-Pin the threshold at the same boundary production uses. Today the workflow omits
-`--warn-at-percent`, so `argparse`'s default is production configuration; the calculation tests
-call `report(..., 85)` directly and bypass it. A reviewer mutation changing that default from 85
-to 90 left all twelve focused tests green.
-
-Either pass `--warn-at-percent 85` explicitly from the workflow and assert it, or drive `main()`
-at 34 minutes and require the warning. The proof must fail when the workflow-used value changes to
-90 while the direct calculation remains untouched.
-
-#### Acceptance criteria
-
-- The workflow-used threshold is visibly and executably pinned to 85%
-- Changing only that configured value from 85 to 90 fails the focused suite
-- A future deliberate threshold change has one obvious test and policy value to update together
-
-#### Out of scope
-
-- Choosing a new threshold, changing the 40-minute job bound or re-measuring STARBASE
-- Treating the reporter warning as a product-test failure; T259-R1 resolved that policy
-
 ### T-256 — Rule the fifteen options no decision covers
 
 **Status:** **In Review — all four rulings are taken. `SEC-004` (2026-08-16) forbade the fifteen;
@@ -515,6 +447,89 @@ and `build_options` has never set it.**
 ---
 
 ## Complete
+
+### T-267 — Pin the warning threshold the Windows workflow actually uses
+
+**Status:** **Complete — Approved with follow-ups at `0eece42`**, 2026-08-21. **`T267-R1` is
+Resolved**; `T267-R2` (Low, non-blocking) is **done at completion**, which is where it was targeted.
+
+**The reviewer settled the question this entry asked to have checked.** The correction kept
+`test_the_default_threshold_still_warns_end_to_end` beside the new spy, and the handoff asked
+whether that was redundant rather than asserting it was not. **It is not redundant, and it was
+measured**: making `report()` ignore its threshold leaves the spy **green** and fails the end-to-end
+test. Two tests, two failure modes, and the second one proves `report` acts on the value the first
+one proves `main` passes.
+
+**`T267-R2` was the stale cross-reference this correction created.** `DECLARED_THRESHOLD`'s comment
+still named `test_the_default_threshold_is_the_one_the_job_runs_at`, which `0eece42` renamed;
+runtime behaviour and coverage were unaffected and the backtick reference simply no longer resolved.
+It now names `test_the_default_threshold_is_exactly_the_declared_one`, and the name resolves.
+
+*(The status line at submission read: **In Review — corrected 2026-08-19 for `T267-R1`, which was
+right and is the same mistake in a smaller font.**)* The first version pinned the threshold with **two behaviour points**,
+85.0% must-warn and 84.75% must-not, and called that fixing it *"from both sides"*. It is not:
+those bracket the interval `(84.75, 85]`, and the reviewer set the default to **84.9** and watched
+all fourteen tests pass. **Tightening the lower case would never have closed it** — a `>=`
+comparison can always hide a difference smaller than the case beneath it, so sampling behaviour
+can narrow the interval indefinitely and never reach a value.
+
+**So the correction stops sampling and reads the argument.** `report` is replaced by a spy and
+`test_the_default_threshold_is_exactly_the_declared_one` asserts that what `main` hands it,
+with the workflow's own empty argument list, is exactly `85.0`. Mutations run: **90**, the
+reviewer's **84.9**, and **85.001** all fail it.
+
+**`test_the_default_threshold_still_warns_end_to_end` is kept and is not redundant.** A spy proves
+what `main` *passes*; it cannot see `report` ceasing to act on it. Making the comparison ignore its
+own parameter leaves the exact-value assertion green and fails this one, which is the pair doing
+two different jobs.
+
+**The scope's second option still stands.** The threshold is pinned by driving `main()`, not by
+passing `--warn-at-percent 85` from the workflow — that would put the number in a second place,
+which the scope's Risk line names as the trap — and the override-agreement test is unchanged.
+
+**`test_the_step_leaves_the_threshold_at_its_default` is the other half.** The default is
+production configuration *only while nothing overrides it*, so if the step ever starts passing
+`--warn-at-percent` the test requires the value to agree — rather than silently pinning a default
+CI no longer uses, which is this task's own defect one move later.
+
+**The policy value did not change and this task did not touch it.** 85% is where `T-259` put it;
+what changed is that moving it now fails a test that names the decision to re-record.
+
+**Approved follow-up `T267-R2` (Low, non-blocking):** the `DECLARED_THRESHOLD` comment still
+backtick-references `test_the_default_threshold_is_the_one_the_job_runs_at`, the name replaced by
+this correction. Update that cross-reference when moving T-267 to Complete. **Owner:** Implementer.
+**Target:** T-267 completion synchronization.
+**Owner:** Implementer
+**Priority:** Low — current behavior is correct; an accidental threshold drift can stay green
+**Phase:** CI test maintenance; blocks neither T-259 nor another task
+**Depends on:** T-259 approved at `322a533`
+**Relevant context:** `T259-R2`, `tools/job_duration_report.py`,
+`tests/unit/test_job_duration_report.py`, `.github/workflows/ci.yml`
+**Affected surfaces:** the duration reporter's CLI/wiring test and, if made explicit, its workflow
+argument
+**Risk:** Low — test/wiring only; do not change the accepted 85% policy under this task
+
+#### Scope
+
+Pin the threshold at the same boundary production uses. Today the workflow omits
+`--warn-at-percent`, so `argparse`'s default is production configuration; the calculation tests
+call `report(..., 85)` directly and bypass it. A reviewer mutation changing that default from 85
+to 90 left all twelve focused tests green.
+
+Either pass `--warn-at-percent 85` explicitly from the workflow and assert it, or drive `main()`
+at 34 minutes and require the warning. The proof must fail when the workflow-used value changes to
+90 while the direct calculation remains untouched.
+
+#### Acceptance criteria
+
+- The workflow-used threshold is visibly and executably pinned to 85%
+- Changing only that configured value from 85 to 90 fails the focused suite
+- A future deliberate threshold change has one obvious test and policy value to update together
+
+#### Out of scope
+
+- Choosing a new threshold, changing the 40-minute job bound or re-measuring STARBASE
+- Treating the reporter warning as a product-test failure; T259-R1 resolved that policy
 
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
