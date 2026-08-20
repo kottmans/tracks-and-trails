@@ -14,8 +14,16 @@ get there; the constraint is still `>=6.11,<7`, which the maintainer ruled `T-27
 **The five skipped steps ran.** `Windows desktop suite` **33 passed** (was *1 failed, 32 passed*),
 then `Record the environment`, `Lint`, `Format check`, `Qt baseline` and `Full suite` — **3707
 passed, 30 skipped, 35 deselected** in 32m22s. **The job went from 3m21s to 34m47s because the
-failure stopped hiding the other five**; the length is the fix working. All six jobs in the run are
-green.
+failure stopped hiding the other five**; the length is the fix working. **Five jobs succeeded** —
+`windows desktop`, `STARBASE coverage`, `linux`, `frozen linux` and `frozen windows` — and
+`STARBASE orphans` **skipped**, because a push run does not include it.
+
+*(This said **"all six jobs in the run are green"**, which was wrong on the day it was written:
+six jobs are listed and one of them did not run. Found by review, not by reading it back. The
+paragraph four below already said `STARBASE orphans` skipped, so this file gave both answers about
+whether the scanner ran — the same one-document-two-answers shape `T258-R10` found, at a smaller
+size. Corrected rather than softened: **skipped is the load-bearing word**, because `T-268`'s
+specimens `3400` and `6924` survive precisely by that job not running.)*
 
 **`T269-R2` is disposed by the same run.** The `--- gates ---` block reports `ruff 0.16.3` and
 `mypy 2.3.1` bare on `PATH` on `STARBASE` — the Windows half `T-269` could only reason about,
@@ -31,8 +39,10 @@ push — it triggers nightly and on dispatch, not on push — so `3400` and `692
 remains **Blocked on a person at `STARBASE`**, and it is still the one thing on this board nobody
 at a keyboard can move.
 
-**Both tasks await a focused evidence re-review**, not a correction: `T-270`'s reviewer recorded
-*no implementation finding* at `c047767` and blocked solely on the run that has now happened.
+**Both tasks are Approved and Complete**, 2026-08-20 — `T-270` at `c047767`, `T-269` at
+`166ce39`, **neither with an implementation finding**. `T270-R1`, `T269-R1`, `T269-R2` and
+`T266-R2` are Resolved. The reviewer confirmed the implementation boundary did not move between
+`T-270`'s two reviews: `06745fa`'s only difference from `c047767` is `ai/REVIEWS.md`.
 
 ---
 

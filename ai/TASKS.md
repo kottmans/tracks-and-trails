@@ -5,15 +5,17 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-19 — **`T-270` is built and In Review.** `Quit` no longer depends on a
-per-platform standard key Qt is entitled to resolve to nothing: it keeps whatever the platform
-theme answers and falls back to `Ctrl+Q` when the answer is **empty**, which is what Windows
-answers. **Its second criterion is not met and cannot be met from here** — *"the `windows desktop`
-job is green end to end"* is an observation on `STARBASE`, and this tree has not had one. `T269-R2`
-waits behind that same run. **The `PySide6` constraint is deliberately unchanged**, with the
-question it leaves recorded in the entry rather than decided there; it is a runtime dependency, so
-`AGENTS.md` §7 makes it the maintainer's. `T-271` is filed for the neighbouring `StandardKey.New`,
-which is the same unguarded reliance and is **not** observed broken.
+**Last updated:** 2026-08-20 — **`T-270` and `T-269` are both Complete**, Approved at `c047767`
+and `166ce39`, **neither with an implementation finding**. One run closed both: `32319665394`,
+`windows desktop` green end to end on `STARBASE`. `T270-R1`, `T269-R1`, `T269-R2` and `T266-R2` are
+Resolved.
+
+**`Quit` no longer depends on a per-platform standard key Qt is entitled to resolve to nothing**,
+and the proof is on **PySide6 6.11.2** — the version whose empty resolution filed the task — with
+the `>=6.11,<7` constraint untouched. The maintainer ruled that `T-270` may leave it that way;
+**whether runtime floors are the right policy at all is still open** and is nobody's task yet.
+`T-271` is filed for the neighbouring `StandardKey.New`, the same unguarded reliance, **not**
+observed broken.
 
 **What is awaiting a verdict is `## In Review`, and this header does not say what is in it.**
 
@@ -160,238 +162,6 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 **The exit review is complete**: approved at `ccdbd0f` on 2026-08-09, all six criteria met, after
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
-
-### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
-
-**Status:** **In Review — the Windows evidence `T270-R1` asked for exists, 2026-08-20.** Run
-`32319665394` on `06745fa`: **`windows desktop` is green end to end in 34m47s**, and
-`test_the_quit_shortcut_is_bound` **PASSED** on the platform that produced the empty sequence.
-Awaiting the focused evidence re-review the verdict asked for; the implementation needs no
-correction and none is proposed.
-
-**The run was on PySide6 `6.11.2`, and that is the point.** `Windows desktop suite`, `Record the
-environment`, `Qt baseline` and `Full suite` each report `6.11.2` — the exact version whose empty
-`StandardKey.Quit` filed this task. **The fix is measured against the environment that broke, not a
-reverted one**, which is the difference between a fix and a downgrade. Nothing was pinned to get
-here: the constraint is still `>=6.11,<7`.
-
-**All five skipped steps executed.** `Windows desktop suite` **33 passed** (it was *1 failed, 32
-passed*), then `Record the environment`, `Lint`, `Format check`, `Qt baseline` and `Full suite` —
-**3707 passed, 30 skipped, 35 deselected** in 32m22s. The job went from 3m21s to 34m47s **because**
-the failure stopped short-circuiting the other five; the length is the fix working, not a
-regression.
-
-**`T-259`'s reporter fired at 86%** — 34.5 min of the 40-minute bound. In series with 32.3, 35.0,
-32.3 and 33.9, so it is growth in family rather than a jump, and its own annotation says the
-response is to re-measure before raising it. **Not this task's to raise.**
-
-**`T269-R2` is disposed by the same run** and the `--- gates ---` block is why: `ruff 0.16.3` and
-`mypy 2.3.1`, bare on `PATH`, on `STARBASE`. That is the Windows half `T-269` could not measure.
-
-**The `PySide6` constraint is unchanged** — see *The constraint deliberately does not change*
-below. **The maintainer ruled on 2026-08-19** that `T-270` may leave it alone and that the broader
-dependency-pinning policy stays a separate decision.
-
-#### What was built
-
-**One resolver, and the seam is the parameter.** `QUIT_SHORTCUT_FALLBACK: Final = "Ctrl+Q"` and
-`resolve_quit_shortcut(standard: QKeySequence | None = None)` in `ui/main_window.py`. Left `None` it
-asks Qt; handed a sequence it uses that one, which is how the Windows condition is reproducible on a
-machine that is not Windows. The call site at `main_window.py:1459` is a one-line change.
-
-**Why a fallback and not an explicit binding.** The task offered *"bind the shortcut explicitly"*,
-and binding `Ctrl+Q` unconditionally would pass every test in this task while discarding a theme's
-opinion wherever it has one — a wider change than the defect. What is bound explicitly is the
-**hole**: an empty resolution, and nothing else.
-
-**Measured, across four platform plugins on PySide6 6.11.1 (`kirk`):**
-
-| plugin | `StandardKey.Quit` resolves to | empty |
-|---|---|---|
-| `xcb` | `Ctrl+Q` | no |
-| `wayland` | `Ctrl+Q` | no |
-| `minimal` | `Exit` (`Qt.Key_Exit`) | no |
-| `offscreen` | `Exit` (`Qt.Key_Exit`) | no |
-
-**The two rows that matter are the bottom two, and they are why this was only ever findable on
-Windows.** The headless themes answer a bare `Qt.Key_Exit` — a dedicated hardware key almost no
-keyboard has. It is **non-empty**, so an offscreen `isEmpty()` assertion passes over it, and the
-built window under `offscreen` still reports `Exit` after this fix. The offscreen suite could not
-have caught the Windows gap before and does not catch it now; that is a property of the assertion,
-not of this change, and `T-200` owns whether a bare hardware key is an acceptable accelerator at
-all.
-
-**On the two platforms this project supports, nothing a user sees changes except on Windows.** Real
-Linux desktops resolve `Ctrl+Q` and keep it; Windows resolved nothing and now gets `Ctrl+Q`. The
-built window was checked under all three available plugins rather than reasoned about.
-
-#### The tests, and what each one fails on
-
-Three in `tests/ui/test_main_window.py`, in the suite **both** platforms run — the gate that fails on
-any machine, rather than one that needs a scarce Windows round.
-
-- `test_the_quit_shortcut_falls_back_when_the_platform_names_none` — hands in the empty sequence.
-  **Mutation: deleting the `isEmpty()` branch** fails it with `assert '' == 'Ctrl+Q'`, which is run
-  `32268124069`'s failure reproduced on Linux.
-- `test_the_quit_shortcut_keeps_what_the_platform_answers` — hands in `Ctrl+Shift+F9`, which Qt
-  would never pick. **Mutation: binding `QUIT_SHORTCUT_FALLBACK` unconditionally** leaves the test
-  above green and fails this one. The pair does two jobs; either alone admits a wrong fix.
-- `test_the_quit_action_carries_a_shortcut` — the product claim on the built window. **This one
-  passes on the pre-fix code offscreen**, for the `Qt.Key_Exit` reason above, and the entry says so
-  rather than counting it as evidence.
-
-**`tests/ui/test_windows_desktop.py` is untouched**, `git diff --exit-code` confirms it. The fourth
-criterion forbids weakening it and nothing here touches the assertion that found the defect.
-
-#### The constraint deliberately does not change
-
-**No `DECISIONS.md` entry is added, because none is mine to add.** `PySide6` is a runtime
-dependency, so `AGENTS.md` §7 requires an *accepted* decision to constrain it differently, and
-`AGENTS.md` §7 *Scope* forbids proposing architecture changes into place. The criterion's own
-wording allows exactly this: *"an explicit note if it deliberately does not"*.
-
-**What the maintainer is being asked to rule on, recorded so the question is not lost:** the floor
-`PySide6>=6.11,<7` let a patch release change a keyboard binding, and this is the second time in one
-day a floor turned out to be load-bearing (`T-269`'s venv re-key was the first). The question is not
-*"pin 6.11.2"* — that would freeze the defect's environment and fix nothing, since this task's fix
-makes 6.11.2 correct. It is whether runtime floors are the right policy at all, against `OPS-002`,
-which already pins `yt-dlp` exactly for this reason. **`ARC-001` chose PySide6 and says nothing
-about how its version is constrained**, so there is no existing entry this belongs under.
-
-#### Evidence
-
-Gates run on `kirk` at the pinned toolchain (`ruff 0.16.3`, `mypy 2.3.1`), each read before the
-commit:
-
-| gate | result |
-|---|---|
-| `ruff check .` | All checks passed |
-| `ruff format --check .` | 202 files already formatted |
-| `mypy` | no issues, 154 source files |
-| `mypy --platform win32` | no issues, 154 source files |
-| `tests/ui` | 1023 passed, 3 skipped |
-| `tests/unit` | 2253 passed, 15 skipped |
-
-#### Acceptance criteria
-
-- ~~**Quit carries a non-empty shortcut on Windows**~~ — **met on the platform**, run
-  `32319665394`: `test_the_quit_shortcut_is_bound` PASSED under PySide6 6.11.2.
-- ~~**The `windows desktop` job is green end to end**~~ — **met**, run `32319665394`, 34m47s, all
-  six steps executing rather than skipping.
-- ~~**Whatever is decided about the PySide6 constraint is recorded where that kind of decision
-  lives**~~ — **met in its second form**: the constraint does not change, and the note above says so
-  and says what is left for the maintainer.
-- ~~**The fix does not weaken the test**~~ — `tests/ui/test_windows_desktop.py` is byte-identical.
-
-#### Out of scope
-
-- `T-200`'s accessibility pass, beyond this one accelerator
-- Changing which step order the Windows job uses. Running the suite before the style gates was
-  ruled against in `T-269`'s own scope for a different reason and is not reopened here
-- **`StandardKey.New` on the `Add URLs...` action**, which is the same unguarded reliance 27 lines
-  up. Filed as `T-271` rather than fixed here, per `AGENTS.md` §7 — and filed as *unguarded and
-  untested*, not as broken: no run has ever asserted its shortcut on Windows.
-
----
-
-### T-269 — Make the formatter and type-checker versions reproducible
-
-**Status:** **In Review — `T269-R2`'s Windows run exists, 2026-08-20.** Run `32319665394` on
-`06745fa`, `windows desktop` green end to end: the `--- gates ---` block reports **`ruff 0.16.3`**
-and **`mypy 2.3.1`**, bare on `PATH`, on `STARBASE`. **The mechanism this task reasoned about is
-now observed** — the persistent virtualenv's `sha256sum pyproject.toml` cache key re-keyed and the
-runner installed the pinned versions rather than keeping older satisfied floors. That was the last
-half of `T269-R1`'s correction that had never executed on Windows. Corrected 2026-08-19 for
-`T269-R1`; awaiting a focused evidence re-review, not a correction.
-
-*(`T-270` was what stood between this task and that run: the `Windows desktop suite` step failed
-before `Record the environment`, so the block this finding turns on was never printed. It is
-printed now, and `T-270` and this task were disposed by the same job.)*
-
-**`T269-R1` was right, and the docstring convicted itself.** The test compared
-`importlib.metadata.version()` — the distribution installed for the interpreter running pytest —
-while `ai/TESTING.md` §4 and every CI step invoke **bare `ruff` and `mypy`, which resolve through
-`PATH`**. The reviewer put different executables first on `PATH` and all three tests passed while
-`ruff --version` reported the injected one. The file had *listed* "a tool installed globally and
-shadowing the venv" as a case it covered. **Same class as `T258-R7`**: the check ran, reported
-success, and was measuring something production does not use.
-
-**Two invariants now, stated separately because their disagreement is the defect.** What
-`pip install -e ".[dev]"` reached (metadata — what an exact pin controls, and what fails when
-nobody reinstalled), and what the documented commands resolve to on `PATH` (**the authoritative
-one**, because it decides whether a change lands). The reviewer's shadow mutation is reproduced:
-both bare commands now fail, and the message names both resolutions, because *"0.16.0 is
-installed"* and *"the `ruff` on your `PATH` is 0.16.0"* have different fixes.
-
-**`T269-R2` was attempted, blocked behind `T-270`, and is now answered.** The head was pushed and run
-`32268124069` dispatched at `53edb19`. **The re-key worked exactly as predicted** — the runner
-resolved dependencies afresh and installed `ruff-0.16.3` and `mypy-2.3.1` on `STARBASE`, which is
-half of what this finding asks for. **The other half never ran**: the same fresh resolve floated
-`PySide6` from 6.11.1 to 6.11.2 on a `>=6.11,<7` floor, `test_the_quit_shortcut_is_bound` failed,
-and the `Windows desktop suite` step runs **before** `Record the environment`, `Lint`,
-`Format check`, `Qt baseline` and `Full suite` — so all five were skipped. There is therefore no
-`--- gates ---` block, no Windows execution of `test_toolchain_versions.py`, and no default suite
-from that run. **`T-270` owns the red**; `T269-R2` needs one green `windows desktop` job after it.
-
-**`ruff==0.16.3` and `mypy==2.3.1` in the `dev` extra, and a test that fails when the environment
-is not on them.** The pins are the canonical source and
-CI names neither version; it installs the extra. What the pins alone do not cover is an environment
-nobody reinstalled — a checkout from before the pin, a venv built against an older
-`pyproject.toml`, a tool installed globally and shadowing the venv — where the declaration is right
-and the running tool is not, which is exactly the state that was expensive. So
-`tests/unit/test_toolchain_versions.py` compares `importlib.metadata` against the pins **parsed out
-of `pyproject.toml`**, never a copy of the numbers: a test carrying its own copy would be the
-second place a version lives, which is this task's own defect reproduced inside its gate.
-
-**Criterion 2 is measured rather than argued.** Ruff was downgraded to 0.16.0 in a real
-environment; the new test failed naming both versions, `pip install -e ".[dev]"` then reported
-*"Uninstalling ruff-0.16.0 … Successfully installed ruff-0.16.3"*, and the test passed. **That
-install also pulled in `pytest-xdist`, which was declared and absent** — the local environment had
-been running the suite serially against a manifest that names it since `T-123`.
-
-**The `--- gates ---` block in both environment artifacts** prints `ruff --version` and
-`mypy --version` on their own lines. `pip list` already carried them, sixty entries deep, and
-comparing two runs' formatter versions quickly was precisely what nobody could do when `T-266`'s
-round was lost.
-
-**Windows is not measured and the mechanism is why it does not need a separate proof**: the
-persistent virtualenv's cache key is `sha256sum pyproject.toml`, so pinning re-keys it and that
-job rebuilds rather than keeping the old tool. The first Windows run after this lands is the
-confirmation.
-
-**All four gates pass at the declared versions**: `ruff check .`, `ruff format --check .` (202
-files), bare `mypy` and `mypy --platform win32` (154 source files each), and `tests/unit` is 2247
-passed, 15 skipped.
-**Owner:** Implementer
-**Priority:** Low — product behavior is unaffected, but a locally green formatter already spent a
-scarce Windows measurement round before the task it was meant to measure could run
-**Phase:** Documentation/tooling maintenance; blocks no product task or phase
-**Depends on:** none
-**Relevant context:** `T266-R2`, `pyproject.toml`'s `dev` extra, `.github/workflows/ci.yml`'s fresh
-and persistent virtualenv paths, `ai/TESTING.md` §3
-**Affected surfaces:** `pyproject.toml` and the development/CI installation path chosen to keep the
-two environments aligned
-**Risk:** Low. The trap is pinning a number in two places or fixing only a fresh install while the
-Windows job deliberately reuses its environment
-
-#### Acceptance criteria
-
-- Ruff and mypy have one canonical version source used by both local setup and CI
-- Installing into an existing environment reaches those versions rather than accepting older
-  already-satisfied floors
-- The Linux and persistent-Windows CI paths still install successfully, and their environment
-  records show the same formatter and type-checker versions
-- `ruff check`, `ruff format --check`, bare `mypy`, and `mypy --platform win32` pass at the declared
-  versions
-
-#### Out of scope
-
-- Reordering the Windows job so the full suite runs before style gates. That spends the long
-  runner slot before reporting a deterministic formatting failure; it does not make the gates
-  reproducible
-- Pinning runtime dependencies or changing their update policy
-
----
 
 ### T-267 — Pin the warning threshold the Windows workflow actually uses
 
@@ -876,6 +646,241 @@ so a parent that is not one cannot be the one that spawned it.
 ---
 
 ## Complete
+
+### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
+
+**Status:** **Complete — Approved at `c047767`**, 2026-08-20, **no implementation findings**,
+across one initial review and one focused evidence re-review. **`T270-R1` is Resolved by run
+`32319665394`**: `windows desktop` green end to end in 34m47s, `test_the_quit_shortcut_is_bound`
+PASSED on the platform that produced the empty sequence. The reviewer confirmed the implementation
+boundary did not move between the two reviews — `06745fa`'s only difference from `c047767` is
+`ai/REVIEWS.md`.
+
+**The run was on PySide6 `6.11.2`, and that is the point.** `Windows desktop suite`, `Record the
+environment`, `Qt baseline` and `Full suite` each report `6.11.2` — the exact version whose empty
+`StandardKey.Quit` filed this task. **The fix is measured against the environment that broke, not a
+reverted one**, which is the difference between a fix and a downgrade. Nothing was pinned to get
+here: the constraint is still `>=6.11,<7`.
+
+**All five skipped steps executed.** `Windows desktop suite` **33 passed** (it was *1 failed, 32
+passed*), then `Record the environment`, `Lint`, `Format check`, `Qt baseline` and `Full suite` —
+**3707 passed, 30 skipped, 35 deselected** in 32m22s. The job went from 3m21s to 34m47s **because**
+the failure stopped short-circuiting the other five; the length is the fix working, not a
+regression.
+
+**`T-259`'s reporter fired at 86%** — 34.5 min of the 40-minute bound. In series with 32.3, 35.0,
+32.3 and 33.9, so it is growth in family rather than a jump, and its own annotation says the
+response is to re-measure before raising it. **Not this task's to raise.**
+
+**`T269-R2` is disposed by the same run** and the `--- gates ---` block is why: `ruff 0.16.3` and
+`mypy 2.3.1`, bare on `PATH`, on `STARBASE`. That is the Windows half `T-269` could not measure.
+
+**The `PySide6` constraint is unchanged** — see *The constraint deliberately does not change*
+below. **The maintainer ruled on 2026-08-19** that `T-270` may leave it alone and that the broader
+dependency-pinning policy stays a separate decision.
+
+#### What was built
+
+**One resolver, and the seam is the parameter.** `QUIT_SHORTCUT_FALLBACK: Final = "Ctrl+Q"` and
+`resolve_quit_shortcut(standard: QKeySequence | None = None)` in `ui/main_window.py`. Left `None` it
+asks Qt; handed a sequence it uses that one, which is how the Windows condition is reproducible on a
+machine that is not Windows. The call site at `main_window.py:1459` is a one-line change.
+
+**Why a fallback and not an explicit binding.** The task offered *"bind the shortcut explicitly"*,
+and binding `Ctrl+Q` unconditionally would pass every test in this task while discarding a theme's
+opinion wherever it has one — a wider change than the defect. What is bound explicitly is the
+**hole**: an empty resolution, and nothing else.
+
+**Measured, across four platform plugins on PySide6 6.11.1 (`kirk`):**
+
+| plugin | `StandardKey.Quit` resolves to | empty |
+|---|---|---|
+| `xcb` | `Ctrl+Q` | no |
+| `wayland` | `Ctrl+Q` | no |
+| `minimal` | `Exit` (`Qt.Key_Exit`) | no |
+| `offscreen` | `Exit` (`Qt.Key_Exit`) | no |
+
+**The two rows that matter are the bottom two, and they are why this was only ever findable on
+Windows.** The headless themes answer a bare `Qt.Key_Exit` — a dedicated hardware key almost no
+keyboard has. It is **non-empty**, so an offscreen `isEmpty()` assertion passes over it, and the
+built window under `offscreen` still reports `Exit` after this fix. The offscreen suite could not
+have caught the Windows gap before and does not catch it now; that is a property of the assertion,
+not of this change, and `T-200` owns whether a bare hardware key is an acceptable accelerator at
+all.
+
+**On the two platforms this project supports, nothing a user sees changes except on Windows.** Real
+Linux desktops resolve `Ctrl+Q` and keep it; Windows resolved nothing and now gets `Ctrl+Q`. The
+built window was checked under all three available plugins rather than reasoned about.
+
+#### The tests, and what each one fails on
+
+Three in `tests/ui/test_main_window.py`, in the suite **both** platforms run — the gate that fails on
+any machine, rather than one that needs a scarce Windows round.
+
+- `test_the_quit_shortcut_falls_back_when_the_platform_names_none` — hands in the empty sequence.
+  **Mutation: deleting the `isEmpty()` branch** fails it with `assert '' == 'Ctrl+Q'`, which is run
+  `32268124069`'s failure reproduced on Linux.
+- `test_the_quit_shortcut_keeps_what_the_platform_answers` — hands in `Ctrl+Shift+F9`, which Qt
+  would never pick. **Mutation: binding `QUIT_SHORTCUT_FALLBACK` unconditionally** leaves the test
+  above green and fails this one. The pair does two jobs; either alone admits a wrong fix.
+- `test_the_quit_action_carries_a_shortcut` — the product claim on the built window. **This one
+  passes on the pre-fix code offscreen**, for the `Qt.Key_Exit` reason above, and the entry says so
+  rather than counting it as evidence.
+
+**`tests/ui/test_windows_desktop.py` is untouched**, `git diff --exit-code` confirms it. The fourth
+criterion forbids weakening it and nothing here touches the assertion that found the defect.
+
+#### The constraint deliberately does not change
+
+**No `DECISIONS.md` entry is added, because none is mine to add.** `PySide6` is a runtime
+dependency, so `AGENTS.md` §7 requires an *accepted* decision to constrain it differently, and
+`AGENTS.md` §7 *Scope* forbids proposing architecture changes into place. The criterion's own
+wording allows exactly this: *"an explicit note if it deliberately does not"*.
+
+**What the maintainer is being asked to rule on, recorded so the question is not lost:** the floor
+`PySide6>=6.11,<7` let a patch release change a keyboard binding, and this is the second time in one
+day a floor turned out to be load-bearing (`T-269`'s venv re-key was the first). The question is not
+*"pin 6.11.2"* — that would freeze the defect's environment and fix nothing, since this task's fix
+makes 6.11.2 correct. It is whether runtime floors are the right policy at all, against `OPS-002`,
+which already pins `yt-dlp` exactly for this reason. **`ARC-001` chose PySide6 and says nothing
+about how its version is constrained**, so there is no existing entry this belongs under.
+
+#### Evidence
+
+Gates run on `kirk` at the pinned toolchain (`ruff 0.16.3`, `mypy 2.3.1`), each read before the
+commit:
+
+| gate | result |
+|---|---|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 202 files already formatted |
+| `mypy` | no issues, 154 source files |
+| `mypy --platform win32` | no issues, 154 source files |
+| `tests/ui` | 1023 passed, 3 skipped |
+| `tests/unit` | 2253 passed, 15 skipped |
+
+#### Acceptance criteria
+
+- ~~**Quit carries a non-empty shortcut on Windows**~~ — **met on the platform**, run
+  `32319665394`: `test_the_quit_shortcut_is_bound` PASSED under PySide6 6.11.2.
+- ~~**The `windows desktop` job is green end to end**~~ — **met**, run `32319665394`, 34m47s, all
+  six steps executing rather than skipping.
+- ~~**Whatever is decided about the PySide6 constraint is recorded where that kind of decision
+  lives**~~ — **met in its second form**: the constraint does not change, and the note above says so
+  and says what is left for the maintainer.
+- ~~**The fix does not weaken the test**~~ — `tests/ui/test_windows_desktop.py` is byte-identical.
+
+#### Out of scope
+
+- `T-200`'s accessibility pass, beyond this one accelerator
+- Changing which step order the Windows job uses. Running the suite before the style gates was
+  ruled against in `T-269`'s own scope for a different reason and is not reopened here
+- **`StandardKey.New` on the `Add URLs...` action**, which is the same unguarded reliance 27 lines
+  up. Filed as `T-271` rather than fixed here, per `AGENTS.md` §7 — and filed as *unguarded and
+  untested*, not as broken: no run has ever asserted its shortcut on Windows.
+
+---
+
+### T-269 — Make the formatter and type-checker versions reproducible
+
+**Status:** **Complete — Approved at `166ce39`**, 2026-08-20, **no new findings**. **`T269-R1`,
+`T269-R2` and `T266-R2` are all Resolved** — the last of those is the follow-up `T-266` filed that
+became this task. Run `32319665394` on
+`06745fa`, `windows desktop` green end to end: the `--- gates ---` block reports **`ruff 0.16.3`**
+and **`mypy 2.3.1`**, bare on `PATH`, on `STARBASE`. **The mechanism this task reasoned about is
+now observed** — the persistent virtualenv's `sha256sum pyproject.toml` cache key re-keyed and the
+runner installed the pinned versions rather than keeping older satisfied floors. That was the last
+half of `T269-R1`'s correction that had never executed on Windows. Corrected 2026-08-19 for
+`T269-R1`; awaiting a focused evidence re-review, not a correction.
+
+*(`T-270` was what stood between this task and that run: the `Windows desktop suite` step failed
+before `Record the environment`, so the block this finding turns on was never printed. It is
+printed now, and `T-270` and this task were disposed by the same job.)*
+
+**`T269-R1` was right, and the docstring convicted itself.** The test compared
+`importlib.metadata.version()` — the distribution installed for the interpreter running pytest —
+while `ai/TESTING.md` §4 and every CI step invoke **bare `ruff` and `mypy`, which resolve through
+`PATH`**. The reviewer put different executables first on `PATH` and all three tests passed while
+`ruff --version` reported the injected one. The file had *listed* "a tool installed globally and
+shadowing the venv" as a case it covered. **Same class as `T258-R7`**: the check ran, reported
+success, and was measuring something production does not use.
+
+**Two invariants now, stated separately because their disagreement is the defect.** What
+`pip install -e ".[dev]"` reached (metadata — what an exact pin controls, and what fails when
+nobody reinstalled), and what the documented commands resolve to on `PATH` (**the authoritative
+one**, because it decides whether a change lands). The reviewer's shadow mutation is reproduced:
+both bare commands now fail, and the message names both resolutions, because *"0.16.0 is
+installed"* and *"the `ruff` on your `PATH` is 0.16.0"* have different fixes.
+
+**`T269-R2` was attempted, blocked behind `T-270`, and is now answered.** The head was pushed and run
+`32268124069` dispatched at `53edb19`. **The re-key worked exactly as predicted** — the runner
+resolved dependencies afresh and installed `ruff-0.16.3` and `mypy-2.3.1` on `STARBASE`, which is
+half of what this finding asks for. **The other half never ran**: the same fresh resolve floated
+`PySide6` from 6.11.1 to 6.11.2 on a `>=6.11,<7` floor, `test_the_quit_shortcut_is_bound` failed,
+and the `Windows desktop suite` step runs **before** `Record the environment`, `Lint`,
+`Format check`, `Qt baseline` and `Full suite` — so all five were skipped. There is therefore no
+`--- gates ---` block, no Windows execution of `test_toolchain_versions.py`, and no default suite
+from that run. **`T-270` owns the red**; `T269-R2` needs one green `windows desktop` job after it.
+
+**`ruff==0.16.3` and `mypy==2.3.1` in the `dev` extra, and a test that fails when the environment
+is not on them.** The pins are the canonical source and
+CI names neither version; it installs the extra. What the pins alone do not cover is an environment
+nobody reinstalled — a checkout from before the pin, a venv built against an older
+`pyproject.toml`, a tool installed globally and shadowing the venv — where the declaration is right
+and the running tool is not, which is exactly the state that was expensive. So
+`tests/unit/test_toolchain_versions.py` compares `importlib.metadata` against the pins **parsed out
+of `pyproject.toml`**, never a copy of the numbers: a test carrying its own copy would be the
+second place a version lives, which is this task's own defect reproduced inside its gate.
+
+**Criterion 2 is measured rather than argued.** Ruff was downgraded to 0.16.0 in a real
+environment; the new test failed naming both versions, `pip install -e ".[dev]"` then reported
+*"Uninstalling ruff-0.16.0 … Successfully installed ruff-0.16.3"*, and the test passed. **That
+install also pulled in `pytest-xdist`, which was declared and absent** — the local environment had
+been running the suite serially against a manifest that names it since `T-123`.
+
+**The `--- gates ---` block in both environment artifacts** prints `ruff --version` and
+`mypy --version` on their own lines. `pip list` already carried them, sixty entries deep, and
+comparing two runs' formatter versions quickly was precisely what nobody could do when `T-266`'s
+round was lost.
+
+**Windows is not measured and the mechanism is why it does not need a separate proof**: the
+persistent virtualenv's cache key is `sha256sum pyproject.toml`, so pinning re-keys it and that
+job rebuilds rather than keeping the old tool. The first Windows run after this lands is the
+confirmation.
+
+**All four gates pass at the declared versions**: `ruff check .`, `ruff format --check .` (202
+files), bare `mypy` and `mypy --platform win32` (154 source files each), and `tests/unit` is 2247
+passed, 15 skipped.
+**Owner:** Implementer
+**Priority:** Low — product behavior is unaffected, but a locally green formatter already spent a
+scarce Windows measurement round before the task it was meant to measure could run
+**Phase:** Documentation/tooling maintenance; blocks no product task or phase
+**Depends on:** none
+**Relevant context:** `T266-R2`, `pyproject.toml`'s `dev` extra, `.github/workflows/ci.yml`'s fresh
+and persistent virtualenv paths, `ai/TESTING.md` §3
+**Affected surfaces:** `pyproject.toml` and the development/CI installation path chosen to keep the
+two environments aligned
+**Risk:** Low. The trap is pinning a number in two places or fixing only a fresh install while the
+Windows job deliberately reuses its environment
+
+#### Acceptance criteria
+
+- Ruff and mypy have one canonical version source used by both local setup and CI
+- Installing into an existing environment reaches those versions rather than accepting older
+  already-satisfied floors
+- The Linux and persistent-Windows CI paths still install successfully, and their environment
+  records show the same formatter and type-checker versions
+- `ruff check`, `ruff format --check`, bare `mypy`, and `mypy --platform win32` pass at the declared
+  versions
+
+#### Out of scope
+
+- Reordering the Windows job so the full suite runs before style gates. That spends the long
+  runner slot before reporting a deterministic formatting failure; it does not make the gates
+  reproducible
+- Pinning runtime dependencies or changing their update policy
+
+---
 
 ### T-265 — Make the CI runner inventory describe every job exactly
 
