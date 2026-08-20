@@ -9632,14 +9632,29 @@ Method, so it can be re-run: every `CI` run since the `T-128` teardown fix at `b
 `windows desktop` job's **`Full suite` step conclusion** rather than the job's — 92 `success` plus
 **13 `failure`**, and the 13 count because each one **ran to completion with an ordinary pytest
 tally**, which a process death cannot produce. 22 `cancelled` and 14 `skipped` are excluded because
-the suite did not finish; the 14 are `T-270`'s window, where the step never ran.
+the suite did not finish; the 14 are `T-270`'s window, where the step never ran. **Four of the 145
+runs are accounted for separately and were not in the first telling of this** (`T074-R5`): they have
+no `windows desktop` job at all — `31080589319`, `31120246285`, `31956224066` cancelled, and
+`32042191296` failed before it. 92 + 13 + 22 + 14 + 4 = **145**, and none of the four is a completed
+run, so the 105 is unchanged.
 
 **Why that settles nothing, and it is this task's own arithmetic that says so.** The pre-fix sample
 was **0 events in 51 full-suite runs**. The post-fix sample is **0 events in 105**. *"If the crash
 stops recurring"* cannot be observed as a change, **because it had already stopped recurring before
-the fix landed** — there is no measured pre-fix rate to beat, so the comparison is undefined. All
-the runs buy is a tighter ceiling: a 95% upper bound of **5.9% → 2.9%** per run by the rule of
-three, on a defect whose rate nobody has ever measured above zero.
+the fix landed** — there is no measured pre-fix rate to beat, so the comparison is undefined.
+
+**What the 105 buys is a dated zero and nothing more, and the first version of this paragraph
+claimed more** (`T074-R5`). It gave a rule-of-three **2.9% per-run ceiling**, which assumes
+exchangeable trials sharing one underlying probability. **These runs do not share one.** They span
+sixteen days and many heads: between `bd4dde8` and `06745fa` the manager and test-lifecycle
+surfaces alone move by **2 886 insertions and 622 deletions**. **`T074-R1` had already ruled exactly
+this** — samples from materially different heads are not one population, and it required exact-head
+observations rather than a rate. *A rate quoted over a changing tree is the same error as a rate
+quoted from four observations on different heads*, which is the sentence this entry has carried
+since `T074-R1` and which I re-made from the other direction.
+
+**The observation and the non-discrimination argument both stand**; only the ceiling is withdrawn.
+Neither `OPS-007`'s accepted residual nor the Blocked-on-`T-092` disposition ever rested on it.
 
 **This is `T238-R2`'s ruling arriving at a second task, and neither entry saw it coming.** That
 finding replaced `T-238`'s criterion 6 because *"a larger clean sample cannot distinguish **the
