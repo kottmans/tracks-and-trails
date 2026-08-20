@@ -294,6 +294,14 @@ to literal labels and that variable does not reach them — and, by omission, th
 `task placement` and `repeat on STARBASE` do not exist. `STARBASE orphans` was added on 2026-08-18
 and would have been the fourth omission.
 
+**`Linux orphans` was the fifth, for one commit** (`T272-R4`). It was added on 2026-08-21 and this
+table was not, **four days after `T-265` made the inventory exact** — which is the failure mode a
+table promising completeness has: it is correct until the next job, and nothing fails when that job
+arrives. The two orphan jobs differ in the column that matters, so the row is not a copy: the
+Windows one is gated on `STARBASE_AVAILABLE` being `'true'` and pinned to literal labels; the Linux
+one is gated on `LINUX_RUNNER` being **non-empty** and resolves *through* it, because unset means a
+hosted image and a scan there reports on a machine destroyed after every job.
+
 **Two columns, because they are two different things.** *Selector* is what the workflow file
 computes into `runs-on`. *Enabled by* is the separate condition deciding whether the job exists on
 a given run at all. Collapsing them is how a variable that controls one job's **existence** gets
@@ -306,6 +314,7 @@ read as controlling another job's **destination**.
 | `STARBASE coverage` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | `if: always()` |
 | `windows desktop` | `ci.yml` | literal `[self-hosted, windows, desktop]` | `vars.STARBASE_AVAILABLE == 'true'` |
 | `STARBASE orphans` | `ci.yml` | literal `[self-hosted, windows, desktop]` | `always() && STARBASE_AVAILABLE == 'true' && (schedule \|\| workflow_dispatch)`, after `needs: windows-desktop` |
+| `Linux orphans` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | `always() && vars.LINUX_RUNNER != '' && (schedule \|\| workflow_dispatch)`, after `needs: check` |
 | `frozen linux` | `ci.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | matrix leg, unconditional |
 | `frozen windows` | `ci.yml` | literal `[self-hosted, windows, desktop]` | matrix leg, unconditional |
 | `trailers` | `commit-messages.yml` | `fromJSON(vars.LINUX_RUNNER \|\| '"ubuntu-latest"')` | every push |
