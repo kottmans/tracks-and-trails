@@ -5,6 +5,40 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-21 — **`T-258` is Complete, and the pass that closed it had been owed
+since 2026-08-19.** Approved at `3947858`; `T258-R10` Resolved; `T-268` remains separate and gates
+nothing. **The record-only focused pass the maintainer authorized on 2026-08-19 had never run** —
+it was outranked by every batch filed after it, four times over, and it took twenty minutes when it
+finally happened.
+
+**What was approved is a record, and the distinction is the task's whole shape.** The behaviour was
+never what blocked `T-258`: the containment seam is in at all three product-owned spawn sites, and
+its scanner ran unattended on `STARBASE`, found seven stale workers and made the job red while still
+uploading evidence. **What blocked it was one current-truth document giving both answers** about
+whether its last required gate had run — the header said criterion 5 was met, the criterion's own
+subsection said *"has not executed yet"*.
+
+**Criterion 2 stays closed as unobtainable in the form it was written**, not met. `T-266` measured
+that the outer Job is not what reaps a child in this window, so no run can satisfy it as worded, and
+the Job remains **defence in depth against an observation nobody has explained**.
+
+**A boundary I gave the reviewer was wrong, and both halves of it were.** The handoff named
+`b7ed63f → 0eece42` and `1b31aac → 3947858` and called each *"one commit"*. **Each range spans 13.**
+The reviewer caught the `T-258` half — `1b31aac` is the *before-state* marker from the review
+entry's header, not the correction's base — and the exact diff was `166ce39..3947858`. **The
+`T-267` half had the identical defect** and is corrected to `203fb9d..0eece42` before that pass
+runs. **I took each base from a label rather than computing it**, which is the same mistake as
+quoting a gate's tally from a command that merely resembles the gate: *a boundary is reproducible or
+it is decoration*.
+
+**Board:** `T-258` **Complete**. `T-256` **In Review**, rulings taken, nothing waiting on a person.
+`T-272` **In Review**, both its scans have now run. `T-267` **In Review** — the one remaining stalled
+pass, corrected 2026-08-19, boundary now stated correctly. `T-238` **Ready**, criterion 4 unanswered.
+`T-273` and `T-184` **Proposed**, `T-184` unblocked. `T-268` and `T-074` **Blocked on a person at
+`STARBASE`**. `T-212` is still the only thing between this phase and its exit review.
+
+---
+
 **Last updated:** 2026-08-21 — **`T-256`'s four rulings are taken, `unruled` reaches zero, and
 `T-184` is unblocked.** The maintainer ruled on all four options the Planner put up, taking every
 recommendation. **`T-272`'s `Linux orphans` job also ran for the first time and passed** — on
