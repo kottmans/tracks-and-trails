@@ -19704,3 +19704,56 @@ nor changed here.
 
 The Reviewer changed only this append-only record. No reviewed current-truth file, source, test,
 workflow, handoff, live process, push or remote state was changed.
+
+---
+
+## 2026-08-21 — T267-R1 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-267
+**Base:** `203fb9de711a90a18d917d873790178078503806`
+**Head:** `0eece42ff870a8093f68083bc6ed07bcb52a788a`
+**Verdict:** **Approved with follow-ups. T267-R1 is Resolved.** The workflow-used default is now
+asserted as exactly 85.0 at the `main()` boundary, and the retained end-to-end test independently
+proves that `report()` acts on the value. One stale test-name cross-reference is Low and
+non-blocking.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T267-R1** | **Medium** | Yes | The correction replaces behavioral sampling with a spy on `report()` and asserts that `main()` passes exactly `85.0` when the workflow's empty argument list supplies no override. The workflow-override agreement test remains. Mutations to 90, 84.9 and 85.001 therefore fail the exact-value proof rather than merely narrowing an interval. | **Resolved at `0eece42`** |
+| **T267-R2** | **Low** | No | The `DECLARED_THRESHOLD` comment still names `test_the_default_threshold_is_the_one_the_job_runs_at`, which `0eece42` renamed and replaced with `test_the_default_threshold_is_exactly_the_declared_one`. Runtime behavior and coverage are unaffected, but the backtick cross-reference no longer resolves. | **Open — Implementer; T-267 completion synchronization** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Exact correction scope | `203fb9d..0eece42` is one commit changing `tests/unit/test_job_duration_report.py`, T-267's task entry and its STATUS correction record. The reporter and workflow policy remain unchanged. |
+| Focused file | `pytest -q tests/unit/test_job_duration_report.py`: **15 passed**. |
+| Exact-value mutations | The Implementer's 90, 84.9 and 85.001 mutations are structurally closed by equality on the argument captured at `main()`. The review's original 84.9 interval bypass can no longer pass. |
+| Non-redundancy mutation | With `report()` temporarily changed to ignore `warn_at_percent` and never warn, `test_the_default_threshold_is_exactly_the_declared_one` still **passed**, while `test_the_default_threshold_still_warns_end_to_end` **failed** at the 85% assertion. The source was restored, and both tests then passed together. |
+| Current-tree continuity | `tests/unit/test_job_duration_report.py` is byte-identical between `0eece42` and the current tree. |
+| Commit and boundary checks | Commit-message checker: **1 commit checked**; `git diff --check 203fb9d..0eece42` passed. |
+| Broad gates | The Implementer reports **2255 passed, 15 skipped** for `tests/unit`, Ruff clean, format clean over 204 files, and both mypy modes clean over 154 source files at the current head. The Reviewer did not rerun these broad gates. |
+
+### Review judgments
+
+- **The end-to-end test is not redundant beside the spy.** The spy observes only the argument at
+  the call boundary. It remains green if `report()` ignores that argument. The retained case
+  crosses the real `main()` → `report()` path and fails on exactly that mutation.
+- **The two end-to-end points retain a separate boundary-direction check.** The exact-value test
+  proves 85.0 was passed; the 85.0/84.75 behavior pair proves `report()` warns at the mark and stays
+  quiet below it. No inference from the pair is used to establish the default anymore.
+- **The accepted policy is unchanged.** The workflow still supplies no explicit threshold, 85.0
+  remains the CLI default, and the correction adds only the executable proof requested by
+  T267-R1.
+
+### Readiness
+
+T267-R1 is Resolved and **T-267 is Approved with follow-ups at `0eece42`**. T259-R2 is closed by
+this proof. T267-R2 is Low, owned by the Implementer and targeted to T-267's completion
+synchronization; it does not consume another review pass or keep the task In Review.
+
+The Reviewer changed `ai/REVIEWS.md` and added only the approved follow-up to T-267's task entry.
+No reviewed test, tool, workflow, policy value, push or remote state was changed.
