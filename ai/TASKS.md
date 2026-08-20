@@ -8480,6 +8480,38 @@ freed memory. Two core dumps and a sub-second reproduction establish it; `src/` 
 because nothing there reads `is_idle` and the application holds one manager for the life of the
 process.
 
+**The free-evidence strategy below was tried on 2026-08-20 and it does not work. The runs were
+gathered; what they cannot do is discriminate.** Measured rather than assumed: **105 completed
+full-suite Windows runs** on `STARBASE` between 2026-08-04 and 2026-08-20, **zero native crashes**.
+Method, so it can be re-run: every `CI` run since the `T-128` teardown fix at `bd4dde8`, taking the
+`windows desktop` job's **`Full suite` step conclusion** rather than the job's — 92 `success` plus
+**13 `failure`**, and the 13 count because each one **ran to completion with an ordinary pytest
+tally**, which a process death cannot produce. 22 `cancelled` and 14 `skipped` are excluded because
+the suite did not finish; the 14 are `T-270`'s window, where the step never ran.
+
+**Why that settles nothing, and it is this task's own arithmetic that says so.** The pre-fix sample
+was **0 events in 51 full-suite runs**. The post-fix sample is **0 events in 105**. *"If the crash
+stops recurring"* cannot be observed as a change, **because it had already stopped recurring before
+the fix landed** — there is no measured pre-fix rate to beat, so the comparison is undefined. All
+the runs buy is a tighter ceiling: a 95% upper bound of **5.9% → 2.9%** per run by the rule of
+three, on a defect whose rate nobody has ever measured above zero.
+
+**This is `T238-R2`'s ruling arriving at a second task, and neither entry saw it coming.** That
+finding replaced `T-238`'s criterion 6 because *"a larger clean sample cannot distinguish **the
+guard worked** from **the crash was always this rare**"*. **The sentence transfers verbatim**: swap
+*guard* for *corrected teardown* and it is the paragraph below. Two tasks proposed the same
+instrument against the same class of defect, and one of them had already had it ruled out.
+
+**So what would actually move this is `T-092`, and nothing cheaper.** Clean runs cannot supply
+criterion 2; only a **recurrence with a dump** can, which is what `T-092` arms `STARBASE` to
+capture. Until then the honest position is unchanged: the residual is accepted under `OPS-007`, and
+**the accumulating-runs plan is recorded as tried and insufficient rather than left open as
+available**.
+
+*(The paragraph below proposed that plan and is kept, because it is what was tried. It was
+reasonable when written — what it missed is that its own Status paragraph already recorded the
+pre-fix sample as clean, which is the fact that makes it unable to discriminate.)*
+
 **That is a lead here, and it is the strongest one this task has ever had.** The Windows crash
 recorded above happened in
 `test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget` — **the same file and the
