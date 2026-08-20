@@ -500,9 +500,31 @@ and `build_options` has never set it.**
 
 ---
 
+## Complete
+
 ### T-258 — A spawned worker that dies before it is prepared is orphaned forever on Windows
 
-**Status:** **In Review — Blocked on `T258-R10` and a maintainer authorization, 2026-08-19.**
+**Status:** **Complete — Approved at `3947858`**, 2026-08-21, on the record-only focused pass the
+maintainer authorized on 2026-08-19. **`T258-R10` is Resolved**; `T-268` remains separate and
+unaffected, and gates nothing in the centre column.
+
+**What was approved is a record, and what it records is worth keeping straight.** The behaviour was
+never what blocked this: the containment seam is in at all three product-owned spawn sites, and
+`T258-R5`'s scanner ran unattended on `STARBASE`, found seven stale workers and made the job red
+while still uploading its evidence. **What blocked it was one current-truth document giving both
+answers** about whether its last required gate had run.
+
+**Criterion 2 is closed as unobtainable in the form it was written**, not met: `T-266` measured on
+Windows that the outer Job is **not** what reaps a child in this window, so no run can satisfy it as
+worded. The Job stays as **defence in depth against an observation nobody has explained** — which is
+the strongest reason to keep it and the weakest reason to claim it works.
+
+**The task exhausted its ordinary §10 budget and was finished under an authorization**, recorded
+rather than assumed: initial review, one focused correction, then the record-only pass. The one
+thing the whole arc leaves open is `T-268`, and it is a different task on purpose.
+
+*(The status line at submission read: **In Review — Blocked on `T258-R10` and a maintainer
+authorization, 2026-08-19.**)*
 **`T258-R5` is Resolved**: the scanner executed on `STARBASE` in run `32214730271`, found seven
 stale workers and made the job red while its evidence artifact still uploaded, so the detection
 path detected rather than merely existing. **What blocks the task is its own record**, not its
@@ -832,8 +854,6 @@ so a parent that is not one cannot be the one that spawned it.
   and that was checked before it was ruled out
 
 ---
-
-## Complete
 
 ### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
 
