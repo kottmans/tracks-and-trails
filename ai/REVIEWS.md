@@ -19176,3 +19176,48 @@ implementation head `c047767`, preserve that implementation boundary, and return
 `windows desktop` URL/result for a focused evidence re-review.
 The Reviewer changed only this append-only record; no reviewed source/test, task/status file,
 dependency, process, push or remote setting was changed.
+
+---
+
+## 2026-08-20 — T270-R1 focused evidence re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-270
+**Reviewed implementation:** `c047767422f32fb4023bee4a9adadb8b022439ca`
+**Evidence head:** `06745fa12016c134aa359e56ea96eada3eef2ed1`
+**Evidence record:** `f283b8f5951b638f7c0daf4a5e7215e79605f1fe`
+**External evidence:** run `32319665394`, job `96279141688`
+**Verdict:** **Approved. No implementation findings.** The exact Windows observation required by
+both remaining criteria is green on PySide6 6.11.2, the version that exposed the empty standard
+key. T270-R1 is Resolved; the implementation boundary did not change after the initial review.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T270-R1** | **Medium** | Yes | Run `32319665394` is a successful push run at `06745fa`, whose only difference from reviewed implementation `c047767` is `ai/REVIEWS.md`. On `STARBASE`, `test_the_quit_shortcut_is_bound` passed and each later environment, lint, format, Qt-baseline and full-suite step executed successfully. | **Resolved by run `32319665394`** |
+
+### Independent evidence
+
+| Check | Result |
+|---|---|
+| Exact boundary | GitHub reports event `push`, head `06745fa12016c134aa359e56ea96eada3eef2ed1`, overall success. `git diff --name-only c047767..06745fa` contains only `ai/REVIEWS.md`; no implementation, test, dependency or workflow change intervenes. |
+| Product criterion | The Windows desktop log records `test_the_quit_shortcut_is_bound PASSED` at 01:06:04Z and the slice completes **33 passed, 3739 deselected**. |
+| End-to-end criterion | `Record the environment`, `Lint`, `Format check`, `Qt baseline` and `Full suite` all conclude success rather than skip. The full suite reports **3707 passed, 30 skipped, 35 deselected** in 32m22s. |
+| Defect environment | The desktop slice, Qt baseline and full suite independently report **PySide6 6.11.2 / Qt 6.11.2**. `pyproject.toml` remains `PySide6>=6.11,<7`; the run proves the fix in the environment that exposed the defect rather than by downgrading it. |
+| Duration | The job reports 34.5 minutes, 86% of its 40-minute bound, and emits the expected T-259 warning. The prior failed run's 3m21s duration omitted the five steps restored here; this result does not establish a new regression or justify changing the bound. |
+| Evidence records | `f283b8f` changes only `ai/TASKS.md` and `ai/STATUS.md`; placement passes **15 tests**, Ruff passes and Ruff format reports **202 files already formatted** on the resulting tree. |
+
+### Record note
+
+`ai/STATUS.md` says once that all six jobs in the run were green. GitHub's exact inventory is five
+successful jobs plus `STARBASE orphans` skipped, which the later STATUS paragraph states correctly.
+This wording discrepancy does not affect either T-270 criterion, and it does not claim T-268's
+scanner ran; T-268 remains Blocked and the process specimens were outside this review.
+
+### Readiness
+
+T-270 is **approved at implementation `c047767`**, with its required Windows evidence at
+`06745fa`. The PySide6 constraint remains unchanged as already ruled; the broader runtime-pinning
+policy is separate. T-271 and T-268 remain untouched. The Reviewer changed only this append-only
+record; no reviewed source/test, task/status file, process, push or remote setting was changed.
