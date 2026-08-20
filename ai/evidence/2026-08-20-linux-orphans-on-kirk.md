@@ -1,0 +1,103 @@
+# Two orphaned workers on `kirk` — Linux, 2026-08-20
+
+Found while setting up `T-238`'s loaded-reproduction campaign, by noticing two long-lived
+Python processes that were not mine. **Preserved, not reaped**, on the same reasoning
+`T258-R4` and `T-268` apply to `3400`/`6924`: a live specimen is worth more than the
+37 MB it costs, and killing it destroys the only inspectable instance.
+
+Captured non-destructively: `/proc`, `ps`, and `eu-stack` (read-only). No debugger was
+attached, nothing was signalled, and the project scanner was run in its report-only form.
+
+## What they are
+
+```
+ 432922    2139 Sun Aug 16 01:10:39 2026  332872        0    1  7500 S
+ 434366    2139 Sun Aug 16 01:12:15 2026  332777      157    2 29764 Sl
+```
+
+| | 432922 | 434366 |
+|---|---|---|
+| role | `multiprocessing.resource_tracker` | `multiprocessing.spawn_main`, `--multiprocessing-fork` |
+| threads | **1** | 2 |
+| CPU over ~3d20h | **0 s** | 157 s |
+| blocked in | `anon_pipe_read` | `hrtimer_nanosleep` (`time.sleep`) |
+| parent | **gone** — adopted by `systemd --user` (2139) | **gone** — same |
+| cwd | the repository root | the repository root |
+
+## The retention chain, which is the mechanism
+
+Both hold **`pipe:[1629660]`**. `434366` is the worker; `432922` is the resource tracker
+reading that pipe for EOF. **The sleeping worker holds the write end, so the tracker can never
+see EOF and never exits.** One orphan is keeping the second alive.
+
+## Native stacks (`eu-stack`, read-only)
+
+### 432922 — one thread, blocked reading its pipe
+```
+PID 432922 - process
+TID 432922:
+#0  0x00007fb61ce7654e __internal_syscall_cancel
+#1  0x00007fb61ce76574 __syscall_cancel
+#2  0x00007fb61cef045e read
+#3  0x00007fb61d2cc634 _Py_read
+#4  0x00007fb61d2e371e _io_FileIO_readinto.lto_priv.0
+#5  0x00007fb61d218a24 PyObject_VectorcallMethod.constprop.0
+#6  0x00007fb61d2e347e _bufferedreader_raw_read.lto_priv.0
+#7  0x00007fb61d2e339e _bufferedreader_fill_buffer.lto_priv.0
+#8  0x00007fb61d307fdb _buffered_readline.lto_priv.0
+#9  0x00007fb61d313e48 buffered_iternext.lto_priv.0
+#10 0x00007fb61d025e86 _PyEval_EvalFrameDefault.cold
+#11 0x00007fb61d195d12 _PyEval_Vector.constprop.0
+```
+
+### 434366 — sleeping, plus a parked thread
+```
+PID 434366 - process
+TID 434366:
+#0  0x00007ff11c682312 __syscall_cancel_arch
+#1  0x00007ff11c67652c __internal_syscall_cancel
+#2  0x00007ff11c6c5c82 clock_nanosleep@GLIBC_2.2.5
+#3  0x00007ff11cb516e0 time_sleep.lto_priv.0
+#4  0x00007ff11c8304c6 _PyEval_EvalFrameDefault.cold
+#5  0x00007ff11c995d12 _PyEval_Vector.constprop.0
+```
+
+## What the project scanner says
+
+```
+1 orphaned worker(s) — spawned, parent gone, still running:
+  pid  434366  age 3d20h  dead parent    2139  threads 2  rss 30 MB
+Reported, not reaped — see this module's docstring for why (`T258-R4`).
+EXIT=1
+```
+
+**It finds it, on Linux, with no change.** `tools/orphan_scan.py` is `psutil` and carries no
+Windows-specific path. It reports `434366` and not `432922`, correctly: `_SPAWN_MARKERS`
+matches `spawn_main`/`--multiprocessing-fork`, and the tracker is neither — it is a
+*consequence* of the orphan rather than one.
+
+## What this is not
+
+**It is not a counterexample to `T-258`'s POSIX measurement.** That claim is about the window
+*before a spawned worker installs its watchdog* — a child stopped before it reads its payload.
+**This worker used 157 s of CPU**, so it ran far past that window. Different state, same
+outcome.
+
+**It is not established as product-reachable.** These are children of a `multiprocessing`
+parent that died, in a checkout used for test runs; a killed `pytest` session produces exactly
+this. Which one it was is **not** recoverable from what is here — the parent is gone and took
+its identity with it. That is the same product-versus-harness question `T-238` criterion 4 and
+`T-074` both carry, and this does not answer it.
+
+## What it does establish
+
+1. **The phenomenon is not Windows-only.** An orphaned spawned worker of the class `T-258`
+   built the scanner for exists on `kirk`, and had been there **3 days 20 hours** when it was
+   found by accident — which is how the original five were found.
+2. **Nobody was looking.** The `STARBASE orphans` job runs the scanner **only on the Windows
+   runner**. The same scanner works here and is not scheduled here.
+3. **A one-thread, zero-CPU, pipe-blocked orphan is reproducible outside Windows** — the shape
+   `T-268` describes for its five — and here the retaining mechanism is **visible**: a peer
+   process holds the pipe. `T-268` eliminated that specific mechanism on Windows
+   (`bInheritHandles=False`), so this is **not** the same cause; what it shows is that the
+   shape does not require the Windows one.

@@ -9138,6 +9138,69 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
+
+**Status:** **Proposed — filed 2026-08-20 from two live specimens on `kirk`.** Found by accident
+while setting up `T-238`'s load campaign, which is how the original five were found on `STARBASE`.
+**Both are preserved**, on `T258-R4`'s reasoning: `ai/evidence/2026-08-20-linux-orphans-on-kirk.md`.
+**Owner:** Planner, to prioritize
+**Priority:** **Medium.** Not because these two processes matter — 37 MB — but because
+`tools/orphan_scan.py` **already detects them, on Linux, unmodified**, and nothing runs it here.
+The detection `T-258` built exists and is pointed at one of the two platforms this project supports
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-268` is not a dependency and this is not a diagnosis of it
+**Relevant context:** `tools/orphan_scan.py`, `.github/workflows/ci.yml`'s `STARBASE orphans` job,
+`T-258`, `T-268`, `T258-R4`, `OPS-012`
+**Affected surfaces:** where the orphan scan is scheduled, and nothing in `src/`
+**Risk:** Low to fix. The trap is scope: **this is a scheduling gap, not a diagnosis**, and the
+specimens must not be reaped to make a job green
+
+#### What was measured
+
+`.venv/bin/python tools/orphan_scan.py` on `kirk`, 2026-08-20 — **exit 1**:
+
+```
+1 orphaned worker(s) — spawned, parent gone, still running:
+  pid  434366  age 3d20h  dead parent    2139  threads 2  rss 30 MB
+```
+
+A second process, `432922`, is **retained by** it: both hold `pipe:[1629660]`, the worker holds the
+write end, and the `resource_tracker` reading it for EOF therefore never exits — **one thread,
+0 s of CPU over 3d20h, blocked in `anon_pipe_read`**. The scanner correctly reports only the
+worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a consequence rather than an
+orphan of that class.
+
+#### What this is not, stated first because the resemblance is loud
+
+- **Not a counterexample to `T-258`'s POSIX measurement.** That is about the window *before a worker
+  reads its payload*; `434366` burned **157 s of CPU**, so it ran far past it.
+- **Not `T-268`'s cause.** `T-268` eliminated a peer holding the write handle **on Windows**
+  (`bInheritHandles=False` forbids it). The mechanism here is visible and is that eliminated one, so
+  it is a different route to the same shape — which is the interesting part, not evidence of
+  identity. *A stack is not a cause* applies to a `/proc` reading too.
+- **Not established as product-reachable.** A killed `pytest` session produces exactly this, and
+  **the parent is gone and took its identity with it**. That is `T-238` criterion 4's question and
+  this does not answer it.
+
+#### Suggested acceptance criteria
+
+- **The orphan scan is scheduled on Linux as well as Windows**, or a recorded decision says why one
+  platform is enough — the asymmetry is deliberate rather than inherited
+- **A find on either platform is visible without somebody noticing a stray process**, which is the
+  criterion `T-258` wrote for `STARBASE` and is currently met on one platform
+- **The two specimens are preserved until inspected or deliberately released**, and revalidated by
+  pid, create time, command line and parent before any termination — `T258-R4`, unchanged
+- **No destructive scanner mode is added.** `--kill` was removed for the enumerate-then-signal race
+  and does not come back
+
+#### Out of scope
+
+- Diagnosing what spawned these two. The parent is gone; that evidence does not exist
+- `T-268`'s Windows question, which is Blocked on a person and is not moved by this
+- Reaping either specimen to make a job green
+
+---
+
 ### T-271 — `Add URLs...` relies on the same unguarded standard key `T-270` was filed for
 
 **Status:** **Proposed — filed 2026-08-19 by `T-270`, which fixed the neighbouring line and is
