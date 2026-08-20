@@ -39,6 +39,22 @@ around it agreed with the new one. It now reads **every** table in document orde
 one win. **Mutations: parser back to the first table alone fails 2, `SEC-005`'s verdict row deleted
 fails 1, the class count left at 23 fails 1.**
 
+**The dispatch finished after that paragraph was written, and both scans reported.** Run
+`32381523921` is **red**, which is the alarm rather than a fault: `STARBASE orphans` found **seven**
+and preserved its non-zero exit. **`3400` and `6924` are alive at `2d21h`, one thread each, 79 and
+77 MB — unchanged again**, eight hours after the 06:52 nightly saw them at `2d13h` with the same
+resident sets. **Fifth unattended report.** The five originals are at `14d21h` and `15d14h`.
+`windows desktop` took **33m57s** — 85% of its bound, and the series is 32.3 · 35.0 · 32.3 · 33.9 ·
+34.5 · 34.6 · **34.0**, which is flat rather than creeping.
+
+**One thing that run cost, and it was my sequencing.** The push at `14:40` started its own
+`windows desktop`, and the dispatch six minutes later **cancelled it at 69 seconds** — the exact
+contention `OPS-011`'s comment records from 2026-08-05. It cost nothing *here* because the dispatch
+runs the same matrix **plus** both orphan jobs, so it strictly supersedes what it killed. **The
+order is what made that true**: dispatching first and pushing second would have killed the dispatch,
+and with it `Linux orphans`' first execution and the only fresh statement on the specimens. **Push
+first, then dispatch** — recorded because the reason is not obvious from either job's log.
+
 **`Linux orphans`, first execution, dispatch run `32381523921`:** runner **`kirk`**, `14:48:12Z` →
 `14:48:20Z`, all five steps green. That proves the three things no local run could: **`LINUX_RUNNER`
 resolves** to the maintainer's machine rather than a hosted image, **`needs: check` ordered it after
