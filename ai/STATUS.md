@@ -5,6 +5,50 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-21 — **`T-267` is Complete, and `T-256` came back with the worst kind of
+finding: a gate that passed while approving something wider than the decision it guards.**
+
+**`T256-R1` is the one to read.** The parser I wrote to make an amendment readable used
+`if "forbidden" … elif "permitted"`, so a clause naming **both** resolved wholly as *forbidden* —
+and because the override *removes* the option from the opposite set, **the intersection assertion
+that existed to catch exactly this could never fire**. I disabled the cross-check while adding the
+feature that needed it. The reviewer joined the amendment's two clauses, moved permitted `--netrc`
+and `--netrc-location` into `excluded`, re-derived every count to 91/28/94, and **all 19 tests
+passed**.
+
+**It now refuses rather than guesses.** A clause naming both dispositions raises, at **parse time**,
+before any row or count is consulted — so no arrangement of the audit rescues the wrong reading, and
+every consumer errors together. That is the property the finding asked for, and it is structural
+rather than a test predicting which counts a future mutation would pick. **Reproducing the
+reviewer's exact mutation now fails 5 where it passed 19.**
+
+**`T256-R2` is the sibling class again, and this time it was seven sites.** `T-256`'s priority still
+said three corrections remained; its lower heading read *"PROPOSED, nobody has ruled"*; its
+historical blockquote was not introduced as historical; the audit said `unruled` is 0 in one line
+and one remains in the next; Finding 3 still called both options `hatch`; Finding 5 still called the
+count correction proposed; the decomposition credited only `SEC-004`; and **`T-184` carried 92 in
+its lead and 89 in its `Depends on:` line** — one entry handing an implementer both the new refusal
+list and the old one that omits three options.
+
+**All corrected, and one of them is worth keeping as a fact rather than a fix**: `SEC-004` closed
+fifteen options on 2026-08-16 and **`T-184` stayed blocked for five more days**, because `T183-R3`
+found the sixteenth after it and it was deliberately left `unruled` rather than swept in. **2026-08-21
+is the date `T-184` actually unblocked**, and the decomposition said 08-16.
+
+**`T-267` is Complete, approved with follow-ups at `0eece42`.** The reviewer settled what the
+handoff asked to have checked rather than asserted: keeping the end-to-end test beside the new spy
+is **not** redundant, **measured** — making `report()` ignore its threshold leaves the spy green and
+fails the end-to-end test. `T267-R2`, the stale cross-reference the rename created, is resolved at
+completion where it was targeted.
+
+**Board:** `T-267` and `T-258` **Complete**. `T-256` **In Review**, corrections made, awaiting the
+focused pass. `T-272` **In Review**. `T-238` **Ready**, criterion 4 unanswered. `T-273` and `T-184`
+**Proposed**, `T-184` unblocked. `T-268` and `T-074` **Blocked on a person at `STARBASE`**.
+**`T-212` is the only thing between this phase and its exit review**, and the maintainer is taking
+it.
+
+---
+
 **Last updated:** 2026-08-21 — **`T-258` is Complete, and the pass that closed it had been owed
 since 2026-08-19.** Approved at `3947858`; `T258-R10` Resolved; `T-268` remains separate and gates
 nothing. **The record-only focused pass the maintainer authorized on 2026-08-19 had never run** —
