@@ -8860,19 +8860,35 @@ specimens must not be reaped to make a job green
 ```
 
 A second process, `432922`, is **retained by** it: both hold `pipe:[1629660]`, the worker holds the
-write end, and the `resource_tracker` reading it for EOF therefore never exits — **one thread,
-0 s of CPU over 3d20h, blocked in `anon_pipe_read`**. The scanner correctly reports only the
-worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a consequence rather than an
-orphan of that class.
+write end, and the `resource_tracker` reading it for EOF therefore never exits. The scanner
+correctly reports only the worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a
+consequence rather than an orphan of that class.
+
+**`pipe:[1629660]` is the resource-tracker channel, not a payload pipe, and that distinction carries
+the whole causal claim** (`T272-R1`). `popen_spawn_posix._launch()` takes `resource_tracker.getfd()`
+and passes it in the child's pass-FD set **independently of** the payload `pipe_handle`, so a POSIX
+spawned worker **is expected to hold the tracker's writer**. That is documented multiprocessing
+behaviour rather than a defect, and it is what keeps the tracker alive once the parent dies.
+
+**The two processes must not be read as one shape.** The **tracker** is the one thread with 0 s of
+CPU blocked in `anon_pipe_read`; the **worker** has **two threads and 157 s of CPU**. Reading their
+union as one process is what produced the first version's claim that the five's one-thread shape had
+been reproduced outside Windows. **It has not been.**
 
 #### What this is not, stated first because the resemblance is loud
 
 - **Not a counterexample to `T-258`'s POSIX measurement.** That is about the window *before a worker
   reads its payload*; `434366` burned **157 s of CPU**, so it ran far past it.
-- **Not `T-268`'s cause.** `T-268` eliminated a peer holding the write handle **on Windows**
-  (`bInheritHandles=False` forbids it). The mechanism here is visible and is that eliminated one, so
-  it is a different route to the same shape — which is the interesting part, not evidence of
-  identity. *A stack is not a cause* applies to a `/proc` reading too.
+- **Not `T-268`'s cause — and not for the reason the first version gave** (`T272-R1`). `T-268`
+  rules out a second process retaining the write end of the Windows **spawn payload pipe**, which
+  `popen_spawn_win32` creates and starts the child with `bInheritHandles=False`. What is held here
+  is the **resource-tracker pipe**, a separate channel POSIX passes to children deliberately. This
+  is therefore a **different platform channel and a different process pair** — not the same
+  mechanism surviving a Windows elimination. *(The first version said the visible mechanism here
+  *was* the eliminated one, which is false, and then leaned on it as "a different route to the same
+  shape".)*
+- **Not a reproduction of the five's process shape**, which is withdrawn with it. That claim came
+  from attributing the tracker's one thread and the worker's 157 s of CPU to a single process.
 - **Not established as product-reachable.** A killed `pytest` session produces exactly this, and
   **the parent is gone and took its identity with it**. That is `T-238` criterion 4's question and
   this does not answer it.

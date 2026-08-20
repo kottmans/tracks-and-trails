@@ -30,6 +30,13 @@ Both hold **`pipe:[1629660]`**. `434366` is the worker; `432922` is the resource
 reading that pipe for EOF. **The sleeping worker holds the write end, so the tracker can never
 see EOF and never exits.** One orphan is keeping the second alive.
 
+**Which pipe this is matters, and the first version of this file did not say** (`T272-R1`). It is
+the **resource-tracker channel**, not a spawn payload pipe. `popen_spawn_posix._launch()` obtains
+`resource_tracker.getfd()` and passes it in the child's pass-FD set **independently of** the payload
+`pipe_handle`, so a POSIX spawned worker holding the tracker's writer is **documented behaviour**.
+The Windows pipe `T-268` reasons about is the payload one, created by `popen_spawn_win32` and
+started with `bInheritHandles=False`. **Different channel, different platform, different pair.**
+
 ## Native stacks (`eu-stack`, read-only)
 
 ### 432922 — one thread, blocked reading its pipe
@@ -96,8 +103,13 @@ its identity with it. That is the same product-versus-harness question `T-238` c
    found by accident — which is how the original five were found.
 2. **Nobody was looking.** The `STARBASE orphans` job runs the scanner **only on the Windows
    runner**. The same scanner works here and is not scheduled here.
-3. **A one-thread, zero-CPU, pipe-blocked orphan is reproducible outside Windows** — the shape
-   `T-268` describes for its five — and here the retaining mechanism is **visible**: a peer
-   process holds the pipe. `T-268` eliminated that specific mechanism on Windows
-   (`bInheritHandles=False`), so this is **not** the same cause; what it shows is that the
-   shape does not require the Windows one.
+3. **A retention chain is directly observable here**, which on Windows it has never been: the
+   worker holds the tracker's writer, so the tracker cannot reach EOF. That is a mechanism for
+   *these two processes*, on POSIX, through the tracker channel.
+
+**Withdrawn from the first version of this file** (`T272-R1`): it claimed the five's
+**one-thread** shape was reproduced outside Windows, and that the mechanism visible here was the one
+`T-268` eliminated. Both are false. The one thread and 0 s of CPU belong to the **`resource_tracker`**;
+the **spawned worker** — the process `T-268` classifies — has **two threads and 157 s of CPU**. The
+union of the two is not a process shape, and the tracker channel is not the payload channel `T-268`
+eliminated a peer from. Nothing here bears on why the five looked as they did.
