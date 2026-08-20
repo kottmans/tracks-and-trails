@@ -296,8 +296,17 @@ commit:
 
 ### T-269 — Make the formatter and type-checker versions reproducible
 
-**Status:** **In Review — corrected 2026-08-19 for `T269-R1`, and `T269-R2` needs a Windows run
-this tree has not had.**
+**Status:** **In Review — `T269-R2`'s Windows run exists, 2026-08-20.** Run `32319665394` on
+`06745fa`, `windows desktop` green end to end: the `--- gates ---` block reports **`ruff 0.16.3`**
+and **`mypy 2.3.1`**, bare on `PATH`, on `STARBASE`. **The mechanism this task reasoned about is
+now observed** — the persistent virtualenv's `sha256sum pyproject.toml` cache key re-keyed and the
+runner installed the pinned versions rather than keeping older satisfied floors. That was the last
+half of `T269-R1`'s correction that had never executed on Windows. Corrected 2026-08-19 for
+`T269-R1`; awaiting a focused evidence re-review, not a correction.
+
+*(`T-270` was what stood between this task and that run: the `Windows desktop suite` step failed
+before `Record the environment`, so the block this finding turns on was never printed. It is
+printed now, and `T-270` and this task were disposed by the same job.)*
 
 **`T269-R1` was right, and the docstring convicted itself.** The test compared
 `importlib.metadata.version()` — the distribution installed for the interpreter running pytest —
@@ -314,7 +323,7 @@ one**, because it decides whether a change lands). The reviewer's shadow mutatio
 both bare commands now fail, and the message names both resolutions, because *"0.16.0 is
 installed"* and *"the `ruff` on your `PATH` is 0.16.0"* have different fixes.
 
-**`T269-R2` was attempted and is now blocked behind `T-270`.** The head was pushed and run
+**`T269-R2` was attempted, blocked behind `T-270`, and is now answered.** The head was pushed and run
 `32268124069` dispatched at `53edb19`. **The re-key worked exactly as predicted** — the runner
 resolved dependencies afresh and installed `ruff-0.16.3` and `mypy-2.3.1` on `STARBASE`, which is
 half of what this finding asks for. **The other half never ran**: the same fresh resolve floated
