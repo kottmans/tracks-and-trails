@@ -19261,3 +19261,64 @@ T-269 is **approved at correction `166ce39`**, with its persistent-Windows evide
 The exact dev pins remain canonical in `pyproject.toml`, the workflow duplicates no version, and
 T266-R2 is Resolved. The Reviewer changed only this append-only record; no reviewed test,
 task/status file, dependency, workflow, push or remote setting was changed.
+
+---
+
+## 2026-08-20 — session coordination and evidence review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-074`, `T-238`, `T-269`, `T-270`, `T-272`
+**Base:** `5b61279da91b62ff70c48572c0b1db19e6ea662b` (`origin/main` at review start)
+**Head:** `bf766b3dffce042607c65e2157cdacf20497911f` — five local, unpushed commits
+**Verdict:** **Changes requested.** The completion filing for T-269/T-270 and T-074's move from
+Ready to Blocked are sound. The new evidence prose is not ready as current truth: T-238 erases an
+earlier 20-run loaded campaign, T-272 equates its POSIX resource-tracker pipe with T-268's distinct
+Windows spawn-payload pipe, and T-074 gives a common-rate statistical ceiling to runs drawn from
+materially different heads. No product, test, workflow or dependency behavior changed in this
+range.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T074-R5** | **Medium** | **Yes — the current evidence assigns a stable risk bound to a heterogeneous sample** | The claimed **105 completed Full suite steps and zero native crashes are verified**: GitHub exposes 92 successful and 13 failed step conclusions, and all 13 failures end in ordinary pytest tallies rather than a native-process death. The inference does not follow. These runs span many heads; just the manager and test-lifecycle surfaces changed by **2,886 insertions and 622 deletions** between `bd4dde8` and the last source head `06745fa`. `T074-R1` already ruled that materially changed heads are not one controlled population and required exact-head observations rather than a stable rate. The rule-of-three **2.9% per-run ceiling** assumes exchangeable Bernoulli trials with one underlying probability, which this record does not establish. The enumeration also contains four CI runs with no `Full suite` step at all, in addition to the 22 cancelled and 14 skipped step conclusions the entry names. None changes the correct 105 total, but the method does not account for every run as written. | Keep the exact observation `0/105 completed Full suite steps` and the valid T238-R2 nondiscrimination argument. Remove the stable 2.9% rate claim, or label it explicitly as a conditional pooled calculation whose common-rate premise is not established. Account for the four absent-step runs separately. Preserve the OPS-007 risk decision and T-074's Blocked-on-T-092 disposition; neither depends on the invalid ceiling. | **Open** |
+| **T238-R4** | **Medium** | **Yes — the current task record contradicts its own retained campaign evidence** | The new opening says deliberate load “had never been tried,” that all previous 40 runs were idle, and that repetition is spent at **70 = 40 idle + 30 contended**. The same entry later records **60** prior clean runs: 40 idle, **12 under 20 busy loops**, and **8 beside an `-n auto` integration batch**; it explicitly says that deliberate saturation refuted the earlier recommendation. If the new 30-run campaign is distinct, the clean total is **90**, including 50 previously/newly contended runs, not 70. The opening also says a real-test guard firing is the only route left, while the later 2026-08-16 ruling says criterion 4 is *no longer* “wait for the guard to fire” and names a real-session probe plus a widget-cycle check. The new 30-run zero may still be useful as an additional, better-controlled campaign, but it neither pulls an untried lever nor replaces the recorded next investigation. | Rewrite the new section as **30 additional contended runs**, state the cumulative conditions/count accurately, and identify what the continuous three-batch design adds over the prior 12+8 loaded runs. Reconcile its criterion-4 sentence with the later real-session/cycle plan. Keep T-238 Ready and criterion 4 open; this finding does not request a disposition change. | **Open** |
+| **T272-R1** | **Medium** | **Yes — the causal distinction rests on two different pipes being treated as one mechanism** | T-268 rules out another process retaining the write end of the Windows **spawn payload pipe**: `popen_spawn_win32` creates `pipe_handle` and starts the child with `bInheritHandles=False`. The Linux specimen is held by the separate **resource-tracker pipe**. `popen_spawn_posix._launch()` obtains `resource_tracker.getfd()`, appends that descriptor to the child pass-FD set, and supplies it independently of the payload `pipe_handle`; the spawned worker is therefore expected to retain the tracker's writer. T-272's one-thread, zero-CPU reader is the `resource_tracker`, not the spawned worker T-268 classifies; the spawned worker has two threads and 157 seconds of CPU. The claim that this is “that eliminated” T-268 mechanism, or the five's one-thread shape reproduced outside Windows, is false. The supported conclusions survive: the scanner finds a Linux spawned-worker orphan, Linux scheduling is absent, the worker is past T-258's pre-payload window, and product reachability is unproved. | Distinguish the resource-tracker and spawn-payload channels in both the task and evidence file. Say this is not T-268's cause because it is a different platform channel/process pair, not because T-268 eliminated the same mechanism. Attribute the one-thread/zero-CPU observation to the tracker and the two-thread/157-second observation to the worker; do not present their union as the five's process shape. | **Open** |
+| **T272-R2** | **Low** | **No** | `ai/evidence/README.md` calls its table “What is here now” but does not list the new Linux-orphan artifact or why it satisfies the directory's cannot-be-regenerated rule. The artifact itself does satisfy that rule: it captures read-only state from live specimens that will disappear when those processes exit. | Add the file to the inventory with that retention reason. **Owner/target:** Documentation Maintainer, T-272 correction batch. | **Open, non-blocking** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and scope | **Passed.** `main` was clean and five commits ahead of `origin/main`; `5b61279..bf766b3` changes only `ai/TASKS.md`, `ai/STATUS.md`, and one new evidence file. `git diff --check` passes. No `src/`, test, workflow, dependency, or build path changed. |
+| Windows Full suite enumeration | **105 completed steps confirmed:** 92 success + 13 failure. All 13 failed-step logs contain an ordinary pytest completion tally and exit 1; none contains an access violation, fatal Python error, segmentation fault, or exit 139. The full 145-run enumeration also contains 22 cancelled conclusions, 14 skipped conclusions, and four runs where the step is absent. |
+| T-074 population audit | The 105 observations are useful as a dated zero count and cannot establish that T-128 caused T-074. They are not an exact-head population: `bd4dde8..06745fa` materially changes `manager.py`, `test_manager.py`, the root/UI conftests and `qt_lifecycle.py` across many commits. This independently reproduces the limitation T074-R1 already recorded. |
+| T-238 retained record | The pre-existing conditions table explicitly totals 40 idle + 12 busy-loop + 8 concurrent-integration runs and calls saturation tried. The later criterion-4 section explicitly redirects work to a real session and widget-cycle reachability. Both contradict the newly prepended summary. |
+| T-272 mechanism | Local Python 3.14 source confirms POSIX passes `tracker_fd` and `pipe_handle` separately, while the Windows source creates and duplicates only the payload pipe described by T-268. The evidence artifact itself identifies PID 432922 as `resource_tracker` and PID 434366 as `spawn_main`. |
+| Entry moves | **Passed.** T-269/T-270 retain their approved evidence while moving to Complete, and STATUS now correctly reports five successful jobs plus the skipped orphan job. T-074's move changes its status/dependency without losing its prior entry; Blocked on T-092 is consistent with its still-unmet dump criterion and OPS-007. |
+| Repository gates at head | **Passed:** task placement **15 passed**; `ruff check .`; `ruff format --check .` (**203 files**); commit-message checker (**5 commits**). |
+
+### Review judgments
+
+- **The T238-R2 reasoning transfers to T-074.** Zero before and zero after cannot establish that
+  the candidate correction caused the absence. T074-R5 rejects only the unsupported common-rate
+  ceiling, not the negative result or the reclassification that rests on it.
+- **T-074's Ready-to-Blocked move is accepted as a current-truth correction.** It does not reverse
+  OPS-007, alter priority, close any criterion, or claim a diagnosis. T-092 is the real external
+  dependency its retained criterion already describes.
+- **T-238's disposition is untouched.** This review asks for an accurate campaign record and
+  preserves the maintainer's decision to leave criterion 4 open with T-238 Ready.
+- **The T-272 scheduling task remains well-founded after narrowing.** A Linux worker orphan was
+  found by the existing scanner and no Linux job schedules it. The two live specimens remain
+  preserved; this review did not inspect, signal or reap them.
+- **The T-269/T-270 completion filing is accepted.** It accurately applies the existing approvals
+  and corrects the six-green-jobs sentence without reopening either implementation.
+
+### Readiness
+
+The range is **not approved at `bf766b3`**. Correct T074-R5, T238-R4 and T272-R1 together, and fold
+the non-blocking T272-R2 inventory row into that documentation batch. One focused correction
+re-review is available and should inspect only those four findings and the correction diff; it
+must not reopen T-269/T-270, T-074's accepted board move, or T-238's disposition. The Reviewer
+changed only this append-only record. No reviewed task/status/evidence file, source, test,
+workflow, dependency, live process, push or remote state was changed.
