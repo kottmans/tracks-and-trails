@@ -75,9 +75,13 @@ are on Windows, on the payload channel, with the one-thread shape; the `kirk` pa
 the tracker channel, and were not that shape. `T-268` remains **Blocked on a person at `STARBASE`**
 and is still the one thing on this board nobody at a keyboard can move.
 
-**Gates at `f20876a` on `kirk`:** `ruff check .` clean, `ruff format --check .` **203 files**, task
-placement **16 passed, 2 skipped**, commit-message checker over the correction range clean, and no
-AI co-author trailer anywhere in it. **The full suite was not re-run and does not apply** — no
+**Gates at `f20876a` on `kirk`:** `ruff check .` clean, `ruff format --check .` **203 files**,
+task placement — `pytest tests/unit/test_task_placement.py` — **15 passed, no skips**,
+commit-message checker over the correction range clean, and no AI co-author trailer anywhere in it.
+*(This read **"16 passed, 2 skipped"**, which is not that gate's result (`COORD-R24`). It is the
+result of `pytest tests -k placement`, a substitute that also collects one test from
+`tests/unit/test_ytdlp_update.py` and two skips from elsewhere. The gate passed either way, but a
+recorded exact tally has to be the tally of the command it names — the file now names the command.)* **The full suite was not re-run and does not apply** — no
 executable file changed since the last green run. **Also In Review and unmoved by this batch:**
 `T-267`, `T-256`, `T-258`.
 
