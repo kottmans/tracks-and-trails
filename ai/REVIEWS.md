@@ -19399,3 +19399,56 @@ only on those two items and their correction diff.
 
 The Reviewer changed only this append-only record. No reviewed task/status/evidence file, source,
 test, workflow, dependency, live process, push or remote state was changed.
+
+---
+
+## 2026-08-20 — T272-R3 / COORD-R24 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-272`
+**Initial finding head:** `d5b95c5e9adb27a3a0d50c8118a2e5d205367152`
+**Review-record base:** `30c78a320e31a5395b7ce980ebf5bd177ff6cc92`
+**Correction head:** `1624f10a30c16a2c57fa7cf3044088ed26423ac1`
+**Verdict:** **Approved. No new findings.** T272-R3 and COORD-R24 are Resolved. Every live
+statement now separates the observed disappearance from its unknown cause and unknown external
+conduct, while the gate record names the command that produces its exact tally.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T272-R3** | **Medium** | Yes | The task entry, evidence conclusion, evidence inventory and STATUS all stop at three observations: both PIDs are gone, the host did not reboot, and this session signalled nothing. They explicitly leave external termination, inspection and release unknown and unrecoverable. The unsupported ranking of the sleep candidate is withdrawn; requiring nothing external is correctly identified as a property of the candidate rather than evidence it happened. The finite-lifetime statement remains, now explicitly separated from causation. | **Resolved at `c929bc4`** |
+| **COORD-R24** | **Low** | No | STATUS names `pytest tests/unit/test_task_placement.py` and records its reproducible result: **15 passed, no skips**. It also identifies the substituted `pytest tests -k placement` command that produced the former 16/2 tally. | **Resolved at `1624f10`** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary | `30c78a3..1624f10` changes only `ai/TASKS.md`, `ai/STATUS.md` and the two T-272 evidence files. No source, test, workflow, dependency, build path, task disposition or T-268 claim changed. |
+| Uncertainty audit | The former natural-exit/absence-of-intent phrases survive only where quoted as withdrawn wording. Operative text says another actor's termination, inspection or release is unknown and cannot be recovered after the fact. The evidence file adds the explicit invariant that no sentence may assume beyond the three observations. |
+| Preservation criterion | “Overtaken” records that no specimen remains available for future inspection. “Never met” is the evidentiary disposition of a criterion that required recorded identity revalidation before termination; it does not claim no unseen actor acted, which the immediately preceding sentence expressly leaves unknowable. |
+| Exact task-placement gate | `.venv/bin/python -m pytest -q tests/unit/test_task_placement.py`: **15 passed**. |
+| Wrong-command reproduction | `.venv/bin/python -m pytest -q tests -k placement`: **16 passed, 2 skipped, 3723 deselected**. This confirms the correction's account of the stale tally. |
+| Static and format checks | `ruff check .`: passed. `ruff format --check .`: **203 files already formatted**. |
+| Commit and boundary checks | Commit-message checker: **2 commits checked** in `30c78a3..1624f10`. `git diff --check` passed, and the range contains no AI authorship/generated-with trailer. |
+| Full suite | Not run; this is a documentation-only correction and no executable file changed. |
+
+### Review judgments
+
+- **The preservation wording no longer smuggles in intent.** A project criterion is not met without
+  its required evidence even if an unobserved actor might have performed some of its actions. The
+  record now keeps that gate disposition distinct from the expressly unknown historical conduct.
+- **The candidate headings are read as alternatives by their explicit section context.** Neither
+  is promoted to a result: the sleep path is marked unverified, and the outside path is marked
+  neither observed nor excluded.
+- **The earlier synthesis remains settled.** This focused pass does not reopen the three-costume
+  classification, T272-R1's channel correction, or any earlier task disposition.
+
+### Readiness
+
+T-272's record correction is **approved at `1624f10`**. T272-R3 and COORD-R24 are Resolved; no
+blocking or non-blocking findings remain from this boundary. The five local commits remain held and
+unpushed; `origin/main` remains `d50eef9`.
+
+The Reviewer changed only this append-only record. No reviewed task/status/evidence file, source,
+test, workflow, dependency, live process, push or remote state was changed.
