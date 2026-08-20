@@ -18,6 +18,7 @@ only hand-written thing is the audit itself — which is the artefact under test
 
 import dataclasses
 import re
+from collections.abc import Callable
 from optparse import SUPPRESS_HELP
 from pathlib import Path
 from typing import Any, Final
@@ -373,6 +374,28 @@ def _ruled_options() -> tuple[set[str], set[str]]:
     `--geo-verification-proxy` permitted"*), so each cell is split into clauses and each clause is
     read for its own verdict.
     """
+    return _read_verdicts(_decision)
+
+
+class MixedVerdictClauseError(AssertionError):
+    """One clause named both verdicts, so this gate refuses to guess which the decision meant.
+
+    **`T256-R1`, and it is the defect this gate was built to make impossible.** The first version of
+    the override below read `if "forbidden" … elif "permitted"`, which silently resolves a
+    both-words clause **as forbidden** — and because the override *removes* the option from the
+    opposite set, the intersection assertion that was supposed to catch exactly this could never
+    fire. The Reviewer joined the amendment's permitted and forbidden phrases into one clause, moved
+    permitted `--netrc` and `--netrc-location` to `excluded`, and re-derived every count to agree:
+    **all 19 tests passed, and the gate had approved a refusal wider than the decision.**
+
+    Refusing is the fail-closed reading. A decision may say both things in one *cell* — `SEC-003`'s
+    Geo row does — but each **clause** must carry one verdict, which is a constraint on how a
+    decision is written and is cheap to meet.
+    """
+
+
+def _read_verdicts(body_of: Callable[[str], str]) -> tuple[set[str], set[str]]:
+    """The parse, taking its source as an argument so a regression can feed it a mixed clause."""
     forbidden: set[str] = set()
     permitted: set[str] = set()
 
@@ -383,13 +406,26 @@ def _ruled_options() -> tuple[set[str], set[str]]:
         table permits `--netrc-cmd`; its 2026-08-21 amendment forbids it, and both live in the file
         because `AGENTS.md` §6 makes this record append-only. Reading them in order and letting the
         later one win is the only reading under which the amendment is the decision and the original
-        is history — and it keeps the both-ways assertion below meaningful, since that fires only
-        when a *single* clause says both.
+        is history.
+
+        **A clause naming both verdicts raises instead of resolving** (`T256-R1`). The override
+        makes the later table win, which is right; it must not also make the *louder word* win
+        inside one clause, because that silently widens or narrows a security decision and leaves
+        every count free to agree with it.
         """
-        if "forbidden" in verdict:
+        says_forbidden = "forbidden" in verdict
+        says_permitted = "permitted" in verdict
+        if says_forbidden and says_permitted:
+            raise MixedVerdictClauseError(
+                "a verdict clause names both dispositions and cannot be read: "
+                f"{verdict.strip()!r}. Split it so each clause carries one verdict; this gate "
+                "will not guess which the decision meant, because guessing wrong changes a "
+                "refusal list and nothing downstream would disagree."
+            )
+        if says_forbidden:
             forbidden.update(named)
             permitted.difference_update(named)
-        elif "permitted" in verdict:
+        elif says_permitted:
             permitted.update(named)
             forbidden.difference_update(named)
 
@@ -398,7 +434,7 @@ def _ruled_options() -> tuple[set[str], set[str]]:
         ("SEC-004", "| Family | Options | Why |"),
         ("SEC-005", "| Family | Options | Why |"),
     ):
-        body = _decision(name)
+        body = body_of(name)
         # **Every** table with this header, in document order — not just the first. `SEC-003` has
         # two: the original verdict table and the amendment's.
         at = body.find(header)
@@ -442,6 +478,47 @@ _REFUSED_COUNTERPARTS: Final = {"--no-exec": "--exec"}
 _REFUSED_IN_PROSE: Final = {
     "--sponsorblock-api": ("SEC-003", "A self-hosted `--sponsorblock-api` was declined"),
 }
+
+
+def test_a_clause_naming_both_verdicts_is_refused_rather_than_resolved() -> None:
+    """`T256-R1`: the gate must not pick a winner inside one clause, however the audit is aligned.
+
+    **The Reviewer's demonstration, as a test.** Joining the amendment's permitted and forbidden
+    phrases into a single clause made the old parser read the whole clause as *forbidden*; moving
+    permitted `--netrc` and `--netrc-location` into `excluded` and re-deriving the class and refusal
+    counts to 91/28/94 then satisfied every other assertion. **All 19 tests passed while the gate
+    approved a refusal wider than the accepted decision.**
+
+    **This fails at parse time, which is what makes aligning the audit useless as a rescue.** The
+    refusal happens before any row, count or total is consulted, so there is no arrangement of the
+    audit that agrees with the wrong reading — every test that depends on `_ruled_options` errors
+    out together. That is the property the finding asked for, and it is structural rather than
+    dependent on this test predicting which counts a future mutation would choose.
+    """
+    mixed = {
+        "SEC-003": (
+            "## SEC-003 — stand-in\n\n"
+            "| Family | Ruled |\n|---|---|\n"
+            "| **Site credentials** | `--netrc` is permitted and `--netrc-cmd` is forbidden |\n\n"
+        ),
+        "SEC-004": "## SEC-004 — stand-in\n\n| Family | Options | Why |\n|---|---|---|\n\n",
+        "SEC-005": "## SEC-005 — stand-in\n\n| Family | Options | Why |\n|---|---|---|\n\n",
+    }
+    with pytest.raises(MixedVerdictClauseError) as raised:
+        _read_verdicts(lambda name: mixed[name])
+    assert "--netrc" in str(raised.value), (
+        "the refusal must quote the clause it could not read, or the next person has to find it"
+    )
+
+    # And the same shape split into two clauses is read normally — the override still works, so
+    # this is a refusal to guess rather than a refusal to parse amendments.
+    split = dict(mixed)
+    split["SEC-003"] = mixed["SEC-003"].replace(
+        "`--netrc` is permitted and `--netrc-cmd` is forbidden",
+        "`--netrc` is permitted. `--netrc-cmd` is forbidden",
+    )
+    forbidden, permitted = _read_verdicts(lambda name: split[name])
+    assert "--netrc-cmd" in forbidden and "--netrc" in permitted
 
 
 def test_every_option_a_decision_forbids_is_excluded_in_the_audit() -> None:
