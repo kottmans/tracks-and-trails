@@ -9,15 +9,17 @@
 `T-273` came out of a probe refusing to report.** Overnight work, authorized by the maintainer,
 **nothing pushed**: `origin/main` is still `5aab82d` and **seven commits are held**.
 
-**`T-238`, criterion 4, second step — the answer is neither branch the criterion wrote.**
+**`T-238`, criterion 4, second step — the run refused and criterion 4 is unanswered.**
 `tools/t238_widget_cycle_probe.py` measures *what freed a widget* rather than whether it sits in a
-cycle, because a widget held **by** a cycle is not **in** one and is still freed by `gc`, still
-decref'd on whatever thread collected. Offscreen on `kirk`: **159** widgets live with every route
-open, **159** still live after the application's own shutdown, **0** freed by the collector, and
-**30 other objects freed by it in the same window**. So nothing takes the `gc` route through these
-surfaces — **because no widget is freed at all**, and not because the collector was idle. That
-closes the route here, which is criterion 4's *harness* branch, **arrived at by a road the criterion
-did not describe**. `T-238` stays `Ready`.
+cycle. Offscreen on `kirk`: **159** widgets live with every route open, **159** still live after the
+application's own shutdown, **0** freed by the collector, **30 other objects** freed in the same
+window, **exit 3 — refused**. *(This entry said the run closed the `gc` route and selected criterion
+4's harness branch. **Withdrawn**, `T238-R5`: it quoted the refusal and then answered anyway.
+Retention is not the absence of cycles — a retained graph is never classified by the collector;
+equal counts do not establish identity; the forced collection after the result is not recorded; and
+five product-reachable screens are uncovered.)* **Criterion 4 stays open**, and what would close it
+is now specific: control the retention root, track the widget identities, observe the collector
+after release, and cover the whole application-widget scope. `T-238` stays `Ready`.
 
 **`T-273` is what the probe found while refusing to answer.** Its first run printed `0 freed` with
 159 widgets still standing, and *nothing was freed by the collector* and *nothing was freed at all*

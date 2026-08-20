@@ -20,14 +20,31 @@ releasing it, so the collector's own verdict is readable. The application is com
 through **its own routes**, and then torn down through the lifecycle it owns; whatever `QWidget`
 turns up in `gc.garbage` after that was freed by the collector.
 
-**Scope: the surfaces the application opens, which is a choice and not an omission.**
-`open_add_dialog()`, `open_settings()` and `show_about()` are routes a user takes. The five screens
-`tests/ui/conftest.py` additionally *constructs* — the format table, template editor, playlist
-picker, options dialog and preset manager — are built there so an accessibility sweep can walk a
-realised widget; they are reached in the product from a staged row. **This probe deliberately does
-not restate that list.** `T200-R3` was reopened twice on two inventories of screens drifting apart,
-and a second copy here would be a third. What this measures is what `compose()` builds and what the
-window's own routes open.
+**Scope, and it is an omission rather than a choice** (`T238-R5`). This covers what `compose()`
+builds and what `open_add_dialog()`, `open_settings()` and `show_about()` open. The five screens
+`tests/ui/conftest.py` additionally constructs — the format table, template editor, playlist picker,
+options dialog and preset manager — **are reachable in the product**, from a staged row, and they
+are not covered here. An earlier version of this docstring called that a deliberate scope on the
+grounds that restating the list would be a second inventory (`T200-R3`); avoiding a second inventory
+is a real constraint but it does not make the uncovered screens unreachable, and criterion 4 asks
+about **any** application widget. **Whatever this reports is bounded to the surfaces below.**
+
+**What this run cannot answer, stated here because the exit code alone is easy to skim past.**
+When the surfaces are still standing at the end — which is what happens today — this refuses, and
+the refusal is not a quiet result:
+
+- **Retention is not the absence of cycles.** A still-reachable object graph may contain any number
+  of them; being reachable is what stops the collector classifying it, not the absence of a cycle.
+- **Equal aggregate counts do not establish identity.** `159` before and `159` after does not say
+  they are the same 159 widgets, and `0` widgets among the parked garbage is a count rather than a
+  statement about which widgets those were.
+- **The post-callback `gc.collect()` in the `finally` below is not recorded.** It runs after the
+  result has been read and after `DEBUG_SAVEALL` is lowered, so whatever it frees is invisible to
+  this measurement.
+
+**A run that answered criterion 4** would release or otherwise control the retention root, track
+the identities of the widgets it is deciding about, observe what the collector does *after* that
+release, and cover the criterion's whole application-widget scope. This does none of those.
 
 **Usage** — a script, not a plugin:
 
@@ -234,11 +251,14 @@ def main() -> int:
     print(f"  QWidget subclasses freed by the collector: {len(freed)}")
     if after >= before:
         print(
-            f"\nThe surfaces are still standing — {before} widgets before the teardown and {after} "
-            f"after — so no widget was freed by anything, and the {len(freed)} above is not a "
-            "result about cycles. The collector was not idle while that happened: it "
-            f"freed {collected} other objects in the same window, so this is the teardown "
-            "releasing no widget rather than the collector never running."
+            f"\nREFUSED. The surfaces are still standing — {before} widgets before the teardown "
+            f"and {after} after — so no widget was freed by anything and the {len(freed)} above is "
+            "not a result about cycles. It is also not a result about their absence: a retained "
+            "graph is not classified by the collector at all, so it may contain any number of "
+            f"cycles. The {collected} other objects say the collector ran in this window; they do "
+            "not say which objects, and they do not cover the post-result collection in `finally`."
+            "\n\nCriterion 4 is unanswered by this run. See the module docstring for what a run "
+            "that answered it would have to do."
         )
         return 3
     if freed:
@@ -253,9 +273,11 @@ def main() -> int:
         )
     else:
         print(
-            f"\nNo widget this application builds was freed by the collector, and {before - after} "
-            "of them were freed: each reached refcount zero on the thread that dropped it. On "
-            "this evidence the gc route is not product-reachable through these surfaces."
+            f"\nNo widget this application builds turned up in the collector's garbage, and "
+            f"{before - after} widgets were released. That is evidence about **these** surfaces "
+            "and about the widgets this run tracked; it does not close the gc route for the "
+            "application, which has screens this probe does not open. Read it with the module "
+            "docstring's limits in hand."
         )
     return 0
 

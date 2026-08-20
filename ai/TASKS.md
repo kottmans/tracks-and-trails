@@ -8643,7 +8643,7 @@ garbage is one that appears once on a loaded machine and never again in 60 clean
   none does, the `gc` route is closed and the harness reading is back; if one does, criterion 4's
   *product-reachable* branch is the live one and it wants a deterministic regression, not a guard
 
-#### The second step, measured 2026-08-20: the answer is neither branch
+#### The second step, attempted 2026-08-20: the run refused, and criterion 4 is unanswered
 
 **`tools/t238_widget_cycle_probe.py`, offscreen on `kirk`.** It composes the application, opens the
 three surfaces the window's own routes open — `open_add_dialog()`, `open_settings()`,
@@ -8663,6 +8663,7 @@ shape `demonstrate_the_gc_route()` demonstrates.
 | `QWidget`s live after the application's own shutdown | **159** |
 | `QWidget`s freed by the cyclic collector | **0** |
 | **Other** objects freed by the collector in the same window | **30** |
+| Exit code | **3 — refused** |
 
 *(**That last row read "0 objects" for one commit and was wrong.** It was quoted from a scratch
 diagnostic that was holding the objects it was counting — `gc.get_referrers` returned the very
@@ -8671,16 +8672,35 @@ place it can be read from honestly. The correction **strengthens** the result ra
 it: the collector was **not** idle during the measurement, so *no widget was collected* is a fact
 about widgets and not about the collector having nothing to do.)*
 
-**The zero is real and it does not mean what the criterion expected.** Nothing takes the `gc` route
-through these surfaces — **because no widget is freed at all.** The tree is not cyclic garbage; it
-is not garbage. A widget that never becomes garbage can never be decref'd by `gc` on a pool thread, so
-the `gc` route is **not reachable through these surfaces** — criterion 4's *harness* branch, arrived
-at by a road the criterion did not anticipate, and the difference is worth keeping rather than
-rounding to "no cycles found".
+**The probe refused, and the first version of this section then answered anyway** (`T238-R5`). It
+said the `gc` route was closed through these surfaces, that the trees were *"not garbage"*, and that
+criterion 4's harness branch was selected. **All three are withdrawn.** The run exits **3** and says
+its own zero is not a result about cycles; a section that quotes the refusal and then draws the
+conclusion the refusal forbids is the same document giving two answers, which is the shape this
+project keeps finding.
 
-**The probe refused to report before it had a control, which is why the first number was thrown
-away.** Its first run printed `0 freed` and nothing else, and that reads exactly like a clean
-result; *nothing was freed by the collector* and *nothing was freed at all* produce the same zero
+**Four reasons the counts do not reach that conclusion**, and each is a thing a future run would
+have to fix rather than a caveat to note:
+
+1. **Retention is not the absence of cycles.** A still-reachable graph is not classified by the
+   collector at all, so it may contain any number of them. *"Not garbage"* described what the
+   collector was prevented from deciding.
+2. **Equal aggregates do not establish identity.** 159 before and 159 after does not say they are
+   the same 159 widgets, and `0 widgets among the parked garbage` is a count, not a statement about
+   which widgets those were.
+3. **The forced `gc.collect()` after the result is not recorded.** It runs in the helper's `finally`,
+   after the result is read and after `DEBUG_SAVEALL` is lowered, so whatever it frees is invisible.
+4. **Five product-reachable screens are not covered.** The format table, template editor, playlist
+   picker, options dialog and preset manager are reached from a staged row. Criterion 4 asks about
+   **any** application widget.
+
+**Criterion 4 stays open**, and what would close it is now specific: a measurement that **releases
+or otherwise controls the retention root**, **tracks the identities** of the widgets it decides
+about, **observes the collector after that release**, and **covers the whole application-widget
+scope**.
+
+**The refusal is the instrument working, and it is why an earlier number was thrown away.** The
+very first run printed `0 freed` and nothing else, and that reads exactly like a clean result; *nothing was freed by the collector* and *nothing was freed at all* produce the same zero
 and are opposite answers. The before/after widget counts are now part of the instrument, and it
 **exits 3 rather than reporting** when the surfaces are still standing. Its **self-test runs in both
 directions first** — it must *see* a widget reachable only from a cycle and must *not* name one
@@ -8694,9 +8714,10 @@ loudly.)*
 **What this does not establish.** *Why* the tree is retained is not identified here: the window's
 Python referrers are its own bound methods and closure cells, and an attempt to attribute those to
 C++ signal connections was **contaminated by the diagnostic's own lists** and is withdrawn rather
-than reported. It also measures only the surfaces the window's routes open — the five screens
-`tests/ui/conftest.py` additionally constructs are not restated in the probe, deliberately, because
-two inventories of screens is `T200-R3`.
+than reported. **The five uncovered screens were also called a deliberate scope and are not one**
+(`T238-R5`): avoiding a second inventory of screens is a real constraint (`T200-R3`), but it does
+not make those screens unreachable, and calling an omission a choice is how a bound stops being
+read as a bound.
 
 **`T-238` stays `Ready`.** This narrows the question and does not close it, and the entry is not
 moving to `Complete` on a measurement that argues the opposite of the deliverable it already has.
@@ -9041,10 +9062,11 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
 
-**Status:** **Proposed — filed 2026-08-20 by `T-238`'s criterion-4 measurement, which could not
-answer its own question until this was noticed.** The probe reported *0 widgets freed by the
-collector* while 159 were still standing; those are opposite answers wearing the same zero, and the
-control that separates them is what found this.
+**Status:** **Proposed — filed 2026-08-20 by the run that `T-238`'s criterion-4 probe refused to
+report.** The probe printed *0 widgets freed by the collector* while 159 were still standing; those
+are opposite answers wearing the same zero, and the control that separates them is what found this.
+**The filing does not depend on any conclusion about cycles** — the retention is observed directly,
+and `T238-R5` withdrew the conclusions the probe's zero was briefly read as supporting.
 **Owner:** Planner, to prioritize
 **Priority:** **Medium.** Nothing a user can see — a shipped process composes once and exits, so the
 retention has no runtime consequence there. It is the **test suite** that composes repeatedly, and
@@ -9074,9 +9096,16 @@ each:**
 
 **Monotonic, ~159 per test, and none of it is released.** `tools/t238_widget_cycle_probe.py`
 reproduces it outside pytest — three compose/open/shutdown cycles in one process give **159, 318,
-477** — so it is the composition rather than the fixture. The cyclic collector runs during that
-window and frees **30 objects, none of them a `QWidget`**: the trees are not cyclic garbage, they
-are not garbage, and the collector is not merely idle.
+477** — so it is the composition rather than the fixture. The collector runs in that window and
+frees **30 objects, none of them a `QWidget`** — and the reviewer's own three-call run recorded
+those 30 on the **first** cycle only, with zero on the two after it.
+
+*(**What that does and does not say** — `T238-R5`. It says the collector ran; it does not say the
+trees are *"not garbage"*, which is what this paragraph claimed for one commit. A retained graph is
+never classified by the collector at all, so it may contain cycles; the counts are aggregates and
+name no widget; and the forced collection after the probe reads its result is not recorded. **The
+retention is what this task is filed on, and it is observed directly** — 159 to 1538 live widgets —
+so nothing here rests on the withdrawn reading.)*
 
 **The existing guard cannot see this, and that is not a defect in the guard.**
 `assert_no_orphaned_views` looks for item views that are alive **with no parent**, which is the
