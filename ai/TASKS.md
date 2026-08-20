@@ -8876,6 +8876,78 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 ## Proposed — Phase 4
 
+### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
+
+**Status:** **Proposed — filed 2026-08-20 by `T-238`'s criterion-4 measurement, which could not
+answer its own question until this was noticed.** The probe reported *0 widgets freed by the
+collector* while 159 were still standing; those are opposite answers wearing the same zero, and the
+control that separates them is what found this.
+**Owner:** Planner, to prioritize
+**Priority:** **Medium.** Nothing a user can see — a shipped process composes once and exits, so the
+retention has no runtime consequence there. It is the **test suite** that composes repeatedly, and
+`T-238` is a native crash in that suite under `-n auto`
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-238` is **not** a dependency and this is **not** a diagnosis of it
+**Relevant context:** `tests/ui/conftest.py`'s `composed` fixture, `src/tracks_and_trails/app.py`'s
+`compose()` and `OrderlyShutdown`, `tests/qt_lifecycle.py`, `tools/t238_widget_cycle_probe.py`
+**Affected surfaces:** composition teardown, and possibly nothing in `src/` — see the risk
+**Risk:** Medium, and it is the diagnosis rather than the fix. Releasing the tree by calling
+`deleteLater()` on the window would make the number go away without establishing what was holding
+it, and a lifecycle changed to satisfy a measurement is `T238-R1`'s shape
+
+#### What was measured
+
+**`tests/ui/test_accessibility.py`, offscreen on `kirk`, twelve tests, live `QWidget` count after
+each:**
+
+```
+   159  test_every_surface_names_every_control_it_publishes
+   318  test_no_control_is_published_without_a_role
+   477  test_every_focusable_control_is_named
+   636  test_no_control_is_named_only_by_the_value_it_happens_to_show
+   ...
+  1538  test_the_sweeps_actually_reach_the_applications_controls
+```
+
+**Monotonic, ~159 per test, and none of it is released.** `tools/t238_widget_cycle_probe.py`
+reproduces it outside pytest — three compose/open/shutdown cycles in one process give **159, 318,
+477** — so it is the composition rather than the fixture. A forced `gc.collect()` with
+`DEBUG_SAVEALL` frees **0 objects**: the trees are not cyclic garbage, they are not garbage.
+
+**The existing guard cannot see this, and that is not a defect in the guard.**
+`assert_no_orphaned_views` looks for item views that are alive **with no parent**, which is the
+shape `T-238` was filed for. Every view in a retained tree still has its parent — the tree is intact,
+just never freed — so the predicate is not met and the suite is honestly green.
+
+#### What this is not
+
+- **Not a diagnosis of `T-238`.** It is a plausible neighbour of one: a worker accumulating widget
+  trees under `-n auto` is a memory story, and `T-238`'s crash is a native one. **Nothing here
+  connects them**, and *a stack is not a cause* applies to a widget count too.
+- **Not a leak a user can reach.** One composition per process, then exit.
+- **Not attributed.** The window's Python referrers are its own bound methods and closure cells.
+  An attempt to attribute those to C++ signal connections was **contaminated by the diagnostic's own
+  lists** and is withdrawn; what holds the tree is the open question, not a suspected answer.
+
+#### Suggested acceptance criteria
+
+- **What retains the tree is identified**, by measurement rather than by inspection of plausible
+  suspects, and written down — including *"it is correct that it is retained"* if that is the answer
+- **Either the tree is released at shutdown, or the record says why keeping it is right.** Both are
+  acceptable outcomes; silently making the number smaller is not
+- **A check fails when trees accumulate**, so the next reader learns it from a red suite rather than
+  from a probe written for another task
+- **`T-238`'s criterion 4 is re-read afterwards**, because its second step was answered *around* this
+  rather than through it
+
+#### Out of scope
+
+- Fixing `T-238`, or claiming this explains it
+- Changing `assert_no_orphaned_views`'s predicate, which is `T-238`'s deliverable and is approved
+- `deleteLater()` on the window to make the count fall, ahead of knowing what held it
+
+---
+
 ### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
 
 **Status:** **Proposed — filed 2026-08-20 from two specimens on `kirk` that have since ended.**
