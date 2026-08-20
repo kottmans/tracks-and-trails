@@ -320,6 +320,21 @@ this one returned four verdicts before approving.*
 `SEC-005` and `SEC-003`'s amendment (2026-08-21) closed the rest.** Nothing on this entry is now
 waiting on a person.
 
+**The task exhausted its ordinary Medium pass budget under `AGENTS.md` §10** — initial review, one
+focused correction, and the pass recorded at `801324b` — **and the maintainer authorized one further
+record-only focused pass on 2026-08-21**, recorded here with the finding as §10 requires rather than
+assumed. **Its scope is the correction at `04e6b93` and the three findings it answers**: `T256-R2`'s
+remaining site (the audit header), `T256-R3` (the mutation figure) and `T267-R2`'s stale paragraph.
+**No source, test, workflow or decision re-review is in it** — `T256-R1` is Resolved, the four
+rulings are accepted, and `SEC-003`'s original table stays untouched.
+
+**What the last pass found is worth carrying on the entry rather than only in `REVIEWS.md`.**
+`T256-R2` was written twice for the same file because the first sweep searched the body and missed
+the **header**, which is the first thing a reader of the audit sees; and `T256-R3` recorded the
+gate's mutation as **5 failed** when it is **3 failed, 17 passed** — a script whose `--netrc` row
+replacement matched nothing while its counts were changed as though it had. **Both are the same
+class the round was about, committed inside the round's own corrections.**
+
 **What the maintainer ruled on 2026-08-21, on the Planner's four options.** Each was recommended and
 each was taken:
 
