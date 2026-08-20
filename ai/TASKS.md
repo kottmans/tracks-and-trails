@@ -8114,8 +8114,34 @@ being necessary.)*
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 
-**Status:** **Ready — the guard is Approved at `9e5feae`, and the task stays open against
-criterion 4.** `T238-R1`, `T238-R2` and `T238-R3` are all **Resolved**. What is delivered is a
+**Status:** **Ready — the guard is Approved at `9e5feae`, the task stays open against criterion 4,
+and the load avenue this entry named is now spent too.**
+
+**30 runs under deliberate host load, 2026-08-20: zero crashes.** This entry said *"the next attempt
+should reproduce under deliberate host load, as `T-228`'s did"*, and that had never been tried —
+the 40 previous runs were idle. Three competing `pytest tests/integration -n 4` batches ran
+continuously so every measured run was contended **end to end**, and the target was the supported
+command, `pytest -n auto tests/unit tests/ui`. Load actually achieved on 20 cores: **median 21.4,
+max 23.9, min 14.2**. Every run: `3276 passed, 18 skipped`.
+
+**The instrument was proved before the zero was believed.** `T238-R1`'s inverted-order reproduction
+was re-run first: swapping the two calls in `tests/ui/conftest.py` still kills the helper subprocess
+with **`assert -11 == 0`**, deterministically, on this machine today. **The first attempt at that
+control printed a clean 91-passed** — because the reproduction lives in the helper subprocess, not
+in an ordinary UI file — which is exactly the blind-probe failure the control exists to catch.
+`systemd-coredump` was also confirmed capturing that SIGSEGV, so the dump path was live.
+**Independent of the log grep, `coredumpctl` reports no dump of any kind** across the campaign.
+
+*(**The first campaign design was wrong and was discarded after two runs.** It started one competing
+batch per iteration and waited for it, so the 39-second target finished and then ran **unopposed**
+for the rest of the iteration — a load experiment measuring an idle machine. Recorded because a
+negative result from that design would have looked identical to this one.)*
+
+**So repetition is now spent at 70 runs across both conditions** — 40 idle, 30 contended — and
+**criterion 4 is unchanged**: product-versus-harness is still unestablished, and the guard firing on
+a real test remains the only thing that would establish it. The maintainer's 2026-08-13 ruling
+already anticipated this shape; what is new is that the one untried lever named in this entry has
+been pulled. `T238-R1`, `T238-R2` and `T238-R3` are all **Resolved**. What is delivered is a
 harness guard, not a diagnosis: **product-versus-harness is still unestablished**, and this entry
 sits under `## Ready` rather than `## Complete` for exactly that reason.
 
