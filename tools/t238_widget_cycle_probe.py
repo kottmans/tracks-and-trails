@@ -38,11 +38,14 @@ produces the report again.
 
 ## The self-test runs first and runs in both directions
 
-Its sibling probe shipped two defects that each reported **zero** while measuring nothing, and both
-read exactly like a clean result. A "no widget takes the gc route" answer from this one is worth
-nothing unless the same run shows the probe (1) *sees* a widget that is on that route and (2) does
-*not* flag one that is not. One direction alone would leave "reports everything" and "reports
-nothing" indistinguishable from a correct instrument.
+Its sibling probe shipped two defects that each made it report confidently about nothing. **One of
+them was a clean-looking zero** — no off-thread finalisation over the whole UI suite, because the
+patch it relied on never ran; the other counted a single widget five times. *(Its own docstring
+calls both "clean", which is true of the first and generous to the second — the over-count was found
+by a run taking three times as long, not by reading the output.)* A "no widget takes the gc route"
+answer here is worth nothing unless the same run shows the probe (1) *sees* a widget that is on that
+route and (2) does *not* flag one that is not. One direction alone leaves "reports everything" and
+"reports nothing" indistinguishable from a correct instrument.
 """
 
 from __future__ import annotations

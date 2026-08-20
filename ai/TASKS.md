@@ -8684,7 +8684,12 @@ result; *nothing was freed by the collector* and *nothing was freed at all* prod
 and are opposite answers. The before/after widget counts are now part of the instrument, and it
 **exits 3 rather than reporting** when the surfaces are still standing. Its **self-test runs in both
 directions first** — it must *see* a widget reachable only from a cycle and must *not* name one
-freed by refcount — because its sibling probe twice reported zero while measuring nothing.
+freed by refcount — because the sibling probe shipped two defects that made it report confidently
+about nothing, **one of them a clean-looking zero** across the whole UI suite. *(That probe's
+docstring calls both defects "clean"; only the first was. The second over-counted a widget five
+times and was caught by a run taking three times as long, not by reading its output — a distinction
+worth keeping, since it is the difference between an instrument that lies quietly and one that lies
+loudly.)*
 
 **What this does not establish.** *Why* the tree is retained is not identified here: the window's
 Python referrers are its own bound methods and closure cells, and an attempt to attribute those to
