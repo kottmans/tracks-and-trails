@@ -163,17 +163,34 @@ this one returned four verdicts before approving.*
 
 ### T-270 — Quit has no keyboard shortcut on Windows, and the whole Windows gate is red behind it
 
-**Status:** **In Review — built 2026-08-19. The product half is done; the dependency half is
-deliberately not, and says so.** `Quit` now resolves through `resolve_quit_shortcut()`, which keeps
-whatever the platform theme answers and substitutes `Ctrl+Q` when it answers **nothing**. **The
-`PySide6` constraint is unchanged** — see *The constraint deliberately does not change* below,
-which is this task's third criterion in the form it permits.
+**Status:** **In Review — the Windows evidence `T270-R1` asked for exists, 2026-08-20.** Run
+`32319665394` on `06745fa`: **`windows desktop` is green end to end in 34m47s**, and
+`test_the_quit_shortcut_is_bound` **PASSED** on the platform that produced the empty sequence.
+Awaiting the focused evidence re-review the verdict asked for; the implementation needs no
+correction and none is proposed.
 
-**Criterion 2 cannot be met from here and is the one thing outstanding.** *"The `windows desktop`
-job is green end to end"* is an observation on `STARBASE`, and this tree has not had one. The fix
-is measured against the **condition** rather than the platform: `resolve_quit_shortcut(QKeySequence())`
-is the empty sequence Windows produces, driven on Linux. **A green Windows run is still owed**, and
-`T269-R2` is waiting behind the same run.
+**The run was on PySide6 `6.11.2`, and that is the point.** `Windows desktop suite`, `Record the
+environment`, `Qt baseline` and `Full suite` each report `6.11.2` — the exact version whose empty
+`StandardKey.Quit` filed this task. **The fix is measured against the environment that broke, not a
+reverted one**, which is the difference between a fix and a downgrade. Nothing was pinned to get
+here: the constraint is still `>=6.11,<7`.
+
+**All five skipped steps executed.** `Windows desktop suite` **33 passed** (it was *1 failed, 32
+passed*), then `Record the environment`, `Lint`, `Format check`, `Qt baseline` and `Full suite` —
+**3707 passed, 30 skipped, 35 deselected** in 32m22s. The job went from 3m21s to 34m47s **because**
+the failure stopped short-circuiting the other five; the length is the fix working, not a
+regression.
+
+**`T-259`'s reporter fired at 86%** — 34.5 min of the 40-minute bound. In series with 32.3, 35.0,
+32.3 and 33.9, so it is growth in family rather than a jump, and its own annotation says the
+response is to re-measure before raising it. **Not this task's to raise.**
+
+**`T269-R2` is disposed by the same run** and the `--- gates ---` block is why: `ruff 0.16.3` and
+`mypy 2.3.1`, bare on `PATH`, on `STARBASE`. That is the Windows half `T-269` could not measure.
+
+**The `PySide6` constraint is unchanged** — see *The constraint deliberately does not change*
+below. **The maintainer ruled on 2026-08-19** that `T-270` may leave it alone and that the broader
+dependency-pinning policy stays a separate decision.
 
 #### What was built
 
@@ -257,11 +274,10 @@ commit:
 
 #### Acceptance criteria
 
-- ~~**Quit carries a non-empty shortcut on Windows**~~ — **built, and measured against the
-  condition rather than the platform.** The empty resolution is driven directly; the Windows
-  observation is criterion 2's.
-- **The `windows desktop` job is green end to end** — **not met, and not obtainable here.** Needs
-  one run on `STARBASE`.
+- ~~**Quit carries a non-empty shortcut on Windows**~~ — **met on the platform**, run
+  `32319665394`: `test_the_quit_shortcut_is_bound` PASSED under PySide6 6.11.2.
+- ~~**The `windows desktop` job is green end to end**~~ — **met**, run `32319665394`, 34m47s, all
+  six steps executing rather than skipping.
 - ~~**Whatever is decided about the PySide6 constraint is recorded where that kind of decision
   lives**~~ — **met in its second form**: the constraint does not change, and the note above says so
   and says what is left for the maintainer.

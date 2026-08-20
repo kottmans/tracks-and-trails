@@ -5,6 +5,37 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-20 — **`STARBASE` is producing Windows evidence again, and `T-270`'s
+fix is proved on the version that broke it.** Run `32319665394` on `06745fa`: **`windows desktop`
+green end to end in 34m47s**, `test_the_quit_shortcut_is_bound` **PASSED**, under **PySide6
+6.11.2** — the exact version whose empty `StandardKey.Quit` filed the task. Nothing was pinned to
+get there; the constraint is still `>=6.11,<7`, which the maintainer ruled `T-270` may leave alone.
+
+**The five skipped steps ran.** `Windows desktop suite` **33 passed** (was *1 failed, 32 passed*),
+then `Record the environment`, `Lint`, `Format check`, `Qt baseline` and `Full suite` — **3707
+passed, 30 skipped, 35 deselected** in 32m22s. **The job went from 3m21s to 34m47s because the
+failure stopped hiding the other five**; the length is the fix working. All six jobs in the run are
+green.
+
+**`T269-R2` is disposed by the same run.** The `--- gates ---` block reports `ruff 0.16.3` and
+`mypy 2.3.1` bare on `PATH` on `STARBASE` — the Windows half `T-269` could only reason about,
+because the persistent virtualenv's `sha256sum pyproject.toml` cache key rebuilt it as predicted.
+
+**`T-259`'s reporter fired at 86% — 34.5 min of 40, and the series is now 32.3, 35.0, 32.3, 33.9,
+34.5.** That is growth in family, not a jump, and the annotation states the response: re-measure
+before raising the bound. **`T-267` is what stops the threshold itself drifting** and is In Review.
+Nobody has raised anything.
+
+**`T-268` is untouched by all of this, and deliberately.** `STARBASE orphans` **skipped** on this
+push — it triggers nightly and on dispatch, not on push — so `3400` and `6924` are intact. It
+remains **Blocked on a person at `STARBASE`**, and it is still the one thing on this board nobody
+at a keyboard can move.
+
+**Both tasks await a focused evidence re-review**, not a correction: `T-270`'s reviewer recorded
+*no implementation finding* at `c047767` and blocked solely on the run that has now happened.
+
+---
+
 **Last updated:** 2026-08-19 — **`T-270` is built, and the red it was filed for is not cleared
 until a runner says so.** `Quit` no longer trusts a per-platform standard key: it keeps whatever the
 platform theme answers and substitutes `Ctrl+Q` when the answer is **empty**, which is what Windows
