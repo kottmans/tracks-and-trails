@@ -403,15 +403,26 @@ measurement is fully committed for the duration.
 
 `tools/t238_widget_thread_probe.py` measures the one precondition of `T-238`'s segfault — a
 `QWidget` whose last Python reference is dropped off the main thread — and it is here as a rule
-rather than as a tool, because **it reported a clean suite twice while measuring nothing**:
+rather than as a tool, because **it shipped two defects that each made it report confidently about
+nothing** — and they failed differently, which is the part this section previously flattened
+(`T238-R6`):
 
 - it patched `QWidget.__init__`, and Shiboken gives every class its own `__init__` slot, so the
-  base-class patch never ran for any real widget;
-- then it patched subclasses that *inherit* `__init__`, nesting one wrapper per hierarchy level.
+  base-class patch never ran for any real widget. **This one was a clean-looking zero**: no
+  off-thread finalisation across the whole UI suite, invisible in the output;
+- then it patched subclasses that *inherit* `__init__`, nesting one wrapper per hierarchy level, so
+  a widget five levels below `QWidget` was **counted five times and ran five callbacks**. **This one
+  was loud** — it was caught by the instrumented run taking more than three times the bare suite's
+  307 s, not by reading its output.
 
-Neither was visible in the output. "No widget was finalised off the main thread" is exactly what a
-blind probe prints, and it is the sentence the investigation wanted to hear — which is the whole
-danger. **So the probe now drops a widget on a named worker thread and requires itself to see it,
+*(This said it "reported a clean suite twice" and that "neither was visible in the output". True of
+the first and generous to the second, and the distinction is the whole argument for a self-test: an
+instrument that lies **quietly** is the one a positive control catches, and the loud one announces
+itself in wall-clock. Corrected 2026-08-21 with the account already carried by the tool and by
+`T-238`.)*
+
+"No widget was finalised off the main thread" is exactly what a blind probe prints, and it is the
+sentence the investigation wanted to hear — which is the whole danger. **So the probe now drops a widget on a named worker thread and requires itself to see it,
 before it reports anything**, and its report opens with `VALID` or `INVALID` rather than with a
 number.
 
