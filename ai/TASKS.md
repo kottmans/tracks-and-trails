@@ -149,6 +149,148 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
+
+**Status:** **In Review — prioritized by the maintainer 2026-08-20 and built the same night.**
+Filed from two specimens on `kirk` that have since ended.
+Found by accident while setting up `T-238`'s load campaign, which is how the original five were
+found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning here and were gone anyway**
+within hours of being written up — **why, and whether anybody else acted on them, is unknown**
+(`T272-R3`): `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is now the whole of what survives of
+them. **The scheduling gap this task is filed for is untouched by that** — if
+anything the loss is what the gap costs, since a scheduled Linux scan would have reported the pair
+on 2026-08-16 rather than leaving them to be noticed four days later.
+**Owner:** Implementer — built 2026-08-20, awaiting a verdict
+**Priority:** **Medium.** Not because these two processes matter — 37 MB — but because
+`tools/orphan_scan.py` **already detects them, on Linux, unmodified**, and nothing runs it here.
+The detection `T-258` built exists and is pointed at one of the two platforms this project supports
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-268` is not a dependency and this is not a diagnosis of it
+**Relevant context:** `tools/orphan_scan.py`, `.github/workflows/ci.yml`'s `STARBASE orphans` job,
+`T-258`, `T-268`, `T258-R4`, `OPS-012`
+**Affected surfaces:** where the orphan scan is scheduled, and nothing in `src/`
+**Risk:** Low to fix. The trap is scope: **this is a scheduling gap, not a diagnosis**, and the
+specimens must not be reaped to make a job green
+
+#### What was built
+
+**A `Linux orphans` job in `.github/workflows/ci.yml`**, mirroring `STARBASE orphans` step for step
+and differing in exactly three places, each commented where it differs:
+
+1. **Gated on `vars.LINUX_RUNNER` being set**, which is the same reasoning as `STARBASE_AVAILABLE`
+   rather than a shortcut around it. Unset, the Linux legs run on a hosted image; a hosted image is
+   destroyed after every job, so a clean scan there is **a green check about a machine that cannot
+   hold the condition**.
+2. **`needs: check`** — the Linux suite — for the reason the Windows job orders after its suite: the
+   scan then also sees whatever *that* run leaked, while the workers are young enough to connect to
+   a cause. `always()`, because a failed run is a more likely leaker than a green one.
+3. **A throwaway `python3 -m venv` with `psutil` alone**, because the Linux legs install per job and
+   leave no persistent environment to locate. Not `pip install -e ".[dev]"`: that is a minute of
+   work to run a script with one dependency, and this job's whole argument is that it costs nothing
+   to keep. `actions/setup-python` is avoided deliberately — it deleted the tool cache under a
+   running job on these machines once already, run `30823595744`.
+
+**The wiring tests now ask both jobs, and the assertion that had to go is the interesting part.**
+`tests/unit/test_orphan_scan.py` asserted **exactly one** job invoked the scanner, on the reasoning
+that two scans could disagree about the same machine. That reasoning does not survive contact with
+this: **two scans of different machines do not disagree, they cover.** What the assertion actually
+enforced was the gap — and the test written to forbid a second job is the test that would otherwise
+have caught its absence.
+
+- `test_the_scan_runs_on_both_platforms_this_project_supports` is new and is this task's criterion.
+- `test_a_find_fails_the_job`, `test_the_scan_still_runs_when_the_suite_did_not_pass` and
+  `test_a_machine_condition_cannot_fail_somebody_s_commit` now loop over both jobs.
+- `test_neither_scan_can_reap_what_it_finds` is new: `--kill` was `T258-R4`'s Critical finding, and
+  a second job is a second place for it to come back.
+
+**Mutations run, all three caught:** removing the Linux job entirely (**6 failed**), dropping the
+`LINUX_RUNNER` gate from its condition (**1 failed**, the both-platforms test), and appending
+`|| true` to its scan command (**1 failed**, the exit-code test). `12 passed` restored.
+
+**Not verified on a runner.** Nothing is pushed, so the job has never executed; what is proved is
+the wiring, by tests that fail without it.
+
+#### What was measured
+
+`.venv/bin/python tools/orphan_scan.py` on `kirk`, 2026-08-20 — **exit 1**:
+
+```
+1 orphaned worker(s) — spawned, parent gone, still running:
+  pid  434366  age 3d20h  dead parent    2139  threads 2  rss 30 MB
+```
+
+A second process, `432922`, is **retained by** it: both hold `pipe:[1629660]`, the worker holds the
+write end, and the `resource_tracker` reading it for EOF therefore never exits. The scanner
+correctly reports only the worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a
+consequence rather than an orphan of that class.
+
+**Re-scanned 2026-08-20T06:20:48Z on `kirk`: `no orphaned workers found`, exit 0.** Both PIDs are
+gone from `ps`, and `kirk` has not rebooted — up since 2026-08-10, which predates their creation.
+Nothing here signalled them; both scans were report-only and `--kill` does not exist. **Why they
+ended is not established, and nothing here ranks the candidates**: the worker was in a `time.sleep`,
+finite by construction, and that candidate is distinguished only by **requiring nothing outside the
+process**, which is a property of the candidate rather than evidence it happened; an outside kill,
+inspection or cleanup on a shared machine is **neither observed nor excluded** and cannot be
+recovered after the fact. The tracker's exit follows from the retention chain above once the write
+end closes, which is an inference and not a watched sequence. **No specimen remains available**, so
+the preservation criterion below is **overtaken by events rather than met or waived** — a statement
+about availability and **not about anybody's conduct** (`T272-R3`). Recorded in the evidence file
+under *What became of them*; nothing captured while they ran is withdrawn by their ending.
+
+**`pipe:[1629660]` is the resource-tracker channel, not a payload pipe, and that distinction carries
+the whole causal claim** (`T272-R1`). `popen_spawn_posix._launch()` takes `resource_tracker.getfd()`
+and passes it in the child's pass-FD set **independently of** the payload `pipe_handle`, so a POSIX
+spawned worker **is expected to hold the tracker's writer**. That is documented multiprocessing
+behaviour rather than a defect, and it is what keeps the tracker alive once the parent dies.
+
+**The two processes must not be read as one shape.** The **tracker** is the one thread with 0 s of
+CPU blocked in `anon_pipe_read`; the **worker** has **two threads and 157 s of CPU**. Reading their
+union as one process is what produced the first version's claim that the five's one-thread shape had
+been reproduced outside Windows. **It has not been.**
+
+#### What this is not, stated first because the resemblance is loud
+
+- **Not a counterexample to `T-258`'s POSIX measurement.** That is about the window *before a worker
+  reads its payload*; `434366` burned **157 s of CPU**, so it ran far past it.
+- **Not `T-268`'s cause — and not for the reason the first version gave** (`T272-R1`). `T-268`
+  rules out a second process retaining the write end of the Windows **spawn payload pipe**, which
+  `popen_spawn_win32` creates and starts the child with `bInheritHandles=False`. What is held here
+  is the **resource-tracker pipe**, a separate channel POSIX passes to children deliberately. This
+  is therefore a **different platform channel and a different process pair** — not the same
+  mechanism surviving a Windows elimination. *(The first version said the visible mechanism here
+  *was* the eliminated one, which is false, and then leaned on it as "a different route to the same
+  shape".)*
+- **Not a reproduction of the five's process shape**, which is withdrawn with it. That claim came
+  from attributing the tracker's one thread and the worker's 157 s of CPU to a single process.
+- **Not established as product-reachable.** A killed `pytest` session produces exactly this, and
+  **the parent is gone and took its identity with it**. That is `T-238` criterion 4's question and
+  this does not answer it.
+
+#### Suggested acceptance criteria
+
+- **The orphan scan is scheduled on Linux as well as Windows**, or a recorded decision says why one
+  platform is enough — the asymmetry is deliberate rather than inherited
+- **A find on either platform is visible without somebody noticing a stray process**, which is the
+  criterion `T-258` wrote for `STARBASE` and is currently met on one platform
+- ~~**The two specimens are preserved until inspected or deliberately released**, and revalidated by
+  pid, create time, command line and parent before any termination — `T258-R4`, unchanged~~
+  **Overtaken by events 2026-08-20**: both processes are gone, so **no specimen remains available**
+  for this criterion to protect. It does **not** record that they ended on their own or that nobody
+  inspected or released them — neither is knowable (`T272-R3`). The rule it states is unchanged and
+  still binds the next specimen. **It is struck rather than deleted** because a criterion that was
+  never met and never waived is a different history from one that never existed
+- **No destructive scanner mode is added.** `--kill` was removed for the enumerate-then-signal race
+  and does not come back
+
+#### Out of scope
+
+- Diagnosing what spawned these two. The parent is gone; that evidence does not exist
+- `T-268`'s Windows question, which is Blocked on a person and is not moved by this
+- Reaping either specimen to make a job green
+
+---
+
+
 *(**This line has been wrong three times.** It said *"Empty"* while the section held three tasks
 (`P3EXIT-R4`); it then said *"three awaiting verdicts"* after all three were approved; and it said
 *"Empty"* again with `T-204` sitting directly beneath it (`T204-R2`). Each time an entry moved and
@@ -8945,108 +9087,6 @@ just never freed — so the predicate is not met and the suite is honestly green
 - Fixing `T-238`, or claiming this explains it
 - Changing `assert_no_orphaned_views`'s predicate, which is `T-238`'s deliverable and is approved
 - `deleteLater()` on the window to make the count fall, ahead of knowing what held it
-
----
-
-### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
-
-**Status:** **Proposed — filed 2026-08-20 from two specimens on `kirk` that have since ended.**
-Found by accident while setting up `T-238`'s load campaign, which is how the original five were
-found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning here and were gone anyway**
-within hours of being written up — **why, and whether anybody else acted on them, is unknown**
-(`T272-R3`): `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is now the whole of what survives of
-them. **The scheduling gap this task is filed for is untouched by that** — if
-anything the loss is what the gap costs, since a scheduled Linux scan would have reported the pair
-on 2026-08-16 rather than leaving them to be noticed four days later.
-**Owner:** Planner, to prioritize
-**Priority:** **Medium.** Not because these two processes matter — 37 MB — but because
-`tools/orphan_scan.py` **already detects them, on Linux, unmodified**, and nothing runs it here.
-The detection `T-258` built exists and is pointed at one of the two platforms this project supports
-**Phase:** Phase 4 maintenance
-**Depends on:** nothing. `T-268` is not a dependency and this is not a diagnosis of it
-**Relevant context:** `tools/orphan_scan.py`, `.github/workflows/ci.yml`'s `STARBASE orphans` job,
-`T-258`, `T-268`, `T258-R4`, `OPS-012`
-**Affected surfaces:** where the orphan scan is scheduled, and nothing in `src/`
-**Risk:** Low to fix. The trap is scope: **this is a scheduling gap, not a diagnosis**, and the
-specimens must not be reaped to make a job green
-
-#### What was measured
-
-`.venv/bin/python tools/orphan_scan.py` on `kirk`, 2026-08-20 — **exit 1**:
-
-```
-1 orphaned worker(s) — spawned, parent gone, still running:
-  pid  434366  age 3d20h  dead parent    2139  threads 2  rss 30 MB
-```
-
-A second process, `432922`, is **retained by** it: both hold `pipe:[1629660]`, the worker holds the
-write end, and the `resource_tracker` reading it for EOF therefore never exits. The scanner
-correctly reports only the worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a
-consequence rather than an orphan of that class.
-
-**Re-scanned 2026-08-20T06:20:48Z on `kirk`: `no orphaned workers found`, exit 0.** Both PIDs are
-gone from `ps`, and `kirk` has not rebooted — up since 2026-08-10, which predates their creation.
-Nothing here signalled them; both scans were report-only and `--kill` does not exist. **Why they
-ended is not established, and nothing here ranks the candidates**: the worker was in a `time.sleep`,
-finite by construction, and that candidate is distinguished only by **requiring nothing outside the
-process**, which is a property of the candidate rather than evidence it happened; an outside kill,
-inspection or cleanup on a shared machine is **neither observed nor excluded** and cannot be
-recovered after the fact. The tracker's exit follows from the retention chain above once the write
-end closes, which is an inference and not a watched sequence. **No specimen remains available**, so
-the preservation criterion below is **overtaken by events rather than met or waived** — a statement
-about availability and **not about anybody's conduct** (`T272-R3`). Recorded in the evidence file
-under *What became of them*; nothing captured while they ran is withdrawn by their ending.
-
-**`pipe:[1629660]` is the resource-tracker channel, not a payload pipe, and that distinction carries
-the whole causal claim** (`T272-R1`). `popen_spawn_posix._launch()` takes `resource_tracker.getfd()`
-and passes it in the child's pass-FD set **independently of** the payload `pipe_handle`, so a POSIX
-spawned worker **is expected to hold the tracker's writer**. That is documented multiprocessing
-behaviour rather than a defect, and it is what keeps the tracker alive once the parent dies.
-
-**The two processes must not be read as one shape.** The **tracker** is the one thread with 0 s of
-CPU blocked in `anon_pipe_read`; the **worker** has **two threads and 157 s of CPU**. Reading their
-union as one process is what produced the first version's claim that the five's one-thread shape had
-been reproduced outside Windows. **It has not been.**
-
-#### What this is not, stated first because the resemblance is loud
-
-- **Not a counterexample to `T-258`'s POSIX measurement.** That is about the window *before a worker
-  reads its payload*; `434366` burned **157 s of CPU**, so it ran far past it.
-- **Not `T-268`'s cause — and not for the reason the first version gave** (`T272-R1`). `T-268`
-  rules out a second process retaining the write end of the Windows **spawn payload pipe**, which
-  `popen_spawn_win32` creates and starts the child with `bInheritHandles=False`. What is held here
-  is the **resource-tracker pipe**, a separate channel POSIX passes to children deliberately. This
-  is therefore a **different platform channel and a different process pair** — not the same
-  mechanism surviving a Windows elimination. *(The first version said the visible mechanism here
-  *was* the eliminated one, which is false, and then leaned on it as "a different route to the same
-  shape".)*
-- **Not a reproduction of the five's process shape**, which is withdrawn with it. That claim came
-  from attributing the tracker's one thread and the worker's 157 s of CPU to a single process.
-- **Not established as product-reachable.** A killed `pytest` session produces exactly this, and
-  **the parent is gone and took its identity with it**. That is `T-238` criterion 4's question and
-  this does not answer it.
-
-#### Suggested acceptance criteria
-
-- **The orphan scan is scheduled on Linux as well as Windows**, or a recorded decision says why one
-  platform is enough — the asymmetry is deliberate rather than inherited
-- **A find on either platform is visible without somebody noticing a stray process**, which is the
-  criterion `T-258` wrote for `STARBASE` and is currently met on one platform
-- ~~**The two specimens are preserved until inspected or deliberately released**, and revalidated by
-  pid, create time, command line and parent before any termination — `T258-R4`, unchanged~~
-  **Overtaken by events 2026-08-20**: both processes are gone, so **no specimen remains available**
-  for this criterion to protect. It does **not** record that they ended on their own or that nobody
-  inspected or released them — neither is knowable (`T272-R3`). The rule it states is unchanged and
-  still binds the next specimen. **It is struck rather than deleted** because a criterion that was
-  never met and never waived is a different history from one that never existed
-- **No destructive scanner mode is added.** `--kill` was removed for the enumerate-then-signal race
-  and does not come back
-
-#### Out of scope
-
-- Diagnosing what spawned these two. The parent is gone; that evidence does not exist
-- `T-268`'s Windows question, which is Blocked on a person and is not moved by this
-- Reaping either specimen to make a job green
 
 ---
 

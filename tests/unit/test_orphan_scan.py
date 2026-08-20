@@ -188,13 +188,33 @@ def scanning_jobs() -> dict[str, dict[str, object]]:
     return found
 
 
+#: The Linux side of the same question (`T-272`). Expressed as the *selector* rather than a label
+#: list, because `LINUX_RUNNER` is what decides the machine and the job is gated on it being set.
+LINUX_RUNNER_SELECTOR = "vars.LINUX_RUNNER"
+
+
 def the_scanning_job() -> dict[str, object]:
+    """The Windows one, by name.
+
+    **This used to assert that exactly one job in the file ran the scanner**, on the reasoning that
+    two scans could disagree about the same machine. `T-272` is why it no longer does, and the
+    reasoning did not survive contact with it: two scans of *different machines* do not disagree,
+    they cover. What the old assertion actually enforced was the gap — the scanner ran on one of
+    the two platforms this project supports, and the test that would have caught that was the one
+    written to forbid a second job.
+    """
+    return by_platform()["starbase-orphans"]
+
+
+def by_platform() -> dict[str, dict[str, object]]:
+    """Every scanning job, checked to be exactly the two platforms and no duplicates."""
     jobs = scanning_jobs()
-    assert len(jobs) == 1, (
-        f"expected exactly one job to invoke {SCRIPT}, found {sorted(jobs)}. Two scans can "
-        "disagree about the same machine, and nobody would know which to believe"
+    assert sorted(jobs) == ["linux-orphans", "starbase-orphans"], (
+        f"the jobs invoking {SCRIPT} are {sorted(jobs)}, expected one per platform. Two scans of "
+        "the same machine would disagree about it and nobody would know which to believe; one "
+        "scan of one machine is the T-272 gap"
     )
-    return next(iter(jobs.values()))
+    return jobs
 
 
 def the_scanning_step(job: dict[str, object]) -> dict[str, object]:
@@ -231,34 +251,74 @@ def test_the_scan_runs_on_the_machine_that_accumulates_orphans() -> None:
     )
 
 
+def test_the_scan_runs_on_both_platforms_this_project_supports() -> None:
+    """`T-272`: the scanner is not Windows-specific and was scheduled as though it were.
+
+    `tools/orphan_scan.py` is `psutil` with no per-platform path, and it found two orphaned
+    workers on `kirk` unmodified. Detection that exists and is pointed at one of two platforms is
+    the same shape as detection that does not exist, for the platform it does not watch.
+    """
+    linux = by_platform()["linux-orphans"]
+
+    assert LINUX_RUNNER_SELECTOR in str(linux.get("runs-on")), (
+        f"the Linux scan runs on {linux.get('runs-on')!r}, which does not resolve through "
+        f"{LINUX_RUNNER_SELECTOR}. The maintainer's machine is where a Linux orphan can survive "
+        "four days; a hosted image is destroyed after every job"
+    )
+    assert LINUX_RUNNER_SELECTOR in str(linux.get("if", "")), (
+        f"the Linux scan's condition is {linux.get('if')!r}, which does not require "
+        f"{LINUX_RUNNER_SELECTOR} to be set. Unset, the job falls back to a hosted image and "
+        "reports a clean scan of a machine that cannot hold the condition — a green check about "
+        "nothing, which is what T-272 was filed for the absence of"
+    )
+
+
+def test_neither_scan_can_reap_what_it_finds() -> None:
+    """`T258-R4`, now that there are two of them: reporting is the whole contract.
+
+    The `--kill` this tool once had was that round's Critical finding — it cannot prove a match is
+    ours. A second job is a second place for it to come back, so this asks both.
+    """
+    for job_id, job in by_platform().items():
+        command = str(the_scanning_step(job)["run"])
+        assert "--kill" not in command, (
+            f"{job_id} passes --kill, which enumerates and then signals. T258-R4 made reaping a "
+            "person's decision with the report in front of them"
+        )
+
+
 def test_a_find_fails_the_job() -> None:
     """The non-zero exit is the alarm, and swallowing it is the way this silently stops working."""
-    job = the_scanning_job()
+    for job_id, job in by_platform().items():
+        _assert_the_exit_code_survives(job_id, job)
+
+
+def _assert_the_exit_code_survives(job_id: str, job: dict[str, object]) -> None:
     step = the_scanning_step(job)
 
     assert not step.get("continue-on-error"), (
-        "the scanning step is continue-on-error, so a find leaves the job green and the report "
-        "sits unread — which is the condition T258-R5 named, with an extra step in front of it"
+        f"{job_id}'s scanning step is continue-on-error, so a find leaves the job green and the "
+        "report sits unread — which is the condition T258-R5 named, with a step in front of it"
     )
-    assert not job.get("continue-on-error"), "the scanning job is continue-on-error"
+    assert not job.get("continue-on-error"), f"{job_id} is continue-on-error"
     command = str(step["run"])
     for swallow in ("|| true", "exit 0", "continue-on-error"):
         assert swallow not in command, (
-            f"the scan's command contains {swallow!r}, which discards the exit code the whole "
+            f"{job_id}'s command contains {swallow!r}, which discards the exit code the whole "
             "tool is built around"
         )
 
 
 def test_the_scan_still_runs_when_the_suite_did_not_pass() -> None:
     """A failed or cancelled suite is a *more* likely leaker, not a less likely one."""
-    job = the_scanning_job()
-    condition = str(job.get("if", ""))
+    for job_id, job in by_platform().items():
+        condition = str(job.get("if", ""))
 
-    assert "always()" in condition, (
-        f"the scanning job's condition is {condition!r}, which does not contain `always()`. It "
-        "`needs` the suite job, so without it a red suite skips the scan — and the run that "
-        "crashed mid-spawn is the one most likely to have left something behind"
-    )
+        assert "always()" in condition, (
+            f"{job_id}'s condition is {condition!r}, which does not contain `always()`. It "
+            "`needs` a suite job, so without it a red suite skips the scan — and the run that "
+            "crashed mid-spawn is the one most likely to have left something behind"
+        )
 
 
 def test_a_machine_condition_cannot_fail_somebody_s_commit() -> None:
@@ -268,14 +328,14 @@ def test_a_machine_condition_cannot_fail_somebody_s_commit() -> None:
     push would teach everyone to ignore the signal. It also keeps the one `STARBASE` slot free:
     the suite job is what a change is waiting on.
     """
-    job = the_scanning_job()
-    condition = str(job.get("if", ""))
+    for job_id, job in by_platform().items():
+        condition = str(job.get("if", ""))
 
-    assert "schedule" in condition, (
-        f"the scanning job's condition is {condition!r}, which does not restrict it to the "
-        "nightly. Accumulation is measured in days; a per-push scan buys a day of latency and "
-        "pays for it by attributing an old leak to an unrelated commit"
-    )
-    assert "github.event_name == 'push'" not in condition and " push" not in condition, (
-        f"the scanning job's condition is {condition!r}, which reaches push runs"
-    )
+        assert "schedule" in condition, (
+            f"{job_id}'s condition is {condition!r}, which does not restrict it to the "
+            "nightly. Accumulation is measured in days; a per-push scan buys a day of latency "
+            "and pays for it by attributing an old leak to an unrelated commit"
+        )
+        assert "github.event_name == 'push'" not in condition and " push" not in condition, (
+            f"{job_id}'s condition is {condition!r}, which reaches push runs"
+        )
