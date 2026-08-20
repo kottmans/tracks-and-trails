@@ -8492,6 +8492,49 @@ garbage is one that appears once on a loaded machine and never again in 60 clean
   none does, the `gc` route is closed and the harness reading is back; if one does, criterion 4's
   *product-reachable* branch is the live one and it wants a deterministic regression, not a guard
 
+#### The second step, measured 2026-08-20: the answer is neither branch
+
+**`tools/t238_widget_cycle_probe.py`, offscreen on `kirk`.** It composes the application, opens the
+three surfaces the window's own routes open — `open_add_dialog()`, `open_settings()`,
+`show_about()` — tears it down through `composition.shutdown.begin()`, and then reads which
+`QWidget`s **the cyclic collector freed**, with `gc.DEBUG_SAVEALL` armed so the collector's own
+verdict is legible.
+
+**The predicate is "freed by the collector", not "in a cycle", and the difference is the whole
+measurement.** A widget held *by* a cycle is not itself in one — its own component has size one —
+and it is still freed by `gc` rather than by refcount, and still decref'd on whatever thread
+collected. Cycle *membership* would have answered a neighbouring question and missed exactly the
+shape `demonstrate_the_gc_route()` demonstrates.
+
+| Measured | Result |
+|---|---|
+| `QWidget`s live with every route open | **159** |
+| `QWidget`s live after the application's own shutdown | **159** |
+| `QWidget`s freed by the cyclic collector | **0** |
+| Objects freed by a forced `SAVEALL` collection | **0** |
+
+**The zero is real and it does not mean what the criterion expected.** Nothing takes the `gc` route
+through these surfaces — **because nothing is freed at all.** The tree is not cyclic garbage; it is
+not garbage. A widget that never becomes garbage can never be decref'd by `gc` on a pool thread, so
+the `gc` route is **not reachable through these surfaces** — criterion 4's *harness* branch, arrived
+at by a road the criterion did not anticipate, and the difference is worth keeping rather than
+rounding to "no cycles found".
+
+**The probe refused to report before it had a control, which is why the first number was thrown
+away.** Its first run printed `0 freed` and nothing else, and that reads exactly like a clean
+result; *nothing was freed by the collector* and *nothing was freed at all* produce the same zero
+and are opposite answers. The before/after widget counts are now part of the instrument, and it
+**exits 3 rather than reporting** when the surfaces are still standing. Its **self-test runs in both
+directions first** — it must *see* a widget reachable only from a cycle and must *not* name one
+freed by refcount — because its sibling probe twice reported zero while measuring nothing.
+
+**What this does not establish.** *Why* the tree is retained is not identified here: the window's
+Python referrers are its own bound methods and closure cells, and an attempt to attribute those to
+C++ signal connections was **contaminated by the diagnostic's own lists** and is withdrawn rather
+than reported. It also measures only the surfaces the window's routes open — the five screens
+`tests/ui/conftest.py` additionally constructs are not restated in the probe, deliberately, because
+two inventories of screens is `T200-R3`.
+
 **`T-238` stays `Ready`.** This narrows the question and does not close it, and the entry is not
 moving to `Complete` on a measurement that argues the opposite of the deliverable it already has.
 
