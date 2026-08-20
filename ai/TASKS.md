@@ -8837,9 +8837,10 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 
 **Status:** **Proposed — filed 2026-08-20 from two specimens on `kirk` that have since ended.**
 Found by accident while setting up `T-238`'s load campaign, which is how the original five were
-found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning and expired anyway**, within
-hours of being written up: `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is now the whole of
-what survives of them. **The scheduling gap this task is filed for is untouched by that** — if
+found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning here and were gone anyway**
+within hours of being written up — **why, and whether anybody else acted on them, is unknown**
+(`T272-R3`): `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is now the whole of what survives of
+them. **The scheduling gap this task is filed for is untouched by that** — if
 anything the loss is what the gap costs, since a scheduled Linux scan would have reported the pair
 on 2026-08-16 rather than leaving them to be noticed four days later.
 **Owner:** Planner, to prioritize
@@ -8871,14 +8872,15 @@ consequence rather than an orphan of that class.
 **Re-scanned 2026-08-20T06:20:48Z on `kirk`: `no orphaned workers found`, exit 0.** Both PIDs are
 gone from `ps`, and `kirk` has not rebooted — up since 2026-08-10, which predates their creation.
 Nothing here signalled them; both scans were report-only and `--kill` does not exist. **Why they
-ended is not established**: the worker was in a `time.sleep`, which is finite by construction, so
-the sleep elapsing and the worker exiting is the only candidate needing nothing external — and it
-is **unverified**, with an outside kill on a shared machine neither observed nor excluded. The
-tracker's exit follows from the retention chain above once the write end closes, which is an
-inference and not a watched sequence. **The specimens cannot be inspected**, and the preservation
-criterion below is **overtaken by events rather than met or waived** — what `T258-R4` protects was
-spent without anyone deciding to spend it. Recorded in the evidence file under *What became of
-them*; nothing captured while they ran is withdrawn by their ending.
+ended is not established, and nothing here ranks the candidates**: the worker was in a `time.sleep`,
+finite by construction, and that candidate is distinguished only by **requiring nothing outside the
+process**, which is a property of the candidate rather than evidence it happened; an outside kill,
+inspection or cleanup on a shared machine is **neither observed nor excluded** and cannot be
+recovered after the fact. The tracker's exit follows from the retention chain above once the write
+end closes, which is an inference and not a watched sequence. **No specimen remains available**, so
+the preservation criterion below is **overtaken by events rather than met or waived** — a statement
+about availability and **not about anybody's conduct** (`T272-R3`). Recorded in the evidence file
+under *What became of them*; nothing captured while they ran is withdrawn by their ending.
 
 **`pipe:[1629660]` is the resource-tracker channel, not a payload pipe, and that distinction carries
 the whole causal claim** (`T272-R1`). `popen_spawn_posix._launch()` takes `resource_tracker.getfd()`
@@ -8917,10 +8919,11 @@ been reproduced outside Windows. **It has not been.**
   criterion `T-258` wrote for `STARBASE` and is currently met on one platform
 - ~~**The two specimens are preserved until inspected or deliberately released**, and revalidated by
   pid, create time, command line and parent before any termination — `T258-R4`, unchanged~~
-  **Overtaken by events 2026-08-20**: both ended on their own before anyone inspected or released
-  them. The rule it states is unchanged and still binds the next specimen; there is simply no
-  longer anything here for it to protect. **It is struck rather than deleted** because a criterion
-  that was never met and never waived is a different history from one that never existed
+  **Overtaken by events 2026-08-20**: both processes are gone, so **no specimen remains available**
+  for this criterion to protect. It does **not** record that they ended on their own or that nobody
+  inspected or released them — neither is knowable (`T272-R3`). The rule it states is unchanged and
+  still binds the next specimen. **It is struck rather than deleted** because a criterion that was
+  never met and never waived is a different history from one that never existed
 - **No destructive scanner mode is added.** `--kill` was removed for the enumerate-then-signal race
   and does not come back
 

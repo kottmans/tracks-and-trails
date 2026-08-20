@@ -128,14 +128,19 @@ eliminated a peer from. Nothing here bears on why the five looked as they did.
 specimens were created on 2026-08-16 and the host has not restarted since before that. **Nothing in
 this session signalled them**; both scanner runs were report-only, and `--kill` does not exist.
 
-**Why they exited is not established, and the two candidates are not equally supported.**
+**Why they exited is not established, and nothing here ranks the candidates** (`T272-R3`).
 
 - **The worker's sleep elapsed.** `434366` was blocked in `hrtimer_nanosleep` — a `time.sleep`,
-  which is **finite by construction**. A sleep ending, the worker running to completion and exiting
-  is the only candidate that requires nothing outside the process. **Unverified**: no duration was
-  recoverable from the capture, and a stack is not a cause.
+  which is **finite by construction**. This candidate is distinguished only by **requiring nothing
+  outside the process**, which is a property of the candidate and **not evidence that it happened**.
+  **Unverified**: no duration was recoverable from the capture, and a stack is not a cause.
 - **Something outside ended it.** Another session on `kirk`, an OOM kill, or a user-level cleanup.
-  Not observed, and not excluded — `kirk` is a shared working machine.
+  **Neither observed nor excluded** — `kirk` is a shared working machine, and this cannot be
+  recovered after the fact.
+
+**So the record stops at what was seen: the PIDs are gone, the host did not reboot, and this
+session signalled nothing.** Whether anybody else terminated, inspected or deliberately released
+them is **unknown**, and no sentence in this file may assume otherwise.
 
 **The tracker's exit follows from the mechanism this file already recorded**, whichever ended the
 worker: `432922` was blocked reading `pipe:[1629660]` for EOF and `434366` held the write end, so
@@ -144,17 +149,19 @@ retention chain**, not an observation — the order of the two deaths was not wa
 
 **What this costs and what it changes.**
 
-- **The specimens cannot be inspected.** `T-272`'s preservation criterion is **overtaken by events**
-  rather than met or waived, and no ruling was ever needed. What `T258-R4` protects — a live
-  instance being worth more than the memory it costs — is exactly what was lost, without anyone
-  deciding to spend it.
+- **No specimen remains available**, so `T-272`'s preservation criterion is **overtaken by events**
+  rather than met or waived. That is a statement about **availability**, not about anybody's
+  conduct (`T272-R3`): whether someone inspected or deliberately released them is **unknown**, and
+  the earlier wording here — *"without anyone deciding to spend it"* — asserted an absence of
+  intent this file's own evidence disclaims two paragraphs above.
 - **This one did not persist indefinitely**, and that is worth stating against `T-258`'s title.
-  On Linux, this pair lasted roughly **four days and then ended without intervention being
-  observed**. It says nothing about `3400` and `6924` on `STARBASE`, which are a different platform,
-  a different channel and a different process shape — the distinction `T272-R1` required.
+  On Linux, this pair was present and then, roughly **four days** later, absent. **Disappearance
+  proves a finite lifetime, not its cause.** It says nothing about `3400` and `6924` on `STARBASE`,
+  which are a different platform, a different channel and a different process shape — the
+  distinction `T272-R1` required.
 - **Nothing above is withdrawn.** The 3d20h existence, the scanner finding it unmodified on Linux,
   the absent Linux schedule, and the unproved product reachability are all observations of a window
   that closed; their ending does not reach back into them.
 - **The scheduling gap `T-272` is filed for is unchanged, and this is what it looks like.** A
   scheduled Linux scan would have reported this pair on 2026-08-16. Nobody was looking, it was found
-  by accident four days later, and the subject expired within hours of being written up.
+  by accident four days later, and the subject was gone within hours of being written up.

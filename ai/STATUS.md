@@ -57,14 +57,18 @@ Filed 2026-08-20: `tools/orphan_scan.py` **already detects Linux orphans, unmodi
 schedules it here — the detection `T-258` built is pointed at one of the two platforms this project
 supports. Re-scanned on `kirk` at **2026-08-20T06:20:48Z**: **`no orphaned workers found`, exit 0**,
 both PIDs absent from `ps`, and the host **has not rebooted** — up since 2026-08-10, which predates
-their creation. Both scans were report-only. **Why they ended is not established**: the worker sat
-in a `time.sleep`, finite by construction, so the sleep elapsing is the only candidate needing
-nothing external — **unverified**, with an outside kill on a shared machine neither observed nor
-excluded. **The preservation criterion is overtaken by events rather than met or waived**: what
-`T258-R4` protects was spent without anyone deciding to spend it, and the capture is now the whole
-of what survives. **Nothing observed while they ran is withdrawn**, and the scheduling gap is
-unchanged — a scheduled Linux scan would have reported the pair on **2026-08-16** instead of leaving
-them to be noticed four days later and lost hours after that.
+their creation. Both scans were report-only, and **this session signalled nothing**. **Why they
+ended is not established, and nothing ranks the candidates** (`T272-R3`): the worker sat in a
+`time.sleep`, finite by construction, and that candidate is distinguished only by requiring nothing
+outside the process — a property of the candidate, **not evidence it happened**. An outside kill,
+inspection or cleanup on a shared machine is **neither observed nor excluded**, and is not
+recoverable after the fact. **The preservation criterion is overtaken by events rather than met or
+waived** because **no specimen remains available** — a statement about availability, **not about
+anybody's conduct**; the first version of this entry said the specimen was spent *"without anyone
+deciding to spend it"*, which asserts an absence of intent the evidence disclaims. **Disappearance
+proves a finite lifetime, not its cause.** **Nothing observed while they ran is withdrawn**, and the
+scheduling gap is unchanged — a scheduled Linux scan would have reported the pair on **2026-08-16**
+instead of leaving them to be noticed four days later and gone hours after that.
 
 **`T-268` is untouched by every line of this, and the distinction is the point.** `3400` and `6924`
 are on Windows, on the payload channel, with the one-thread shape; the `kirk` pair were on POSIX, on
