@@ -322,6 +322,16 @@ cited. `T274-R2` names a property rather than a location, and the second instanc
 the same pass — no value changed, and `tests/unit/test_theme.py` and `tests/ui/test_theme_metrics.py`
 pass unchanged.
 
+**Open follow-up — `T274-R3` (Medium, non-blocking; Implementer; T-274 completion
+synchronization).** The optional complement check claims to enforce the full mark at every size
+above the split, but `len(gold_runs(image)) > 1` does not distinguish the cuts at **64 px**: the
+small cut renders as `[185, 1]`, so setting the renderer to `{16, 24, 32, 64}` and regenerating all
+eleven assets still gives **45 passed**. The shipped assets are correct and the required small-side
+correction is independently closed, so this test-hardening defect does not block approval under
+`AGENTS.md` §10. Before completion, either remove the optional complement and its claims from the
+current-truth records, or give it a predicate/control that kills the 64 px selector mutation too.
+No further review pass is required.
+
 #### Validation
 
 | Check | Result |

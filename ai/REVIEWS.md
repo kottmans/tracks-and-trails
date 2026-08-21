@@ -20016,3 +20016,71 @@ to be reopened.
 The Reviewer changed only this append-only review record. No reviewed source, test, asset,
 architecture/current-truth file, handoff, push or remote state was changed; all diagnostic asset
 mutations were restored byte-for-byte before this verdict was recorded.
+
+---
+
+## 2026-08-21 — T274-R1/R2 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-274
+**Base:** `9994a573470d597ba0062fc5f9638aae72265350`
+**Head:** `60dbbcf9e742d220fb96330753bc964cbf8d10d9`
+**Platforms verified:** Linux; Windows not run
+**Verdict:** **Approved with follow-ups.** T274-R1 and T274-R2 are Resolved. Every intended small
+size is now enforced against both the standalone PNG and the matching ICO frame, and the canonical
+palette provenance now names the vector master without changing a swatch. The optional full-side
+complement has a 64 px escape recorded as non-blocking T274-R3; current assets are correct and that
+addition was not part of either required correction.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T274-R1** | **Medium** | Yes | `test_the_small_cut_is_what_ships_at_every_small_size` now ranges over the independent 16/24/32 expectation and both shipped sources. Full regenerations with renderer sets `{16}`, `{16, 32}`, and `{16, 24}` independently failed at exactly the moved PNG/ICO pairs: **4 failed/41 passed**, **2/43**, and **2/43**. The 16 px visibility floor remains a separate assertion. The original `{16}` escape is closed rather than merely described. | **Resolved at `60dbbcf`** |
+| **T274-R2** | **Medium** | Yes | `ARCHITECTURE.md` §8 now names `tools/icons/masters/icon.svg` and its verified SHA-256 `6204d568001dca4c67a8bbfc5a0fb97285056a47cada4ee3988d7e070010efb4`; it accurately records literal forest/gold fills and the absence of deep green while leaving all three adopted swatches normative. The old raster/hash/no-flat-fill argument is explicitly historical. Correcting the same stale explanation in `ui/theme.py` is an appropriate sibling fix; its constants and behavior are unchanged. | **Resolved at `60dbbcf`** |
+| **T274-R3** | **Medium** | **No — optional test hardening; shipped behavior and both required corrections are sound** | The added `test_the_full_mark_is_what_ships_above_the_split` asserts only `len(gold_runs(image)) > 1`. At 64 px the reduced master produces `[185, 1]`, so it satisfies that supposed full-mark property. With renderer `SMALL_SIZES = {16, 24, 32, 64}`, a complete regeneration changed the 64 px PNG and ICO frame to the reduced cut and the focused suite still reported **45 passed**. Thus the new complement does not enforce every size its name/docstring/current-truth claims, even though its submitted 48 px mutation correctly fails twice. | **Open — Implementer; T-274 completion synchronization. Remove the optional complement and its claims, or add an inverse control/discriminating property that kills the 64 px mutation. No further review pass.** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary | `9994a57..60dbbcf` is one commit changing exactly five files: the UI resource test, architecture provenance, theme docstring, TASKS and STATUS. The renderer and all packaged assets are outside the diff. `git diff --check` passed. |
+| Packaged assets | `git diff --stat d364928..60dbbcf -- src/tracks_and_trails/resources/icons/` is empty. Every diagnostic regeneration was followed by the unchanged renderer; the final focused baseline returned to **45 passed** with a clean asset tree. |
+| Focused baseline | Resource pair, theme unit/metrics tests, and task placement: **123 passed**. The resource pair accounts for **45 passed**, up from 30 at the reviewed implementation head. |
+| T274-R1 `{16}` mutation | **4 failed, 41 passed**: `png-24`, `png-32`, `ico-24`, `ico-32`. |
+| T274-R1 `{16, 32}` mutation | **2 failed, 43 passed**: `png-24`, `ico-24`. |
+| T274-R1 `{16, 24}` mutation | **2 failed, 43 passed**: `png-32`, `ico-32`. |
+| Optional 48 px mutation | `{16, 24, 32, 48}` produced **2 failed, 43 passed** at `png-48` and `ico-48`; the complement works at that measured edge. |
+| T274-R3 64 px mutation | Direct small-master rendering produced gold runs `[104]`, `[185, 1]`, `[751]`, `[3037]`, `[12162]` at 48/64/128/256/512. The exact `{16, 24, 32, 64}` regeneration then produced **45 passed**, establishing the escaping size. |
+| Provenance and constants | The vector-master hash and generated `icon.png` hash are `6204d568...10efb4` and `088dc089...eb4299`, matching §8. `theme.py` remains `FOREST = #1E5E47`, `GOLD = #D9A24C`, `DEEP = #083122`; its correction is prose only. |
+| Static gates | `ruff check .`: passed. `ruff format --check .`: **203 files already formatted**. `mypy src`: no issues in **56 source files**. |
+
+### Review judgments
+
+- **R1 is structurally closed.** The expected selector set remains independent of the renderer,
+  every expected small size is exercised, and standalone and ICO consumers cannot silently diverge
+  on cut selection. Filtering ICO cases through its declared frame set avoids testing an upscale
+  that is not shipped.
+- **The complement is sensible scope but its predicate is incomplete.** Enforcing both sides of a
+  binary split is proportionate and the 48 px mutation is valuable. The 64 px escape means the
+  current claim is stronger than the proof. Because the complement was explicitly optional,
+  current assets use the right cut, and R1 does not depend on it, T274-R3 is a non-blocking
+  test-hardening follow-up under `AGENTS.md` §10 rather than a third review round.
+- **R2's sibling edit is accepted.** The false provenance property existed in both the canonical
+  architecture record and the source docstring. Correcting both while preserving the constants is
+  the appropriate sibling sweep, not an expansion into theme behavior.
+- **Windows remains honestly unverified.** Linux exercises the actual ICO file and exact frames
+  through Qt, but this pass does not claim native Windows behavior. That existing disclosed carry
+  does not block this focused correction.
+
+### Readiness
+
+T-274 is **Approved with follow-ups at `60dbbcf`**. T274-R1 and T274-R2 are Resolved. T274-R3 is
+owned by the Implementer for T-274's completion synchronization and requires no further review:
+either remove the optional complement and its current-truth claims, or make it reject the proven
+64 px selector mutation. The task may move to Complete once that follow-up and the ordinary
+coordination updates are applied.
+
+The Reviewer changed this append-only record and added only the approved T274-R3 owner/target to
+T-274's task entry. No reviewed test, source docstring, architecture text, asset, renderer, handoff,
+push or remote state was changed; all diagnostic asset mutations were restored before this verdict.
