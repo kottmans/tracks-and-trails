@@ -5,9 +5,29 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-21 — **`T-274` came back Changes requested at `d364928`, and the finding
-to keep is that my own mutation proof was too narrow.** `T274-R1` and `T274-R2` are corrected and
-the task is awaiting re-review.
+**Last updated:** 2026-08-21 — **`T-274` is Complete**, Approved with follow-ups at `60dbbcf`, and
+its three findings are one lesson at three scopes: **a check weaker than the claim written over
+it.** Nothing was ever wrong with the artwork, the renderer or the shipped assets — every finding
+was in what the tests could prove.
+
+- **`T274-R1`** — I proved the 16 px check fires and stopped, while the constant claimed three
+  sizes. Set to `{16}`, a full regeneration put 24 and 32 back on the full mark and **30 still
+  passed**.
+- **`T274-R3`** — the complement I then added asserted gold falls in *more than one run*, and the
+  reduced cut sheds one antialiasing pixel at 64 px (`[185, 1]`), so it satisfied that too. **45
+  still passed** over a swapped 64 px asset. It shipped **without a control**, which is why a
+  predicate both cuts satisfied looked like one that discriminated.
+- **`T274-R2`** — `ARCHITECTURE.md` §8 still named the replaced raster and its hash as the brand's
+  source of record.
+
+**Both controls exist now**, in both directions: the full mark rendered small must fail the
+small-side property, and the reduced cut rendered large must fail the full-side one. Six selector
+mutations, each regenerating all eleven assets, fail at exactly the sizes and sources they move.
+The resource pair is **50 passed**, from 30 at the implementation head.
+
+*(Corrected: `T274-R1` and `T274-R2` were reported here as the whole of it while the re-review was
+outstanding. `T274-R3` came out of that pass, and it is the one that repeats the lesson rather than
+states it.)*
 
 **I proved the 16 px check fires and stopped there, while the constant claimed three sizes.** The
 reviewer set the renderer's `SMALL_SIZES` to `{16}`, regenerated all eleven assets, and the
@@ -18,7 +38,7 @@ exactly the sizes and sources they move. That the escaping mutation was the *fir
 reviewer tried is the part worth remembering: a single-instance proof reads as a proof of the
 property and is not one.
 
-`T274-R2` was `ARCHITECTURE.md` §8 still naming the replaced raster and its hash as the brand's
+`T274-R2` was `ARCHITECTURE.md` §8 naming the replaced raster and its hash as the brand's
 source of record, and arguing the swatches could not be measured because *the artwork contains no
 flat fills* — which is now false twice over, since the vector master's only two fills **are**
 `#1E5E47` and `#D9A24C`. The three swatches and the *adopted, not measured* rule are untouched;

@@ -131,6 +131,51 @@ def gold_runs(image: QImage) -> list[int]:
 #: Sizes rendered from the full mark: everything the reduced cut does not cover.
 FULL_SIZES = tuple(size for size in PNG_SIZES if size not in SMALL_SIZES)
 
+#: How large a second run of gold has to be, against the largest, to count as an arc (`T274-R3`).
+#:
+#: **A bare "more than one run" does not identify the full mark, and 64 px is where that shows.**
+#: The reduced cut sheds a single antialiasing pixel off its trail there — `[185, 1]` — so it
+#: satisfies a `> 1` count and passed the complement while being the wrong cut.
+#:
+#: Measured 2026-08-21, second run as a share of the largest, at the sizes the complement guards:
+#:
+#: | size | full mark | reduced cut |
+#: |---|---|---|
+#: | 48 | 12.75% | none |
+#: | 64 | **11.48%** | **0.54%** |
+#: | 128 | 12.32% | none |
+#: | 256 | 11.80% | none |
+#: | 512 | 12.02% | none |
+#:
+#: The arcs hold 11.5 to 12.8% across every size, an order of magnitude above the crumb. 5% sits
+#: 2.3x under the tightest real case and 9.2x over the escape, and
+#: `test_the_complement_rejects_the_reduced_cut` is what keeps that gap honest rather than assumed.
+ARC_SHARE = 0.05
+
+
+def has_detached_arcs(image: QImage) -> bool:
+    """Whether the image's gold carries a second shape big enough to be a sound-wave arc.
+
+    The property that identifies the full mark: its arcs are gold, are never joined to the trail,
+    and are a substantial fraction of it. Size is what separates an arc from a stray pixel, which
+    is `T274-R3`.
+    """
+    runs = gold_runs(image)
+    return len(runs) > 1 and runs[1] >= ARC_SHARE * runs[0]
+
+
+def rendered_master(name: str, size: int) -> QImage:
+    """One of the vendored artboards rasterized at `size`, the way the renderer does it."""
+    renderer = QSvgRenderer(str(MASTERS / name))
+    assert renderer.isValid(), f"{name} did not load"
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    renderer.render(painter)
+    painter.end()
+    return image
+
 
 def shipped(source: str, size: int) -> QImage:
     """The asset a caller asking `source` for `size` actually gets, rendered through Qt.
@@ -198,14 +243,37 @@ def test_the_full_mark_is_what_ships_above_the_split(
     **This half is not required by `T274-R1` and is here because the hole is symmetric.** With
     only the small sizes asserted, a renderer that moved 48 px — or all of them — onto the
     reduced cut would pass every check in this module, and the landscape would quietly leave the
-    icon at the sizes that can carry it. The arcs are what make it checkable: they are gold and
-    they are never joined to the trail, so the full mark cannot present as one run.
-    """
-    runs = gold_runs(shipped(source, size))
+    icon at the sizes that can carry it.
 
-    assert len(runs) > 1, (
-        f"the {size} px {source} puts its gold in one run — that is the reduced cut, which is "
-        f"drawn below {min(FULL_SIZES)} px and not at or above it"
+    The arcs are what make it checkable, and **their size is the part that matters**: asserting
+    that gold merely falls in more than one run let the reduced cut through at 64 px, where it
+    sheds one antialiasing pixel. See `ARC_SHARE`, and `test_the_complement_rejects_the_reduced_cut`
+    for the control that now holds this to it.
+    """
+    assert has_detached_arcs(shipped(source, size)), (
+        f"the {size} px {source} carries no gold shape big enough to be an arc — that is the "
+        f"reduced cut, which is drawn below {min(FULL_SIZES)} px and not at or above it"
+    )
+
+
+@pytest.mark.parametrize("size", FULL_SIZES)
+def test_the_complement_rejects_the_reduced_cut(qapp: QApplication, size: int) -> None:
+    """The control for the test above, and the check that `T274-R3` was missing.
+
+    **The complement shipped without one, and that is exactly how it escaped.** Its small-size
+    sibling had a control — the full mark rendered small, proved to fail — and this side had
+    none, so a predicate that the reduced cut also satisfied at 64 px looked identical to one
+    that discriminated. The reviewer found it by regenerating with `SMALL_SIZES = {16, 24, 32,
+    64}` and watching 45 tests pass over a swapped asset.
+
+    So: render the reduced master at every size the complement guards and require that it
+    **fails** the property. This is the assertion that fixes the class rather than the instance —
+    64 px is where it bites today, and any future size where the cut sheds a crumb is caught by
+    the same line.
+    """
+    assert not has_detached_arcs(rendered_master("icon-small.svg", size)), (
+        f"the reduced cut at {size} px satisfies the full-mark property, so "
+        "test_the_full_mark_is_what_ships_above_the_split cannot tell the two cuts apart there"
     )
 
 
@@ -226,24 +294,20 @@ def test_the_16_px_trail_is_thick_enough_to_read(qapp: QApplication) -> None:
 
 @pytest.mark.parametrize("size", SMALL_SIZES)
 def test_the_predicate_can_tell_the_two_cuts_apart(qapp: QApplication, size: int) -> None:
-    """The control for the two tests above: the full mark **fails** what the small cut passes.
+    """The control for the small side: the full mark **fails** what the reduced cut passes.
 
     A one-run assertion is worth nothing if both cuts satisfy it, and this is the only place that
     can be established at the small sizes — every shipped asset there is the reduced cut, so
     nothing else in the suite ever draws the full mark small enough to break. It reaches past the
     shipped assets to `tools/icons/masters/icon.svg` deliberately: the point is to feed the check
     a known positive and watch it fire.
-    """
-    renderer = QSvgRenderer(str(MASTERS / "icon.svg"))
-    assert renderer.isValid(), "the full-mark master did not load"
-    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    renderer.render(painter)
-    painter.end()
 
-    assert len(gold_runs(image)) > 1, (
+    **This side asserts exactly one run while the complement's control uses `ARC_SHARE`**, and the
+    difference is measured rather than stylistic: the shipped small assets carry exactly one run at
+    16, 24 and 32, so the stricter form is true and a crumb appearing there would be a real change.
+    At 64 px the same cut does shed one, which is why the other side has to speak in fractions.
+    """
+    assert len(gold_runs(rendered_master("icon.svg", size))) > 1, (
         f"the full mark at {size} px puts its gold in one run — the arcs no longer read as a "
         "separate shape, so the shipped-asset checks above can no longer tell the two cuts apart"
     )
