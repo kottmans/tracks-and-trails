@@ -5,9 +5,30 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-21 — **`T-274` is built and In Review.** The maintainer revamped the logo
-and icons outside the repository and directed that they replace what is in use; the board was empty
-of reviewer work when the instruction arrived and now has one entry.
+**Last updated:** 2026-08-21 — **`T-274` came back Changes requested at `d364928`, and the finding
+to keep is that my own mutation proof was too narrow.** `T274-R1` and `T274-R2` are corrected and
+the task is awaiting re-review.
+
+**I proved the 16 px check fires and stopped there, while the constant claimed three sizes.** The
+reviewer set the renderer's `SMALL_SIZES` to `{16}`, regenerated all eleven assets, and the
+resource suite **still passed 30** with 24 and 32 back on the full mark in both the PNGs and the
+`.ico`. The check is now parameterized over every small size and both sources, the complement is
+asserted above the split, and four selector mutations — each with a full regeneration — fail at
+exactly the sizes and sources they move. That the escaping mutation was the *first* thing the
+reviewer tried is the part worth remembering: a single-instance proof reads as a proof of the
+property and is not one.
+
+`T274-R2` was `ARCHITECTURE.md` §8 still naming the replaced raster and its hash as the brand's
+source of record, and arguing the swatches could not be measured because *the artwork contains no
+flat fills* — which is now false twice over, since the vector master's only two fills **are**
+`#1E5E47` and `#D9A24C`. The three swatches and the *adopted, not measured* rule are untouched;
+the provenance around them is rewritten, the old raster is kept as `T-003` history, and **`#083122`
+is recorded as having no counterpart in the artwork at all**. The same stale paragraph was in
+`theme.py`'s docstring, which the finding did not cite, and was corrected with it.
+
+**The maintainer revamped the logo and icons outside the repository** and directed that they
+replace what is in use; the board was empty of reviewer work when the instruction arrived and now
+has one entry.
 
 **The assets are rasterized from vector, and three mechanisms went with the change.** Two square
 SVG artboards are vendored under `tools/icons/masters/`, `tools/icons/render_icons.py` writes all

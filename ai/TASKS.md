@@ -158,7 +158,8 @@ contents; this preface does not list them.***
 
 ### T-274 — Replace every icon asset with the revamped logo pack, and render them from vector
 
-**Status:** **In Review — instructed by the maintainer 2026-08-21 and built the same night.** The
+**Status:** **In Review — Changes requested at `d364928`, both findings corrected, awaiting
+re-review.** Instructed by the maintainer 2026-08-21 and built the same night. The
 maintainer revamped the logo and icons outside this repository and directed that they replace what
 is in use. **This is not a redesign proposal and contains no judgement about the artwork**; what is
 open for review is the pipeline it arrives through and the two checks that had to be rewritten
@@ -261,6 +262,66 @@ in the suite at all three small sizes, rendering the full-mark master itself and
 **fails** the property the shipped assets pass — because nothing else in the suite ever draws the
 full mark small enough for the check to be exercised against a known positive.
 
+#### The review, and what it found
+
+**Changes requested at `d364928`** (`ai/REVIEWS.md`, 2026-08-21). The renderer, the three removed
+mechanisms, the 32 px split and the byte-identical reproduction were all accepted; the reviewer
+independently measured the artboard padding (134/71/134/71 and 171/71/171/171 at alpha > 8, both
+centred, both 0.8613) and audited the `.ico` frame by frame. **Two findings, both Medium, both
+blocking, and both were mine to have caught.**
+
+**`T274-R1` — the boundary was stated at three sizes and enforced at one.** `SMALL_SIZES` claims
+16, 24 and 32; the shipped-asset check ran at 16 alone. The reviewer set the renderer's set to
+`{16}`, regenerated all eleven outputs, and the resource pair **still reported 30 passed** while 24
+and 32 had moved back to the full mark in both the PNGs and the `.ico`. The control test used the
+three-size set only to prove the *master* fails the predicate — it never asked the shipped assets.
+
+The check is now parameterized over **every small size and both sources**, and the complement is
+asserted too: above the split each asset must have *more* than one gold run.
+
+| what the sources are | why both |
+|---|---|
+| `icon-{16,24,32}.png` | what anything asking for a file by name gets |
+| `icon.ico` frames | what Windows reads for the title bar and taskbar, with Qt picking the frame |
+
+They are byte-identical today — the reviewer verified every payload — and a check consulting one
+would not notice if they stopped being.
+
+**Four selector mutations, each regenerating all eleven assets, and each fails exactly where the
+new parameterization says it should:**
+
+| `SMALL_SIZES` | result |
+|---|---|
+| `{16}` — the reviewer's escaping mutation | **4 failed**: `[png-24]`, `[png-32]`, `[ico-24]`, `[ico-32]` |
+| `{16, 32}` | **2 failed**: `[png-24]`, `[ico-24]` |
+| `{16, 24}` | **2 failed**: `[png-32]`, `[ico-32]` |
+| `{16, 24, 32, 48}` — the complement | **2 failed**: `[png-48]`, `[ico-48]` on the full-mark check |
+
+`sha256sum -c` after restoring: all eleven byte-identical.
+
+**The complement half was not requested.** `T274-R1` asks only that the small sizes be enforced.
+The hole is symmetric — with only the small side asserted, a renderer that moved 48 px onto the
+reduced cut would pass every check here — so it is closed in the same pass and flagged as an
+addition rather than a required correction.
+
+**`T274-R2` — the architecture record still named the replaced raster as the brand's source.**
+`ARCHITECTURE.md` §8 pinned `resources/icons/icon.png` and its `T003-R5` hash as the source of
+record and argued the swatches could not be measured because *the artwork contains no flat fills*.
+At this head `icon.png` is a generated output, and the vector master's only two fills **are**
+`#1E5E47` and `#D9A24C`.
+
+The three swatches are untouched and the *adopted, not measured* rule is untouched. What was
+rewritten is the provenance around them: the source of record is now
+`tools/icons/masters/icon.svg` with its hash, the old raster and its argument are kept as `T-003`
+history rather than as live fact, and **`#083122` is recorded as having no counterpart in the
+artwork at all** — the shading tone belonged to the raster. It stays canonical as a palette value
+because `theme.py` is built on it; it is simply not sourced from the mark any more.
+
+**The same stale provenance was in `theme.py`'s module docstring**, which is not what the finding
+cited. `T274-R2` names a property rather than a location, and the second instance was corrected in
+the same pass — no value changed, and `tests/unit/test_theme.py` and `tests/ui/test_theme_metrics.py`
+pass unchanged.
+
 #### Validation
 
 | Check | Result |
@@ -268,10 +329,11 @@ full mark small enough for the check to be exercised against a known positive.
 | `ruff check .` | All checks passed |
 | `ruff format --check .` | 203 files already formatted |
 | `mypy src` | Success: no issues found in 56 source files |
-| `pytest tests/unit/test_resources.py tests/ui/test_resources.py` | 30 passed |
+| `pytest tests/unit/test_resources.py tests/ui/test_resources.py` | 30 passed at `d364928`; **45 passed** after `T274-R1` |
+| `pytest tests/unit/test_theme.py tests/ui/test_theme_metrics.py` | passed unchanged, after `T274-R2` touched `theme.py`'s docstring |
 | `pytest tests/ui/test_add_dialog.py tests/ui/test_row_delegate.py` | the two modules that decode `icon.png` as sample thumbnail bytes — 274 passed with the resource modules, 4:12 |
 | `pytest tests/unit/test_task_placement.py` | 15 passed — the prose gate over this file |
-| Mutation: 16 px rendered from the full mark | **fails** `test_the_small_cut_keeps_its_trail_whole_at_16_px`, as its docstring claims |
+| Four `SMALL_SIZES` mutations, each with a full regeneration | each **fails** at exactly the sizes and sources it moved — see the table above |
 
 **Not run: Windows.** `T-006` runs these same assertions there and nothing here is
 platform-specific, but the `.ico` is what Windows picks frames from and only that job can confirm

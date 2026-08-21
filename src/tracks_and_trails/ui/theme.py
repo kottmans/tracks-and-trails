@@ -6,11 +6,16 @@ whatever Qt's default style chose.
 
 ## The swatches are adopted, not measured
 
-`ARCHITECTURE.md` §8 is explicit and `T003-R1` is why: the artwork contains no flat fills — each
-coloured region is a cloud spanning roughly ±2 per channel — so clustering it recovers a different
-centre for every reasonable algorithm and radius. **These three values are the definition; the
-logo is their origin, not their proof.** Do not re-derive them from `icon.png`, and do not cite a
-measurement as evidence for them. Changing one is a brand decision.
+`ARCHITECTURE.md` §8 is explicit: **these three values are the definition; the logo is their
+origin, not their proof.** Do not cite a measurement of the artwork as evidence for them, and do
+not re-derive them from a rendered asset. Changing one is a brand decision.
+
+*(`T003-R1` is why the rule was written: the drawn raster these were selected from contained no
+flat fills — each coloured region a cloud spanning roughly ±2 per channel — so clustering it
+recovered a different centre for every reasonable algorithm and radius. `T-274` replaced that
+raster with a vector master whose fills **are** `FOREST` and `GOLD` literally, which settles that
+particular argument and changes neither the values nor the rule. `DEEP` is not in the artwork at
+all any more; §8 records that.)*
 
 ## Two themes, neither an inversion of the other
 

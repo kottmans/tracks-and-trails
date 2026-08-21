@@ -386,15 +386,31 @@ classification. Classification is a hint, not a replacement.
   | Trail gold — accent | `#D9A24C` |
   | Deep green — shading | `#083122` |
 
-  **They are adopted, not measured.** The artwork contains no flat fills — each colored region
-  is a cloud spanning roughly ±2 per channel — so clustering it recovers a different center for
-  every reasonable algorithm and radius, and no percentage-of-the-logo figure is stable either
-  (`T003-R1`). These values are the definition; the artwork is their origin, not their proof.
-  Do not re-derive them from `icon.png`, and do not cite a measurement as evidence for them.
+  **They are adopted, not measured**, and that rule is unchanged by anything below. These values
+  are the definition; the artwork is their origin, not their proof. Do not cite a measurement of
+  the artwork as evidence for them.
 
-  Source of record: `resources/icons/icon.png`, SHA-256
-  `f0e202c714ac316fdaa75b4cccbc0b46fee4686129ac09d0d276446abfe74b8d` (`T003-R5`). Changing a
-  swatch is a deliberate brand decision, not a measurement update.
+  Source of record: **`tools/icons/masters/icon.svg`**, SHA-256
+  `6204d568001dca4c67a8bbfc5a0fb97285056a47cada4ee3988d7e070010efb4` — the vendored vector
+  artboard every shipped icon is rendered from (`T-274`). Two facts about it bear on this table
+  and neither changes a swatch:
+
+  - It declares `#1E5E47` and `#D9A24C` as **literal flat fills**, its only two. For those two the
+    artwork and the definition now agree by construction, so the question of what the artwork
+    "really" is has no answer left to disagree with.
+  - **`#083122` has no counterpart in it.** The shading tone was a property of the raster that
+    preceded it. It stays canonical as a *palette* value — `ui/theme.py` uses it and both themes
+    are built on it — but it is no longer sourced from the mark.
+
+  *(Until `T-274` this named `resources/icons/icon.png`, SHA-256 `f0e202c7…fe74b8d` (`T003-R5`),
+  and argued that the artwork **contained no flat fills** — each colored region a cloud spanning
+  roughly ±2 per channel, so clustering it recovered a different center for every reasonable
+  algorithm and radius, with no stable percentage-of-the-logo figure either (`T003-R1`). That was
+  true of the drawn T-003 raster and is the reason these values were adopted rather than measured.
+  Both facts are historical: at this head `icon.png` is a generated output, hash
+  `088dc089…33eb4299`, and it is not a source of anything.)*
+
+  Changing a swatch is a deliberate brand decision, not a measurement update.
 
   Derived light/dark ramps are Phase 4 work; only these three are fixed.
 

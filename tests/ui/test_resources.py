@@ -37,8 +37,8 @@ ALL_ASSETS = ["icon.png", "icon-small.png", "icon.ico", *(f"icon-{s}.png" for s 
 #: **Measured 2026-08-21 on the new small cut: 9.** The floor sits below it because the count
 #: alone can no longer tell the two cuts apart — the full mark at 16 px carries *11*, more gold
 #: than the reduced cut, because its sound-wave arcs are gold too. What separates them is
-#: `test_the_small_cut_keeps_its_trail_whole_at_16_px`'s connectivity assertion; this number only
-#: has to catch a trail that has thinned to nothing, so it leaves room for redrawing.
+#: `test_the_small_cut_is_what_ships_at_every_small_size`'s connectivity assertion; this number
+#: only has to catch a trail that has thinned to nothing, so it leaves room for redrawing.
 #:
 #: *(`T-021`'s 16 was the midpoint between a 13-pixel full-logo downscale and a 20-pixel derived
 #: glyph whose trail had been deliberately dilated. Both of those artworks are gone.)*
@@ -128,8 +128,35 @@ def gold_runs(image: QImage) -> list[int]:
     return sorted(runs, reverse=True)
 
 
-def test_the_small_cut_keeps_its_trail_whole_at_16_px(qapp: QApplication) -> None:
-    """`T-274`: the 16 px asset is drawn from the small cut, and its trail is one unbroken sweep.
+#: Sizes rendered from the full mark: everything the reduced cut does not cover.
+FULL_SIZES = tuple(size for size in PNG_SIZES if size not in SMALL_SIZES)
+
+
+def shipped(source: str, size: int) -> QImage:
+    """The asset a caller asking `source` for `size` actually gets, rendered through Qt.
+
+    **Both sources, because both ship and they are picked by different consumers.** The sized
+    PNGs are what anything asking for a file by name gets; the `.ico` is what Windows reads for
+    the title bar and the taskbar, and Qt chooses the frame. They are byte-identical today —
+    `render_icons.write_ico` embeds the same renders — and a check that consulted only one would
+    not notice if they stopped being.
+    """
+    path = ICONS / ("icon.ico" if source == "ico" else f"icon-{size}.png")
+    return QIcon(str(path)).pixmap(size, size).toImage()
+
+
+def sources_for(sizes: tuple[int, ...]) -> list[tuple[str, int]]:
+    """`(source, size)` pairs for every way `sizes` ship. The `.ico` stops at its largest frame."""
+    return [("png", size) for size in sizes] + [
+        ("ico", size) for size in sizes if size in ICO_SIZES
+    ]
+
+
+@pytest.mark.parametrize(("source", "size"), sources_for(SMALL_SIZES))
+def test_the_small_cut_is_what_ships_at_every_small_size(
+    qapp: QApplication, source: str, size: int
+) -> None:
+    """`T-274`: below the split, every shipped asset is the reduced cut — one unbroken trail.
 
     **This is what replaced `T-021`'s pixel count, and the reason is that the count stopped
     discriminating.** The reduced cut used to carry *more* gold than the full mark downscaled,
@@ -139,40 +166,73 @@ def test_the_small_cut_keeps_its_trail_whole_at_16_px(qapp: QApplication) -> Non
     other.
 
     What separates them is **shape**. The full mark's gold is the trail *and* two sound-wave
-    arcs, and at every icon size those arcs are loose specks: 2 runs at 16 px, 2 at 24, 2 at 32,
-    4 at 48. The small cut has no arcs, so its gold is exactly **one** run at every size. A
-    regeneration that stopped using `icon-small.svg` — the one failure this can catch — lands on
-    two runs and fails here.
+    arcs, and at every size those arcs are separate from it: 2 runs at 16 px, 2 at 24, 2 at 32,
+    4 at 48, 3 from 64 up. The reduced cut has no arcs, so its gold is exactly **one** run.
 
-    `test_the_predicate_can_tell_the_two_cuts_apart` is the control that proves that.
+    **Parameterized over every small size and both sources, which is `T274-R1`.** The first
+    version of this asserted 16 px alone while `SMALL_SIZES` claimed three, so a renderer set to
+    `{16}` regenerated 24 and 32 — PNGs and `.ico` frames alike — back to the full mark and the
+    suite stayed green. A boundary stated in one file and enforced at one of its three sizes is
+    not enforced.
 
     Counted from the rendered pixmap rather than the file, because Qt is what picks and scales
     the asset the user sees — the same reason this module exists alongside
     `tests/unit/test_resources`.
     """
-    runs = gold_runs(QIcon(str(ICONS / "icon-16.png")).pixmap(16, 16).toImage())
+    runs = gold_runs(shipped(source, size))
 
-    assert runs, "the 16 px asset carries no trail gold at all"
+    assert runs, f"the {size} px {source} carries no trail gold at all"
+    assert len(runs) == 1, (
+        f"the {size} px {source} puts its gold in {len(runs)} separate runs ({runs}) — the "
+        "reduced cut's gold is the trail alone and is always one run, so this is the full mark, "
+        "whose arcs are a separate shape at every size"
+    )
+
+
+@pytest.mark.parametrize(("source", "size"), sources_for(FULL_SIZES))
+def test_the_full_mark_is_what_ships_above_the_split(
+    qapp: QApplication, source: str, size: int
+) -> None:
+    """And above the split it is the full mark — the same property, read the other way.
+
+    **This half is not required by `T274-R1` and is here because the hole is symmetric.** With
+    only the small sizes asserted, a renderer that moved 48 px — or all of them — onto the
+    reduced cut would pass every check in this module, and the landscape would quietly leave the
+    icon at the sizes that can carry it. The arcs are what make it checkable: they are gold and
+    they are never joined to the trail, so the full mark cannot present as one run.
+    """
+    runs = gold_runs(shipped(source, size))
+
+    assert len(runs) > 1, (
+        f"the {size} px {source} puts its gold in one run — that is the reduced cut, which is "
+        f"drawn below {min(FULL_SIZES)} px and not at or above it"
+    )
+
+
+def test_the_16_px_trail_is_thick_enough_to_read(qapp: QApplication) -> None:
+    """The smallest asset's trail must be a line rather than a speck.
+
+    Connectivity says the gold is one shape; it does not say the shape is big enough to see, and
+    a trail thinned to two pixels would still be one run. This is the floor that catches that,
+    and 16 px is the only size where it is in any doubt.
+    """
+    runs = gold_runs(shipped("png", 16))
+
     assert runs[0] >= MINIMUM_GOLD_AT_16, (
         f"the 16 px trail is {runs[0]} pixels, under the {MINIMUM_GOLD_AT_16} floor — it has "
         "thinned to the point of vanishing"
     )
-    assert len(runs) == 1, (
-        f"the 16 px asset's gold falls in {len(runs)} separate runs ({runs}) — the small cut's "
-        "gold is the trail alone and is always one run, so this is the full mark, whose arcs "
-        "break into specks at icon sizes"
-    )
 
 
-@pytest.mark.parametrize("size", sorted(SMALL_SIZES))
+@pytest.mark.parametrize("size", SMALL_SIZES)
 def test_the_predicate_can_tell_the_two_cuts_apart(qapp: QApplication, size: int) -> None:
-    """The control for the test above: the full mark **fails** the assertion the small cut passes.
+    """The control for the two tests above: the full mark **fails** what the small cut passes.
 
     A one-run assertion is worth nothing if both cuts satisfy it, and this is the only place that
-    can be established — the shipped assets are all small cut at these sizes, so nothing else in
-    the suite ever renders the full mark small enough to break. It reaches past the shipped
-    assets to `tools/icons/masters/icon.svg` deliberately: the point is to feed the check a known
-    positive and watch it fire.
+    can be established at the small sizes — every shipped asset there is the reduced cut, so
+    nothing else in the suite ever draws the full mark small enough to break. It reaches past the
+    shipped assets to `tools/icons/masters/icon.svg` deliberately: the point is to feed the check
+    a known positive and watch it fire.
     """
     renderer = QSvgRenderer(str(MASTERS / "icon.svg"))
     assert renderer.isValid(), "the full-mark master did not load"
@@ -184,6 +244,6 @@ def test_the_predicate_can_tell_the_two_cuts_apart(qapp: QApplication, size: int
     painter.end()
 
     assert len(gold_runs(image)) > 1, (
-        f"the full mark at {size} px puts its gold in one run — the arcs no longer break into "
-        "specks, so the shipped-asset check above can no longer tell the two cuts apart"
+        f"the full mark at {size} px puts its gold in one run — the arcs no longer read as a "
+        "separate shape, so the shipped-asset checks above can no longer tell the two cuts apart"
     )
