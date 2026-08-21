@@ -5,6 +5,38 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-21 — **`T-256` is Complete and closed. Nothing on this board is waiting on
+a reviewer.** Approved with follow-ups at `ed7e25a`; `T256-R1`–`R3` Resolved; `R4`, `R5` and `R6`
+fixed at completion on the maintainer's instruction, **with no further pass**.
+
+**Four rulings went in cleanly and six findings followed, every one about the machinery and records
+around them** — a parser that disabled its own cross-check, seven stale siblings, a header giving
+the pre-ruling answer, a mutation figure reported stronger than it was, and then a wrong *reason*
+for that wrong figure. **The rulings themselves were never in question.**
+
+**`T256-R5` is the one to keep.** I explained the botched mutation by saying `--netrc` has no
+documented row. **It has one** — `` | `-n` `--netrc` | `` — carrying both spellings as separate
+tokens, and my script looked for the long one alone. So the correction of a wrong figure contained a
+wrong reason, which is the same class one level down.
+
+**The pattern in `docs/YTDLP_OPTION_AUDIT.md` is recorded rather than filed**, on the maintainer's
+call that three prose fixes do not need a task. Its **counts are derived** —
+`test_the_class_table_counts_what_the_tables_hold` and
+`test_the_refusal_list_size_is_stated_and_correct` — and **have never been wrong**. Its
+`Authority`/`Status` header and derivation prose are **hand-maintained and have now drifted three
+times against the same rulings**. If a fourth appears, deriving that set is the answer, and the
+entry says so.
+
+**Board, and it is short.** `T-256`, `T-258`, `T-267` **Complete**. `T-272` **In Review**, approved,
+both scans run. `T-238` **Ready**, criterion 4 unanswered. `T-273` and `T-184` **Proposed**,
+`T-184` unblocked. `T-268` and `T-074` **Blocked on a person at `STARBASE`**. **`T-212` is the only
+thing between this phase and its exit review**, and the maintainer has it.
+
+**18 commits are held and `origin/main` is `a3e9058`.** Nothing is queued for review; the push is
+the maintainer's call.
+
+---
+
 **Last updated:** 2026-08-21 — **`T-267` is Complete, and `T-256` came back with the worst kind of
 finding: a gate that passed while approving something wider than the decision it guards.**
 
