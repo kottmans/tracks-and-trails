@@ -5,6 +5,37 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-21 — **`T-274` is built and In Review.** The maintainer revamped the logo
+and icons outside the repository and directed that they replace what is in use; the board was empty
+of reviewer work when the instruction arrived and now has one entry.
+
+**The assets are rasterized from vector, and three mechanisms went with the change.** Two square
+SVG artboards are vendored under `tools/icons/masters/`, `tools/icons/render_icons.py` writes all
+eleven files in `resources/icons/` from them — the directory holds no source any more — and
+`render_small_glyph.py` is deleted. It derived the small mark from the big one so the two could not
+drift; the pack **authors** the small cut with two of its three paths byte-identical to the
+master's, which is that guarantee made structural rather than approximated. `T-071`'s trim and
+`FILL` are gone too: the artboards carry their own 8% margin and the ink spans **0.8613** of the
+frame height in both cuts, which is what holds them at matching weight in one cell.
+
+**The finding is a check that had stopped being able to fail.** `T-021`'s test asserted a floor of
+16 trail-gold pixels at 16 px to catch a regeneration that stopped using the reduced cut. On this
+artwork the reduced cut carries **9** and the full mark **11** — the inequality inverted, because
+the old glyph's trail was dilated to survive and this one is the master's own path — so **no floor
+separates the two cuts at all**. What separates them is shape: the full mark's gold is the trail
+*and two arcs*, which are loose specks at icon sizes, so its gold falls in 2 or more connected runs
+while the small cut's is always 1. The test now asserts one run, the control that proves it
+discriminates is in the suite, and the mutation the docstring names was run: 16 px from the full
+mark fails with *"2 separate runs ([10, 1])"*.
+
+**32 px changed sides** — smallest full-mark size to largest reduced one — on the pack's own
+measurement of this artwork rather than `T003-R2`'s of the artwork it replaced.
+`ai/evidence/2026-08-21-T274-cuts-at-icon-sizes.png` is the side-by-side. **The brand palette did
+not change**: the pack ships `#1E5E47` and `#D9A24C`, `theme.py` is untouched, and no source module
+was modified.
+
+---
+
 **Last updated:** 2026-08-21 — **`T-256` is Complete and closed. Nothing on this board is waiting on
 a reviewer.** Approved with follow-ups at `ed7e25a`; `T256-R1`–`R3` Resolved; `R4`, `R5` and `R6`
 fixed at completion on the maintainer's instruction, **with no further pass**.

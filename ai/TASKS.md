@@ -5,10 +5,17 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-20 — **`T-270` and `T-269` are both Complete**, Approved at `c047767`
+**Last updated:** 2026-08-21 — **`T-274` was filed and built the same night on a direct maintainer
+instruction**: the revamped logo pack replaces every icon asset, and the assets are now rasterized
+from vendored SVG artboards rather than derived from a drawn PNG. **It retires `T-021`'s glyph
+derivation and rewrote a check that had stopped being able to fail** — the reduced cut no longer
+carries more trail gold than the full mark, so the floor that separated them separates nothing. The
+brand palette is unchanged and no source module was touched.
+
+*(2026-08-20: **`T-270` and `T-269` are both Complete**, Approved at `c047767`
 and `166ce39`, **neither with an implementation finding**. One run closed both: `32319665394`,
 `windows desktop` green end to end on `STARBASE`. `T270-R1`, `T269-R1`, `T269-R2` and `T266-R2` are
-Resolved.
+Resolved.)*
 
 **`Quit` no longer depends on a per-platform standard key Qt is entitled to resolve to nothing**,
 and the proof is on **PySide6 6.11.2** — the version whose empty resolution filed the task — with
@@ -148,6 +155,137 @@ Phase 0 is formally exited (2026-07-26).
 ## In Review
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
+
+### T-274 — Replace every icon asset with the revamped logo pack, and render them from vector
+
+**Status:** **In Review — instructed by the maintainer 2026-08-21 and built the same night.** The
+maintainer revamped the logo and icons outside this repository and directed that they replace what
+is in use. **This is not a redesign proposal and contains no judgement about the artwork**; what is
+open for review is the pipeline it arrives through and the two checks that had to be rewritten
+because the new artwork does not have the property the old ones measured.
+**Owner:** Implementer — built 2026-08-21, awaiting a verdict
+**Priority:** High, as a direct maintainer instruction. Nothing else was blocked on it
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. It **retires** `T-021`'s derivation and `T-071`'s trim-and-fill
+**Relevant context:** `tools/icons/render_icons.py`, `tools/icons/masters/`,
+`src/tracks_and_trails/resources/icons/`, `tests/unit/test_resources.py`,
+`tests/ui/test_resources.py`, `T-003`, `T-021`, `T-071`, `T003-R2`, `ARCHITECTURE.md` §8
+**Affected surfaces:** every icon asset, the script that renders them, and their two test modules.
+**No source module changed** — `main_window.app_icon()` loads `icon.ico` and is untouched
+**Risk:** Low, and it is concentrated in the tests rather than the assets. A wrong asset is visible;
+a check that no longer discriminates is not, and one of the two here had stopped
+
+#### What the pack changed, and what it did not
+
+**Not the palette.** The pack ships `#1E5E47` and `#D9A24C` — `ARCHITECTURE.md` §8's forest and
+gold, unchanged. `theme.py` is untouched and no contrast assertion was re-derived. *(The pack the
+maintainer first pointed at carried a different green and orange and was updated to the brand
+values before any of this was built; nothing in the repository ever held the other pair.)*
+
+**The mark is the same mark** — note, trail, trees, mountain, sound-wave arcs — redrawn as vector.
+The pack is the source of everything asserted here about it; its own README is vendored beside the
+artboards as `masters/PACK-README.txt`.
+
+#### What was built
+
+**The two square artboards are vendored as `tools/icons/masters/icon.svg` and
+`icon-small.svg`**, copied byte-for-byte from the pack's `tracks-and-trails-icon.svg` and
+`tracks-and-trails-small-icon.svg`. They live outside the package because nothing at runtime reads
+them, and `test_the_svg_masters_are_present` is there because that also means nothing else would
+notice them going missing.
+
+**`tools/icons/render_icons.py` renders all eleven assets from those two files** and writes
+`icon.png`, `icon-small.png`, the eight sized PNGs and the seven-frame `.ico`. **Every file in
+`resources/icons/` is now an output**; the directory holds no source. Re-running the script
+reproduces the committed bytes exactly — checked by regenerating and `cmp`-ing after the mutation
+below.
+
+**Three mechanisms were removed rather than ported, and each was load-bearing for the pipeline it
+belonged to:**
+
+- **`VISIBLE_ALPHA`** trimmed a band of alpha-1..8 pixels the drawn PNG master carried. A vector
+  artboard has no halo.
+- **`FILL = 0.92`** rescaled the trimmed artwork to fill the cell, because `T-071` found the
+  assets it replaced read undersized at ~0.66 in a taskbar. The artboards carry an 8% margin rule
+  of their own and the ink spans **0.8613** of the frame height in *both* cuts — measured by the
+  script on every run and printed. That keeps `T-071`'s fix and is what makes the two cuts sit at
+  matching weight in one cell; re-filling each to its own bounds is precisely what would break it.
+- **`tools/icons/render_small_glyph.py` is deleted.** It derived the reduced glyph from the full
+  master by masking pixels, dilating the trail and redrawing the note head as an ellipse, so that
+  the small mark could not drift from the large one. The pack **authors** the small cut, with two
+  of its three paths byte-identical to the master's — the guarantee that script approximated,
+  made structural. `T-021`'s deliverable is retired, not regressed.
+
+**Pillow is gone.** The script draws through PySide6, which is already a runtime dependency and is
+what rasterizes these assets in the application; Pillow was never declared anywhere and had to be
+installed by hand to regenerate an icon. Supersampling was measured and rejected: rendering at 4x
+and smooth-scaling down moves the 16 px gold count by 2 and every other size by 0 or 1.
+
+#### The split moved to 32 px, and the number did not
+
+`SMALL_SIZES` is `{16, 24, 32}`. It was `{16, 24}`. **32 px changed sides**: it was the smallest
+size that kept the full mark, and it is now the largest that drops it.
+
+`T003-R2` put the boundary there by measuring artwork that no longer exists. The pack measured
+this artwork and says to use the small cut below about 48 px — at 32 the arcs have broken into
+speckle and the mountain has vanished. `ai/evidence/2026-08-21-T274-cuts-at-icon-sizes.png` renders
+both cuts at 16, 24, 32 and 48 at 6x so the two claims can be compared side by side.
+
+**This is the one judgement in the task that a reviewer might reverse, and reversing it is one
+line.** 48 px was left on the full mark rather than following the pack's "below about 48" to its
+edge, because the pack's own measurements stop at 32 and the sheet shows the landscape still
+reading there.
+
+#### The trail check had stopped discriminating, and that is the finding worth reading
+
+`test_the_reduced_glyph_keeps_its_trail_at_16_px` asserted **at least 16 gold pixels** at 16 px, a
+floor set between a 13-pixel full-mark downscale and a 20-pixel derived glyph. Its stated purpose
+was to catch a regeneration that stopped using the reduced cut.
+
+**On the new artwork the reduced cut carries 9 gold pixels and the full mark carries 11.** The
+inequality it was built on has inverted — the old glyph's trail was *dilated* to survive and the
+pack's is the master's own path — so **no floor can separate the two cuts**, and one set low enough
+to pass the shipped asset would pass the exact regression the test exists to catch.
+
+What separates them is shape, not quantity. The full mark's gold is the trail **and two sound-wave
+arcs**, and at icon sizes those arcs are loose specks: 2 connected runs at 16 px, 2 at 24, 2 at 32,
+4 at 48. The small cut has no arcs, so its gold is **one** run at every size.
+`test_the_small_cut_keeps_its_trail_whole_at_16_px` asserts one run of at least 6 pixels — the
+count now guarding only against a trail that has vanished, the connectivity carrying the
+discrimination.
+
+**Both halves were proved rather than asserted.** Re-rendering `icon-16.png` from the full mark
+(`SMALL_SIZES` less 16) fails it with *"gold falls in 2 separate runs ([10, 1])"*; restoring gives
+back a byte-identical file. And `test_the_predicate_can_tell_the_two_cuts_apart` keeps that control
+in the suite at all three small sizes, rendering the full-mark master itself and asserting it
+**fails** the property the shipped assets pass — because nothing else in the suite ever draws the
+full mark small enough for the check to be exercised against a known positive.
+
+#### Validation
+
+| Check | Result |
+|---|---|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 203 files already formatted |
+| `mypy src` | Success: no issues found in 56 source files |
+| `pytest tests/unit/test_resources.py tests/ui/test_resources.py` | 30 passed |
+| `pytest tests/ui/test_add_dialog.py tests/ui/test_row_delegate.py` | the two modules that decode `icon.png` as sample thumbnail bytes — 274 passed with the resource modules, 4:12 |
+| `pytest tests/unit/test_task_placement.py` | 15 passed — the prose gate over this file |
+| Mutation: 16 px rendered from the full mark | **fails** `test_the_small_cut_keeps_its_trail_whole_at_16_px`, as its docstring claims |
+
+**Not run: Windows.** `T-006` runs these same assertions there and nothing here is
+platform-specific, but the `.ico` is what Windows picks frames from and only that job can confirm
+Qt reports the frame set on the platform it exists for.
+
+#### Out of scope
+
+- The palette. It did not change, and `theme.py` is not an implementer's file to change if it had
+- The wider pack — dark, mono, gold, green, ink and chalk cuts, and the small cut's own colourways.
+  Only the two full-colour icon artboards are vendored, because only they are used
+- `docs/PHASE_4_CHECKLIST.md` item 1.1, which asks a human to look at the titlebar icon at small
+  size. It still asks the right question and its answer should improve; it is not re-answered here
+
+---
 
 ### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
 

@@ -7,32 +7,42 @@ not necessarily the one the file declares.
 
 `T-006` runs these same assertions on Windows, which is the only place they can be confirmed
 there (`OPS-003`).
+
+`T-274` replaced the artwork and the pipeline behind it — the assets are now rasterized from the
+vendored SVG artboards in `tools/icons/masters/` — and rewrote the trail check below, which had
+been measuring a property the new artwork does not have.
 """
 
 from pathlib import Path
 
 import pytest
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QIcon, QImage, QPainter
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
 
 import tracks_and_trails
-from tests.unit.test_resources import ICO_SIZES, PNG_SIZES
+from tests.unit.test_resources import ICO_SIZES, PNG_SIZES, SMALL_SIZES
 
 ICONS = Path(tracks_and_trails.__file__).parent / "resources" / "icons"
 
+#: The vendored SVG artboards every shipped asset is rendered from (`T-274`). Reached only by
+#: the control test, which needs the full mark at a size no shipped asset uses it at.
+MASTERS = Path(__file__).resolve().parents[2] / "tools" / "icons" / "masters"
+
 ALL_ASSETS = ["icon.png", "icon-small.png", "icon.ico", *(f"icon-{s}.png" for s in PNG_SIZES)]
 
-#: Opaque pixels at 16 px that must be trail gold (`T-021`).
+#: Trail-gold pixels the 16 px asset must carry (`T-274`, replacing `T-021`'s floor of 16).
 #:
-#: **Measured 2026-08-15, and it is the whole point of the reduced glyph.** The full logo
-#: downscaled to 16 px puts **13** gold pixels on screen out of 69 opaque; the reduced glyph puts
-#: **20** out of 66, because dropping the trees and the mountain gives the trail the room they were
-#: taking and `render_small_glyph.TRAIL_GROWTH` keeps it continuous instead of dotted.
+#: **Measured 2026-08-21 on the new small cut: 9.** The floor sits below it because the count
+#: alone can no longer tell the two cuts apart — the full mark at 16 px carries *11*, more gold
+#: than the reduced cut, because its sound-wave arcs are gold too. What separates them is
+#: `test_the_small_cut_keeps_its_trail_whole_at_16_px`'s connectivity assertion; this number only
+#: has to catch a trail that has thinned to nothing, so it leaves room for redrawing.
 #:
-#: The floor sits between the two numbers deliberately. A regeneration that stopped using
-#: `icon-small.png` — the one failure this can actually catch — lands back on 13 and fails here,
-#: while ordinary redrawing of the glyph has room to move.
-MINIMUM_GOLD_AT_16 = 16
+#: *(`T-021`'s 16 was the midpoint between a 13-pixel full-logo downscale and a 20-pixel derived
+#: glyph whose trail had been deliberately dilated. Both of those artworks are gone.)*
+MINIMUM_GOLD_AT_16 = 6
 
 
 @pytest.mark.parametrize("name", ALL_ASSETS)
@@ -73,38 +83,107 @@ def test_smallest_icon_renders_actual_content(qapp: QApplication) -> None:
     assert opaque > 0, "the 16 px icon is fully transparent"
 
 
-def test_the_reduced_glyph_keeps_its_trail_at_16_px(qapp: QApplication) -> None:
-    """`T-021`: the gold trail is one of the two elements the small glyph exists to preserve.
+def is_trail_gold(colour: QColor) -> bool:
+    """Whether an opaque rendered pixel belongs to the gold trail.
 
-    **This is the only part of `T-021`'s acceptance a test can carry.** Its first criterion is that
-    the glyph be *more legible than the current downscale, judged side by side*, and that is a
-    human judgement recorded in `ai/evidence/2026-08-15-T021-small-glyph.png`. What is checkable is
-    the mechanism behind it: the trail has to occupy enough of a 16 px cell to read as a line
-    rather than as three specks.
-
-    Counted from the rendered pixmap rather than the file, because Qt is what picks and scales the
-    asset the user sees — the same reason this module exists alongside `tests/unit/test_resources`.
+    Trail gold is `#D9A24C`: high red, mid green, low blue. Compared as a relation rather than
+    against the exact value, since these pixels are antialiased blends of the trail with the
+    green behind it.
     """
-    image = QIcon(str(ICONS / "icon-16.png")).pixmap(16, 16).toImage()
-    gold = 0
-    for x in range(image.width()):
-        for y in range(image.height()):
-            colour = image.pixelColor(x, y)
-            if colour.alpha() < 128:
-                continue
-            # Trail gold is `#D9A24C`: high red, mid green, low blue. Compared as a relation
-            # rather than against the exact value, since these pixels are antialiased blends of
-            # the trail with the green behind it.
-            if (
-                colour.red() > 150
-                and colour.green() > 110
-                and colour.blue() < 140
-                and colour.red() > colour.blue() + 50
-            ):
-                gold += 1
+    if colour.alpha() < 128:
+        return False
+    return (
+        colour.red() > 150
+        and colour.green() > 110
+        and colour.blue() < 140
+        and colour.red() > colour.blue() + 50
+    )
 
-    assert gold >= MINIMUM_GOLD_AT_16, (
-        f"the 16 px glyph carries {gold} gold pixels, under the {MINIMUM_GOLD_AT_16} floor — the "
-        "trail has thinned to the point the full-logo downscale had it, which is what the reduced "
-        "glyph exists to fix"
+
+def gold_runs(image: QImage) -> list[int]:
+    """Sizes of the image's connected runs of trail gold, largest first (8-connectivity)."""
+    gold = {
+        (x, y)
+        for x in range(image.width())
+        for y in range(image.height())
+        if is_trail_gold(image.pixelColor(x, y))
+    }
+    seen: set[tuple[int, int]] = set()
+    runs = []
+    for seed in gold:
+        if seed in seen:
+            continue
+        stack, size = [seed], 0
+        seen.add(seed)
+        while stack:
+            x, y = stack.pop()
+            size += 1
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    neighbour = (x + dx, y + dy)
+                    if neighbour in gold and neighbour not in seen:
+                        seen.add(neighbour)
+                        stack.append(neighbour)
+        runs.append(size)
+    return sorted(runs, reverse=True)
+
+
+def test_the_small_cut_keeps_its_trail_whole_at_16_px(qapp: QApplication) -> None:
+    """`T-274`: the 16 px asset is drawn from the small cut, and its trail is one unbroken sweep.
+
+    **This is what replaced `T-021`'s pixel count, and the reason is that the count stopped
+    discriminating.** The reduced cut used to carry *more* gold than the full mark downscaled,
+    because it was derived by masking and its trail was dilated to survive. The pack's small cut
+    is not derived — its trail is byte-identical to the master's — so at 16 px it carries **9**
+    gold pixels against the full mark's **11**, and any floor that passes the one passes the
+    other.
+
+    What separates them is **shape**. The full mark's gold is the trail *and* two sound-wave
+    arcs, and at every icon size those arcs are loose specks: 2 runs at 16 px, 2 at 24, 2 at 32,
+    4 at 48. The small cut has no arcs, so its gold is exactly **one** run at every size. A
+    regeneration that stopped using `icon-small.svg` — the one failure this can catch — lands on
+    two runs and fails here.
+
+    `test_the_predicate_can_tell_the_two_cuts_apart` is the control that proves that.
+
+    Counted from the rendered pixmap rather than the file, because Qt is what picks and scales
+    the asset the user sees — the same reason this module exists alongside
+    `tests/unit/test_resources`.
+    """
+    runs = gold_runs(QIcon(str(ICONS / "icon-16.png")).pixmap(16, 16).toImage())
+
+    assert runs, "the 16 px asset carries no trail gold at all"
+    assert runs[0] >= MINIMUM_GOLD_AT_16, (
+        f"the 16 px trail is {runs[0]} pixels, under the {MINIMUM_GOLD_AT_16} floor — it has "
+        "thinned to the point of vanishing"
+    )
+    assert len(runs) == 1, (
+        f"the 16 px asset's gold falls in {len(runs)} separate runs ({runs}) — the small cut's "
+        "gold is the trail alone and is always one run, so this is the full mark, whose arcs "
+        "break into specks at icon sizes"
+    )
+
+
+@pytest.mark.parametrize("size", sorted(SMALL_SIZES))
+def test_the_predicate_can_tell_the_two_cuts_apart(qapp: QApplication, size: int) -> None:
+    """The control for the test above: the full mark **fails** the assertion the small cut passes.
+
+    A one-run assertion is worth nothing if both cuts satisfy it, and this is the only place that
+    can be established — the shipped assets are all small cut at these sizes, so nothing else in
+    the suite ever renders the full mark small enough to break. It reaches past the shipped
+    assets to `tools/icons/masters/icon.svg` deliberately: the point is to feed the check a known
+    positive and watch it fire.
+    """
+    renderer = QSvgRenderer(str(MASTERS / "icon.svg"))
+    assert renderer.isValid(), "the full-mark master did not load"
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    renderer.render(painter)
+    painter.end()
+
+    assert len(gold_runs(image)) > 1, (
+        f"the full mark at {size} px puts its gold in one run — the arcs no longer break into "
+        "specks, so the shipped-asset check above can no longer tell the two cuts apart"
     )

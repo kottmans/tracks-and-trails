@@ -1,4 +1,4 @@
-"""Guards the icon assets delivered by T-003 against silent loss or corruption.
+"""Guards the icon assets against silent loss or corruption (`T-003`, re-cut by `T-274`).
 
 The assets are static files that no other test touches, so nothing in the suite would notice
 if one were deleted, truncated, or regenerated at the wrong size (`T003-R3`). These checks read
@@ -7,6 +7,12 @@ runtime, and header parsing is enough to catch every failure mode that matters h
 
 Qt-level loadability is asserted separately in `tests/ui/test_resources.py`, which needs a
 `QGuiApplication`.
+
+**`T-274` made every file here an output.** The two 1024 px PNGs used to be hand-delivered
+masters — `icon.png` drawn, `icon-small.png` derived from it by masking — and they are now
+rasterized from `tools/icons/masters/*.svg` like everything else. What that changes for this
+module is only *why* the sizes are pinned, not the pinning: an asset regenerated at the wrong
+size is still the failure nothing else would notice.
 """
 
 import struct
@@ -25,6 +31,14 @@ PNG_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 #: criterion; the rest were delivered as well and are pinned so a regeneration cannot
 #: quietly drop them.
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+
+#: Sizes rendered from the reduced cut rather than the full mark (`T-274`).
+#:
+#: Stated here rather than imported from `tools/icons/render_icons.py`, so that the expectation
+#: is independent of the script that has to meet it. The pack's own measurement of this artwork
+#: sets the boundary: the sound-wave arcs break into speckle at 32 px and the mountain has
+#: vanished, so 32 moved from the smallest full-mark size to the largest reduced one.
+SMALL_SIZES = (16, 24, 32)
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -60,21 +74,30 @@ def read_ico_sizes(path: Path) -> list[int]:
 
 
 def test_source_master_is_present_and_full_size() -> None:
-    """`icon.png` is the 1024x1024 master the 32 px and larger assets derive from."""
+    """`icon.png` is the full mark at 1024, the largest raster the package ships."""
     assert read_png_size(ICONS / "icon.png") == (1024, 1024)
 
 
-def test_small_glyph_master_is_present_and_full_size() -> None:
-    """`icon-small.png` is the reduced glyph `T-021` renders 16 px and 24 px from.
+def test_small_cut_is_present_and_full_size() -> None:
+    """`icon-small.png` is the reduced cut at 1024 — the same mark without the landscape.
 
-    Full size for the same reason `icon.png` is: every derived asset is a downscale, and a master
-    that has itself been shrunk cannot be told from one that has not once it is written out.
-
-    It is **derived** from `icon.png` by `tools/icons/render_small_glyph.py` rather than drawn, so
-    that the reduced mark cannot drift into a different mark — which is `T-021`'s second acceptance
-    criterion and the one a file check can help with.
+    Kept at full size even though nothing displays it there: it is the only place the reduced cut
+    can be *looked at*, and a 1024 px render of it is what makes a changed small cut visible to a
+    reviewer instead of arriving as a 16 px diff.
     """
     assert read_png_size(ICONS / "icon-small.png") == (1024, 1024)
+
+
+def test_the_svg_masters_are_present() -> None:
+    """The vendored artboards every shipped asset is rendered from (`T-274`).
+
+    They live outside the package — nothing at runtime reads them — so no other check in the
+    suite touches them, and losing them would leave a set of rasters with no way back to the
+    artwork. That is the same failure mode this module exists for, one level up.
+    """
+    masters = Path(__file__).resolve().parents[2] / "tools" / "icons" / "masters"
+    assert (masters / "icon.svg").is_file()
+    assert (masters / "icon-small.svg").is_file()
 
 
 @pytest.mark.parametrize("size", PNG_SIZES)
