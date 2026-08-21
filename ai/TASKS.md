@@ -314,17 +314,42 @@ approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused
 four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
 this one returned four verdicts before approving.*
 
+## Complete
+
 ### T-256 — Rule the fifteen options no decision covers
 
-**Status:** **In Review — all four rulings are taken. `SEC-004` (2026-08-16) forbade the fifteen;
-`SEC-005` and `SEC-003`'s amendment (2026-08-21) closed the rest.** Nothing on this entry is now
-waiting on a person.
+**Status:** **Complete — Approved with follow-ups at `ed7e25a`**, 2026-08-21, on the record-only
+pass the maintainer authorized that day. All four rulings are taken: `SEC-004` (2026-08-16) forbade
+the fifteen; `SEC-005` and `SEC-003`'s amendment (2026-08-21) closed the rest.
+
+**`T256-R1` through `T256-R3` are Resolved, and `T256-R4`, `T256-R5` and `T256-R6` — all Low and
+non-blocking — are fixed here at completion**, on the maintainer's instruction, **without a further
+review pass**. They were briefly filed as a separate task and that was withdrawn: three prose
+corrections do not need a task, and one of them was a live falsehood.
+
+**What this task cost is worth stating, because the rulings themselves were the easy part.** Four
+maintainer rulings went in cleanly. **Six findings followed, and every one was about the machinery
+and records around them** — a parser that disabled its own cross-check, seven stale siblings, a
+header that gave the pre-ruling answer, and a mutation figure I reported stronger than it was.
+`T256-R2` had to be written **twice for the same file**, body then header, and `T256-R4` is a third
+hand-maintained summary in that file drifting from the same rulings — **a mechanism rather than a
+run of bad luck.**
+
+**The fix for it already exists in that file, applied to a different summary**, and is recorded here
+rather than filed: `test_the_class_table_counts_what_the_tables_hold` **derives** the class counts
+from the rows instead of trusting the stated ones, and `test_the_refusal_list_size_is_stated_and_correct`
+does the same for the refusal total. **Neither has ever been wrong.** What stays hand-maintained is
+the `Authority`/`Status` header and the derivation prose — the parts naming *which decisions govern*.
+**If a fourth instance appears, deriving that set is the answer**, and this paragraph is why it would
+not be a surprise.
 
 **The task exhausted its ordinary Medium pass budget under `AGENTS.md` §10** — initial review, one
 focused correction, and the pass recorded at `801324b` — **and the maintainer authorized one further
 record-only focused pass on 2026-08-21**, recorded here with the finding as §10 requires rather than
 assumed. **Its scope is the correction at `04e6b93` and the three findings it answers**: `T256-R2`'s
-remaining site (the audit header), `T256-R3` (the mutation figure) and `T267-R2`'s stale paragraph.
+remaining site (the audit header), `T256-R3` (the mutation figure) and **`T267-R3`**'s stale
+paragraph — *the ID this sentence first gave as `T267-R2`, which was the test comment resolved one
+review earlier* (`T256-R6`).
 **No source, test, workflow or decision re-review is in it** — `T256-R1` is Resolved, the four
 rulings are accepted, and `SEC-003`'s original table stays untouched.
 
@@ -339,16 +364,17 @@ class the round was about, committed inside the round's own corrections.**
 
 - **`T256-R4`:** the audit's derivation row and the option-audit test's explanatory comments still
   name only `SEC-003`/`SEC-004`, although the parser also reads `SEC-005`. The executable gate and
-  92-row input are correct. **Owner:** Implementer. **Target:** T-184 pre-implementation
-  synchronization.
+  92-row input are correct. **Owner:** Implementer. **Target:** ~~T-184 pre-implementation
+  synchronization~~ — **fixed at completion**, so it does not wait for a phase that has not
+  started.
 - **`T256-R5`:** STATUS correctly records **3 failed, 17 passed**, but explains the prior five by
   saying `--netrc` has no documented row. The audit has one combined `-n`/`--netrc` row; the script's
   replacement failed to match that spelling. **Owner:** Implementer. **Target:** T-256 completion
-  synchronization. The immutable commit message may remain historical.
+  synchronization — **done here.** The immutable commit message remains historical.
 - **`T256-R6`:** the authorization paragraph calls the stale completed-task paragraph `T267-R2`;
   the review at `801324b` assigned that residual paragraph `T267-R3` after resolving T267-R2's test
   comment. Its prose identifies the authorized surface correctly. **Owner:** Implementer.
-  **Target:** T-256 completion synchronization.
+  **Target:** T-256 completion synchronization — **done here.**
 
 **What the maintainer ruled on 2026-08-21, on the Planner's four options.** Each was recommended and
 each was taken:
@@ -476,8 +502,6 @@ and `build_options` has never set it.**
 
 ---
 
-## Complete
-
 ### T-267 — Pin the warning threshold the Windows workflow actually uses
 
 **Status:** **Complete — Approved with follow-ups at `0eece42`**, 2026-08-21. **`T267-R1` is
@@ -530,8 +554,9 @@ targeted: the `DECLARED_THRESHOLD` comment backtick-referenced
 `test_the_default_threshold_is_the_one_the_job_runs_at`, the name this correction replaced, and it
 now names `test_the_default_threshold_is_exactly_the_declared_one`.
 
-*(This paragraph read *"Update that cross-reference when moving T-267 to Complete"* after the move
-had happened — an instruction outliving its own completion, which is the same stale-sibling shape
+*(**That is `T267-R2`. This paragraph was `T267-R3`**, assigned separately at `801324b`: it read
+*"Update that cross-reference when moving T-267 to Complete"* **after** the move and the update had
+both happened — an instruction outliving its own completion, which is the same stale-sibling shape
 one size down.)*
 **Owner:** Implementer
 **Priority:** Low — current behavior is correct; an accidental threshold drift can stay green

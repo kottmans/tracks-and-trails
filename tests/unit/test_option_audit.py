@@ -363,7 +363,12 @@ def _class_of() -> dict[str, str]:
 
 
 def _ruled_options() -> tuple[set[str], set[str]]:
-    """Every option `SEC-003`/`SEC-004` forbids, and every one they permit — read from the tables.
+    """Every option the decisions forbid, and every one they permit — read from the tables.
+
+    **The decisions are `SEC-003` (with its 2026-08-21 amendment), `SEC-004` and `SEC-005`**, and
+    this docstring named only the first two for a day after `SEC-005` was added to the scan
+    (`T256-R4`). The list below is the one that governs; this sentence is the one that goes stale,
+    which is why the gate reads the tuple rather than the prose.
 
     **Both sides, because only reading the forbidden side is half a gate** (`T183-R4`): a mutation
     moving `SEC-003`-permitted `--netrc` *into* `excluded` passed, since the old check accepted any

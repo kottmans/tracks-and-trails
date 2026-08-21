@@ -23,11 +23,13 @@ rather than a test predicting which counts a future mutation would pick. **Repro
 reviewer's exact mutation now fails 3 where it passed 19.**
 
 *(**This said "fails 5", and 5 was the result of a botched mutation** — `T256-R3`. My script's
-`--netrc` row replacement matched nothing, because `--netrc` has no documented row: only
-`--netrc-cmd` and `--netrc-location` do. I changed the class totals as though two rows had moved
-when one had, so **two of the five failures were stale-count failures rather than the fail-closed
-property**. The correct figure is **3 failed, 17 passed**, and it is smaller than what I claimed —
-which is the direction that matters, since I reported a stronger gate than the fix earns.)*
+`--netrc` row replacement matched nothing, and **the reason I first gave for that was also wrong**
+(`T256-R5`): I said `--netrc` has no documented row. **It has one** — `` | `-n` `--netrc` | `` —
+which carries both spellings as separate backticked tokens, and my script looked for the long one
+alone. I changed the class totals as though two rows had moved when one had, so **two of the five
+failures were stale-count failures rather than the fail-closed property**. The correct figure is
+**3 failed, 17 passed**, smaller than what I claimed — the direction that matters, since I reported
+a stronger gate than the fix earns.)*
 
 **`T256-R2` is the sibling class again, and this time it was seven sites.** `T-256`'s priority still
 said three corrections remained; its lower heading read *"PROPOSED, nobody has ruled"*; its
