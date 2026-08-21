@@ -19949,3 +19949,70 @@ input. T256-R4, T256-R5 and T256-R6 are Low, non-blocking and require no further
 The Reviewer changed `ai/REVIEWS.md` and added only the approved follow-up owner/targets to
 `ai/TASKS.md`. No reviewed audit/status text, test, gate, workflow, decision, source, handoff, push
 or remote state was changed.
+
+---
+
+## 2026-08-21 — T-274 revamped logo asset-pipeline review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-274
+**Base:** `a570d43289d85e28b27fb46e98a6dfc64254e1a7`
+**Head:** `d364928551129f6e889641d019f64a5a92165f65`
+**Platforms verified:** Linux; Windows not run
+**Verdict:** **Changes requested.** The vector renderer reproduces all eleven assets exactly, the
+new connectivity predicate rejects the full mark at 16 px as claimed, and the 32 px small-cut
+choice is accepted. The suite nevertheless applies that predicate to only 16 px, so the exact
+regeneration that moves 24 and 32 back to the full mark passes all 30 resource tests. The linked
+architecture section also still identifies the replaced raster and its retired properties as the
+brand source of record.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T274-R1** | **Medium** | **Yes — the selected small/full boundary is not enforced at 24 or 32 px** | `tests/unit/test_resources.py:35-41` states the independent expected set as 16/24/32, but `tests/ui/test_resources.py:131-164` checks the shipped asset only at 16. The parameterization at :167-189 uses that set only to prove that the *full master* has multiple gold runs; it never proves that each shipped small-size asset has one. The Reviewer set `render_icons.SMALL_SIZES` to `{16}`, regenerated all eleven outputs including the `.ico`, and the complete resource pair still reported **30 passed**. The 24 and 32 px PNGs and corresponding ICO frames had changed to the full mark while the stated boundary remained green. | Apply the shipped-asset connectivity assertion to every independently expected small size (retaining the 16 px minimum-gold floor where it belongs), and keep the full-master control. Prove that removing either 24 or 32 from the renderer's set fails the focused suite after a full regeneration. | **Open** |
+| **T274-R2** | **Medium** | **Yes — canonical architecture gives a false source-of-record identity after this replacement** | `ai/ARCHITECTURE.md:389-397` still says the artwork has no flat fills, tells readers to use `resources/icons/icon.png` as the source of record, and pins its SHA-256 as `f0e202c7...74b8d`. That was the replaced T-003 raster. At this head `icon.png` is a generated output with SHA-256 `088dc089...299`, while `tools/icons/masters/icon.svg` is the vendored vector source (`6204d568...b4`) and uses literal `#1E5E47` / `#D9A24C` fills. The canonical swatch values did not change, but their live provenance paragraph now describes a file and artwork properties that no longer exist. | In the Planner-owned architecture record, preserve the three adopted canonical swatches and rewrite only their provenance/source-of-record explanation for the vector-master pipeline. Keep the old raster/hash as historical T-003 context if useful, not as the live source. | **Open** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary and scope | `a570d43..d364928` is one commit and 21 files. The application source is unchanged; the boundary contains the renderer and retired glyph script, three master files, eleven generated assets, two resource-test modules, one evidence PNG, TASKS and STATUS. `git diff --check` passed. |
+| Renderer reproduction | Hashes of all eleven packaged icon files were recorded, `tools/icons/render_icons.py` was run, and every hash remained identical. It printed **0.8613** ink height for both masters. |
+| Artboard framing | At alpha > 8, the full 1024 px render has bounds `(134, 71, 890, 953)` and exactly 134/71/134/71 px L/T/R/B padding; the small cut has `(171, 71, 853, 953)` and 171/71/171/71. Both are centered and span the same 882/1024 = 0.8613 frame height, so removing `VISIBLE_ALPHA` and `FILL` does not restore T-071's undersized/off-centre defect. |
+| Authored small cut | Both SVGs contain only path elements with local fill/path data; two fill/path pairs in the three-path small cut are byte-identical to pairs in the full master, matching the pack's structural claim. No derived-raster mechanism remains necessary for this delivered artwork. |
+| ICO audit | Seven contiguous PNG-compressed frames at 16/24/32/48/64/128/256; every payload is byte-identical to its standalone PNG, with no gaps or trailing data. Qt exposes all seven on Linux. |
+| Focused baseline | `pytest -q tests/unit/test_resources.py tests/ui/test_resources.py`: **30 passed** before the mutations and **30 passed** again after restoration. |
+| Positive mutation | Rendering 16 px from the full master failed `test_the_small_cut_keeps_its_trail_whole_at_16_px` with the claimed **2 runs `[10, 1]`**. The predicate discriminates at the one shipped size to which it is applied. |
+| Escaping selector mutation | With runtime `SMALL_SIZES = {16}`, a complete regeneration changed 24 and 32 px in both the PNGs and `.ico`; the focused resource suite still gave **30 passed**. Normal regeneration restored every pre-review asset hash and the worktree returned clean. |
+| Visual boundary judgment | The evidence sheet supports the submitted `{16, 24, 32}` split: the small cut is materially cleaner at 32, while the full mark's landscape still reads at 48. Neither moving 32 back nor adding 48 is requested. |
+| Static gates | `ruff check .`: passed. `ruff format --check .`: **203 files already formatted**. `mypy src`: no issues in **56 source files**. |
+
+### Review judgments
+
+- **The three removed mechanisms are accepted.** The vector artboards replace the raster halo and
+  per-master fill correction with explicit, centered framing, and the authored small cut carries
+  the structural relationship the deleted derivation approximated. PySide6 is already a runtime
+  dependency and is a proportionate renderer for the vendored SVGs; removing undeclared Pillow is
+  sound.
+- **The connectivity idea is sound but incompletely wired.** The full-master control establishes
+  the predicate at all three intended small sizes. T274-R1 is the missing other half: applying that
+  property to the shipped 24 and 32 px outputs.
+- **The 32 px call stands.** Review of the supplied sheet does not justify reversing it, and 48 px
+  remains correctly on the full mark. The finding asks only that the accepted boundary become
+  executable.
+- **Windows remains honestly unverified.** Linux proves the ICO structure and Qt frame exposure,
+  but this review does not claim native Windows consumption. That disclosed platform carry is not
+  a third finding and does not replace T274-R1's platform-independent mutation proof.
+
+### Readiness
+
+T-274 is **not approved at `d364928`**. Correct T274-R1 in the resource tests and T274-R2 in the
+Planner-owned architecture record, rerun the focused resource suite plus the selector mutation,
+and return the narrow correction diff for focused re-review. The generated artwork, renderer,
+removal of the prior trim/fill/derivation machinery, and the 16/24/32 versus 48 boundary do not need
+to be reopened.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, asset,
+architecture/current-truth file, handoff, push or remote state was changed; all diagnostic asset
+mutations were restored byte-for-byte before this verdict was recorded.
