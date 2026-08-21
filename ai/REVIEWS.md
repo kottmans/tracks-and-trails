@@ -19884,3 +19884,68 @@ re-audited.
 
 The Reviewer changed only this append-only review record. No reviewed decision, audit, gate,
 task/status file, test, workflow, source, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-21 — T-256 authorized record-only focused pass
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-256; T-267 completion synchronization
+**Authorization:** The maintainer explicitly authorized this further pass after `801324b`; the
+authorization and its record-only scope are recorded on T-256 at `ed7e25a`.
+**Base:** `801324bef3bc1c7897808f46f81157c866ebb905`
+**Head:** `ed7e25aa7d9d028b72dc95ed36ed142a523fbb33`
+**Correction commit:** `04e6b93b55002530fd19ba2d6a098a6a1c3e09bc`
+**Verdict:** **Approved with follow-ups.** T256-R2 and T256-R3 are Resolved; T267-R3 is Resolved.
+The audit now gives T-184 one live 92-row refusal input, STATUS gives the independently reproduced
+3-failure mutation result, and T-267's superseded completion instruction is explicitly historical.
+Three residual record-clarity findings are Low, owned and targeted; none blocks T-256.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Authorized-pass result | Status |
+|---|---|---:|---|---|
+| **T256-R2** | **Medium** | Yes | The audit header now cites amended SEC-003, SEC-004 and SEC-005 and states the operative refusal list is **92**, agreeing with the live class/refusal summary and T-184. The pre-ruling 89 remains only in text explicitly introduced as an original historical status. The prior two-answer implementation input is gone. | **Resolved at `04e6b93`** |
+| **T256-R3** | **Low** | No | STATUS now gives the independently reproduced result: the fully re-derived mixed-clause mutation produces **3 failed, 17 passed**, not 5/15. Its new causal explanation contains a separate Low error recorded as T256-R5. | **Resolved at `04e6b93`** |
+| **T267-R3** | **Low** | No | The completed T-267 entry no longer instructs a future completion update. It states that T267-R2 was resolved and introduces the superseded instruction explicitly as past text. T-267 remains Complete. | **Resolved at `04e6b93`** |
+| **T256-R4** | **Low** | No | The audit's live derivation row at `docs/YTDLP_OPTION_AUDIT.md:41` and comments at `tests/unit/test_option_audit.py:37,365-366` still describe the gate as reading SEC-003/SEC-004 only. The implementation visibly reads SEC-005, the audit's authority/header and 92-row input now include it, and all focused checks pass. This is an explanatory omission, not a gate or implementation-input gap. | **Open — Implementer; T-184 pre-implementation synchronization** |
+| **T256-R5** | **Low** | No | STATUS says the old script missed `--netrc` because it has no documented row, but the audit contains the combined `-n`/`--netrc` row. The replacement failed to match that row's spelling; the corrected 3/17 result remains accurate. | **Open — Implementer; T-256 completion synchronization** |
+| **T256-R6** | **Low** | No | T-256's authorization record calls the stale completed-task paragraph `T267-R2`, while `801324b` assigned that residual record contradiction `T267-R3` after T267-R2's test comment was already resolved. The prose identifies the authorized surface unambiguously, so the authorization itself stands. | **Open — Implementer; T-256 completion synchronization** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Authorized scope | `801324b..ed7e25a` contains **2 commits** and changes only `ai/STATUS.md`, `ai/TASKS.md` and `docs/YTDLP_OPTION_AUDIT.md`. `04e6b93` applies the three record corrections; `ed7e25a` records the maintainer's further-pass authorization and exact exclusions. No source, test, workflow or decision changed. |
+| T256-R2 exact correction | The audit's authority and header now include SEC-005 and amended SEC-003, and the header refusal count is 92. The operative class summary remains 92. Searches found no live 89-row consumer; T-256's surviving 89 is introduced as its original historical status. |
+| T256-R3 exact correction | STATUS's result is **3 failed, 17 passed**, matching the Reviewer's fully re-derived mutation at `801324b`. The new statement that no documented `--netrc` row exists is contradicted by the audit's `-n`/`--netrc` row and is separated as non-blocking T256-R5. |
+| T267-R3 exact correction | The stale “update when moving” instruction is now quoted only inside a paragraph saying that it outlived the completed move. The live paragraph states the correct test name and resolved disposition. |
+| Authorization record | T-256 records the maintainer's explicit further-pass authorization, correction SHA, three record surfaces and exclusion of source, tests, workflows, decisions and settled T256-R1. The T267 finding-number slip does not make the described surface ambiguous. |
+| Focused gates | `pytest -q tests/unit/test_option_audit.py tests/unit/test_task_placement.py`: **35 passed** (20 + 15). |
+| Commit and boundary checks | Commit-message checker: **2 commits checked**. `git diff --check 801324b..ed7e25a` passed. The worktree was clean before this review record. |
+| Broad gates | Record-only boundary; the Reviewer did not rerun the full unit or full project suite. |
+
+### Review judgments
+
+- **The blocking T256-R2 consequence is closed.** A T-184 implementer now receives 92 from the
+  audit header, operative class summary and its own task entry. The remaining two-decision wording
+  understates what the executable gate reads but does not supply a different refusal list or permit
+  SEC-005's option.
+- **The mutation evidence is corrected without weakening T256-R1.** Three real-record consumers
+  raise before audit agreement is considered. The incorrect explanation of why the earlier script
+  produced five is a Low record defect; it does not change the reproduced result or gate behavior.
+- **The authorization is effective.** The maintainer's direct instruction and the durable T-256
+  paragraph both authorize this exact record-only pass. Misnaming T267-R3 as T267-R2 is a traceability
+  defect, not an ambiguity about which paragraph was in scope.
+- **No further review pass is warranted for the residual Lows.** Each has an Implementer owner and
+  target in T-256's task entry. They neither reopen T-267 nor keep T-256 In Review.
+
+### Readiness
+
+T-256 is **Approved with follow-ups at `ed7e25a`** and may move to Complete. T256-R1 remains
+Resolved; the four maintainer rulings remain accepted; T-184 remains unblocked on the 92-row refusal
+input. T256-R4, T256-R5 and T256-R6 are Low, non-blocking and require no further review of T-256.
+
+The Reviewer changed `ai/REVIEWS.md` and added only the approved follow-up owner/targets to
+`ai/TASKS.md`. No reviewed audit/status text, test, gate, workflow, decision, source, handoff, push
+or remote state was changed.

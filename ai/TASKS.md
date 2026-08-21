@@ -335,6 +335,21 @@ gate's mutation as **5 failed** when it is **3 failed, 17 passed** — a script 
 replacement matched nothing while its counts were changed as though it had. **Both are the same
 class the round was about, committed inside the round's own corrections.**
 
+**Approved follow-ups from the authorized pass — all Low and non-blocking:**
+
+- **`T256-R4`:** the audit's derivation row and the option-audit test's explanatory comments still
+  name only `SEC-003`/`SEC-004`, although the parser also reads `SEC-005`. The executable gate and
+  92-row input are correct. **Owner:** Implementer. **Target:** T-184 pre-implementation
+  synchronization.
+- **`T256-R5`:** STATUS correctly records **3 failed, 17 passed**, but explains the prior five by
+  saying `--netrc` has no documented row. The audit has one combined `-n`/`--netrc` row; the script's
+  replacement failed to match that spelling. **Owner:** Implementer. **Target:** T-256 completion
+  synchronization. The immutable commit message may remain historical.
+- **`T256-R6`:** the authorization paragraph calls the stale completed-task paragraph `T267-R2`;
+  the review at `801324b` assigned that residual paragraph `T267-R3` after resolving T267-R2's test
+  comment. Its prose identifies the authorized surface correctly. **Owner:** Implementer.
+  **Target:** T-256 completion synchronization.
+
 **What the maintainer ruled on 2026-08-21, on the Planner's four options.** Each was recommended and
 each was taken:
 
