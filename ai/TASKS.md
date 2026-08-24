@@ -9654,6 +9654,141 @@ run is the deliverable; the pass is only what it hopefully shows.
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
 
+### T-275 — Ship 32 px from a cut that keeps the trees and drops the sound-wave arcs
+
+**Status:** **Proposed — filed 2026-08-24 on a maintainer instruction.** The maintainer asked
+whether the full mark could serve as the icon with the arcs removed. The comparison said **not
+generally** — the arcs are not what breaks first — and the maintainer then scoped it to **32 px
+alone**, which is the one size where removing them pays. **The artwork question is settled and is
+not what this task is for.** What is open is that **the current small-side check cannot see this
+change at all**, which is measured below and is the reason this is not a ten-minute edit.
+**Owner:** Planner, to prioritize
+**Priority:** **Low.** Nothing is broken. `icon-32.png` and the `.ico`'s 32 px frame ship the
+reduced cut today and are correct; this replaces a legible asset with a richer one
+**Phase:** Phase 4 maintenance
+**Depends on:** **the mid cut existing.** It is not in the logo pack — see *Who authors the cut*
+**Relevant context:** `tools/icons/render_icons.py`, `tools/icons/masters/`,
+`tests/ui/test_resources.py`, `tests/unit/test_resources.py`, `T-274`, `T274-R3`, `ARC_SHARE`
+**Affected surfaces:** `icon-32.png`, the `.ico`'s 32 px frame, the renderer's size bands, and both
+test modules' size constants. **No source module changes** — `main_window.app_icon()` loads
+`icon.ico` and is untouched, as in `T-274`
+**Risk:** **Medium, and all of it is in the tests rather than the asset.** A wrong asset at 32 px is
+visible. A check that cannot tell two cuts apart is not
+
+#### What is asked
+
+**32 px moves off the reduced cut onto a third cut: the full mark with its two gold sound-wave arc
+paths removed, trees and mountain kept.** 16 and 24 stay reduced — at those sizes the trees are an
+illegible scribble and removing the arcs changes nothing that reads. 48 and up stay on the full
+mark, arcs included, where they render cleanly.
+
+*(**Recorded, and not an objection.** At 32 px the mid cut's trees are soft: the trees and mountain
+are the 72 green pixels by which it exceeds the reduced cut, and they read as texture rather than as
+three conifers. The maintainer has seen the comparison and directed the change. This is here so the
+next reader knows it was measured rather than missed.)*
+
+#### The check the change walks straight through
+
+Rendered at 32 px, by the predicates `tests/ui/test_resources.py` already uses:
+
+| cut at 32 px | gold runs | green pixels | green runs |
+|---|---|---|---|
+| reduced (ships today) | `[43]` | 120 | `[83, 37]` |
+| **mid (proposed)** | **`[43]`** | 192 | `[192]` |
+| full | `[43, 9]` | 192 | `[192]` |
+
+**The mid cut's gold signature at 32 px is identical to the reduced cut's — one run of 43 pixels.**
+`test_the_small_cut_is_what_ships_at_every_small_size` asserts exactly that property, so **it would
+pass unchanged on the new asset**: the check accepts the swap silently and stops discriminating at
+32 the moment the band moves.
+
+**This is `T-274`'s finding a fourth time — a check weaker than the claim written over it — and the
+difference is that it is in front of the build rather than behind it.** `T274-R1` and `T274-R3` were
+both found by mutating the selector and watching the suite stay green. The same mutation here is
+free to predict: point 32 at the mid cut, change nothing else, and the small-side test still passes.
+
+#### What does separate them
+
+**Green.** The reduced cut's green falls in two runs — the note body and the hill, held apart by the
+trail. The mid cut's trees bridge them into one and add 60% more green pixels.
+
+Identity at 32 px is then a pair, and all three cuts are distinct:
+
+| cut | arc-sized second gold run | green runs |
+|---|---|---|
+| reduced | no | 2 |
+| mid | no | 1 |
+| full | **yes** | 1 |
+
+Both properties already exist in the module: `has_detached_arcs` separates mid from full, and the
+green-run count separates mid from reduced.
+
+**One direction of control exists for free.** `has_detached_arcs` already rejects the mid cut at
+48 px — its gold there is `[102, 1]`, and `ARC_SHARE` requires the second run to reach 5% of the
+first, 1 against 5.1. The full-side property fails on the mid cut without being touched.
+
+**The green-run predicate is size-dependent, and a control must not assume otherwise.** It separates
+reduced from mid at 16, 24, 32 and 48 — two runs against one — and **fails at 64**, where both are
+two (`[375, 147]` against `[612, 147]`). The mid cut only ships at 32, so this is a constraint on
+how the complement is written, not a defect.
+
+#### The artboard
+
+**The mid cut is not centred, so it cannot simply be the master with two paths deleted.** Ink bounds
+measured at 1024:
+
+| cut | height fill | left margin | right margin |
+|---|---|---|---|
+| full | 0.8613 | 134 | 134 |
+| master minus arcs | 0.8613 | 134 | **196** |
+| reduced | 0.8613 | 171 | 171 |
+
+The arcs sit *beside* the note rather than above it, so deleting them leaves the mark 62 units
+off-centre horizontally while the height fill is unchanged. **The cut needs its own square artboard**
+honouring the pack's 8% margin rule — that rule, and the shared 0.8613, are what keep the cuts at
+matching weight in one frame.
+
+#### Who authors the cut
+
+**`T-274` retired in-repo derivation.** `render_small_glyph.py` was deleted so the cuts cannot drift
+into different marks, and the pack authors each artboard. Two options, and the first is recommended:
+
+- **The maintainer exports the cut from the logo pack** as a square icon artboard, vendored into
+  `masters/` byte-for-byte like the other two. Consistent with `T-274`, and the artboard is a design
+  decision the pack owns.
+- **The repo vendors a master produced by deleting the two arc paths and re-centring the viewBox.**
+  Cheaper. It reintroduces what `T-274` retired — though more weakly than the old pixel masking did,
+  since the arcs are two self-contained `<path>` elements and deleting them is lossless and exact.
+  **The re-centring is the part that is a design judgement made in a script.**
+
+#### Implementation traps
+
+- **`FULL_SIZES` is derived by subtraction** — `tuple(size for size in PNG_SIZES if size not in
+  SMALL_SIZES)`. A third band must be subtracted too, or `test_the_full_mark_is_what_ships_above_
+  the_split` runs at 32 and asserts arcs on an asset built to have none.
+- **The small band is written three times** — `render_icons.py`'s `SMALL_SIZES` frozenset,
+  `tests/ui/test_resources.py`, and `tests/unit/test_resources.py`, where it is a separate literal
+  `(16, 24, 32)`. All three move, and the unit copy is the one that will be missed.
+- **`test_no_unexpected_files_in_the_icon_directory` pins the directory exactly.** A third master
+  PNG, if the renderer emits one, has to be added there.
+- **The `.ico` carries a 32 px frame**, so `icon.ico` changes as well as `icon-32.png`.
+
+#### Suggested acceptance criteria
+
+- **32 px ships the mid cut, and a check proves it** — one that **fails** when the reduced cut is put
+  back at 32 and **fails** when the full mark is. Both directions, as `T274-R3` established
+- **A control proves the check discriminates**, in the shape `test_the_complement_rejects_the_reduced_cut`
+  set: render the wrong cut at the guarded size and require the property to fail
+- **16 and 24 still ship the reduced cut, 48 and up the full mark**, with their existing checks intact
+- **A selector mutation fails at the size it moves.** `T-274` regenerated all eleven assets per
+  mutation and required failure at exactly the moved size; a third band adds mutations, not an
+  exception
+
+#### Out of scope
+
+- **Any change to 16, 24, or 48 and above.** The comparison found nothing wrong at those sizes
+- **A judgement about the artwork.** As in `T-274`, the maintainer's design direction is the input
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
