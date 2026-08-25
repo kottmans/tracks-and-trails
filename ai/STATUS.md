@@ -5,6 +5,37 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-25 — **Pushed, and the Windows gap that had been accumulating across
+four tasks is closed.** `origin/main` is `3efc8a3`; nothing is held.
+
+**CI is green on `3efc8a3`**, run `32891329714`: `windows desktop` **33m39s**, `frozen windows`
+5m05s, `linux` 7m41s, `frozen linux`, `STARBASE coverage`. `Prose` and `Commit messages` green on
+their own runs.
+
+**`windows desktop` is the one that mattered.** `T-274`, `T-276`, `T-277` and `T-278` each shipped
+with their Windows half unverified, and every handoff said so. Both of `T-278`'s changed UIA
+expectations ran on real Windows and passed —
+`test_each_menu_publishes_exactly_its_actions[&Help-expected_items2]`, which asserts the Help menu
+publishes `About`, and `test_the_about_dialog_and_its_close_button_are_announced`, which asserts
+the dialog's announced name. **11 of `tests/ui/test_windows_accessibility.py` ran there**; the
+Linux runs had only ever skipped that module.
+
+**What is still unverified on Windows is what was always going to be**: whether Narrator *sounds*
+coherent, which `REQUIREMENTS.md` §3 keeps known-unverified and the pre-release session owns
+(`T278-R3`).
+
+**The orphan scans did not run, and that is the workflow behaving as written.** `Linux orphans`
+and `STARBASE orphans` are gated to `schedule` and `workflow_dispatch` — a push does not trigger
+them. The nightly is `0 6 * * *` UTC.
+
+**So `T-272`'s Linux job has still never been observed making a find.** It has run once and found
+nothing, in 8 seconds. **The live specimen is still on this host** — pid `434366`, 9d16h, scanner
+exit 1 — so the next nightly, or a dispatch, is expected to turn that job **red for the first
+time**: independent CI confirmation of the finding, and the first real-runner exercise of the find
+path `T-272`'s acceptance criterion is about. Nothing has been dispatched; that is the maintainer's.
+
+---
+
 **Last updated:** 2026-08-25 — **`T-278` is Complete**, Approved with follow-up at `107236e`.
 `T278-R1` and `T278-R2` are Resolved; `T278-R3` was Low and non-blocking and is resolved at
 completion with no further pass.
