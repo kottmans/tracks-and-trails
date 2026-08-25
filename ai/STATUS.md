@@ -5,6 +5,58 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-25 — **`T-278` came back with Changes requested, and the blocking
+finding is a claim I made about my own fix that was simply false.**
+
+**`T278-R1`.** I wrote that a `min-width: 340px` floor on the About box's informative label was
+*"a minimum, so the box still grows for a longer string or a larger font."* **A pixel floor does
+not scale with the font.** The reviewer held the label at exactly 340 px from 9 pt to 19 pt and got
+`yt-` / `dlp` back at **18 and 19** — the defect the rule existed to prevent. **Removing the rule
+left the focused set green at 82 passed**, so nothing was holding it up. The selector also depended
+on `qt_msgbox_informativelabel`, a child created inside `QMessageBoxPrivate`, and any stylesheet
+makes `canBeNativeDialog()` refuse the native message box — so it was quietly choosing a platform
+path too.
+
+**Re-measured across four candidates, and the first row is the surprise:**
+
+| fix | 9 pt | 12 pt | 15 pt | 18 pt | 19 pt | 22 pt |
+|---|---|---|---|---|---|---|
+| none | **breaks** | **breaks** | ok | **breaks** | **breaks** | **breaks** |
+| `min-width: 340px` (submitted) | ok | ok | ok | **breaks** | **breaks** | ok |
+| `setMinimumWidth()` from font metrics | **breaks** | **breaks** | ok | **breaks** | **breaks** | **breaks** |
+| **`U+2011` non-breaking hyphen** | **ok** | **ok** | **ok** | **ok** | **ok** | **ok** |
+
+**The default 9 pt breaks with no fix at all.** This was never only a large-text problem; the
+submitted rule masked it at the one size anybody looked at. **`setMinimumWidth` was my own idea for
+a public-API replacement and it is dead** — `QMessageBox` measured identical widths to no fix at
+every size.
+
+**Chosen: the no-break character, with the cost stated rather than buried.** `U+2011` is a
+different codepoint from the hyphen in the project's own name, so **text copied out of the dialog
+will not match a literal search for `yt-dlp`**. It is a hyphen to a screen reader and metrically
+identical — same advance width, present in every font checked. It is written as an explicit
+`\u2011` escape because the two characters are indistinguishable in source.
+
+**The control is the part that was missing the first time.** Three regressions now: the character
+is present; the real blurb survives **53 widths x 6 point sizes**; and the same sweep, handed the
+ordinary hyphen back, **must find** the split. None reads the private label name.
+**Mutations:** the defect fails **2**; narrowing the width sweep to one wide width fails **1**, the
+control firing. Narrowing the point sweep alone is **not** caught — the width sweep still reaches
+the split there — and that is recorded as measured rather than dressed up.
+
+**`T278-R2`** was a comment saying the Help menu kept the long label, in the commit that shortened
+it. **False when written, not stale** — it came from the first round and survived the second
+instruction unedited.
+
+**Gates:** ruff clean; **all three mypy variants** — `src` 56 files, bare 154, `--platform win32`
+154 — all clean. The last two were required because the commit edits a test file and were **omitted
+from my first handoff**; the reviewer ran them. Focused set **85 passed, 1 skipped**, from 82.
+
+**Windows UIA is still unverified**, and removing the stylesheet removes one reason it mattered:
+the native message-box path is no longer being refused.
+
+---
+
 **Last updated:** 2026-08-25 — **`T-278` is built and In Review: the About surfaces get the
 wording and size the maintainer asked for, and a defect nobody reported came out with them.**
 

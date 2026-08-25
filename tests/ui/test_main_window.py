@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
+from PySide6.QtGui import QAction, QFont, QGuiApplication, QKeySequence, QTextLayout, QTextOption
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -38,6 +38,7 @@ from tracks_and_trails.ui.main_window import (
     QUIT_SHORTCUT_FALLBACK,
     RUN_SHORTCUT,
     TOOLBAR_SPACER_PROPERTY,
+    YTDLP_DISPLAY_NAME,
     MainWindow,
     app_icon,
     geometry_path,
@@ -269,6 +270,111 @@ def test_about_box_shows_the_icon_and_version(window: MainWindow) -> None:
         assert not about.iconPixmap().isNull(), "the About box must show the app icon (T-007)"
     finally:
         about.close()
+
+
+#: Widths and point sizes the About blurb is laid out at below. The range is deliberately wider
+#: than any box Qt actually builds: the property being asserted is that the tool's name cannot be
+#: split *at any width*, which is stronger than checking the one width today's dialog happens to
+#: pick and does not depend on that width staying the same.
+_LAYOUT_WIDTHS = tuple(range(80, 601, 10))
+_LAYOUT_POINTS = (9, 12, 15, 18, 19, 22)
+
+
+def _wrapped_lines(text: str, font: QFont, width: int) -> list[str]:
+    """The line boxes Qt's own breaker produces for `text` at `width`.
+
+    `QTextLayout` rather than a rendered widget, because the question is about Qt's line-breaking
+    decision and not about any one dialog's geometry — and reading a `QMessageBox`'s informative
+    label would mean depending on `qt_msgbox_informativelabel`, the private child name `T278-R1`
+    rejected.
+    """
+    layout = QTextLayout(text, font)
+    option = QTextOption()
+    option.setWrapMode(QTextOption.WrapMode.WordWrap)
+    layout.setTextOption(option)
+    layout.beginLayout()
+    lines = []
+    while True:
+        line = layout.createLine()
+        if not line.isValid():
+            break
+        line.setLineWidth(width)
+        lines.append(text[line.textStart() : line.textStart() + line.textLength()])
+    layout.endLayout()
+    return lines
+
+
+def _splits_the_name(text: str, name: str) -> bool:
+    """Whether laying `text` out ever puts `name`'s two halves on different lines."""
+    for point in _LAYOUT_POINTS:
+        font = QFont(QApplication.font().family(), point)
+        for width in _LAYOUT_WIDTHS:
+            lines = _wrapped_lines(text, font, width)
+            if not any(name in line for line in lines):
+                return True
+    return False
+
+
+def test_the_about_blurb_writes_the_tool_name_unbreakably(window: MainWindow) -> None:
+    """`T278-R1`: the About box must not render the tool's name as "yt-" / "dlp".
+
+    **The mechanism is a character, not a layout rule, and this asserts the character is there.**
+    `YTDLP_DISPLAY_NAME` uses `U+2011`; an ordinary `U+002D` is a break opportunity to Qt and is
+    what produced the defect. A future edit that "fixes the typo" back is invisible on screen —
+    the two codepoints are metrically identical — so it has to be caught here.
+    """
+    about = window.show_about()
+    try:
+        said = about.informativeText()
+        assert YTDLP_DISPLAY_NAME in said, (
+            f"the About blurb does not carry the non-breaking spelling: {said!r}"
+        )
+        assert "yt-dlp" not in said, (
+            "the About blurb contains an ordinary hyphen in the tool's name, which Qt will break "
+            f"across a line at the box's own width: {said!r}"
+        )
+    finally:
+        about.close()
+
+
+def test_the_tool_name_survives_every_width_and_font_size(window: MainWindow) -> None:
+    """And the property itself, rather than the mechanism that delivers it.
+
+    **`T278-R1` was a rule that held at the measured default and failed at 18 and 19 pt**, so a
+    check pinned to one width or one font would have passed the defect it was written for. This
+    lays the real blurb out at every width from 80 to 600 px and at six point sizes, and requires
+    the name to survive all of them.
+    """
+    about = window.show_about()
+    try:
+        blurb = about.informativeText().replace("<br>", " ")
+    finally:
+        about.close()
+
+    assert not _splits_the_name(blurb, YTDLP_DISPLAY_NAME), (
+        "the About blurb splits the tool's name at some width or font size"
+    )
+
+
+def test_the_layout_check_can_see_a_name_that_does_split(window: MainWindow) -> None:
+    """The control, and without it the test above proves nothing.
+
+    **The submitted fix passed its own acceptance check while breaking at 18 and 19 pt**, because
+    nothing ever fed the harness a known positive. So: take the shipped blurb, put the ordinary
+    hyphen back, and require that the same sweep **finds** the split. If this stops failing, the
+    sweep above has stopped discriminating and its green is meaningless.
+    """
+    about = window.show_about()
+    try:
+        blurb = about.informativeText().replace("<br>", " ")
+    finally:
+        about.close()
+
+    breakable = blurb.replace(YTDLP_DISPLAY_NAME, "yt-dlp")
+    assert _splits_the_name(breakable, "yt-dlp"), (
+        "an ordinary hyphen no longer splits at any width this sweep tries, so "
+        "test_the_tool_name_survives_every_width_and_font_size cannot tell the two spellings apart"
+    )
 
 
 def test_default_size_is_used_when_nothing_is_stored(qapp: QApplication, tmp_path: Path) -> None:

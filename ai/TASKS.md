@@ -184,10 +184,76 @@ contents; this preface does not list them.***
 
 ### T-278 — Shorten the About labels, enlarge its icon, and stop Qt eating the ampersand
 
-**Status:** **In Review — built 2026-08-25 on maintainer instruction the same day**, from the
-running application rather than from a spec: the maintainer opened the dialog and the Help menu and
-said what to change. **Three of the four changes are what was asked for; the fourth is a defect the
-screenshot exposed and the first change happens to fix.**
+**Status:** **In Review — corrections made 2026-08-25, awaiting a focused pass.** First
+submission returned **Changes requested** at `bf48d7b` with one blocking finding. **`T278-R1` and
+`T278-R2` are corrected below.** The settled title, menu label, 112 px icon and shortened copy were
+implemented as asked and are not what came back.
+
+*(Built 2026-08-25 on maintainer instruction the same day, from the running application rather than
+from a spec: the maintainer opened the dialog and the Help menu and said what to change. Three of
+the four changes are what was asked for; the fourth is a defect the screenshot exposed and the
+first change happens to fix.)*
+
+#### `T278-R1` (Medium, blocking) — the width floor did not do what it claimed
+
+**The finding is right and the claim was mine.** I wrote that a `min-width: 340px` floor was *"a
+minimum, so the box still grows for a longer string or a larger font."* **A pixel floor does not
+scale with the font.** The reviewer held the box at 493 px and the label at exactly 340 px from
+9 pt through 19 pt, and at **18 and 19 pt Qt's breaker produced `yt-` / `dlp` again** — the exact
+defect the rule existed to prevent. **Removing the rule left the focused set green at 82 passed**,
+so nothing in the suite was holding it up.
+
+**Two further problems the finding names, and both are real.** `qt_msgbox_informativelabel` is
+created inside `QMessageBoxPrivate` and is not in the public API; and setting any stylesheet makes
+`canBeNativeDialog()` refuse the native message box, so the rule was silently choosing a platform
+path as well.
+
+**Measured again across the candidates before choosing** — the sweep is wider than the reviewer's
+because the first row is the surprise:
+
+| fix | 9 pt | 12 pt | 15 pt | 18 pt | 19 pt | 22 pt |
+|---|---|---|---|---|---|---|
+| none | **breaks** | **breaks** | ok | **breaks** | **breaks** | **breaks** |
+| `min-width: 340px` (submitted) | ok | ok | ok | **breaks** | **breaks** | ok |
+| `QMessageBox.setMinimumWidth()` from font metrics | **breaks** | **breaks** | ok | **breaks** | **breaks** | **breaks** |
+| **`U+2011` non-breaking hyphen** | **ok** | **ok** | **ok** | **ok** | **ok** | **ok** |
+
+**The default 9 pt breaks with no fix at all**, so this was never only a large-text problem — the
+submitted rule was masking it at the one size it was looked at.
+
+**`setMinimumWidth` was my own idea and it is dead**: `QMessageBox` measured *identical* widths to
+no fix at every size. Recorded because it is the obvious public-API answer and it does not work.
+
+**Chosen: the no-break character, and the trade-off is stated rather than buried.** `U+2011` is a
+different codepoint from the hyphen in the project's own name, so **text copied out of this dialog
+will not match a literal search for `yt-dlp`**. It is a hyphen to a screen reader, and it is
+metrically identical — same advance width, present in every font checked, so nothing about the
+rendering or the announcement changes. `YTDLP_DISPLAY_NAME` carries it as an explicit `\u2011`
+escape rather than a literal, because the two characters are indistinguishable in a source file and
+the next reader would otherwise "fix the typo".
+
+**Three regressions, and one of them is the control the first submission lacked.**
+`test_the_about_blurb_writes_the_tool_name_unbreakably` asserts the character is present;
+`test_the_tool_name_survives_every_width_and_font_size` lays the real blurb out at **53 widths x 6
+point sizes** and requires the name to survive all of them;
+`test_the_layout_check_can_see_a_name_that_does_split` puts the ordinary hyphen back and requires
+the same sweep to **find** the split. None reads the private label name — `QTextLayout` is asked
+about Qt's breaking decision directly.
+
+| mutation | result |
+|---|---|
+| `U+2011` → ordinary hyphen — **the defect** | **2 failed** |
+| width sweep narrowed to one wide width (500 px) | **1 failed** — the control fires |
+| point sweep narrowed to 15 pt alone | **85 passed — not caught**, and it should not be: the width sweep still reaches the split at that size, so the property is genuinely still enforced. Recorded rather than presented as a caught mutation |
+
+Baseline moves from the reviewer's **82 passed, 1 skipped** to **85 passed, 1 skipped**.
+
+#### `T278-R2` (Low) — a comment that contradicted its own commit
+
+The comment beside the title said the Help menu item *"keeps the long form"*, in the commit that
+changed it to `QAction("&About", …)`. **It was false when written, not stale.** It came from the
+first round, when only the dialog title was in scope, and survived the second instruction
+unedited. Corrected, and it now names `T278-R2` so the correction is legible where the claim was.
 **Owner:** Implementer — built 2026-08-25, awaiting a verdict
 **Priority:** **Low.** Nothing is broken for a user who can read the menu; the ampersand defect is
 cosmetic and the rest is wording and size
@@ -280,7 +346,9 @@ work from.)*
 - **The About dialog's title reads `About`** and the Help menu's item reads `About`
 - **The Help menu item contains no ampersand Qt can consume**, so the label renders as written
 - **The About icon is drawn from a real `.ico` frame** rather than upscaled from a smaller one
-- **`yt-dlp` is not broken across a line** at the dialog's natural width
+- **`yt-dlp` is not broken across a line at any width or font size** — restated from *"at the
+  dialog's natural width"*, which is the wording `T278-R1` passed while failing at 18 and 19 pt.
+  A criterion that names one measurement is met by a fix that only holds there
 - **The two Windows accessibility expectations move with the labels** — they assert the announced
   names, and a label change that left them behind would fail the Windows job rather than Linux
 
@@ -292,6 +360,8 @@ work from.)*
   mechanism; whether other labels can be reached by a name containing `&` is not surveyed here
 - **The `<nobr>` behaviour.** That Qt ignores it in this width calculation is recorded as observed,
   not investigated
+- **Whether `U+2011` should be used anywhere else.** It is a *display* spelling and this is the one
+  display site; every other use of the tool's name is data and keeps the ordinary hyphen
 
 ---
 

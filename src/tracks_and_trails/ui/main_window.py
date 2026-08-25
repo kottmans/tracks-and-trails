@@ -211,6 +211,31 @@ _MAX_COORD: Final = 2**24 - 1
 #: A restored window smaller than this is unusable — the menu bar alone needs more.
 MIN_SIZE: Final = QSize(240, 160)
 
+#: The tool's name for **display**, written with a non-breaking hyphen — `U+2011`, not `U+002D`.
+#:
+#: **This is a deliberate character substitution and it has a cost.** `QMessageBox` sizes itself
+#: from its content, and at the About box's natural width Qt's line breaker treats the ordinary
+#: hyphen as a break opportunity: the name renders as "yt-" / "dlp" across two lines, which reads
+#: as a typo. Measured at 9, 12, 18, 19 and 22 pt — **the default 9 pt breaks too**, so this was
+#: never only a large-text problem.
+#:
+#: **What was tried and rejected** (`T278-R1`):
+#:
+#: - `<nobr>` — ignored by Qt's width calculation here; rendered identically.
+#: - `QLabel#qt_msgbox_informativelabel { min-width: … }` — worked at 9-15 pt and **broke again at
+#:   18 and 19**, because a pixel floor does not scale with the font. It also depended on a child
+#:   name created inside `QMessageBoxPrivate`, and setting any stylesheet makes
+#:   `canBeNativeDialog()` refuse the native message box.
+#: - `QMessageBox.setMinimumWidth()` from font metrics — **ignored**; the box measured identical
+#:   widths to no fix at every size.
+#:
+#: **The cost, stated rather than buried:** `U+2011` is a different codepoint from the hyphen in
+#: the project's name, so text copied out of this dialog will not match a literal search for
+#: `yt-dlp`. It is a hyphen to a screen reader and is metrically identical — same advance width,
+#: present in every font checked — so nothing about the rendering or the announcement changes.
+#: **Anywhere the string is data rather than display, use the ordinary hyphen.**
+YTDLP_DISPLAY_NAME: Final = "yt\u2011dlp"
+
 _ICON_DIR: Final = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
 
@@ -1700,8 +1725,8 @@ class MainWindow(QMainWindow):
         about.setObjectName("aboutDialog")
         # **"About", not "About Tracks & Trails".** The dialog says the name twice already — in
         # its own body text and in the icon beside it — and the title bar is the one place with
-        # no room for it. The **Help menu** item keeps the long form, which is the platform
-        # convention for finding it and the only place the name is doing work.
+        # no room for it. **The Help menu item is "About" too** (`T278-R2`: this comment used to
+        # say it kept the long form, which was already false in the commit that wrote it).
         about.setWindowTitle("About")
         # 112, arrived at by looking: 64 was too small, 128 too big a jump. The `.ico`'s 128 px
         # frame is the source, so this is a small downscale of a real frame rather than an upscale
@@ -1709,14 +1734,8 @@ class MainWindow(QMainWindow):
         about.setIconPixmap(app_icon().pixmap(112, 112))
         about.setText(f"<b>{APP_NAME}</b><br>Version {__version__}")
         about.setInformativeText(
-            "A desktop front-end for yt-dlp, for Linux and Windows.<br>MIT licensed."
+            f"A desktop front-end for {YTDLP_DISPLAY_NAME}, for Linux and Windows.<br>MIT licensed."
         )
-        # **A floor on the informative label's width, and it is not cosmetic drift.** Shortening
-        # the text let `QMessageBox` size the box narrow enough to wrap "yt-dlp" across its
-        # hyphen — "yt-" / "dlp" — and a product name broken mid-word reads as a typo. `<nobr>`
-        # does not survive Qt's width calculation here; a floor does. It is a minimum, so the box
-        # still grows for a longer string or a larger font.
-        about.setStyleSheet("QLabel#qt_msgbox_informativelabel { min-width: 340px; }")
         about.setStandardButtons(QMessageBox.StandardButton.Close)
         about.open()
         return about
