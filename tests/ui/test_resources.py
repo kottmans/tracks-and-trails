@@ -11,6 +11,12 @@ there (`OPS-003`).
 `T-274` replaced the artwork and the pipeline behind it — the assets are now rasterized from the
 vendored SVG artboards in `tools/icons/masters/` — and rewrote the trail check below, which had
 been measuring a property the new artwork does not have.
+
+`T-276` moved the sizes at and above 48 px onto the pack's **Icon** cut, which is the Standard
+artwork with the two sound-wave arcs removed. **That broke every check in this module that told
+one shipped cut from the other**, because all of them read gold and the Icon cut's gold is the
+trail alone — indistinguishable from the Small cut's. The cut identity is now a pair: gold says
+whether the arcs are there, and `green_coverage` says whether the landscape is.
 """
 
 from pathlib import Path
@@ -26,19 +32,21 @@ from tests.unit.test_resources import ICO_SIZES, PNG_SIZES, SMALL_SIZES
 
 ICONS = Path(tracks_and_trails.__file__).parent / "resources" / "icons"
 
-#: The vendored SVG artboards every shipped asset is rendered from (`T-274`). Reached only by
-#: the control test, which needs the full mark at a size no shipped asset uses it at.
+#: The vendored SVG artboards (`T-274`). Two of the three are what the shipped assets are
+#: rendered from; `icon-standard.svg` ships nothing and exists only so the control tests can be
+#: handed a cut that still has arcs (`T-276`). Reached only by those controls, which need each
+#: cut at a size no shipped asset uses it at.
 MASTERS = Path(__file__).resolve().parents[2] / "tools" / "icons" / "masters"
 
 ALL_ASSETS = ["icon.png", "icon-small.png", "icon.ico", *(f"icon-{s}.png" for s in PNG_SIZES)]
 
 #: Trail-gold pixels the 16 px asset must carry (`T-274`, replacing `T-021`'s floor of 16).
 #:
-#: **Measured 2026-08-21 on the new small cut: 9.** The floor sits below it because the count
-#: alone can no longer tell the two cuts apart — the full mark at 16 px carries *11*, more gold
-#: than the reduced cut, because its sound-wave arcs are gold too. What separates them is
-#: `test_the_small_cut_is_what_ships_at_every_small_size`'s connectivity assertion; this number
-#: only has to catch a trail that has thinned to nothing, so it leaves room for redrawing.
+#: **Measured 2026-08-21 on the Small cut: 9.** The floor sits below it because the count alone
+#: cannot tell any two cuts apart — at 16 px the Standard cut carries *11* and the Icon cut *11*,
+#: both **more** gold than the Small cut's 9. What separates the cuts is
+#: `test_the_small_cut_is_what_ships_at_every_small_size`'s two assertions; this number only has
+#: to catch a trail that has thinned to nothing, so it leaves room for redrawing.
 #:
 #: *(`T-021`'s 16 was the midpoint between a 13-pixel full-logo downscale and a 20-pixel derived
 #: glyph whose trail had been deliberately dilated. Both of those artworks are gone.)*
@@ -128,40 +136,107 @@ def gold_runs(image: QImage) -> list[int]:
     return sorted(runs, reverse=True)
 
 
-#: Sizes rendered from the full mark: everything the reduced cut does not cover.
-FULL_SIZES = tuple(size for size in PNG_SIZES if size not in SMALL_SIZES)
+#: Sizes at or above the pack's 48 px floor: everything the Small cut does not cover.
+#:
+#: **Derived by subtraction, and that is only safe while there are exactly two bands.** `T-275`
+#: proposed a third — the Icon cut at 32 px with the Standard cut kept above — and named this
+#: line as the trap: a third band has to be subtracted here too, or these tests run at a size
+#: whose asset was built to a different cut. The ruling of 2026-08-25 refused that third band, so
+#: two bands is the current shape rather than a shape nobody considered changing.
+LARGE_SIZES = tuple(size for size in PNG_SIZES if size not in SMALL_SIZES)
 
 #: How large a second run of gold has to be, against the largest, to count as an arc (`T274-R3`).
 #:
-#: **A bare "more than one run" does not identify the full mark, and 64 px is where that shows.**
-#: The reduced cut sheds a single antialiasing pixel off its trail there — `[185, 1]` — so it
-#: satisfies a `> 1` count and passed the complement while being the wrong cut.
+#: **A bare "more than one run" does not identify a cut, and 64 px is where that shows.** The
+#: Small cut sheds a single antialiasing pixel off its trail there — `[185, 1]` — so it satisfies
+#: a `> 1` count. The Icon cut sheds one at 48 px, `[103, 1]`, for the same reason.
 #:
-#: Measured 2026-08-21, second run as a share of the largest, at the sizes the complement guards:
+#: Measured 2026-08-25, second run as a share of the largest:
 #:
-#: | size | full mark | reduced cut |
-#: |---|---|---|
-#: | 48 | 12.75% | none |
-#: | 64 | **11.48%** | **0.54%** |
-#: | 128 | 12.32% | none |
-#: | 256 | 11.80% | none |
-#: | 512 | 12.02% | none |
+#: | size | Standard cut | Icon cut | Small cut |
+#: |---|---|---|---|
+#: | 48 | 12.75% | **0.97%** | none |
+#: | 64 | 11.48% | none | **0.54%** |
+#: | 128 | 12.32% | none | none |
+#: | 256 | 11.80% | none | none |
+#: | 512 | 12.02% | none | none |
 #:
-#: The arcs hold 11.5 to 12.8% across every size, an order of magnitude above the crumb. 5% sits
-#: 2.3x under the tightest real case and 9.2x over the escape, and
-#: `test_the_complement_rejects_the_reduced_cut` is what keeps that gap honest rather than assumed.
+#: The arcs hold 11.5 to 12.8% wherever they exist, an order of magnitude above any crumb. 5%
+#: sits 2.3x under the tightest real arc and 5.2x over the largest crumb.
 ARC_SHARE = 0.05
 
 
 def has_detached_arcs(image: QImage) -> bool:
     """Whether the image's gold carries a second shape big enough to be a sound-wave arc.
 
-    The property that identifies the full mark: its arcs are gold, are never joined to the trail,
-    and are a substantial fraction of it. Size is what separates an arc from a stray pixel, which
-    is `T274-R3`.
+    **This identified the shipped cut until `T-276` and now identifies the one that is gone.**
+    The Standard cut's arcs are gold, are never joined to the trail, and are a substantial
+    fraction of it; neither shipping cut has them, so every shipped asset must make this
+    `False`. Size is what separates an arc from a stray pixel, which is `T274-R3`.
     """
     runs = gold_runs(image)
     return len(runs) > 1 and runs[1] >= ARC_SHARE * runs[0]
+
+
+def is_forest_green(colour: QColor) -> bool:
+    """Whether an opaque rendered pixel belongs to the mark's green mass.
+
+    Mass tone is `#1E5E47` — (30, 94, 71), green-dominant with low red. Compared as a relation
+    rather than against the exact value, for the same reason `is_trail_gold` is: these pixels are
+    antialiased blends of the mass against the gold trail and the transparent ground.
+    """
+    if colour.alpha() < 128:
+        return False
+    return (
+        colour.green() > colour.red() + 20
+        and colour.green() > colour.blue() + 10
+        and colour.red() < 150
+    )
+
+
+def green_coverage(image: QImage) -> float:
+    """The share of the *frame* the green mass covers.
+
+    Normalized by frame area rather than by ink, because the frame is the one thing all three
+    cuts share exactly: the pack draws each on the same 1244-unit square canvas with the mark at
+    86% of the canvas height, which this module measures as 0.8613 in every cut. Two cuts of the
+    same artwork on the same canvas therefore differ in green mass by how much landscape they
+    carry, and by nothing else.
+    """
+    green = sum(
+        is_forest_green(image.pixelColor(x, y))
+        for x in range(image.width())
+        for y in range(image.height())
+    )
+    return green / (image.width() * image.height())
+
+
+#: Green coverage that separates the two cuts that ship (`T-276`).
+#:
+#: **This is what tells the Icon cut from the Small cut, and gold cannot do it.** The Icon cut is
+#: the Standard artwork with only the sound-wave arcs removed, so its gold *is* the trail alone
+#: and falls in one run — exactly like the Small cut's. Every gold property that separated the
+#: shipped cuts before `T-276` is blind to this pair. What separates them is the landscape the
+#: Small cut drops: three trees and the mountain, all of it green mass.
+#:
+#: Measured 2026-08-25, over the masters at every size the shipped assets use:
+#:
+#: | size | Icon cut | Small cut |
+#: |---|---|---|
+#: | 16 | 0.1953 | 0.1172 |
+#: | 24 | 0.1875 | 0.1250 |
+#: | 32 | 0.1895 | 0.1172 |
+#: | 48 | **0.1832** | 0.1189 |
+#: | 64 | 0.1846 | **0.1272** |
+#: | 128 | 0.1885 | 0.1241 |
+#: | 256 | 0.1852 | 0.1258 |
+#: | 512 | 0.1859 | 0.1249 |
+#:
+#: The two bands never approach each other: the Icon cut's worst size is 0.1832 and the Small
+#: cut's worst is 0.1272, a gap of 44%. **0.15 sits 17.9% above the Small cut's worst case and
+#: 18.1% below the Icon cut's** — deliberately near the midpoint, because neither direction is
+#: the one more likely to drift.
+GREEN_FLOOR = 0.15
 
 
 def rendered_master(name: str, size: int) -> QImage:
@@ -201,22 +276,18 @@ def sources_for(sizes: tuple[int, ...]) -> list[tuple[str, int]]:
 def test_the_small_cut_is_what_ships_at_every_small_size(
     qapp: QApplication, source: str, size: int
 ) -> None:
-    """`T-274`: below the split, every shipped asset is the reduced cut — one unbroken trail.
+    """Below the split, every shipped asset is the Small cut.
 
-    **This is what replaced `T-021`'s pixel count, and the reason is that the count stopped
-    discriminating.** The reduced cut used to carry *more* gold than the full mark downscaled,
-    because it was derived by masking and its trail was dilated to survive. The pack's small cut
-    is not derived — its trail is byte-identical to the master's — so at 16 px it carries **9**
-    gold pixels against the full mark's **11**, and any floor that passes the one passes the
-    other.
-
-    What separates them is **shape**. The full mark's gold is the trail *and* two sound-wave
-    arcs, and at every size those arcs are separate from it: 2 runs at 16 px, 2 at 24, 2 at 32,
-    4 at 48, 3 from 64 up. The reduced cut has no arcs, so its gold is exactly **one** run.
+    **Two assertions, because after `T-276` one of them stopped being enough.** Connectivity —
+    the gold falls in a single unbroken run — is what `T-274` used, and it still rejects the
+    Standard cut, whose arcs are a separate gold shape at every size. It does **not** reject the
+    Icon cut, which has no arcs either and whose gold is also exactly one run. The green floor is
+    what catches that: the Small cut has dropped the trees and the mountain, so it carries a
+    third less green mass than the cut drawn above the split.
 
     **Parameterized over every small size and both sources, which is `T274-R1`.** The first
     version of this asserted 16 px alone while `SMALL_SIZES` claimed three, so a renderer set to
-    `{16}` regenerated 24 and 32 — PNGs and `.ico` frames alike — back to the full mark and the
+    `{16}` regenerated 24 and 32 — PNGs and `.ico` frames alike — back to the other cut and the
     suite stayed green. A boundary stated in one file and enforced at one of its three sizes is
     not enforced.
 
@@ -224,56 +295,134 @@ def test_the_small_cut_is_what_ships_at_every_small_size(
     the asset the user sees — the same reason this module exists alongside
     `tests/unit/test_resources`.
     """
-    runs = gold_runs(shipped(source, size))
+    image = shipped(source, size)
+    runs = gold_runs(image)
 
     assert runs, f"the {size} px {source} carries no trail gold at all"
     assert len(runs) == 1, (
         f"the {size} px {source} puts its gold in {len(runs)} separate runs ({runs}) — the "
-        "reduced cut's gold is the trail alone and is always one run, so this is the full mark, "
-        "whose arcs are a separate shape at every size"
+        "shipping cuts' gold is the trail alone and is always one run, so this is the Standard "
+        "cut, whose arcs are a separate shape at every size"
+    )
+
+    coverage = green_coverage(image)
+    assert coverage < GREEN_FLOOR, (
+        f"the {size} px {source} covers {coverage:.4f} of its frame in green, at or over the "
+        f"{GREEN_FLOOR} floor — that is the Icon cut, which carries the trees and the mountain "
+        f"and is drawn at {min(LARGE_SIZES)} px and above, not below it"
     )
 
 
-@pytest.mark.parametrize(("source", "size"), sources_for(FULL_SIZES))
-def test_the_full_mark_is_what_ships_above_the_split(
+@pytest.mark.parametrize(("source", "size"), sources_for(LARGE_SIZES))
+def test_the_icon_cut_is_what_ships_at_and_above_the_split(
     qapp: QApplication, source: str, size: int
 ) -> None:
-    """And above the split it is the full mark — the same property, read the other way.
+    """And at or above the split it is the Icon cut — both properties, read the other way.
 
     **This half is not required by `T274-R1` and is here because the hole is symmetric.** With
-    only the small sizes asserted, a renderer that moved 48 px — or all of them — onto the
-    reduced cut would pass every check in this module, and the landscape would quietly leave the
-    icon at the sizes that can carry it.
+    only the small sizes asserted, a renderer that moved 48 px — or all of them — onto the Small
+    cut would pass every check in this module, and the landscape would quietly leave the icon at
+    the sizes that can carry it.
 
-    The arcs are what make it checkable, and **their size is the part that matters**: asserting
-    that gold merely falls in more than one run let the reduced cut through at 64 px, where it
-    sheds one antialiasing pixel. See `ARC_SHARE`, and `test_the_complement_rejects_the_reduced_cut`
-    for the control that now holds this to it.
+    The second assertion is the one `T-276` is *for*. The whole point of the Icon cut is that the
+    sound-wave arcs are gone, and a change that shipped the Standard cut here would put them
+    back. Nothing else in the suite would notice: the arcs are two small gold specks, and every
+    other property in this module is satisfied by both cuts.
     """
-    assert has_detached_arcs(shipped(source, size)), (
-        f"the {size} px {source} carries no gold shape big enough to be an arc — that is the "
-        f"reduced cut, which is drawn below {min(FULL_SIZES)} px and not at or above it"
+    image = shipped(source, size)
+
+    coverage = green_coverage(image)
+    assert coverage >= GREEN_FLOOR, (
+        f"the {size} px {source} covers only {coverage:.4f} of its frame in green, under the "
+        f"{GREEN_FLOOR} floor — that is the Small cut, which drops the trees and the mountain "
+        f"and is drawn below {min(LARGE_SIZES)} px, not at or above it"
+    )
+
+    assert not has_detached_arcs(image), (
+        f"the {size} px {source} carries a second gold shape big enough to be a sound-wave arc "
+        "— that is the Standard cut. The Icon cut is the one that removes the arcs, and it is "
+        "what ships here"
     )
 
 
-@pytest.mark.parametrize("size", FULL_SIZES)
-def test_the_complement_rejects_the_reduced_cut(qapp: QApplication, size: int) -> None:
-    """The control for the test above, and the check that `T274-R3` was missing.
+@pytest.mark.parametrize("size", SMALL_SIZES)
+def test_the_green_floor_rejects_the_icon_cut_below_the_split(
+    qapp: QApplication, size: int
+) -> None:
+    """Control: the cut that must not ship small **fails** what the small assets pass.
 
-    **The complement shipped without one, and that is exactly how it escaped.** Its small-size
-    sibling had a control — the full mark rendered small, proved to fail — and this side had
-    none, so a predicate that the reduced cut also satisfied at 64 px looked identical to one
-    that discriminated. The reviewer found it by regenerating with `SMALL_SIZES = {16, 24, 32,
-    64}` and watching 45 tests pass over a swapped asset.
-
-    So: render the reduced master at every size the complement guards and require that it
-    **fails** the property. This is the assertion that fixes the class rather than the instance —
-    64 px is where it bites today, and any future size where the cut sheds a crumb is caught by
-    the same line.
+    A floor is worth nothing if both cuts sit on the same side of it, and this is the only place
+    that can be established below the split — every shipped asset there is the Small cut, so
+    nothing else in the suite ever draws the Icon cut small enough to break. It reaches past the
+    shipped assets into `tools/icons/masters/` deliberately: the point is to feed the check a
+    known positive and watch it fire.
     """
-    assert not has_detached_arcs(rendered_master("icon-small.svg", size)), (
-        f"the reduced cut at {size} px satisfies the full-mark property, so "
-        "test_the_full_mark_is_what_ships_above_the_split cannot tell the two cuts apart there"
+    coverage = green_coverage(rendered_master("icon.svg", size))
+    assert coverage >= GREEN_FLOOR, (
+        f"the Icon cut at {size} px covers {coverage:.4f} of its frame in green, under the "
+        f"{GREEN_FLOOR} floor — so test_the_small_cut_is_what_ships_at_every_small_size would "
+        "accept it and cannot tell the two shipping cuts apart there"
+    )
+
+
+@pytest.mark.parametrize("size", LARGE_SIZES)
+def test_the_green_floor_rejects_the_small_cut_above_the_split(
+    qapp: QApplication, size: int
+) -> None:
+    """The same control on the other side, and the one `T274-R3` was missing.
+
+    **The complement shipped without a control once, and that is exactly how it escaped.** Its
+    small-size sibling had one and this side had none, so a predicate that both cuts satisfied at
+    64 px looked identical to one that discriminated. The reviewer found it by regenerating with
+    `SMALL_SIZES = {16, 24, 32, 64}` and watching 45 tests pass over a swapped asset.
+
+    So: render the Small cut at every size the complement guards and require that it **fails**
+    the property. This is the assertion that fixes the class rather than the instance.
+    """
+    coverage = green_coverage(rendered_master("icon-small.svg", size))
+    assert coverage < GREEN_FLOOR, (
+        f"the Small cut at {size} px covers {coverage:.4f} of its frame in green, at or over the "
+        f"{GREEN_FLOOR} floor — so test_the_icon_cut_is_what_ships_at_and_above_the_split cannot "
+        "tell the two shipping cuts apart there"
+    )
+
+
+@pytest.mark.parametrize("size", LARGE_SIZES)
+def test_the_arc_predicate_fires_on_the_cut_that_has_arcs(qapp: QApplication, size: int) -> None:
+    """Control: `has_detached_arcs` must return `True` for something.
+
+    **Every cut that ships lacks arcs, so every arc assertion in this module is a negative** —
+    and a negative that has never been shown a positive is not a check, it is a sentence. This is
+    the only test in the repository that can make the predicate fire, and it is the whole reason
+    `icon-standard.svg` is vendored despite producing no asset.
+
+    Delete that master and this test is what fails, loudly, instead of
+    `test_the_icon_cut_is_what_ships_at_and_above_the_split` quietly becoming unfalsifiable.
+    """
+    assert has_detached_arcs(rendered_master("icon-standard.svg", size)), (
+        f"the Standard cut at {size} px does not satisfy the arc property, so the arcs no longer "
+        "read as a separate gold shape and no shipped-asset check in this module can tell the "
+        "Standard cut from the Icon cut"
+    )
+
+
+@pytest.mark.parametrize("size", SMALL_SIZES)
+def test_the_gold_run_predicate_fires_on_the_cut_that_has_arcs(
+    qapp: QApplication, size: int
+) -> None:
+    """The same control for the connectivity half of the small-size check.
+
+    `test_the_small_cut_is_what_ships_at_every_small_size` asserts exactly one run of gold, and
+    the Standard cut is the only thing that can break it. **This side asserts one run while the
+    large side speaks in fractions**, and the difference is measured rather than stylistic: the
+    shipped small assets carry exactly one run at 16, 24 and 32, so the stricter form is true and
+    a crumb appearing there would be a real change. At 48 px and up both shipping cuts do shed
+    one, which is why `ARC_SHARE` exists.
+    """
+    runs = gold_runs(rendered_master("icon-standard.svg", size))
+    assert len(runs) > 1, (
+        f"the Standard cut at {size} px puts its gold in one run — the arcs no longer read as a "
+        "separate shape, so the connectivity assertion above can no longer reject it"
     )
 
 
@@ -289,25 +438,4 @@ def test_the_16_px_trail_is_thick_enough_to_read(qapp: QApplication) -> None:
     assert runs[0] >= MINIMUM_GOLD_AT_16, (
         f"the 16 px trail is {runs[0]} pixels, under the {MINIMUM_GOLD_AT_16} floor — it has "
         "thinned to the point of vanishing"
-    )
-
-
-@pytest.mark.parametrize("size", SMALL_SIZES)
-def test_the_predicate_can_tell_the_two_cuts_apart(qapp: QApplication, size: int) -> None:
-    """The control for the small side: the full mark **fails** what the reduced cut passes.
-
-    A one-run assertion is worth nothing if both cuts satisfy it, and this is the only place that
-    can be established at the small sizes — every shipped asset there is the reduced cut, so
-    nothing else in the suite ever draws the full mark small enough to break. It reaches past the
-    shipped assets to `tools/icons/masters/icon.svg` deliberately: the point is to feed the check
-    a known positive and watch it fire.
-
-    **This side asserts exactly one run while the complement's control uses `ARC_SHARE`**, and the
-    difference is measured rather than stylistic: the shipped small assets carry exactly one run at
-    16, 24 and 32, so the stricter form is true and a crumb appearing there would be a real change.
-    At 64 px the same cut does shed one, which is why the other side has to speak in fractions.
-    """
-    assert len(gold_runs(rendered_master("icon.svg", size))) > 1, (
-        f"the full mark at {size} px puts its gold in one run — the arcs no longer read as a "
-        "separate shape, so the shipped-asset checks above can no longer tell the two cuts apart"
     )

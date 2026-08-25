@@ -5,6 +5,76 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-25 — **`T-276` is built and In Review: the icon moves to the pack's
+Icon cut at 48 px and above, and the check that used to police the boundary went blind in the same
+moment the asset changed.**
+
+**Logo Asset Package v1.1 landed this morning and adds a third cut**, drawn for exactly this use —
+the Standard artwork with the two sound-wave arcs removed and the artboard re-centred around what
+is left. That re-centring is the part the repository could not have done for itself: `T-275`
+measured that deleting the arcs leaves the mark 62 px off-centre at 1024, and the pack moved the
+`viewBox` instead. **The maintainer ruled the band at 48 px and above**, following the pack's own
+floor, so `SMALL_SIZES` is unchanged and **`icon-16`, `icon-24`, `icon-32` and `icon-small` are
+byte-identical to what shipped before**. Seven assets changed.
+
+**The finding is that gold stopped discriminating, and it is `T-274`'s lesson in a new costume.**
+Every check that told one shipped cut from the other read the trail gold: the Small cut's is one
+unbroken run, the Standard cut's is a run plus two arcs. **The Icon cut's gold is the trail
+alone** — one run, identical in kind to the Small cut's. The large-side check went *red* rather
+than blind, which is the good case; the small-side check is the one that would have accepted a
+swapped 32 px asset without a murmur. `T-275` predicted this in front of the build and it is the
+whole reason this was not a ten-minute file swap.
+
+**Cut identity is now a pair, and both halves already existed in the module.** Gold says whether
+the arcs are there; **green mass, normalized by frame area, says whether the landscape is.** Both
+cuts sit on the same 1244-unit canvas at 86% ink height, so what differs is the three trees and
+the mountain the Small cut drops. The Icon cut's worst size is **0.1832** against the Small cut's
+worst of **0.1272** — a 44% gap — and `GREEN_FLOOR = 0.15` sits 17.9% above one and 18.1% below
+the other. Every predicate now has a control in both directions.
+
+**The Standard cut stays vendored and renders nothing.** Neither shipping cut has arcs, so every
+arc assertion is a negative — and a negative that has never been shown a positive is a sentence,
+not a check. `masters/icon-standard.svg` is the only thing in the repository that can make
+`has_detached_arcs` fire, and deleting it now fails **9 tests** loudly instead of leaving the
+claim unfalsifiable.
+
+**Eleven mutations, each read, each caught**, and the source-and-asset tree hashes back to its
+clean value after every one. The one worth naming is `icon.svg := icon-standard.svg` — the arcs
+coming back — because that is this task's own claim, and it fails 9. `T274-R3`'s exact escape
+(`SMALL_SIZES = {16, 24, 32, 64}`) fails 2.
+
+*(**Two of my own mutation harnesses were defective before the campaign that produced those
+numbers.** The first restored with `git checkout --` on uncommitted files and discarded the
+working copies of the renderer and `tests/ui/test_resources.py`; the second used one snapshot name
+for `tests/ui/test_resources.py` and `tests/unit/test_resources.py`, which share a basename, and
+overwrote the unit module with the UI one. Both were repaired and the campaign re-run. The results
+reported above are from the third harness, which verifies the tree hash after **every** mutation
+rather than once at the end — a campaign that cannot restore its own tree cannot be trusted about
+what its mutations proved.)*
+
+**The suites:** the resource pair is **58 passed**, from 50 at the `T-274` head. `tests/unit` is
+**2257 passed, 15 skipped**; `tests/ui` is **1054 passed, 3 skipped**. `ruff check .`, `ruff
+format --check .` and `mypy src` are clean.
+
+**`T-275` is Cancelled by the same ruling**, and nothing in it was found to be wrong. It asked for
+this cut at 32 px, and the pack gives it a 48 px floor on the reasoning `T-275` had itself
+measured and recorded — that the trees there *"read as texture rather than as three conifers"*.
+The pack made that observation the ground of a rule. Its measurements are what `T-276` was built
+against, and the three-band traps it named — `FULL_SIZES` derived by subtraction, the small band
+written three times — were never sprung, because the ruling kept the bands at two.
+
+**Board:** `T-276` **In Review**, awaiting a verdict. `T-272` **In Review** — approved, every
+finding Resolved, both scans run; its entry is what still says In Review. `T-238` **Ready**,
+criterion 4 unanswered. `T-273` and `T-184` **Proposed**. `T-268` and `T-074` **Blocked on a
+person at `STARBASE`**. `T-275` **Cancelled**. **`T-212` is still the only thing between this
+phase and its exit review**, and it still needs a display and a person.
+
+**`origin/main` is `b57907b` and nothing was held** — the 18 commits this file last reported as
+unpushed have been pushed. `T-276` is the one commit on top of that, and it is **not** pushed;
+the push is the maintainer's (`AGENTS.md` §7).
+
+---
+
 **Last updated:** 2026-08-21 — **`T-274` is Complete**, Approved with follow-ups at `60dbbcf`, and
 its three findings are one lesson at three scopes: **a check weaker than the claim written over
 it.** Nothing was ever wrong with the artwork, the renderer or the shipped assets — every finding

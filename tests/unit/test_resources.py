@@ -32,12 +32,15 @@ PNG_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 #: quietly drop them.
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
-#: Sizes rendered from the reduced cut rather than the full mark (`T-274`).
+#: Sizes rendered from the pack's Small cut rather than its Icon cut (`T-274`, re-cut by
+#: `T-276`).
 #:
 #: Stated here rather than imported from `tools/icons/render_icons.py`, so that the expectation
 #: is independent of the script that has to meet it. The pack's own measurement of this artwork
-#: sets the boundary: the sound-wave arcs break into speckle at 32 px and the mountain has
-#: vanished, so 32 moved from the smallest full-mark size to the largest reduced one.
+#: sets the boundary, and **what it measures changed at `T-276`**: the cut drawn above the split
+#: no longer has sound-wave arcs to break into speckle, so the floor is now the third tree and
+#: the mountain notch, which stop resolving below 48 px. The boundary lands on the same three
+#: sizes for a different reason, which is why it is written out rather than left implied.
 SMALL_SIZES = (16, 24, 32)
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -74,14 +77,14 @@ def read_ico_sizes(path: Path) -> list[int]:
 
 
 def test_source_master_is_present_and_full_size() -> None:
-    """`icon.png` is the full mark at 1024, the largest raster the package ships."""
+    """`icon.png` is the Icon cut at 1024, the largest raster the package ships."""
     assert read_png_size(ICONS / "icon.png") == (1024, 1024)
 
 
 def test_small_cut_is_present_and_full_size() -> None:
-    """`icon-small.png` is the reduced cut at 1024 — the same mark without the landscape.
+    """`icon-small.png` is the Small cut at 1024 — the same mark without the landscape.
 
-    Kept at full size even though nothing displays it there: it is the only place the reduced cut
+    Kept at full size even though nothing displays it there: it is the only place the Small cut
     can be *looked at*, and a 1024 px render of it is what makes a changed small cut visible to a
     reviewer instead of arriving as a 16 px diff.
     """
@@ -89,15 +92,22 @@ def test_small_cut_is_present_and_full_size() -> None:
 
 
 def test_the_svg_masters_are_present() -> None:
-    """The vendored artboards every shipped asset is rendered from (`T-274`).
+    """The three vendored artboards (`T-274`, third added by `T-276`).
 
     They live outside the package — nothing at runtime reads them — so no other check in the
     suite touches them, and losing them would leave a set of rasters with no way back to the
     artwork. That is the same failure mode this module exists for, one level up.
+
+    **`icon-standard.svg` renders no asset and is required anyway.** It is the only cut in the
+    repository that still carries the sound-wave arcs, and `tests/ui/test_resources.py` needs it
+    as the known positive for `has_detached_arcs` — a predicate every shipped asset must now
+    make `False`. Losing it would leave that assertion passing and unfalsifiable, which is the
+    quiet failure mode rather than the loud one, so it is named here as well.
     """
     masters = Path(__file__).resolve().parents[2] / "tools" / "icons" / "masters"
     assert (masters / "icon.svg").is_file()
     assert (masters / "icon-small.svg").is_file()
+    assert (masters / "icon-standard.svg").is_file()
 
 
 @pytest.mark.parametrize("size", PNG_SIZES)

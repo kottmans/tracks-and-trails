@@ -1,89 +1,148 @@
-TRACKS AND TRAILS — logo pack
+Tracks and Trails
+Logo Asset Package
+Version 1.1 · Released 2026-08-25 · Supersedes 1.0
 
-SVG
-  tracks-and-trails.svg              master, full colour, trimmed to ink (918.0 x 1072.1)
-  tracks-and-trails-icon.svg         square artboard, 8% margin — app icons, avatars
-                                     ...-icon-<cut>.svg for every cut below,
-                                     including ...-icon-mono.svg (currentColor)
-  tracks-and-trails-dark.svg         two-tone for dark grounds, green lifted to #48906c
-  tracks-and-trails-mono.svg         one colour via currentColor — inline SVG only
-                                     (currentColor does NOT work via <img src>)
-  tracks-and-trails-mono-white.svg   one colour, white
-  tracks-and-trails-mono-black.svg   one colour, #111
-  tracks-and-trails-gold.svg         gold two-tone, light grounds
-  tracks-and-trails-gold-dark.svg    gold two-tone, dark grounds
-  tracks-and-trails-green.svg        green two-tone, light grounds
-  tracks-and-trails-green-dark.svg   green two-tone, dark grounds
-  tracks-and-trails-ink.svg          black two-tone, light grounds
-  tracks-and-trails-chalk.svg        white two-tone, dark grounds
 
-  tracks-and-trails-small.svg        SMALL-SIZE CUT — note and trail only
-                                     ...-small-<cut>.svg in every colour
-                                     ...-small-icon-<cut>.svg square artboard
 
-PNG
-  png/        full-colour master on transparent, white, warm gray, cream, black, navy
-  icon/       square icon artboard, 64-1024, every cut, all transparent
-  dark/       two-tone dark on transparent, navy, black
-  mono/       white and black, transparent
-  colorways/  gold, green, ink and chalk two-tone
-  small/      small-size cut, 16-64, every colour, mark and icon artboard
+WHAT CHANGED IN 1.1
+Adds the Icon cut: the Standard artwork with the sound waves removed, for square tiles — desktop, dock and
+launcher icons — where the waves push the mark off-centre in the frame and read as a stray flick. Geometry
+is otherwise identical to Standard, so the cuts share stem weight, trail and baseline exactly.
+The Icon cut ships eleven SVG colourways, ten vector PDFs, forty PNG exports and a four-colourway
+app-icon set. The three-cut comparison sheet Cuts.png replaces Standard-vs-Small.png, and both overview
+sheets are re-rendered to carry the new version number. No existing artwork changed.
 
-COLOUR
-  forest  #1E5E47    gold    #D9A24C
-  forest (dark grounds) #48906c
 
-                        the two tones          separation   grounds
-  gold two-tone         #7a4200 / #fa9313         3.55       light
-  gold two-tone dark    #b86b0b / #ffb960         2.40       dark
-  green two-tone        #095436 / #55b486         3.54       light
-  green two-tone dark   #368861 / #8fdbb2         2.67       dark
-  ink                   #111111 / #636363         3.14       light
-  chalk                 #ffffff / #919191         3.15       dark
+THE THREE CUTS
+Cut                          Artwork bounds                       Use
+Standard                     918 × 1072 units                     48 px wide and above
+Icon                         842 × 1072 units                     Square tiles, 48 px and above
+Small                        828 × 1072 units                     Below 48 px wide
 
-  Separation is the contrast between the two tones — what makes the trail
-  read against the hill. The brand forest/gold pair sits at 3.36. The two
-  light colorways beat it; the two dark ones are lower (2.40 and 2.67), so
-  the trail reads more softly there. That is deliberate — on a dark ground
-  both tones also have to stay clear of the background, which caps how far
-  apart they can go. If the trail must read hard, use a light colorway.
+Standard carries every feature: three trees, mountain, trail and sound waves. Icon removes only the sound
+waves. Small removes the trees, mountain and waves.
+The 48 px breakpoint is measured, not conventional: below it the third tree and the mountain notch stop
+resolving. The Icon cut keeps every one of those features, so it shares Standard's 48 px floor rather than
+earning a lower one. Below 48 px, use Small.
+The three cuts are different shapes and must not be scaled interchangeably within one layout. Pick one per
+context.
 
-  ON A BRAND-COLOUR FIELD, USE MONO WHITE — NOT A TWO-TONE.
-  No two-tone survives a colour field. The mass can clear the ground or the
-  accent can, never both: the accent has to sit between them and gets squeezed.
-  Measured on brand green the best two-tone leaves the arcs at 2.60; on deep
-  gold, 2.34. Mono white puts every element at 7.25 on green and 8.06 on gold.
-  Avoid orange as a field for any cut — white only reaches 2.30 against it.
 
-WHICH TO USE
-  Light ground        master
-  Dark ground         dark  (the master's green is 1.87 on navy — do not use it there)
-  One colour / print  mono
-  On a colour field   mono white
-  Neutral / editorial ink (light grounds) or chalk (dark grounds)
+BACKGROUND USAGE
+OnLight files are drawn for light backgrounds; OnDark for dark ones. Mono-Black and Mono-White name their
+ink, and are chosen to contrast with the ground they sit on.
 
-  A note on mono: in one colour the trail takes the same value as the hill and
-  is held apart only by the keyline, so it reads as a groove rather than a path.
-  That is the trade for a single-colour cut — prefer a two-tone wherever you can.
 
-  BELOW ABOUT 48PX, USE THE SMALL CUT.
-  The full mark carries three trees, a mountain and two sound-wave arcs. None
-  of them survive at icon sizes — measured at 32px the arcs have already broken
-  into orange speckle and the mountain has vanished, and by 24px the trees are
-  an illegible scribble. The small cut drops all of it and keeps what actually
-  reads: the note and the trail running through its head. Same colours, same
-  trail, same visual language. Two of its three paths — the trail and the hill — are
-  byte-identical to the master's. The note body is not a master path: it is the
-  master's own outline with the mountain and tree sections dropped and the
-  contour reclosed straight down the stem's left edge.
+COLOURWAYS AND COLOUR VALUES
+Colourway                        Mass tone              Accent
+Brand-OnLight                    #1E5E47                #D9A24C
+Brand-OnDark                     #48906C                #D9A24C
+Amber-OnLight                    #7A4200                #FA9313
+Amber-OnDark                     #B86B0B                #FFB960
+Evergreen-OnLight                #095436                #55B486
+Evergreen-OnDark                 #368861                #8FDBB2
+Ink-OnLight                      #111111                #636363
+Ink-OnDark                        #FFFFFF                 #919191
+Mono-Black                        #111111                 #111111
+Mono-White                        #FFFFFF                 #FFFFFF
+Mono-CurrentColor                 currentColor            currentColor
 
-  The small cut is a different shape from the master (828.1 x 1072.1 against
-  918.0 x 1072.1) because the trees and arcs are gone. Do not scale the two
-  interchangeably in one layout — pick one per context.
+All three cuts of a colourway carry these values exactly. Colourway names are permanent across package
+revisions.
 
-  Its square icon artboard uses the same 1244 frame and the same 8% margin
-  rule as the master icon — ink fills 86.2% of the frame height in both, so
-  the two sit at matching weight in the same size frame.
 
-CLEAR SPACE
-  Keep free space equal to the width of the note stem on all sides.
+COLOUR SYSTEMS
+RGB / hex only. CMYK, Pantone and spot equivalents have not been defined for this identity. Do not convert
+on the brand's behalf — an unapproved conversion is a change to the brand colours. Request approved
+values before a print or signage run.
+
+
+MONO-CURRENTCOLOR — READ BEFORE USE
+This file has no fixed colour. Inlined into HTML it inherits the surrounding text colour; referenced through an
+img tag, or opened in a design tool, it renders black. It therefore ships as SVG only — no PDF and no PNG —
+because there is no colour to fix.
+
+
+VARIANT MATRIX
+Colourway                             Standard         Icon          Small         App icon
+Brand-OnLight                         yes              yes           yes           yes
+Brand-OnDark                          yes              yes           yes           yes
+Amber-OnLight                         yes              yes           yes           —
+Amber-OnDark                          yes              yes           yes           —
+Evergreen-OnLight                     yes              yes           yes           —
+Evergreen-OnDark                      yes              yes           yes           —
+Ink-OnLight                           yes              yes           yes           —
+Ink-OnDark                            yes              yes           yes           —
+Mono-Black                            yes              yes           yes           yes
+Mono-White                            yes              yes           yes           yes
+Mono-CurrentColor                     yes              yes           yes           —
+
+Every colourway ships in all three cuts. The app-icon set is deliberately narrower: four colourways cover every
+tile a desktop, dock or launcher needs, and the alternates would not be approved for that use.
+
+
+EXPORT MATRIX
+Location                                         Contents
+01_Vector/SVG/ · all cuts                        11 colourways per cut
+01_Vector/PDF/ · all cuts                        10 per cut — Mono-CurrentColor excluded, no fixed colour
+02_Raster/PNG/Standard · Icon                    256, 512, 1024, 2048 px wide
+02_Raster/PNG/Small                              32, 64, 128, 256 px wide
+05_AppIcons/PNG/Standard · Icon                  128, 256, 512, 1024 px square
+05_AppIcons/PNG/Small                            32, 64, 128, 256 px square
+PNG widths name the exported pixel width. Every PNG is transparent, sRGB, and rendered directly from the
+final vector at its own size — none is downscaled from a larger export. Export size and display size differ: a
+256 px asset legitimately serves a 64 px slot on a high-density screen.
+Vector PDF page geometry: artwork 288 pt (4 in) wide with 11.52 pt (4%) clear space on all four sides. Page
+boxes are Standard 311.04 × 359.385 pt, Icon 311.04 × 389.613 pt, Small 311.04 × 395.899 pt — consistent
+across every colourway within a cut. Artwork is filled paths throughout, with no raster, no live text and no
+embedded fonts; the punched counters use the even-odd fill operator.
+App-icon SVGs place the same artwork on a square 1244 × 1244 unit canvas, optically centred, with the
+mark filling 86% of the canvas height.
+
+
+FOLDER MAP AND FILE COUNTS
+Path                                                                              Files
+README.pdf                                                                            1
+01_Vector/SVG/Standard/                                                              11
+01_Vector/SVG/Icon/                                                                  11
+01_Vector/SVG/Small/                                                                 11
+01_Vector/PDF/Standard/                                                              10
+01_Vector/PDF/Icon/                                                                  10
+01_Vector/PDF/Small/                                                                 10
+02_Raster/PNG/Standard/                                                              40
+02_Raster/PNG/Icon/                                                                  40
+02_Raster/PNG/Small/                                                                 40
+03_Previews/                                                                          4
+05_AppIcons/SVG/Standard/                                                             4
+05_AppIcons/SVG/Icon/                                                                 4
+05_AppIcons/SVG/Small/                                                                4
+05_AppIcons/PNG/Standard/                                                            16
+05_AppIcons/PNG/Icon/                                                                16
+05_AppIcons/PNG/Small/                                                               16
+Total                                                                              248
+
+
+PREVIEWS
+03_Previews/ holds Colorways.png, Cuts.png, Logo-Overview-OnLight.png and Logo-Overview-OnDark.png.
+These are documentation, not production assets: the backgrounds they demonstrate are not shipped as
+flattened PNG files, and Cuts.png renders the small sizes at true pixel size so the point at which detail fails is
+visible rather than hidden.
+
+
+INTENTIONAL OMISSIONS
+04_Guidelines/ is absent by decision, not oversight — for a package of this size this README serves as the
+usage documentation. The numbering gap between 03 and 05 is left visible rather than renumbered, so the
+slot stays available in later revisions.
+99_Source/ is absent because the delivered SVGs are the masters. There is no separate editable source, and
+duplicating the SVGs into a source folder would only create two files to keep in step.
+
+
+USAGE AND RESTRICTIONS
+Keep clear space of at least 4% of the artwork width on all four sides. Place OnLight artwork on light grounds
+and OnDark on dark ones. Choose one cut per context and respect its breakpoint.
+Do not recolour, stretch, rotate, skew, outline or add effects to the mark. Do not rebuild it, redraw it, or
+substitute a different music glyph. Do not flatten the PNGs onto a background colour. Do not mix cuts within
+one layout, and do not scale a cut below its documented floor.
+
+Tracks and Trails · Logo Asset Package v1.1 · 2026-08-25 · Assembled to the Logo Asset Packaging Standard rev. 1.1
+

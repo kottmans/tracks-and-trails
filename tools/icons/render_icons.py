@@ -1,4 +1,4 @@
-"""Render every icon asset from the vendored SVG masters (`T-274`).
+"""Render every icon asset from the vendored SVG masters (`T-274`, re-cut by `T-276`).
 
 Run from the repository root, in the project's virtualenv:
 
@@ -10,8 +10,15 @@ Nothing there is a source any more.
 
 ## The masters are vector, and they are the designer's own artboards
 
-`masters/icon.svg` and `masters/icon-small.svg` are the logo pack's square icon artboards,
-copied byte-for-byte — `tracks-and-trails-icon.svg` and `tracks-and-trails-small-icon.svg`.
+`masters/` holds three of the logo pack's square app-icon artboards, copied byte-for-byte from
+**Logo Asset Package v1.1** — `05_AppIcons/SVG/<cut>/Brand-OnLight.svg`:
+
+| master | pack cut | role |
+|---|---|---|
+| `icon.svg` | **Icon** | rendered at 48 px and above, and at `MASTER_SIZE` |
+| `icon-small.svg` | **Small** | rendered below 48 px |
+| `icon-standard.svg` | **Standard** | **not rendered** — see below |
+
 `masters/PACK-README.txt` is the pack's own documentation and is the provenance for everything
 this module asserts about them.
 
@@ -20,15 +27,19 @@ big one by masking pixels (`T-003`, `T-021`, `T-071`). All of that is gone:
 
 - **No trim.** The old master carried a band of alpha-1..8 pixels that a naive crop baked in as
   margin. A vector artboard has no halo, and its bounds are the frame the designer drew.
-- **No `FILL` rescale.** The artboards carry an 8% margin rule of their own, and the ink fills
-  **86.13%** of the frame height in *both* cuts — measured here, and the pack states 86.2%. That
-  is what makes the two cuts sit at matching weight in the same cell, and rescaling each to its
+- **No `FILL` rescale.** The artboards carry a margin rule of their own, and the ink fills
+  **86.13%** of the frame height in *all three* cuts — measured here, and the pack states 86%.
+  That is what makes the cuts sit at matching weight in the same cell, and rescaling each to its
   own bounds is exactly what would break it. `T-071` raised the mark from ~0.66 of the cell to
   0.92 because it read undersized in a taskbar; 0.8613 keeps that fix and hands the margin back
   to the artwork.
-- **No derivation of the small cut.** The pack authors it. Two of its three paths are
-  byte-identical to the master's, so the two cannot drift into different marks — which is what
-  `render_small_glyph.py` existed to guarantee and could only approximate.
+- **No derivation of any cut.** The pack authors all three. The Icon cut is the Standard artwork
+  with only the two sound-wave arcs removed and the artboard re-centred around what is left —
+  which is why it is a *delivered* artboard rather than two deleted paths: dropping the arcs
+  from the Standard master leaves the mark **62 px off-centre in a 1024 px render** (`T-275`),
+  and re-centring it in the repository would be a design judgement made in a script. The pack
+  did it in the artboard instead — `viewBox` x moves from `7.1` to `-30.65` — and the delivered
+  Icon cut measures equal left and right margins at every size this module renders.
 
 ## Rasterized at the target size, not downscaled to it
 
@@ -36,13 +47,29 @@ Each asset is rendered from the vector at its own size. Supersampling was measur
 rendering at 4x and smooth-scaling down moves the 16 px gold-pixel count by 2 and every other
 size by 0 or 1, so it buys nothing and adds a step that could soften an edge.
 
-## The split at 32 px
+## The split at 48 px
 
-`SMALL_SIZES` is where the full mark stops being drawn and the reduced cut takes over, and the
-pack's own measurement of *this* artwork sets it: the sound-wave arcs break into speckle at 32 px
-and the mountain has vanished, so 16, 24 and 32 come from `icon-small.svg`. The repository's
-previous boundary was 32 too — but as the smallest size that kept the *full* mark, measured on
-artwork that no longer exists (`T003-R2`).
+`SMALL_SIZES` is where the Icon cut stops being drawn and the Small cut takes over, and **the
+pack's measurement of this artwork sets it**: below 48 px the third tree and the mountain notch
+stop resolving. The Icon cut keeps every one of those features — it drops only the arcs — so it
+shares the Standard cut's 48 px floor rather than earning a lower one, and 16, 24 and 32 come
+from `icon-small.svg`.
+
+**32 px moved back down at `T-276`, and it is the second time this boundary has moved.** `T-274`
+put 32 on the full mark's side because that mark's *arcs* were what broke first at that size; the
+Icon cut has no arcs, so what decides 32 now is the trees and the mountain, and those fail lower.
+A maintainer instruction of 2026-08-24 (`T-275`) asked for the Icon cut at 32 px specifically —
+it was **refused on the pack's own floor** by the ruling of 2026-08-25, before the pack shipped
+the cut it asked for.
+
+## The Standard cut is vendored and never rendered
+
+`icon-standard.svg` produces no asset. It is here because the suite's claim about the shipped
+assets is *"the arcs are gone"*, and a predicate that looks for arcs is worth nothing until it
+has been shown one — the Icon and Small cuts both lack them, so nothing else in the repository
+can make `has_detached_arcs` return `True`. `tests/ui/test_resources.py` renders this master
+purely as that known positive. Deleting it does not change a shipped byte; it silently converts
+an enforced boundary into an assumed one, which is `T274-R1` and `T274-R3` both.
 """
 
 from __future__ import annotations
@@ -59,7 +86,7 @@ from PySide6.QtSvg import QSvgRenderer
 PNG_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
-#: Sizes drawn from the reduced cut rather than the full mark — see the module docstring.
+#: Sizes drawn from the Small cut rather than the Icon cut — see the module docstring.
 SMALL_SIZES = frozenset({16, 24, 32})
 
 #: The size of the two PNG masters. They are output like everything else now, and they stay
@@ -147,17 +174,17 @@ def ink_height_fraction(image: QImage) -> float:
 
 
 def main() -> None:
-    full = load_master("icon.svg")
-    small = load_master("icon-small.svg")
+    icon_cut = load_master("icon.svg")
+    small_cut = load_master("icon-small.svg")
 
-    masters = {"icon.png": full, "icon-small.png": small}
+    masters = {"icon.png": icon_cut, "icon-small.png": small_cut}
     for name, renderer in masters.items():
         image = render(renderer, MASTER_SIZE)
         print(f"{name}: ink spans {ink_height_fraction(image):.4f} of the frame height")
         (ICONS / name).write_bytes(encode_png(image))
 
     rendered = {
-        size: render(small if size in SMALL_SIZES else full, size)
+        size: render(small_cut if size in SMALL_SIZES else icon_cut, size)
         for size in sorted({*PNG_SIZES, *ICO_SIZES})
     }
 

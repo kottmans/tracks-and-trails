@@ -391,9 +391,9 @@ classification. Classification is a hint, not a replacement.
   the artwork as evidence for them.
 
   Source of record: **`tools/icons/masters/icon.svg`**, SHA-256
-  `6204d568001dca4c67a8bbfc5a0fb97285056a47cada4ee3988d7e070010efb4` — the vendored vector
-  artboard every shipped icon is rendered from (`T-274`). Two facts about it bear on this table
-  and neither changes a swatch:
+  `f45da7750348681fd65ecf4fc4e767bb5759ce81fea7e4653e7737c97744f4b4` — the vendored vector
+  artboard every shipped icon at 48 px and above is rendered from (`T-274`, re-cut by `T-276`).
+  Two facts about it bear on this table and neither changes a swatch:
 
   - It declares `#1E5E47` and `#D9A24C` as **literal flat fills**, its only two. For those two the
     artwork and the definition now agree by construction, so the question of what the artwork
@@ -401,6 +401,15 @@ classification. Classification is a hint, not a replacement.
   - **`#083122` has no counterpart in it.** The shading tone was a property of the raster that
     preceded it. It stays canonical as a *palette* value — `ui/theme.py` uses it and both themes
     are built on it — but it is no longer sourced from the mark.
+
+  *(**The hash moved at `T-276`, and the file it used to name still exists.** Until then this
+  named the same path at SHA-256 `6204d568…10efb4`, which is the pack's **Standard** cut. That
+  artboard is now vendored as `tools/icons/masters/icon-standard.svg`, unchanged and
+  byte-identical, where it renders no asset and serves only as a test control. `icon.svg` is the
+  pack's **Icon** cut — the Standard artwork with its two sound-wave arcs removed. Both bullets
+  above survive the swap unchanged: the Icon cut declares the same two literal flat fills and no
+  `#083122` either. **The swatches did not change, the artwork under them did, and this paragraph
+  is the one that goes stale when that happens** — it did exactly that at `T274-R2`.)*
 
   *(Until `T-274` this named `resources/icons/icon.png`, SHA-256 `f0e202c7…fe74b8d` (`T003-R5`),
   and argued that the artwork **contained no flat fills** — each colored region a cloud spanning
