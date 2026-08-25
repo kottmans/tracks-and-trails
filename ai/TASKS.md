@@ -5,12 +5,17 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-25 — **`T-278` is built and In Review**: the About dialog and its Help
-menu item both read **About**, the dialog's icon goes 64 → 112, and the video/audio sentence is
-gone — all four on maintainer instruction taken from the running application. **A defect came with
-it that nobody reported**: `Qt` reads `&` in a `QAction`'s label as a mnemonic, and `APP_NAME`
-contains one, so the menu item had been rendering as *"About Tracks _Trails"*. The short label
-removes the ampersand and the defect together.
+**Last updated:** 2026-08-25 — **`T-278` is Complete**, Approved with follow-up at `107236e`.
+The About dialog and its Help menu item both read **About**, the icon goes 64 → 112, and the
+video/audio sentence is gone. **Its three findings are one shape at three depths: a property
+asserted more confidently than it was tested.** `T278-R1` was a width rule that held at the one
+size it was measured at and was written up as holding generally; `T278-R2` was a comment that was
+false in the commit that wrote it; `T278-R3` was a screen-reader result nothing had listened to.
+**Nothing was ever wrong with what the maintainer asked for.**
+
+*(A defect came with it that nobody reported: `Qt` reads `&` in a `QAction`'s label as a mnemonic,
+and `APP_NAME` contains one, so the menu item had been rendering as *"About Tracks _Trails"*. The
+short label removes the ampersand and the defect together.)*
 
 *(Earlier that day: **`T-277` was built and In Review**, and it moves `T-276`'s
 boundary from 48 px to **32** on a second maintainer ruling the same day. `T-276` adopted the Icon
@@ -181,198 +186,6 @@ Phase 0 is formally exited (2026-07-26).
 ## In Review
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
-
-### T-278 — Shorten the About labels, enlarge its icon, and stop Qt eating the ampersand
-
-**Status:** **In Review — corrections made 2026-08-25, awaiting a focused pass.** First
-submission returned **Changes requested** at `bf48d7b` with one blocking finding. **`T278-R1` and
-`T278-R2` are corrected below.** The settled title, menu label, 112 px icon and shortened copy were
-implemented as asked and are not what came back.
-
-*(Built 2026-08-25 on maintainer instruction the same day, from the running application rather than
-from a spec: the maintainer opened the dialog and the Help menu and said what to change. Three of
-the four changes are what was asked for; the fourth is a defect the screenshot exposed and the
-first change happens to fix.)*
-
-#### `T278-R1` (Medium, blocking) — the width floor did not do what it claimed
-
-**The finding is right and the claim was mine.** I wrote that a `min-width: 340px` floor was *"a
-minimum, so the box still grows for a longer string or a larger font."* **A pixel floor does not
-scale with the font.** The reviewer held the box at 493 px and the label at exactly 340 px from
-9 pt through 19 pt, and at **18 and 19 pt Qt's breaker produced `yt-` / `dlp` again** — the exact
-defect the rule existed to prevent. **Removing the rule left the focused set green at 82 passed**,
-so nothing in the suite was holding it up.
-
-**Two further problems the finding names, and both are real.** `qt_msgbox_informativelabel` is
-created inside `QMessageBoxPrivate` and is not in the public API; and setting any stylesheet makes
-`canBeNativeDialog()` refuse the native message box, so the rule was silently choosing a platform
-path as well.
-
-**Measured again across the candidates before choosing** — the sweep is wider than the reviewer's
-because the first row is the surprise:
-
-| fix | 9 pt | 12 pt | 15 pt | 18 pt | 19 pt | 22 pt |
-|---|---|---|---|---|---|---|
-| none | **breaks** | **breaks** | ok | **breaks** | **breaks** | **breaks** |
-| `min-width: 340px` (submitted) | ok | ok | ok | **breaks** | **breaks** | ok |
-| `QMessageBox.setMinimumWidth()` from font metrics | **breaks** | **breaks** | ok | **breaks** | **breaks** | **breaks** |
-| **`U+2011` non-breaking hyphen** | **ok** | **ok** | **ok** | **ok** | **ok** | **ok** |
-
-**The default 9 pt breaks with no fix at all**, so this was never only a large-text problem — the
-submitted rule was masking it at the one size it was looked at.
-
-**`setMinimumWidth` was my own idea and it is dead**: `QMessageBox` measured *identical* widths to
-no fix at every size. Recorded because it is the obvious public-API answer and it does not work.
-
-**Chosen: the no-break character, and the trade-off is stated rather than buried.** `U+2011` is a
-different codepoint from the hyphen in the project's own name, so **text copied out of this dialog
-will not match a literal search for `yt-dlp`**. It is a hyphen to a screen reader, and it is
-metrically identical — same advance width, present in every font checked, so nothing about the
-rendering or the announcement changes. `YTDLP_DISPLAY_NAME` carries it as an explicit `\u2011`
-escape rather than a literal, because the two characters are indistinguishable in a source file and
-the next reader would otherwise "fix the typo".
-
-**Three regressions, and one of them is the control the first submission lacked.**
-`test_the_about_blurb_writes_the_tool_name_unbreakably` asserts the character is present;
-`test_the_tool_name_survives_every_width_and_font_size` lays the real blurb out at **53 widths x 6
-point sizes** and requires the name to survive all of them;
-`test_the_layout_check_can_see_a_name_that_does_split` puts the ordinary hyphen back and requires
-the same sweep to **find** the split. None reads the private label name — `QTextLayout` is asked
-about Qt's breaking decision directly.
-
-| mutation | result |
-|---|---|
-| `U+2011` → ordinary hyphen — **the defect** | **2 failed** |
-| width sweep narrowed to one wide width (500 px) | **1 failed** — the control fires |
-| point sweep narrowed to 15 pt alone | **85 passed — not caught**, and it should not be: the width sweep still reaches the split at that size, so the property is genuinely still enforced. Recorded rather than presented as a caught mutation |
-
-Baseline moves from the reviewer's **82 passed, 1 skipped** to **85 passed, 1 skipped**.
-
-#### `T278-R2` (Low) — a comment that contradicted its own commit
-
-The comment beside the title said the Help menu item *"keeps the long form"*, in the commit that
-changed it to `QAction("&About", …)`. **It was false when written, not stale.** It came from the
-first round, when only the dialog title was in scope, and survived the second instruction
-unedited. Corrected, and it now names `T278-R2` so the correction is legible where the claim was.
-
-**Focused-review follow-up — `T278-R3` (Low, non-blocking).** The source, this entry and STATUS
-say `U+2011` *"is a hyphen to a screen reader"* and that nothing about the announcement changes.
-`REQUIREMENTS.md` §3 explicitly keeps whether Narrator sounds coherent known-unverified, and no
-screen reader ran in either T-278 pass. The character substitution and its copy/search cost are
-accepted; completion synchronization must restate the speech result as expected but unverified,
-without weakening the verified line-breaking property. **Owner/target:** Implementer, T-278
-completion synchronization and the existing pre-release Narrator session. No further review pass.
-**Owner:** Implementer — built 2026-08-25, awaiting a verdict
-**Priority:** **Low.** Nothing is broken for a user who can read the menu; the ampersand defect is
-cosmetic and the rest is wording and size
-**Phase:** Phase 4 maintenance
-**Depends on:** nothing. `T-277` is unrelated — it moved which *cut* the `.ico` frames hold, not
-which frames exist, and this reads a frame that has always been there
-**Relevant context:** `src/tracks_and_trails/ui/main_window.py` (`show_about`, `_build_menus`),
-`tests/ui/test_windows_accessibility.py`, `T-007`, `T026-R2`
-**Affected surfaces:** the About dialog's title, informative text and icon; the Help menu's About
-item; two Windows-only accessibility expectations
-**Risk:** **Low, with one asterisk.** The two changed assertions are in
-`tests/ui/test_windows_accessibility.py`, which **does not run on Linux** — they are changed and
-unverified until the Windows job runs
-
-#### What was asked, and what was found
-
-| | before | after |
-|---|---|---|
-| dialog title | `About Tracks & Trails` | **`About`** |
-| Help menu item | `&About Tracks & Trails` | **`&About`** |
-| dialog icon | `pixmap(64, 64)` | **`pixmap(112, 112)`** |
-| informative text | `…MIT licensed. Video and audio are equal first-class citizens.` | **`…MIT licensed.`** |
-
-**The ampersand defect was not reported and is visible in the maintainer's own screenshot.** `Qt`
-reads `&` in a `QAction`'s text as a mnemonic marker, and `APP_NAME` contains one — so
-`QAction(f"&About {APP_NAME}")` consumed it and the item rendered as **"About Tracks _Trails"**,
-underlining the `T` of *Trails* rather than drawing an ampersand. **Escaping it as `&&` was the
-other fix**; the short label was what the maintainer asked for and it removes the ampersand
-altogether, so the two coincide. Recorded because the next person to lengthen that label will
-reintroduce it.
-
-**`112` was arrived at by looking, in three steps.** 64 was called too small; 128 drew *"not by
-much though"*; 112 is where it settled. The `.ico` carries a **128 px frame**, so this is a small
-downscale of a real frame rather than an upscale of the 64 — the frame set is `T-003`'s and is
-untouched by `T-277`, which moved only which cut those frames hold.
-
-#### The wrap this change introduced, and the fix
-
-**Shortening the informative text made the dialog narrower, and `QMessageBox` then broke `yt-dlp`
-across its hyphen** — `"…front-end for yt-"` / `"dlp, for Linux and Windows."`. A product name
-split mid-word reads as a typo, and it was not there before because the removed sentence had been
-forcing the box wider.
-
-`<nobr>yt-dlp</nobr>` was tried first and **does not survive Qt's width calculation** — rendered
-identically. What works is a floor on the informative label:
-`QLabel#qt_msgbox_informativelabel { min-width: 340px; }`. **A minimum, not a fixed width**, so the
-box still grows for a longer string or a larger font.
-
-340 was chosen by rendering: at **290** and **310** the sentence still drops to three lines
-(`"…for Linux and"` / `"Windows."`) while keeping `yt-dlp` whole; at **340** it sits on one line.
-
-#### What was not changed, and why
-
-- **`core/models.py` and `core/presets.py` still say video and audio are equal first-class
-  citizens.** Those are `REQ-002`'s design premise in code comments, not user-facing copy. The
-  instruction was about the About page
-- **`about_action.setStatusTip(f"…for {APP_NAME}")`** keeps the full name. A status tip is not a
-  mnemonic context, so the ampersand is safe there, and the long name is doing work in a sentence
-- **The window title and the other message boxes** still use `APP_NAME`. Only the About surfaces
-  were in scope
-
-#### How it was verified
-
-**By composing the real window and reading the widgets**, not by asserting on the source. A driver
-composed the application on a real display, opened the dialog through `show_about()` and printed
-what the widgets actually hold:
-
-```
-menu item text: '&About' | shown as: 'About'
-title: 'About'
-informative: 'A desktop front-end for yt-dlp, for Linux and Windows.<br>MIT licensed.'
-icon pixmap: 112 x 112
-```
-
-The dialog was also grabbed to an image at each candidate width, which is how 290/310/340 were
-compared. **The grabs are not retained**: they are regenerable from this head and
-`ai/evidence/`'s rule asks for the command rather than the artifact.
-
-*(**The driver left nine SIGABRT coredumps** — it composes the window and never calls
-`shutdown()`, so Qt aborts on a live `queue-writer` thread at exit. Recorded because `T-238`'s
-campaign greps `coredumpctl` and they would read as signal there. All nine are `about_shot.py`'s,
-2026-08-25 12:22–12:30, each confirmed by its recorded command line. **They are not deleted at this
-head**: `/var/lib/systemd/coredump/` is root-owned and this session has no non-interactive `sudo`,
-so the nine exact paths were handed to the maintainer to remove. **Nothing from 08-14, 08-19 or
-08-21 is in that list** — several of those are `SIGSEGV` and are the material `T-128` and `T-238`
-work from.)*
-
-#### Acceptance criteria
-
-- **The About dialog's title reads `About`** and the Help menu's item reads `About`
-- **The Help menu item contains no ampersand Qt can consume**, so the label renders as written
-- **The About icon is drawn from a real `.ico` frame** rather than upscaled from a smaller one
-- **`yt-dlp` is not broken across a line at any width or font size** — restated from *"at the
-  dialog's natural width"*, which is the wording `T278-R1` passed while failing at 18 and 19 pt.
-  A criterion that names one measurement is met by a fix that only holds there
-- **The two Windows accessibility expectations move with the labels** — they assert the announced
-  names, and a label change that left them behind would fail the Windows job rather than Linux
-
-#### Out of scope
-
-- **Any other surface's use of `APP_NAME`.** The main window title, the removal-confirm box and the
-  two other message boxes are unchanged
-- **A general audit of `&` in action labels.** This entry fixes the instance it found and names the
-  mechanism; whether other labels can be reached by a name containing `&` is not surveyed here
-- **The `<nobr>` behaviour.** That Qt ignores it in this width calculation is recorded as observed,
-  not investigated
-- **Whether `U+2011` should be used anywhere else.** It is a *display* spelling and this is the one
-  display site; every other use of the tool's name is data and keeps the ordinary hyphen
-
----
-
 
 ### T-277 — Move the split to 32 px, so the Icon cut reaches the slot the desktop draws
 
@@ -853,6 +666,220 @@ four passes. Phase 2's precedent held — a phase exit review finds what focused
 this one returned four verdicts before approving.*
 
 ## Complete
+
+### T-278 — Shorten the About labels, enlarge its icon, and stop Qt eating the ampersand
+
+**Status:** **Complete — Approved with follow-up at `107236e`**, 2026-08-25. `T278-R1` and
+`T278-R2` are **Resolved**; `T278-R3` was Low and non-blocking, assigned to the Implementer for
+completion synchronization with no further pass, and is **Resolved below**. The reviewer accepted
+the `U+2011` copy-and-search cost for this one descriptive About string.
+
+*(First submission returned **Changes requested** at `bf48d7b` with one blocking finding. The
+settled title, menu label, 112 px icon and shortened copy were implemented as asked and were never
+what came back.)*
+
+*(Built 2026-08-25 on maintainer instruction the same day, from the running application rather than
+from a spec: the maintainer opened the dialog and the Help menu and said what to change. Three of
+the four changes are what was asked for; the fourth is a defect the screenshot exposed and the
+first change happens to fix.)*
+
+#### `T278-R1` (Medium, blocking) — the width floor did not do what it claimed
+
+**The finding is right and the claim was mine.** I wrote that a `min-width: 340px` floor was *"a
+minimum, so the box still grows for a longer string or a larger font."* **A pixel floor does not
+scale with the font.** The reviewer held the box at 493 px and the label at exactly 340 px from
+9 pt through 19 pt, and at **18 and 19 pt Qt's breaker produced `yt-` / `dlp` again** — the exact
+defect the rule existed to prevent. **Removing the rule left the focused set green at 82 passed**,
+so nothing in the suite was holding it up.
+
+**Two further problems the finding names, and both are real.** `qt_msgbox_informativelabel` is
+created inside `QMessageBoxPrivate` and is not in the public API; and setting any stylesheet makes
+`canBeNativeDialog()` refuse the native message box, so the rule was silently choosing a platform
+path as well.
+
+**Measured again across the candidates before choosing** — the sweep is wider than the reviewer's
+because the first row is the surprise:
+
+| fix | 9 pt | 12 pt | 15 pt | 18 pt | 19 pt | 22 pt |
+|---|---|---|---|---|---|---|
+| none | **breaks** | **breaks** | ok | **breaks** | **breaks** | **breaks** |
+| `min-width: 340px` (submitted) | ok | ok | ok | **breaks** | **breaks** | ok |
+| `QMessageBox.setMinimumWidth()` from font metrics | **breaks** | **breaks** | ok | **breaks** | **breaks** | **breaks** |
+| **`U+2011` non-breaking hyphen** | **ok** | **ok** | **ok** | **ok** | **ok** | **ok** |
+
+**The default 9 pt breaks with no fix at all**, so this was never only a large-text problem — the
+submitted rule was masking it at the one size it was looked at.
+
+**`setMinimumWidth` was my own idea and it is dead**: `QMessageBox` measured *identical* widths to
+no fix at every size. Recorded because it is the obvious public-API answer and it does not work.
+
+**Chosen: the no-break character, and the trade-off is stated rather than buried.** `U+2011` is a
+different codepoint from the hyphen in the project's own name, so **text copied out of this dialog
+will not match a literal search for `yt-dlp`**. It is metrically identical to `U+002D` — same
+advance width, present in every font checked — so **the rendering does not change**. *(This
+sentence also said the announcement does not change. It is `T278-R3` and the claim is withdrawn:
+see below.)* `YTDLP_DISPLAY_NAME` carries it as an explicit `\u2011`
+escape rather than a literal, because the two characters are indistinguishable in a source file and
+the next reader would otherwise "fix the typo".
+
+**Three regressions, and one of them is the control the first submission lacked.**
+`test_the_about_blurb_writes_the_tool_name_unbreakably` asserts the character is present;
+`test_the_tool_name_survives_every_width_and_font_size` lays the real blurb out at **53 widths x 6
+point sizes** and requires the name to survive all of them;
+`test_the_layout_check_can_see_a_name_that_does_split` puts the ordinary hyphen back and requires
+the same sweep to **find** the split. None reads the private label name — `QTextLayout` is asked
+about Qt's breaking decision directly.
+
+| mutation | result |
+|---|---|
+| `U+2011` → ordinary hyphen — **the defect** | **2 failed** |
+| width sweep narrowed to one wide width (500 px) | **1 failed** — the control fires |
+| point sweep narrowed to 15 pt alone | **85 passed — not caught**, and it should not be: the width sweep still reaches the split at that size, so the property is genuinely still enforced. Recorded rather than presented as a caught mutation |
+
+Baseline moves from the reviewer's **82 passed, 1 skipped** to **85 passed, 1 skipped**.
+
+#### `T278-R2` (Low) — a comment that contradicted its own commit
+
+The comment beside the title said the Help menu item *"keeps the long form"*, in the commit that
+changed it to `QAction("&About", …)`. **It was false when written, not stale.** It came from the
+first round, when only the dialog title was in scope, and survived the second instruction
+unedited. Corrected, and it now names `T278-R2` so the correction is legible where the claim was.
+
+#### `T278-R3` (Low) — Resolved at completion. A claim about speech that nothing listened to
+
+**The finding is the same shape as `T278-R1`, one level down: a property asserted more confidently
+than it was tested.** `T278-R1` was a layout rule that held at the measured size and was written up
+as holding generally. This is a *speech* result that was never measured at all and was written up
+as settled — in the source, the task and STATUS alike.
+
+**What is verified stays verified**, and it is not small: the codepoint, its presence in every font
+checked, an advance width identical to `U+002D`, the line-breaking behaviour across 53 widths and
+six point sizes, and the copy/search difference. **What is withdrawn is one sentence** — that
+`U+2011` *"is a hyphen to a screen reader"* and that the announcement is unchanged. **No screen
+reader ran in either pass.**
+
+**It is now expected-but-unverified at all three sites**, worded to match `REQUIREMENTS.md` §3,
+which already keeps whether Narrator sounds coherent known-unverified and blocks the first public
+release on a real Windows session. This belongs to that session rather than to a fourth assertion
+here. *(Original finding text below.)*
+
+**Focused-review follow-up — `T278-R3` (Low, non-blocking).** The source, this entry and STATUS
+say `U+2011` *"is a hyphen to a screen reader"* and that nothing about the announcement changes.
+`REQUIREMENTS.md` §3 explicitly keeps whether Narrator sounds coherent known-unverified, and no
+screen reader ran in either T-278 pass. The character substitution and its copy/search cost are
+accepted; completion synchronization must restate the speech result as expected but unverified,
+without weakening the verified line-breaking property. **Owner/target:** Implementer, T-278
+completion synchronization and the existing pre-release Narrator session. No further review pass.
+**Owner:** Implementer — built 2026-08-25, awaiting a verdict
+**Priority:** **Low.** Nothing is broken for a user who can read the menu; the ampersand defect is
+cosmetic and the rest is wording and size
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-277` is unrelated — it moved which *cut* the `.ico` frames hold, not
+which frames exist, and this reads a frame that has always been there
+**Relevant context:** `src/tracks_and_trails/ui/main_window.py` (`show_about`, `_build_menus`),
+`tests/ui/test_windows_accessibility.py`, `T-007`, `T026-R2`
+**Affected surfaces:** the About dialog's title, informative text and icon; the Help menu's About
+item; two Windows-only accessibility expectations
+**Risk:** **Low, with one asterisk.** The two changed assertions are in
+`tests/ui/test_windows_accessibility.py`, which **does not run on Linux** — they are changed and
+unverified until the Windows job runs
+
+#### What was asked, and what was found
+
+| | before | after |
+|---|---|---|
+| dialog title | `About Tracks & Trails` | **`About`** |
+| Help menu item | `&About Tracks & Trails` | **`&About`** |
+| dialog icon | `pixmap(64, 64)` | **`pixmap(112, 112)`** |
+| informative text | `…MIT licensed. Video and audio are equal first-class citizens.` | **`…MIT licensed.`** |
+
+**The ampersand defect was not reported and is visible in the maintainer's own screenshot.** `Qt`
+reads `&` in a `QAction`'s text as a mnemonic marker, and `APP_NAME` contains one — so
+`QAction(f"&About {APP_NAME}")` consumed it and the item rendered as **"About Tracks _Trails"**,
+underlining the `T` of *Trails* rather than drawing an ampersand. **Escaping it as `&&` was the
+other fix**; the short label was what the maintainer asked for and it removes the ampersand
+altogether, so the two coincide. Recorded because the next person to lengthen that label will
+reintroduce it.
+
+**`112` was arrived at by looking, in three steps.** 64 was called too small; 128 drew *"not by
+much though"*; 112 is where it settled. The `.ico` carries a **128 px frame**, so this is a small
+downscale of a real frame rather than an upscale of the 64 — the frame set is `T-003`'s and is
+untouched by `T-277`, which moved only which cut those frames hold.
+
+#### The wrap this change introduced, and the fix
+
+**Shortening the informative text made the dialog narrower, and `QMessageBox` then broke `yt-dlp`
+across its hyphen** — `"…front-end for yt-"` / `"dlp, for Linux and Windows."`. A product name
+split mid-word reads as a typo, and it was not there before because the removed sentence had been
+forcing the box wider.
+
+`<nobr>yt-dlp</nobr>` was tried first and **does not survive Qt's width calculation** — rendered
+identically. What works is a floor on the informative label:
+`QLabel#qt_msgbox_informativelabel { min-width: 340px; }`. **A minimum, not a fixed width**, so the
+box still grows for a longer string or a larger font.
+
+340 was chosen by rendering: at **290** and **310** the sentence still drops to three lines
+(`"…for Linux and"` / `"Windows."`) while keeping `yt-dlp` whole; at **340** it sits on one line.
+
+#### What was not changed, and why
+
+- **`core/models.py` and `core/presets.py` still say video and audio are equal first-class
+  citizens.** Those are `REQ-002`'s design premise in code comments, not user-facing copy. The
+  instruction was about the About page
+- **`about_action.setStatusTip(f"…for {APP_NAME}")`** keeps the full name. A status tip is not a
+  mnemonic context, so the ampersand is safe there, and the long name is doing work in a sentence
+- **The window title and the other message boxes** still use `APP_NAME`. Only the About surfaces
+  were in scope
+
+#### How it was verified
+
+**By composing the real window and reading the widgets**, not by asserting on the source. A driver
+composed the application on a real display, opened the dialog through `show_about()` and printed
+what the widgets actually hold:
+
+```
+menu item text: '&About' | shown as: 'About'
+title: 'About'
+informative: 'A desktop front-end for yt-dlp, for Linux and Windows.<br>MIT licensed.'
+icon pixmap: 112 x 112
+```
+
+The dialog was also grabbed to an image at each candidate width, which is how 290/310/340 were
+compared. **The grabs are not retained**: they are regenerable from this head and
+`ai/evidence/`'s rule asks for the command rather than the artifact.
+
+*(**The driver left nine SIGABRT coredumps** — it composes the window and never calls
+`shutdown()`, so Qt aborts on a live `queue-writer` thread at exit. Recorded because `T-238`'s
+campaign greps `coredumpctl` and they would read as signal there. All nine are `about_shot.py`'s,
+2026-08-25 12:22–12:30, each confirmed by its recorded command line. **They are not deleted at this
+head**: `/var/lib/systemd/coredump/` is root-owned and this session has no non-interactive `sudo`,
+so the nine exact paths were handed to the maintainer to remove. **Nothing from 08-14, 08-19 or
+08-21 is in that list** — several of those are `SIGSEGV` and are the material `T-128` and `T-238`
+work from.)*
+
+#### Acceptance criteria
+
+- **The About dialog's title reads `About`** and the Help menu's item reads `About`
+- **The Help menu item contains no ampersand Qt can consume**, so the label renders as written
+- **The About icon is drawn from a real `.ico` frame** rather than upscaled from a smaller one
+- **`yt-dlp` is not broken across a line at any width or font size** — restated from *"at the
+  dialog's natural width"*, which is the wording `T278-R1` passed while failing at 18 and 19 pt.
+  A criterion that names one measurement is met by a fix that only holds there
+- **The two Windows accessibility expectations move with the labels** — they assert the announced
+  names, and a label change that left them behind would fail the Windows job rather than Linux
+
+#### Out of scope
+
+- **Any other surface's use of `APP_NAME`.** The main window title, the removal-confirm box and the
+  two other message boxes are unchanged
+- **A general audit of `&` in action labels.** This entry fixes the instance it found and names the
+  mechanism; whether other labels can be reached by a name containing `&` is not surveyed here
+- **The `<nobr>` behaviour.** That Qt ignores it in this width calculation is recorded as observed,
+  not investigated
+- **Whether `U+2011` should be used anywhere else.** It is a *display* spelling and this is the one
+  display site; every other use of the tool's name is data and keeps the ordinary hyphen
+
+---
 
 ### T-275 — Ship 32 px from a cut that keeps the trees and drops the sound-wave arcs
 

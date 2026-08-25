@@ -231,9 +231,14 @@ MIN_SIZE: Final = QSize(240, 160)
 #:
 #: **The cost, stated rather than buried:** `U+2011` is a different codepoint from the hyphen in
 #: the project's name, so text copied out of this dialog will not match a literal search for
-#: `yt-dlp`. It is a hyphen to a screen reader and is metrically identical — same advance width,
-#: present in every font checked — so nothing about the rendering or the announcement changes.
-#: **Anywhere the string is data rather than display, use the ordinary hyphen.**
+#: `yt-dlp`. **Anywhere the string is data rather than display, use the ordinary hyphen.**
+#:
+#: **What is verified is the rendering, not the speech** (`T278-R3`). Measured: the codepoint, its
+#: presence in every font checked, an advance width identical to `U+002D`, the line-breaking
+#: behaviour, and the copy/search difference. **No screen reader has read this string.** A
+#: non-breaking hyphen is *expected* to be announced as an ordinary hyphen, and that expectation is
+#: unverified — `REQUIREMENTS.md` §3 keeps whether Narrator sounds coherent known-unverified, and
+#: this belongs to the same pre-release session rather than being settled here by assertion.
 YTDLP_DISPLAY_NAME: Final = "yt\u2011dlp"
 
 _ICON_DIR: Final = Path(__file__).resolve().parent.parent / "resources" / "icons"

@@ -5,6 +5,42 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-25 — **`T-278` is Complete**, Approved with follow-up at `107236e`.
+`T278-R1` and `T278-R2` are Resolved; `T278-R3` was Low and non-blocking and is resolved at
+completion with no further pass.
+
+**Three findings, one shape at three depths — a property asserted more confidently than it was
+tested.** `T278-R1` was a width rule that held at the one size it was measured at and that I wrote
+up as holding for any font. `T278-R2` was a comment that was false in the commit that wrote it.
+`T278-R3` is a **screen-reader result nothing had listened to**: the source, the task and this file
+all said `U+2011` *"is a hyphen to a screen reader"* and that the announcement was unchanged. **No
+screen reader ran in either pass.**
+
+**What that leaves standing is still most of it.** Verified: the codepoint, its presence in every
+font checked, an advance width identical to `U+002D`, the line-breaking behaviour over 53 widths
+and six point sizes, and the copy/search cost. **Withdrawn: one sentence about speech**, now
+expected-but-unverified at all three sites and worded to match `REQUIREMENTS.md` §3, which already
+keeps whether Narrator sounds coherent known-unverified and blocks the first public release on a
+real Windows session. This belongs to that session rather than to a fourth assertion here.
+
+**The reviewer accepted the `U+2011` copy-and-search cost** for this one descriptive About string:
+it is explanatory display text, not a command, URL, identifier or log field, and every spelling
+where data fidelity matters stays ASCII.
+
+**Independent results:** 100 passed, 1 Windows skip; ASCII substitution failed 2 tests; narrowing
+the width sweep failed its control; ruff and all three mypy variants clean.
+
+**Board:** `T-277` and `T-276` **In Review**, `T-272` **In Review** (approved, and see the orphan
+note below). `T-238` **Ready**, criterion 4 unanswered. `T-273` and `T-184` **Proposed**. `T-268`
+and `T-074` **Blocked on a person at `STARBASE`**. `T-275` **Cancelled**, `T-278` **Complete**.
+**`T-212` is still the only thing between this phase and its exit review.**
+
+**Four commits are held and nothing is pushed** — `dcd06a0`, `4f3ca78`, `bf48d7b`, `107236e` plus
+the reviewer's two records. The push is the maintainer's (`AGENTS.md` §7), and it is what the
+Windows job and `T-272`'s Linux nightly both need.
+
+---
+
 **Last updated:** 2026-08-25 — **`T-278` came back with Changes requested, and the blocking
 finding is a claim I made about my own fix that was simply false.**
 
@@ -33,9 +69,14 @@ every size.
 
 **Chosen: the no-break character, with the cost stated rather than buried.** `U+2011` is a
 different codepoint from the hyphen in the project's own name, so **text copied out of the dialog
-will not match a literal search for `yt-dlp`**. It is a hyphen to a screen reader and metrically
-identical — same advance width, present in every font checked. It is written as an explicit
-`\u2011` escape because the two characters are indistinguishable in source.
+will not match a literal search for `yt-dlp`**. It is metrically identical to `U+002D` — same
+advance width, present in every font checked — so **the rendering does not change**. It is written
+as an explicit `\u2011` escape because the two characters are indistinguishable in source.
+
+*(**This said it "is a hyphen to a screen reader" and that is withdrawn** — `T278-R3`. No screen
+reader read it. What was measured is the codepoint, the glyph, the metrics, the line breaking and
+the copy/search cost; the announcement is **expected** to be unchanged and is **unverified**, and
+it belongs to the pre-release Narrator session `REQUIREMENTS.md` §3 already keeps open.)*
 
 **The control is the part that was missing the first time.** Three regressions now: the character
 is present; the real blurb survives **53 widths x 6 point sizes**; and the same sweep, handed the
