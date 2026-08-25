@@ -5,7 +5,14 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-25 — **`T-276` is built and In Review**, on a direct maintainer
+**Last updated:** 2026-08-25 — **`T-277` is built and In Review**, and it moves `T-276`'s
+boundary from 48 px to **32** on a second maintainer ruling the same day. `T-276` adopted the Icon
+cut but pinned it at 48 and above; measured on the running application, **the KDE panel resolves to
+the 32 px frame and the titlebar to 16 or 24**, so the new artwork shipped into no slot a user
+looks at. Two files change. The titlebar is measured to be unchanged, which is the half of the
+ruling that could have gone wrong.
+
+*(Earlier that day: **`T-276` was built and In Review**, on a direct maintainer
 instruction the same day: Logo Asset Package **v1.1** adds an **Icon** cut — the Standard artwork
 with the sound-wave arcs removed — and it now ships at **48 px and above**. Sixteen, 24 and 32 are
 byte-for-byte unchanged. **The interesting half is not the asset.** Every check that told one
@@ -14,10 +21,8 @@ Small cut's — so cut identity is now a pair, gold for the arcs and green mass 
 each with a control in both directions. The Standard cut stays vendored, rendering nothing, purely
 so the arc predicate can be shown a positive.
 
-**The same ruling refused `T-275`, which is now `Cancelled`** and sits under `## Complete`. It
-asked for this cut at 32 px; the pack gives it a 48 px floor for the reason `T-275` itself had
-measured and recorded. Nothing in it was found to be wrong, and `T-276` is built against its
-numbers.
+The morning ruling refused `T-275`, which is `Cancelled` under `## Complete`; the evening ruling
+granted the band it asked for, and its entry records both.)*
 
 *(2026-08-21: **`T-274` is Complete**, Approved with follow-ups at `60dbbcf`, on a direct
 maintainer instruction the same day: the revamped logo pack replaces every icon asset, and the
@@ -170,10 +175,149 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+### T-277 — Move the split to 32 px, so the Icon cut reaches the slot the desktop draws
+
+**Status:** **In Review — built 2026-08-25 on a maintainer ruling the same day**, hours after
+`T-276` shipped the Icon cut at 48 px and above. **`T-276` was not wrong and is not reverted**: it
+adopted the cut, built the identity checks and their controls, and all of that stands. What it got
+wrong is a fact neither it nor the pack could see from inside the repository — **on the desktop
+this application actually runs on, nothing draws a frame at 48 px or above**, so the new artwork
+shipped and then appeared nowhere.
+**Owner:** Implementer — built 2026-08-25, awaiting a verdict
+**Priority:** **Medium.** Nothing is broken and no user is blocked; the icon is simply the reduced
+cut in every slot a user sees, which is the state `T-276` intended to end
+**Phase:** Phase 4 maintenance
+**Depends on:** `T-276`, which vendored the cut and built the checks this moves the boundary of
+**Relevant context:** `tools/icons/render_icons.py`, `tests/ui/test_resources.py`,
+`tests/unit/test_resources.py`, `ai/evidence/2026-08-25-T277-icon-in-the-desktop-slots.png`,
+`T-274`, `T-275`, `T-276`, `T274-R1`
+**Affected surfaces:** `icon-32.png` and the `.ico`'s 32 px frame — **two files** — plus the band
+constants in three places and the reasoning attached to them. **No source module changed**
+**Risk:** **Low.** The identity checks and both their controls come from `T-276` unchanged; only
+the band moves, and the tests are parameterized over it
+
+#### The ruling — maintainer, 2026-08-25
+
+**The titlebar keeps the Small cut; the panel gets the cut without the sound-wave arcs.** That is
+`SMALL_SIZES = {16, 24}`, and the boundary lands at 32 rather than the pack's 48.
+
+**This is the second ruling on this boundary in one day and it reverses the first.** The morning
+ruling followed the pack — Icon cut at 48 and above — on the pack's stated floor. The evening
+ruling was taken after seeing the cuts rendered at 32 px side by side *and* after measuring what
+the running application's icon actually resolves to. **`T-275` asked for exactly this band on
+2026-08-24 and was refused on 2026-08-25; it is granted here.** That entry stays `Cancelled`
+because its *three-band* shape is still refused — it wanted the Standard cut kept above 48 — but
+the band it asked for is what ships.
+
+#### What the pack could not know
+
+The pack's floor is a legibility judgement about artwork: below 48 px the third tree and the
+mountain notch stop resolving, and the Icon cut keeps both. **That judgement is not disputed and
+this entry does not claim the trees read well at 32.** They do not — `T-275` measured that they
+*"read as texture rather than as three conifers"*, and the comparison sheet the maintainer ruled on
+shows it plainly.
+
+What overrides it is a second constraint the pack has no view of: **a cut that never reaches a slot
+is not legible anywhere.** Measured on the running application, KDE 6 / Wayland, KWin 6.7.3, 46 px
+panel, scale 1, by locating the mark in a full-screen capture and reading its ink bounds:
+
+| slot | ink bounds | implied frame | green coverage | cut it was getting |
+|---|---|---|---|---|
+| window titlebar | 14x18 px | ~21 px | 0.1328 | Small |
+| panel task manager | 22x27 px | ~31 px | 0.1180 | **Small** |
+
+**Both slots sat below the 48 px boundary**, so `T-276`'s asset shipped into nothing a user looks
+at. The task switcher and the About dialog do ask for 64, and those were correct throughout.
+
+#### What was built
+
+**`SMALL_SIZES` moves from `{16, 24, 32}` to `{16, 24}`.** Two files change:
+`icon-32.png` and the `.ico`'s 32 px frame. **Nothing else in `resources/icons/` differs** — 16,
+24, 48 and up are byte-identical to `T-276`'s output, which is the blast radius the ruling
+predicts.
+
+**The checks needed no new property.** `T-276` built cut identity as a pair — gold for the arcs,
+green mass for the landscape — with a control in each direction, and both bands are parameterized
+over `SMALL_SIZES` and its complement. Moving the boundary moves every assertion and every control
+with it. The green floor holds at 32 with room to spare: the Icon cut is **0.1895** there against
+the Small cut's **0.1172**, either side of `GREEN_FLOOR = 0.15`.
+
+#### The measurement that proves it landed
+
+Re-measured from a second full-screen capture, application relaunched on the new assets:
+
+| slot | before | after | |
+|---|---|---|---|
+| titlebar | ink 14x18, green 58, gold 26 | ink 14x18, green 58, gold 26 | **unchanged** |
+| panel | ink 22x27, green 116, coverage 0.1180 | ink 21x27, green **183**, coverage **0.1862** | **cut changed** |
+
+**The titlebar is byte-for-byte the same measurement**, which is the half of the ruling that could
+have gone wrong and is why it was measured rather than assumed: had KWin been scaling the titlebar
+down from the 32 frame, this change would have altered it too. It draws from 16 or 24 and does not.
+
+`ai/evidence/2026-08-25-T277-icon-in-the-desktop-slots.png` is the before/after, magnified 10x.
+
+#### Mutations run — all eleven from `T-276`, re-run against the moved band
+
+Every one still caught, tree hashed back to clean after each. Two counts move because the bands
+changed width, and both moves are accounted for rather than noted:
+
+| mutation | `T-276` | here |
+|---|---|---|
+| `SMALL_SIZES = {16}` — 24 to the Icon cut | — | **2 failed** |
+| `SMALL_SIZES = {16, 24, 32}` — `T-276`'s own band, now wrong | — | **2 failed** |
+| `SMALL_SIZES = {16, 24, 32, 64}` — `T274-R3`'s escape | 2 failed | **4 failed** |
+| `SMALL_SIZES = {}` — every size the Icon cut | 6 failed | **4 failed** |
+| `SMALL_SIZES` = every size — all Small | 9 failed | **11 failed** |
+| `icon.svg := icon-standard.svg` — the arcs come back | 9 failed | **11 failed** |
+| `icon-standard.svg` deleted | 9 failed | **9 failed** |
+| `GREEN_FLOOR` → 0.12 | 6 failed | **6 failed** |
+| `GREEN_FLOOR` → 0.19 | 11 failed | **12 failed** |
+| `ARC_SHARE` → 0.15 | 5 failed | **6 failed** |
+| `ARC_SHARE` → 0.005 | 2 failed | **2 failed** |
+
+The counts that moved are the ones parameterized over the bands that changed width: the Icon band
+went from five sizes to six and its `.ico` sources from four to five, while the Small band lost a
+size. `SMALL_SIZES = {}` **falls** from 6 to 4 for that reason — with only 16 and 24 left below the
+split, there are two fewer shipped assets for it to break.
+
+*(**`GREEN_FLOOR` → 0.19 was written here as 13 before it was run, and it is 12.** The Icon cut at
+16 px measures 0.1953 and clears a 0.19 floor, so only 24 fails that control rather than both. The
+figure was predicted from the band widths instead of measured — the error is small and in the
+direction that overstates the gate, which is the direction that matters.)*
+
+#### Acceptance criteria
+
+- **The panel task manager draws the Icon cut and the titlebar draws the Small cut**, measured on
+  the running application rather than inferred from the asset set
+- **`icon-32.png` and the 32 px `.ico` frame are the only assets that change**, and the rest are
+  byte-identical to `T-276`'s output
+- **Every identity check and both controls move with the band**, with no new predicate and no
+  weakening of the ones `T-276` proved
+- **The three places the band is written stay in step** — the renderer's frozenset and the two
+  test-module literals, which is `T-275`'s named trap and `T274-R1`'s finding
+
+#### Out of scope
+
+- **The artwork.** The trees at 32 px are soft; that is priced in and recorded, not fixed here
+- **A desktop entry.** There is no `.desktop` file anywhere — not in the repository and not
+  installed — which is why no slot on this machine asks for 48 or 64 in the first place. **No task
+  is filed for it yet**; it is named here so the gap is on the record rather than rediscovered
+- **`T-276`'s identity checks**, which are unchanged and are what made this a two-file change
+
+---
+
 ### T-276 — Ship the pack's Icon cut at 48 px and above
 
-**Status:** **In Review — built 2026-08-25 on a maintainer instruction the same day.** Logo Asset
-Package **v1.1** shipped that morning and adds a third cut, drawn for exactly this use: the
+**Status:** **In Review — built 2026-08-25 on a maintainer instruction the same day.**
+
+> **The band this entry ships is superseded by `T-277`, later the same day.** Everything below
+> about the cut, the identity checks and their controls stands unchanged and is what `T-277`
+> builds on; what moved is only **where** the Icon cut starts — 48 px here, **32** after `T-277`,
+> because no slot on the target desktop draws a frame at 48 or above. This pointer is here rather
+> than an edit to the text below, so the reviewer sees the head that was handed off.
+
+Logo Asset Package **v1.1** shipped that morning and adds a third cut, drawn for exactly this use: the
 Standard artwork with the two sound-wave arcs removed and the artboard re-centred around what is
 left. The maintainer directed that the icon move to it. **The artwork question is settled and is
 not what this task is for.** What made it more than a file swap is that **every check that told
@@ -514,7 +658,11 @@ this one returned four verdicts before approving.*
 ### T-275 — Ship 32 px from a cut that keeps the trees and drops the sound-wave arcs
 
 **Status:** **Cancelled — refused by the maintainer ruling of 2026-08-25**, four days after
-filing and one day after `T-274` closed. **Nothing here was found to be wrong.** Every measurement
+filing and one day after `T-274` closed. **A second ruling the same evening granted the band this
+entry asked for** — the Icon cut at 32 px — and `T-277` ships it. This stays `Cancelled` because
+what it proposed was **three** bands, keeping the Standard cut above 48, and that is still refused:
+`T-277` is two bands split at 32. **The disposition is unchanged and the reason for it is now
+half wrong**, which is recorded here rather than by rewriting the entry. **Nothing here was found to be wrong.** Every measurement
 below stands and `T-276` was built against them; what the ruling rejected is the *band*, and it
 did so on evidence that did not exist when this was filed.
 

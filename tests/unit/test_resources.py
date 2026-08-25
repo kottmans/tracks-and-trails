@@ -33,15 +33,18 @@ PNG_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 #: Sizes rendered from the pack's Small cut rather than its Icon cut (`T-274`, re-cut by
-#: `T-276`).
+#: `T-276`, moved to 32 by `T-277`).
 #:
 #: Stated here rather than imported from `tools/icons/render_icons.py`, so that the expectation
-#: is independent of the script that has to meet it. The pack's own measurement of this artwork
-#: sets the boundary, and **what it measures changed at `T-276`**: the cut drawn above the split
-#: no longer has sound-wave arcs to break into speckle, so the floor is now the third tree and
-#: the mountain notch, which stop resolving below 48 px. The boundary lands on the same three
-#: sizes for a different reason, which is why it is written out rather than left implied.
-SMALL_SIZES = (16, 24, 32)
+#: is independent of the script that has to meet it. **This literal has been wrong-by-omission
+#: once already** — `T274-R1` found the boundary stated in this file and enforced at one of its
+#: three sizes — so it moves whenever the renderer's does, and the renderer's docstring carries
+#: the reasoning rather than this comment duplicating it.
+#:
+#: `T-277` set it to two sizes: the panel task manager on a KDE 6 session resolves to the **32**
+#: frame and the titlebar to **16 or 24**, so 32 is where the fuller cut has to start for it to
+#: reach any slot the desktop actually draws.
+SMALL_SIZES = (16, 24)
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 

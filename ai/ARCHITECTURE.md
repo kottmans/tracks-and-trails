@@ -392,8 +392,9 @@ classification. Classification is a hint, not a replacement.
 
   Source of record: **`tools/icons/masters/icon.svg`**, SHA-256
   `f45da7750348681fd65ecf4fc4e767bb5759ce81fea7e4653e7737c97744f4b4` — the vendored vector
-  artboard every shipped icon at 48 px and above is rendered from (`T-274`, re-cut by `T-276`).
-  Two facts about it bear on this table and neither changes a swatch:
+  artboard every shipped icon at 32 px and above is rendered from (`T-274`, re-cut by `T-276`,
+  boundary moved to 32 by `T-277`). Two facts about it bear on this table and neither changes a
+  swatch:
 
   - It declares `#1E5E47` and `#D9A24C` as **literal flat fills**, its only two. For those two the
     artwork and the definition now agree by construction, so the question of what the artwork

@@ -12,7 +12,8 @@ there (`OPS-003`).
 vendored SVG artboards in `tools/icons/masters/` — and rewrote the trail check below, which had
 been measuring a property the new artwork does not have.
 
-`T-276` moved the sizes at and above 48 px onto the pack's **Icon** cut, which is the Standard
+`T-276` moved the sizes at and above 48 px onto the pack's **Icon** cut — `T-277` then moved
+that boundary down to 32 — which is the Standard
 artwork with the two sound-wave arcs removed. **That broke every check in this module that told
 one shipped cut from the other**, because all of them read gold and the Icon cut's gold is the
 trail alone — indistinguishable from the Small cut's. The cut identity is now a pair: gold says
@@ -136,12 +137,13 @@ def gold_runs(image: QImage) -> list[int]:
     return sorted(runs, reverse=True)
 
 
-#: Sizes at or above the pack's 48 px floor: everything the Small cut does not cover.
+#: Sizes drawn from the Icon cut: everything the Small cut does not cover. 32 and up (`T-277`).
 #:
 #: **Derived by subtraction, and that is only safe while there are exactly two bands.** `T-275`
 #: proposed a third — the Icon cut at 32 px with the Standard cut kept above — and named this
 #: line as the trap: a third band has to be subtracted here too, or these tests run at a size
-#: whose asset was built to a different cut. The ruling of 2026-08-25 refused that third band, so
+#: whose asset was built to a different cut. The rulings of 2026-08-25 refused that third band
+#: twice over — first by keeping the Icon cut at 48 and up, then by moving it down to 32 — so
 #: two bands is the current shape rather than a shape nobody considered changing.
 LARGE_SIZES = tuple(size for size in PNG_SIZES if size not in SMALL_SIZES)
 
@@ -317,7 +319,7 @@ def test_the_small_cut_is_what_ships_at_every_small_size(
 def test_the_icon_cut_is_what_ships_at_and_above_the_split(
     qapp: QApplication, source: str, size: int
 ) -> None:
-    """And at or above the split it is the Icon cut — both properties, read the other way.
+    """And at or above the split — 32 px and up since `T-277` — it is the Icon cut.
 
     **This half is not required by `T274-R1` and is here because the hole is symmetric.** With
     only the small sizes asserted, a renderer that moved 48 px — or all of them — onto the Small

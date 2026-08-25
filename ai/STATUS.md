@@ -5,6 +5,80 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-25 — **`T-277` moves the icon boundary from 48 px to 32, because
+`T-276` shipped the new artwork into a size no slot on this desktop draws.**
+
+**`T-276` was not wrong and is not reverted.** It adopted the pack's Icon cut, built cut identity
+as a pair of predicates and gave both a control in each direction — all of that stands and is what
+made today's change two files. What it could not see from inside the repository is **which `.ico`
+frame each slot actually resolves to.** Measured on the running application, KDE 6 / Wayland, KWin
+6.7.3, 46 px panel, scale 1:
+
+| slot | ink bounds | implied frame | cut it was getting |
+|---|---|---|---|
+| window titlebar | 14x18 px | ~21 px | Small |
+| panel task manager | 22x27 px | ~31 px | **Small** |
+
+Both sat below 48, so the arcs-free cut shipped and appeared nowhere a user looks. **The maintainer
+ruled the split to 32 the same evening**: titlebar keeps the Small cut, panel gets the cut without
+the sound-wave arcs.
+
+**Two files changed** — `icon-32.png` and the `.ico`'s 32 px frame. Everything else in
+`resources/icons/` is byte-identical to `T-276`'s output.
+
+**The titlebar was measured, not assumed, and that is the half that could have gone wrong.** Had
+KWin been scaling the titlebar down from the 32 frame, this would have changed it too. Re-measured
+after relaunching on the new assets: titlebar **ink 14x18, green 58, gold 26 — identical**; panel
+green **116 → 183**, coverage **0.1180 → 0.1862**, across `GREEN_FLOOR`.
+`ai/evidence/2026-08-25-T277-icon-in-the-desktop-slots.png` is the before/after at 10x.
+
+**Eleven mutations re-run against the moved band, all caught**, tree hashed back to clean after
+each. `T274-R3`'s escape now fails 4 rather than 2; the arcs returning fails 11.
+
+*(**One figure in that table was written before it was run and was wrong.** `GREEN_FLOOR` → 0.19
+was predicted at 13 and measures **12** — the Icon cut at 16 px is 0.1953 and clears a 0.19 floor,
+so only 24 fails that control. Predicted from band widths instead of measured, and it overstated
+the gate. Corrected in `T-277` where it is recorded.)*
+
+**This is the second ruling on this boundary in one day and it reverses the first**, which followed
+the pack's 48 px floor. The pack's reasoning is a legibility judgement about artwork and is not
+disputed — **the trees at 32 px are soft and that is priced in**. What overrides it is that a cut
+which never reaches a slot is not legible anywhere. **`T-275` asked for this band on 2026-08-24 and
+was refused on 2026-08-25; the evening ruling grants it.** It stays `Cancelled`, because its
+three-band shape is still refused.
+
+**The gap this exposed is that there is no `.desktop` file at all** — not in the repository, not
+installed — so nothing on this machine ever asks for a 48 or 64 px frame. The task switcher and the
+About dialog do, and were correct throughout. **No task is filed for a desktop entry**; it is named
+in `T-277`'s Out of scope so it is on the record.
+
+---
+
+**A live orphan specimen exists, and `T-272`'s record says it does not.** Found incidentally while
+launching the application for the measurement above. `tools/orphan_scan.py` on this machine exits
+**1** and reports pid `434366`, started 2026-08-16 01:12:15, **9d10h old**, two threads, dead
+parent `2139` — holding **`pipe:[1629660]`**, the exact inode `T-272` and
+`ai/evidence/2026-08-20-linux-orphans-on-kirk.md` both quote. `432922`, the resource tracker, is
+alive beside it.
+
+**`T-272` is In Review and approved, and states the opposite**: *"Both PIDs are gone from `ps`"*,
+and its preservation criterion is struck as *"no specimen remains available."* The evidence file
+and this document repeat it.
+
+**Two further observations, and no inference joining them.** This host is `Spock`, booted
+2026-08-14 12:18; `T-272` describes `kirk`, *"up since 2026-08-10"*. Identical PIDs, PPID, start
+times and pipe inode cannot occur on two machines. **Why the 2026-08-20 re-scan returned zero is
+not established here** — it may have run against a different host, or been wrong — and choosing
+between those from this distance is the move `T272-R3` exists to prevent.
+
+**Read-only state was captured and nothing was signalled** (`T258-R4`): `ps`, `/proc/*/status`,
+cmdline, cwd, exe, per-thread `wchan` and the full fd table. **This is the live specimen `T-238`'s
+criterion 4 and `T-268` were told no longer existed.** No task is filed and `T-272`'s entry is
+untouched: it is under review, and this is a finding against it rather than the implementer's to
+fold in.
+
+---
+
 **Last updated:** 2026-08-25 — **`T-276` is built and In Review: the icon moves to the pack's
 Icon cut at 48 px and above, and the check that used to police the boundary went blind in the same
 moment the asset changed.**

@@ -15,8 +15,8 @@ Nothing there is a source any more.
 
 | master | pack cut | role |
 |---|---|---|
-| `icon.svg` | **Icon** | rendered at 48 px and above, and at `MASTER_SIZE` |
-| `icon-small.svg` | **Small** | rendered below 48 px |
+| `icon.svg` | **Icon** | rendered at 32 px and above, and at `MASTER_SIZE` |
+| `icon-small.svg` | **Small** | rendered at 16 and 24 px |
 | `icon-standard.svg` | **Standard** | **not rendered** — see below |
 
 `masters/PACK-README.txt` is the pack's own documentation and is the provenance for everything
@@ -47,20 +47,43 @@ Each asset is rendered from the vector at its own size. Supersampling was measur
 rendering at 4x and smooth-scaling down moves the 16 px gold-pixel count by 2 and every other
 size by 0 or 1, so it buys nothing and adds a step that could soften an edge.
 
-## The split at 48 px
+## The split at 32 px, and why it is not the pack's 48
 
-`SMALL_SIZES` is where the Icon cut stops being drawn and the Small cut takes over, and **the
-pack's measurement of this artwork sets it**: below 48 px the third tree and the mountain notch
-stop resolving. The Icon cut keeps every one of those features — it drops only the arcs — so it
-shares the Standard cut's 48 px floor rather than earning a lower one, and 16, 24 and 32 come
-from `icon-small.svg`.
+`SMALL_SIZES` is `{16, 24}`: the Small cut draws the two smallest sizes and the Icon cut draws
+everything from 32 up.
 
-**32 px moved back down at `T-276`, and it is the second time this boundary has moved.** `T-274`
-put 32 on the full mark's side because that mark's *arcs* were what broke first at that size; the
-Icon cut has no arcs, so what decides 32 now is the trees and the mountain, and those fail lower.
-A maintainer instruction of 2026-08-24 (`T-275`) asked for the Icon cut at 32 px specifically —
-it was **refused on the pack's own floor** by the ruling of 2026-08-25, before the pack shipped
-the cut it asked for.
+**The pack puts its floor at 48 and this repository deliberately sits one step below it.** The
+pack's reasoning is about legibility in the abstract — below 48 px the third tree and the mountain
+notch stop resolving, and the Icon cut keeps both, so it inherits the Standard cut's floor rather
+than earning a lower one. That reasoning is sound and is not disputed here. What overrides it is a
+measurement the pack could not make: **which frame each slot on the target desktop actually
+draws.**
+
+Measured on a KDE 6 / Wayland session (KWin 6.7.3, 46 px panel, scale 1) with the running
+application, by locating the mark in a screenshot and reading its ink bounds:
+
+| slot | ink bounds | frame it resolves to |
+|---|---|---|
+| window titlebar | 14x18 px | **16 or 24** |
+| panel task manager | 21x27 px | **32** |
+
+So 32 is exactly the frame the taskbar draws, and 16/24 are what the titlebar draws. Splitting
+there — rather than at 48 — is what puts the fuller mark in the panel while leaving the titlebar
+the clean note-and-trail cut. **A split at 48 leaves every slot this desktop actually renders on
+the Small cut**, which is what the icon shipped as until `T-277` and is the defect that task was
+filed for. The maintainer ruled it on 2026-08-25 after seeing both cuts at 32 px side by side.
+
+**This is the third position this boundary has held, and each move had a different cause.**
+`T-274` put 32 on the full mark's side because that mark's *arcs* broke first at that size.
+`T-276` moved it back down because the Icon cut has no arcs, so the trees and mountain decide it
+and they fail lower. `T-277` moved it up again because legibility is not the only constraint: a
+cut that never reaches a slot is not legible anywhere. **`T-275` asked for this band on
+2026-08-24, was refused on 2026-08-25, and is granted by the ruling the same day** — the entry
+records all three states rather than being rewritten.
+
+*(The trees at 32 px are soft, and that was measured rather than missed: they read as texture more
+than as three conifers, which `T-275` recorded and this module repeats so the next reader knows
+the cost was priced in. `ai/evidence/` carries the side-by-side and the on-screen before/after.)*
 
 ## The Standard cut is vendored and never rendered
 
@@ -87,7 +110,7 @@ PNG_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 #: Sizes drawn from the Small cut rather than the Icon cut — see the module docstring.
-SMALL_SIZES = frozenset({16, 24, 32})
+SMALL_SIZES = frozenset({16, 24})
 
 #: The size of the two PNG masters. They are output like everything else now, and they stay
 #: because the packaged application ships them and `tests/` uses `icon.png` as a sample image.
