@@ -5,13 +5,24 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-25 — **`T-278` is Complete**, Approved with follow-up at `107236e`.
+**Last updated:** 2026-08-25 — **`T-276` and `T-277` are both Complete**, Approved at `dcd06a0`
+(review `09e1ecb`, **no findings**) and with follow-up at `4f3ca78` (review `a85b8bb`). `T277-R1`
+is Resolved at completion. **The reviewer accepted the Linux-derived 32 px boundary as the
+cross-platform default**, with Windows shell frame selection recorded as honestly unverified.
+
+**The icon chain is finished: `T-274` → `T-276` → `T-277`, plus `T-278`'s About surfaces, and
+`T-275` Cancelled.** Every one of the eleven assets is now rasterized from a vendored artboard,
+which cut ships at which size is enforced at every size and both sources with a control in each
+direction, and Windows has run the whole resource suite. **`T-272` is the only thing left In
+Review**, and it carries an open finding of its own.
+
+*(2026-08-25, earlier: **`T-278` is Complete**, Approved with follow-up at `107236e`.
 The About dialog and its Help menu item both read **About**, the icon goes 64 → 112, and the
 video/audio sentence is gone. **Its three findings are one shape at three depths: a property
 asserted more confidently than it was tested.** `T278-R1` was a width rule that held at the one
 size it was measured at and was written up as holding generally; `T278-R2` was a comment that was
 false in the commit that wrote it; `T278-R3` was a screen-reader result nothing had listened to.
-**Nothing was ever wrong with what the maintainer asked for.**
+**Nothing was ever wrong with what the maintainer asked for.**)*
 
 *(A defect came with it that nobody reported: `Qt` reads `&` in a `QAction`'s label as a mnemonic,
 and `APP_NAME` contains one, so the menu item had been rendering as *"About Tracks _Trails"*. The
@@ -20,8 +31,9 @@ short label removes the ampersand and the defect together.)*
 *(Earlier that day: **`T-277` was built and In Review**, and it moves `T-276`'s
 boundary from 48 px to **32** on a second maintainer ruling the same day. `T-276` adopted the Icon
 cut but pinned it at 48 and above; measured on the running application, **the KDE panel resolves to
-the 32 px frame and the titlebar to 16 or 24**, so the new artwork shipped into no slot a user
-looks at. Two files change. The titlebar is measured to be unchanged, which is the half of the
+the 32 px frame and the titlebar to 16 or 24**, so **neither of the two slots that draw the window
+icon was getting the new artwork** — the task switcher and the About dialog ask for 64 and were
+correct throughout. Two files change. The titlebar is measured to be unchanged, which is the half of the
 ruling that could have gone wrong.
 
 *(Earlier that day: **`T-276` was built and In Review**, on a direct maintainer
@@ -187,14 +199,190 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
+
+**Status:** **In Review — prioritized by the maintainer 2026-08-20 and built the same night.**
+Filed from two specimens on `kirk` that have since ended.
+Found by accident while setting up `T-238`'s load campaign, which is how the original five were
+found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning here and were gone anyway**
+within hours of being written up — **why, and whether anybody else acted on them, is unknown**
+(`T272-R3`): `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is now the whole of what survives of
+them. **The scheduling gap this task is filed for is untouched by that** — if
+anything the loss is what the gap costs, since a scheduled Linux scan would have reported the pair
+on 2026-08-16 rather than leaving them to be noticed four days later.
+**Owner:** Implementer — built 2026-08-20, awaiting a verdict
+**Priority:** **Medium.** Not because these two processes matter — 37 MB — but because
+`tools/orphan_scan.py` **already detects them, on Linux, unmodified**, and nothing runs it here.
+The detection `T-258` built exists and is pointed at one of the two platforms this project supports
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-268` is not a dependency and this is not a diagnosis of it
+**Relevant context:** `tools/orphan_scan.py`, `.github/workflows/ci.yml`'s `STARBASE orphans` job,
+`T-258`, `T-268`, `T258-R4`, `OPS-012`
+**Affected surfaces:** where the orphan scan is scheduled, and nothing in `src/`
+**Risk:** Low to fix. The trap is scope: **this is a scheduling gap, not a diagnosis**, and the
+specimens must not be reaped to make a job green
+
+#### What was built
+
+**A `Linux orphans` job in `.github/workflows/ci.yml`**, mirroring `STARBASE orphans` step for step
+and differing in exactly three places, each commented where it differs:
+
+1. **Gated on `vars.LINUX_RUNNER` being set**, which is the same reasoning as `STARBASE_AVAILABLE`
+   rather than a shortcut around it. Unset, the Linux legs run on a hosted image; a hosted image is
+   destroyed after every job, so a clean scan there is **a green check about a machine that cannot
+   hold the condition**.
+2. **`needs: check`** — the Linux suite — for the reason the Windows job orders after its suite: the
+   scan then also sees whatever *that* run leaked, while the workers are young enough to connect to
+   a cause. `always()`, because a failed run is a more likely leaker than a green one.
+3. **A throwaway `python3 -m venv` with `psutil` alone**, because the Linux legs install per job and
+   leave no persistent environment to locate. Not `pip install -e ".[dev]"`: that is a minute of
+   work to run a script with one dependency, and this job's whole argument is that it costs nothing
+   to keep. **This is `prose.yml`'s existing pattern rather than a new one** — it builds
+   `.venv-prose` with `pytest` alone, for the two reasons stated there: never write into a host's
+   `site-packages`, and do not pull ~250 MB of PySide6 wheels for a job that does not import them.
+   `actions/setup-python` is avoided deliberately — it deleted the tool cache under a running job on
+   these machines once already, run `30823595744`.
+
+**The wiring tests now ask both jobs, and the assertion that had to go is the interesting part.**
+`tests/unit/test_orphan_scan.py` asserted **exactly one** job invoked the scanner, on the reasoning
+that two scans could disagree about the same machine. That reasoning does not survive contact with
+this: **two scans of different machines do not disagree, they cover.** What the assertion actually
+enforced was the gap — and the test written to forbid a second job is the test that would otherwise
+have caught its absence.
+
+- `test_the_scan_runs_on_both_platforms_this_project_supports` is new and is this task's criterion.
+- `test_a_find_fails_the_job`, `test_the_scan_still_runs_when_the_suite_did_not_pass` and
+  `test_a_machine_condition_cannot_fail_somebody_s_commit` now loop over both jobs.
+- `test_neither_scan_can_reap_what_it_finds` is new: `--kill` was `T258-R4`'s Critical finding, and
+  a second job is a second place for it to come back.
+
+**Mutations run, all three caught:** removing the Linux job entirely (**6 failed**), dropping the
+`LINUX_RUNNER` gate from its condition (**1 failed**, the both-platforms test), and appending
+`|| true` to its scan command (**1 failed**, the exit-code test). `12 passed` restored.
+
+**The steps are verified, the job is not.** Nothing is pushed, so it has never executed on a
+runner — but its mechanism was run by hand on `kirk`, exactly as written: `python3 -m venv`,
+`pip install psutil`, then `tools/orphan_scan.py`, which printed `no orphaned workers found` and
+exited **0**. The scanner imports **`argparse`, `sys`, `time`, `dataclasses` and `psutil`** and
+nothing else, so the one-dependency environment is sufficient rather than merely believed to be.
+**What remains unproved is the runner half**: that `LINUX_RUNNER` resolves, that `needs: check`
+orders it after the suite, and that a find turns the job red. Those are wiring, and the tests that
+fail without them are the evidence until a nightly runs.
+
+#### What was measured
+
+`.venv/bin/python tools/orphan_scan.py` on `kirk`, 2026-08-20 — **exit 1**:
+
+```
+1 orphaned worker(s) — spawned, parent gone, still running:
+  pid  434366  age 3d20h  dead parent    2139  threads 2  rss 30 MB
+```
+
+A second process, `432922`, is **retained by** it: both hold `pipe:[1629660]`, the worker holds the
+write end, and the `resource_tracker` reading it for EOF therefore never exits. The scanner
+correctly reports only the worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a
+consequence rather than an orphan of that class.
+
+**Re-scanned 2026-08-20T06:20:48Z on `kirk`: `no orphaned workers found`, exit 0.** Both PIDs are
+gone from `ps`, and `kirk` has not rebooted — up since 2026-08-10, which predates their creation.
+Nothing here signalled them; both scans were report-only and `--kill` does not exist. **Why they
+ended is not established, and nothing here ranks the candidates**: the worker was in a `time.sleep`,
+finite by construction, and that candidate is distinguished only by **requiring nothing outside the
+process**, which is a property of the candidate rather than evidence it happened; an outside kill,
+inspection or cleanup on a shared machine is **neither observed nor excluded** and cannot be
+recovered after the fact. The tracker's exit follows from the retention chain above once the write
+end closes, which is an inference and not a watched sequence. **No specimen remains available**, so
+the preservation criterion below is **overtaken by events rather than met or waived** — a statement
+about availability and **not about anybody's conduct** (`T272-R3`). Recorded in the evidence file
+under *What became of them*; nothing captured while they ran is withdrawn by their ending.
+
+**`pipe:[1629660]` is the resource-tracker channel, not a payload pipe, and that distinction carries
+the whole causal claim** (`T272-R1`). `popen_spawn_posix._launch()` takes `resource_tracker.getfd()`
+and passes it in the child's pass-FD set **independently of** the payload `pipe_handle`, so a POSIX
+spawned worker **is expected to hold the tracker's writer**. That is documented multiprocessing
+behaviour rather than a defect, and it is what keeps the tracker alive once the parent dies.
+
+**The two processes must not be read as one shape.** The **tracker** is the one thread with 0 s of
+CPU blocked in `anon_pipe_read`; the **worker** has **two threads and 157 s of CPU**. Reading their
+union as one process is what produced the first version's claim that the five's one-thread shape had
+been reproduced outside Windows. **It has not been.**
+
+#### What this is not, stated first because the resemblance is loud
+
+- **Not a counterexample to `T-258`'s POSIX measurement.** That is about the window *before a worker
+  reads its payload*; `434366` burned **157 s of CPU**, so it ran far past it.
+- **Not `T-268`'s cause — and not for the reason the first version gave** (`T272-R1`). `T-268`
+  rules out a second process retaining the write end of the Windows **spawn payload pipe**, which
+  `popen_spawn_win32` creates and starts the child with `bInheritHandles=False`. What is held here
+  is the **resource-tracker pipe**, a separate channel POSIX passes to children deliberately. This
+  is therefore a **different platform channel and a different process pair** — not the same
+  mechanism surviving a Windows elimination. *(The first version said the visible mechanism here
+  *was* the eliminated one, which is false, and then leaned on it as "a different route to the same
+  shape".)*
+- **Not a reproduction of the five's process shape**, which is withdrawn with it. That claim came
+  from attributing the tracker's one thread and the worker's 157 s of CPU to a single process.
+- **Not established as product-reachable.** A killed `pytest` session produces exactly this, and
+  **the parent is gone and took its identity with it**. That is `T-238` criterion 4's question and
+  this does not answer it.
+
+#### Suggested acceptance criteria
+
+- **The orphan scan is scheduled on Linux as well as Windows**, or a recorded decision says why one
+  platform is enough — the asymmetry is deliberate rather than inherited
+- **A find on either platform is visible without somebody noticing a stray process**, which is the
+  criterion `T-258` wrote for `STARBASE` and is currently met on one platform
+- ~~**The two specimens are preserved until inspected or deliberately released**, and revalidated by
+  pid, create time, command line and parent before any termination — `T258-R4`, unchanged~~
+  **Overtaken by events 2026-08-20**: both processes are gone, so **no specimen remains available**
+  for this criterion to protect. It does **not** record that they ended on their own or that nobody
+  inspected or released them — neither is knowable (`T272-R3`). The rule it states is unchanged and
+  still binds the next specimen. **It is struck rather than deleted** because a criterion that was
+  never met and never waived is a different history from one that never existed
+- **No destructive scanner mode is added.** `--kill` was removed for the enumerate-then-signal race
+  and does not come back
+
+#### Out of scope
+
+- Diagnosing what spawned these two. The parent is gone; that evidence does not exist
+- `T-268`'s Windows question, which is Blocked on a person and is not moved by this
+- Reaping either specimen to make a job green
+
+---
+
+
+*(**This line has been wrong three times.** It said *"Empty"* while the section held three tasks
+(`P3EXIT-R4`); it then said *"three awaiting verdicts"* after all three were approved; and it said
+*"Empty"* again with `T-204` sitting directly beneath it (`T204-R2`). Each time an entry moved and
+the description did not — including once immediately after I wrote that this was the line to
+re-read whenever the queues change. **So it no longer enumerates.** A description that lists its
+section's contents is a second copy of the section, and the copy is what rots.)*
+
+***Phase 3 carries no open work.*** All **eleven** deliverables approved — nine additive plus
+`T-169` and `T-170`, which withdraw a Phase 2 deliverable; of the six loose items, five built and
+approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused by `DAT-008`.
+**The exit review is complete**: approved at `ccdbd0f` on 2026-08-09, all six criteria met, after
+four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
+this one returned four verdicts before approving.*
+
+## Complete
+
 ### T-277 — Move the split to 32 px, so the Icon cut reaches the slot the desktop draws
 
-**Status:** **In Review — built 2026-08-25 on a maintainer ruling the same day**, hours after
+**Status:** **Complete — Approved with follow-up at `4f3ca78`**, 2026-08-25, review commit
+`a85b8bb`. `T277-R1` was Low and non-blocking, assigned to the Implementer for completion
+synchronization with no further pass, and is **Resolved below**. **The reviewer accepted the
+Linux-derived 32 px boundary as the cross-platform default**, with Windows shell frame selection
+recorded as honestly unverified and the softer 32 px artwork explicitly priced in by the
+maintainer.
+
+*(Built 2026-08-25 on a maintainer ruling the same day, hours after
 `T-276` shipped the Icon cut at 48 px and above. **`T-276` was not wrong and is not reverted**: it
 adopted the cut, built the identity checks and their controls, and all of that stands. What it got
-wrong is a fact neither it nor the pack could see from inside the repository — **on the desktop
-this application actually runs on, nothing draws a frame at 48 px or above**, so the new artwork
-shipped and then appeared nowhere.
+wrong is a fact neither it nor the pack could see from inside the repository — **the two slots this
+desktop draws the window icon in both resolve below 48 px**, so the new artwork shipped and reached
+neither of them.)* *(`T277-R1`: this said it "appeared nowhere", which the same entry contradicts two
+paragraphs later. The task switcher and the About dialog request 64 and were correct from `T-276`
+onward; what was wrong is narrower and is stated as measured.)*
 **Owner:** Implementer — built 2026-08-25, awaiting a verdict
 **Priority:** **Medium.** Nothing is broken and no user is blocked; the icon is simply the reduced
 cut in every slot a user sees, which is the state `T-276` intended to end
@@ -229,8 +417,8 @@ this entry does not claim the trees read well at 32.** They do not — `T-275` m
 *"read as texture rather than as three conifers"*, and the comparison sheet the maintainer ruled on
 shows it plainly.
 
-What overrides it is a second constraint the pack has no view of: **a cut that never reaches a slot
-is not legible anywhere.** Measured on the running application, KDE 6 / Wayland, KWin 6.7.3, 46 px
+What overrides it is a second constraint the pack has no view of: **legibility at a size is worth
+nothing if no slot a user looks at draws that size.** Measured on the running application, KDE 6 / Wayland, KWin 6.7.3, 46 px
 panel, scale 1, by locating the mark in a full-screen capture and reading its ink bounds:
 
 | slot | ink bounds | implied frame | green coverage | cut it was getting |
@@ -238,8 +426,10 @@ panel, scale 1, by locating the mark in a full-screen capture and reading its in
 | window titlebar | 14x18 px | ~21 px | 0.1328 | Small |
 | panel task manager | 22x27 px | ~31 px | 0.1180 | **Small** |
 
-**Both slots sat below the 48 px boundary**, so `T-276`'s asset shipped into nothing a user looks
-at. The task switcher and the About dialog do ask for 64, and those were correct throughout.
+**Both measured slots sat below the 48 px boundary**, so `T-276`'s asset reached neither of them.
+**It was not absent everywhere** — the task switcher and the About dialog ask for 64 and were
+correct from `T-276` onward. What `T-277` changes is the **persistent** slot: the panel task
+manager, which is on screen whenever the application is running.
 
 #### What was built
 
@@ -309,7 +499,25 @@ direction that overstates the gate, which is the direction that matters.)*
 - **The three places the band is written stay in step** — the renderer's frozenset and the two
   test-module literals, which is `T-275`'s named trap and `T274-R1`'s finding
 
-#### Open review follow-up
+#### `T277-R1` (Low) — Resolved at completion. A rationale wider than its own evidence
+
+**The entry contradicted itself two paragraphs apart.** It said the Icon cut *"appeared nowhere"*
+and that *"nothing draws a frame at 48 px or above"*, and then recorded — correctly — that the task
+switcher and the About dialog ask for 64 and were right from `T-276` onward. Both cannot be true.
+
+**The measured claim is narrower and is enough**: the two slots that draw the **window icon** on
+this desktop resolve to ~21 px and ~31 px, both below 48, so neither was getting the Icon cut. What
+`T-277` buys is the **persistent** slot — the panel task manager, on screen whenever the
+application runs — not a cut that was invisible everywhere.
+
+**Corrected across eleven sites in three files**, not the two that were quoted in the finding:
+`ai/TASKS.md` (this entry twice, the file header, `T-276`'s forward pointer, and `T-278`'s
+out-of-scope line, which claimed no slot on the machine asks for 48 or 64), `ai/STATUS.md` (the
+entry lead, the measurement paragraph, the ruling paragraph) and
+`tools/icons/render_icons.py`'s docstring (twice). **The general principle was rewritten rather
+than deleted** — *legibility at a size is worth nothing if no slot a user looks at draws that
+size* — because it is the actual argument, and the version that overstated it was a stronger claim
+than the measurement supports. *(Original finding text below.)*
 
 **T277-R1 — narrow the “appeared nowhere” rationale to the slots that were measured (Low,
 non-blocking; Implementer; T-277 completion synchronization).** This entry and the current
@@ -325,20 +533,28 @@ review pass is required.
 
 - **The artwork.** The trees at 32 px are soft; that is priced in and recorded, not fixed here
 - **A desktop entry.** There is no `.desktop` file anywhere — not in the repository and not
-  installed — which is why no slot on this machine asks for 48 or 64 in the first place. **No task
-  is filed for it yet**; it is named here so the gap is on the record rather than rediscovered
+  installed — so the icon has no **launcher** presence at all: no Kickoff entry, no app-grid tile,
+  no pinnable launcher, each of which would draw at 48 or 64. *(This said no slot on the machine
+  asks for those sizes, which is wrong — the task switcher and this dialog do. What is missing is
+  a launcher, not every large slot.)* **No task is filed for it yet**; it is named here so the gap
+  is on the record rather than rediscovered
 - **`T-276`'s identity checks**, which are unchanged and are what made this a two-file change
 
 ---
 
 ### T-276 — Ship the pack's Icon cut at 48 px and above
 
-**Status:** **In Review — built 2026-08-25 on a maintainer instruction the same day.**
+**Status:** **Complete — Approved at `dcd06a0`**, 2026-08-25, review commit `09e1ecb`. **No
+findings.** The reviewer independently regenerated the assets byte-for-byte, confirmed the boundary
+mutations fail exactly the cases they should, and confirmed that reintroducing the Standard cut
+fails all nine affected cases. Windows is verified: run `32891329714` ran **45 UI and 13 unit
+resource tests** on Windows, the same set as Linux.
 
 > **The band this entry ships is superseded by `T-277`, later the same day.** Everything below
 > about the cut, the identity checks and their controls stands unchanged and is what `T-277`
 > builds on; what moved is only **where** the Icon cut starts — 48 px here, **32** after `T-277`,
-> because no slot on the target desktop draws a frame at 48 or above. This pointer is here rather
+> because neither slot that draws the window icon on the target desktop resolves to 48 or above.
+> This pointer is here rather
 > than an edit to the text below, so the reviewer sees the head that was handed off.
 
 Logo Asset Package **v1.1** shipped that morning and adds a third cut, drawn for exactly this use: the
@@ -511,173 +727,6 @@ defect, and the tree hash is now checked after every mutation rather than at the
   only, as it did before
 
 ---
-
-### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
-
-**Status:** **In Review — prioritized by the maintainer 2026-08-20 and built the same night.**
-Filed from two specimens on `kirk` that have since ended.
-Found by accident while setting up `T-238`'s load campaign, which is how the original five were
-found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning here and were gone anyway**
-within hours of being written up — **why, and whether anybody else acted on them, is unknown**
-(`T272-R3`): `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is now the whole of what survives of
-them. **The scheduling gap this task is filed for is untouched by that** — if
-anything the loss is what the gap costs, since a scheduled Linux scan would have reported the pair
-on 2026-08-16 rather than leaving them to be noticed four days later.
-**Owner:** Implementer — built 2026-08-20, awaiting a verdict
-**Priority:** **Medium.** Not because these two processes matter — 37 MB — but because
-`tools/orphan_scan.py` **already detects them, on Linux, unmodified**, and nothing runs it here.
-The detection `T-258` built exists and is pointed at one of the two platforms this project supports
-**Phase:** Phase 4 maintenance
-**Depends on:** nothing. `T-268` is not a dependency and this is not a diagnosis of it
-**Relevant context:** `tools/orphan_scan.py`, `.github/workflows/ci.yml`'s `STARBASE orphans` job,
-`T-258`, `T-268`, `T258-R4`, `OPS-012`
-**Affected surfaces:** where the orphan scan is scheduled, and nothing in `src/`
-**Risk:** Low to fix. The trap is scope: **this is a scheduling gap, not a diagnosis**, and the
-specimens must not be reaped to make a job green
-
-#### What was built
-
-**A `Linux orphans` job in `.github/workflows/ci.yml`**, mirroring `STARBASE orphans` step for step
-and differing in exactly three places, each commented where it differs:
-
-1. **Gated on `vars.LINUX_RUNNER` being set**, which is the same reasoning as `STARBASE_AVAILABLE`
-   rather than a shortcut around it. Unset, the Linux legs run on a hosted image; a hosted image is
-   destroyed after every job, so a clean scan there is **a green check about a machine that cannot
-   hold the condition**.
-2. **`needs: check`** — the Linux suite — for the reason the Windows job orders after its suite: the
-   scan then also sees whatever *that* run leaked, while the workers are young enough to connect to
-   a cause. `always()`, because a failed run is a more likely leaker than a green one.
-3. **A throwaway `python3 -m venv` with `psutil` alone**, because the Linux legs install per job and
-   leave no persistent environment to locate. Not `pip install -e ".[dev]"`: that is a minute of
-   work to run a script with one dependency, and this job's whole argument is that it costs nothing
-   to keep. **This is `prose.yml`'s existing pattern rather than a new one** — it builds
-   `.venv-prose` with `pytest` alone, for the two reasons stated there: never write into a host's
-   `site-packages`, and do not pull ~250 MB of PySide6 wheels for a job that does not import them.
-   `actions/setup-python` is avoided deliberately — it deleted the tool cache under a running job on
-   these machines once already, run `30823595744`.
-
-**The wiring tests now ask both jobs, and the assertion that had to go is the interesting part.**
-`tests/unit/test_orphan_scan.py` asserted **exactly one** job invoked the scanner, on the reasoning
-that two scans could disagree about the same machine. That reasoning does not survive contact with
-this: **two scans of different machines do not disagree, they cover.** What the assertion actually
-enforced was the gap — and the test written to forbid a second job is the test that would otherwise
-have caught its absence.
-
-- `test_the_scan_runs_on_both_platforms_this_project_supports` is new and is this task's criterion.
-- `test_a_find_fails_the_job`, `test_the_scan_still_runs_when_the_suite_did_not_pass` and
-  `test_a_machine_condition_cannot_fail_somebody_s_commit` now loop over both jobs.
-- `test_neither_scan_can_reap_what_it_finds` is new: `--kill` was `T258-R4`'s Critical finding, and
-  a second job is a second place for it to come back.
-
-**Mutations run, all three caught:** removing the Linux job entirely (**6 failed**), dropping the
-`LINUX_RUNNER` gate from its condition (**1 failed**, the both-platforms test), and appending
-`|| true` to its scan command (**1 failed**, the exit-code test). `12 passed` restored.
-
-**The steps are verified, the job is not.** Nothing is pushed, so it has never executed on a
-runner — but its mechanism was run by hand on `kirk`, exactly as written: `python3 -m venv`,
-`pip install psutil`, then `tools/orphan_scan.py`, which printed `no orphaned workers found` and
-exited **0**. The scanner imports **`argparse`, `sys`, `time`, `dataclasses` and `psutil`** and
-nothing else, so the one-dependency environment is sufficient rather than merely believed to be.
-**What remains unproved is the runner half**: that `LINUX_RUNNER` resolves, that `needs: check`
-orders it after the suite, and that a find turns the job red. Those are wiring, and the tests that
-fail without them are the evidence until a nightly runs.
-
-#### What was measured
-
-`.venv/bin/python tools/orphan_scan.py` on `kirk`, 2026-08-20 — **exit 1**:
-
-```
-1 orphaned worker(s) — spawned, parent gone, still running:
-  pid  434366  age 3d20h  dead parent    2139  threads 2  rss 30 MB
-```
-
-A second process, `432922`, is **retained by** it: both hold `pipe:[1629660]`, the worker holds the
-write end, and the `resource_tracker` reading it for EOF therefore never exits. The scanner
-correctly reports only the worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a
-consequence rather than an orphan of that class.
-
-**Re-scanned 2026-08-20T06:20:48Z on `kirk`: `no orphaned workers found`, exit 0.** Both PIDs are
-gone from `ps`, and `kirk` has not rebooted — up since 2026-08-10, which predates their creation.
-Nothing here signalled them; both scans were report-only and `--kill` does not exist. **Why they
-ended is not established, and nothing here ranks the candidates**: the worker was in a `time.sleep`,
-finite by construction, and that candidate is distinguished only by **requiring nothing outside the
-process**, which is a property of the candidate rather than evidence it happened; an outside kill,
-inspection or cleanup on a shared machine is **neither observed nor excluded** and cannot be
-recovered after the fact. The tracker's exit follows from the retention chain above once the write
-end closes, which is an inference and not a watched sequence. **No specimen remains available**, so
-the preservation criterion below is **overtaken by events rather than met or waived** — a statement
-about availability and **not about anybody's conduct** (`T272-R3`). Recorded in the evidence file
-under *What became of them*; nothing captured while they ran is withdrawn by their ending.
-
-**`pipe:[1629660]` is the resource-tracker channel, not a payload pipe, and that distinction carries
-the whole causal claim** (`T272-R1`). `popen_spawn_posix._launch()` takes `resource_tracker.getfd()`
-and passes it in the child's pass-FD set **independently of** the payload `pipe_handle`, so a POSIX
-spawned worker **is expected to hold the tracker's writer**. That is documented multiprocessing
-behaviour rather than a defect, and it is what keeps the tracker alive once the parent dies.
-
-**The two processes must not be read as one shape.** The **tracker** is the one thread with 0 s of
-CPU blocked in `anon_pipe_read`; the **worker** has **two threads and 157 s of CPU**. Reading their
-union as one process is what produced the first version's claim that the five's one-thread shape had
-been reproduced outside Windows. **It has not been.**
-
-#### What this is not, stated first because the resemblance is loud
-
-- **Not a counterexample to `T-258`'s POSIX measurement.** That is about the window *before a worker
-  reads its payload*; `434366` burned **157 s of CPU**, so it ran far past it.
-- **Not `T-268`'s cause — and not for the reason the first version gave** (`T272-R1`). `T-268`
-  rules out a second process retaining the write end of the Windows **spawn payload pipe**, which
-  `popen_spawn_win32` creates and starts the child with `bInheritHandles=False`. What is held here
-  is the **resource-tracker pipe**, a separate channel POSIX passes to children deliberately. This
-  is therefore a **different platform channel and a different process pair** — not the same
-  mechanism surviving a Windows elimination. *(The first version said the visible mechanism here
-  *was* the eliminated one, which is false, and then leaned on it as "a different route to the same
-  shape".)*
-- **Not a reproduction of the five's process shape**, which is withdrawn with it. That claim came
-  from attributing the tracker's one thread and the worker's 157 s of CPU to a single process.
-- **Not established as product-reachable.** A killed `pytest` session produces exactly this, and
-  **the parent is gone and took its identity with it**. That is `T-238` criterion 4's question and
-  this does not answer it.
-
-#### Suggested acceptance criteria
-
-- **The orphan scan is scheduled on Linux as well as Windows**, or a recorded decision says why one
-  platform is enough — the asymmetry is deliberate rather than inherited
-- **A find on either platform is visible without somebody noticing a stray process**, which is the
-  criterion `T-258` wrote for `STARBASE` and is currently met on one platform
-- ~~**The two specimens are preserved until inspected or deliberately released**, and revalidated by
-  pid, create time, command line and parent before any termination — `T258-R4`, unchanged~~
-  **Overtaken by events 2026-08-20**: both processes are gone, so **no specimen remains available**
-  for this criterion to protect. It does **not** record that they ended on their own or that nobody
-  inspected or released them — neither is knowable (`T272-R3`). The rule it states is unchanged and
-  still binds the next specimen. **It is struck rather than deleted** because a criterion that was
-  never met and never waived is a different history from one that never existed
-- **No destructive scanner mode is added.** `--kill` was removed for the enumerate-then-signal race
-  and does not come back
-
-#### Out of scope
-
-- Diagnosing what spawned these two. The parent is gone; that evidence does not exist
-- `T-268`'s Windows question, which is Blocked on a person and is not moved by this
-- Reaping either specimen to make a job green
-
----
-
-
-*(**This line has been wrong three times.** It said *"Empty"* while the section held three tasks
-(`P3EXIT-R4`); it then said *"three awaiting verdicts"* after all three were approved; and it said
-*"Empty"* again with `T-204` sitting directly beneath it (`T204-R2`). Each time an entry moved and
-the description did not — including once immediately after I wrote that this was the line to
-re-read whenever the queues change. **So it no longer enumerates.** A description that lists its
-section's contents is a second copy of the section, and the copy is what rots.)*
-
-***Phase 3 carries no open work.*** All **eleven** deliverables approved — nine additive plus
-`T-169` and `T-170`, which withdraw a Phase 2 deliverable; of the six loose items, five built and
-approved — `T-143`, `T-180`, `T-189`, `T-186`, `T-188` — and `T-171` refused by `DAT-008`.
-**The exit review is complete**: approved at `ccdbd0f` on 2026-08-09, all six criteria met, after
-four passes. Phase 2's precedent held — a phase exit review finds what focused reviews did not, and
-this one returned four verdicts before approving.*
-
-## Complete
 
 ### T-278 — Shorten the About labels, enlarge its icon, and stop Qt eating the ampersand
 

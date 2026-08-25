@@ -69,16 +69,19 @@ application, by locating the mark in a screenshot and reading its ink bounds:
 
 So 32 is exactly the frame the taskbar draws, and 16/24 are what the titlebar draws. Splitting
 there — rather than at 48 — is what puts the fuller mark in the panel while leaving the titlebar
-the clean note-and-trail cut. **A split at 48 leaves every slot this desktop actually renders on
-the Small cut**, which is what the icon shipped as until `T-277` and is the defect that task was
-filed for. The maintainer ruled it on 2026-08-25 after seeing both cuts at 32 px side by side.
+the clean note-and-trail cut. **A split at 48 leaves both of these slots on the Small cut**, which
+is what they showed until `T-277` and is the defect that task was filed for. It does **not** mean
+the Icon cut was invisible: consumers that ask for 48 or more — the task switcher, and the About
+dialog — were getting it from `T-276` onward (`T277-R1`). The maintainer ruled it on 2026-08-25
+after seeing both cuts at 32 px side by side.
 
 **This is the third position this boundary has held, and each move had a different cause.**
 `T-274` put 32 on the full mark's side because that mark's *arcs* broke first at that size.
 `T-276` moved it back down because the Icon cut has no arcs, so the trees and mountain decide it
-and they fail lower. `T-277` moved it up again because legibility is not the only constraint: a
-cut that never reaches a slot is not legible anywhere. **`T-275` asked for this band on
-2026-08-24, was refused on 2026-08-25, and is granted by the ruling the same day** — the entry
+and they fail lower. `T-277` moved it up again because legibility is not the only constraint:
+legibility at a size is worth nothing if no slot a user looks at draws that size. **`T-275` asked
+for this band on 2026-08-24, was refused on 2026-08-25, and is granted by the ruling the same
+day** — the entry
 records all three states rather than being rewritten.
 
 *(The trees at 32 px are soft, and that was measured rather than missed: they read as texture more
