@@ -20084,3 +20084,68 @@ coordination updates are applied.
 The Reviewer changed this append-only record and added only the approved T274-R3 owner/target to
 T-274's task entry. No reviewed test, source docstring, architecture text, asset, renderer, handoff,
 push or remote state was changed; all diagnostic asset mutations were restored before this verdict.
+
+---
+
+## 2026-08-25 — T-278 About-surface review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-278
+**Base:** `4f3ca780291e034da806069ab6568aae007cf91b`
+**Head:** `bf48d7b26e6995de49c5bc12df3a51df18ddf876`
+**Platforms verified:** Linux; Windows runtime not run
+**Verdict:** **Changes requested.** The settled title, menu label, 112 px icon and shortened copy
+are implemented as requested, and the two Windows expected names move correctly. The width floor
+does not, however, keep its stated property when the application font grows: at 18 and 19 pt the
+same `yt-` / `dlp` break returns. No current test fails if the private-selector rule is removed.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T278-R1** | **Medium** | **Yes — T-278's no-break acceptance criterion** | `main_window.py:1714-1719` and `TASKS.md:227-240` say a 340 px minimum still lets the box grow for a larger font. It does not. With the submitted box's 112 px icon and text, the informative label remains exactly 340 px and the dialog 493 px as its font moves from 9 to 18/19 pt; Qt's rich-text layout then produces `"A desktop front-end for yt-"` followed by `"dlp, for Linux and Windows."`. This is the exact defect the rule claims to prevent, under a realistic large-text setting. The selector also targets a child created inside `QMessageBoxPrivate`; the public `QMessageBox` API exposes `informativeText`, not this label or object name. Removing the rule left the focused UI/accessibility set green at **82 passed, 1 skipped**, so a Qt rename or deleted rule silently restores the default-font defect too. | Make the no-break behavior hold across font changes rather than only at the measured default. A semantic no-break character, a font-metric-derived layout rule, or accepting the wrap are product trade-offs; choose explicitly and preserve the screen-reader consequence. If the private selector remains, add a load-bearing regression that fails when it stops matching and proves the actual line-break property. Reconcile the source/task claims with the chosen behavior and run the real Windows accessibility job because the stylesheet also forces Qt's non-native message-box path. | **Open** |
+| **T278-R2** | **Low** | No | The new comment at `main_window.py:1701-1704` says the Help-menu item keeps the long form, while this same commit changes it to `QAction("&About", ...)`. A comment beside the implementation now states the opposite of the product behavior and of T-278's settled instruction. | Correct or remove the stale sentence in the T278-R1 correction batch. **Owner/target:** Implementer, T-278 focused correction. | **Open, non-blocking** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `4f3ca78..bf48d7b` is one commit changing `main_window.py`, one Windows-only test module, TASKS and STATUS. `git diff --check` and `git show --check` passed. |
+| Settled values | The live objects carry action text `&About`, window title `About`, shortened informative HTML and a 112x112 pixmap. `QIcon.availableSizes()` contains 16, 24, 32, 48, 64, 128 and 256 px; `actualSize(112x112)` is 112x112. |
+| Large-font layout | A real `QMessageBox` with the submitted icon/text/stylesheet was shown under Qt's offscreen plugin. At 9 pt it was 493 px wide with a 340 px informative label and kept `yt-dlp` whole. At 18 and 19 pt both widths remained unchanged; `QTextDocument` using the realised label's font and contents width split the phrase after `yt-`. |
+| Width-rule mutation | The stylesheet call was removed, then the focused main-window and accessibility set was run: **82 passed, 1 skipped**. The exact source line was restored and the worktree returned clean before this record. |
+| Focused baseline | `pytest -q tests/ui/test_main_window.py tests/ui/test_accessibility.py tests/ui/test_windows_accessibility.py`: **82 passed, 1 skipped**. The skip is the Windows-only module, not a passing Windows result. |
+| Required static gates | `ruff check .`: passed. `ruff format --check .`: **203 files already formatted**. `mypy src`: **56 files**, passed. Bare `mypy`: **154 files**, passed. `mypy --platform win32`: **154 files**, passed. The last two were required because this commit edits a test file and were omitted from the submission handoff. |
+| Qt contract check | Qt 6.11's public `QMessageBox` API has no informative-label handle/object-name. Its source creates `qt_msgbox_informativelabel` inside `QMessageBoxPrivate`; `canBeNativeDialog()` also refuses the native path when `WA_StyleSheet` is set. The stylesheet therefore works today but is both a private-child dependency and an implicit platform-path choice. |
+
+### Review judgments
+
+- **The ampersand fix is correctly bounded.** The changed action was the only `QAction` that
+  interpolated `APP_NAME`; its other uses are window titles, status/body text and application
+  metadata, where mnemonic parsing is not involved. The other dynamic action construction found
+  in the UI resolves to fixed product labels rather than extractor or user text. No broader audit
+  finding is warranted from this boundary.
+- **The Windows expectations are the right literals.** Qt strips the leading mnemonic marker from
+  the action's announced name, so `About` is the correct UIA expectation; the dialog's announced
+  name follows its `About` window title. Bare and Windows-platform mypy are green. Actual UIA
+  execution is still unverified and is not represented here as a pass.
+- **The private selector is not rejected merely for being private.** Qt provides no public child
+  handle for this layout adjustment, and the selector works on the pinned floor. What is not
+  acceptable is depending on that silent implementation detail while the only acceptance test is
+  an unretained default-font screenshot and the existing suite remains green when the dependency
+  is removed.
+- **The 112 px request is supported by a real larger frame.** The packaged icon exposes 128 and
+  256 px frames around the requested size; this pass found no evidence that 112 is upscaled from
+  the old 64 px frame.
+
+### Readiness
+
+T-278 is **not approved at `bf48d7b`**. Correct T278-R1, fold in the non-blocking comment repair,
+run the focused Linux proof plus the real Windows desktop/accessibility job, and return the narrow
+correction diff for one focused re-review. The settled wording, icon-size choice, action mnemonic,
+status-tip use of the full application name and unrelated `APP_NAME` surfaces do not need to be
+reopened.
+
+The Reviewer changed only this append-only record. No reviewed source, test, task/status file,
+handoff, live process, push or remote state was changed; the diagnostic source mutation was fully
+restored before this verdict was recorded.
