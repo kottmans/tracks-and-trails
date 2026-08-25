@@ -309,6 +309,18 @@ direction that overstates the gate, which is the direction that matters.)*
 - **The three places the band is written stay in step** — the renderer's frozenset and the two
   test-module literals, which is `T-275`'s named trap and `T274-R1`'s finding
 
+#### Open review follow-up
+
+**T277-R1 — narrow the “appeared nowhere” rationale to the slots that were measured (Low,
+non-blocking; Implementer; T-277 completion synchronization).** This entry and the current
+`TASKS.md` / `STATUS.md` headers repeatedly say that no slot requested 48 or 64 px and that the
+Icon cut appeared nowhere, while this entry and `STATUS.md` also state that the task switcher and
+About dialog requested 64 px and were already correct. Replace the categorical claims with the
+measured fact: neither the titlebar nor panel task manager reached the 48 px boundary, and T-277
+makes the Icon cut reach the persistent panel slot. Clarify that the missing desktop entry is a
+launcher-integration gap, not evidence that every `QIcon` consumer stays below 48 px. No further
+review pass is required.
+
 #### Out of scope
 
 - **The artwork.** The trees at 32 px are soft; that is priced in and recorded, not fixed here

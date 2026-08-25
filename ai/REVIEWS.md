@@ -20275,3 +20275,67 @@ to Complete while preserving T-277's forward pointer to the later 32 px boundary
 
 The Reviewer changed only this append-only record. No reviewed source, test, asset, task/status
 text, handoff, push or remote state was changed; all mutations were isolated in `/tmp`.
+
+---
+
+## 2026-08-25 — T-277 32 px boundary review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-277
+**Base:** `dcd06a004412368b665dc801d06258e081ed62d3`
+**Head:** `4f3ca780291e034da806069ab6568aae007cf91b`
+**Platforms verified:** Linux; asset predicates also passed on a later exact descendant on Windows
+**Verdict:** **Approved with follow-up.** The 32 px move changes exactly the intended PNG and ICO
+frame, reaches the measured KDE panel slot, leaves the titlebar unchanged, and remains enforced by
+T-276's controls. T277-R1 is a Low current-truth correction: the rationale says the Icon cut
+appeared nowhere while naming two 64 px surfaces where it already appeared.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T277-R1** | **Low** | No | `TASKS.md` says *“nothing draws a frame at 48 px or above”*, that the cut *“appeared nowhere”*, and that no slot asks for 48/64 px. The same task then says the task switcher and About dialog ask for 64 px and were correct throughout. `STATUS.md` repeats both sides of the contradiction. The measured defect is narrower and sufficient: the titlebar and panel stayed below 48, so the new cut did not reach either persistent slot. | During T-277 completion synchronization, replace the categorical “nowhere/no slot” claims in `TASKS.md`, its T-276 forward pointer and `STATUS.md` with the measured titlebar/panel scope. Describe the absent desktop entry as a launcher-integration gap rather than proof that no consumer requests larger frames. **Owner/target:** Implementer, T-277 completion synchronization. No further review pass. | **Open, non-blocking** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `dcd06a0..4f3ca78` is one commit. Within shipped resources only `icon-32.png` and `icon.ico` change; `git diff --check` passed. |
+| Exact-head baseline | From a `git archive` of `4f3ca78`, `pytest -q tests/unit/test_resources.py tests/ui/test_resources.py`: **58 passed**. |
+| Reproducible assets | Running `tools/icons/render_icons.py` at the exact head reproduced the complete shipped icon directory byte-for-byte. |
+| Boundary mutation | Restoring only the renderer to T-276's `SMALL_SIZES = {16, 24, 32}`, then regenerating, failed exactly the 32 px PNG and ICO Icon-cut assertions: **2 failed, 56 passed**. |
+| Predicate scope | The production predicates and thresholds are unchanged from T-276. Only the independent expected-size tuple, renderer selector, parameterized commentary and boundary records move. |
+| Desktop evidence | The retained before/after sheet shows the titlebar at 14x18 ink with green/gold 58/26 in both captures. The panel moves from green 116 and 0.1180 coverage to green 183 and 0.1862, crossing the 0.15 cut-identity floor. |
+| Static gates | At the exact head: `ruff check .` passed; `ruff format --check .`: **203 files already formatted**; `mypy src`: no issues in **56 source files**. |
+| Windows descendant | GitHub CI run `32891329714`, head `3efc8a3`, completed successfully. Its Windows desktop log shows all **45 UI plus 13 unit resource tests** passing, including `png-32` and `ico-32` in the Icon band with no resource-test skip. Which frame the Windows shell selects remains unmeasured. |
+
+### Review judgments
+
+- **The Linux-derived boundary is acceptable as the cross-platform default.** Linux and Windows
+  are both primary, but requirements explicitly keep subjective Windows rendering
+  known-unverified until the pre-release real session. The maintainer made the 32 px trade-off
+  after seeing the softer artwork and measuring the reference desktop; the current records
+  disclose that basis rather than presenting it as a Windows measurement.
+- **The unmeasured Windows selector is not a functional blocker.** A Windows consumer resolving to
+  24 px remains on Small, one resolving to 32 px gets the ruled Icon cut, and 48 px or above was
+  already Icon under T-276. The Windows job proves the frames and predicates themselves; it does
+  not prove which one the shell prefers, and this review does not claim otherwise.
+- **The blast radius matches the ruling.** The standalone 32 px PNG changes, the ICO container
+  changes because its 32 px frame changes, and every other shipped file regenerates identically.
+  The KDE panel crosses the same green threshold used by the tests while the titlebar's measured
+  pixels stay identical.
+- **T-275 remains correctly Cancelled.** Its requested 32 px band was later granted, but its
+  proposed three-band shape retained Standard at 48 px and above. T-277 keeps two bands and never
+  ships Standard, so it is not completion of T-275's task.
+- **T277-R1 corrects the explanation, not the decision.** The panel/titlebar measurements already
+  justify the change without claiming that About and the task switcher never used the Icon cut.
+
+### Readiness
+
+T-277 is **Approved with follow-up at `4f3ca78`**. T277-R1 is assigned to the Implementer for
+completion/current-truth synchronization and requires no further review pass. Windows shell frame
+selection remains an explicitly known-unverified appearance question, not a hidden pass claim.
+
+The Reviewer changed this append-only record and added only the approved T277-R1 owner/target to
+T-277's task entry. No reviewed source, test, asset, status text, handoff, push or remote state was
+changed; all mutations were isolated in `/tmp`.
