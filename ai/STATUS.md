@@ -5,6 +5,58 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-25 — **`T-278` is built and In Review: the About surfaces get the
+wording and size the maintainer asked for, and a defect nobody reported came out with them.**
+
+**Four changes, taken from the running application rather than a spec.** The dialog title and the
+Help menu item both read **About**; the dialog icon goes **64 → 112**; the *"video and audio are
+equal first-class citizens"* sentence is gone from the informative text.
+
+**The defect is the part worth keeping.** `Qt` reads `&` in a `QAction`'s label as a mnemonic
+marker and `APP_NAME` contains one, so `QAction(f"&About {APP_NAME}")` **consumed it**: the menu
+item had been rendering as *"About Tracks _Trails"*, underlining the `T` of *Trails* instead of
+drawing an ampersand. It is visible in the maintainer's own screenshot and was not what the
+instruction was about. **Escaping as `&&` was the other fix**; the short label removes the
+ampersand altogether, so the request and the repair coincide. Nothing surveys whether other labels
+can be reached the same way.
+
+**`112` was arrived at by looking, in three steps** — 64 too small, 128 *"not by much though"*,
+112 where it settled. It is a small downscale of the `.ico`'s real 128 px frame rather than an
+upscale of the 64; the frame set is `T-003`'s and `T-277` moved only which cut those frames hold.
+
+**One change introduced a defect and the fix is recorded with it.** Shortening the text let
+`QMessageBox` size the box narrow enough to break `yt-dlp` across its hyphen — *"yt-"* / *"dlp"* —
+which reads as a typo. `<nobr>` **does not survive Qt's width calculation** and rendered
+identically; a `min-width: 340px` floor on the informative label does. 290 and 310 were rendered
+and still drop the sentence to three lines.
+
+**Verified by composing the real window and reading the widgets**, not by asserting on source:
+`menu item text: '&About'`, `title: 'About'`, `icon pixmap: 112 x 112`.
+
+**Two Windows accessibility expectations moved with the labels and are unverified here** —
+`tests/ui/test_windows_accessibility.py` does not run on Linux, so the announced-name assertions
+are changed and only the Windows job can confirm them.
+
+*(**My driver script left nine SIGABRT coredumps** on this machine, 12:22–12:30, because it
+composes the window and never calls `shutdown()`. `T-238`'s campaign greps `coredumpctl`, so they
+would read as signal there. `/var/lib/systemd/coredump/` is root-owned and this session has no
+non-interactive `sudo`, so the nine exact paths went to the maintainer rather than being removed
+here. **No dump from 08-14, 08-19 or 08-21 is in that list**, several of which are `SIGSEGV` and
+are what `T-128` and `T-238` work from.)*
+
+**Board:** `T-278`, `T-277`, `T-276` and `T-272` all **In Review**. `T-238` **Ready**, criterion 4
+unanswered. `T-273` and `T-184` **Proposed**. `T-268` and `T-074` **Blocked on a person at
+`STARBASE`**. `T-275` **Cancelled**. `T-212` is still the only thing between this phase and its
+exit review.
+
+**Still open and not folded into any of the above: the live orphan specimen.**
+`tools/orphan_scan.py` exits 1 on this host and reports pid `434366`, 9d10h old, holding
+`pipe:[1629660]` — the inode `T-272` names — while `T-272` is In Review-approved and records both
+specimens as gone. Read-only state is captured, nothing was signalled, and `T-272`'s entry is
+untouched.
+
+---
+
 **Last updated:** 2026-08-25 — **`T-277` moves the icon boundary from 48 px to 32, because
 `T-276` shipped the new artwork into a size no slot on this desktop draws.**
 

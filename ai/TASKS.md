@@ -5,7 +5,14 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-25 — **`T-277` is built and In Review**, and it moves `T-276`'s
+**Last updated:** 2026-08-25 — **`T-278` is built and In Review**: the About dialog and its Help
+menu item both read **About**, the dialog's icon goes 64 → 112, and the video/audio sentence is
+gone — all four on maintainer instruction taken from the running application. **A defect came with
+it that nobody reported**: `Qt` reads `&` in a `QAction`'s label as a mnemonic, and `APP_NAME`
+contains one, so the menu item had been rendering as *"About Tracks _Trails"*. The short label
+removes the ampersand and the defect together.
+
+*(Earlier that day: **`T-277` was built and In Review**, and it moves `T-276`'s
 boundary from 48 px to **32** on a second maintainer ruling the same day. `T-276` adopted the Icon
 cut but pinned it at 48 and above; measured on the running application, **the KDE panel resolves to
 the 32 px frame and the titlebar to 16 or 24**, so the new artwork shipped into no slot a user
@@ -174,6 +181,120 @@ Phase 0 is formally exited (2026-07-26).
 ## In Review
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
+
+### T-278 — Shorten the About labels, enlarge its icon, and stop Qt eating the ampersand
+
+**Status:** **In Review — built 2026-08-25 on maintainer instruction the same day**, from the
+running application rather than from a spec: the maintainer opened the dialog and the Help menu and
+said what to change. **Three of the four changes are what was asked for; the fourth is a defect the
+screenshot exposed and the first change happens to fix.**
+**Owner:** Implementer — built 2026-08-25, awaiting a verdict
+**Priority:** **Low.** Nothing is broken for a user who can read the menu; the ampersand defect is
+cosmetic and the rest is wording and size
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-277` is unrelated — it moved which *cut* the `.ico` frames hold, not
+which frames exist, and this reads a frame that has always been there
+**Relevant context:** `src/tracks_and_trails/ui/main_window.py` (`show_about`, `_build_menus`),
+`tests/ui/test_windows_accessibility.py`, `T-007`, `T026-R2`
+**Affected surfaces:** the About dialog's title, informative text and icon; the Help menu's About
+item; two Windows-only accessibility expectations
+**Risk:** **Low, with one asterisk.** The two changed assertions are in
+`tests/ui/test_windows_accessibility.py`, which **does not run on Linux** — they are changed and
+unverified until the Windows job runs
+
+#### What was asked, and what was found
+
+| | before | after |
+|---|---|---|
+| dialog title | `About Tracks & Trails` | **`About`** |
+| Help menu item | `&About Tracks & Trails` | **`&About`** |
+| dialog icon | `pixmap(64, 64)` | **`pixmap(112, 112)`** |
+| informative text | `…MIT licensed. Video and audio are equal first-class citizens.` | **`…MIT licensed.`** |
+
+**The ampersand defect was not reported and is visible in the maintainer's own screenshot.** `Qt`
+reads `&` in a `QAction`'s text as a mnemonic marker, and `APP_NAME` contains one — so
+`QAction(f"&About {APP_NAME}")` consumed it and the item rendered as **"About Tracks _Trails"**,
+underlining the `T` of *Trails* rather than drawing an ampersand. **Escaping it as `&&` was the
+other fix**; the short label was what the maintainer asked for and it removes the ampersand
+altogether, so the two coincide. Recorded because the next person to lengthen that label will
+reintroduce it.
+
+**`112` was arrived at by looking, in three steps.** 64 was called too small; 128 drew *"not by
+much though"*; 112 is where it settled. The `.ico` carries a **128 px frame**, so this is a small
+downscale of a real frame rather than an upscale of the 64 — the frame set is `T-003`'s and is
+untouched by `T-277`, which moved only which cut those frames hold.
+
+#### The wrap this change introduced, and the fix
+
+**Shortening the informative text made the dialog narrower, and `QMessageBox` then broke `yt-dlp`
+across its hyphen** — `"…front-end for yt-"` / `"dlp, for Linux and Windows."`. A product name
+split mid-word reads as a typo, and it was not there before because the removed sentence had been
+forcing the box wider.
+
+`<nobr>yt-dlp</nobr>` was tried first and **does not survive Qt's width calculation** — rendered
+identically. What works is a floor on the informative label:
+`QLabel#qt_msgbox_informativelabel { min-width: 340px; }`. **A minimum, not a fixed width**, so the
+box still grows for a longer string or a larger font.
+
+340 was chosen by rendering: at **290** and **310** the sentence still drops to three lines
+(`"…for Linux and"` / `"Windows."`) while keeping `yt-dlp` whole; at **340** it sits on one line.
+
+#### What was not changed, and why
+
+- **`core/models.py` and `core/presets.py` still say video and audio are equal first-class
+  citizens.** Those are `REQ-002`'s design premise in code comments, not user-facing copy. The
+  instruction was about the About page
+- **`about_action.setStatusTip(f"…for {APP_NAME}")`** keeps the full name. A status tip is not a
+  mnemonic context, so the ampersand is safe there, and the long name is doing work in a sentence
+- **The window title and the other message boxes** still use `APP_NAME`. Only the About surfaces
+  were in scope
+
+#### How it was verified
+
+**By composing the real window and reading the widgets**, not by asserting on the source. A driver
+composed the application on a real display, opened the dialog through `show_about()` and printed
+what the widgets actually hold:
+
+```
+menu item text: '&About' | shown as: 'About'
+title: 'About'
+informative: 'A desktop front-end for yt-dlp, for Linux and Windows.<br>MIT licensed.'
+icon pixmap: 112 x 112
+```
+
+The dialog was also grabbed to an image at each candidate width, which is how 290/310/340 were
+compared. **The grabs are not retained**: they are regenerable from this head and
+`ai/evidence/`'s rule asks for the command rather than the artifact.
+
+*(**The driver left nine SIGABRT coredumps** — it composes the window and never calls
+`shutdown()`, so Qt aborts on a live `queue-writer` thread at exit. Recorded because `T-238`'s
+campaign greps `coredumpctl` and they would read as signal there. All nine are `about_shot.py`'s,
+2026-08-25 12:22–12:30, each confirmed by its recorded command line. **They are not deleted at this
+head**: `/var/lib/systemd/coredump/` is root-owned and this session has no non-interactive `sudo`,
+so the nine exact paths were handed to the maintainer to remove. **Nothing from 08-14, 08-19 or
+08-21 is in that list** — several of those are `SIGSEGV` and are the material `T-128` and `T-238`
+work from.)*
+
+#### Acceptance criteria
+
+- **The About dialog's title reads `About`** and the Help menu's item reads `About`
+- **The Help menu item contains no ampersand Qt can consume**, so the label renders as written
+- **The About icon is drawn from a real `.ico` frame** rather than upscaled from a smaller one
+- **`yt-dlp` is not broken across a line** at the dialog's natural width
+- **The two Windows accessibility expectations move with the labels** — they assert the announced
+  names, and a label change that left them behind would fail the Windows job rather than Linux
+
+#### Out of scope
+
+- **Any other surface's use of `APP_NAME`.** The main window title, the removal-confirm box and the
+  two other message boxes are unchanged
+- **A general audit of `&` in action labels.** This entry fixes the instance it found and names the
+  mechanism; whether other labels can be reached by a name containing `&` is not surveyed here
+- **The `<nobr>` behaviour.** That Qt ignores it in this width calculation is recorded as observed,
+  not investigated
+
+---
+
 
 ### T-277 — Move the split to 32 px, so the Icon cut reaches the slot the desktop draws
 

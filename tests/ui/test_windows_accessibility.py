@@ -398,7 +398,7 @@ def test_no_interactive_control_reaches_the_tree_without_a_name(tree: Tree) -> N
     [
         ("&File", ["Add URLs...", "Start", "Clear finished", "Quit"]),
         ("&Settings", ["Settings..."]),
-        ("&Help", [f"About {APP_NAME}"]),
+        ("&Help", ["About"]),
     ],
 )
 def test_each_menu_publishes_exactly_its_actions(
@@ -519,7 +519,7 @@ def test_the_about_dialog_and_its_close_button_are_announced(window: MainWindow)
     try:
         subtree = read_tree(int(about.winId()))
 
-        assert subtree.window.name == f"About {APP_NAME}", (
+        assert subtree.window.name == "About", (
             f"the About dialog is announced as {subtree.window.name!r}"
         )
         assert subtree.window.control_type == UIA_WINDOW

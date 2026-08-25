@@ -1482,7 +1482,12 @@ class MainWindow(QMainWindow):
         self._settings_action = settings_action
 
         help_menu = menu_bar.addMenu("&Help")
-        about_action = QAction(f"&About {APP_NAME}", self)
+        # **"&About", not "&About {APP_NAME}"** — and the short form also fixes a defect. Qt reads
+        # `&` in an action's text as a mnemonic marker, so the ampersand *inside* `APP_NAME`
+        # was being consumed: the item rendered as "About Tracks _Trails", underlining the T of
+        # Trails rather than showing the "&". Escaping it as `&&` would have been the other fix;
+        # the maintainer asked for the short label, which removes the ampersand altogether.
+        about_action = QAction("&About", self)
         about_action.setMenuRole(QAction.MenuRole.NoRole)
         about_action.setStatusTip(f"Version and licence information for {APP_NAME}")
         about_action.setObjectName("actionAbout")
@@ -1693,13 +1698,25 @@ class MainWindow(QMainWindow):
         """
         about = QMessageBox(self)
         about.setObjectName("aboutDialog")
-        about.setWindowTitle(f"About {APP_NAME}")
-        about.setIconPixmap(app_icon().pixmap(64, 64))
+        # **"About", not "About Tracks & Trails".** The dialog says the name twice already — in
+        # its own body text and in the icon beside it — and the title bar is the one place with
+        # no room for it. The **Help menu** item keeps the long form, which is the platform
+        # convention for finding it and the only place the name is doing work.
+        about.setWindowTitle("About")
+        # 112, arrived at by looking: 64 was too small, 128 too big a jump. The `.ico`'s 128 px
+        # frame is the source, so this is a small downscale of a real frame rather than an upscale
+        # of the 64 (`T-277` moved which cut those frames hold, not which frames exist).
+        about.setIconPixmap(app_icon().pixmap(112, 112))
         about.setText(f"<b>{APP_NAME}</b><br>Version {__version__}")
         about.setInformativeText(
-            "A desktop front-end for yt-dlp, for Linux and Windows.<br>"
-            "MIT licensed. Video and audio are equal first-class citizens."
+            "A desktop front-end for yt-dlp, for Linux and Windows.<br>MIT licensed."
         )
+        # **A floor on the informative label's width, and it is not cosmetic drift.** Shortening
+        # the text let `QMessageBox` size the box narrow enough to wrap "yt-dlp" across its
+        # hyphen — "yt-" / "dlp" — and a product name broken mid-word reads as a typo. `<nobr>`
+        # does not survive Qt's width calculation here; a floor does. It is a minimum, so the box
+        # still grows for a longer string or a larger font.
+        about.setStyleSheet("QLabel#qt_msgbox_informativelabel { min-width: 340px; }")
         about.setStandardButtons(QMessageBox.StandardButton.Close)
         about.open()
         return about
