@@ -20149,3 +20149,72 @@ reopened.
 The Reviewer changed only this append-only record. No reviewed source, test, task/status file,
 handoff, live process, push or remote state was changed; the diagnostic source mutation was fully
 restored before this verdict was recorded.
+
+---
+
+## 2026-08-25 — T278-R1/R2 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-278
+**Review base:** `32fe26af1aa1321f4b6d1a024a408155898d73bd`
+**Correction head:** `107236ebd589fcf8966ead53bdc6afecc12a717e`
+**Platforms verified:** Linux; Windows runtime and Narrator not run
+**Verdict:** **Approved with follow-up.** T278-R1 and T278-R2 are Resolved. The correction replaces
+the font-insensitive private-label width with a semantic no-break character, removes the
+stylesheet/native-dialog side effect, and adds a mutation-proven line-break control. The copy and
+literal-search cost is acceptable for this one descriptive About string. T278-R3 is a Low record
+follow-up: the durable prose claims an unchanged screen-reader pronunciation that no screen reader
+has verified.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T278-R1** | **Medium** | Yes | `YTDLP_DISPLAY_NAME` carries explicit `U+2011` at the one display site; every data-like spelling remains ASCII. The stylesheet and `qt_msgbox_informativelabel` dependency are gone, so `WA_StyleSheet` no longer refuses Qt's native-dialog path. Three tests pin the shipped character, exercise Qt's breaker over 53 widths x 6 point sizes, and require the ASCII control to split. Replacing `U+2011` with `U+002D` independently failed **2 tests**; narrowing the widths to 500 px failed the control. A realised `QMessageBox` kept the name whole at all six submitted point sizes. | **Resolved at `107236e`** |
+| **T278-R2** | **Low** | No | The title comment now says both title and Help action use the short form and records that the former long-form statement was false when written. It agrees with `QAction("&About", ...)`, the task and the settled instruction. | **Resolved at `107236e`** |
+| **T278-R3** | **Low** | No | `main_window.py:232-235`, `TASKS.md:227-231` and `STATUS.md:33-38` say the substituted character *"is a hyphen to a screen reader"* and that the announcement is unchanged. No screen reader ran, while authoritative `REQUIREMENTS.md` §3 explicitly keeps whether Narrator sounds coherent known-unverified. The verified facts are the codepoint, glyph availability/metrics in the measured fonts, line breaking, and copy/search difference—not speech output. | **Open — Implementer; T-278 completion synchronization and the existing pre-release Narrator session. Replace categorical pronunciation claims with expected-but-unverified wording. No further review pass.** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Correction boundary | `32fe26a..107236e` is one commit changing `main_window.py`, `test_main_window.py`, TASKS and STATUS. The title, action label, 112 px icon and shortened copy remain unchanged. `git diff --check` and `git show --check` passed. |
+| Real message-box probe | With the submitted U+2011 string, the realised informative label kept `yt‑dlp` on one line at 9, 12, 15, 18, 19 and 22 pt. The same offscreen probe with ASCII split at 12, 15, 18, 19 and 22 pt. Its 9/15 pattern differs from the submitted real-display table, confirming that the exact break widths are platform/font dependent; the semantic correction holds in both measurements. |
+| Defect mutation | `YTDLP_DISPLAY_NAME = "yt-dlp"`: the character and property tests failed, the positive control passed — **2 failed, 1 passed**. The exact source line was restored. |
+| Sweep mutation | `_LAYOUT_WIDTHS = (500,)`: the shipped-character tests passed and the ASCII positive control failed — **1 failed, 2 passed**. The exact test line was restored. |
+| Focused baseline plus task placement | Main-window, cross-platform accessibility, Windows-accessibility collection and task-placement tests: **100 passed, 1 skipped**. The skip is the Windows-only module, not a Windows result. |
+| Static gates | `ruff check .`: passed. `ruff format --check .`: **203 files already formatted**. `mypy src`: **56 files**, passed. Bare `mypy`: **154 files**, passed. `mypy --platform win32`: **154 files**, passed. |
+| Submitted broader suites | The Implementer reports `tests/ui`: **1,057 passed, 3 skipped** and `tests/unit`: **2,257 passed, 15 skipped**. The Reviewer did not rerun those broad suites; the focused, mutation and static gates above were run independently. |
+
+### Review judgments
+
+- **The U+2011 copy/search cost is accepted.** This is explanatory display text, not a command,
+  URL, identifier, log field or search input. The ordinary `yt-dlp` spelling remains everywhere
+  data fidelity matters. Preventing a visible split at default and accessibility font sizes is
+  worth the one-dialog literal-search mismatch, and the code makes the substitution unmistakable.
+- **The finite sweep is proportionate, not proof of an unbounded mathematical claim.** U+2011's
+  line-breaking class supplies the mechanism; 80–600 px and 9–22 pt exercise a range wider than
+  the realised dialog, while the ASCII control proves the harness discriminates. The uncaught
+  point-only narrowing does not weaken that discrimination because the width sweep still finds an
+  ASCII split at 15 pt.
+- **The actual-dialog and breaker tests complement each other.** The product no longer reaches a
+  private child. The diagnostic probe may inspect that child to compare realised geometry, while
+  the committed regression remains independent of its name and survives Qt changing the internal
+  widget tree.
+- **Windows UIA no longer blocks this correction.** Removing the stylesheet restores the same
+  native-dialog eligibility that existed before T-278, and the changed window/action names were
+  already judged correct in the initial pass. Runtime UIA and subjective Narrator speech remain
+  honestly unverified; T278-R3 corrects the one place this submission overstates the latter.
+- **The coredumps and T-272 orphan remain outside this boundary.** This pass neither inspected nor
+  changed those external-state items and makes no disposition of them.
+
+### Readiness
+
+T-278 is **Approved with follow-up at `107236e`**. T278-R1 and T278-R2 are Resolved; no blocking
+finding remains. T278-R3 requires only completion/current-truth synchronization and the already
+planned pre-release Narrator check, not another T-278 review pass. The task may move to Complete
+after that Low wording correction and ordinary coordination update.
+
+The Reviewer changed this append-only record and added only the approved T278-R3 owner/target to
+T-278's task entry. No reviewed source, test or status text, handoff, live process, coredump, push
+or remote state was changed; all diagnostic mutations were restored before this verdict.

@@ -254,6 +254,14 @@ The comment beside the title said the Help menu item *"keeps the long form"*, in
 changed it to `QAction("&About", …)`. **It was false when written, not stale.** It came from the
 first round, when only the dialog title was in scope, and survived the second instruction
 unedited. Corrected, and it now names `T278-R2` so the correction is legible where the claim was.
+
+**Focused-review follow-up — `T278-R3` (Low, non-blocking).** The source, this entry and STATUS
+say `U+2011` *"is a hyphen to a screen reader"* and that nothing about the announcement changes.
+`REQUIREMENTS.md` §3 explicitly keeps whether Narrator sounds coherent known-unverified, and no
+screen reader ran in either T-278 pass. The character substitution and its copy/search cost are
+accepted; completion synchronization must restate the speech result as expected but unverified,
+without weakening the verified line-breaking property. **Owner/target:** Implementer, T-278
+completion synchronization and the existing pre-release Narrator session. No further review pass.
 **Owner:** Implementer — built 2026-08-25, awaiting a verdict
 **Priority:** **Low.** Nothing is broken for a user who can read the menu; the ampersand defect is
 cosmetic and the rest is wording and size
