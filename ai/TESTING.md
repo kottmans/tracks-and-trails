@@ -294,6 +294,15 @@ to literal labels and that variable does not reach them — and, by omission, th
 `task placement` and `repeat on STARBASE` do not exist. `STARBASE orphans` was added on 2026-08-18
 and would have been the fourth omission.
 
+**`LINUX_RUNNER` is a label two machines answer, and the coverage that buys is a ruling rather
+than an accident** (`T272-R5`, maintainer 2026-08-26). `kirk` and `Spock` carry identical labels,
+so each run of `Linux orphans` covers whichever is free. **Fan-out was considered and refused**;
+per-run coverage of one machine is the accepted scope, and `T-272`'s criterion is amended to say
+so. What makes that legible rather than misleading is that **`tools/orphan_scan.py` names its own
+host in every verdict** — `Spock: no orphaned workers found` cannot be read as *Linux is clean*.
+`test_a_pipeline_cannot_swallow_the_alarm` additionally pins the `defaults.run.shell: bash` that
+supplies the `pipefail` the scanning step's `| tee` depends on.
+
 **`Linux orphans` was the fifth, for one commit** (`T272-R4`). It was added on 2026-08-21 and this
 table was not, **four days after `T-265` made the inventory exact** — which is the failure mode a
 table promising completeness has: it is correct until the next job, and nothing fails when that job

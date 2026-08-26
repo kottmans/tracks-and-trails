@@ -5,6 +5,40 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **The maintainer ruled per-run coverage of one machine — no
+fan-out — and `T-272` is back In Review with the criterion explicitly amended.**
+
+**The amendment is written as an amendment.** `T272-R5` was clear that anything narrower than
+fan-out needs an explicit scope change rather than a quiet reading, so the original criterion is
+**struck rather than deleted** and the residual is stated: Linux has two runners behind one label,
+each run covers whichever is free, **an orphan on the other machine waits for a later run to land
+there**, and the observed cost is the 2026-08-21 find on `Spock` followed by five greens from
+`kirk`.
+
+**Accepting the coverage is not accepting the signal that misled.** `tools/orphan_scan.py` now
+**names its own host in every verdict** — `Spock: no orphaned workers found` rather than
+`no orphaned workers found` — with the host **joined to the verdict rather than printed beside
+it**, so no consumer can keep one without the other. A green can no longer be read as *Linux is
+clean*, which is the whole of `T272-R5`'s harm addressed without fanning out.
+
+**A pipeline regression was found while building this, and it belongs to neither finding.** The
+scanning step pipes into `tee`, and a pipeline reports its last command's status — so
+*a find fails the job* survives only because `ci.yml` sets `defaults.run.shell: bash`, which GitHub
+maps to `-eo pipefail`. **Remove that line and a find leaves the job green**, while
+`test_a_find_fails_the_job` keeps passing, because it looks for `|| true`, `exit 0` and
+`continue-on-error` and none of those is what broke. **That is this project's own phrase — *the way
+this silently stops working* — one level below where it was being checked**, and it is the same
+shape as the `| sed` that made my own evidence file report the wrong exit code an hour earlier.
+
+**Four mutations, all caught, tree hashed back to clean after each**: either verdict dropping the
+host, `defaults.run.shell` removed, and `shell: bash` → `sh`. `tests/unit/test_orphan_scan.py` is
+**14 passed**, from 12.
+
+**The specimen is still running on `Spock`** and the capture is retained. `T272-R6`'s report that
+it ended remains contradicted and is still raised back rather than settled.
+
+---
+
 **Last updated:** 2026-08-26 — **`T-272`'s approval is withdrawn; it is `Blocked` pending a
 maintainer scope ruling. And the specimen the review reports as ended is running.**
 

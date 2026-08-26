@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
+import socket
 import subprocess
 import sys
 import time
@@ -78,6 +79,11 @@ def a_real_orphan() -> Iterator[psutil.Process]:
     finally:
         with contextlib.suppress(psutil.NoSuchProcess):
             orphan.kill()
+
+
+#: An age no live process can reach, so a clean scan is arranged rather than asked of the
+#: machine — `test_the_exit_code_is_clean_when_nothing_is_found` explains why that matters.
+_FAR_FUTURE_AGE = 10**9
 
 
 def test_the_scanner_sees_a_known_orphan(a_real_orphan: psutil.Process) -> None:
@@ -225,6 +231,63 @@ def the_scanning_step(job: dict[str, object]) -> dict[str, object]:
     ]
     assert len(running) == 1, f"{len(running)} steps in one job run {SCRIPT}"
     return running[0]
+
+
+def test_every_verdict_names_the_machine_it_came_from(
+    capsys: pytest.CaptureFixture[str], a_real_orphan: psutil.Process
+) -> None:
+    """`T272-R5`: a scan's subject is one host, so a verdict without a host is not a result.
+
+    **`LINUX_RUNNER` is a label two machines answer**, so the job lands on whichever is free. A
+    bare *"no orphaned workers found"* is a true statement about an unnamed box that reads as a
+    clean bill of health for the platform — and the run history is what that cost: one find on
+    `Spock`, then five greens from `kirk`, which the record read as the specimen having cleared.
+
+    **Both branches, because the green one is the branch that misleads.** A find that does not
+    say where is merely unhelpful; a *pass* that does not say where is the one that gets believed.
+    """
+    assert orphan_scan.main(["--minimum-age-seconds", "0"]) == 1
+    found = capsys.readouterr().out
+    assert socket.gethostname() in found.splitlines()[0], (
+        f"the find does not name the machine it came from: {found.splitlines()[0]!r}"
+    )
+
+    assert orphan_scan.main(["--minimum-age-seconds", str(_FAR_FUTURE_AGE)]) == 0
+    clean = capsys.readouterr().out
+    assert socket.gethostname() in clean, (
+        f"a clean scan does not name the machine it came from: {clean!r} — which is the line that "
+        "gets read as 'Linux is clean' when it means 'one of two boxes was clean'"
+    )
+
+
+def test_a_pipeline_cannot_swallow_the_alarm() -> None:
+    """`T-272`: the find-fails-the-job promise depends on `pipefail`, and nothing asserted it.
+
+    **The scanning step pipes into `tee`**, and a pipeline's status is its last command's. The
+    alarm therefore survives only because `ci.yml` sets `defaults.run.shell: bash`, which GitHub
+    maps to `bash --noprofile --norc -eo pipefail`. **Remove that one line and a find leaves the
+    job green** — while `test_a_find_fails_the_job` keeps passing, because it looks for `|| true`,
+    `exit 0` and `continue-on-error` and none of those is what would have broken it.
+
+    That is this file's own docstring — *"the way this silently stops working"* — one level below
+    where it was being checked.
+    """
+    parsed = workflow()
+    for job_id, job in by_platform().items():
+        command = str(the_scanning_step(job)["run"])
+        if "|" not in command:
+            continue
+        defaults = parsed.get("defaults") or {}
+        assert isinstance(defaults, dict)
+        run_defaults = defaults.get("run") or {}
+        assert isinstance(run_defaults, dict)
+        shell = str(run_defaults.get("shell", ""))
+        assert shell == "bash", (
+            f"{job_id} pipes the scanner's output ({command.strip()!r}) while the workflow's "
+            f"default shell is {shell!r}. A pipeline reports its last command's status, so the "
+            "scanner's non-zero is discarded and a find leaves the job green. `shell: bash` is "
+            "what supplies `pipefail`; either keep it or stop piping."
+        )
 
 
 def test_something_actually_invokes_the_scanner() -> None:

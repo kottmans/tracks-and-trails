@@ -49,6 +49,7 @@ report confidently about nothing applies to this one too.
 from __future__ import annotations
 
 import argparse
+import socket
 import sys
 import time
 from dataclasses import dataclass
@@ -164,11 +165,20 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     orphans = find_orphans(arguments.minimum_age_seconds)
+
+    # **Every line this tool emits names the machine it ran on** (`T272-R5`). A scan's subject is
+    # one host's process table, and `LINUX_RUNNER` is a label two machines answer — so a bare
+    # "no orphaned workers found" is a true statement about an unnamed box that reads as a clean
+    # bill of health for the platform. The run history is what that costs: one find on `Spock`
+    # followed by five greens from `kirk`, which the record read as the specimen having cleared.
+    # The host is joined to the verdict rather than printed beside it, so no consumer can keep
+    # one without the other.
+    host = socket.gethostname()
     if not orphans:
-        print("no orphaned workers found")
+        print(f"{host}: no orphaned workers found")
         return 0
 
-    print(f"{len(orphans)} orphaned worker(s) — spawned, parent gone, still running:")
+    print(f"{host}: {len(orphans)} orphaned worker(s) — spawned, parent gone, still running:")
     for orphan in orphans:
         print(f"  {orphan.describe()}")
     print("Reported, not reaped — see this module's docstring for why (`T258-R4`).")
