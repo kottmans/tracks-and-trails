@@ -5,14 +5,22 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-26 — **`T-272` is back In Review on a maintainer scope ruling: per-run
+**Last updated:** 2026-08-26 — **`T-272` is Complete**, Approved at `12fda3a` (review `de0724c`),
+**all nine findings closed**. **`## In Review` is empty.**
+
+**`T-279` is filed from the approval**: `orphan_scan._parent_is_gone` decides *"is this a Python
+process"* by process **name**, and a console-script entry point is named for the script — so a
+worker of a **running** `tracks-and-trails` has a parent named `tracks-and-trai` and is reported
+as an orphan. A false-positive class, in the tool rather than in anything `T-272` built.
+
+*(Superseded: `T-272` back In Review on a maintainer scope ruling: per-run
 coverage of one machine, no fan-out.** The acceptance criterion is **explicitly amended** with the
 original struck and the residual stated, which is what `T272-R5` required of anything narrower than
 fan-out. **The scanner now names its own host in every verdict**, so a green can no longer be read
 as *Linux is clean* — that is `T272-R5`'s harm addressed without fanning out. A **pipeline
 regression** was found while building it and is not part of either finding: the scanning step pipes
 into `tee`, so the alarm survives only on `defaults.run.shell: bash` supplying `pipefail`, and
-nothing asserted it.
+nothing asserted it.)*
 
 *(Earlier 2026-08-26: **`T-272`'s approval was withdrawn and it was `Blocked`**, pending that
 ruling. `T272-R5` and `T272-R6` are Medium and blocking; `T272-R1`–`R4` remain
@@ -218,13 +226,32 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+## Complete
+
 ### T-272 — The orphan scanner runs only on Windows, and a Linux box has had two orphans for days
 
-**Status:** **In Review — second focused correction, 2026-08-26, on explicit maintainer
+**Status:** **Complete — Approved at `12fda3a`**, 2026-08-26, review commit `de0724c`. **All nine
+findings are closed.** `T272-R1`–`R4` were resolved before this round; `T272-R5` resolved on the
+scope amendment; `T272-R6` after four passes; `T272-R7`, `R8` and `R9` on the second. The reviewer
+reproduced the 115-hit `kirk` enumeration independently and confirmed no false current attribution
+remains.
+
+**Three of the four `R6` passes failed the same way and none failed for lack of care.** Each
+narrowed the search and the narrowing was invisible from inside it — twice by wording, once by
+file set. `P2EXIT-R15` names the first two; the third is its own variant, *"every mention"* asserted
+over a set of files silently chosen. **The method that worked is `git grep` for the identifier over
+every tracked file, with the audit shown rather than the completeness asserted.**
+
+**A separate defect surfaced from the reviewer's own invocation and is filed as `T-279`**, not
+folded in here: `orphan_scan._parent_is_gone` decides *"is this a Python process"* by process
+**name**, and a console-script entry point is named for the script. It is a false-positive class in
+the scanner, not in anything this task built.
+
+*(Previously: In Review — second focused correction, 2026-08-26, on explicit maintainer
 authorization under `AGENTS.md` §10.** The ordinary budget was spent; `T272-R6` and `T272-R8`
 were blocking Medium, so the pass was authorized rather than taken. **`T272-R6`, `T272-R7`,
 `T272-R8` and `T272-R9` are corrected below.** `T272-R5` is Resolved and the hostname clause was
-accepted as a proportionate correction to the misleading signal.
+accepted as a proportionate correction to the misleading signal.)*
 
 **Fourth pass, and the sweep's *file set* was the miss this time** (`T272-R6`). The third pass
 enumerated by identifier and still missed three, because it enumerated **within a chosen set of
@@ -655,7 +682,8 @@ this one returned four verdicts before approving.*
 
 ---
 
-## Complete
+
+---
 
 ### T-277 — Move the split to 32 px, so the Icon cut reaches the slot the desktop draws
 
@@ -10523,6 +10551,106 @@ column *"filesize/estimate"* and `T107-R7` made the two distinguishable for exac
 ---
 
 ## Proposed — Phase 4
+
+### T-279 — The orphan scanner calls a live parent dead when it was launched by a console script
+
+**Status:** **Proposed — filed 2026-08-26 from the `T-272` approval.** Surfaced because the
+Reviewer ran the suite through `.venv/bin/pytest` where every prior run in that round used
+`.venv/bin/python -m pytest`, and one test failed under the first form only. **The invocation
+difference is the symptom. The defect is in the scanner and it reaches the product.**
+**Owner:** Planner, to prioritize
+**Priority:** **Medium.** Nothing is lost and nothing is corrupted — the failure mode is a
+**false positive**, which the scanner's own docstring says it exists to avoid: *"a find is a
+prompt for a person to look and a false one spends that attention for nothing."* A nightly that
+cries wolf is a nightly that stops being read
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-272` is Complete and this is not a defect in what it built
+**Relevant context:** `tools/orphan_scan.py` (`_parent_is_gone`), `tests/unit/test_orphan_scan.py`,
+`.github/workflows/ci.yml`, `T-258`, `T-268`, `T-272`
+**Affected surfaces:** `_parent_is_gone` only. **No `src/` module** — the scanner is a tool
+**Risk:** **Low to fix, and the trap is the fix's own false-negative side.** Loosening "is this a
+Python process" is easy; loosening it so far that a genuinely reparented worker stops being found
+would break what `T-258` built
+
+#### What is wrong
+
+`_parent_is_gone` has three rules for deciding a parent cannot be the one that spawned a
+`spawn_main` child. The third is:
+
+```python
+return "python" not in parent.name().lower()
+```
+
+**A Python process launched through a console-script entry point is not named `python`.** On
+Linux `psutil.name()` reads `/proc/<pid>/comm`, which the kernel sets from the **executed file**,
+so a shebang script's process carries the script's name:
+
+| launched as | `psutil.name()` | `"python" in name`? |
+|---|---|---|
+| `python -c …` | `python` | yes |
+| `.venv/bin/pytest` | `pytest` | **no** |
+| **`.venv/bin/tracks-and-trails`** | **`tracks-and-trai`** | **no** |
+
+The third row is the product's own entry point — `pyproject.toml`'s `[project.scripts]` — and
+`comm` is truncated to 15 characters, which is why it reads `tracks-and-trai`.
+
+#### Why this reaches the product rather than only the suite
+
+**A worker spawned by a running application has a parent named `tracks-and-trai`, so the scanner
+concludes the parent is gone.** `MINIMUM_AGE_SECONDS` is **60**, so a download that has been
+running for a minute is old enough to qualify. **A nightly firing while somebody is using the
+application would report that person's live workers as orphans.**
+
+The frozen build has the same shape: `packaging/tracks-and-trails.spec` names the executable
+`tracks-and-trails`.
+
+#### The symptom, and why CI never showed it
+
+| invocation | result |
+|---|---|
+| `.venv/bin/python -m pytest` (serial) | **14 passed** — parent is `python` |
+| `.venv/bin/pytest` (serial) | **1 failed** — parent is `pytest` |
+| `.venv/bin/pytest -n auto` | **14 passed** — parent is an xdist worker, named `python` |
+
+**CI runs the third form.** `ci.yml` invokes bare `pytest -v -n auto`, so the defect is masked by
+parallelism rather than absent: under `-n auto` the child's parent is an `execnet` worker, which
+*is* a plain interpreter. **The suite has been green on the invocation CI uses and red on a
+reasonable one nobody happened to run**, which is why this took an outside pair of hands to find.
+
+#### The part that needs checking rather than assuming
+
+**`T-268`'s orphans may include false positives, and this entry does not claim they do.** That
+investigation rests on `STARBASE` reports of the form *"dead parent 9176"* — and *dead parent* is
+this predicate's verdict, not an observation that the pid is gone. **If any of those parents were
+live `tracks-and-trails.exe` processes, the corresponding rows were never orphans.**
+
+**Nothing here establishes that.** It requires looking at `STARBASE` while a scan is red and
+checking whether the named parent pids resolve, which is a person at that machine — the same
+gate `T-268` is already blocked on. **It is recorded so the possibility is examined rather than
+inherited**, and because `T-268`'s five specimens are the reason this scanner exists.
+
+#### Suggested acceptance criteria
+
+- **A worker whose parent is a live console-script Python process is not reported**, asserted for
+  at least the product's own entry point and a `pytest` wrapper
+- **A genuinely reparented worker is still found** — the known-positive in
+  `tests/unit/test_orphan_scan.py` keeps passing, and the fix is proved not to have widened the
+  silence `T-258` was built to close
+- **The suite gives the same answer under every invocation it is run with** — interpreter form,
+  wrapper form, serial and `-n auto`. A test whose result depends on how pytest was started is
+  reporting on the harness
+- **Whether `T-268`'s reports contain false positives is examined and answered**, or recorded as
+  unexamined with the reason
+
+#### Out of scope
+
+- Reaping anything. `--kill` was removed by `T258-R4` and does not come back
+- `T-272`'s scope amendment and host naming, both Complete and unaffected
+- Changing how CI invokes pytest. **The invocation is not the defect** — it is what exposed it,
+  and pinning CI to the form that passes would hide this rather than fix it
+
+---
+
 
 ### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
 

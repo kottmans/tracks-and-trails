@@ -5,6 +5,49 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **`T-272` is Complete — all nine findings closed — and the
+approval surfaced a new defect, filed as `T-279`.**
+
+Approved at `12fda3a`, review `de0724c`. The reviewer independently reproduced the 115-hit `kirk`
+enumeration and confirmed no false current attribution remains. **`## In Review` is empty.**
+
+**`T272-R6` took four passes and three of them failed the same way.** Each narrowed the search and
+**the narrowing was invisible from inside it** — twice by wording, once by file set, where I
+asserted *"every mention"* over a set of files I had silently chosen. The method that worked is
+`git grep` for the identifier across every tracked file, **with the audit shown rather than
+completeness asserted**.
+
+**`T-279`: the scanner calls a live parent dead when it was launched by a console script.**
+`_parent_is_gone` decides *"is this a Python process"* by `psutil.name()`, which on Linux is
+`/proc/<pid>/comm` — set from the **executed file**, so a shebang script carries the script's name:
+
+| launched as | name | `"python" in name`? |
+|---|---|---|
+| `python -c …` | `python` | yes |
+| `.venv/bin/pytest` | `pytest` | **no** |
+| **`.venv/bin/tracks-and-trails`** | **`tracks-and-trai`** | **no** |
+
+**The third row is the product.** `MINIMUM_AGE_SECONDS` is 60, so **a nightly firing while somebody
+is using the application would report that person's live workers as orphans** — the false positive
+the scanner's own docstring exists to avoid.
+
+**CI never showed it, and the reason matters.** `ci.yml` runs bare `pytest -v -n auto`; under xdist
+the child's parent is an `execnet` worker, which *is* a plain interpreter. **Serial wrapper
+invocation fails; interpreter form passes; `-n auto` passes.** The suite has been green on the one
+invocation CI uses and red on a reasonable one nobody ran — which is why an outside pair of hands
+found it and five of mine did not.
+
+**Left as a question rather than a claim: whether `T-268`'s orphans include false positives.** That
+investigation rests on reports of *"dead parent N"*, and **"dead parent" is this predicate's
+verdict, not an observation that the pid is gone.** Answering it needs a person at `STARBASE` while
+a scan is red — the gate `T-268` is already blocked on. Recorded so it is examined rather than
+inherited.
+
+**The specimen is unaffected and still running**: `434366`'s parent `2139` is genuinely gone.
+9d20h, scanner exit 1, nothing signalled.
+
+---
+
 **Last updated:** 2026-08-26 — **`T272-R6` corrected on a third authorized pass, and what
 changed is the method rather than the effort.**
 
