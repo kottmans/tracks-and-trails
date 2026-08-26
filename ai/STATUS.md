@@ -5,6 +5,42 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **`T-272`'s approval is withdrawn; it is `Blocked` pending a
+maintainer scope ruling. And the specimen the review reports as ended is running.**
+
+**`T272-R5`** confirms the runner-label defect recorded below and rules that **only fan-out across
+both runners satisfies the criterion as written** — pinning, or accepting arbitrary per-run
+coverage, needs an **explicit scope amendment** rather than a quiet narrowing. Both options require
+a distinguishing label the runners do not carry. **That ruling is the maintainer's.**
+
+**`T272-R6`** establishes that the 2026-08-20 *"gone / no specimen"* disposition was false, so the
+struck preservation criterion is **unmet rather than overtaken**, and directs that the capture be
+retained if it survives. **It survives, and it is retained**:
+`ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md`, three read-only blocks, nothing
+signalled.
+
+**One clause of `T272-R6` does not hold on this machine.** It reports the specimen as having ended
+and current `Spock` state as *"both PIDs absent, scanner exits 0."* At **2026-08-26T00:15:29Z on
+`Spock`** — machine-id `71ff7aaf85db`, booted 2026-08-14, no reboot since — **both PIDs are present
+in `ps` and `/proc`**, `434366` carries two threads and still holds `pipe:[1629660]`, and
+`tools/orphan_scan.py` exits **1**.
+
+**The likeliest reading is `T272-R5` reproducing itself in the verification.** A check of "current
+state" is a statement about whichever machine it ran on, and `kirk` — restarted around
+2026-08-26T00:00Z after locking up, and never host to these processes — returns exactly *absent,
+exit 0*. **Offered, not asserted.** Which machine that check ran on is the reviewer's to say, and
+it is raised back rather than settled here.
+
+**The scanner is sound and the reviewer says so.** Nothing in either finding is about
+`orphan_scan.py`; it found the specimen and made the job red. What is defective is which machine
+gets scanned, and what the record concluded from a green.
+
+**`## In Review` is empty.** `T-272` **Blocked** on a scope ruling. `T-238` **Ready**, criterion 4
+unanswered. `T-273` and `T-184` **Proposed**. `T-268` and `T-074` **Blocked on a person at
+`STARBASE`**. `T-212` is still the only thing between this phase and its exit review.
+
+---
+
 **Last updated:** 2026-08-26 — **`T-272`'s `Linux orphans` job scans one arbitrarily-chosen
 machine of two, and the run history shows it reporting a find and then five greens about the other
 one.** Measured tonight; a finding is written and not yet sent.
