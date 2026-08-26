@@ -5,6 +5,35 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **`T279-R1` has its Windows evidence: the launcher tree behaves as
+reasoned, and it is now measured.**
+
+Pushed to `693a09f`; CI run `33017151297` is **green on every job**, `windows desktop` included, on
+`STARBASE`.
+
+```
+test_an_installed_console_script_resolves_to_an_interpreter   PASSED   (Windows)
+test_the_interpreter_question_is_asked_of_the_executable      PASSED   (5 cases)
+test_a_parent_that_vanishes_while_being_read_is_gone          PASSED
+test_a_console_script_parent_is_not_mistaken_for_a_dead_one   SKIPPED  (POSIX-only)
+```
+
+**23 of `test_orphan_scan.py` passed on Windows, none failed.**
+
+**The pass is a measurement rather than a reassurance, and the design is why.**
+`_the_process_a_worker_would_call_parent` **raises** if a Windows launcher starts no child — so
+passing means the child was found *and* recognised as an interpreter. **The distlib launcher does
+start a Python child, and that child is what a worker records as its parent**, which is why
+`T-279`'s defect never reached Windows. A test written to pass either way would have told us
+nothing; this one could only pass one way.
+
+**What this run does not tell us**: `STARBASE orphans` was **skipped** — a push is neither
+`schedule` nor `workflow_dispatch` — so **whether the new launcher test leaves a stray process on
+`STARBASE` is unobserved.** It kills the child tree in a `finally`, and that is code rather than
+evidence. The next nightly scans that machine and would say so.
+
+---
+
 **Last updated:** 2026-08-26 — **`T-279`'s second focused correction, on explicit authorization
 under §10. `T279-R1` now has a test that runs on Windows; it has not run there yet.**
 

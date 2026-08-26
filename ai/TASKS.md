@@ -255,9 +255,27 @@ Windows reasoning rests on has changed.
 that ships, and drives `coverage` instead because the product's script opens a window. The
 launcher machinery is identical; it is the machinery under test.
 
-**No Windows execution has happened yet.** The test exists and runs on Linux; the Windows job needs
-a push. **Until it runs, whether the defect ever existed on Windows is unmeasured** — the
-launcher's child is `python.exe`, which suggests not, and that remains reasoning.
+**Windows evidence now exists** — CI run `33017151297`'s `windows desktop` job on `STARBASE`,
+2026-08-26, at this exact head:
+
+```
+test_an_installed_console_script_resolves_to_an_interpreter          PASSED
+test_the_interpreter_question_is_asked_of_the_executable[...]        PASSED  (5 cases)
+test_a_parent_that_vanishes_while_being_read_is_gone                 PASSED
+test_a_console_script_parent_is_not_mistaken_for_a_dead_one          SKIPPED (POSIX-only)
+```
+
+**23 of `test_orphan_scan.py` passed on Windows and none failed.**
+
+**The passing launcher test is the measurement, not the reassurance.**
+`_the_process_a_worker_would_call_parent` **raises** if a Windows launcher starts no child, so a
+pass means the child was found *and* recognised as an interpreter. **The distlib launcher does
+start a Python interpreter child, and that child is what a worker records as its parent** — which
+is why the defect never reached Windows. That was reasoning in the previous pass and is a result
+now.
+
+**The POSIX-only test is correctly skipped there**, so the platform reports what it did not cover
+rather than appearing to have covered it.
 
 #### `T279-R5` (Low) — two behaviours the record claimed and nothing pinned
 
