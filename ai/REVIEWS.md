@@ -20570,3 +20570,80 @@ record sweep into a named follow-up before T-272 can be approved.
 The Reviewer appended only this historical review record. No reviewed source, test, workflow,
 task/status/evidence text, live process, push, CI run or remote state was changed; all mutations
 were isolated under `/tmp`.
+
+---
+
+## 2026-08-26 — T-272 R6-only correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-272
+**Correction base:** `db8e67e7512d76470b351c7b11ddbfe0d6d833fe`
+**Correction head:** `ec12078006c8e1692747286e1e9985916b2dc669`
+**Platforms verified:** Linux (`Spock`); Windows and CI not run
+**Pass authority:** Explicit maintainer authorization under `AGENTS.md` section 10
+**Verdict:** **Blocked.** T272-R6 is substantially corrected but remains Open. The restored
+criterion, corrected task narrative and evidence-file banners are coherent. The claimed mention
+sweep is not complete: the T-272 heading itself still attributes the orphans to `kirk`, and the
+workflow's live job comment plus the scanner test docstring repeat that attribution. The test
+docstring was explicitly named in the preceding required correction. This pass's stated file set
+excluded both files, and its literal `on \`kirk\`` search did not match the differently worded task
+heading—the vocabulary-versus-subject failure the correction says it eliminated.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T272-R6** | **Medium** | **Yes — preservation/current truth** | **Partially corrected, still Open.** The operative acceptance criterion is restored as unmet/live. The main task narrative now says the pair remains alive and visibly withdraws the downstream ending conclusions. The original evidence file has an effective correction banner and a local correction above *What became of them*. But `TASKS.md:227` still opens the entry as “`kirk` has had two orphans”; `.github/workflows/ci.yml:956-958` still says the scanner found the two on `kirk`; and `tests/unit/test_orphan_scan.py:358-359` says the same. The latter was explicitly listed in the required R6 correction at `db8e67e`. These are unqualified current descriptions, not quotations or dated snapshots. | **Open** |
+
+### Required final correction
+
+Correct exactly the three remaining unqualified attributions:
+
+1. Make the T-272 heading machine-neutral or state the host is unestablished.
+2. Correct the `linux-orphans` workflow comment without changing workflow behavior.
+3. Correct the scanner test docstring without changing test behavior.
+
+Then enumerate the subject repository-wide, including hidden workflow files and tests. Keep the
+accepted task/evidence corrections unchanged. Do not change source behavior, workflow behavior,
+tests, runner scope, the preserved raw capture, or either live process.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `db8e67e..ec12078` is one commit changing TASKS, STATUS and the original evidence file only. No source, test or workflow file changes. `git show --check ec12078` passed. |
+| Enumeration method | The submitted scope names TASKS, STATUS, the evidence inventory and two evidence files. It omits `.github/workflows/ci.yml` and `tests/unit/test_orphan_scan.py`, despite the latter being named in the prior required correction. The exact `on \`kirk\`` key also does not select the T-272 heading's “`kirk` has” wording. The numerical “97 mentions” therefore does not establish repository-wide completeness. |
+| Remaining task hit | `TASKS.md:227`: `T-272 — The orphan scanner runs only on Windows, and \`kirk\` has had two orphans for four days`. This precedes the corrected opening paragraph. |
+| Remaining workflow hit | `.github/workflows/ci.yml:956-958`: the current Linux-orphan job description says the scanner “found two orphaned workers on \`kirk\`.” |
+| Remaining test hit | `tests/unit/test_orphan_scan.py:358-359`: the current wiring-test docstring says it “found two orphaned workers on \`kirk\` unmodified.” |
+| Task/body state | The task's umbrella statement that every ending-derived claim is withdrawn, the explicit strike on “no specimen remains,” and the live acceptance criterion make the preserved old body readable as corrected history. No further R6 change is required there. |
+| Evidence-file shape | Accepted. The correction banner is the first substantive content, identifies the false host/ending frame, preserves the raw capture, and the struck original plus section-local correction make the old conclusion visibly historical. The unchanged filename is appropriate because the file now answers its own misleading name. |
+| Host attribution | Accepted as unestablished. The later `Spock` captures strongly associate the identifiers, but the 2026-08-20 capture did not record a host and the clean command lacks recoverable host/PID-namespace provenance. The record need not promote that inference to fact. |
+| Docs gates | `pytest -q tests/unit/test_task_placement.py`: **15 passed**; `ruff check .` passed; `ruff format --check .`: **204 files already formatted**. Both `git diff --check db8e67e ec12078` and combined `git diff --check a85b8bb ec12078` passed. |
+| Submitted broader gates | The Implementer reports all three mypy variants clean and `tests/unit`: **2,259 passed, 15 skipped**. The Reviewer did not rerun them because this range is records-only. |
+| Live preservation state | Read-only host-namespace check at `2026-08-26T01:54:03Z`: `Spock` still showed PIDs `432922` and `434366` with their August 16 start times; the scanner reported PID `434366` and exited **1**. Nothing was signalled, traced, attached to or reaped. |
+| CI / remote state | No commit in this range has run in CI. The Reviewer did not push or dispatch; CI is not required to verify this records-only correction. |
+
+### Review judgments
+
+- **The unestablished-host disposition is correct.** A strongly suggested identity is not the
+  same as captured host provenance. Keeping the raw observation and declining to choose between
+  candidate explanations preserves the uncertainty T272-R3 requires.
+- **The two evidence banners are not excessive.** The first tells a reader the current disposition
+  before any stale claim; the struck original shows what was corrected. The local banner above
+  *What became of them* prevents the long raw section from being read without the withdrawal.
+- **The two dated STATUS snapshots may remain.** Their dates and the newer correction make them
+  historical state, while the three remaining hits above are present, unqualified descriptions of
+  the task and implementation.
+- **This is still R6, not a new documentation finding.** The prior verdict explicitly required the
+  task title/summary and test docstring to be corrected and required a subject sweep. The workflow
+  comment is the sibling operative description the completed enumeration should have found.
+
+### Convergence and readiness
+
+T-272 remains **Blocked** on T272-R6 alone. R7, R8 and R9 remain Resolved and are untouched. This
+explicitly authorized pass is spent, so another three-line R6 correction pass still requires the
+maintainer's explicit authorization under `AGENTS.md` section 10.
+
+The Reviewer appended only this historical review record. No reviewed source, test, workflow,
+task/status/evidence text, live process, push, CI run or remote state was changed.
