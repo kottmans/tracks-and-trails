@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
+import os
 import socket
 import subprocess
 import sys
@@ -115,6 +116,102 @@ def test_a_worker_whose_parent_is_alive_is_not_reported() -> None:
         child.wait(timeout=30)
 
 
+class _Vanished:
+    """A parent that exists when `psutil.Process` resolves it and is gone by the time it is read.
+
+    The race `T279-R2` names, made deterministic: the scanner holds a `Process` handle, the real
+    process exits, and the first attribute read raises `NoSuchProcess`. Nothing here sleeps or
+    depends on scheduling.
+    """
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+
+    def exe(self) -> str:
+        raise psutil.NoSuchProcess(self.pid)
+
+    def cmdline(self) -> list[str]:
+        raise psutil.NoSuchProcess(self.pid)
+
+    def create_time(self) -> float:
+        return 0.0
+
+
+class _Named:
+    """A live parent whose *name* lacks `python` while its executable is one — the `T-279` shape."""
+
+    def __init__(self, exe: str, argv0: str | None = None) -> None:
+        self._exe, self._argv0 = exe, argv0 or exe
+
+    def exe(self) -> str:
+        return self._exe
+
+    def cmdline(self) -> list[str]:
+        return [self._argv0]
+
+    def create_time(self) -> float:
+        return 0.0
+
+
+def _a_pid_that_is_gone() -> int:
+    """A pid that resolved a moment ago and does not now."""
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait(timeout=30)
+    return dead.pid
+
+
+def test_a_parent_that_vanishes_while_being_read_is_gone(a_real_orphan: psutil.Process) -> None:
+    """`T279-R2`: *not inspectable* and *not there* are opposite answers.
+
+    `T-279` moved the interpreter question from `name()` to `exe()`, and its first version caught
+    `NoSuchProcess` in the helpers that ask. That turned **the parent exited while we were reading
+    it** — a real orphan, in exactly the race this scanner watches for — into *uninspectable,
+    therefore alive*, and the scan silently returned one fewer find.
+
+    Two halves, because the exception can arrive from either place: resolving the pid at all, and
+    reading an attribute off a handle that resolved. **Both must answer "gone".**
+    """
+    assert orphan_scan._parent_is_gone(a_real_orphan, _a_pid_that_is_gone()) is True, (
+        "a parent pid that no longer resolves was not reported as gone"
+    )
+
+    with pytest.raises(psutil.NoSuchProcess):
+        orphan_scan._looks_like_an_interpreter(_Vanished(_a_pid_that_is_gone()))
+
+
+@pytest.mark.parametrize(
+    ("exe", "expected"),
+    [
+        ("/usr/bin/python3.14", True),
+        ("/usr/bin/python3.14.exe", True),
+        (r"C:\Program Files\Python\python.exe", True),
+        ("/home/x/.venv/bin/tracks-and-trails", False),
+        (r"C:\app\tracks-and-trails.exe", False),
+    ],
+)
+def test_the_interpreter_question_is_asked_of_the_executable(exe: str, expected: bool) -> None:
+    """`T279-R1`: the predicate itself, on both platforms' path shapes.
+
+    **The process-tree regression below is POSIX-only and cannot be made otherwise here.** Windows
+    `Popen` goes through `CreateProcess`, which will not run a shebang file, and an installed
+    console script there is a native `.exe` launcher that starts a Python child and waits — a
+    different tree from the one that test builds. **This exercises the decision rather than the
+    tree**, so the Windows job runs it too and the path handling is covered on the platform whose
+    separator and extension differ.
+    """
+    assert orphan_scan._looks_like_an_interpreter(_Named(exe)) is expected
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason=(
+        "POSIX-only by construction (T279-R1). This builds the tree with a shebang file, and "
+        "Windows `Popen` goes through `CreateProcess`, which will not run one. An installed "
+        "console script there is a native .exe launcher that starts a Python child and waits, so "
+        "the real Windows tree differs from anything this can build. The platform-neutral half of "
+        "this coverage is test_the_interpreter_question_is_asked_of_the_executable."
+    ),
+)
 def test_a_console_script_parent_is_not_mistaken_for_a_dead_one(tmp_path: Path) -> None:
     """`T-279`: a worker under a live entry-point parent is not an orphan.
 

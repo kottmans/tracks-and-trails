@@ -96,7 +96,15 @@ def _looks_like_an_interpreter(parent: psutil.Process) -> bool:
     line's own argv[0]. **Not `name()`** — see `_parent_is_gone` and `T-279`.
 
     A parent that answers neither is treated as an interpreter, which keeps the enclosing
-    predicate's bias: an uninspectable parent is a parent that exists, and reporting it is a guess.
+    predicate's bias: an *uninspectable* parent is a parent that exists, and reporting it is a
+    guess.
+
+    **`NoSuchProcess` is not caught here, and that is `T279-R2`.** The first version of these
+    helpers swallowed it alongside `AccessDenied`, which quietly turned *the parent vanished while
+    being read* — a genuine orphan, appearing exactly in the race this scanner exists to catch —
+    into *uninspectable, therefore alive*. It propagates to `_parent_is_gone`, whose
+    `except psutil.NoSuchProcess: return True` is the correct answer and predates this change.
+    **Not inspectable and not there are opposite conclusions and must not share a handler.**
     """
     for candidate in (_executable_of(parent), _argv0_of(parent)):
         if candidate is None:
@@ -106,16 +114,18 @@ def _looks_like_an_interpreter(parent: psutil.Process) -> bool:
 
 
 def _executable_of(parent: psutil.Process) -> str | None:
+    """`parent`'s resolved executable, or `None` if it cannot be read. Raises if it is gone."""
     try:
         return parent.exe() or None
-    except psutil.AccessDenied, psutil.NoSuchProcess, OSError:
+    except psutil.AccessDenied, OSError:
         return None
 
 
 def _argv0_of(parent: psutil.Process) -> str | None:
+    """`parent`'s `argv[0]`, or `None` if it cannot be read. Raises if it is gone."""
     try:
         command = parent.cmdline()
-    except psutil.AccessDenied, psutil.NoSuchProcess, OSError:
+    except psutil.AccessDenied, OSError:
         return None
     return command[0] if command else None
 

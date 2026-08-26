@@ -5,11 +5,44 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **`T-279` came back with two blocking findings, and one of them
+is a defect the fix itself introduced.**
+
+**`T279-R2` is the one to read.** Moving the interpreter question from `name()` to `exe()` meant
+new helpers, and both caught `NoSuchProcess` alongside `AccessDenied`. That turned **the parent
+exited while we were reading it** — the exact race this scanner exists to watch — into
+*uninspectable, therefore alive*. A genuine orphan was silently dropped from the scan, and the
+reviewer's deterministic probe returned `False` for parent-gone-after-create.
+
+**The original code had this right and my correction broke it.** `_parent_is_gone` already caught
+`NoSuchProcess` and answered `True`; I put a second handler in front of it that answered the
+opposite. **Not inspectable and not there are opposite conclusions and must not share a handler.**
+
+**`T279-R1`: the regression was POSIX-only and did not say so.** It builds its parent from a
+shebang file, which Windows `CreateProcess` will not run — and an installed console script there is
+a **native `.exe` launcher that starts a Python child and waits**, a different tree entirely. The
+tree test is now `skipif(os.name == "nt")` with the reason in the skip, and a **platform-neutral
+test of the predicate** covers both separators and the `.exe` suffix so the Windows job exercises
+the decision. **Whether the defect exists on Windows at all is still unmeasured** — the launcher's
+child would be `python.exe`, which suggests not, and that is reasoning rather than evidence.
+
+**Mutations, and one of them nearly slipped past me.** Re-swallowing `NoSuchProcess` fails **1 of
+21**; reverting to `name()` fails **1 of 21**. My first attempt at the former reported *21 passed*
+— the replacement string had not matched this codebase's `except A, B:` syntax and **the mutation
+never applied**. It looked exactly like a test that fails to discriminate. Caught by asserting the
+edit changed the file, which is now how these are written.
+
+**Two non-blocking items fixed**: this file claimed `## In Review` was empty while `T-279` sat in
+it, and `T-279` carried a frozen-build paragraph contradicting the correct statement four lines
+above it — struck rather than deleted, since it is the reasoning the filing rested on.
+
+---
+
 **Last updated:** 2026-08-26 — **`T-272` is Complete — all nine findings closed — and the
 approval surfaced a new defect, filed as `T-279`.**
 
 Approved at `12fda3a`, review `de0724c`. The reviewer independently reproduced the 115-hit `kirk`
-enumeration and confirmed no false current attribution remains. **`## In Review` is empty.**
+enumeration and confirmed no false current attribution remains. **`T-279` is In Review.**
 
 **`T272-R6` took four passes and three of them failed the same way.** Each narrowed the search and
 **the narrowing was invisible from inside it** — twice by wording, once by file set, where I

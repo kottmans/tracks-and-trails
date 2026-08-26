@@ -228,7 +228,44 @@ contents; this preface does not list them.***
 
 ### T-279 — The orphan scanner calls a live parent dead when it was launched by a console script
 
-**Status:** **In Review — built 2026-08-26.** The predicate asks the parent's **executable**
+**Status:** **In Review — corrections made 2026-08-26, awaiting a focused pass.** First
+submission returned **Changes requested** at `c326345` with two blocking Medium findings, both
+**correct and both mine**.
+
+#### `T279-R2` (Medium, blocking) — a regression the fix introduced
+
+**Swallowing `NoSuchProcess` in the new helpers turned a real orphan into a live parent.** Both
+`_executable_of` and `_argv0_of` caught it alongside `AccessDenied`, so *the parent exited while
+we were reading it* — the exact race this scanner watches for — became *uninspectable, therefore
+alive*, and the scan silently returned one fewer find. **The reviewer's deterministic probe
+returned `False` for parent-gone-after-create.**
+
+**`NoSuchProcess` now propagates** to `_parent_is_gone`'s own `except`, which answers `True` and
+predates this task. **Not inspectable and not there are opposite conclusions and must not share a
+handler** — which is what the original code got right and the correction broke.
+
+`test_a_parent_that_vanishes_while_being_read_is_gone` covers both arrival points: the pid failing
+to resolve at all, and an attribute read failing on a handle that did resolve.
+
+#### `T279-R1` (Medium, blocking) — the regression was POSIX-only and did not say so
+
+**The Windows product tree is still untested and is now named rather than implied.** The
+process-tree test builds its parent with a shebang file; Windows `Popen` goes through
+`CreateProcess`, which will not run one, and an installed console script there is a **native `.exe`
+launcher that starts a Python child and waits** — a different tree from anything that test can
+build.
+
+- The tree test is **`skipif(os.name == "nt")`** with that reason written into the skip, so a
+  Windows run reports it as skipped rather than appearing to have covered the platform.
+- **`test_the_interpreter_question_is_asked_of_the_executable` is new and platform-neutral**: it
+  exercises the decision rather than the tree, over both separators and the `.exe` suffix, so the
+  Windows job runs it and the path handling is covered where it differs.
+
+**What is still not covered, stated plainly:** whether the defect exists on Windows at all. The
+launcher's Python child would be named `python.exe`, which suggests it does not — **that is
+reasoning, not a measurement**, and nothing here claims it.
+
+*(Previously: In Review — built 2026-08-26. The predicate asks the parent's **executable**
 rather than its name, and the regression is the product's own shape: a shebang parent holding a
 worker-shaped child.
 **Fixed by asking `exe()`, with `cmdline[0]` as fallback.** Measured — all three forms resolve to
@@ -244,7 +281,7 @@ the interpreter:
 `multiprocessing.spawn.get_command_line()` emits `spawn_main` **only when not frozen**; a frozen
 child carries `--multiprocessing-fork` alone. `_SPAWN_MARKERS` requires **both**, so a frozen
 worker is never a candidate and the question never arises. Read from the stdlib rather than
-assumed.
+assumed.)*
 
 **An uninspectable parent is still treated as an interpreter**, preserving the enclosing
 predicate's bias: a parent that cannot be read is a parent that exists, and reporting it is a
@@ -334,8 +371,13 @@ concludes the parent is gone.** `MINIMUM_AGE_SECONDS` is **60**, so a download t
 running for a minute is old enough to qualify. **A nightly firing while somebody is using the
 application would report that person's live workers as orphans.**
 
-The frozen build has the same shape: `packaging/tracks-and-trails.spec` names the executable
-`tracks-and-trails`.
+~~The frozen build has the same shape: `packaging/tracks-and-trails.spec` names the executable
+`tracks-and-trails`.~~ **Withdrawn.** It is true that the spec names the executable that way, and
+**irrelevant**, because a frozen worker never reaches this predicate: `get_command_line()` emits
+`spawn_main` only when *not* frozen and `_SPAWN_MARKERS` requires both markers. The sentence was
+written while filing, before that was read out of the stdlib, and it contradicts the correct
+statement above it. Kept struck rather than deleted, because it is the reasoning the filing rested
+on.
 
 #### The symptom, and why CI never showed it
 
