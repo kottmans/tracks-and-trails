@@ -228,9 +228,71 @@ contents; this preface does not list them.***
 
 ### T-279 — The orphan scanner calls a live parent dead when it was launched by a console script
 
-**Status:** **In Review — corrections made 2026-08-26, awaiting a focused pass.** First
+**Status:** **In Review — second focused correction, 2026-08-26, on explicit maintainer
+authorization under `AGENTS.md` §10** (*"I'm authorizing any additional pass"*). The ordinary
+budget was exhausted at `f7f3fe2`. `T279-R2`, `R3` and `R4` are Resolved; **`T279-R1` and the new
+`T279-R5` are corrected here.**
+
+#### `T279-R1` (Medium, blocking) — a test that runs on Windows, not a synthetic path
+
+**The finding is right: the parametrized path test measures the decision, never the tree, and no
+Windows execution existed.** What replaces it measures **the real installed launcher**:
+
+`test_an_installed_console_script_resolves_to_an_interpreter` runs a console script pip actually
+installed, then asks the predicate about **the process a worker would record as its parent** —
+which differs by platform, and that difference is the whole finding:
+
+| platform | a console script is | a worker's parent is |
+|---|---|---|
+| POSIX | a shebang file | **the launched process itself** |
+| Windows | a **native `.exe` launcher** | **the Python child it starts and waits on** |
+
+`_the_process_a_worker_would_call_parent` encodes exactly that, and **fails loudly rather than
+relaxing** if a Windows launcher starts no child — because that would mean the premise this task's
+Windows reasoning rests on has changed.
+
+**It asserts the product's own entry point is installed**, so the shape under test is the shape
+that ships, and drives `coverage` instead because the product's script opens a window. The
+launcher machinery is identical; it is the machinery under test.
+
+**No Windows execution has happened yet.** The test exists and runs on Linux; the Windows job needs
+a push. **Until it runs, whether the defect ever existed on Windows is unmeasured** — the
+launcher's child is `python.exe`, which suggests not, and that remains reasoning.
+
+#### `T279-R5` (Low) — two behaviours the record claimed and nothing pinned
+
+Both reproduced before correcting: **dropping the `argv[0]` fallback** and **reversing the
+uninspectable-parent bias** each left all 21 tests passing.
+
+- `test_the_argv_fallback_answers_when_the_executable_cannot` pins the **route**, with a parent
+  whose `exe()` raises `AccessDenied` and whose command line answers — both directions.
+- `test_an_uninspectable_parent_is_treated_as_alive` pins the **choice**. Reporting such a parent
+  is defensible and is not what this scanner does, so the decision is asserted rather than implied.
+
+#### A gap this pass found in its own previous test
+
+**`test_a_parent_that_vanishes_while_being_read_is_gone` only caught the `R2` regression when
+*both* helpers swallowed `NoSuchProcess`.** Re-adding the catch to `_executable_of` alone left all
+tests green, because `_argv0_of` is asked second and still raised — benign, but only by an ordering
+nobody promised. **Each helper is now asserted independently**, and mutating either site alone
+fails.
+
+Found by mutating the sites separately after a whole-file mutation reported *24 passed* — the
+replacement had hit one of two occurrences. **Asserting that a mutation changed the file is not
+enough when the string appears more than once.**
+
+| mutation | result |
+|---|---|
+| revert the predicate to `name()` | **1 failed** |
+| re-swallow `NoSuchProcess`, both sites | **1 failed** |
+| re-swallow in `_executable_of` alone | **1 failed** *(was: 24 passed)* |
+| re-swallow in `_argv0_of` alone | **1 failed** *(was: 24 passed)* |
+| drop the `argv[0]` fallback | **1 failed** *(was: 21 passed)* |
+| reverse the uninspectable bias | **1 failed** *(was: 21 passed)* |
+
+*(Previously: In Review — corrections made 2026-08-26, awaiting a focused pass.* First
 submission returned **Changes requested** at `c326345` with two blocking Medium findings, both
-**correct and both mine**.
+**correct and both mine**.)*
 
 #### `T279-R2` (Medium, blocking) — a regression the fix introduced
 

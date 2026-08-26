@@ -19,6 +19,7 @@ import os
 import socket
 import subprocess
 import sys
+import sysconfig
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -178,6 +179,15 @@ def test_a_parent_that_vanishes_while_being_read_is_gone(a_real_orphan: psutil.P
     with pytest.raises(psutil.NoSuchProcess):
         orphan_scan._looks_like_an_interpreter(_Vanished(_a_pid_that_is_gone()))
 
+    # **Each helper, independently.** Asserting only through `_looks_like_an_interpreter` lets one
+    # helper swallow `NoSuchProcess` while the other still raises, and the test stays green on a
+    # half-made regression: measured, re-adding the catch to `_executable_of` alone leaves all
+    # tests passing. That is benign only because `_argv0_of` happens to be asked second, which is
+    # an ordering nobody promised.
+    for helper in (orphan_scan._executable_of, orphan_scan._argv0_of):
+        with pytest.raises(psutil.NoSuchProcess):
+            helper(_Vanished(_a_pid_that_is_gone()))
+
 
 @pytest.mark.parametrize(
     ("exe", "expected"),
@@ -200,6 +210,114 @@ def test_the_interpreter_question_is_asked_of_the_executable(exe: str, expected:
     separator and extension differ.
     """
     assert orphan_scan._looks_like_an_interpreter(_Named(exe)) is expected
+
+
+def _console_script(name: str) -> Path:
+    """An installed console script by name, with the platform's own suffix and directory."""
+    scripts = Path(sysconfig.get_path("scripts"))
+    return scripts / (f"{name}.exe" if os.name == "nt" else name)
+
+
+def _the_process_a_worker_would_call_parent(launcher: psutil.Process) -> psutil.Process:
+    """The process a `spawn_main` child of `launcher` would record as its parent.
+
+    **The two platforms differ here and that difference is the whole of `T279-R1`.** A POSIX
+    console script is a shebang file, so the interpreter *is* the process that was launched. A
+    Windows console script is a **native `.exe` launcher** that starts a Python child and waits —
+    the product's code runs in that child, so a worker it spawns records the child, not the
+    launcher.
+    """
+    if os.name != "nt":
+        return launcher
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        children = launcher.children()
+        if children:
+            return children[0]
+        time.sleep(0.1)
+    raise AssertionError(
+        f"the Windows launcher {launcher.pid} started no child within 30s. If console scripts "
+        "have stopped being .exe launchers that spawn an interpreter, this test's premise is "
+        "gone and T279-R1's reasoning needs re-reading rather than this assertion relaxing"
+    )
+
+
+def test_an_installed_console_script_resolves_to_an_interpreter(tmp_path: Path) -> None:
+    """`T279-R1`: the real installed launcher, on whichever platform is running.
+
+    **This runs on Windows**, which the shebang test below cannot. It uses a console script pip
+    actually installed — the same machinery that produced the product's own
+    `tracks-and-trails` entry point, whose presence is asserted so the shape under test is the
+    shape that ships — and asks the scanner's predicate about the process a worker would record
+    as its parent.
+
+    `coverage` rather than the product's entry point because that one opens a window; the launcher
+    machinery is the same, and it is the machinery under test.
+    """
+    product = _console_script("tracks-and-trails")
+    assert product.exists(), (
+        f"{product} is not installed, so this test is not exercising the shape that ships"
+    )
+
+    probe = _console_script("coverage")
+    if not probe.exists():
+        pytest.skip(f"no installed console script to drive at {probe}")
+
+    script = tmp_path / "sleeper.py"
+    script.write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+    launcher = subprocess.Popen([str(probe), "run", str(script)])
+    try:
+        time.sleep(0.8)
+        parent = _the_process_a_worker_would_call_parent(psutil.Process(launcher.pid))
+        assert orphan_scan._looks_like_an_interpreter(parent), (
+            f"the process a worker would record as its parent ({parent.name()!r}, "
+            f"exe {parent.exe()!r}) is not recognised as an interpreter, so a live "
+            "application's own workers would be reported as orphans"
+        )
+    finally:
+        for child in psutil.Process(launcher.pid).children(recursive=True):
+            with contextlib.suppress(psutil.NoSuchProcess):
+                child.kill()
+        launcher.kill()
+        launcher.wait(timeout=30)
+
+
+def test_the_argv_fallback_answers_when_the_executable_cannot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T279-R5`: the `argv[0]` fallback is load-bearing, so deleting it must fail something.
+
+    A parent whose executable cannot be read but whose command line can is the case the fallback
+    exists for — `AccessDenied` on `exe()` is ordinary on a shared machine. Without the fallback
+    the predicate falls through to its bias and calls an unreadable parent an interpreter, which
+    happens to be the same answer here for the wrong reason; this pins the *route*.
+    """
+
+    class _NoExe(_Named):
+        def exe(self) -> str:
+            raise psutil.AccessDenied(1)
+
+    assert orphan_scan._looks_like_an_interpreter(_NoExe("/usr/bin/python3.14")) is True
+    assert orphan_scan._looks_like_an_interpreter(_NoExe("/opt/app/tracks-and-trails")) is False
+
+
+def test_an_uninspectable_parent_is_treated_as_alive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`T279-R5`: the bias, pinned. Reversing it must fail rather than pass quietly.
+
+    A parent that answers neither question is **treated as an interpreter**, so the enclosing
+    predicate says *not gone*. That is deliberate: an uninspectable parent is a parent that
+    exists, and reporting it spends a person's attention on a guess. The opposite choice — report
+    it — is defensible and is not what this scanner does, so the choice is asserted.
+    """
+
+    class _Silent:
+        def exe(self) -> str:
+            raise psutil.AccessDenied(1)
+
+        def cmdline(self) -> list[str]:
+            raise psutil.AccessDenied(1)
+
+    assert orphan_scan._looks_like_an_interpreter(_Silent()) is True
 
 
 @pytest.mark.skipif(

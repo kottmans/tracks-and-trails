@@ -5,6 +5,41 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **`T-279`'s second focused correction, on explicit authorization
+under §10. `T279-R1` now has a test that runs on Windows; it has not run there yet.**
+
+**`T279-R1` was right that a synthetic path test measures nothing about the tree.** What replaces
+it drives a console script pip actually installed and asks the predicate about **the process a
+worker would record as its parent** — which is the launched process on POSIX and the **Python child
+of a native `.exe` launcher** on Windows. That difference is the finding, and it is now encoded
+rather than reasoned about. The helper **fails loudly** if a Windows launcher starts no child,
+because that would mean the premise has changed.
+
+**No Windows execution has happened.** The test exists and passes on Linux; the Windows job needs a
+push. **Whether the defect ever existed on Windows is still unmeasured.**
+
+**`T279-R5`: two behaviours the record claimed and nothing pinned** — dropping the `argv[0]`
+fallback, and reversing the uninspectable-parent bias, each left all 21 tests green. Both are now
+asserted, the second because *report an unreadable parent* is a defensible choice this scanner does
+not make, and an unasserted choice is indistinguishable from an accident.
+
+**A gap this pass found in its own earlier test, which is the part worth keeping.**
+`test_a_parent_that_vanishes_while_being_read_is_gone` only caught the `R2` regression when
+**both** helpers swallowed `NoSuchProcess`. Re-adding the catch to one alone left everything green,
+because the other is asked second and still raised — benign, but only by an ordering nobody
+promised.
+
+**It surfaced from a mutation that reported *24 passed* and should not have.** The replacement had
+matched **one of two occurrences** of the same line. **Asserting that a mutation changed the file
+is not enough when the string appears more than once** — the assertion has to be on the count. Each
+site now fails independently.
+
+That is the same shape as everything else this session: a check that proves one instance of a
+property it claims generally. This time it was the *mutation* rather than the test, which is one
+level further out and correspondingly easier to miss.
+
+---
+
 **Last updated:** 2026-08-26 — **`T-279` came back with two blocking findings, and one of them
 is a defect the fix itself introduced.**
 
