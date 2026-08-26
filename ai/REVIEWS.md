@@ -20408,3 +20408,76 @@ maintainer's ruling must explicitly authorize one focused post-approval correcti
 
 The Reviewer changed only this append-only record. No workflow, source, test, task/status/evidence
 file, runner configuration, process, push or remote state was changed.
+
+---
+
+## 2026-08-26 — T-272 scope-correction focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-272
+**Correction base:** `a85b8bbef59ff2702036c579bbcdb77c5e3f6d0b`
+**Correction head:** `048ed980816005b01eac7a61fb6a4739a92a4fd2`
+**Platforms verified:** Linux (`Spock`); Windows and CI not run
+**Verdict:** **Blocked.** The maintainer's per-run scope ruling is stated explicitly and honestly,
+so T272-R5 is Resolved. T272-R6 is not: the retained evidence and a host-namespace re-check show
+the same specimen still alive on `Spock`, while operative passages in the canonical task still say
+it was on `kirk`, ended, and left no specimen. One new Medium gate finding also remains: a
+step-level shell override can make `tee` swallow the alarm while all 14 scanner tests pass. This
+was the authorized focused re-review after the ordinary pass budget; another correction pass now
+requires a maintainer choice under `AGENTS.md` section 10.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result / finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T272-R5** | **Medium** | Yes | The original platform-wide visibility criterion is struck, the maintainer's per-run-one-machine ruling is explicit, and the replacement states both consequences: an orphan on the unselected machine waits for a later run, and a green can be mistaken for a clean platform. That is the narrower promise the ruling authorized rather than a quiet reinterpretation. Prefixing each verdict with `socket.gethostname()` is a proportionate correction to the demonstrated signal ambiguity; no repository consumer parses the old literal output. | None. | **Resolved at `048ed98`** |
+| **T272-R6** | **Medium** | **Yes — preservation/current truth** | Retaining `ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md` and correcting the top-level STATUS text are necessary but not the requested sweep. `TASKS.md` still says the pair was on `kirk`, later ended, and left no specimen; its operative acceptance list still strikes preservation as “overtaken by events.” Older operative STATUS passages and the original evidence file repeat the same disposition. Those are the exact PIDs, start times and pipe inode now visible on `Spock`; a process did not migrate between machines. At 2026-08-26T00:55:59Z host `Spock` still showed PIDs `432922` and `434366`, and the submitted scanner reported PID `434366` and exited 1. | Sweep the current-truth copies, including the T-272 body and acceptance list. State that the captured pair was on `Spock`; the later clean `kirk` check did not settle its state; the specimen remains live and the preservation criterion remains unmet. Put an in-file correction banner on the misleading 2026-08-20 evidence framing while preserving its raw capture. Do not infer how it began or authorize inspection, signalling or reaping. | **Open** |
+| **T272-R7** | **Low** | No | The production output does join host and verdict, but `test_every_verdict_names_the_machine_it_came_from` does not enforce that stated contract. In an isolated exact-head tree, printing the hostname on a separate line before both verdicts left **all 14 tests passing**: the find branch checks only that line 1 contains the host, and the clean branch checks only that the host appears somewhere in the output. | Assert that the actual verdict line begins with the exact host prefix in both branches, for example `f"{socket.gethostname()}: "`, rather than testing substring presence. **Owner/target:** Implementer, the next authorized T-272 correction or a named test-hardening follow-up if the maintainer closes T-272 without another pass. | **Open, non-blocking** |
+| **T272-R8** | **Medium** | **Yes — the find-fails-the-job acceptance criterion** | `test_a_pipeline_cannot_swallow_the_alarm` reads only workflow-level `defaults.run.shell`. GitHub's more-specific step shell wins over that default. In an isolated exact-head tree, adding `shell: sh` to a scanner step left **all 14 tests passing**, although that step no longer has `pipefail` and `scanner | tee` returns `tee`'s zero status. The new gate therefore does not gate the workflow's effective shell or the property its name claims. | Resolve the effective shell using step, job-default and workflow-default precedence for every piped scanner step, or make each command preserve the scanner's status independently of implicit shell flags and test that mechanism. | **Open** |
+| **T272-R9** | **Low** | No | `git diff --check a85b8bb 048ed98` fails on trailing spaces in the two captured command-line lines at `ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md:53` and `:88`. The spaces add no evidence; they are the printable residue of command-line separators. | Remove the two trailing spaces during the next documentation correction. **Owner/target:** Implementer, the next T-272 correction batch. | **Open, non-blocking** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `a85b8bb..048ed98` is five commits and nine files: coordination/evidence, one test file, `tools/orphan_scan.py`, and a docstring-only `render_icons.py` correction. Nothing under `src/` changes; `.github/workflows/ci.yml` is unchanged. |
+| Scope amendment | The old criterion is visibly struck and the replacement expressly says one selected machine per run, no fan-out, delayed observation on the other machine, and the risk of reading one host's green as a platform result. |
+| Current host state | Read-only host-namespace check at `2026-08-26T00:55:59Z`: `hostname` was `Spock`; PIDs `432922` and `434366` retained their August 16 start times and dead parent `2139`; the scanner printed `Spock: 1 orphaned worker(s)`, named PID `434366`, and exited **1**. Nothing was signalled, attached to, traced or reaped. |
+| Reviewer correction | The preceding review's “ended between capture and review / absent on Spock” clause is withdrawn. That check inherited the host name but ran inside the filesystem sandbox's isolated PID namespace. Re-running the same read-only commands in the host PID namespace sees the specimen. The original R6 finding about the false August 20 disposition remains valid. |
+| Focused baseline | `pytest -q tests/unit/test_orphan_scan.py tests/unit/test_task_placement.py`: **29 passed**. |
+| Host-join mutation | Exact-head archive with both branches changed to print host on one line and verdict on the next: `tests/unit/test_orphan_scan.py` **14 passed**. |
+| Effective-shell mutation | Separate exact-head archive with `shell: sh` on one scanner step: `tests/unit/test_orphan_scan.py` **14 passed**. |
+| Static gates | `ruff check .` passed; `ruff format --check .`: **204 files already formatted**; `mypy src`: **56 files**, passed; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. |
+| Diff hygiene | `git diff --check a85b8bb 048ed98`: **failed** on the two evidence-file trailing spaces recorded as T272-R9. |
+| CI / remote state | No commit in this boundary has run in CI. The Reviewer did not push or dispatch: another scheduler landing is a sample of the accepted per-run policy, not proof of both process tables, and the changed source/test properties were reproducible locally. |
+
+### Review judgments
+
+- **The host-naming clause is accepted.** The ruling changed the meaning of a green result, and the
+  six-run history shows the unqualified wording was actually misread. Naming the process table in
+  the verdict is within T-272's visibility surface, uses a public cross-platform API and has no
+  exact-output consumer in the repository. T272-R7 concerns only the weaker-than-claimed guard.
+- **The residual is stated honestly enough.** It does not call arbitrary scheduling fleet
+  coverage: it says the other machine is unobserved, quantifies the observed five-green delay and
+  names both latency and interpretation risk. The maintainer has accepted that product trade-off.
+- **A workflow-level test is appropriate in principle.** The acceptance property belongs to the
+  workflow, so parsing `ci.yml` from a unit test is not objectionable coupling. T272-R8 is narrower:
+  the test must inspect the effective shell, not merely one default that a job or step can override.
+- **The retained capture does not resolve R6 by itself.** Current-truth files are rewritten under
+  `AGENTS.md` section 6. A correct warning above an unchanged false task body leaves the higher-
+  authority acceptance list saying the opposite of current host state.
+- **The icon completion changes need no new disposition.** This range only synchronizes the
+  already-reviewed T277-R1 rationale and changes `render_icons.py` documentation; the renderer and
+  shipped assets are unchanged.
+
+### Convergence and readiness
+
+T-272 remains **Blocked**. The maintainer's runner-scope decision resolved T272-R5, but T272-R6 and
+T272-R8 are blocking Medium findings after the explicitly authorized focused re-review. Under
+`AGENTS.md` section 10, the automatic loop stops here: the maintainer must authorize another
+focused pass, accept the documented risk, change scope, or move the remaining work into a named
+follow-up. T272-R7 and T272-R9 are non-blocking and can travel with whichever correction is chosen.
+
+The Reviewer appended only this historical review record. No reviewed source, test, workflow,
+task/status/evidence text, live process, push, CI run or remote state was changed; both diagnostic
+mutations were isolated under `/tmp`.
