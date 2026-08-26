@@ -20647,3 +20647,65 @@ maintainer's explicit authorization under `AGENTS.md` section 10.
 
 The Reviewer appended only this historical review record. No reviewed source, test, workflow,
 task/status/evidence text, live process, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-26 — T-272 fourth R6-only correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-272
+**Correction base:** `5308196bac98208dd936d757b92438fa0ef03285`
+**Correction head:** `12fda3aea6d60834292212190ba16f0f08346d53`
+**Platforms verified:** Linux (`Spock`); Windows and CI not run
+**Pass authority:** Explicit maintainer authorization under `AGENTS.md` section 10
+**Verdict:** **Approved at `12fda3a`.** T272-R6 is Resolved. The three remaining unqualified
+`kirk` attributions are corrected without changing source behavior, workflow behavior or test
+behavior, and the repository-wide tracked-file enumeration also found and corrected the one
+current-truth question that the Reviewer's PID-namespace disclosure had overtaken. T272-R5,
+T272-R7, T272-R8 and T272-R9 remain Resolved.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T272-R6** | **Medium** | Yes — preservation/current truth | The task heading is now host-neutral; the workflow comment and scanner-test docstring say the 2026-08-20 find was on a Linux box whose identity was not captured. The prior task paragraph that left the verification host for the Reviewer to establish now records the answered cause—an isolated PID namespace—and withdraws the contrary result. At the exact head, independent `git grep -in kirk` enumeration reproduces **115 hits in 16 tracked files**. The remaining hits are correction/history text, measured runner or provenance facts, the deliberately retained evidence title and capture, or unrelated measurements genuinely taken on `kirk`; none is another unqualified attribution of the live specimen. | **Resolved at `12fda3a`** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `5308196..12fda3a` is one commit changing three files: task prose, workflow comments and a test docstring. `tools/orphan_scan.py`, workflow keys/steps, executable test lines and assertions are unchanged. |
+| Tracked-file enumeration | `git grep -in kirk` at the submitted head produced **115 hits in 16 files**, matching the submitted head count. The implementer's pre-correction count of 113 and head count of 115 are consistent with two retained explanatory references added by the correction. Every non-obvious surviving category was inspected independently. |
+| Named corrections | `ai/TASKS.md` no longer attributes the heading's pair to `kirk`; `.github/workflows/ci.yml` no longer attributes the find to `kirk`; and `tests/unit/test_orphan_scan.py` no longer makes that attribution in the wiring-test docstring. |
+| Overtaken question | The task no longer asks the Reviewer to identify the environment that returned the later clean result. It records the disclosed isolated PID namespace as the actual cause while retaining the shared-label and other-host scan as distinct ways an unnamed zero can mislead. |
+| Focused tests | `.venv/bin/python -m pytest -q tests/unit/test_orphan_scan.py tests/unit/test_task_placement.py`: **29 passed**. A preliminary invocation through the `.venv/bin/pytest` console-script wrapper produced one failure in the pre-existing live-parent test; the project-interpreter invocation passed, and this correction changes only that file's docstring. No current finding was reopened on that adjacent, invocation-sensitive result. |
+| Static gates | `ruff check .` passed; `ruff format --check .`: **204 files already formatted**; `mypy src`: **56 files**, passed; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. |
+| Diff hygiene | Combined `git diff --check a85b8bb..12fda3a` passed. |
+| Live preservation state | Read-only host-namespace check at `2026-08-26T02:32:06Z`: `Spock` still showed PIDs `432922` and `434366`; PID `434366` had two threads at age **9d20h**, and the scanner named it and exited **1**. Nothing was signalled, traced, attached to or reaped. |
+| Submitted broader gates | The Implementer reports `tests/unit`: **2,259 passed, 15 skipped**. The Reviewer did not rerun UI or integration suites because this boundary changes no executable code or assertions. |
+| CI / remote state | No commit in this correction range has run in CI. The Reviewer did not push or dispatch; CI is not required to distinguish these comment/docstring/current-truth corrections. |
+
+### Review judgments
+
+- **The repository-wide sweep is complete for the disputed attribution.** The prior pass selected
+  files and phrases before counting; this pass lets Git enumerate every tracked path for the host
+  identifier, including hidden workflow files and tests. The independently reproduced finite set
+  contains no further unqualified current attribution of the specimen to `kirk`.
+- **The neutral heading is the right correction.** It keeps the established Linux observation and
+  continuing duration without promoting the strongly suggested host identity to captured fact.
+- **Correcting the overtaken question belongs in this pass.** It is another current-truth mention
+  of the same host/namespace uncertainty, and the answer arrived after the sentence was written.
+  Recording the answer removes a stale open question without changing the accepted runner policy.
+- **The preservation residual remains explicit.** The 2026-08-20 capture host is unestablished,
+  the live pair is confirmed on `Spock`, the old ending conclusion is withdrawn, and the restored
+  criterion continues to bind the untouched specimen. Approval does not authorize inspection,
+  signalling or reaping.
+
+### Convergence and readiness
+
+T-272 is **Approved at `12fda3a`**. T272-R6 is Resolved, all other T-272 findings remain
+Resolved, and no open blocking or non-blocking review finding remains. The task may leave
+`In Review`; the live preservation condition remains in force independently of that status.
+
+The Reviewer appended and committed only this historical review record. No reviewed source,
+test, workflow, task/status/evidence text, live process, push, CI run or remote state was changed.
