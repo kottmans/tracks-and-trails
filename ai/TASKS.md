@@ -220,7 +220,61 @@ contents; this preface does not list them.***
 
 ### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
 
-**Status:** **In Review — the scope ruling is in and the corrections are built, 2026-08-26.**
+**Status:** **In Review — second focused correction, 2026-08-26, on explicit maintainer
+authorization under `AGENTS.md` §10.** The ordinary budget was spent; `T272-R6` and `T272-R8`
+were blocking Medium, so the pass was authorized rather than taken. **`T272-R6`, `T272-R7`,
+`T272-R8` and `T272-R9` are corrected below.** `T272-R5` is Resolved and the hostname clause was
+accepted as a proportionate correction to the misleading signal.
+
+#### `T272-R6` — the canonical body still said the specimen ended
+
+**The prior pass corrected `STATUS.md` and added the evidence file, and left the two passages that
+matter most.** The acceptance list still carried the criterion **struck** as *"overtaken by
+events … no specimen remains available"*, and the *What was measured* narrative still asserted
+*"Both PIDs are gone from `ps`"*. **A record's canonical statement is the acceptance list**, so
+correcting everything around it and leaving it standing is the defect this task is about, committed
+inside its own correction.
+
+- **The criterion is un-struck and recorded as unmet and live.** It binds now: nothing may
+  terminate these two without revalidating pid, create time, command line and parent first.
+- **The narrative is corrected and the original sentence kept**, because it is what was corrected.
+- **What produced the true-looking zero is left open with two live candidates** — the two-machine
+  label (`T272-R5`) and an **isolated PID namespace**, which is what the Reviewer disclosed and
+  withdrew their own contrary check on. Neither is asserted. *(The Implementer offered `kirk` as
+  the likeliest reading; the namespace disclosure makes that one candidate of at least two.)*
+
+#### `T272-R8` (Medium, blocking) — the pipefail guard read one of three levels
+
+**Reproduced before correcting**: adding `shell: sh` **to the step** defeated `pipefail` with all
+fourteen tests green. GitHub resolves the shell **step → job defaults → workflow defaults**, and
+the assertion read only the last. `ci.yml` already records `dd9c238` adding two `shell: pwsh`
+steps, so a step-level override is a thing that happens in this workflow rather than a
+hypothetical.
+
+`effective_shell()` now resolves all three levels in GitHub's own precedence.
+
+#### `T272-R7` (Low) — the claim was "joined", the test was "present"
+
+The record said the host is *joined to the verdict, not printed beside it, so no consumer can keep
+one without the other* — and the assertion only required it to appear **somewhere in the output**.
+Printing the host on its own line satisfied that and kept all fourteen green. The test now
+requires the host on the **verdict's own line**, which is what the claim says.
+
+#### `T272-R9` (Low) — trailing whitespace
+
+Two lines in the new evidence file, from `tr '\0' ' '` over `/proc/*/cmdline`. Stripped;
+`git diff --check` is clean across the range.
+
+#### The pattern in `T272-R7` and `T272-R8`, recorded because it is mine
+
+**Both are the same defect: a test weaker than the claim written over it** — and it is the fourth
+and fifth instance from this implementer in one session, after `T274-R1`, `T274-R3`, `T278-R1` and
+`T277-R1`. In each, what was asserted is *the instance I was thinking about* rather than *the
+property I claimed*: one size of three; one run of gold; one font; one slot; one shell level; the
+host somewhere rather than joined. **The mutations that would have caught them were available and
+cheap in every case**, which is what makes it a habit rather than bad luck.
+
+*(Superseded: the scope ruling is in and the corrections are built, 2026-08-26.)*
 The maintainer ruled **per-run coverage of one machine: the scans are not fanned out.** `T272-R5`
 and `T272-R6` are corrected below and the acceptance criterion is **explicitly amended** rather
 than quietly read down, which is what that finding required.
@@ -398,8 +452,25 @@ write end, and the `resource_tracker` reading it for EOF therefore never exits. 
 correctly reports only the worker; `_SPAWN_MARKERS` matches `spawn_main`, and the tracker is a
 consequence rather than an orphan of that class.
 
-**Re-scanned 2026-08-20T06:20:48Z on `kirk`: `no orphaned workers found`, exit 0.** Both PIDs are
-gone from `ps`, and `kirk` has not rebooted — up since 2026-08-10, which predates their creation.
+**Re-scanned 2026-08-20T06:20:48Z: `no orphaned workers found`, exit 0 — and that zero was not
+about these processes** (`T272-R6`). The paragraph below read *"Both PIDs are gone from `ps`"*.
+**They were not gone and are not gone**: both are running on `Spock` and every claim in this
+section that follows from their ending is withdrawn with it.
+
+**What produced a true-looking zero is not established, and two candidates are now known to be
+live.** `T272-R5` established that `LINUX_RUNNER` is a label two machines answer, so a scan names
+whichever it ran on; and the Reviewer's own contrary check of 2026-08-26 was withdrawn as having
+come from **an isolated PID namespace**, where `ps` cannot see the host's processes at all. Either
+would return exit 0 truthfully while the specimens ran. **Neither is asserted** — which host and
+which namespace the 2026-08-20 command ran in is not recoverable from here, and choosing by
+inference is what `T272-R3` exists to prevent.
+
+*(The Implementer offered `kirk` as the likeliest reading on 2026-08-25. The namespace disclosure
+makes that one candidate of at least two, and it was offered as unasserted for exactly this
+reason.)*
+
+**The original sentence, kept because it is what was corrected:** *"Both PIDs are gone from `ps`,
+and `kirk` has not rebooted — up since 2026-08-10, which predates their creation."*
 Nothing here signalled them; both scans were report-only and `--kill` does not exist. **Why they
 ended is not established, and nothing here ranks the candidates**: the worker was in a `time.sleep`,
 finite by construction, and that candidate is distinguished only by **requiring nothing outside the
@@ -461,13 +532,24 @@ been reproduced outside Windows. **It has not been.**
   latency and the risk that a green is read as a clean platform**, and the second half is what
   the naming requirement addresses: `Spock: no orphaned workers found` cannot be read as *Linux
   is clean* the way `no orphaned workers found` was
-- ~~**The two specimens are preserved until inspected or deliberately released**, and revalidated by
-  pid, create time, command line and parent before any termination — `T258-R4`, unchanged~~
-  **Overtaken by events 2026-08-20**: both processes are gone, so **no specimen remains available**
-  for this criterion to protect. It does **not** record that they ended on their own or that nobody
-  inspected or released them — neither is knowable (`T272-R3`). The rule it states is unchanged and
-  still binds the next specimen. **It is struck rather than deleted** because a criterion that was
-  never met and never waived is a different history from one that never existed
+- **The two specimens are preserved until inspected or deliberately released**, and revalidated by
+  pid, create time, command line and parent before any termination — `T258-R4`, unchanged.
+  **Unmet, and live** (`T272-R6`).
+
+  **This was struck on 2026-08-20 as *overtaken by events*, and the event did not happen.** The
+  strike read: *"both processes are gone, so no specimen remains available for this criterion to
+  protect."* **Both processes are running.** `434366` and `432922` are on `Spock` — present in
+  `ps` and `/proc`, `434366` with two threads still holding `pipe:[1629660]`, scanner exit **1**,
+  9d18h at the time of writing and confirmed again at every commit since. `ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md`
+  is three read-only captures of them, retained on `T272-R6`'s direction.
+
+  **The criterion is therefore unmet rather than overtaken, and it binds now** — nothing may
+  terminate these two without revalidating pid, create time, command line and parent first.
+  **Nothing has signalled, traced, attached to or reaped them.**
+
+  *(A criterion retired on a false premise is a gate moved without anybody saying so, which is
+  `T198-R5`'s shape. It is restored rather than re-struck with better wording, because what was
+  wrong is not how the strike was phrased — it is that there was anything to strike.)*
 - **No destructive scanner mode is added.** `--kill` was removed for the enumerate-then-signal race
   and does not come back
 

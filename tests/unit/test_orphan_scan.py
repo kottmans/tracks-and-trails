@@ -246,47 +246,85 @@ def test_every_verdict_names_the_machine_it_came_from(
     **Both branches, because the green one is the branch that misleads.** A find that does not
     say where is merely unhelpful; a *pass* that does not say where is the one that gets believed.
     """
+    host = socket.gethostname()
+
     assert orphan_scan.main(["--minimum-age-seconds", "0"]) == 1
-    found = capsys.readouterr().out
-    assert socket.gethostname() in found.splitlines()[0], (
-        f"the find does not name the machine it came from: {found.splitlines()[0]!r}"
-    )
+    _assert_the_verdict_carries_the_host(capsys.readouterr().out, "orphaned worker(s)", host)
 
     assert orphan_scan.main(["--minimum-age-seconds", str(_FAR_FUTURE_AGE)]) == 0
-    clean = capsys.readouterr().out
-    assert socket.gethostname() in clean, (
-        f"a clean scan does not name the machine it came from: {clean!r} — which is the line that "
-        "gets read as 'Linux is clean' when it means 'one of two boxes was clean'"
-    )
+    _assert_the_verdict_carries_the_host(capsys.readouterr().out, "no orphaned workers found", host)
+
+
+def _assert_the_verdict_carries_the_host(output: str, verdict: str, host: str) -> None:
+    """The host must be on the **verdict's own line**, which is `T272-R7`.
+
+    Asserting it appears *somewhere* in the output is satisfied by printing it on a line of its
+    own — and a line of its own is exactly what gets dropped when the verdict is quoted, grepped,
+    tailed or pasted into a record. The claim this pins is that the two cannot be separated, so
+    the test has to require them joined rather than merely both present.
+    """
+    lines = [line for line in output.splitlines() if verdict in line]
+    assert lines, f"no line carries the verdict {verdict!r}: {output!r}"
+    for line in lines:
+        assert host in line, (
+            f"the verdict and the machine are on different lines: {line!r}. Separated, the "
+            "verdict travels without the host and reads as a statement about the platform — "
+            f"which is what {verdict!r} did before T272-R5"
+        )
+
+
+#: Shells GitHub runs with `pipefail`, so a pipeline reports the *scanner's* status rather than
+#: `tee`'s. `bash` is mapped to `bash --noprofile --norc -eo pipefail {0}`; `sh` is not, and
+#: neither is an unset shell on Linux, which GitHub runs as plain `bash -e {0}`.
+SHELLS_WITH_PIPEFAIL = frozenset({"bash"})
+
+
+def effective_shell(step: dict[str, object], job: dict[str, object]) -> str:
+    """The shell GitHub will actually use for `step`, by its own precedence.
+
+    **Step, then job defaults, then workflow defaults** — and `T272-R8` is what happens when a
+    check reads only the last of those: a `shell:` on the step overrides everything above it, so
+    a rule that inspects the workflow default alone can be defeated by a line one level closer to
+    the command it is supposed to be protecting.
+    """
+    if "shell" in step:
+        return str(step["shell"])
+    for scope in (job, workflow()):
+        defaults = scope.get("defaults") or {}
+        assert isinstance(defaults, dict)
+        run_defaults = defaults.get("run") or {}
+        assert isinstance(run_defaults, dict)
+        if "shell" in run_defaults:
+            return str(run_defaults["shell"])
+    return ""
 
 
 def test_a_pipeline_cannot_swallow_the_alarm() -> None:
     """`T-272`: the find-fails-the-job promise depends on `pipefail`, and nothing asserted it.
 
     **The scanning step pipes into `tee`**, and a pipeline's status is its last command's. The
-    alarm therefore survives only because `ci.yml` sets `defaults.run.shell: bash`, which GitHub
-    maps to `bash --noprofile --norc -eo pipefail`. **Remove that one line and a find leaves the
-    job green** — while `test_a_find_fails_the_job` keeps passing, because it looks for `|| true`,
+    alarm therefore survives only on a shell GitHub runs with `pipefail` — `shell: bash`, which it
+    maps to `bash --noprofile --norc -eo pipefail`. **Take that away and a find leaves the job
+    green** while `test_a_find_fails_the_job` keeps passing, because it looks for `|| true`,
     `exit 0` and `continue-on-error` and none of those is what would have broken it.
 
-    That is this file's own docstring — *"the way this silently stops working"* — one level below
-    where it was being checked.
+    **Resolved through all three levels, which is `T272-R8`.** The first version of this read the
+    workflow default only, so adding `shell: sh` *to the step* defeated `pipefail` with all
+    fourteen tests still green. This workflow already carries step-level shells — `ci.yml` records
+    `dd9c238` adding two `shell: pwsh` steps — so that override is a thing that happens here
+    rather than a hypothetical.
     """
-    parsed = workflow()
     for job_id, job in by_platform().items():
-        command = str(the_scanning_step(job)["run"])
+        step = the_scanning_step(job)
+        command = str(step["run"])
         if "|" not in command:
             continue
-        defaults = parsed.get("defaults") or {}
-        assert isinstance(defaults, dict)
-        run_defaults = defaults.get("run") or {}
-        assert isinstance(run_defaults, dict)
-        shell = str(run_defaults.get("shell", ""))
-        assert shell == "bash", (
-            f"{job_id} pipes the scanner's output ({command.strip()!r}) while the workflow's "
-            f"default shell is {shell!r}. A pipeline reports its last command's status, so the "
-            "scanner's non-zero is discarded and a find leaves the job green. `shell: bash` is "
-            "what supplies `pipefail`; either keep it or stop piping."
+        shell = effective_shell(step, job)
+        assert shell in SHELLS_WITH_PIPEFAIL, (
+            f"{job_id} pipes the scanner's output ({command.strip()!r}) under "
+            f"{shell or 'the runner default'!r}, which does not set `pipefail`. A pipeline "
+            "reports its last command's status, so the scanner's non-zero is discarded and a "
+            "find leaves the job green. Either use a shell with `pipefail` or stop piping."
         )
 
 

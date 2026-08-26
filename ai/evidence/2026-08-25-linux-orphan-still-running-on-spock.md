@@ -50,7 +50,7 @@ Threads:	2
 voluntary_ctxt_switches:	6293146
 nonvoluntary_ctxt_switches:	4891
 -- cmdline
-/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=16, pipe_handle=40) --multiprocessing-fork 
+/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/bin/python -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=16, pipe_handle=40) --multiprocessing-fork
 -- cwd / exe
 lrwxrwxrwx. 1 sean sean 0 Aug 25 11:49 /proc/434366/cwd -> /mnt/storage/software_projects/tracks-and-trails/tracks-and-trails
 lrwxrwxrwx. 1 sean sean 0 Aug 17 09:46 /proc/434366/exe -> /usr/bin/python3.14
@@ -85,7 +85,7 @@ Threads:	1
 voluntary_ctxt_switches:	2946
 nonvoluntary_ctxt_switches:	2
 -- cmdline
-/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/bin/python -c from multiprocessing.resource_tracker import main;main(15) 
+/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/bin/python -c from multiprocessing.resource_tracker import main;main(15)
 -- cwd / exe
 lrwxrwxrwx. 1 sean sean 0 Aug 25 11:49 /proc/432922/cwd -> /mnt/storage/software_projects/tracks-and-trails/tracks-and-trails
 lrwxrwxrwx. 1 sean sean 0 Aug 17 09:46 /proc/432922/exe -> /usr/bin/python3.14

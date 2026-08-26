@@ -5,6 +5,53 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **Second focused correction on `T-272`, taken on explicit
+maintainer authorization under `AGENTS.md` §10.** The ordinary review budget was spent and two
+blocking Medium findings remained, so the pass was authorized rather than assumed. `T272-R5` is
+Resolved; `T272-R6`–`R9` are corrected.
+
+**`T272-R6` is the one worth reading.** The previous pass corrected `STATUS.md`, retained the
+capture and wrote the evidence file — **and left the acceptance list still carrying the criterion
+struck as *"overtaken by events … no specimen remains available"***, with the *What was measured*
+narrative still asserting *"Both PIDs are gone from `ps`"*. **The canonical statement of a record
+is its acceptance list.** Correcting everything around it and leaving that standing is this task's
+own defect, committed inside its own correction. The criterion is now **un-struck, unmet and
+live** — it binds these two processes now.
+
+**Why the 2026-08-20 zero looked true is left open with two live candidates**, neither asserted:
+the two-machine label (`T272-R5`), and an **isolated PID namespace**, which is what the reviewer
+disclosed when withdrawing their own contrary check. My earlier guess of `kirk` is one candidate of
+at least two, and was offered unasserted for that reason.
+
+**`T272-R7` and `T272-R8` are the same defect, and it is mine.** A test weaker than the claim
+written over it. `R8`: I wrote a `pipefail` regression and checked **one of the three levels**
+GitHub resolves `shell` through — step, job defaults, workflow defaults — so `shell: sh` *on the
+step* defeated the alarm with all fourteen tests green. `R7`: I wrote that the host is *joined to
+the verdict, not printed beside it*, and asserted only that it appears **somewhere in the output**,
+so printing it on its own line passed.
+
+**That is the fourth and fifth instance in one session** — after `T274-R1`, `T274-R3`, `T278-R1`
+and `T277-R1`. The shape is identical every time: assert *the instance I was thinking about*
+rather than *the property I claimed*. One size of three, one run of gold, one font, one slot, one
+shell level, the host somewhere. **The mutation that would have caught each was cheap and
+available**, which makes it a habit rather than luck, and it is recorded here rather than in the
+task alone because it outlives the task.
+
+**Both escapes now fail, and the originals still fail**: step-level `shell: sh` **1 failed**,
+step-level `shell: pwsh` **1 failed**, host on its own line **1 failed**, host dropped entirely
+**1 failed**, workflow default removed **1 failed**. Tree hashed back to clean after each.
+
+**`T272-R9`**: two trailing-whitespace lines in the new evidence file, from `tr '\0' ' '` over
+`/proc/*/cmdline`. `git diff --check` is clean across the range.
+
+**Gates:** ruff, formatting and all three mypy variants clean; `tests/unit` **2259 passed, 15
+skipped**; `tests/unit/test_orphan_scan.py` **14 passed**.
+
+**The specimen is still running on `Spock`.** Nothing has signalled, traced, attached to or reaped
+it.
+
+---
+
 **Last updated:** 2026-08-26 — **The maintainer ruled per-run coverage of one machine — no
 fan-out — and `T-272` is back In Review with the criterion explicitly amended.**
 
