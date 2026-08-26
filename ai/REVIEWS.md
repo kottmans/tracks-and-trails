@@ -20709,3 +20709,70 @@ Resolved, and no open blocking or non-blocking review finding remains. The task 
 
 The Reviewer appended and committed only this historical review record. No reviewed source,
 test, workflow, task/status/evidence text, live process, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-26 — T-279 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-279
+**Base:** `df2d12f703e9bb0a72f96fc224767ce216741da9`
+**Head:** `27e719cc07192e5c6748c3cf30ba3dea53dfb875`
+**Platforms verified:** Linux (`Spock`); Windows inspected statically, not run; CI not run
+**Verdict:** **Changes requested.** Asking the resolved executable fixes the demonstrated Linux
+console-script false positive, and all three Linux invocation forms now pass. Approval is blocked
+because the new regression is itself a POSIX shebang executable and cannot run as written on
+Windows, where installed console scripts are native `.exe` launchers. The helper also converts
+`NoSuchProcess` during executable/command-line inspection into “uninspectable but alive,” causing
+a real parent exit in that race window to be missed for the current scan.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T279-R1** | **Medium** | **Yes — supported-platform gate and acceptance evidence** | `test_a_console_script_parent_is_not_mistaken_for_a_dead_one` writes an extensionless text file with a shebang, applies `chmod(0o755)`, and passes that path directly to `subprocess.Popen`. That is the Linux mechanism under review. On Windows, `Popen(..., shell=False)` uses `CreateProcess`; chmod does not turn this file into an executable, and the installed entry point is instead `tracks-and-trails.exe`. PyPA distlib's launcher source shows that wrapper creating a separate interpreter child and waiting for it. The test therefore neither runs in the Windows product shape nor measures which process is the worker's parent there. No Windows or CI run exists for this unpushed head, while acceptance criterion 3 claims the suite gives the same answer under every invocation. | Make the regression platform-correct. Keep the shebang arrangement on POSIX; on Windows exercise or deterministically model the actual installed `.exe` launcher/interpreter process structure rather than launching the POSIX file. Record which executable is the worker's immediate parent and run the focused test through the Windows wrapper before claiming the cross-platform invocation result. Correct the platform-neutral “`exe()` resolves through the shebang for all three forms” wording to the measured per-platform mechanism. | **Open** |
+| **T279-R2** | **Medium** | **Yes — the correction creates a narrow false-negative path** | `_executable_of` and `_argv0_of` both catch `psutil.NoSuchProcess` and return `None`; `_looks_like_an_interpreter` then returns `True` when both are absent. If the parent exits after `Process(parent_pid)` and the create-time check but before these reads, `_parent_is_gone` returns **False** even though the parent is now gone. A deterministic reviewer probe forced that sequence and observed `parent-gone-after-create False`. This is not the accepted AccessDenied bias: `NoSuchProcess` says the subject ceased to exist. The tuple in `for candidate in (_executable_of(...), _argv0_of(...))` also evaluates both calls eagerly despite calling the second a fallback. No test directly covers any helper exception branch. | Preserve `NoSuchProcess` so `_parent_is_gone` reports the disappeared parent, while keeping the conservative result for a parent that still exists but denies both reads. Make `cmdline()[0]` a genuinely lazy fallback, and add deterministic tests for: executable success, argv-zero fallback, both reads AccessDenied/uninspectable, a parent disappearing during inspection, and a non-interpreter replacement. | **Open** |
+| **T279-R3** | **Low** | No | `ai/STATUS.md:12` still says “`## In Review` is empty,” while this commit moves T-279 into that section and describes it as built. The status narrative also still describes only the pre-fix `name()` implementation. | Synchronize STATUS with T-279's actual review state and correction result. **Owner/target:** Implementer, T-279 focused correction. | **Open, non-blocking** |
+| **T279-R4** | **Low** | No | The T-279 current-truth entry says at `TASKS.md:337-338` that the frozen build “has the same shape,” while its new implementation section and source docstring say a frozen child's command line lacks `spawn_main`, so `_SPAWN_MARKERS` excludes it before the parent predicate runs. Both cannot describe this false-positive path as operative. The exclusion claim is correct for the installed CPython 3.14 `multiprocessing.spawn.get_command_line`; it is not evidence that the scanner detects frozen-worker orphans. | Withdraw or qualify the older frozen-affected sentence and state the residual precisely: frozen workers do not enter this predicate under the current two-marker rule. Do not turn that exclusion into a claim of frozen-worker detection coverage. **Owner/target:** Implementer, T-279 focused correction. | **Open, non-blocking** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `df2d12f..27e719c` is one commit changing `tools/orphan_scan.py`, `tests/unit/test_orphan_scan.py`, and T-279 task prose. `git diff --check` and `git show --check 27e719c` passed. Main had subsequently advanced to unrelated `d285a79`, so all executable verification used an exact `27e719c` archive; this review makes no judgment on the later commit. |
+| Linux invocation matrix | Exact head: `.venv/bin/python -m pytest`, `.venv/bin/pytest`, and `.venv/bin/pytest -n auto` against `test_orphan_scan.py`: **15 passed** in each form. Task placement: **15 passed**. |
+| Full unit gate | Exact head with the virtualenv on PATH and normal localhost permission: **2,260 passed, 15 skipped**. A first restricted run had three harness failures—two because the venv tools were absent from PATH and one because the sandbox denied a loopback socket; none reproduced in the normal-environment rerun. |
+| Static gates | `ruff check .` passed; `ruff format --check .`: **204 files already formatted**; `mypy src`: **56 files**, passed; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. The Win32 mypy result is static analysis, not execution of the new process test. |
+| Parent-classification probe | Executable `python3.14` → interpreter; AccessDenied executable plus Python argv-zero → interpreter; both reads AccessDenied → interpreter; `systemd` executable → non-interpreter. Both reads raising `NoSuchProcess` also returned interpreter, and the enclosing predicate returned `False` for “gone,” reproducing T279-R2. A literal `tracks-and-trails.exe` executable/argv-zero classifies as non-interpreter; whether that process can be the worker's immediate parent is precisely the Windows process-tree question T279-R1 requires measuring. |
+| Windows launcher mechanism | Python documents that Windows `Popen` uses `CreateProcess`. PyPA distlib writes console scripts as `.exe` launchers; its launcher calls `CreateProcessW` for the interpreter child and waits for that child. That strongly suggests the product worker's immediate parent will be `python.exe`, but it is an inference from the launcher source, not a Windows measurement of this installed environment. |
+| Frozen claim | CPython 3.14's current `multiprocessing.spawn.get_command_line` emits `spawn_main` in the non-frozen `-c` program and only `--multiprocessing-fork` in the frozen branch. The submitted two-marker `all(...)` check therefore excludes the frozen branch as stated. No test pins that dependency. |
+| CI / remote | `27e719c` is unpushed and has no CI result. The Reviewer did not push, dispatch, change runner state, or signal any pre-existing process. |
+
+### Review judgments
+
+- **Executable before argv-zero is the right priority.** On the demonstrated Linux entry points,
+  the resolved executable identifies the interpreter and closes the false positive without
+  weakening the known-positive reparented case.
+- **AccessDenied and NoSuchProcess are different facts.** Treating an existing parent whose image
+  cannot be read as live is the documented conservative bias. Treating a parent that disappeared
+  during the read the same way is a false negative and routes around the outer catch that already
+  handles this exact condition.
+- **The Windows source reading is encouraging, not a substitute for the gate.** The native
+  launcher appears to make the running Python interpreter—not `tracks-and-trails.exe`—the worker's
+  immediate parent. The submitted test nevertheless cannot execute that arrangement on Windows,
+  and no result from the supported platform exists.
+- **The frozen statement answers only T-279's false-positive question.** A child that never matches
+  `_SPAWN_MARKERS` cannot be misclassified by the parent predicate, but it also cannot be found by
+  this scanner. This review does not reopen T-258 on that pre-existing boundary; it requires only
+  that T-279's current-truth text stop describing the excluded path as affected.
+
+### Convergence and readiness
+
+T-279 remains **In Review** with T279-R1 and T279-R2 blocking. Return one focused correction that
+separates Windows/POSIX launcher evidence, preserves `NoSuchProcess`, tests the fallback and
+exception policy directly, and synchronizes the two current-truth records. The ordinary focused
+correction re-review remains available under `AGENTS.md` section 10.
+
+The Reviewer appended and committed only this historical review record. No reviewed source, test,
+workflow, task/status text, later implementation commit, push, CI run, runner state or pre-existing
+process was changed.
