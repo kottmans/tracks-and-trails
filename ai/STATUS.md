@@ -5,6 +5,72 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **`T-272`'s `Linux orphans` job scans one arbitrarily-chosen
+machine of two, and the run history shows it reporting a find and then five greens about the other
+one.** Measured tonight; a finding is written and not yet sent.
+
+**`LINUX_RUNNER` is a label set, not a machine.** It is `["self-hosted","Linux","fedora"]`, and
+**both** Linux runners carry identical labels:
+
+```
+kirk     os=Linux    online   labels=self-hosted,X64,Linux,fedora
+Spock    os=Linux    online   labels=self-hosted,X64,Linux,fedora
+STARBASE os=Windows  online   labels=self-hosted,Windows,X64,desktop
+```
+
+The maintainer confirms **`kirk` is the desktop and `Spock` the laptop** — two physical machines,
+both Fedora KDE. **Every Linux job lands on whichever is free**, and that is observable inside a
+single run: in CI `32891329714`, `linux` ran on `Spock` while `frozen linux` ran on `kirk`.
+
+**For every other job this is correct and probably desirable** — the code is the subject and the
+machine is substrate, so either Fedora box is an equally valid Linux. **The orphan scan inverts
+that**: it asks what is in *this machine's* process table right now. There is no "Linux" to scan,
+only two boxes with two process tables, and a clean scan of one says nothing about the other.
+**`T-272` already reasoned exactly this** — it is why the job is gated on `LINUX_RUNNER` being set
+at all, on the grounds that a scan of a destroyed hosted image is *"a green check about a machine
+that cannot hold the condition."* What it missed is that the label matches **two** machines.
+
+**The run history, with the machine each nightly landed on:**
+
+| night | `Linux orphans` | ran on |
+|---|---|---|
+| 2026-08-21 | **failure** | **`Spock`** |
+| 2026-08-22 | success | `kirk` |
+| 2026-08-23 | success | `kirk` |
+| 2026-08-24 | success | `kirk` |
+| 2026-08-25 | success | `kirk` |
+| dispatch `32911737750` | success | `kirk` |
+
+**The scanner works.** It found the specimen on 2026-08-21 and made the job red — exactly what
+`T-258` built it to do. The defect is that five greens from the other machine followed, while the
+orphan sat on `Spock` and sits there now at **9d17h**.
+
+**The shape is what makes it harmful rather than merely incomplete.** A find followed by greens
+does not read as *"nobody looked at the right box"*; it reads as *"it was there and then it
+cleared."* **That is the conclusion `T-272`'s record drew.** A signal that appears to retract
+itself is more misleading than one that never fires.
+
+*(**I called the orphan "invisible" to the job before checking the run history, and it was not** —
+it was detected on 08-21. That is `T277-R1`'s class, a claim wider than its evidence, committed
+inside the document raising a finding about exactly that. Corrected in the finding and recorded
+rather than quietly fixed.)*
+
+**The dispatched run was aimed at reproducing the find and landed on `kirk`**, which is the defect
+demonstrating itself rather than a refutation. **`kirk` has since been restarted** — it locked up —
+so Linux jobs go to `Spock` until it re-registers. No scan of `kirk` is being taken; the maintainer
+has ruled that unnecessary.
+
+**Three ways out, and none is taken here:** pin the scan to a named runner and accept that the
+other machine is never scanned; give each runner a distinguishing label and matrix the scan over
+both; or accept per-run coverage of one machine and say so in the job and the criterion. **The
+first two need a label the runners do not currently carry.** It is a design decision, and whether
+it belongs to `T-272` or to a new task depends on the ruling.
+
+**`T-272` remains untouched and is still the only task In Review.** The specimen is preserved,
+read-only state captured, nothing signalled.
+
+---
+
 **Last updated:** 2026-08-25 — **`T-276` and `T-277` are Complete, and the icon chain is
 finished.** `T-276` Approved at `dcd06a0` (review `09e1ecb`) with **no findings**; `T-277` Approved
 with follow-up at `4f3ca78` (review `a85b8bb`), `T277-R1` Resolved at completion.
