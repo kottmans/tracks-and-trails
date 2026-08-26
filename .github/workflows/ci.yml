@@ -953,9 +953,12 @@ jobs:
   # T-272. The same scan, on the other machine this project actually runs on.
   #
   # **The scanner was never Windows-specific and nobody had noticed.** `tools/orphan_scan.py` is
-  # `psutil` and carries no per-platform path; it found two orphaned workers on `kirk` on
+  # `psutil` and carries no per-platform path; it found two orphaned workers on a Linux box on
   # 2026-08-20, unmodified, on the first try — four days after they appeared, and only because
-  # somebody looking at something else saw two stray processes. The detection `T-258` built existed
+  # somebody looking at something else saw two stray processes. **Which box is not established**
+  # (`T272-R6`): those PIDs are on `Spock` and the record said `kirk`, and this comment said
+  # `kirk` too. The point it is making does not depend on which — the detection existed and was
+  # pointed at one platform. The detection `T-258` built existed
   # and was pointed at one of the two platforms.
   #
   # **Gated on `LINUX_RUNNER` being set rather than on a separate variable**, which is the same

@@ -218,13 +218,34 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
-### T-272 — The orphan scanner runs only on Windows, and `kirk` has had two orphans for four days
+### T-272 — The orphan scanner runs only on Windows, and a Linux box has had two orphans for days
 
 **Status:** **In Review — second focused correction, 2026-08-26, on explicit maintainer
 authorization under `AGENTS.md` §10.** The ordinary budget was spent; `T272-R6` and `T272-R8`
 were blocking Medium, so the pass was authorized rather than taken. **`T272-R6`, `T272-R7`,
 `T272-R8` and `T272-R9` are corrected below.** `T272-R5` is Resolved and the hostname clause was
 accepted as a proportionate correction to the misleading signal.
+
+**Fourth pass, and the sweep's *file set* was the miss this time** (`T272-R6`). The third pass
+enumerated by identifier and still missed three, because it enumerated **within a chosen set of
+files** — `TASKS.md`, `STATUS.md`, `evidence/` — and matched the literal string ``on `kirk` ``.
+That set omitted **`tests/`, `tools/` and `.github/`**, and that pattern could not match the task
+heading, which words it differently.
+
+**The correct sweep is `git grep -in kirk` over every tracked file**, which is 113 hits in 16
+files and is the whole finite set. Run that way, this pass corrected the three the Reviewer named
+**and a fourth the Reviewer did not**: a paragraph asking the Reviewer to say which machine their
+contrary check ran on, which they have since answered — an isolated PID namespace.
+
+**Three sweeps, three different narrowings**: first by wording, then by wording again, then by
+file set. Each time the narrowing was invisible from inside the sweep, which is why the fix is a
+tool rather than more care — the identifier over the whole repository, with the audit shown.
+
+*(**The heading changed on 2026-08-26.** It read *"…and `kirk` has had two orphans for four
+days"*. Both halves were wrong by then: the host is unestablished, and it is days plural and
+counting — the pair is alive at the time of writing. Headings are referenced by task id rather
+than by title, so the change costs no cross-reference, and leaving a falsified claim in the one
+line every reader meets first was the whole of `T272-R6`.)*
 
 #### `T272-R6` — third pass, and the method changed rather than the effort
 
@@ -398,11 +419,15 @@ PIDs absent, scanner exits 0."* **On `Spock` at 2026-08-26T00:15:29Z both PIDs a
 `tools/orphan_scan.py` exits **1**. Host `Spock`, machine-id `71ff7aaf85db`, booted 2026-08-14,
 no reboot since.
 
-**The likely explanation is `T272-R5` itself.** A check of "current state" is a statement about
-whichever machine it ran on, and `kirk` — restarted at ~2026-08-26T00:00Z after locking up, and
-never host to these processes — returns exactly *absent / exit 0*. **This is offered, not
-asserted**: which machine that verification ran on is the reviewer's to say, and it is raised back
-rather than resolved here.
+**Answered by the Reviewer, 2026-08-26: an isolated PID namespace**, where `ps` cannot see the
+host's processes at all. The contrary result is formally withdrawn.
+
+*(This paragraph offered `T272-R5` — a check naming whichever machine it ran on — as the likely
+explanation, and said the answer was the Reviewer's to give. **It was true when written and the
+answer has since arrived**, which is `P2EXIT-R15`'s shape: a claim overtaken by an event rather
+than one that was ever wrong. The namespace is a **third** way to get a true-looking zero, beside
+the two-machine label and a scan of the other box, and it is the one that actually happened here.
+Found by this task's own identifier sweep rather than by the finding, and corrected with it.)*
 
 *(Prioritized by the maintainer 2026-08-20 and built the same night.)*
 **Filed from two specimens that are still running** (`T272-R6`). `434366` and `432922` were

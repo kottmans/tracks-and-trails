@@ -356,8 +356,13 @@ def test_the_scan_runs_on_both_platforms_this_project_supports() -> None:
     """`T-272`: the scanner is not Windows-specific and was scheduled as though it were.
 
     `tools/orphan_scan.py` is `psutil` with no per-platform path, and it found two orphaned
-    workers on `kirk` unmodified. Detection that exists and is pointed at one of two platforms is
-    the same shape as detection that does not exist, for the platform it does not watch.
+    workers on a Linux box unmodified. Detection that exists and is pointed at one of two
+    platforms is the same shape as detection that does not exist, for the platform it does not
+    watch.
+
+    **Which box is not established** (`T272-R6`). This docstring said `kirk`; those PIDs are on
+    `Spock`, and which machine the 2026-08-20 capture was taken on is not recoverable. Nothing
+    this test asserts depends on the answer.
     """
     linux = by_platform()["linux-orphans"]
 
