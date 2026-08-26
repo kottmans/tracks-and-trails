@@ -115,6 +115,54 @@ def test_a_worker_whose_parent_is_alive_is_not_reported() -> None:
         child.wait(timeout=30)
 
 
+def test_a_console_script_parent_is_not_mistaken_for_a_dead_one(tmp_path: Path) -> None:
+    """`T-279`: a worker under a live entry-point parent is not an orphan.
+
+    **This is the product's own shape.** `pyproject.toml` installs `tracks-and-trails` as a console
+    script, and on Linux `psutil.name()` reads `/proc/<pid>/comm`, which the kernel sets from the
+    **executed file** — so the running application is named `tracks-and-trai`, truncated to
+    fifteen characters, and `pytest` is `pytest`. The predicate asked `name()`, found no `python`
+    in it, and concluded the parent was gone. `MINIMUM_AGE_SECONDS` is 60, so a nightly firing
+    while somebody used the application would have reported that person's own live workers.
+
+    A shebang script standing in for the entry point spawns a worker-shaped child and stays alive
+    holding it. Same mechanism as the real one, no install step.
+    """
+    script = tmp_path / "tracks-and-trails-like"
+    script.write_text(
+        f"#!{sys.executable}\n"
+        "import subprocess, sys, time\n"
+        f"subprocess.Popen([sys.executable, '-c', {_LOOKS_LIKE_A_WORKER!r}])\n"
+        "time.sleep(120)\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+    parent = subprocess.Popen([str(script)])
+    try:
+        time.sleep(0.6)
+        named = psutil.Process(parent.pid).name()
+        assert "python" not in named.lower(), (
+            f"this machine names a shebang script's process {named!r}, which contains 'python' — "
+            "the arrangement this test depends on does not hold here, so it would pass without "
+            "exercising anything"
+        )
+
+        children = psutil.Process(parent.pid).children()
+        assert children, "the stand-in parent spawned no worker, so there is nothing to misreport"
+
+        reported = {orphan.pid for orphan in orphan_scan.find_orphans(minimum_age_seconds=0)}
+        assert not {child.pid for child in children} & reported, (
+            f"a worker under the live parent {named!r} was reported as an orphan. Its parent is "
+            "running; only its *name* lacks 'python', which is what an entry point does"
+        )
+    finally:
+        for child in psutil.Process(parent.pid).children():
+            child.kill()
+        parent.kill()
+        parent.wait(timeout=30)
+
+
 def test_a_young_orphan_is_not_reported(a_real_orphan: psutil.Process) -> None:
     """The age guard, against the same orphan the first test finds.
 

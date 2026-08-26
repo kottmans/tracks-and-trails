@@ -53,6 +53,7 @@ import socket
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import PurePath
 
 import psutil
 
@@ -88,6 +89,37 @@ class Orphan:
         )
 
 
+def _looks_like_an_interpreter(parent: psutil.Process) -> bool:
+    """Whether `parent` is a Python interpreter, asked of the executable rather than the name.
+
+    Two questions, because either can be unavailable: the resolved executable, then the command
+    line's own argv[0]. **Not `name()`** — see `_parent_is_gone` and `T-279`.
+
+    A parent that answers neither is treated as an interpreter, which keeps the enclosing
+    predicate's bias: an uninspectable parent is a parent that exists, and reporting it is a guess.
+    """
+    for candidate in (_executable_of(parent), _argv0_of(parent)):
+        if candidate is None:
+            continue
+        return "python" in PurePath(candidate).name.lower()
+    return True
+
+
+def _executable_of(parent: psutil.Process) -> str | None:
+    try:
+        return parent.exe() or None
+    except psutil.AccessDenied, psutil.NoSuchProcess, OSError:
+        return None
+
+
+def _argv0_of(parent: psutil.Process) -> str | None:
+    try:
+        command = parent.cmdline()
+    except psutil.AccessDenied, psutil.NoSuchProcess, OSError:
+        return None
+    return command[0] if command else None
+
+
 def _parent_is_gone(process: psutil.Process, parent_pid: int) -> bool:
     """Whether `parent_pid` names no live process that could have spawned this worker.
 
@@ -107,6 +139,23 @@ def _parent_is_gone(process: psutil.Process, parent_pid: int) -> bool:
       pid-reuse guard;
     - it resolves to something that is not a Python process — POSIX, reparented.
 
+    **The third rule asks the *executable*, not the process name, and that is `T-279`.**
+    `psutil.name()` is `/proc/<pid>/comm` on Linux, which the kernel sets from the **file that was
+    executed** — so a Python process started through a console-script entry point is named for the
+    script. `.venv/bin/pytest` is `pytest`; **`.venv/bin/tracks-and-trails` is `tracks-and-trai`**,
+    truncated to `comm`'s fifteen characters. Reading the name, this rule called the live parent of
+    a running application's worker *gone*, and `MINIMUM_AGE_SECONDS` is 60 — so a nightly firing
+    while somebody used the application would have reported that person's own workers.
+
+    `exe()` resolves through the shebang to the interpreter itself — `python3.14` for all three
+    forms — and `cmdline[0]` is the fallback for a platform or permission state where it does not.
+
+    **Frozen builds need no special case, and that is a property of the marker set rather than
+    luck.** `multiprocessing.spawn.get_command_line()` emits `spawn_main` only when *not* frozen;
+    frozen children carry `--multiprocessing-fork` alone. `_SPAWN_MARKERS` requires **both**, so a
+    frozen worker is never a candidate here and the question of what its parent is named never
+    arises.
+
     Fails toward **not** reporting when the parent cannot be inspected, because a find is a
     prompt for a person to look and a false one spends that attention for nothing.
     """
@@ -116,7 +165,7 @@ def _parent_is_gone(process: psutil.Process, parent_pid: int) -> bool:
         parent = psutil.Process(parent_pid)
         if parent.create_time() > process.create_time():
             return True
-        return "python" not in parent.name().lower()
+        return not _looks_like_an_interpreter(parent)
     except psutil.NoSuchProcess:
         return True
     except psutil.AccessDenied:
