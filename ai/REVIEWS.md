@@ -20776,3 +20776,67 @@ correction re-review remains available under `AGENTS.md` section 10.
 The Reviewer appended and committed only this historical review record. No reviewed source, test,
 workflow, task/status text, later implementation commit, push, CI run, runner state or pre-existing
 process was changed.
+
+---
+
+## 2026-08-26 — T-279 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-279
+**Prior review:** `c32634536b781f2919ec1873f24f9f8d16bf5bd7`
+**Correction head:** `5df20cba1147d80c37af5cfd2012968ae2ba674d`
+**Platforms verified:** Linux (`Spock`); Windows statically analysed, not run; CI not run
+**Verdict:** **Blocked.** T279-R2, R3 and R4 are Resolved. T279-R1 is only partially corrected:
+the POSIX-only test is now honestly skipped on Windows and the executable-name decision is covered
+with Windows path syntax, but neither establishes the native launcher/interpreter process tree or
+whether the product false positive exists there. No Windows result was submitted. This is the
+ordinary focused correction pass, so the remaining blocking Medium finding now requires the
+maintainer's section-10 choice rather than another automatic pass.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T279-R1** | **Medium** | **Yes — supported-platform gate and acceptance evidence** | **Partially corrected.** `skipif(os.name == "nt")` prevents the POSIX shebang arrangement from failing before its assertion and clearly reports why it cannot cover Windows. The new parameterized test correctly exercises interpreter classification with `/` and `\`, including `.exe`. But it supplies synthetic executable strings directly to `_looks_like_an_interpreter`; it does not launch `tracks-and-trails.exe` or `pytest.exe`, establish that the native launcher creates the Python process which immediately parents the worker, or show what `psutil.exe()` returns for that real parent. The task still carries acceptance statements for the product entry point, pytest wrapper and invocation-independent result. Saying the Windows question is unmeasured is honest; it is not the platform-correct tree evidence the finding required. | The maintainer must choose under section 10: authorize a Windows-evidence correction, explicitly narrow/accept the Linux-only result, or move the Windows launcher-tree contract into a named follow-up. For approval without a scope change, measure the installed Windows launcher → interpreter → worker tree and run a regression that checks the worker's immediate parent, not only path parsing. A push of the current head alone would run one skipped tree test and one synthetic decision test; it would not close this question. | **Open** |
+| **T279-R2** | **Medium** | Yes | `NoSuchProcess` now propagates from both attribute helpers into `_parent_is_gone`'s established `return True` handler. A reviewer probe forced an already-resolved handle's `exe()` to raise and observed **parent gone = True**. The focused test covers initial PID resolution and attribute-read propagation. Independently restoring `NoSuchProcess` to both helper catches changed the file and failed **1 of 21** tests. The known orphan still passes. | None for the blocking behavior. See T279-R5 for the remaining non-blocking helper-policy test gap. | **Resolved at `5df20cb`** |
+| **T279-R3** | **Low** | No | STATUS now names T-279's review findings and no longer says In Review is empty. | None. | **Resolved at `5df20cb`** |
+| **T279-R4** | **Low** | No | The old frozen-affected sentence is struck and explicitly withdrawn. The replacement distinguishes the true executable-name observation from the reason the frozen worker never reaches this predicate under the current two-marker rule, without claiming frozen-worker detection. | None. | **Resolved at `5df20cb`** |
+| **T279-R5** | **Low** | No | The committed helper behavior is correct in direct probes, but two policies required by R2's correction remain unguarded: removing `_argv0_of(parent)` from the candidate sequence left **21 tests passing**, and changing the final “both reads unavailable” result from `True` to `False` also left **21 passing**. The sequence still constructs `(_executable_of(...), _argv0_of(...))` eagerly, so the command line is read even when the executable already answered; the submitted “fallback” wording is not literal. Production currently returns the intended results—AccessDenied executable plus Python argv-zero is treated as live, and both reads AccessDenied fail closed—so this is test strength and unnecessary inspection rather than a current false result. | Make argv-zero genuinely lazy and add direct cases for executable unavailable/argv-zero Python and both reads unavailable. **Owner/target:** Implementer in any maintainer-authorized T-279 pass, or a named scanner-test follow-up if R1 is dispositioned without one. | **Open, non-blocking** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `c326345..5df20cb` is one correction commit changing the scanner, its unit test, TASKS and STATUS. `git diff --check` and `git show --check 5df20cb` passed. No reviewed workflow or product `src/` module changes. |
+| Linux invocation matrix | Exact-head archive: interpreter, console-wrapper and xdist forms each produced **21 passed** for `test_orphan_scan.py`. Task placement: **15 passed**. |
+| Full unit gate | Exact-head archive with normal loopback/process permissions and the venv on PATH: **2,266 passed, 15 skipped**. |
+| Static gates | `ruff check .` passed; `ruff format --check .`: **205 files already formatted**; `mypy src`: **56 files**, passed; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. Win32 mypy does not execute the skipped process-tree test. |
+| R2 composition probe | Attribute read raises `NoSuchProcess` → `_parent_is_gone` **True**. Executable AccessDenied plus Python argv-zero → parent not gone. Both reads AccessDenied → parent not gone. Python executable success → parent not gone, but call tracing showed both `exe` and `cmdline`, confirming the current eager evaluation. |
+| R2 mutation | Re-added `psutil.NoSuchProcess` to both helper catches after verifying the exact diff; `test_orphan_scan.py`: **1 failed, 20 passed** at `test_a_parent_that_vanishes_while_being_read_is_gone`. |
+| R5 mutations | Separate exact-head archives: delete the argv-zero candidate → **21 passed**; reverse the final uninspectable-parent result → **21 passed**. These do not refute current behavior; they establish the missing guards. |
+| Windows evidence | None. The new path-decision cases are cross-platform source, but this head is unpushed and no Windows process or test runner executed them. The POSIX process-tree case will report skipped on Windows by design. |
+| CI / remote | No commit in this correction range has run in CI. The Reviewer did not push, dispatch, change runner state, or signal any pre-existing process. |
+
+### Review judgments
+
+- **Skipping the impossible POSIX arrangement is correct but insufficient.** It fixes the false
+  appearance of Windows coverage and prevents a platform setup failure. A skip cannot establish
+  the different native-launcher tree that motivated R1.
+- **The platform-neutral decision test is worthwhile.** It pins basename/separator/`.exe`
+  classification on whichever platform runs it. It is the unit half of the answer, not the
+  process-tree half.
+- **R2's correctness regression is closed.** Resolution-time and attribute-time disappearance now
+  converge on the existing outer answer, and the re-swallow mutation is killed.
+- **The fallback mutation gap is non-blocking.** The direct probes establish the submitted code's
+  intended results, while the surviving mutations show those results are not durable. That is a
+  Low test-strength finding, not grounds to keep the corrected NoSuchProcess behavior Open.
+
+### Convergence and readiness
+
+T-279 remains **Blocked on T279-R1**. The ordinary initial-plus-focused budget is exhausted with a
+blocking Medium evidence/scope question. Under `AGENTS.md` section 10, the automatic loop stops:
+the maintainer must authorize another focused pass, accept or narrow the Windows risk, or move the
+launcher-tree evidence into a named follow-up. T279-R5 is non-blocking and follows that choice.
+
+The Reviewer appended and committed only this historical review record. No reviewed source, test,
+workflow, task/status text, push, CI run, runner state or pre-existing process was changed.
