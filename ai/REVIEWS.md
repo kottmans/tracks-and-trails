@@ -20481,3 +20481,92 @@ follow-up. T272-R7 and T272-R9 are non-blocking and can travel with whichever co
 The Reviewer appended only this historical review record. No reviewed source, test, workflow,
 task/status/evidence text, live process, push, CI run or remote state was changed; both diagnostic
 mutations were isolated under `/tmp`.
+
+---
+
+## 2026-08-26 — T-272 second-correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-272
+**Correction base:** `fc08621e6c62644c414edeaaad1aed6b09b351f4`
+**Correction head:** `f3c162631e418442baa7fe8d20e38533a617a3c6`
+**Platforms verified:** Linux (`Spock`); Windows and CI not run
+**Pass authority:** Explicit maintainer authorization under `AGENTS.md` section 10
+**Verdict:** **Blocked.** T272-R7, T272-R8 and T272-R9 are Resolved. T272-R6 is not. Restoring the
+preservation criterion was the right disposition, but the requested sweep again stopped around the
+canonical contradiction: the same live T-272 body still says the pair was found on `kirk`, is
+running on `Spock`, ended, and left no specimen. The original evidence file also still lacks the
+required local correction banner. This maintainer-authorized pass is now spent; another Medium-
+only correction pass requires another explicit maintainer choice.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T272-R6** | **Medium** | **Yes — preservation/current truth** | **Partially corrected, still open.** The acceptance list now correctly restores the preservation criterion as **unmet and live**. The zero's cause is also left honestly unresolved between at least the shared-runner/host explanation and an isolated PID namespace. But the operative T-272 body still says the positive scan was “on `kirk`” (`TASKS.md:443`) before saying those exact PIDs are running on `Spock` (`:456-458`), then continues after the quoted old sentence with “why they ended,” “the tracker's exit,” “no specimen remains available,” and “overtaken by events” (`:475-482`). Its summary still says the specimens were on `kirk` and ended (`:371`). `tests/unit/test_orphan_scan.py:358-359` repeats the false `kirk` attribution. The original evidence file itself still opens as a `kirk` capture and later asserts both are gone/no specimen remains (`:1`, `:123-166`); only its separate README inventory warns that framing is false. A correct acceptance bullet does not make those sibling current-truth claims historical or non-operative. | **Open** |
+| **T272-R7** | **Low** | No | `_assert_the_verdict_carries_the_host` selects every verdict-bearing line and requires the actual hostname on that same line. In an exact-head archive, changing both source branches to print host and verdict on separate lines now failed **1 test**; the other 13 passed. The production prefix remains unchanged. | **Resolved at `f3c1626`** |
+| **T272-R8** | **Medium** | Yes | `effective_shell()` implements step, then job defaults, then workflow defaults. That matches GitHub's documented “most specific” rule and its explicit step override. GitHub also documents unspecified Linux as `bash -e {0}` and explicit `bash` as `bash --noprofile --norc -eo pipefail {0}`. Independent mutations adding `shell: sh` at the scanning step, adding job-level `defaults.run.shell: sh`, and removing workflow `defaults.run.shell` each failed exactly **1 of 14** scanner tests. The exact-head workflow resolves both scanner steps to explicit `bash`. | **Resolved at `f3c1626`** |
+| **T272-R9** | **Low** | No | Both `git diff --check fc08621 f3c1626` and the combined `git diff --check a85b8bb f3c1626` pass. The four whitespace bytes are gone. | **Resolved at `f3c1626`** |
+
+### Required R6 correction
+
+Complete the sweep already required at `fc08621`; do not add another summary above the
+contradictions.
+
+- In the T-272 body, distinguish the confirmed live `Spock` specimen from the unattributed
+  2026-08-20 zero. Remove or visibly withdraw the operative downstream claims that the processes
+  ended, the tracker exited, no specimen remains, and preservation was overtaken.
+- Correct the task title/summary and the test docstring's `kirk` attribution. The same accepted
+  specimen cannot have been running on both physical machines.
+- Add the requested correction banner inside
+  `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` itself. Preserve the raw capture and the old
+  disposition as quoted history, but make the file answer its own validity without requiring a
+  reader to discover its README row.
+- Sweep the remaining false present-tense copies in current-truth files. Do not infer which host or
+  PID namespace produced the zero, how the specimen began, or how it will end. Do not inspect,
+  signal or reap either process as part of the correction.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `fc08621..f3c1626` is one commit changing one test, TASKS, STATUS, and four whitespace bytes in the retained evidence. No source module or workflow changes. `git show --check f3c1626` passed. |
+| GitHub shell semantics | GitHub's official workflow syntax says a step `shell` overrides job and runner defaults; job `defaults.run` overrides workflow `defaults.run`. Its command table maps unspecified Linux to `bash -e {0}` and explicit `bash` to `bash --noprofile --norc -eo pipefail {0}`. `effective_shell()` follows those three repository-visible levels in the correct order. |
+| R7 mutation | Exact-head archive, both verdicts changed to print host on a separate line: **1 failed, 13 passed**. |
+| R8 step mutation | Exact-head archive, `shell: sh` on one scanning step: **1 failed, 13 passed**. |
+| R8 job mutation | Separate exact-head archive, `linux-orphans.defaults.run.shell: sh`: **1 failed, 13 passed**. |
+| R8 workflow mutation | Separate exact-head archive, workflow `defaults.run.shell` removed: **1 failed, 13 passed**. |
+| Focused baseline | `pytest -q tests/unit/test_orphan_scan.py tests/unit/test_task_placement.py`: **29 passed**. |
+| Static gates | `ruff check .` passed; `ruff format --check .`: **204 files already formatted**; `mypy src`: **56 files**, passed; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. |
+| Submitted broader suite | The Implementer reports `tests/unit`: **2,259 passed, 15 skipped**. The Reviewer did not rerun the broad unit, UI or integration suites; this correction changes no `src/`, workflow or module they import. |
+| Live preservation state | Read-only host-namespace check at `2026-08-26T01:23:04Z`: `Spock` still showed PIDs `432922` and `434366` with their August 16 start times; the scanner reported PID `434366` and exited **1**. Nothing was signalled, traced, attached to or reaped. |
+| CI / remote state | No commit in this range has run in CI. The Reviewer did not push or dispatch. The correction changes only tests, coordination prose and whitespace; absence of a new CI scheduler sample does not block these local properties. |
+
+### Review judgments
+
+- **Un-striking preservation is correct.** The premise for retiring it was false and its subject is
+  live. Re-striking it would require a new, explicit reason to waive or supersede the protection;
+  none exists here.
+- **The 2026-08-20 zero should remain unexplained.** Both candidate mechanisms can produce a true
+  clean result while the host specimen remains live, and the command's missing provenance cannot
+  now distinguish them. Naming the candidates without choosing one is the required uncertainty,
+  not an incomplete diagnosis.
+- **R8 models GitHub's relevant precedence correctly.** The test is intentionally conservative:
+  it accepts the built-in `bash` value whose runner mapping supplies `pipefail` and rejects other
+  effective shell strings. A custom shell that manually enabled `pipefail` could be safe but would
+  need the guard and its evidence amended deliberately rather than slipping through as an override.
+- **R6 is the same unresolved finding, not a new pass-expanding audit.** The prior required
+  correction explicitly named the task body, acceptance list, old evidence banner and operative
+  current-truth copies. This pass fixes the acceptance list but leaves the other named surfaces
+  contradictory.
+
+### Convergence and readiness
+
+T-272 remains **Blocked** on T272-R6 alone. T272-R7, R8 and R9 need no further work. Because this
+was the explicitly authorized pass after the ordinary budget, the automatic loop stops again. The
+maintainer must authorize another R6-only pass, accept the contradiction, change scope, or move the
+record sweep into a named follow-up before T-272 can be approved.
+
+The Reviewer appended only this historical review record. No reviewed source, test, workflow,
+task/status/evidence text, live process, push, CI run or remote state was changed; all mutations
+were isolated under `/tmp`.
