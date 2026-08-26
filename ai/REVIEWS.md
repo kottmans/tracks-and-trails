@@ -20840,3 +20840,78 @@ launcher-tree evidence into a named follow-up. T279-R5 is non-blocking and follo
 
 The Reviewer appended and committed only this historical review record. No reviewed source, test,
 workflow, task/status text, push, CI run, runner state or pre-existing process was changed.
+
+---
+
+## 2026-08-26 — T-279 authorized final focused review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-279
+**Prior review:** `f7f3fe2e8c57f9232fd9eccef6f6718cf3845ccc`
+**Correction code head:** `693a09fb894633f296aa146af7412fa916b7ffa8`
+**Evidence-record head:** `a0085b59d6d1aac328b6cf41a6ebdeab88044831`
+**Platforms verified:** Linux (`Spock`) locally; Windows (`STARBASE`) in CI run `33017151297`
+**Verdict:** **Approved with follow-up `T-280` at `a0085b5`.** T279-R1 is Resolved by the real
+Windows launcher measurement; T279-R2, R3 and R4 remain Resolved. T279-R5's two unguarded result
+policies are now pinned, but the alleged argv-zero fallback is still evaluated eagerly. New Low
+finding T279-R6 corrects the exact-head and cleanup-evidence wording. Neither Low affects the
+scanner's current answer or blocks approval, and both have the named owner and target `T-280`.
+
+This pass was explicitly authorized by the maintainer under `AGENTS.md` section 10 after the
+ordinary initial-plus-focused budget was exhausted.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Final focused result | Status |
+|---|---|---:|---|---|
+| **T279-R1** | **Medium** | Yes — supported-platform evidence | **Corrected and measured.** `test_an_installed_console_script_resolves_to_an_interpreter` launches a console script installed by the same environment as the product entry point. On Windows, `_the_process_a_worker_would_call_parent` refuses to return the native launcher and raises if it observes no child; run `33017151297` instead found that child and the production predicate identified its resolved executable as Python. The job log independently shows this test passed, all five platform-path cases passed, the vanished-parent case passed, and only the explicitly POSIX shebang-tree case skipped. This establishes the native launcher → application-interpreter boundary that was missing. | **Resolved at `693a09f`** |
+| **T279-R2** | **Medium** | Yes | Both helpers still propagate `NoSuchProcess` to `_parent_is_gone`'s `return True` handler. The correction adds independent assertions for each helper, closing the prior ordering hole. The focused module and Windows run both pass the vanished-parent regression. | **Resolved at `5df20cb`; strengthened at `693a09f`** |
+| **T279-R3** | **Low** | No | STATUS continues to name T-279's actual review state and now records the Windows result. | **Resolved at `5df20cb`** |
+| **T279-R4** | **Low** | No | The withdrawn frozen-build statement remains struck; no correction in this range reintroduces it. | **Resolved at `5df20cb`** |
+| **T279-R5** | **Low** | No | **Partially corrected.** The two direct tests now kill the submitted “drop argv-zero” and “reverse uninspectable bias” mutations, so both intended results are guarded. Production still constructs `(_executable_of(parent), _argv0_of(parent))` before iterating it. An independent parent whose `exe()` returned `/usr/bin/python3.14` and whose `cmdline()` raised produced `AssertionError: cmdline was read`; argv-zero is therefore not genuinely lazy as the finding required. This is unnecessary inspection while current answers remain correct. | **Open, non-blocking — `T-280`** |
+| **T279-R6** | **Low** | No | The new current-truth record overstates two evidence boundaries. TASKS calls the CI result one taken “at this exact head,” but CI ran code head `693a09f`; `a0085b5` is the later record-only commit. STATUS also says the next nightly orphan scan would report a process leaked by the launcher test. The scanner selects only command lines containing both `spawn_main` and `--multiprocessing-fork`; an independent check returns false for `python coverage run sleeper.py`, and the test's sleeper exits after 60 seconds regardless. The skipped scheduled job therefore leaves direct cleanup unmeasured, but it is not a future detector for this process shape. | **Open, non-blocking — `T-280`** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `f7f3fe2..693a09f` changes the T-279 test and current-truth records; no production source or workflow changes after the R2 correction already reviewed at `5df20cb`. `693a09f..a0085b5` changes only TASKS and STATUS to record CI. `git diff --check f7f3fe2..a0085b5` passed. |
+| Windows CI | GitHub run `33017151297` has conclusion **success** at exact SHA `693a09f`. Linux, frozen Linux, frozen Windows, Windows desktop and the STARBASE coverage sentinel succeeded; the event-gated Linux/STARBASE orphan jobs skipped on the push. The Windows desktop log shows the installed launcher test **PASSED**, five executable-path cases **PASSED**, the vanished-parent test **PASSED**, and the POSIX-only tree test **SKIPPED**. The module result recorded by the submission is **23 passed, 1 skipped**. |
+| Linux invocation matrix | Current tree: `.venv/bin/python -m pytest`, `.venv/bin/pytest`, and `.venv/bin/pytest -n auto` against `tests/unit/test_orphan_scan.py`: **24 passed** in each form. |
+| Full unit gate | Activated project environment with normal loopback permission: **2,269 passed, 15 skipped**. A preliminary restricted run produced three known harness failures—bare `ruff`/`mypy` absent from PATH and a sandbox-denied loopback socket—and all three passed in the normal-environment rerun. |
+| Static gates | `ruff check .` passed; `ruff format --check .`: **205 files already formatted**; `mypy src`: **56 files**, passed; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. |
+| R5 call-order probe | A conclusive Python `exe()` plus a `cmdline()` that raises still raises, independently confirming eager evaluation. The submitted direct fallback and both-unavailable tests pass on Linux and Windows. |
+| Cleanup/scanner scope | `_SPAWN_MARKERS` is exactly `("spawn_main", "--multiprocessing-fork")`; neither marker appears in the launcher test's `coverage run sleeper.py` command. The scheduled scanner cannot validate that test's cleanup, although the test kills its observed child tree and launcher in `finally` and the sleeper has a 60-second bound. |
+| Handoff | The ignored local rereview handoff still describes `c326345..5df20cb`, “Not pushed,” 21 focused tests and no Windows run. It was not used as authority; the durable TASKS/STATUS records, commits and CI log contain the final evidence. |
+
+### Review judgments
+
+- **The Windows result is discriminating.** If the native launcher had started no interpreter
+  child, the new helper would have raised and the test would have failed. If the observed child
+  were the non-Python launcher shape that caused the original Linux false positive, the production
+  predicate assertion would have failed. The pass therefore supplies the missing platform fact.
+- **Driving `coverage` is an acceptable stand-in for opening the product GUI.** The product entry
+  point's installed presence is asserted, both wrappers are generated by the environment's console-
+  script machinery, and the measured question is the native wrapper/interpreter boundary rather
+  than application behavior. Once product code runs in that interpreter, a worker it creates
+  records that interpreter as its immediate parent.
+- **R5 no longer hides unguarded policy.** The fallback route and fail-closed choice now have direct
+  tests and discriminating mutations. Eager evaluation is still contrary to the word “fallback,”
+  but it is a Low inspection/maintainability residual, not a wrong orphan verdict.
+- **The skipped orphan job is not missing acceptance evidence for T-279.** R1 concerns which live
+  process parents a worker, which the Windows desktop job measured. Cleanup of this bounded test
+  process is separate, and the current record must not claim a marker-specific nightly scan would
+  observe it.
+- **Approval covers `a0085b5`.** CI executed the identical executable/test tree at `693a09f`;
+  `a0085b5` advances only current-truth evidence. `T-280` owns the remaining Low corrections and
+  does not keep T-279 in review.
+
+### Convergence and readiness
+
+T-279 is **Approved with follow-up `T-280` at `a0085b5`** and may leave `In Review`. The sole
+blocking finding is independently resolved on Windows, the introduced NoSuchProcess regression
+remains closed, and every remaining item is Low with an owner and named target.
+
+The Reviewer appended and committed only this historical review record and the approved follow-up
+task. No reviewed source, test, workflow, T-279 task/status evidence, handoff, push, CI run, runner
+state or pre-existing process was changed.
