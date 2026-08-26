@@ -20339,3 +20339,72 @@ selection remains an explicitly known-unverified appearance question, not a hidd
 The Reviewer changed this append-only record and added only the approved T277-R1 owner/target to
 T-277's task entry. No reviewed source, test, asset, status text, handoff, push or remote state was
 changed; all mutations were isolated in `/tmp`.
+
+---
+
+## 2026-08-25 — T-272 live-specimen post-approval review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-272
+**Previously approved implementation:** `b2ebc6b72e168c1494e8960a8cd6ae56b204edf9`
+**Current repository head inspected:** `ef84110250185d779edc468e55419560f6af0bcf`
+**Evidence boundary:** repository workflow and records; current GitHub runner configuration and six
+completed `Linux orphans` jobs; read-only local process re-check
+**Verdict:** **Blocked.** T-272's prior approval cannot stand against the new runner-cardinality
+evidence. The job scans one arbitrarily selected Linux machine per run, while the criterion and
+green/red history are read as a Linux-wide signal. A maintainer scope decision is required before
+the correction shape is known. The specimen ended between the Implementer's capture and this
+review; that changes its present availability, not the workflow finding or the false August 20
+disposition.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T272-R5** | **Medium** | **Yes — the “a find is visible” acceptance criterion** | `vars.LINUX_RUNNER` is `["self-hosted","Linux","fedora"]`, and both persistent Linux runners, `kirk` and `Spock`, carry that exact selector. The workflow creates one `linux-orphans` job, so GitHub chooses either machine. The six-run history proves the consequence: the 2026-08-21 job ran on `Spock`, found PID `434366` and failed; the next four nightlies and the finding-specific dispatch ran on `kirk` and succeeded. The August 25 read-only capture still found the same specimen on `Spock` during that green sequence. Thus a green says only that the selected host was clean; it neither clears nor contradicts the preceding red. T-272's tests prove one job per platform and exit-code propagation, not coverage of every persistent process table behind a shared label. | The maintainer must choose the scope. **Fan out over every persistent Linux runner using distinguishing labels** is the only option that preserves the existing criterion literally. **Pin one named runner** is deterministic but leaves the other unmonitored; **retain arbitrary per-run selection** monitors whichever host is free. Either latter option requires an explicit criterion/job-description amendment that states the uncovered machine or per-run scope and stops interpreting a later green as clearance. The correction remains owned by T-272 because this is its delivered job and criterion; moving broader fleet coverage to a new task requires an explicit maintainer re-scope. The ruling should also authorize one focused post-approval correction pass under §10. | **Open — blocked on maintainer scope ruling** |
+| **T272-R6** | **Medium** | **Yes — the task's preservation gate and central current-truth claim** | The T-272 entry, evidence conclusion/inventory and STATUS passages say both PIDs disappeared on August 20 and no specimen remained. The August 25 capture instead recorded the same PID, PPID, start time, thread count and `pipe:[1629660]` on `Spock`, with the scanner exiting 1; the August 21 CI log independently names PID `434366` on `Spock`. The old clean re-scan may have been a true scan of the other host or a wrong result on this host; its execution host is not recoverable, so this review does not choose. The preservation criterion was therefore live and unmet on August 25, not overtaken on August 20. During this review both PIDs were absent and the scanner exited 0, so it is genuinely overtaken now by a later, unwitnessed ending. | Sweep every operative copy once after the ruling. State the confirmed `kirk`/Spock machine split, preserve uncertainty about which host ran the August 20 manual commands, and date the specimen's actual loss only to the interval between the August 25 capture and this review. Since the August 25 process state can no longer be regenerated, retain that re-capture under `ai/evidence/` if its output survives; otherwise state exactly which captured facts survive and that the fuller snapshot was lost. Do not infer how the processes ended or that anybody inspected, signalled or deliberately released them. **Owner/target:** Implementer, T-272 correction batch after the scope ruling. | **Open** |
+
+### Independent evidence
+
+| Check | Result |
+|---|---|
+| Current runner variable | GitHub reports `LINUX_RUNNER = ["self-hosted","Linux","fedora"]`. |
+| Registered runners | GitHub reports `kirk` and `Spock` online with labels `self-hosted,X64,Linux,fedora`; `STARBASE` is the distinct Windows runner. |
+| Shared-label scheduling | In push run `32891329714`, `linux` ran on `Spock` while `frozen linux` ran on `kirk`, directly demonstrating that the same selector can split one workflow across the two hosts. |
+| Six-run job history | `32456252805`: failure on `Spock`. `32557846802`, `32623867270`, `32700018058`, `32819082860`: success on `kirk`. Dispatch `32911737750`: its completed orphan job also succeeded on `kirk`. GitHub reports the same shared labels on every job. |
+| Red/green contents | The red job log says **1 orphan**, PID `434366`, dead parent `2139`, two threads, exit 1. The first green and the dispatched green each say **no orphaned workers found**. |
+| Workflow selector | `linux-orphans.runs-on` is `fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"')`; there is one job instance and no runner matrix or host-specific label. |
+| Existing focused gate | `pytest -q tests/unit/test_orphan_scan.py tests/unit/test_task_placement.py`: **27 passed**. This is expected and demonstrates the gap is outside what the committed wiring tests model. |
+| Present specimen state | This review ran on host `Spock`. PIDs `432922` and `434366` are now absent; `tools/orphan_scan.py` prints `no orphaned workers found` and exits 0. No signal, ptrace attachment, stack capture or reap was performed by the Reviewer. |
+| Repository state | `git diff --check` passed before this record; the worktree was clean at `ef84110`. |
+
+### Review judgments
+
+- **This is new evidence, not a second opinion on settled wiring.** The prior review proved that a
+  Linux job existed, ran after the suite, preserved failures and never reaped. It did not know
+  that the selector addressed two persistent process tables or have the red-then-green history.
+  Those facts directly invalidate its conclusion that the visibility criterion was met.
+- **The scanner remains sound.** It detected the known specimen on `Spock` and preserved exit 1.
+  T272-R5 concerns scheduling scope and result semantics, not process recognition.
+- **Only fan-out satisfies the criterion as currently written.** Pinning is a legitimate
+  single-reference-host policy and arbitrary scheduling is a legitimate sampling policy, but each
+  is a different promise. The Reviewer recommends fan-out; the maintainer must decide because
+  unique labels alter repository/runner configuration and the alternatives explicitly reduce
+  scope.
+- **The red result is durable evidence even though the process has now ended.** Five later greens
+  from another host cannot retract it. The records must not use the Reviewer's clean re-check to
+  recreate the same error with a later date.
+- **The prior findings stay resolved.** T272-R1's pipe distinction, T272-R2's inventory addition,
+  T272-R3's refusal to infer how a process ended and T272-R4's TESTING row remain correct.
+  T-238 and T-268 are not diagnosed or moved by this result.
+
+### Convergence and readiness
+
+T-272 is **Blocked on a maintainer scope ruling** and must not move to Complete under the previous
+approval. The Implementer should synchronize the task to Blocked, preserve the no-longer-
+regenerable August 25 capture, and wait for the ruling before changing workflow or tests. Because
+T-272's ordinary review history is already exhausted and both new findings are Medium, the
+maintainer's ruling must explicitly authorize one focused post-approval correction re-review.
+
+The Reviewer changed only this append-only record. No workflow, source, test, task/status/evidence
+file, runner configuration, process, push or remote state was changed.
