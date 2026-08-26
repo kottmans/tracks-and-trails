@@ -5,6 +5,37 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **`T272-R6` corrected on a third authorized pass, and what
+changed is the method rather than the effort.**
+
+**Two passes fixed the passages they had just been reading.** After the second, `T-272`'s body
+still read: found on `kirk` → those exact PIDs alive on `Spock` → they ended and no specimen
+remains. **Three incompatible states in one document** — the defect this task is about, committed
+inside its own correction, twice.
+
+**Both passes grepped a vocabulary of wrongness** — `no specimen`, `both processes are gone`. That
+is enumerating the ways a claim can be *phrased*, and `P2EXIT-R15` already says why it fails:
+**the set of wordings is unbounded and the set of mentions is not.**
+
+**This pass enumerated by identifier instead**: `434366`, `432922`, ``on `kirk` ``, `specimen(s)`
+across `TASKS.md`, `STATUS.md`, `evidence/README.md` and both evidence files — **97 mentions**,
+each audited against three states. Six passages corrected, including the entry's own opening line,
+which had said *"two specimens on `kirk` that have since ended"* through both prior passes.
+
+**The 2026-08-20 evidence file now carries an in-file correction banner**, with its original banner
+struck and kept verbatim and *What became of them* headed by a correction that **keeps the
+observation and withdraws the conclusion** — a `ps` somewhere did return no rows; what is withdrawn
+is that this meant the processes had ended.
+
+**The host is left unestablished rather than reassigned.** A contradiction is not fixed by
+inventing the missing fact.
+
+**Gates:** ruff, formatting and all three mypy variants clean; `tests/unit` **2259 passed, 15
+skipped**; `git diff --check` clean. **The specimen is running** — `Spock`, `434366`, 9d19h,
+scanner exit 1. Nothing signalled, traced, attached to or reaped.
+
+---
+
 **Last updated:** 2026-08-26 — **Second focused correction on `T-272`, taken on explicit
 maintainer authorization under `AGENTS.md` §10.** The ordinary review budget was spent and two
 blocking Medium findings remained, so the pass was authorized rather than assumed. `T272-R5` is

@@ -226,7 +226,44 @@ were blocking Medium, so the pass was authorized rather than taken. **`T272-R6`,
 `T272-R8` and `T272-R9` are corrected below.** `T272-R5` is Resolved and the hostname clause was
 accepted as a proportionate correction to the misleading signal.
 
-#### `T272-R6` — the canonical body still said the specimen ended
+#### `T272-R6` — third pass, and the method changed rather than the effort
+
+**Two passes corrected the passages they had just been reading and left the entry's own opening
+line saying the opposite.** After the second, the body still read: found on `kirk` → those exact
+PIDs alive on `Spock` → they ended and no specimen remains. **Three incompatible states in one
+document**, which is the defect this task turned out to be about, committed inside its own
+correction twice.
+
+**The method was the problem, and it is named in this repository.** Both passes grepped a
+*vocabulary of wrongness* — `no specimen`, `both processes are gone` — which is enumerating the
+ways a claim can be phrased. `P2EXIT-R15` says the opposite: **the set of wordings is unbounded
+and the set of mentions is not.** Sweep every passage that *mentions* the subject, whatever it
+says.
+
+**So this pass enumerated by identifier**: `434366`, `432922`, `on \`kirk\``, `specimen(s)` across
+`TASKS.md`, `STATUS.md`, `evidence/README.md` and both evidence files. **97 mentions**, each
+audited against three states — alive on `Spock`, capture host unestablished, ending withdrawn.
+
+| corrected | was |
+|---|---|
+| the entry's opening line | *"two specimens on `kirk` that have since ended"* |
+| the same paragraph | *"were gone anyway … is now the whole of what survives of them"* |
+| *What was measured*'s header | the capture attributed to `kirk` as fact |
+| the by-hand run | attributed to `kirk` as fact |
+| the *no specimen remains* conclusion | struck, and the criterion's retirement withdrawn with it |
+| `2026-08-20` evidence file | **in-file correction banner added**; its original banner struck and kept verbatim; *What became of them* headed by a correction that keeps the observation and withdraws the conclusion |
+
+**What survives the sweep, and why**: quotations inside the finding write-ups, which exist to show
+the claims are false; the run-history table, where `kirk` is a measured fact; and two `STATUS.md`
+passages under **2026-08-20** headers, which are dated historical snapshots this file keeps rather
+than rewrites.
+
+**The host is left unestablished rather than reassigned.** These PIDs are on `Spock` and the record
+said `kirk`; which machine the 2026-08-20 command ran on is not recoverable, and two candidates
+explain a true zero — the two-machine label (`T272-R5`) and an isolated PID namespace. **A
+contradiction is not fixed by inventing the missing fact.**
+
+#### `T272-R6` — the canonical body said the specimen ended (first two passes)
 
 **The prior pass corrected `STATUS.md` and added the evidence file, and left the two passages that
 matter most.** The acceptance list still carried the criterion **struck** as *"overtaken by
@@ -368,13 +405,25 @@ asserted**: which machine that verification ran on is the reviewer's to say, and
 rather than resolved here.
 
 *(Prioritized by the maintainer 2026-08-20 and built the same night.)*
-Filed from two specimens on `kirk` that have since ended.
+**Filed from two specimens that are still running** (`T272-R6`). `434366` and `432922` were
+captured on 2026-08-20 and are alive on **`Spock`** — scanner exit 1, confirmed continuously
+through 2026-08-26. **Which machine the 2026-08-20 capture was taken on is not established**: this
+entry recorded `kirk`, the processes are on `Spock`, and two candidates explain a true-looking
+zero elsewhere — the two-machine runner label (`T272-R5`) and an isolated PID namespace. **Neither
+is asserted, and the contradiction is not resolved by choosing one.**
+
+*(This line read: **"Filed from two specimens on `kirk` that have since ended."** Both halves are
+withdrawn — the host is unestablished and the pair did not end. It survived three correction
+passes because each swept the passages it had just been reading rather than every passage that
+**mentions** the specimens, which is `P2EXIT-R15`'s rule and this task's own subject.)*
+
 Found by accident while setting up `T-238`'s load campaign, which is how the original five were
-found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning here and were gone anyway**
-within hours of being written up — **why, and whether anybody else acted on them, is unknown**
-(`T272-R3`): `ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is now the whole of what survives of
-them. **The scheduling gap this task is filed for is untouched by that** — if
-anything the loss is what the gap costs, since a scheduled Linux scan would have reported the pair
+found on `STARBASE`. **Both were preserved on `T258-R4`'s reasoning and are preserved still** —
+nothing has signalled, traced, attached to or reaped them.
+`ai/evidence/2026-08-20-linux-orphans-on-kirk.md` is the original capture and
+`ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md` shows them alive six days later.
+**The scheduling gap this task is filed for is untouched by any of it** — if
+anything it is sharper, since a scheduled Linux scan would have reported the pair
 on 2026-08-16 rather than leaving them to be noticed four days later.
 **Owner:** Implementer — built 2026-08-20, awaiting a verdict
 **Priority:** **Medium.** Not because these two processes matter — 37 MB — but because
@@ -427,7 +476,7 @@ have caught its absence.
 `|| true` to its scan command (**1 failed**, the exit-code test). `12 passed` restored.
 
 **The steps are verified, the job is not.** Nothing is pushed, so it has never executed on a
-runner — but its mechanism was run by hand on `kirk`, exactly as written: `python3 -m venv`,
+runner — but its mechanism was run by hand, exactly as written: `python3 -m venv`,
 `pip install psutil`, then `tools/orphan_scan.py`, which printed `no orphaned workers found` and
 exited **0**. The scanner imports **`argparse`, `socket`, `sys`, `time`, `dataclasses` and
 `psutil`** and nothing else, so the one-dependency environment is sufficient rather than merely
@@ -440,7 +489,9 @@ fail without them are the evidence until a nightly runs.
 
 #### What was measured
 
-`.venv/bin/python tools/orphan_scan.py` on `kirk`, 2026-08-20 — **exit 1**:
+`.venv/bin/python tools/orphan_scan.py`, 2026-08-20 — **exit 1**. **The host recorded here was
+`kirk` and that is withdrawn as unestablished** (`T272-R6`): these exact PIDs are on `Spock`, and
+which machine the command ran on is not recoverable. The capture itself is unchanged:
 
 ```
 1 orphaned worker(s) — spawned, parent gone, still running:
@@ -477,9 +528,11 @@ finite by construction, and that candidate is distinguished only by **requiring 
 process**, which is a property of the candidate rather than evidence it happened; an outside kill,
 inspection or cleanup on a shared machine is **neither observed nor excluded** and cannot be
 recovered after the fact. The tracker's exit follows from the retention chain above once the write
-end closes, which is an inference and not a watched sequence. **No specimen remains available**, so
-the preservation criterion below is **overtaken by events rather than met or waived** — a statement
-about availability and **not about anybody's conduct** (`T272-R3`). Recorded in the evidence file
+end closes, which is an inference and not a watched sequence. ~~**No specimen remains available**,
+so the preservation criterion below is **overtaken by events rather than met or waived**~~
+**Withdrawn** (`T272-R6`): **the specimen remains available**, the criterion is **unmet and live**,
+and it binds these two processes now. The sentence is struck rather than deleted because it is the
+one the criterion was retired on. Recorded in the evidence file
 under *What became of them*; nothing captured while they ran is withdrawn by their ending.
 
 **`pipe:[1629660]` is the resource-tracker channel, not a payload pipe, and that distinction carries

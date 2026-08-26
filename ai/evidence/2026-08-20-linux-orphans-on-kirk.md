@@ -1,5 +1,30 @@
 # Two orphaned workers on `kirk` — Linux, 2026-08-20
 
+> ## ⚠ Correction, 2026-08-26 — `T272-R6`
+>
+> **The two processes did not end. They are running.** `434366` and `432922` are alive on
+> **`Spock`** — present in `ps` and `/proc`, `434366` with two threads still holding
+> `pipe:[1629660]`, `tools/orphan_scan.py` exit **1** — confirmed continuously from 2026-08-25
+> through 2026-08-26. `ai/evidence/2026-08-25-linux-orphan-still-running-on-spock.md` is three
+> read-only captures of them six days after this one.
+>
+> **The host in this file's title is unestablished.** These exact PIDs are on `Spock`; this file
+> says `kirk`. **Which machine this capture was taken on is not recoverable**, and two candidates
+> explain a true-looking zero elsewhere without anyone having been careless: `LINUX_RUNNER` is a
+> label **two** machines answer, so a scan names whichever it ran on (`T272-R5`); and an isolated
+> **PID namespace** cannot see the host's processes at all — which is what the Reviewer disclosed
+> when withdrawing a contrary check of their own. **Neither is asserted.** The filename is left as
+> written rather than renamed, because it is cited from `T-272`, `ai/evidence/README.md` and
+> `STATUS.md`, and a file that quietly changes name is worse than one that carries its correction.
+>
+> **What is *not* corrected: everything below this banner.** Every measurement, `/proc` read,
+> `ps` line and `eu-stack` frame is exactly as captured and none of it is revised — the capture
+> was sound. What was wrong is the conclusion drawn about what happened afterwards.
+>
+> **The preservation criterion is therefore unmet and live, not overtaken.** Nothing has
+> signalled, traced, attached to or reaped either process, and nothing may terminate them without
+> revalidating pid, create time, command line and parent first (`T258-R4`).
+
 Found while setting up `T-238`'s loaded-reproduction campaign, by noticing two long-lived
 Python processes that were not mine. **Preserved, not reaped**, on the same reasoning
 `T258-R4` and `T-268` apply to `3400`/`6924`: a live specimen is worth more than the
@@ -8,9 +33,12 @@ Python processes that were not mine. **Preserved, not reaped**, on the same reas
 Captured non-destructively: `/proc`, `ps`, and `eu-stack` (read-only). No debugger was
 attached, nothing was signalled, and the project scanner was run in its report-only form.
 
-> **Both processes ended between this capture and 2026-08-20T06:20:48Z, and this file is now the
-> only record of them.** See *What became of them* at the bottom. Everything above is retained
-> exactly as captured; nothing in it is revised by their ending.
+> ~~**Both processes ended between this capture and 2026-08-20T06:20:48Z, and this file is now
+> the only record of them.** See *What became of them* at the bottom. Everything above is retained
+> exactly as captured; nothing in it is revised by their ending.~~
+>
+> **The original banner, struck 2026-08-26 and kept verbatim** — it is the claim the correction
+> above is about, and deleting it would leave the correction with nothing to correct.
 
 ## What they are
 
@@ -119,6 +147,13 @@ union of the two is not a process shape, and the tracker channel is not the payl
 eliminated a peer from. Nothing here bears on why the five looked as they did.
 
 ## What became of them
+
+> **Corrected 2026-08-26 (`T272-R6`). Nothing became of them — they are still running on `Spock`.**
+> The section below is the 2026-08-20 observation and its reasoning, kept verbatim because it is
+> what the correction is about. **What it observed is not disputed**: a `ps` somewhere returned no
+> rows and the scanner exited 0. **What it concluded is withdrawn** — that the processes had ended.
+> Two candidates explain a true zero without anything having been observed wrongly: the scan named
+> a different machine (`T272-R5`), or ran in an isolated PID namespace. **Neither is asserted.**
 
 **Both are gone.** `ps -o pid,ppid,etime,nlwp,time,rss,stat,args -p 432922,434366` on `kirk` at
 **2026-08-20T06:20:48Z** returns a header and no rows, and `tools/orphan_scan.py` reports
