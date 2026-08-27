@@ -20915,3 +20915,19 @@ remains closed, and every remaining item is Low with an owner and named target.
 The Reviewer appended and committed only this historical review record and the approved follow-up
 task. No reviewed source, test, workflow, T-279 task/status evidence, handoff, push, CI run, runner
 state or pre-existing process was changed.
+
+### Maintainer disposition — no separate follow-up task
+
+The maintainer rejected creating another follow-up task for these Low residuals: *“dont keep
+creating endless follow up tasks.”* That direction replaces the Reviewer's `T-280` disposition.
+
+- **T279-R5 is an accepted implementation note.** The committed behavior is correct and its two
+  policy choices are now guarded. Reading `cmdline()` after a conclusive `exe()` answer is
+  unnecessary, but has no demonstrated wrong result and does not justify another queue entry.
+- **T279-R6 belongs to ordinary T-279 completion synchronization.** Name `693a09f` as the CI code
+  head and remove the claim that the marker-specific nightly scanner could detect this bounded
+  launcher/sleeper shape. This is current-truth cleanup, not a new task or another review pass.
+
+The final disposition is therefore **T-279 Approved at `a0085b5`, with no separate follow-up
+task**. `T-280` has been removed from current-truth TASKS; its brief appearance remains visible in
+the append-only review history and the local commit history rather than being silently rewritten.

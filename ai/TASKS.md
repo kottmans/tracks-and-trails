@@ -11030,47 +11030,6 @@ unmeasured claim — that `New` resolves empty on Windows — which nothing supp
 
 ---
 
-### T-280 — Finish T-279's lazy fallback and keep its evidence inside the scanner's scope
-
-**Status:** **Proposed — Low follow-up filed by T-279's final review, 2026-08-26.** This does not
-reopen T-279: the scanner returns the intended answers, the vanished-parent regression is closed,
-and Windows has measured the native launcher child. What remains is one unnecessary read and two
-current-truth sentences that claim more than the evidence can say.
-**Owner:** Implementer
-**Priority:** Low — test strength, unnecessary process inspection and evidence precision; no known
-wrong scanner verdict remains
-**Phase:** Phase 4 maintenance
-**Depends on:** nothing
-**Relevant context:** `T279-R5`, `T279-R6`; `tools/orphan_scan.py::_looks_like_an_interpreter`;
-`tests/unit/test_orphan_scan.py::test_an_installed_console_script_resolves_to_an_interpreter`;
-CI run `33017151297` at `693a09f`
-**Affected surfaces:** the executable/argv-zero helper policy, its focused tests, and T-279's
-TASKS/STATUS evidence wording
-**Risk:** Low. The trap is to test only the returned boolean: the current tuple evaluates
-`cmdline()` even after `exe()` supplied a conclusive answer, and both answers can still be right
-while the alleged fallback is not one
-
-#### Acceptance criteria
-
-- `_argv0_of(parent)` is called only when `exe()` is unavailable or empty; a direct test makes
-  `cmdline()` fail if it is touched after a conclusive Python executable
-- The existing direct cases for an unavailable executable with a usable argv-zero and for both
-  reads being unavailable remain load-bearing
-- T-279's Windows evidence names `693a09f` as the exact CI code head and distinguishes the
-  record-only `a0085b5` commit
-- The cleanup residual says what can actually observe it. `orphan_scan.py` selects only command
-  lines containing both `spawn_main` and `--multiprocessing-fork`; a leaked `coverage run
-  sleeper.py` launcher or sleeper would not be reported by the next nightly, and the sleeper is
-  independently bounded to 60 seconds. Do not cite that scanner as cleanup evidence
-
-#### Out of scope
-
-- Re-running or redesigning the Windows launcher measurement; CI already supplied it
-- Dispatching either orphan job or changing its schedule
-- Broadening the scanner beyond multiprocessing workers
-
----
-
 ### T-212 — The recorded checklist run: the built window against the agreed flow
 
 **Carries one row by maintainer direction, 2026-08-13:** the **deferred panel mount**. `T-221` was
