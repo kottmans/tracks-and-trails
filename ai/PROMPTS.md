@@ -5,7 +5,7 @@
 **Owner:** Documentation Maintainer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-27
+**Last updated:** 2026-08-27
 **Update when:** A repeated workflow needs a template, or completion-reporting requirements change.
 
 > These prompts are convenience templates only. `AGENTS.md` and the authoritative project
@@ -68,7 +68,11 @@ Do not modify source unless explicitly asked to fix findings.
 
 Report: verdict, findings ordered by severity with file:line, why each matters, recommended
 correction, checks run and their real results, unresolved risks, and a merge readiness call.
-Record the review in ai/REVIEWS.md and create TASKS.md entries for Open findings only.
+Record the review in ai/REVIEWS.md, then disposition every finding under AGENTS.md §10's
+task-creation threshold: a Note requests no change; a small requested change is a Low
+finding, not a Note; a minor actionable finding rides the current task's completion sync or
+the next existing task; and a new TASKS.md entry is for independently substantial work only.
+Accepted Risk and Won't Fix need the maintainer's explicit no-action decision.
 In a parallel wave, write ai/reviews/T-###.md on the task branch instead, name the exact
 implementation head you approved, and leave the index and task routing to the coordinator.
 ```
