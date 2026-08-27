@@ -394,15 +394,19 @@ stop correction of **Critical or High** defects.
 3. route substantive work to an existing task that naturally owns the behavior, or roll a very
    minor mechanical item into the next existing task's normal completion/coordination pass when
    that does not change its behavioral scope, risk or acceptance criteria;
-4. close it as a Note, Accepted Risk, Won't Fix or Superseded when no action is justified; or
-5. create a new task only when the work is independently actionable, materially worth scheduling,
+4. record it as a Note only when it adds useful context and requests no change — a small required
+   change is still a Low finding, not a Note;
+5. close a valid actionable finding as Accepted Risk or Won't Fix only on an explicit maintainer
+   no-action decision, or as Superseded only when later facts genuinely make it moot; or
+6. create a new task only when the work is independently actionable, materially worth scheduling,
    has clear acceptance criteria and priority, and is actually intended to compete for execution
    time.
 
 Do not create a task merely to satisfy an owner/target field or to convert findings one-for-one.
-If no action is intended, record the rationale and close the finding honestly. Low documentation,
-test-strength, wording, or cleanup observations normally stay in completion sync or close as notes
-unless their consequence independently clears this threshold.
+If an actionable finding is not to be changed, record the maintainer's no-action disposition and
+rationale. Low documentation, test-strength, wording, or cleanup changes normally stay in the
+current or next existing task's completion sync; do not relabel them as Notes merely because they
+are small.
 
 Every extra pass stays focused on unresolved blockers and the correction diff; it is not a new
 broad audit. A finding that revisits settled ground needs new evidence, not a second opinion.
@@ -421,7 +425,7 @@ fix for a data-loss defect is still Critical:
 | **High** | Core or user-visible functionality the task exists to deliver is broken; a stated requirement or acceptance criterion is unmet; a documented architecture invariant is violated; or a user hits a defect with no workaround. |
 | **Medium** | A correctness or robustness gap with a narrow trigger or a workaround — including a gate that does not actually gate what it claims to. |
 | **Low** | Quality, clarity, maintainability; test strength where the behavior under test is correct. |
-| **Note** | An observation. No action implied. |
+| **Note** | Useful context or an observation for which no change is requested. A small required change is Low, not a Note. |
 
 - **A Critical finding always blocks. There is no "normally."** It is fixed before approval,
   however late it surfaces and however inconvenient the timing. It may **not** be closed as
@@ -436,6 +440,9 @@ fix for a data-loss defect is still Critical:
   After the ordinary pass budget, an unresolved blocking Medium finding produces **Blocked**
   pending the maintainer choice above; it does not authorize another pass by itself.
 - Low and Note findings normally do not block.
+- A valid actionable Low or Medium finding may close as *Accepted Risk* or *Won't Fix* only on an
+  explicit maintainer no-action decision. A reviewer may retract an invalid finding or mark a
+  genuinely overtaken one Superseded; smallness alone is not a no-action disposition.
 - Mechanical documentation, status, cleanup, and test-hardening findings do not block unless
   they materially misstate safety, behavior, release readiness, or a required gate.
 

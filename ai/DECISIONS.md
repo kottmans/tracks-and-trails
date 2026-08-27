@@ -247,6 +247,55 @@ Explicit disposition preserves the observation without pretending it was priorit
 
 ---
 
+## DOC-005 — Minor actionable findings ride existing work; Notes request no change
+
+**Status:** Accepted
+**Date:** 2026-08-26
+**Supersedes:** `DOC-004` only where it allowed a reviewer to close an actionable minor finding as
+a Note or other no-action disposition without the maintainer's decision
+
+### Context
+
+`DOC-004` correctly stopped review findings from mapping one-for-one to new tasks, but its phrase
+*“closed honestly as a Note, Accepted Risk, Won't Fix or Superseded”* left two different things in
+one bucket: a genuinely informational Note and a small change the reviewer decided was not worth
+scheduling. The maintainer clarified that a very minor finding should roll into the next existing
+task if necessary, not disappear merely because its consequence is harmless.
+
+### Decision
+
+Adopt the clarification in convention revision **2026-08-26.2**:
+
+- A **Note** records useful context and requests no change. A small requested change remains a Low
+  finding; a reviewer must not relabel it as a Note.
+- A very minor actionable finding is handled in the current task's completion synchronization or
+  rolled into the next existing task's normal completion/coordination pass when necessary, without
+  changing that task's behavioral scope, risk or acceptance criteria.
+- A valid actionable finding closes as **Accepted Risk** or **Won't Fix** only on an explicit
+  maintainer no-action decision. **Superseded** requires a later fact that genuinely makes the work
+  moot. These are dispositions, not reviewer shortcuts around routing the work.
+- The new-task threshold from `DOC-004` is unchanged.
+
+### Rationale
+
+The queue should not grow for every tiny correction, but neither should avoiding queue growth erase
+real work. Rolling minor mechanical work into an existing completion pass preserves the correction
+without pretending it needs independent priority. Restricting Notes to non-actionable context keeps
+severity and disposition honest.
+
+### Consequences
+
+- Reviewers distinguish *“no change requested”* from *“a change is requested but small.”*
+- Minor actionable cleanup follows existing work rather than creating a new task.
+- Choosing not to perform valid actionable work is the maintainer's decision and is recorded as
+  such.
+
+### Affected files
+
+`AGENTS.md`, `ai/REVIEWS.md`, `ai/TASKS.md`.
+
+---
+
 ## ARC-001 — Python + PySide6 (Qt 6) as the implementation stack
 
 **Status:** Accepted
