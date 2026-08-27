@@ -106,7 +106,8 @@ def _looks_like_an_interpreter(parent: psutil.Process) -> bool:
     `except psutil.NoSuchProcess: return True` is the correct answer and predates this change.
     **Not inspectable and not there are opposite conclusions and must not share a handler.**
     """
-    for candidate in (_executable_of(parent), _argv0_of(parent)):
+    for read in (_executable_of, _argv0_of):
+        candidate = read(parent)
         if candidate is None:
             continue
         return "python" in PurePath(candidate).name.lower()

@@ -5,8 +5,17 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-26 — **`T-272` is Complete**, Approved at `12fda3a` (review `de0724c`),
-**all nine findings closed**. **`## In Review` is empty.**
+**Last updated:** 2026-08-26 — **`T-279` is Complete**, Approved at `a0085b5`, **all six findings
+closed and no follow-up task**. The Windows measurement is at **code head `693a09f`** — CI run
+`33017151297`. **`a0085b5` adds no source, test or workflow line and is record-only**, so naming it
+as the tested head would claim evidence CI never produced.
+
+**`T279-R5` and `T279-R6` rode the completion pass rather than becoming tasks**, which is
+`DOC-005`. **`T-280` was created and removed by the reviewer and is not re-created.**
+**`## In Review` is empty.**
+
+*(2026-08-26, earlier: **`T-272` is Complete**, Approved at `12fda3a` (review `de0724c`),
+**all nine findings closed**.)*
 
 **`T-279` is filed from the approval**: `orphan_scan._parent_is_gone` decides *"is this a Python
 process"* by process **name**, and a console-script entry point is named for the script — so a
@@ -226,12 +235,44 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+## Complete
+
 ### T-279 — The orphan scanner calls a live parent dead when it was launched by a console script
 
-**Status:** **In Review — second focused correction, 2026-08-26, on explicit maintainer
+**Status:** **Complete — Approved at `a0085b5`**, 2026-08-26. **All six findings are closed and
+no follow-up task exists.** `T279-R1`–`R4` Resolved; `T279-R5` and `T279-R6` were handled in this
+completion synchronization under `DOC-005`, which routes a minor actionable finding into the
+current task's completion pass rather than into the queue. **`T-280` was created and removed by
+the reviewer; nothing here re-creates it.**
+
+**The two heads are different things and the distinction is the point.** The Windows measurement
+was taken at **code head `693a09f`** — CI run `33017151297`. **`a0085b5` is record-only**: it adds
+no source, test or workflow line, so approving at it approves the same product `693a09f` built.
+Naming `a0085b5` as the tested head would claim evidence for a commit CI never saw.
+
+#### `T279-R5` (Low) — resolved in this pass, not deferred
+
+`argv[0]` was evaluated **eagerly** — the tuple `(_executable_of(parent), _argv0_of(parent))` calls
+both before the loop reads either, so a parent whose executable answered still paid a second
+`/proc` read. **Behaviour was correct and directly tested; the cost was not.** Now `for read in
+(_executable_of, _argv0_of)` calls the second only when the first returns `None`.
+
+**All four mutations still fail after the change** — dropping the fallback, reversing the bias, and
+re-swallowing `NoSuchProcess` at both sites — so laziness did not buy a weaker test.
+
+#### `T279-R6` — completion synchronization
+
+- **`ai/STATUS.md` claimed the next nightly orphan scan would report a stray left by the new
+  launcher test.** It could not: `coverage run sleeper.py` carries **neither** `spawn_main` nor
+  `--multiprocessing-fork`, and `_SPAWN_MARKERS` requires both — and the sleeper is bounded to 60
+  seconds anyway. **A safety net named as evidence which does not cover the thing it was offered
+  for.** Corrected in place.
+- **The exact code head is named as `693a09f`** wherever the Windows evidence is recorded.
+
+*(Previously: In Review — second focused correction, 2026-08-26, on explicit maintainer
 authorization under `AGENTS.md` §10** (*"I'm authorizing any additional pass"*). The ordinary
 budget was exhausted at `f7f3fe2`. `T279-R2`, `R3` and `R4` are Resolved; **`T279-R1` and the new
-`T279-R5` are corrected here.**
+`T279-R5` are corrected here.*)*
 
 #### `T279-R1` (Medium, blocking) — a test that runs on Windows, not a synthetic path
 
@@ -510,7 +551,8 @@ inherited**, and because `T-268`'s five specimens are the reason this scanner ex
 
 ---
 
-## Complete
+
+---
 
 ### T-272 — The orphan scanner runs only on Windows, and a Linux box has had two orphans for days
 

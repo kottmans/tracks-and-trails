@@ -5,6 +5,33 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-26 — **`T-279` is Complete**, Approved at `a0085b5`, six findings
+closed, **no follow-up task**. `## In Review` is empty.
+
+**Two heads, and the difference is load-bearing.** The Windows measurement is at **code head
+`693a09f`** (CI `33017151297`). **`a0085b5` is record-only** — no source, test or workflow line —
+so approving at it approves the product `693a09f` built. Naming `a0085b5` as the tested head would
+claim evidence CI never saw.
+
+**`T279-R5` and `T279-R6` rode this completion pass rather than becoming tasks**, under the new
+`DOC-005`: a Note requests no change, a minor actionable finding rolls into existing work, and only
+independently material work earns a task. **`T-280` was created and removed by the reviewer; it is
+not re-created.**
+
+**`T279-R5`**: `argv[0]` was read **eagerly** — both helpers called before the loop inspected
+either, so a parent whose executable answered still paid a second `/proc` read. Behaviour was
+correct and tested; the cost was not. The second is now called only when the first returns `None`,
+and **all four mutations still fail**, so laziness bought no weaker test.
+
+**`T279-R6` caught a claim in this file that was wrong twice over.** It said the next nightly
+orphan scan would report a stray left by the new launcher test. It could not: `coverage run
+sleeper.py` carries **neither** `spawn_main` nor `--multiprocessing-fork`, and `_SPAWN_MARKERS`
+requires both — and the sleeper is bounded to 60 seconds regardless. **I offered a safety net as
+evidence without checking it covered the thing it was offered for**, which is this session's
+signature defect in yet another costume.
+
+---
+
 **Last updated:** 2026-08-26 — **`T279-R1` has its Windows evidence: the launcher tree behaves as
 reasoned, and it is now measured.**
 
@@ -27,10 +54,13 @@ start a Python child, and that child is what a worker records as its parent**, w
 `T-279`'s defect never reached Windows. A test written to pass either way would have told us
 nothing; this one could only pass one way.
 
-**What this run does not tell us**: `STARBASE orphans` was **skipped** — a push is neither
-`schedule` nor `workflow_dispatch` — so **whether the new launcher test leaves a stray process on
-`STARBASE` is unobserved.** It kills the child tree in a `finally`, and that is code rather than
-evidence. The next nightly scans that machine and would say so.
+*(**This said the next nightly would report a stray left by the new test, and that is wrong twice
+over** — `T279-R6`. `tools/orphan_scan.py` requires **both** `spawn_main` and
+`--multiprocessing-fork` in a command line, and `coverage run sleeper.py` carries **neither**, so
+the scanner could never see it whatever it did. The sleeper is also bounded to **60 seconds** by
+its own code, so there is nothing durable to find. The test does kill the child tree in a
+`finally`; what was wrong is the claim that a scan would catch it if that failed. **A safety net
+named as evidence, which on inspection does not cover the thing it was offered for.**)*
 
 ---
 
@@ -44,8 +74,10 @@ of a native `.exe` launcher** on Windows. That difference is the finding, and it
 rather than reasoned about. The helper **fails loudly** if a Windows launcher starts no child,
 because that would mean the premise has changed.
 
-**No Windows execution has happened.** The test exists and passes on Linux; the Windows job needs a
-push. **Whether the defect ever existed on Windows is still unmeasured.**
+*(**Superseded the same day.** This read *"No Windows execution has happened … whether the defect
+ever existed on Windows is still unmeasured."* It did happen: CI run `33017151297` at code head
+**`693a09f`**, and the entry above this one carries the result. Kept struck rather than deleted
+because it is what the push was authorized to answer.)*
 
 **`T279-R5`: two behaviours the record claimed and nothing pinned** — dropping the `argv[0]`
 fallback, and reversing the uninspectable-parent bias, each left all 21 tests green. Both are now
