@@ -5,14 +5,21 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-26 — **`T-279` is Complete**, Approved at `a0085b5`, **all six findings
+**Last updated:** 2026-08-27 — **`T-273` is built and In Review: the retention is identified by
+measurement and the tree is released.** The window is held by callables closing over it that Qt
+objects — its own children — hold across C++ parent-child and signal edges. **`gc` can traverse
+none of those**, so it never sees the cycle. `shiboken6` answered what `get_referrers` could not.
+**`deleteLater()` alone changes nothing**; the deferred delete has to be flushed, and then three
+compose cycles go from **25 / 50 / 75** live widgets to **0 / 0 / 0**.
+
+*(2026-08-26: **`T-279` is Complete**, Approved at `a0085b5`, **all six findings
 closed and no follow-up task**. The Windows measurement is at **code head `693a09f`** — CI run
 `33017151297`. **`a0085b5` adds no source, test or workflow line and is record-only**, so naming it
 as the tested head would claim evidence CI never produced.
 
 **`T279-R5` and `T279-R6` rode the completion pass rather than becoming tasks**, which is
 `DOC-005`. **`T-280` was created and removed by the reviewer and is not re-created.**
-**`## In Review` is empty.**
+`T-279` closed with `## In Review` empty at that point.)*
 
 *(2026-08-26, earlier: **`T-272` is Complete**, Approved at `12fda3a` (review `de0724c`),
 **all nine findings closed**.)*
@@ -234,6 +241,225 @@ Phase 0 is formally exited (2026-07-26).
 ## In Review
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
+
+### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
+
+**Status:** **In Review — built 2026-08-27.** **The retention is identified by measurement, the
+tree is released, and a check fails if it comes back.** All four acceptance criteria are addressed;
+criterion 4 is re-read below rather than acted on, because it is `T-238`'s.
+
+#### What retains the tree
+
+**Python callables that close over the window, held by Qt objects that are the window's own
+children.** The cycle is `window → (C++ child or signal connection) → callable → cell → window`, and
+**`gc` can traverse none of the C++ edges**, so it never sees a cycle and the refcount never falls.
+
+Named by measurement, not by inspecting suspects:
+
+| holder | site |
+|---|---|
+| 2 lambdas on `QueueView.open_requested` / `.reveal_requested` | `main_window.py:740`, `:741` |
+| 1 lambda passed to `FileActions` as `output_directory` | `main_window.py:903` |
+| 8 callbacks built in `compose()` and handed to the window | `app.py:529, 559, 581, 627, 705, 754, 784, 864` |
+| `FileActions._report` = `MainWindow._report_transiently` | a Qt **child** of the window |
+
+**The decisive experiment was clearing the edges by hand.** Nulling `FileActions._report` alone
+changed nothing; clearing the **three closure cells** released the window and took **all 25
+`QWidget`s to 0** in the same collection. So the closures are the anchor and the bound method is a
+passenger.
+
+**`shiboken6` answered what `gc` could not.** `ownedByPython: True`, `parent(): None`, refcount
+**4**, and `gc.get_referrers` finds exactly **4** — the collector can account for every reference
+and still cannot collect, because what holds those four is on the C++ side of an edge it cannot
+walk. **That is why this needed a different instrument rather than more `get_referrers`.**
+
+#### What was done about it
+
+**The window is released in `tests/ui/conftest.py`'s `composed` fixture, not in the product.**
+`shutdown.begin()` stops what composition *owns* — manager, writer, database — and does not own the
+window's lifetime. In the product it does not need to: one composition, then the process exits.
+**The suite composes once per test**, which is where the accumulation lives and where the fix
+belongs.
+
+**`deleteLater()` alone does nothing, and that is the whole mechanism.** It posts a
+`DeferredDelete` that `processEvents()` does not flush. Measured over three compose/shutdown cycles:
+
+| teardown | live `QWidget`s after each cycle |
+|---|---|
+| as before | **25 / 50 / 75** |
+| `deleteLater()` + `processEvents()` | **25 / 50 / 75** — unchanged |
+| `deleteLater()` + `sendPostedEvents(None, DeferredDelete)` | **0 / 0 / 0** |
+| `shiboken6.delete()` | **0 / 0 / 0** |
+
+`deleteLater()` is kept over `shiboken6.delete()` because it is the Qt-idiomatic route and lets Qt
+run the destruction it would run for a user closing the window.
+
+#### The check
+
+The fixture asserts **`not shiboken6.isValid(window)`** after teardown, so a regression fails on
+every UI test rather than waiting for somebody to write a probe.
+
+**It asserts *this* window, not "no `MainWindow` anywhere".** The first version asserted over
+`QApplication.allWidgets()` and produced **12 errors** — several tests build a `MainWindow` of their
+own and are entitled to, so the global form fails in whichever test happens to run after one of
+them. A false positive about the wrong object.
+
+#### Cost, measured because the first number was misleading
+
+The full `tests/ui` run took **432s** against ~309s before, which looked like a 40% tax. **It was
+contention, not the fix**: `Spock` is one of the two Linux CI runners and a CI `linux` job was
+running on it at the time. Isolated on a 100-test subset, with and without the release:
+**6.41 / 6.12s against 6.03 / 6.27s** — indistinguishable.
+
+#### `T-238`'s criterion 4, re-read
+
+**Its second step was refused *because of* this retention** — the probe could not classify surfaces
+that were still standing. **The retention is now controllable**, so that step is runnable in a way
+it was not. **Nothing here answers criterion 4**, and this entry does not claim to: it removes the
+obstacle the attempt hit, and the run itself is `T-238`'s.
+
+*(Previously: In Progress — investigated 2026-08-26, and not finished.* Criterion 1 is
+**partly** met and criterion 2 is **not attempted**, deliberately: the entry forbids releasing the
+tree before knowing what holds it, and what holds it is not yet fully known. **The Python edges are
+now named and measured; the final anchor is on the Qt side and is not named.** `tools/t273_retention_probe.py`
+is committed so the next session starts from the measurement rather than from the question.)*
+
+#### What is now established
+
+**The shutdown works, and the earlier figure needs qualifying.** After `shutdown.begin()` runs to
+`finished`, **25 `QWidget`s and 46 `QObject`s survive** — the window and its own tree, plus
+`FileActions`. The earlier 159 came from a probe that had opened the add dialog, Settings and About
+first. **The manager, the writer and the model do not survive**, so shutdown releases what it
+owns; what it does not release is the window.
+
+**The window has exactly four Python referrers, and all of them are cycle members**, named with
+file and line by the probe:
+
+| holder | where |
+|---|---|
+| 2 lambdas | `MainWindow._connect_row_verbs` — `main_window.py:740`, `:741` |
+| 1 lambda | `MainWindow._attach_file_actions` — `main_window.py:903` |
+| **8 closures defined inside `compose()`** | `app.py:529, 559, 581, 627, 705, 754, 784, 864` |
+| 1 bound method | `FileActions._report` = `MainWindow._report_transiently` |
+
+The eight in `compose()` are callbacks the window is handed and then holds — **window → callback →
+closure cell → window**. Every edge is a cycle.
+
+**`gc` does not consider the window garbage, and that is the finding.** Under `DEBUG_SAVEALL` the
+collector parks **0** unreachable objects and the window is **not** among them. It is *reachable*,
+so the cycle is not merely uncollected — something keeps its refcount above what the collector can
+account for from tracked containers, which is the signature of a reference held outside Python.
+
+**It is not a blanket PySide6 limitation, which is the control.** A `QWidget` subclass holding a
+lambda that captures `self` — **shown**, with a live `QApplication` — is collected in three
+`gc.collect()` calls. A plain object with the same shape is collected too. **So a self-capturing
+Qt cycle is collectable here, and ours is not**, which rules out the obvious explanation and is
+why this entry does not offer one.
+
+#### What is not established, stated so it is not read as done
+
+- **Which Qt-side reference anchors it.** `gc.get_referrers` reports only the four Python edges;
+  the reference that makes the collector call it reachable is not attributable from Python, and
+  naming it needs a different instrument than this probe.
+- **Whether the retention is correct.** The entry allows *"it is correct that it is retained"* as
+  an answer. Nothing here supports or refutes that yet.
+- **Anything about `T-238`.** Unchanged: this is a plausible neighbour and not a diagnosis.
+
+#### What the next session should do
+
+1. **Name the Qt-side reference.** Candidates not yet distinguished: a signal connection into a
+   window slot from an object that outlives it, Qt's ownership of a shown top-level widget, or a
+   `shiboken6` wrapper reference. `shiboken6.dump()` and connection enumeration are the instruments
+   this probe lacks.
+2. **Then** decide criterion 2 — release, or record why keeping it is right.
+3. **Then** criterion 3's accumulation check, which is deliberately not written yet: a check that
+   fails when trees accumulate would currently encode a number nobody can explain.
+
+*(Filed 2026-08-20 by the run that `T-238`'s criterion-4 probe refused to
+report.** The probe printed *0 widgets freed by the collector* while 159 were still standing; those
+are opposite answers wearing the same zero, and the control that separates them is what found this.
+**The filing does not depend on any conclusion about cycles** — the retention is observed directly,
+and `T238-R5` withdrew the conclusions the probe's zero was briefly read as supporting.)*
+**Owner:** Planner, to prioritize
+**Priority:** **Medium.** Nothing a user can see — a shipped process composes once and exits, so the
+retention has no runtime consequence there. It is the **test suite** that composes repeatedly, and
+`T-238` is a native crash in that suite under `-n auto`
+**Phase:** Phase 4 maintenance
+**Depends on:** nothing. `T-238` is **not** a dependency and this is **not** a diagnosis of it
+**Relevant context:** `tests/ui/conftest.py`'s `composed` fixture, `src/tracks_and_trails/app.py`'s
+`compose()` and `OrderlyShutdown`, `tests/qt_lifecycle.py`, `tools/t238_widget_cycle_probe.py`
+**Affected surfaces:** composition teardown, and possibly nothing in `src/` — see the risk
+**Risk:** Medium, and it is the diagnosis rather than the fix. Releasing the tree by calling
+`deleteLater()` on the window would make the number go away without establishing what was holding
+it, and a lifecycle changed to satisfy a measurement is `T238-R1`'s shape
+
+#### What was measured
+
+**`tests/ui/test_accessibility.py`, offscreen on `kirk`, twelve tests, live `QWidget` count after
+each:**
+
+```
+   159  test_every_surface_names_every_control_it_publishes
+   318  test_no_control_is_published_without_a_role
+   477  test_every_focusable_control_is_named
+   636  test_no_control_is_named_only_by_the_value_it_happens_to_show
+   ...
+  1538  test_the_sweeps_actually_reach_the_applications_controls
+```
+
+**Monotonic, ~159 per test, and none of it is released.** `tools/t238_widget_cycle_probe.py`
+reproduces it outside pytest — three compose/open/shutdown cycles in one process give **159, 318,
+477** — so it is the composition rather than the fixture. The collector runs in that window and
+frees **30 objects, none of them a `QWidget`** — and the reviewer's own three-call run recorded
+those 30 on the **first** cycle only, with zero on the two after it.
+
+*(**What that does and does not say** — `T238-R5`. It says the collector ran; it does not say the
+trees are *"not garbage"*, which is what this paragraph claimed for one commit. A retained graph is
+never classified by the collector at all, so it may contain cycles; the counts are aggregates and
+name no widget; and the forced collection after the probe reads its result is not recorded. **The
+retention is what this task is filed on, and it is observed directly** — 159 to 1538 live widgets —
+so nothing here rests on the withdrawn reading.)*
+
+**The existing guard cannot see this, and that is not a defect in the guard.**
+`assert_no_orphaned_views` looks for item views that are alive **with no parent**, which is the
+shape `T-238` was filed for. Every view in a retained tree still has its parent — the tree is intact,
+just never freed — so the predicate is not met and the suite is honestly green.
+
+#### What this is not
+
+- **Not a diagnosis of `T-238`.** It is a plausible neighbour of one: a worker accumulating widget
+  trees under `-n auto` is a memory story, and `T-238`'s crash is a native one. **Nothing here
+  connects them**, and *a stack is not a cause* applies to a widget count too.
+- **Not a leak a user can reach.** One composition per process, then exit.
+- **Not attributed.** The window's Python referrers are its own bound methods and closure cells.
+  An attempt to attribute those to C++ signal connections was **contaminated by the diagnostic's own
+  lists** and is withdrawn; what holds the tree is the open question, not a suspected answer.
+
+#### Suggested acceptance criteria
+
+- **What retains the tree is identified**, by measurement rather than by inspection of plausible
+  suspects, and written down — including *"it is correct that it is retained"* if that is the answer
+- **Either the tree is released at shutdown, or the record says why keeping it is right.** Both are
+  acceptable outcomes; silently making the number smaller is not
+- **A check fails when trees accumulate**, so the next reader learns it from a red suite rather than
+  from a probe written for another task
+- **`T-238`'s criterion 4 is re-read afterwards.** Its second step was **attempted and refused**
+  because of this retention, and remains unanswered; a run that could answer it needs the retention
+  controlled first, which is what this task is for
+
+#### Out of scope
+
+- Fixing `T-238`, or claiming this explains it
+- Changing `assert_no_orphaned_views`'s predicate, which is `T-238`'s deliverable and is approved
+- `deleteLater()` on the window to make the count fall, ahead of knowing what held it
+
+---
+
+
+---
+
+
+---
 
 ## Complete
 
@@ -10072,148 +10298,6 @@ while each said Ready: the exact status-versus-section class `COORD-R5` through 
 reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
-
-### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
-
-**Status:** **In Progress — investigated 2026-08-26, and not finished.** Criterion 1 is
-**partly** met and criterion 2 is **not attempted**, deliberately: the entry forbids releasing the
-tree before knowing what holds it, and what holds it is not yet fully known. **The Python edges are
-now named and measured; the final anchor is on the Qt side and is not named.** `tools/t273_retention_probe.py`
-is committed so the next session starts from the measurement rather than from the question.
-
-#### What is now established
-
-**The shutdown works, and the earlier figure needs qualifying.** After `shutdown.begin()` runs to
-`finished`, **25 `QWidget`s and 46 `QObject`s survive** — the window and its own tree, plus
-`FileActions`. The earlier 159 came from a probe that had opened the add dialog, Settings and About
-first. **The manager, the writer and the model do not survive**, so shutdown releases what it
-owns; what it does not release is the window.
-
-**The window has exactly four Python referrers, and all of them are cycle members**, named with
-file and line by the probe:
-
-| holder | where |
-|---|---|
-| 2 lambdas | `MainWindow._connect_row_verbs` — `main_window.py:740`, `:741` |
-| 1 lambda | `MainWindow._attach_file_actions` — `main_window.py:903` |
-| **8 closures defined inside `compose()`** | `app.py:529, 559, 581, 627, 705, 754, 784, 864` |
-| 1 bound method | `FileActions._report` = `MainWindow._report_transiently` |
-
-The eight in `compose()` are callbacks the window is handed and then holds — **window → callback →
-closure cell → window**. Every edge is a cycle.
-
-**`gc` does not consider the window garbage, and that is the finding.** Under `DEBUG_SAVEALL` the
-collector parks **0** unreachable objects and the window is **not** among them. It is *reachable*,
-so the cycle is not merely uncollected — something keeps its refcount above what the collector can
-account for from tracked containers, which is the signature of a reference held outside Python.
-
-**It is not a blanket PySide6 limitation, which is the control.** A `QWidget` subclass holding a
-lambda that captures `self` — **shown**, with a live `QApplication` — is collected in three
-`gc.collect()` calls. A plain object with the same shape is collected too. **So a self-capturing
-Qt cycle is collectable here, and ours is not**, which rules out the obvious explanation and is
-why this entry does not offer one.
-
-#### What is not established, stated so it is not read as done
-
-- **Which Qt-side reference anchors it.** `gc.get_referrers` reports only the four Python edges;
-  the reference that makes the collector call it reachable is not attributable from Python, and
-  naming it needs a different instrument than this probe.
-- **Whether the retention is correct.** The entry allows *"it is correct that it is retained"* as
-  an answer. Nothing here supports or refutes that yet.
-- **Anything about `T-238`.** Unchanged: this is a plausible neighbour and not a diagnosis.
-
-#### What the next session should do
-
-1. **Name the Qt-side reference.** Candidates not yet distinguished: a signal connection into a
-   window slot from an object that outlives it, Qt's ownership of a shown top-level widget, or a
-   `shiboken6` wrapper reference. `shiboken6.dump()` and connection enumeration are the instruments
-   this probe lacks.
-2. **Then** decide criterion 2 — release, or record why keeping it is right.
-3. **Then** criterion 3's accumulation check, which is deliberately not written yet: a check that
-   fails when trees accumulate would currently encode a number nobody can explain.
-
-*(Filed 2026-08-20 by the run that `T-238`'s criterion-4 probe refused to
-report.** The probe printed *0 widgets freed by the collector* while 159 were still standing; those
-are opposite answers wearing the same zero, and the control that separates them is what found this.
-**The filing does not depend on any conclusion about cycles** — the retention is observed directly,
-and `T238-R5` withdrew the conclusions the probe's zero was briefly read as supporting.)*
-**Owner:** Planner, to prioritize
-**Priority:** **Medium.** Nothing a user can see — a shipped process composes once and exits, so the
-retention has no runtime consequence there. It is the **test suite** that composes repeatedly, and
-`T-238` is a native crash in that suite under `-n auto`
-**Phase:** Phase 4 maintenance
-**Depends on:** nothing. `T-238` is **not** a dependency and this is **not** a diagnosis of it
-**Relevant context:** `tests/ui/conftest.py`'s `composed` fixture, `src/tracks_and_trails/app.py`'s
-`compose()` and `OrderlyShutdown`, `tests/qt_lifecycle.py`, `tools/t238_widget_cycle_probe.py`
-**Affected surfaces:** composition teardown, and possibly nothing in `src/` — see the risk
-**Risk:** Medium, and it is the diagnosis rather than the fix. Releasing the tree by calling
-`deleteLater()` on the window would make the number go away without establishing what was holding
-it, and a lifecycle changed to satisfy a measurement is `T238-R1`'s shape
-
-#### What was measured
-
-**`tests/ui/test_accessibility.py`, offscreen on `kirk`, twelve tests, live `QWidget` count after
-each:**
-
-```
-   159  test_every_surface_names_every_control_it_publishes
-   318  test_no_control_is_published_without_a_role
-   477  test_every_focusable_control_is_named
-   636  test_no_control_is_named_only_by_the_value_it_happens_to_show
-   ...
-  1538  test_the_sweeps_actually_reach_the_applications_controls
-```
-
-**Monotonic, ~159 per test, and none of it is released.** `tools/t238_widget_cycle_probe.py`
-reproduces it outside pytest — three compose/open/shutdown cycles in one process give **159, 318,
-477** — so it is the composition rather than the fixture. The collector runs in that window and
-frees **30 objects, none of them a `QWidget`** — and the reviewer's own three-call run recorded
-those 30 on the **first** cycle only, with zero on the two after it.
-
-*(**What that does and does not say** — `T238-R5`. It says the collector ran; it does not say the
-trees are *"not garbage"*, which is what this paragraph claimed for one commit. A retained graph is
-never classified by the collector at all, so it may contain cycles; the counts are aggregates and
-name no widget; and the forced collection after the probe reads its result is not recorded. **The
-retention is what this task is filed on, and it is observed directly** — 159 to 1538 live widgets —
-so nothing here rests on the withdrawn reading.)*
-
-**The existing guard cannot see this, and that is not a defect in the guard.**
-`assert_no_orphaned_views` looks for item views that are alive **with no parent**, which is the
-shape `T-238` was filed for. Every view in a retained tree still has its parent — the tree is intact,
-just never freed — so the predicate is not met and the suite is honestly green.
-
-#### What this is not
-
-- **Not a diagnosis of `T-238`.** It is a plausible neighbour of one: a worker accumulating widget
-  trees under `-n auto` is a memory story, and `T-238`'s crash is a native one. **Nothing here
-  connects them**, and *a stack is not a cause* applies to a widget count too.
-- **Not a leak a user can reach.** One composition per process, then exit.
-- **Not attributed.** The window's Python referrers are its own bound methods and closure cells.
-  An attempt to attribute those to C++ signal connections was **contaminated by the diagnostic's own
-  lists** and is withdrawn; what holds the tree is the open question, not a suspected answer.
-
-#### Suggested acceptance criteria
-
-- **What retains the tree is identified**, by measurement rather than by inspection of plausible
-  suspects, and written down — including *"it is correct that it is retained"* if that is the answer
-- **Either the tree is released at shutdown, or the record says why keeping it is right.** Both are
-  acceptable outcomes; silently making the number smaller is not
-- **A check fails when trees accumulate**, so the next reader learns it from a red suite rather than
-  from a probe written for another task
-- **`T-238`'s criterion 4 is re-read afterwards.** Its second step was **attempted and refused**
-  because of this retention, and remains unanswered; a run that could answer it needs the retention
-  controlled first, which is what this task is for
-
-#### Out of scope
-
-- Fixing `T-238`, or claiming this explains it
-- Changing `assert_no_orphaned_views`'s predicate, which is `T-238`'s deliverable and is approved
-- `deleteLater()` on the window to make the count fall, ahead of knowing what held it
-
----
-
-
----
 
 ### T-238 — An xdist UI worker segfaults while entering a thumbnail-store lifetime test
 

@@ -17,7 +17,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 # Imported after the platform is pinned above, so nothing can load a Qt plugin before the
 # offscreen choice is in the environment.
-from PySide6.QtCore import QCoreApplication, Qt
+import shiboken6
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -334,6 +335,38 @@ def composed(qapp: QApplication, tmp_path: Path) -> Iterator[MainWindow]:
         time.sleep(0.005)
     qapp.processEvents()
     assert composition.shutdown.finished, "composition never finished shutting down"
+
+    # **Release the window, and flush the deferred delete that does it** (`T-273`).
+    #
+    # `shutdown.begin()` stops the manager, the writer and the database — everything composition
+    # *owns*. It does not own the window's lifetime, and in the product it does not need to: one
+    # composition, then the process exits. **This fixture composes once per test**, and without
+    # this the tree survives teardown and the suite accumulates ~25 `QWidget`s each time —
+    # measured 25 / 50 / 75 over three cycles.
+    #
+    # **They survive because the cycle that holds them is invisible to Python's collector.**
+    # `MainWindow` hands Qt objects that are its own children — `QueueView`, `FileActions` —
+    # callables that close over `self` (`main_window.py:740`, `:741`, `:903`, and eight more from
+    # `app.compose`). The C++ parent-child edge and the C++ signal connection are both untraversable
+    # by `gc`, so it never sees a cycle, and the refcount never falls. Clearing those closure cells
+    # by hand releases all 25 immediately, which is how this was identified rather than guessed.
+    #
+    # **`processEvents()` alone is not enough and that is the whole trick.** `deleteLater()` posts
+    # a `DeferredDelete`, which `processEvents()` does not flush; without `sendPostedEvents` the
+    # count is unchanged at 25 / 50 / 75. With it, three cycles leave **0 / 0 / 0**.
+    window.deleteLater()
+    qapp.processEvents()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+
+    # **This window, not "no window anywhere".** Several tests build a `MainWindow` of their own
+    # and are entitled to; an assertion over `allWidgets()` fails in whichever test happens to run
+    # after one of them, which is a false positive about the wrong object.
+    assert not shiboken6.isValid(window), (
+        "this fixture's MainWindow survived its own teardown, so the suite accumulates a window "
+        "tree per test again — see T-273. Either the deferred delete stopped being flushed, or "
+        "something new holds the tree"
+    )
 
 
 @pytest.fixture

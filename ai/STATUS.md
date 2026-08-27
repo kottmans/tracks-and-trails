@@ -5,6 +5,51 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-27 — **`T-273` is built and In Review. What held the window is named
+by measurement, and the tree is released.**
+
+**The cycle runs through C++ edges `gc` cannot walk.** `MainWindow` hands Qt objects that are its
+own children — `QueueView`, `FileActions` — callables that close over `self`
+(`main_window.py:740`, `:741`, `:903`, plus eight built in `app.compose`). `window → (C++ child or
+signal connection) → callable → cell → window`. **The collector never sees a cycle**, so the
+refcount never falls.
+
+**`shiboken6` answered what `gc.get_referrers` could not.** `ownedByPython: True`, `parent(): None`,
+refcount **4**, and `get_referrers` finds exactly **4** — every reference accounted for, and still
+uncollectable, because what holds those four sits on the far side of an edge the collector cannot
+walk. That is why more `get_referrers` was never going to finish this.
+
+**The decisive experiment:** nulling `FileActions._report` changed nothing; clearing the **three
+closure cells** released the window and took all **25 `QWidget`s to 0**.
+
+**`deleteLater()` alone does nothing, which is the part worth remembering.** It posts a
+`DeferredDelete` that `processEvents()` does not flush:
+
+| teardown | live `QWidget`s per cycle |
+|---|---|
+| as before | 25 / 50 / 75 |
+| `deleteLater()` + `processEvents()` | 25 / 50 / 75 — unchanged |
+| + `sendPostedEvents(None, DeferredDelete)` | **0 / 0 / 0** |
+
+**The fix is in the fixture, not the product.** Composition owns the manager, writer and database
+and stops them; it does not own the window's lifetime, and in the product it need not — one
+composition, then exit. The **suite** composes per test, which is where the accumulation is.
+
+**A check now fails on every UI test if it regresses** — the fixture asserts
+`not shiboken6.isValid(window)`. Its first form asserted over `allWidgets()` and produced **12
+errors**, because several tests legitimately build their own `MainWindow`: a false positive about
+the wrong object.
+
+**One number I nearly reported wrongly.** The full `tests/ui` run took **432s** against ~309s
+before, which reads as a 40% tax. **It was contention** — `Spock` is one of the two Linux CI
+runners and a CI `linux` job was on it at the time. Isolated on 100 tests: **6.41 / 6.12s with,
+6.03 / 6.27s without.** Indistinguishable.
+
+**`T-238`'s criterion 4 is re-read, not answered.** Its second step was refused *because of* this
+retention; the retention is now controllable, so the step is runnable. The run is `T-238`'s.
+
+---
+
 **Last updated:** 2026-08-26 — **`T-279` is Complete**, Approved at `a0085b5`, six findings
 closed, **no follow-up task**. `## In Review` is empty.
 
