@@ -5,12 +5,14 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-27 — **`T-273` is built and In Review: the retention is identified by
-measurement and the tree is released.** The window is held by callables closing over it that Qt
+**Last updated:** 2026-08-27 — **`T-273` is Complete, Approved at `b6db88d`, with no follow-up
+task.** The retention is identified by measurement and the tree is released. The window is held by callables closing over it that Qt
 objects — its own children — hold across C++ parent-child and signal edges. **`gc` can traverse
 none of those**, so it never sees the cycle. `shiboken6` answered what `get_referrers` could not.
 **`deleteLater()` alone changes nothing**; the deferred delete has to be flushed, and then three
-compose cycles go from **25 / 50 / 75** live widgets to **0 / 0 / 0**.
+compose cycles go from **25 / 50 / 75** live widgets to **0 / 0 / 0**. `T273-R1` was closed by CI
+run **`33072004785`** — `windows desktop` on `STARBASE` at that head, **3,756 passed**, all 14
+`composed` cases among them — because no local run could close it.
 
 *(2026-08-26: **`T-279` is Complete**, Approved at `a0085b5`, **all six findings
 closed and no follow-up task**. The Windows measurement is at **code head `693a09f`** — CI run
@@ -242,13 +244,27 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+---
+
+## Complete
+
 ### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
 
-**Status:** **In Review — corrections made 2026-08-27, awaiting a focused pass.** First
-submission returned **Blocked** at `806f2e5`. **The fixture-ownership decision, the direct
-`shiboken6` import and the validity assertion are all accepted**, which settles the question this
-task most needed settled. `T273-R2` and `T273-R3` are corrected below and stay inside this task —
-no follow-up.
+**Status:** **Complete — Approved at `b6db88d` on 2026-08-27.** Two rounds. Round one returned
+**Blocked** at `806f2e5` on `T273-R1`, which no local run could close; `T273-R2` and `T273-R3` were
+corrected inside this task, and **no finding became a follow-up task**.
+
+**`T273-R1` was closed by CI, not by argument.** Run **`33072004785`**, job `windows desktop` on
+`STARBASE`, at the exact head `b6db88d`: **3,756 passed, 31 skipped, 0 failures or errors**,
+including all 14 cases that reach the `composed` fixture. Until that run existed **every number
+recorded for this task was Linux-only**, which is what the finding said and why it blocked.
+
+**The fixture-ownership decision, the direct `shiboken6` import and the validity assertion were
+accepted in round one** — the question this task most needed settled. The reviewer independently
+re-derived both corrections: three scoped-tree probes each went 25 live widgets → 0 valid wrappers,
+and the 14-of-1,058 count was confirmed rather than taken from this entry.
+
+*(Previously: In Review — corrections made 2026-08-27, awaiting a focused pass.)*
 
 #### `T273-R1` (Medium, blocking) — Windows, and it is not mine to close
 
@@ -493,14 +509,6 @@ just never freed — so the predicate is not met and the suite is honestly green
 - `deleteLater()` on the window to make the count fall, ahead of knowing what held it
 
 ---
-
-
----
-
-
----
-
-## Complete
 
 ### T-279 — The orphan scanner calls a live parent dead when it was launched by a console script
 

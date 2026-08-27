@@ -5,6 +5,29 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-27 — **`T-273` is Complete, Approved at `b6db88d`, with no finding left
+open and no follow-up task.**
+
+**`T273-R1` was closed by CI rather than by argument.** Run **`33072004785`**, `windows desktop` on
+`STARBASE`, at the exact approved head: **3,756 passed, 31 skipped, 0 failures**, including all 14
+cases that reach the `composed` fixture. Every number this task recorded was Linux-only until that
+run existed — which is precisely what the finding said, and why no local run could close it.
+
+**The reviewer re-derived both corrections instead of accepting them.** Three scoped-tree probes
+each went 25 live widgets → 0 valid wrappers, and the 14-of-1,058 count was measured independently.
+
+**Two of the three findings were mine to cause.** `T273-R2` — the unscoped
+`sendPostedEvents(None, …)` — was the exact risk I flagged and could not resolve. `T273-R3` was a
+claim inflated 75× by reading a shared `conftest.py` as "every UI test" without counting who
+reaches it. Both were corrected inside the task, which is what `AGENTS.md` §10's threshold asks for.
+
+**The retention itself:** the window is held by callables closing over it that Qt objects — its own
+children — hold across C++ parent-child and signal edges. **`gc` can traverse none of those**, so it
+never sees the cycle; `shiboken6` answered what `get_referrers` could not. `deleteLater()` alone
+changes nothing without flushing the deferred delete.
+
+---
+
 **Last updated:** 2026-08-27 — **`T-273` came back Blocked on a Windows run I cannot perform, and
 two Low findings I could.**
 
