@@ -20931,3 +20931,68 @@ creating endless follow up tasks.”* That direction replaces the Reviewer's `T-
 The final disposition is therefore **T-279 Approved at `a0085b5`, with no separate follow-up
 task**. `T-280` has been removed from current-truth TASKS; its brief appearance remains visible in
 the append-only review history and the local commit history rather than being silently rewritten.
+
+---
+
+## 2026-08-27 — T-273 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-273
+**Base:** `db7af2a1425eb7530bc4dc0707981a2209c07a8d`
+**Head:** `c2bb5a08d91b344e54ea5e66026d12ad48eb78e4`
+**Platforms verified:** Linux (`Spock`) locally; Windows not run; exact head not run in CI
+**Verdict:** **Blocked.** Releasing the composed window in the fixture is the right ownership
+boundary, the direct `shiboken6.isValid` assertion is appropriate, and the assertion fails when
+the deferred deletion is removed. Approval is blocked because this test-fixture head has no
+Windows result, although `ai/TESTING.md` requires Windows evidence before review and the changed
+conftest executes there. Two Low scope/current-truth corrections belong in the same T-273
+correction and do not become follow-up tasks.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T273-R1** | **Medium** | **Yes — required supported-platform gate** | `c2bb5a0` changes `tests/ui/conftest.py`, including a direct binding-layer import and explicit `DeferredDelete` delivery, but has not run on Windows or in CI. `ai/TESTING.md` section 10 states that Windows evidence is required before a task is reviewed, and section 3 treats test-file changes as cross-platform gate surfaces. The green run cited by the submission is for base `db7af2a`, not this implementation. | Push the final T-273 implementation head and obtain a green `windows desktop` result for that exact executable/test tree. Record the code head separately from any later record-only commit. No product-code change is requested by this finding. | **Open** |
+| **T273-R2** | **Low** | No | `tests/ui/conftest.py:359` calls `sendPostedEvents(None, DeferredDelete)`, draining every object's pending deferred deletion inside the non-autouse `composed` fixture. The suite already has a deliberate global drain in `_no_orphaned_views`, after ordinary fixture teardown. This release needs only the event posted to `window`; in an exact-head archive, changing the receiver from `None` to `window` kept the window invalidation check green across the 91 accessibility/colour tests. The global call has no demonstrated current failure, but it broadens teardown ordering beyond the object this fixture owns. | Target `window` as the receiver, or supply measured evidence that another receiver's pending deletion is required here. Update the three-cycle/current-truth wording to name the scoped mechanism. **Disposition:** roll into T-273's correction; no separate task. | **Open, non-blocking** |
+| **T273-R3** | **Low** | No | TASKS, STATUS and the handoff say the new assertion fails on “every UI test.” `composed` is not autouse. Independent exact-head collection found **14 of 1,058** UI cases request it, directly or through `every_surface`; the other tests never execute this assertion. The check still satisfies the acceptance criterion because every composition made through this fixture is guarded. | Say that every use of `composed` is guarded, or name the 14 current cases; do not call it an every-UI-test gate. **Disposition:** current T-273 completion sync; no separate task. | **Open, non-blocking** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `db7af2a..c2bb5a0` is one commit changing `tests/ui/conftest.py`, TASKS and STATUS; no `src/` file. `git diff --check` and `git show --check c2bb5a0` passed. |
+| Focused exact-head behavior | `pytest -q tests/ui/test_accessibility.py tests/ui/test_colour_is_never_alone.py`: **91 passed**. |
+| Load-bearing mutation | In an exact-head archive, omitting `sendPostedEvents` produced **1 passed, 1 teardown error** on `test_every_toolbar_verb_has_a_menu_item_or_a_shortcut`; the error was the new `shiboken6.isValid(window)` assertion. The regression therefore detects the release being weakened. |
+| Scoped receiver probe | In a separate exact-head archive, `sendPostedEvents(window, DeferredDelete)` produced **91 passed** on the same focused files. This establishes a narrower working public-API form; it is not merely a proposed refactor. |
+| Assertion reach | Pytest exact-head collection found **1,058** UI cases, **14** with `composed` in their resolved fixture set. They are twelve accessibility cases and the two light/dark colour-focus cases. |
+| Static/focused gates | `ruff check tests/ui/conftest.py` passed; `ruff format --check tests/ui/conftest.py`: **1 file already formatted**; task placement: **15 passed**. The submitted broader Linux results are 1,057 UI passes/3 skips, 2,269 unit passes/15 skips and all three mypy variants clean. |
+| Windows / CI | No result for `c2bb5a0`. Base `db7af2a` is `origin/main` and is reported green in run `33035162290`; that does not execute this fixture change. The Reviewer did not push or dispatch CI. |
+
+### Review judgments
+
+- **The fixture is the right home.** `OrderlyShutdown` owns worker, writer, database and instance
+  shutdown; it intentionally owns no Qt state. The product composes once and exits, while this
+  fixture is the repeated owner that creates the suite-only accumulation. Moving the release into
+  product shutdown would widen runtime behavior without a product defect to correct.
+- **`shiboken6` is acceptable here.** PySide6 already brings its matching binding runtime, the
+  import is test-only and after the offscreen platform is selected, and `isValid` asks the exact
+  question the regression needs: whether this wrapper still fronts a live C++ window.
+- **The check is genuinely discriminating.** `deleteLater()` without delivery leaves the wrapper
+  valid and errors at teardown. It does not depend on a global widget count or on another test
+  happening to observe accumulated state.
+- **The global drain is broader than this fixture's ownership.** A global drain remains valuable
+  at the established end-of-test boundary in `qt_lifecycle.settle_deferred_deletions`; that does
+  not require a second global drain earlier in one fixture when Qt accepts the exact receiver.
+- **The Windows gap is evidence, not a speculative code objection.** Nothing inspected suggests
+  the binding call is Windows-specific, but repository policy deliberately requires the supported
+  platform to answer that question before approval.
+
+### Convergence and readiness
+
+T-273 remains **In Review** and is **Blocked on T273-R1** until the final implementation tree has a
+green Windows result. T273-R2 and T273-R3 are Low, non-blocking, and should be folded into the same
+T-273 correction/completion sync; they do not justify another task. The ordinary focused
+correction re-review remains available under `AGENTS.md` section 10.
+
+The Reviewer appended and committed only this historical review record. No reviewed source,
+test, task/status text, handoff, push, CI run or remote state was changed.
