@@ -5,9 +5,11 @@
 **Owner:** Reviewer (Codex)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-27
+**Last updated:** 2026-08-27
 **Update when:** A review completes, a defect is found, a prior finding is rechecked, or a release review occurs.
-**Does not contain:** The work required to fix findings — that goes to `TASKS.md`.
+**Does not contain:** The prioritized implementation queue — that lives in `TASKS.md`. Findings
+and their dispositions live here; a finding becomes a new task only when it crosses the threshold
+below.
 
 ---
 
@@ -23,7 +25,20 @@
   `REQUIREMENTS.md`, the task's acceptance criteria, and `TESTING.md`.
 - **Corrections get a focused re-review** as a distinct follow-up diff, before the work unit
   expands.
-- Only **Open** findings require a `TASKS.md` entry. Closed outcomes are recorded here.
+- **A finding is not automatically a task** (`AGENTS.md` §10; `DOC-004`, `DOC-005`). Every Open
+  finding requires an explicit disposition, but only independently schedulable work crosses into
+  a new `TASKS.md` entry:
+  - A **Note** records useful context and requests no change. A small requested change remains a
+    **Low** finding; smallness does not turn it into a Note.
+  - A minor actionable finding normally rides the current correction or completion sync, an
+    existing task that owns the behavior, or the next existing task's normal completion pass when
+    that does not change its behavioral scope, risk, or acceptance criteria.
+  - Create a new task only when the work is independently actionable, materially worth
+    scheduling, has clear acceptance criteria and priority, and is intended to compete for
+    execution time.
+  - **Accepted Risk** and **Won't Fix** require the maintainer's explicit no-action decision. A
+    reviewer may retract an invalid finding or mark a genuinely overtaken one **Superseded**;
+    smallness alone is not a no-action disposition. Critical findings cannot be closed this way.
 - **This file is the record for serial work.** During a parallel wave (`AGENTS.md` §9) reviews
   are partitioned: the assigned reviewer writes `ai/reviews/T-0NN.md` on the task branch, this
   file carries only the index entry and the integration result, and approval names the exact
