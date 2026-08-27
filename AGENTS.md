@@ -5,8 +5,8 @@
 **Owner:** Claude Code (Documentation Maintainer role).
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-14
-**Last reviewed:** 2026-08-14
+**Last updated:** 2026-08-26
+**Last reviewed:** 2026-08-26
 **Update when:** Agent responsibilities, roles, ownership, validation gates, or repository-wide rules change.
 **Does not contain:** Product requirements, architecture detail, current progress, review history.
 
@@ -56,7 +56,7 @@ reviewing it.
 |---|---|---|
 | Planner | `AGENTS.md`, `ai/REQUIREMENTS.md`, `ai/ARCHITECTURE.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`, `ai/TASKS.md`, `ai/STATUS.md` | source, tests, `pyproject.toml`, build config |
 | Implementer | `src/**`, `tests/**`, `pyproject.toml`, build config, `ai/TASKS.md`, `ai/STATUS.md`, `ai/TESTING.md` (to add a check the change introduces) | `ai/REQUIREMENTS.md`, `ai/ARCHITECTURE.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md` |
-| Reviewer | `ai/REVIEWS.md` (or the assigned `ai/reviews/T-0NN.md`), `ai/TESTING.md`, test files, `ai/TASKS.md` (approved follow-ups only) | reviewed source code, unless asked to fix findings |
+| Reviewer | `ai/REVIEWS.md` (or the assigned `ai/reviews/T-0NN.md`), `ai/TESTING.md`, test files, `ai/TASKS.md` (approved follow-ups meeting §10's task threshold only) | reviewed source code, unless asked to fix findings |
 | Release Manager | version sources, `CHANGELOG.md`, release metadata, `ai/STATUS.md` | product scope, during release prep |
 | Documentation Maintainer | `README.md`, `ai/PROMPTS.md`, cross-links, formatting | product or architecture *meaning* |
 | Coordinator / Integrator (wave only) | `ai/TASKS.md`, `ai/STATUS.md`, the `ai/REVIEWS.md` index and integration result, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
@@ -172,7 +172,8 @@ scales an SVG down to its container by default, which shrinks text as the graph 
 
 **Scope**
 - Implement the active task only. No unrelated cleanup, no future-phase work, no
-  opportunistic refactors. If you find an adjacent problem, file a task; don't fix it inline.
+  opportunistic refactors. If you find an adjacent problem, record or report it; create a task
+  only if it meets §10's task-creation threshold, and don't fix it inline.
 - Do not change approved architecture or product scope. Propose; wait for approval.
 
 **Dependencies**
@@ -381,8 +382,27 @@ stop correction of **Critical or High** defects.
   automatic agent-to-agent loop and ask the maintainer to choose: authorize another focused
   pass, accept the documented risk, change scope, or carry the work into a named follow-up task.
   A third pass for those findings requires explicit maintainer authorization.
-- Non-blocking findings become follow-up work with an owner and target task; they do not consume
-  another pass or keep the original task in review.
+- Non-blocking findings receive an explicit disposition; they do not consume another pass or keep
+  the original task in review. They become separate follow-up tasks only when they meet the
+  task-creation threshold below.
+
+**A finding is not automatically a task.** `REVIEWS.md` records evidence and judgment;
+`TASKS.md` is the deliberately prioritized execution queue. Use the narrowest honest disposition:
+
+1. correct a tightly coupled item in the current correction when it is safe and in scope;
+2. put mechanical current-truth/status cleanup in the current task's ordinary completion sync;
+3. route substantive work to an existing task that naturally owns the behavior, or roll a very
+   minor mechanical item into the next existing task's normal completion/coordination pass when
+   that does not change its behavioral scope, risk or acceptance criteria;
+4. close it as a Note, Accepted Risk, Won't Fix or Superseded when no action is justified; or
+5. create a new task only when the work is independently actionable, materially worth scheduling,
+   has clear acceptance criteria and priority, and is actually intended to compete for execution
+   time.
+
+Do not create a task merely to satisfy an owner/target field or to convert findings one-for-one.
+If no action is intended, record the rationale and close the finding honestly. Low documentation,
+test-strength, wording, or cleanup observations normally stay in completion sync or close as notes
+unless their consequence independently clears this threshold.
 
 Every extra pass stays focused on unresolved blockers and the correction diff; it is not a new
 broad audit. A finding that revisits settled ground needs new evidence, not a second opinion.
@@ -424,7 +444,7 @@ Use these verdicts:
 | Verdict | Meaning |
 |---|---|
 | **Approved** | No open blocking findings remain. |
-| **Approved with follow-ups** | No blocking findings remain; non-blocking findings have an owner and target task. |
+| **Approved with follow-ups** | No blocking findings remain and deliberately scheduled work survives the task-creation threshold. Do not use this verdict merely because a Low finding exists. |
 | **Changes requested** | At least one blocking finding can be corrected in the current task. |
 | **Blocked** | Approval requires a maintainer decision, external dependency, or scope change. |
 
@@ -437,7 +457,8 @@ regressions; it is not a new unbounded audit. A new Critical or High defect, fai
 criterion with High consequences, High correction regression, or direct continuation of a
 Critical/High blocker continues through another focused correction and verification pass.
 Medium-or-lower discoveries follow the pass budget above. Other new, pre-existing, adjacent,
-Low, or non-blocking Medium findings become follow-up work and do not reopen the reviewed task.
+Low, or non-blocking Medium findings are dispositioned under the task-creation threshold; they do
+not automatically reopen the reviewed task, create another review pass, or create another task.
 
 Before returning a correction batch, the Implementer must:
 
@@ -450,8 +471,10 @@ Before returning a correction batch, the Implementer must:
 - address all in-scope blocking findings in one batch.
 
 Only the Reviewer marks a finding **Resolved** after independent verification. The Implementer
-records it as corrected and awaiting re-review. An Open non-blocking finding gets a `TASKS.md`
-owner/target and does not keep the original task in `In Review`.
+records it as corrected and awaiting re-review. A non-blocking finding does not keep the original
+task in `In Review`; if it remains Open, it must be routed under the threshold above — including
+the next existing task for very minor mechanical cleanup — not given a synthetic task merely for
+bookkeeping.
 
 ## 11. End-of-task report
 

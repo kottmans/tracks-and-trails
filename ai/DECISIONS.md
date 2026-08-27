@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-26
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -172,6 +172,78 @@ other agent's code and believe its own passed.
 ### Affected files
 
 `AGENTS.md`, `ai/REVIEWS.md`, `ai/PROMPTS.md`.
+
+---
+
+## DOC-004 — Review findings do not map one-for-one to tasks
+
+**Status:** Accepted
+**Date:** 2026-08-26
+**Supersedes:** `DOC-001`'s consequence that every unresolved finding becomes a `TASKS.md` entry;
+otherwise extends `DOC-001`
+
+### Context
+
+T-279's final review correctly approved the behavior but turned two Low residuals — an
+unnecessary helper read and two evidence-wording corrections — into a new `T-280` task solely
+because the standing review rule required every non-blocking finding to have an owner and target
+task. The maintainer rejected that outcome: *“dont keep creating endless follow up tasks.”*
+
+The review record and execution queue answer different questions. Preserving a meaningful
+observation is cheap and useful; scheduling every observation makes incidental cleanup compete
+with product work, inflates the queue without a prioritization decision, and makes review itself
+an unbounded task generator.
+
+### Decision
+
+Adopt the finding-disposition and task-creation-threshold rules from *AI-Assisted Project
+Documentation Convention* revision **2026-08-26.1**, recorded locally in `AGENTS.md` §10.
+
+Every meaningful finding remains in the review record. A **new task** is created only when the
+work is independently actionable, materially worth scheduling, has clear acceptance criteria and
+priority, and is actually intended to compete for execution time. Otherwise the finding is:
+
+- corrected in the current task when tightly coupled and in scope;
+- handled in that task's ordinary completion synchronization when it is mechanical current-truth
+  or status cleanup;
+- routed to an existing open task that naturally owns the behavior, or — for very minor
+  mechanical cleanup — rolled into the next existing task's normal completion/coordination pass
+  without changing that task's behavioral scope, risk or acceptance criteria; or
+- closed honestly as a Note, Accepted Risk, Won't Fix or Superseded, with rationale where needed.
+
+An owner/target field is not itself authority to create a task. **Approved with follow-ups** means
+real scheduled work survived this threshold; it is not the default verdict whenever a Low finding
+exists.
+
+### Rationale
+
+`REVIEWS.md` should be exhaustive enough to preserve evidence. `TASKS.md` should be selective
+enough to express priority. Conflating them makes both worse: reviewers either suppress small but
+useful observations to protect the queue, or record them and manufacture work nobody chose.
+Explicit disposition preserves the observation without pretending it was prioritized.
+
+### Alternatives considered
+
+- **Keep task-per-finding, then periodically prune** — rejected. The queue is misleading between
+  pruning passes, and deletion later cannot recover the missing prioritization decision.
+- **Stop recording Low findings** — rejected. A Low observation can explain a future regression or
+  reveal a recurring defect class even when no present work is justified.
+- **Always fold Low findings into the reviewed task** — rejected. That silently broadens scope and
+  can create endless correction/re-review loops by another route.
+
+### Consequences
+
+- `T-280` is not a task; T-279 remains approved with its harmless eager-read residual recorded and
+  its evidence wording handled during ordinary completion synchronization.
+- Reviewers must disposition non-blocking findings, but do not automatically create queue entries.
+- Existing follow-up tasks are not cancelled by this decision; each remains until deliberately
+  reprioritized under its own facts.
+- `AGENTS.md` §7 and §10 carry the self-contained project rule. Later convention revisions still
+  do not silently change this repository.
+
+### Affected files
+
+`AGENTS.md`, `ai/REVIEWS.md`, `ai/TASKS.md`.
 
 ---
 
