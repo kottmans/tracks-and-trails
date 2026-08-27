@@ -21011,3 +21011,65 @@ correction re-review remains available under `AGENTS.md` section 10.
 
 The Reviewer appended and committed only this historical review record. No reviewed source,
 test, task/status text, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-27 — T-273 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** T-273
+**Prior review:** `806f2e5987614b6c22e72696a59cbf67889ff295`
+**Correction head:** `b6db88d6d44fdbd17fabe6d7f059e23555f0e483`
+**Platforms verified:** Linux (`Spock`) locally; Windows (`STARBASE`) in CI run `33072004785`
+**Verdict:** **Approved at `b6db88d`.** T273-R1 is closed by a green Windows desktop run on the
+exact correction head. T273-R2 scopes the deferred deletion to the fixture's own window and still
+destroys the complete 25-widget tree. T273-R3 now states the assertion's measured reach: every
+use of `composed`, currently 14 UI cases. No finding or follow-up task remains.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Focused result | Status |
+|---|---|---:|---|---|
+| **T273-R1** | **Medium** | Yes — required supported-platform gate | GitHub run `33072004785` completed successfully at exact SHA `b6db88d`. Its `windows desktop` job ran the changed conftest on `STARBASE`: **3,756 passed, 31 skipped, 35 deselected, 0 failures/errors**. The uploaded JUnit report independently names all twelve accessibility cases and both colour-focus cases that resolve `composed`; all fourteen passed. | **Resolved at `b6db88d`** |
+| **T273-R2** | **Low** | No | The receiver is now `window`, not `None`. A three-cycle reviewer probe captured the root plus every `QWidget` child before teardown: **25/25/25 wrappers before**, **0/0/0 valid afterward**. The focused 91-test set and the exact-head Windows run are green, so scoping the posted event does not leave child widgets behind. | **Resolved at `b6db88d`** |
+| **T273-R3** | **Low** | No | The fixture comment, assertion message, TASKS and STATUS no longer claim an every-UI-test gate. Exact-head collection independently reproduces **14 of 1,058** selected UI cases with `composed` in their resolved fixture set. That is the correct boundary: tests that never compose the application cannot accumulate this fixture's window. | **Resolved at `b6db88d`** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `806f2e5..b6db88d` is one commit changing the UI conftest, TASKS and STATUS only; no `src/` module. `git diff --check` and `git show --check b6db88d` passed. The accepted fixture ownership, direct `shiboken6` import and per-window validity assertion are unchanged. |
+| Windows CI | Run `33072004785` has `headSha=b6db88d…`, event `push`, conclusion **success**. `windows desktop`, Linux, frozen Linux, frozen Windows and the STARBASE coverage sentinel succeeded; schedule/dispatch-only orphan jobs skipped as designed on a push. |
+| Windows test artifact | `pytest.xml` reports **3,787 tests, 31 skipped, 0 errors, 0 failures**; the job summary reports **3,756 passed, 31 skipped, 35 deselected**. Each of the 14 `composed`-using node IDs appears as a passing testcase. |
+| Focused Linux tests | `pytest -q tests/ui/test_accessibility.py tests/ui/test_colour_is_never_alone.py`: **91 passed**. |
+| Scoped-tree probe | Three fresh compose/shutdown cycles each captured a **25-widget** window tree. `deleteLater()` followed by `sendPostedEvents(window, DeferredDelete)` left **0 valid wrappers** in each captured tree. This directly checks the handoff's child-deletion question. |
+| Assertion reach | Exact-tree collection: **1,058** selected UI cases, **14** resolving `composed`. The count matches the correction. |
+| Static/focused gates | `ruff check tests/ui/conftest.py` passed; `ruff format --check tests/ui/conftest.py`: **1 file already formatted**; task placement: **15 passed**. The Implementer reports all three mypy variants clean, full UI **1,057 passed/3 skipped**, and full unit **2,269 passed/15 skipped** on Linux. |
+| Mutation evidence | The initial review independently showed that omitting deferred-event delivery leaves the window valid and errors at the new assertion. The correction reports **12 errors** when either the scoped flush or `deleteLater()` is removed from the accessibility run; the exact-head tree probe above independently verifies the corrected positive path. |
+
+### Review judgments
+
+- **Fourteen cases are the right reach.** This is a fixture-lifecycle invariant, so it belongs on
+  every use of the fixture that creates the retained tree. Making it autouse for tests that never
+  compose would not exercise the lifecycle and would only add cost.
+- **Targeting the root is sufficient.** Delivering the root's `DeferredDelete` destroys the C++
+  parent and its child tree synchronously; the captured-wrapper probe confirms no child remains
+  valid across three cycles. The established global end-of-test drain remains available for
+  unrelated pending deletions without making this fixture own them.
+- **The Windows result closes the actual gate.** It executed the final fixture and its assertion,
+  and all fourteen tests that reach it passed on the supported Windows desktop. This is not a
+  base-run inference or a static Win32 type check.
+- **The in-flight wording is ordinary completion sync.** TASKS and STATUS were committed before
+  CI finished and therefore still say R1 has no Windows result. Update them to T-273 Complete,
+  Approved at `b6db88d`, and name run `33072004785`; that is mechanical current-truth
+  synchronization, not a new finding, task, or review pass.
+
+### Convergence and readiness
+
+T-273 is **Approved at `b6db88d`**. All three findings are Resolved, the ordinary focused pass is
+complete, and no follow-up survives the task-creation threshold. The task may leave `In Review`
+through its normal completion sync; that record-only update does not change the approved
+implementation head.
+
+The Reviewer appended and committed only this historical review record. No reviewed source,
+test, task/status text, handoff, push, CI run or remote state was changed.
