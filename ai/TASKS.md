@@ -244,9 +244,48 @@ contents; this preface does not list them.***
 
 ### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
 
-**Status:** **In Review — built 2026-08-27.** **The retention is identified by measurement, the
+**Status:** **In Review — corrections made 2026-08-27, awaiting a focused pass.** First
+submission returned **Blocked** at `806f2e5`. **The fixture-ownership decision, the direct
+`shiboken6` import and the validity assertion are all accepted**, which settles the question this
+task most needed settled. `T273-R2` and `T273-R3` are corrected below and stay inside this task —
+no follow-up.
+
+#### `T273-R1` (Medium, blocking) — Windows, and it is not mine to close
+
+**The changed fixture needs a green Windows run on the final implementation head.** It has had
+none: `c2bb5a0` was never pushed, and `tests/ui/conftest.py` is executed by the `windows desktop`
+job. **Every number in this entry is Linux-only.**
+
+Nothing in the correction changes that, and no local run can. **It needs a push after this head is
+final**, which is the maintainer's (`AGENTS.md` §7).
+
+#### `T273-R2` (Low) — the flush was wider than the fixture's business
+
+`sendPostedEvents(None, …)` delivers **every** pending `DeferredDelete` in the process, including
+ones a test's own objects are waiting on. Scoped to `window`, it reaches this tree alone. **The
+reviewer measured the scoped form passing all 91 focused tests before asking for it.**
+
+#### `T273-R3` (Low) — a claim two orders of magnitude wide
+
+The comment said the check runs on *"every UI test"*. **It runs on every use of `composed`, which
+is 14 of the 1,058 collected UI cases** — two test functions take the fixture directly and the rest
+reach it through fixtures built on it. Most UI tests construct the widget under test and never
+compose the application at all.
+
+**Counted rather than corrected by assertion**: `--fixtures-per-test` over the collected suite.
+
+#### Both corrections re-mutated
+
+The scoped form is still load-bearing, against the tests that actually compose:
+
+| mutation | result |
+|---|---|
+| scoped flush removed | **12 errors** |
+| `deleteLater()` removed | **12 errors** |
+
+*(Previously: In Review — built 2026-08-27.* **The retention is identified by measurement, the
 tree is released, and a check fails if it comes back.** All four acceptance criteria are addressed;
-criterion 4 is re-read below rather than acted on, because it is `T-238`'s.
+criterion 4 is re-read below rather than acted on, because it is `T-238`'s.)*
 
 #### What retains the tree
 

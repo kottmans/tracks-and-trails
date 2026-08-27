@@ -356,15 +356,21 @@ def composed(qapp: QApplication, tmp_path: Path) -> Iterator[MainWindow]:
     # count is unchanged at 25 / 50 / 75. With it, three cycles leave **0 / 0 / 0**.
     window.deleteLater()
     qapp.processEvents()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    # **Scoped to this window** (`T273-R2`). `None` flushes every pending `DeferredDelete` in the
+    # process, including any a test's own objects are waiting on, which is a wider effect than
+    # this fixture has any business having. The receiver form delivers to this tree alone.
+    QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
     qapp.processEvents()
 
     # **This window, not "no window anywhere".** Several tests build a `MainWindow` of their own
     # and are entitled to; an assertion over `allWidgets()` fails in whichever test happens to run
     # after one of them, which is a false positive about the wrong object.
+    # **Every use of `composed`, which is 14 of the 1,058 collected UI cases** (`T273-R3`) — not
+    # every UI test, which is what this said and was wrong by two orders of magnitude. Most UI
+    # tests build the widget under test directly and never compose the application at all.
     assert not shiboken6.isValid(window), (
-        "this fixture's MainWindow survived its own teardown, so the suite accumulates a window "
-        "tree per test again — see T-273. Either the deferred delete stopped being flushed, or "
+        "this fixture's MainWindow survived its own teardown, so composing tests accumulate a "
+        "window tree each — see T-273. Either the deferred delete stopped being flushed, or "
         "something new holds the tree"
     )
 

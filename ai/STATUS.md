@@ -5,6 +5,39 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-27 — **`T-273` came back Blocked on a Windows run I cannot perform, and
+two Low findings I could.**
+
+**The part that matters is what was accepted**: the fixture-ownership decision, the direct
+`shiboken6` import and the validity assertion all stand. The question I flagged as most worth
+attacking — whether window teardown belongs to the fixture or to `OrderlyShutdown` — is settled in
+favour of the fixture.
+
+**`T273-R1` is blocking and is not mine to close.** The changed fixture needs a green Windows run on
+the final head, and has had none: `c2bb5a0` was never pushed, and `tests/ui/conftest.py` *is*
+executed by the `windows desktop` job. **Every number recorded for this task is Linux-only.** It
+needs a push once the head is final.
+
+**`T273-R2`: the flush was wider than this fixture's business.** `sendPostedEvents(None, …)`
+delivers *every* pending `DeferredDelete` in the process, including ones a test's own objects are
+waiting on. Scoped to `window` it reaches this tree alone, and the reviewer had already measured
+the scoped form green before asking.
+
+**`T273-R3` is another claim of mine two orders of magnitude wide.** The comment said the check runs
+on *"every UI test"*. It runs on every use of `composed` — **14 of 1,058 collected cases**. Two test
+functions take the fixture directly; the rest reach it through fixtures built on it. Most UI tests
+construct their widget and never compose the application.
+
+**I wrote "every UI test" from the fact that the assertion sits in a shared conftest**, without
+counting who reaches it. Counted with `--fixtures-per-test`, it is 14. That is the same defect this
+session keeps producing — a property claimed from a structure rather than measured — and this time
+it inflated my own check's reach by 75x.
+
+**Both corrections re-mutated** against the tests that actually compose: removing the scoped flush
+gives **12 errors**, removing `deleteLater()` gives **12 errors**.
+
+---
+
 **Last updated:** 2026-08-27 — **`T-273` is built and In Review. What held the window is named
 by measurement, and the tree is released.**
 
