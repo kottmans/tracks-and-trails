@@ -97,7 +97,7 @@ everything else runs offline. §8's arranged failures say how to arrange each on
 | 4.4 | A row shows thumbnail, title, uploader and duration, progress and state; **a finished row's line reads uploader · duration · final size** — the fact once, not three times | `T-216` |
 | 4.5 | An **interrupted** row (kill the app mid-download, relaunch) states what happened **once, in one voice**, with the next step on the offer line — not the same sentence twice | `T-243` |
 | 4.6 | A playlist group draws its segment bar **and** a detail line that names and counts each state in words (**both**) | `T-140`, `T-202` |
-| 4.7 | **An expanded playlist child draws every verb its state offers** — a queued child shows `↑ ↓ Cancel`, a failed one `Retry` and `Remove` — and expand/collapse works from the keyboard (←/→) as well as the twisty | `T-244`, `T140-R5` |
+| 4.7 | **An expanded playlist child draws every verb its state offers** — a queued child shows `↑ ↓ Cancel Remove`, a failed one `Retry` and `Remove` — and **removing one entry leaves the rest of the playlist** — and expand/collapse works from the keyboard (←/→) as well as the twisty | `T-244`, `T-293`, `T140-R5` |
 | 4.8 | A row's media-kind mark is legible at row size: hollow film frame for video, and it does not overlap text (**both**) | `T-217` |
 | 4.9 | `Clear finished` removes completed and cancelled rows only; failed rows stay; **the status bar says files are kept** | `UX-001`, `T-132` |
 | 4.10 | **The list never scrolls sideways** at any window width; long titles elide | `T-151` |

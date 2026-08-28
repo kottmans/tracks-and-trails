@@ -85,8 +85,17 @@ MORE_LABEL: Final = "⋯"
 #: `UX-005` §4, transcribed. The order is the order they are drawn, left to right.
 _BY_STATUS: Final[dict[JobStatus, tuple[Verb, ...]]] = {
     # Queued — the row has never started, so it can be moved and abandoned.
-    JobStatus.QUEUED: (Verb.MOVE_UP, Verb.MOVE_DOWN, Verb.CANCEL),
-    JobStatus.READY: (Verb.MOVE_UP, Verb.MOVE_DOWN, Verb.CANCEL),
+    #
+    # **`Remove` was added 2026-08-28** by `UX-005` §4's amendment (`T-293`). It was reachable
+    # before only as two steps: *Cancel*, which for a job that has never started promises to stop
+    # something that is not running and leaves a terminal `CANCELLED` row, and then *Remove* on
+    # that. §5 is what decides it — nothing is drawn that would be refused, and removing a queued
+    # job is never refused. The two-step spelling was an accident of this table, not a policy.
+    #
+    # **`Cancel` stays.** A queued job may start between reading the row and pressing anything,
+    # and the verb that stops it must not be absent because it has not started *yet*.
+    JobStatus.QUEUED: (Verb.MOVE_UP, Verb.MOVE_DOWN, Verb.CANCEL, Verb.REMOVE),
+    JobStatus.READY: (Verb.MOVE_UP, Verb.MOVE_DOWN, Verb.CANCEL, Verb.REMOVE),
     # Running — a worker holds it. `UX-005` §7: there is no per-job pause, so `Cancel` is the
     # only thing that can be said about a download in flight.
     JobStatus.PROBING: (Verb.CANCEL,),

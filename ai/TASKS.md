@@ -246,6 +246,166 @@ contents; this preface does not list them.***
 
 ---
 
+### T-293 — A queued row offers *Remove*, so one playlist entry can go without the playlist
+
+**Status:** **In Review — built 2026-08-28, and no review has run.** A queued row offers
+`↑ ↓ Cancel Remove`; one entry's `Remove` goes down the single-job route and the group route is not
+taken. **Four mutations, all killed.**
+
+*(Filed 2026-08-28 by `T-212`'s checklist run, on the maintainer's report: *"when looking at the
+queue, with a playlist expanded out, I'd expect as a user to remove individual videos from a
+playlist with right clicking without having to remove the entire playlist."* **`UX-005` §4 was
+amended the same day** to add `Remove` to the queued row's verbs; this built it.)*
+
+**A pre-existing gap was found and closed on the way.** The transcribed `UX_005_TABLE` parametrised
+`RUNNING`, `QUEUED`, `FAILED` and `COMPLETED` — **not `READY`**, which `_BY_STATUS` has mapped
+identically to `QUEUED` since it was written. A mutation removing `Remove` from `READY` alone
+**survived**: two lines obliged to agree, with one of them unasserted. `READY` is now in the
+parametrisation.
+**Owner:** Implementer
+**Priority:** Medium — the capability exists today under a name that promises something else and
+costs two steps
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/row_verbs.py` `_BY_STATUS` — the transcription of `UX-005` §4;
+`UX-005` §5, which is the rule that decides it; `T-124`, `T-140`, `T-244`
+**Affected surfaces:** `ui/row_verbs.py`, `tests/unit/test_row_verbs.py`, the queue's dispatch,
+`docs/PHASE_4_CHECKLIST.md`
+**Risk:** Low mechanically, **Medium in what it deletes.** `Remove` on a job discards it; on a
+playlist child it must remove **that entry** and leave the group, which is the whole request
+
+#### What is wrong
+
+`_BY_STATUS` gives `QUEUED` and `READY` exactly `MOVE_UP, MOVE_DOWN, CANCEL`, transcribed
+faithfully from `UX-005` §4. So the only way to be rid of one queued entry is:
+
+1. **Cancel** it — which for a never-started job promises to stop something that is not running,
+   and writes a terminal `CANCELLED` row through `manager._stop`
+2. **Remove** the cancelled row, or `Clear finished`, which also clears every other completed and
+   cancelled row
+
+**The capability was always there; the verb table spelled it in two steps.** §5 — *nothing is
+offered that would be refused* — is what settles it: removing a queued job is never refused.
+
+#### Acceptance criteria
+
+- **`QUEUED` and `READY` offer `REMOVE`**, and the test transcribes `UX-005` §4's amended table by
+  hand rather than reading it from production — `row_verbs.py`'s module docstring is explicit that
+  the two lists are independent copies of an external authority
+- **`Cancel` stays on a queued row.** A queued job can start between reading the row and pressing
+  anything, and the verb that stops it must not vanish because it has not started *yet*
+- **On a playlist child, `Remove` removes that entry and leaves the group**, with the group's own
+  count and segment bar following. This is the request, and it is the part a header-level `Remove`
+  already does differently
+- **The overflow rule is unchanged.** A fourth verb on a queued row may push into `⋯`, and that is
+  the existing rule doing its job rather than a regression (`T-244` is the record of verbs that
+  were offered and never drawn)
+- **Removing a running job is still not offered.** `RUNNING`, `PROBING` and `POST_PROCESSING` keep
+  `Cancel` alone; this amendment is about the state that has not started
+- **`docs/PHASE_4_CHECKLIST.md` row 4.7 names the new verb set** for a queued child
+
+#### Out of scope
+
+- **Whether `Remove` confirms.** `DAT-005` §4 makes a group's confirmation name its count; a single
+  queued entry is not a group and this task does not invent a dialog for it
+- **The files on disk.** `Remove` on a queued job has none to keep or delete
+- **The header's verbs**, which `group_verbs` decides and `T-140` settled
+
+---
+
+### T-285 — The Options dialog offers audio-only containers to a download that keeps its video
+
+**Status:** **In Review — built 2026-08-28, and no review has run.** A video preset is offered the
+seven video containers; an audio preset keeps all eighteen, as ruled. **Six mutations, all killed**,
+including restoring the symmetry, restoring the whole list, reclassifying `gif`, and dropping the
+guard that keeps a container the preset already carries.
+
+*(Filed 2026-08-27 by `T-212`'s checklist run. The maintainer's report: *"in options, it gives the
+option to remux/recode videos into music only formats? Seems like it shouldn't offer that for
+video, only for audio only selections."*)*
+
+**One existing test had to change, and what it asserted is worth recording.**
+`test_every_container_the_editor_offers_is_one_the_model_accepts` held the offered list **equal**
+to `CONTAINER_FORMATS` — and passed the whole time a video download was offered `mp3`. Equality was
+never the property worth holding; *nothing offered would be refused* is, and the two directions are
+now different questions. It asserts containment, for both kinds. **Both outcomes are measured
+below, and they are different failures** — one errors after the download is paid for, the other
+succeeds and throws the video away without saying so.
+**Owner:** Implementer
+**Priority:** **High for a polish task** — the silent case destroys the thing the user asked for,
+and the dialog already holds the fact that would prevent it
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/options_dialog.py:426` (the combo is filled from `CONTAINER_FORMATS`
+unconditionally) and `:528` (the same dialog already reads `media_kind` to disable the audio
+group); `core/models.py` `CONTAINER_FORMATS` and its "not filtered by `media_kind`" note;
+`UX-005` §5; `REQ-010`; `T-109`, `T109-R2`
+**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
+**Risk:** Medium — `CONTAINER_FORMATS` must **not** be narrowed (below), and the fix has to land
+in the dialog without touching the set validation and the drift test depend on
+
+#### What is wrong
+
+The container picker is filled from the full list, for every preset:
+
+```python
+for container in CONTAINER_FORMATS:  # options_dialog.py:426
+    self._container_choice.addItem(container, container)
+```
+
+Eleven of those eighteen are audio-only. **Measured with ffmpeg 2026-08-27, on a one-second
+`h264 + aac` mp4:**
+
+| Route | Command | Result |
+|---|---|---|
+| **Remux** → mp3 | `ffmpeg -i tiny.mp4 -c copy tiny.mp3` | **Fails.** *"Invalid audio stream. Exactly one MP3 audio stream is required."* — after the download has finished |
+| **Recode** → mp3 | `ffmpeg -i tiny.mp4 tiny.mp3` | **Succeeds.** 8,898 bytes, `ffprobe` reports one `audio` stream. **The video is gone and nothing said so** |
+
+`UX-005` §5 — *nothing is offered that would be refused* — covers the first. The second is worse
+than a refusal: the user asked to keep a video, picked a container from a list the application
+offered, and got an audio file.
+
+**The dialog already knows.** Forty lines from the combo it writes
+`converts = self._preset.media_kind is MediaKind.AUDIO` and disables the whole audio group on it,
+with the label the run photographed: *"This download keeps its video, so there is no audio track to
+convert."* The same fact never reaches the container list.
+
+#### `CONTAINER_FORMATS` itself must not be filtered
+
+Its docstring anticipates half of this and rules the other way for a reason that still holds:
+
+> Video containers first, then audio-only ones, in yt-dlp's own order — a remux target of `mp3` is
+> legal and occasionally what somebody wants, so the list is not filtered by `media_kind`.
+
+That is right **for the set `core/` validates against**: it is asserted equal to
+`FFmpegVideoRemuxer.SUPPORTED_EXTS` so a yt-dlp version adding a container fails the suite rather
+than quietly refusing one a user could have had. **What is offered in a picker and what is accepted
+by a validator are different sets**, and this task changes only the first.
+
+#### Acceptance criteria
+
+- **A preset that keeps its video offers video containers only**; the audio-only eleven are absent
+  rather than disabled, matching how `T-203` removed rather than greyed what a row may not do
+- **The offered set derives from `CONTAINER_FORMATS` rather than restating it**, so a container
+  yt-dlp adds appears without a second list being remembered — a hand-written video list is the
+  `T046-R4` shape this project has been bitten by
+- **`CONTAINER_FORMATS` is unchanged**, and the equality test against yt-dlp's `SUPPORTED_EXTS`
+  still passes
+- **A preset already carrying an audio-only container does not silently lose it** when the dialog
+  opens — `T109-R2`'s rule, that a control the user cannot see must not decide anything
+- **An audio-only preset keeps the whole list** — **ruled 2026-08-28**. An audio-only stream in
+  `mp4` or `mkv` is legal and occasionally wanted, and neither route fails on it. **Only the video
+  case narrows**, because only it errors after the download or discards the video. The symmetry is
+  deliberately not restored: it would refuse combinations that work
+
+#### Out of scope
+
+- **The remux/recode radio itself** and the one-change rule (`_require_one_container_change`)
+- **Warning about a lossy recode** in general — this is about a list, not about advice
+- Changing what `core/` accepts
+
+---
+
 ### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
 
 **Status:** **In Review — built 2026-08-28, and no review has run.** The painted label now starts
@@ -11594,86 +11754,6 @@ the muted role, which keeps both facts in the space one fits in; and the name fo
 - The 5 px inset (`T-283`)
 - The control's contents rule — presets and nothing else (`UX-011` option *E*, built by `T-203`)
 
-### T-285 — The Options dialog offers audio-only containers to a download that keeps its video
-
-**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
-*"in options, it gives the option to remux/recode videos into music only formats? Seems like it
-shouldn't offer that for video, only for audio only selections."* **Both outcomes are measured
-below, and they are different failures** — one errors after the download is paid for, the other
-succeeds and throws the video away without saying so.
-**Owner:** Implementer
-**Priority:** **High for a polish task** — the silent case destroys the thing the user asked for,
-and the dialog already holds the fact that would prevent it
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/options_dialog.py:426` (the combo is filled from `CONTAINER_FORMATS`
-unconditionally) and `:528` (the same dialog already reads `media_kind` to disable the audio
-group); `core/models.py` `CONTAINER_FORMATS` and its "not filtered by `media_kind`" note;
-`UX-005` §5; `REQ-010`; `T-109`, `T109-R2`
-**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
-**Risk:** Medium — `CONTAINER_FORMATS` must **not** be narrowed (below), and the fix has to land
-in the dialog without touching the set validation and the drift test depend on
-
-#### What is wrong
-
-The container picker is filled from the full list, for every preset:
-
-```python
-for container in CONTAINER_FORMATS:  # options_dialog.py:426
-    self._container_choice.addItem(container, container)
-```
-
-Eleven of those eighteen are audio-only. **Measured with ffmpeg 2026-08-27, on a one-second
-`h264 + aac` mp4:**
-
-| Route | Command | Result |
-|---|---|---|
-| **Remux** → mp3 | `ffmpeg -i tiny.mp4 -c copy tiny.mp3` | **Fails.** *"Invalid audio stream. Exactly one MP3 audio stream is required."* — after the download has finished |
-| **Recode** → mp3 | `ffmpeg -i tiny.mp4 tiny.mp3` | **Succeeds.** 8,898 bytes, `ffprobe` reports one `audio` stream. **The video is gone and nothing said so** |
-
-`UX-005` §5 — *nothing is offered that would be refused* — covers the first. The second is worse
-than a refusal: the user asked to keep a video, picked a container from a list the application
-offered, and got an audio file.
-
-**The dialog already knows.** Forty lines from the combo it writes
-`converts = self._preset.media_kind is MediaKind.AUDIO` and disables the whole audio group on it,
-with the label the run photographed: *"This download keeps its video, so there is no audio track to
-convert."* The same fact never reaches the container list.
-
-#### `CONTAINER_FORMATS` itself must not be filtered
-
-Its docstring anticipates half of this and rules the other way for a reason that still holds:
-
-> Video containers first, then audio-only ones, in yt-dlp's own order — a remux target of `mp3` is
-> legal and occasionally what somebody wants, so the list is not filtered by `media_kind`.
-
-That is right **for the set `core/` validates against**: it is asserted equal to
-`FFmpegVideoRemuxer.SUPPORTED_EXTS` so a yt-dlp version adding a container fails the suite rather
-than quietly refusing one a user could have had. **What is offered in a picker and what is accepted
-by a validator are different sets**, and this task changes only the first.
-
-#### Acceptance criteria
-
-- **A preset that keeps its video offers video containers only**; the audio-only eleven are absent
-  rather than disabled, matching how `T-203` removed rather than greyed what a row may not do
-- **The offered set derives from `CONTAINER_FORMATS` rather than restating it**, so a container
-  yt-dlp adds appears without a second list being remembered — a hand-written video list is the
-  `T046-R4` shape this project has been bitten by
-- **`CONTAINER_FORMATS` is unchanged**, and the equality test against yt-dlp's `SUPPORTED_EXTS`
-  still passes
-- **A preset already carrying an audio-only container does not silently lose it** when the dialog
-  opens — `T109-R2`'s rule, that a control the user cannot see must not decide anything
-- **An audio-only preset keeps the whole list** — **ruled 2026-08-28**. An audio-only stream in
-  `mp4` or `mkv` is legal and occasionally wanted, and neither route fails on it. **Only the video
-  case narrows**, because only it errors after the download or discards the video. The symmetry is
-  deliberately not restored: it would refuse combinations that work
-
-#### Out of scope
-
-- **The remux/recode radio itself** and the one-change rule (`_require_one_container_change`)
-- **Warning about a lossy recode** in general — this is about a list, not about advice
-- Changing what `core/` accepts
-
 ### T-286 — The container section says what recode costs and never what it is for
 
 **Status:** Proposed — **filed 2026-08-27 during `T-212`'s run**, from the maintainer's question:
@@ -12235,62 +12315,6 @@ the statement. Recorded here so a later reader does not restore it as an oversig
 - The other seven settings' controls. `T-146` built them and this is one control's change
 - **Path containment for *downloads*** (`T-034`), which is the worker's rule about where a template
   may write and is unaffected by where the root is set
-
-### T-293 — A queued row offers *Remove*, so one playlist entry can go without the playlist
-
-**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run**, on the maintainer's report:
-*"when looking at the queue, with a playlist expanded out, I'd expect as a user to remove
-individual videos from a playlist with right clicking without having to remove the entire
-playlist."* **`UX-005` §4 is amended the same day** to add `Remove` to the queued row's verbs; this
-builds it.
-**Owner:** Implementer
-**Priority:** Medium — the capability exists today under a name that promises something else and
-costs two steps
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/row_verbs.py` `_BY_STATUS` — the transcription of `UX-005` §4;
-`UX-005` §5, which is the rule that decides it; `T-124`, `T-140`, `T-244`
-**Affected surfaces:** `ui/row_verbs.py`, `tests/unit/test_row_verbs.py`, the queue's dispatch,
-`docs/PHASE_4_CHECKLIST.md`
-**Risk:** Low mechanically, **Medium in what it deletes.** `Remove` on a job discards it; on a
-playlist child it must remove **that entry** and leave the group, which is the whole request
-
-#### What is wrong
-
-`_BY_STATUS` gives `QUEUED` and `READY` exactly `MOVE_UP, MOVE_DOWN, CANCEL`, transcribed
-faithfully from `UX-005` §4. So the only way to be rid of one queued entry is:
-
-1. **Cancel** it — which for a never-started job promises to stop something that is not running,
-   and writes a terminal `CANCELLED` row through `manager._stop`
-2. **Remove** the cancelled row, or `Clear finished`, which also clears every other completed and
-   cancelled row
-
-**The capability was always there; the verb table spelled it in two steps.** §5 — *nothing is
-offered that would be refused* — is what settles it: removing a queued job is never refused.
-
-#### Acceptance criteria
-
-- **`QUEUED` and `READY` offer `REMOVE`**, and the test transcribes `UX-005` §4's amended table by
-  hand rather than reading it from production — `row_verbs.py`'s module docstring is explicit that
-  the two lists are independent copies of an external authority
-- **`Cancel` stays on a queued row.** A queued job can start between reading the row and pressing
-  anything, and the verb that stops it must not vanish because it has not started *yet*
-- **On a playlist child, `Remove` removes that entry and leaves the group**, with the group's own
-  count and segment bar following. This is the request, and it is the part a header-level `Remove`
-  already does differently
-- **The overflow rule is unchanged.** A fourth verb on a queued row may push into `⋯`, and that is
-  the existing rule doing its job rather than a regression (`T-244` is the record of verbs that
-  were offered and never drawn)
-- **Removing a running job is still not offered.** `RUNNING`, `PROBING` and `POST_PROCESSING` keep
-  `Cancel` alone; this amendment is about the state that has not started
-- **`docs/PHASE_4_CHECKLIST.md` row 4.7 names the new verb set** for a queued child
-
-#### Out of scope
-
-- **Whether `Remove` confirms.** `DAT-005` §4 makes a group's confirmation name its count; a single
-  queued entry is not a group and this task does not invent a dialog for it
-- **The files on disk.** `Remove` on a queued job has none to keep or delete
-- **The header's verbs**, which `group_verbs` decides and `T-140` settled
 
 ### T-294 — The add dialog's status line is an empty tab stop that draws a full-width focus ring
 

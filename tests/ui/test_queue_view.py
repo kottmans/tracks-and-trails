@@ -2313,6 +2313,72 @@ def test_an_ordinary_rows_remove_is_not_routed_as_a_group(
     assert grouped == []
 
 
+def test_removing_one_queued_playlist_entry_leaves_the_playlist(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`T-293`: the report was *"remove individual videos … without having to remove the entire
+    playlist"*.
+
+    **The routing already separated the two id spaces** (`T-140`); what was missing was the verb.
+    A queued child offered `↑ ↓ Cancel`, so the only way to be rid of one entry was to cancel it —
+    leaving a terminal cancelled row — and then remove that, or clear every finished row with it.
+
+    This asserts both halves: the child's id goes down the single-job route, and **the group route
+    is not taken**, which is what "leaves the playlist" means at this seam.
+    """
+    jobs = _playlist_jobs(tmp_path, 3)
+    for job in jobs:
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+
+    removed: list[str] = []
+    grouped: list[str] = []
+    view.remove_requested.connect(removed.append)
+    view.group_remove_requested.connect(lambda pl, _ids: grouped.append(pl))
+    view._on_verb(jobs[1].id, Verb.REMOVE)
+
+    assert removed == [jobs[1].id], (
+        f"removing one queued entry emitted {removed}, so it did not act on that entry alone"
+    )
+    assert grouped == [], "one entry's Remove took the whole playlist's route"
+
+
+def test_a_queued_playlist_entry_offers_remove_at_all(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The verb has to be *on the row*, not merely routable (`T-244`'s lesson).
+
+    `T-244` is this project's record of a model offering verbs the delegate never drew, so a test
+    that only exercises `_on_verb` proves the routing and not the offer. This reads what the row
+    publishes.
+    """
+    jobs = _playlist_jobs(tmp_path, 2)
+    for job in jobs:
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+    view.model.toggle_group(jobs[0].playlist_id)
+
+    rows = view.model.rowCount()
+    offered = next(
+        view.model.data(view.model.index(row, JOB_COLUMN), VERBS_ROLE)
+        for row in range(rows)
+        if view.model.data(view.model.index(row, JOB_COLUMN), JOB_ID_ROLE) == jobs[1].id
+    )
+
+    assert Verb.REMOVE in offered, (
+        f"a queued playlist entry offers {[v.value for v in offered]} and none of them removes it"
+    )
+    assert Verb.CANCEL in offered, (
+        "Cancel went with the change; a queued job can start between reading the row and pressing"
+    )
+
+
 def test_a_retargeted_playlist_says_which_entries_got_which_format(
     queue: FakeQueue,
     managers: Callable[..., DownloadManager],

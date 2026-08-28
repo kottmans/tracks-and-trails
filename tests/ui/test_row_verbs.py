@@ -21,11 +21,14 @@ from tracks_and_trails.ui.row_verbs import (
     verbs_for,
 )
 
-#: `UX-005` §4, quoted: "Running — *Cancel*. Queued — *↑*, *↓*, *Cancel*. Failed — *Retry*,
-#: *Remove*. Done — *Open*, *Show in folder*."
+#: `UX-005` §4, quoted **as amended 2026-08-28**: "Running — *Cancel*. Queued — *↑*, *↓*,
+#: *Cancel*, **and *Remove***. Failed — *Retry*, *Remove*. Done — *Open*, *Show in folder*."
+#:
+#: The amendment is `T-293`, and the reason is §5's own rule: removing a queued job is never
+#: refused, so offering it in two steps was an accident of the table rather than a policy.
 UX_005_TABLE = {
     "running": (Verb.CANCEL,),
-    "queued": (Verb.MOVE_UP, Verb.MOVE_DOWN, Verb.CANCEL),
+    "queued": (Verb.MOVE_UP, Verb.MOVE_DOWN, Verb.CANCEL, Verb.REMOVE),
     "failed": (Verb.RETRY, Verb.REMOVE),
     "done": (Verb.OPEN, Verb.REVEAL),
 }
@@ -36,6 +39,10 @@ UX_005_TABLE = {
     [
         (JobStatus.RUNNING, "running"),
         (JobStatus.QUEUED, "queued"),
+        # **`READY` is `UX-005`'s *Queued* too**, and it was uncovered until `T-293`. The table
+        # has mapped the two identically since it was written, and a mutation removing a verb from
+        # `READY` alone **survived** — two lines that must agree, with only one of them asserted.
+        (JobStatus.READY, "queued"),
         (JobStatus.FAILED, "failed"),
         (JobStatus.COMPLETED, "done"),
     ],
