@@ -39,6 +39,16 @@ replaces it is the maintainer's, because the control is 165 px wide and every ho
 **Checklist row 4.7 is corrected**, against `T-244`'s approved criterion: an expanded child draws
 every verb its state offers. It is the row's back-reference made to agree with the task it cites.
 
+**`T-285` is the most serious thing the run has found so far**, and only because both outcomes
+were measured rather than one assumed. The Options dialog fills its container picker from all
+eighteen of `CONTAINER_FORMATS` whatever the preset is, so a video download is offered `mp3`.
+**Remuxing to it fails after the download is paid for; recoding to it succeeds and discards the
+video**, 8,898 bytes with one audio stream and nothing said. `UX-005` §5 covers the first; the
+second is worse than a refusal. **The dialog already holds the fact that would prevent it** —
+forty lines away it reads `media_kind` to disable the audio group. `CONTAINER_FORMATS` itself is
+**not** to be narrowed: it is the validation set, asserted equal to yt-dlp's `SUPPORTED_EXTS` so a
+new container cannot be silently refused. What is offered and what is accepted are different sets.
+
 **Still open from the run, unfiled:** the empty status line in the add dialog taking Tab focus; a
 row verb that is a no-op while another panel is open on that row; the template panel mounting at
 its 26 px minimum when the list viewport is short; a thumbnail flicker on resize that **did not

@@ -11544,6 +11544,85 @@ The width is the whole constraint. Three shapes, none free:
 - The 5 px inset (`T-283`)
 - The control's contents rule — presets and nothing else (`UX-011` option *E*, built by `T-203`)
 
+### T-285 — The Options dialog offers audio-only containers to a download that keeps its video
+
+**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
+*"in options, it gives the option to remux/recode videos into music only formats? Seems like it
+shouldn't offer that for video, only for audio only selections."* **Both outcomes are measured
+below, and they are different failures** — one errors after the download is paid for, the other
+succeeds and throws the video away without saying so.
+**Owner:** Implementer
+**Priority:** **High for a polish task** — the silent case destroys the thing the user asked for,
+and the dialog already holds the fact that would prevent it
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/options_dialog.py:426` (the combo is filled from `CONTAINER_FORMATS`
+unconditionally) and `:528` (the same dialog already reads `media_kind` to disable the audio
+group); `core/models.py` `CONTAINER_FORMATS` and its "not filtered by `media_kind`" note;
+`UX-005` §5; `REQ-010`; `T-109`, `T109-R2`
+**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
+**Risk:** Medium — `CONTAINER_FORMATS` must **not** be narrowed (below), and the fix has to land
+in the dialog without touching the set validation and the drift test depend on
+
+#### What is wrong
+
+The container picker is filled from the full list, for every preset:
+
+```python
+for container in CONTAINER_FORMATS:          # options_dialog.py:426
+    self._container_choice.addItem(container, container)
+```
+
+Eleven of those eighteen are audio-only. **Measured with ffmpeg 2026-08-27, on a one-second
+`h264 + aac` mp4:**
+
+| Route | Command | Result |
+|---|---|---|
+| **Remux** → mp3 | `ffmpeg -i tiny.mp4 -c copy tiny.mp3` | **Fails.** *"Invalid audio stream. Exactly one MP3 audio stream is required."* — after the download has finished |
+| **Recode** → mp3 | `ffmpeg -i tiny.mp4 tiny.mp3` | **Succeeds.** 8,898 bytes, `ffprobe` reports one `audio` stream. **The video is gone and nothing said so** |
+
+`UX-005` §5 — *nothing is offered that would be refused* — covers the first. The second is worse
+than a refusal: the user asked to keep a video, picked a container from a list the application
+offered, and got an audio file.
+
+**The dialog already knows.** Forty lines from the combo it writes
+`converts = self._preset.media_kind is MediaKind.AUDIO` and disables the whole audio group on it,
+with the label the run photographed: *"This download keeps its video, so there is no audio track to
+convert."* The same fact never reaches the container list.
+
+#### `CONTAINER_FORMATS` itself must not be filtered
+
+Its docstring anticipates half of this and rules the other way for a reason that still holds:
+
+> Video containers first, then audio-only ones, in yt-dlp's own order — a remux target of `mp3` is
+> legal and occasionally what somebody wants, so the list is not filtered by `media_kind`.
+
+That is right **for the set `core/` validates against**: it is asserted equal to
+`FFmpegVideoRemuxer.SUPPORTED_EXTS` so a yt-dlp version adding a container fails the suite rather
+than quietly refusing one a user could have had. **What is offered in a picker and what is accepted
+by a validator are different sets**, and this task changes only the first.
+
+#### Acceptance criteria
+
+- **A preset that keeps its video offers video containers only**; the audio-only eleven are absent
+  rather than disabled, matching how `T-203` removed rather than greyed what a row may not do
+- **The offered set derives from `CONTAINER_FORMATS` rather than restating it**, so a container
+  yt-dlp adds appears without a second list being remembered — a hand-written video list is the
+  `T046-R4` shape this project has been bitten by
+- **`CONTAINER_FORMATS` is unchanged**, and the equality test against yt-dlp's `SUPPORTED_EXTS`
+  still passes
+- **A preset already carrying an audio-only container does not silently lose it** when the dialog
+  opens — `T109-R2`'s rule, that a control the user cannot see must not decide anything
+- **The audio case is ruled, not assumed.** An audio-only download in `mp4` or `mkv` is legal, so
+  *"audio presets offer everything"* and *"audio presets offer the audio eleven"* are both
+  defensible; this entry does not choose, and the implementer proposes
+
+#### Out of scope
+
+- **The remux/recode radio itself** and the one-change rule (`_require_one_container_change`)
+- **Warning about a lossy recode** in general — this is about a list, not about advice
+- Changing what `core/` accepts
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
