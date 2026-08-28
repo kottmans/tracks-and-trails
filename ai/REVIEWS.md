@@ -21316,3 +21316,42 @@ but the task deliberately leaves its required real-display observation unperform
 No source correction is requested from static inspection. T-288 remains **Blocked** on T288-R1
 and T212-R3. After the real-display check and final Windows run, a focused evidence re-review can
 approve it if neither exposes a rendering defect.
+
+---
+
+## 2026-08-28 — T-291 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-291`
+**Base:** `5cef103dff8cadcb50e1fcb298d75c918cfc397e`
+**Implementation head:** `3045273b0c6d57e0ed1674dbdd2e57e283b89089`
+**Platforms verified:** Local Linux logic only; the workflow has never executed
+**Verdict:** **Changes requested.** The schedule, isolation and latest-over-pin install shape are
+sound, but the workflow omits part of its required suite and can misreport infrastructure failure
+as upstream drift.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T291-R1** | **High** | **Yes — core acceptance criterion unmet** | The task requires “the default suite” (`ai/TASKS.md:12304`), whose configured `testpaths=["tests"]` includes integration. The workflow invokes only `tests/unit tests/ui` (`ytdlp-canary.yml:135-140`). Integration is not irrelevant to yt-dlp drift: `test_worker.py` imports the resolved yt-dlp version and ffmpeg tables, and `test_post_processing.py` uses the real `YoutubeDL`/postprocessor registry. A newer yt-dlp can break those paths while this canary stays green. | Run the configured default suite with only the two explicit stale node IDs deselected (network and Windows-desktop remain excluded by normal addopts), or amend the task by maintainer decision to name and justify a narrower gate. The current implementation does not meet the accepted criterion. | **Open** |
+| **T291-R2** | **Medium** | **Yes — failure report is false on setup errors** | The “Say what a failure means” step uses bare `if: failure()` (`:142-153`) and unconditionally says upstream behavior/list drift failed. GitHub documents `failure()` as true when **any previous step** fails. A checkout, setup-Python, venv, pip/network, or version-report failure therefore produces the same “file it as a task” diagnosis even though the verdict suite never ran. | Give the verdict step an `id` and condition the drift summary on that step's failure outcome. Report setup/infrastructure failure separately and without calling it yt-dlp drift. | **Open** |
+| **T291-R3** | **Low** | No | The file and task say the stale set has “one definition,” but the two node IDs are manually duplicated in `EXPECTED_STALE` and `DESELECT_STALE` (`:72-80`). They match today; an edit to only one recreates exactly the always-red or silently-hidden failure the comment says this structure prevents. | Generate the deselection arguments from one data definition, or add a deterministic check that the two parsed node-id sets are equal. Fold into the T-291 correction. | **Open, non-blocking** |
+| **T291-R4** | **Medium** | **Yes — workflow execution unverified** | No scheduled or dispatched run has parsed and executed this YAML. The dry run installed latest by a different scratch/PYTHONPATH mechanism and ran unit only. It is useful logic evidence, but it does not verify action versions, runner routing, shell expansion, artifacts or summary conditions. | After R1-R3 are corrected and committed, push the final workflow tree and dispatch it once. Record the run id, resolved yt-dlp version, verdict and artifact outcome. | **Open** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Trigger/permissions | Weekly Monday schedule plus `workflow_dispatch`; no push/PR trigger; read-only contents permission; own non-cancelling concurrency group; `LINUX_RUNNER` fallback matches project convention. |
+| Install order | Project/dev dependencies install first; unpinned `--upgrade yt-dlp` runs after the strict project pin and therefore supplies the candidate import. Versions are written to the summary/artifact. |
+| Expected stale pair | The two current env lists contain the same node ids, and the submitted dry run correctly discovered the second baseline test. T291-R3 concerns the false single-source guarantee, not a current set mismatch. |
+| Default-suite scope | Project config includes unit, UI and integration by default. Independent current-tree gates passed unit **2,293/18 skipped**, UI **1,071/3 skipped**, and integration **445**; the workflow command would execute only the first two. |
+| Failure semantics | Official GitHub Actions expression documentation states `failure()` returns true when any prior job step fails, confirming T291-R2. |
+| Workflow run | None. No push or dispatch was authorized or performed. T212-R2 owns relocating this task's orphaned body. |
+
+### Readiness
+
+T-291 remains **In Review** with one High and two blocking Medium findings. Correct R1-R3 in one
+batch, restore the task body through T212-R2, then satisfy R4 with the final workflow. This is the
+ordinary correction pass; no follow-up task is warranted.
