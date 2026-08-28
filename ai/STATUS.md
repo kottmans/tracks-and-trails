@@ -49,6 +49,15 @@ forty lines away it reads `media_kind` to disable the audio group. `CONTAINER_FO
 **not** to be narrowed: it is the validation set, asserted equal to yt-dlp's `SUPPORTED_EXTS` so a
 new container cannot be silently refused. What is offered and what is accepted are different sets.
 
+**`T-286` and `T-287` close out the sitting's other two.** `T-286` is the recode question answered
+by measurement rather than by argument: remux changes the wrapper and nothing else — a webm
+remuxed to `mp4` still contains `vp9 opus` — so recoding is the only route from a VP9 or AV1 source
+to a file h264/aac hardware can play. The option stays; the note that states its cost and never its
+purpose is the defect. **`T-287` is the one whose cause is not yet known**, and the entry says so:
+every dialog is already built with the right parent and forwards it, so this is not a missing
+`parent=`. The task's first step is a two-window probe on the same KDE/Wayland session, and it
+explicitly forbids writing the three-line `changeEvent` before that probe exists.
+
 **Still open from the run, unfiled:** the empty status line in the add dialog taking Tab focus; a
 row verb that is a no-op while another panel is open on that row; the template panel mounting at
 its 26 px minimum when the list viewport is short; a thumbnail flicker on resize that **did not

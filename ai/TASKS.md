@@ -11702,6 +11702,87 @@ conversation; it needs a ruling before it needs a task.**
 - **Choosing codecs**, or any control over the recode's encoder settings — `REQ-010` does not offer
   them and this task does not add them
 
+### T-287 — Minimizing the main window leaves its dialogs on screen
+
+**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
+*"when minimizing the program from the taskbar, only the main window disappears, but the add-urls
+and options screens remain."* Observed on **KDE, Wayland**.
+**Owner:** Implementer
+**Priority:** Medium — the application is unusable in the state it leaves behind: a window-modal
+dialog is still up, and the window it is modal *to* is gone
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/main_window.py:992` and `:1032` (the add dialog is built with
+`parent=self` and shown with `open()`); `ui/add_dialog.py:2200` (the options dialog is built with
+`parent=self` — the add dialog — and shown with `exec()`); `ui/preset_manager.py:470`
+**Affected surfaces:** `ui/main_window.py`, possibly `ui/add_dialog.py`, and their tests
+**Risk:** Medium — the naive fix strands the user, and the cause is not yet established
+
+#### What is known, and what is not
+
+**The parenting is already correct, so this is not a missing `parent=`.** Verified by reading every
+construction site:
+
+| Dialog | Parent | Shown with | Modality |
+|---|---|---|---|
+| `AddUrlDialog` | the main window | `open()` | window-modal |
+| `OptionsDialog` (from a row) | the add dialog | `exec()` | application-modal |
+| `OptionsDialog` (from the manager) | the preset manager | `exec()` | application-modal |
+
+Every one forwards its `parent` to `super().__init__`, and **no dialog sets a window flag or
+overrides its modality**. Qt therefore has the transient-parent relationship it needs; whether that
+relationship reaches the compositor, and what KWin does with it when the parent is minimized, is
+**not established** and is the first thing this task must find out.
+
+**Nothing in this application handles the minimize.** The only `changeEvent` override is
+`add_dialog.py:612`, on the staging list and for an unrelated reason. There is no window-state
+handling on the main window and no registry of open dialogs to act on — `_settings_dialog` is
+tracked, the add dialog is a local.
+
+#### The first step is a measurement, not a change
+
+The cheapest decisive probe is **two windows and no application logic**: a `QMainWindow` with a
+`QDialog` child opened the same two ways — `open()` and `exec()` — minimized from the taskbar on
+the same KDE/Wayland session. If the plain pair behaves the same way, this is Qt and KWin
+behaviour that this application can only work *around*, and the entry below is a choice about
+whether to. If the plain pair minimizes together, something here differs from it and that
+difference is the defect.
+
+**Do not skip to the fix.** A `changeEvent` that hides every open dialog when the main window
+minimizes is three lines and is the wrong thing to write before knowing which of those two worlds
+this is.
+
+#### If it turns out to be ours to work around, the decision is not obvious
+
+- **Hide the dialogs with the parent and restore them with it.** Matches what a user means by
+  minimizing an application. Hiding a **modal** dialog is the part to be careful with: the state to
+  restore is not just visibility, and a dialog that comes back without its modality is worse than
+  one that never left
+- **Leave it.** A modal dialog outliving its parent's minimize is confusing, but so is a window
+  that vanishes and takes an unsaved paste with it
+- **Refuse the minimize while a modal dialog is up** — the most honest and the most likely to be
+  read as the application ignoring the taskbar
+
+#### Acceptance criteria
+
+- **The behaviour of a plain `QMainWindow` + `QDialog` pair on this session is recorded** in the
+  task before anything is changed, and it names the platform, the compositor and the Qt version
+- **Whatever is decided is decided by the maintainer**, and recorded — this is a window-behaviour
+  choice, not a defect with one correct repair
+- **If dialogs are hidden and restored, modality survives the round trip**, asserted rather than
+  observed once
+- **Nothing is lost.** A paste in the add dialog, a preset half-edited in the options dialog and a
+  format table's selection all survive whatever is done
+- **The Windows half is named rather than assumed** (`OPS-003`): this was seen on KDE/Wayland, and
+  the pre-release Windows session inherits the same check
+
+#### Out of scope
+
+- The settings screen, which is tracked separately (`_settings_dialog`) and was not part of the
+  report — it should be checked, and if it behaves differently that is worth knowing, but this
+  task is not a sweep of every window
+- Session restore, and anything about where windows reopen (`T-027`)
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
