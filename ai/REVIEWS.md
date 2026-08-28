@@ -21180,3 +21180,35 @@ No T-283-specific finding. Shared blocking finding `T212-R3` applies.
 The Linux implementation is review-clean. T-283 remains **In Review** solely until the final
 correction tree receives the Windows result required by T212-R3; no source correction or follow-up
 task is requested for T-283 itself.
+
+---
+
+## 2026-08-28 — T-285 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-285`
+**Base:** `a4e977384710e89ef0d814bf7322918d910ad5ef`
+**Implementation head:** `fa4544a15db7339c7a89b086fe11f0aefe8062ea`
+**Platforms verified:** Linux offscreen; Windows blocked by `T212-R3`
+**Verdict:** **Blocked on supported-platform evidence.** No task-specific implementation finding
+was established.
+
+### Findings
+
+No T-285-specific finding. Shared blocking finding `T212-R3` applies.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Model boundary | `CONTAINER_FORMATS` remains the complete accepted set. `containers_for(VIDEO)` derives by subtracting the yt-dlp-checked audio-only set; `containers_for(AUDIO)` returns the complete tuple. No yt-dlp import entered `core/`. |
+| Existing-state preservation | A carried audio-only target is appended to the video's offered list before `findData`, so opening the dialog does not rewrite a valid stored preset through an index-zero fallback. |
+| Drift coverage | The unit test derives the audio split from yt-dlp's `MEDIA_EXTENSIONS`; the existing remuxer/converter equality gate remains intact. `gif`'s conservative treatment is explicit and guarded. |
+| Unit/UI evidence | Full unit: **2,293 passed, 18 skipped**. Full UI: **1,071 passed, 3 skipped**. The changed-file focus passed. |
+| Static/platform | Ruff and `mypy src` pass on the combined tree. No Windows run exists; see T212-R3. |
+
+### Readiness
+
+The implementation satisfies T-285's ruled asymmetric offer set on Linux. It remains **In Review**
+until the final correction tree receives the Windows result required by T212-R3; no T-285 source
+correction or follow-up task is requested.
