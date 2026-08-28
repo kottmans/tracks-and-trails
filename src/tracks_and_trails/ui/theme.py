@@ -521,6 +521,27 @@ STATE_RULES: Final = (
         ),
     ),
     StateRule(
+        selector="QScrollBar::handle:hover",
+        conveys="the pointer is over the scroll bar's handle",
+        channel="pointer-feedback",
+        reason=(
+            "Hover describes where the pointer is, to the person holding it. It carries no state "
+            "a keyboard or screen-reader user could lose, because that user is not hovering — "
+            "and the handle's own visibility against its groove is `border` at 3.72:1 in dark "
+            "and 3.43:1 in light, which is what carries the control itself (`T-288`)."
+        ),
+    ),
+    StateRule(
+        selector="QScrollBar::handle:pressed",
+        conveys="the scroll bar's handle is being dragged",
+        channel="pointer-feedback",
+        reason=(
+            "Pressed is reachable only by a pointer, so nothing about it needs to survive a "
+            "greyscale reading. A scroll bar cannot be dragged from the keyboard at all; the "
+            "keyboard scrolls the view, which moves the handle."
+        ),
+    ),
+    StateRule(
         selector="QPushButton:focus",
         conveys="keyboard focus — the padding half of the rule above",
         channel="geometry",
@@ -1158,6 +1179,69 @@ QToolBar QToolButton[primaryAction="true"]:disabled {{
     background-color: {theme.sunken};
     color: {theme.muted};
     border-color: {theme.border};
+}}
+QScrollBar:vertical, QScrollBar:horizontal {{
+    /* **The one control the theme never dressed** (`T-288`). There was no `QScrollBar` rule at
+       all, so the bar was drawn by whatever platform style Qt picked, from five palette roles
+       this theme never set — `Light`, `Midlight`, `Mid`, `Dark` and `Shadow`, still at Qt's
+       light-palette greys. The two roles it *does* set, and which a style reaches for first, are
+       `Button` on `Window`: **1.09:1 in dark and 1.08:1 in light**. A handle and a groove drawn
+       from that pair are invisible by construction, which is what the maintainer reported.
+
+       **`T-202` swept contrast and could not have found it**: the sweep derives its subjects from
+       the controls the sheet declares, and a widget with no rule contributes no selector. Absence
+       of styling read as nothing to check rather than as something unchecked.
+
+       **Every sub-control is declared, including the ones being removed** — `T-133`'s lesson,
+       which this project has already paid for once. Styling a widget at all switches it to
+       `QStyleSheetStyle`; a rule that declares `::handle` and stops leaves `::add-line`,
+       `::sub-line`, `::add-page` and `::sub-page` to render as blank blocks, exactly as the spin
+       box's arrows stopped being drawn. */
+    background: transparent;
+    border: none;
+    margin: 0;
+}}
+QScrollBar:vertical {{
+    width: 12px;
+}}
+QScrollBar:horizontal {{
+    height: 12px;
+}}
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
+    /* **`border` rather than a shade role**, because it is the colour this theme already keeps at
+       a stated distance from the window: measured **3.72:1 in dark and 3.43:1 in light**, against
+       the 1.09:1 the platform was composing. The margin is what makes it read as a handle floating
+       in a groove rather than a block filling one — the modern shape, and the second half of what
+       was reported. */
+    background: {theme.border};
+    border-radius: 4px;
+    margin: 2px;
+}}
+QScrollBar::handle:vertical {{
+    min-height: 24px;
+}}
+QScrollBar::handle:horizontal {{
+    min-width: 24px;
+}}
+QScrollBar::handle:hover {{
+    background: {theme.primary};
+}}
+QScrollBar::handle:pressed {{
+    background: {theme.primary_hover};
+}}
+QScrollBar::add-line, QScrollBar::sub-line {{
+    /* **The stepper arrows, removed deliberately.** Desktop scroll bars stopped having buttons;
+       leaving these undeclared would not remove them, it would render them as the blank blocks
+       `T-133` measured. Zero on both axes, and no background to inherit. */
+    width: 0px;
+    height: 0px;
+    background: none;
+    border: none;
+}}
+QScrollBar::add-page, QScrollBar::sub-page {{
+    /* The groove either side of the handle. Transparent, so the bar sits on whatever it is over
+       rather than drawing a second surface against it. */
+    background: none;
 }}
 QScrollArea {{
     /* **Two pixels of padding, for the ring below to spend** (`T202-R1`, third round). A scroll

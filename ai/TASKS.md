@@ -246,6 +246,49 @@ contents; this preface does not list them.***
 
 ---
 
+### T-288 — The scroll bar is the one control the theme never dressed
+
+**Status:** **In Review — built 2026-08-28, and no review has run.** The bar is drawn by the sheet
+in both orientations: a rounded handle in `border` with a 2 px margin, hover and pressed states,
+the stepper arrows removed by declaration, and the groove transparent. **Four mutations, all
+killed** — including putting the handle back on `surface`, which **survived a first version of the
+test** that measured `contrast_ratio(theme.border, theme.window)` from the palette instead of
+reading what the sheet draws. Measuring an ingredient the rule is free to stop using is the same
+mistake `T-283` made three hours earlier.
+
+**The rendered criterion is deliberately left open.** *"A rendered check is taken on a real
+display, not offscreen"* cannot be satisfied by an unattended run, and `T-202`'s own history —
+rendered sweeps that ran both theme cases as light — is why it is not claimed.
+
+*(Filed 2026-08-27 by `T-212`'s checklist run. The maintainer's report: *"the scrollbar on the
+options menu is barely visible in dark mode"*, seen on the Settings screen's scroller. **Widened
+2026-08-28 on a second report from the same run** — *"the scrollbar looks very
+windows 98. It needs a more modern look"* — because it is the same defect seen from the other side:
+there is no `QScrollBar` rule, so both the contrast and the chrome are the platform's default
+rather than this theme's. Two tasks would have edited the same handful of rules.)*
+
+**The five unset shade roles are still unset, and that is now deliberate.** `Light`, `Midlight`,
+`Mid`, `Dark` and `Shadow` remain at Qt's light-palette greys — the bar no longer depends on them,
+because the sheet draws every part of it. Setting them would be styling for a platform path this
+application no longer takes. **The criterion asked for them to be decided, and this is the
+decision**; if another unstyled widget is found to depend on them, it arrives with its own
+evidence.
+**Owner:** Implementer
+**Priority:** Medium — it is the control that tells a user there is more screen below, on the one
+screen tall enough to need it (`T-242` is the record of focus scrolling below the fold there)
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/theme.py` — `palette()`, and the absence of any `QScrollBar` rule;
+`T-202`, the colour and contrast pass that closed with no findings; `T-146`'s Settings screen;
+`T-242`, which is the other defect this scroller has produced
+**Affected surfaces:** `ui/theme.py`, `tests/unit/test_theme.py`, the rendered sweeps
+**Risk:** Low to fix, **Medium to fix without a gate** — the reason this survived `T-202` is
+structural and a fix that adds colours without extending the sweep leaves the same hole
+
+#
+
+---
+
 ### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
 
 **Status:** **In Review — built 2026-08-28, and no review has run.** The folder is a `QLineEdit`
@@ -11954,27 +11997,7 @@ this is.
   task is not a sweep of every window
 - Session restore, and anything about where windows reopen (`T-027`)
 
-### T-288 — The scroll bar is the one control the theme never dressed
-
-**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
-*"the scrollbar on the options menu is barely visible in dark mode"*, seen on the Settings screen's
-scroller. **Widened 2026-08-28 on a second report from the same run** — *"the scrollbar looks very
-windows 98. It needs a more modern look"* — because it is the same defect seen from the other side:
-there is no `QScrollBar` rule, so both the contrast and the chrome are the platform's default
-rather than this theme's. Two tasks would have edited the same handful of rules.
-**Owner:** Implementer
-**Priority:** Medium — it is the control that tells a user there is more screen below, on the one
-screen tall enough to need it (`T-242` is the record of focus scrolling below the fold there)
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/theme.py` — `palette()`, and the absence of any `QScrollBar` rule;
-`T-202`, the colour and contrast pass that closed with no findings; `T-146`'s Settings screen;
-`T-242`, which is the other defect this scroller has produced
-**Affected surfaces:** `ui/theme.py`, `tests/unit/test_theme.py`, the rendered sweeps
-**Risk:** Low to fix, **Medium to fix without a gate** — the reason this survived `T-202` is
-structural and a fix that adds colours without extending the sweep leaves the same hole
-
-#### What is wrong
+### What is wrong
 
 **There is no `QScrollBar` rule in `ui/theme.py`.** Not a weak one — none: the string does not
 appear in the file. Every other control in the application is dressed by the sheet, so the scroll

@@ -6,7 +6,8 @@ are driven through a recorder, which is enough — what they set is a value, and
 `QApplication` would prove nothing extra about it.
 """
 
-from typing import Any
+import re
+from typing import Any, Final
 
 import pytest
 
@@ -220,6 +221,69 @@ def test_every_role_reaches_the_sheet(theme_name: str) -> None:
     sheet = stylesheet(palette)
     for field in ("window", "surface", "sunken", "text", "muted", "rule", "border", "primary"):
         assert getattr(palette, field) in sheet, f"{field} is defined and never drawn"
+
+
+#: What a scroll bar's handle must clear against the surface behind it.
+#:
+#: **3:1, not `MINIMUM_CONTRAST`.** 4.5:1 is the floor for *text*; WCAG's non-text contrast
+#: requirement for a control's own shape is 3:1, and a handle is a shape rather than a word. The
+#: number is stated here so the test asserts a standard rather than whatever the theme happens to
+#: manage.
+MINIMUM_NON_TEXT_CONTRAST: Final = 3.0
+
+
+@pytest.mark.parametrize("theme_name", ["light", "dark"])
+def test_the_scroll_bar_handle_is_visible_against_what_is_behind_it(theme_name: str) -> None:
+    """`T-288`: the bar was invisible because nothing in this theme drew it.
+
+    **The pair measured is the one the sheet actually uses.** Before the fix the handle came from
+    `Button` on `Window` — `#10201A` on `#0A1712`, **1.09:1** in dark and 1.08:1 in light — because
+    no `QScrollBar` rule existed and the five shade roles a platform style composes one from are
+    still at Qt's light-palette defaults.
+    """
+    theme = THEMES[theme_name]
+    sheet = stylesheet(theme)
+
+    # **Read out of the sheet, not out of the palette.** A first version asserted
+    # `contrast_ratio(theme.border, theme.window)` and a mutation putting the handle back on
+    # `surface` — the invisible pair — **survived**: it measured an ingredient the rule was free
+    # to stop using. This measures what the rule says.
+    block = re.search(
+        r"QScrollBar::handle:vertical, QScrollBar::handle:horizontal \{(.*?)\}", sheet, re.S
+    )
+    assert block, "no QScrollBar handle rule in the sheet at all, which is the original defect"
+    drawn = re.search(r"background:\s*(#[0-9A-Fa-f]{6})", block.group(1))
+    assert drawn, f"the handle's background is not a literal colour: {block.group(1)!r}"
+
+    ratio = contrast_ratio(drawn.group(1).upper(), theme.window)
+
+    assert ratio >= MINIMUM_NON_TEXT_CONTRAST, (
+        f"{theme_name}: the sheet draws the scroll bar handle in {drawn.group(1)}, which is "
+        f"{ratio:.2f}:1 against the window — below {MINIMUM_NON_TEXT_CONTRAST}:1, and how it "
+        f"became invisible the first time"
+    )
+    assert contrast_ratio(theme.surface, theme.window) < MINIMUM_NON_TEXT_CONTRAST, (
+        "the pair the platform style was composing from is no longer the failing one, so this "
+        "test has stopped describing the defect it was written for"
+    )
+
+
+@pytest.mark.parametrize("theme_name", ["light", "dark"])
+def test_every_scroll_bar_sub_control_is_declared(theme_name: str) -> None:
+    """`T-133`'s lesson: styling a widget at all moves it to `QStyleSheetStyle`.
+
+    A rule that declares `::handle` and stops leaves the other four sub-controls to render as
+    blank blocks — measured once already on `QSpinBox`, whose *"up and down arrows stop being
+    drawn"* cost that task four rounds. The arrows here are **removed**, which is a thing the
+    sheet has to say rather than omit.
+    """
+    sheet = stylesheet(THEMES[theme_name])
+
+    for sub in ("::handle", "::add-line", "::sub-line", "::add-page", "::sub-page"):
+        assert f"QScrollBar{sub}" in sheet, (
+            f"QScrollBar{sub} is not declared, so it renders as whatever QStyleSheetStyle "
+            f"defaults to once the handle is styled"
+        )
 
 
 def test_applying_to_something_without_qts_setters_does_not_raise() -> None:
