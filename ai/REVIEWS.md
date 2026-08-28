@@ -21115,3 +21115,37 @@ This initial pass does not approve the batch. Correct the task-specific findings
 and T212-R1/R2 in one batch, then obtain the exact-head Windows result required by T212-R3.
 T212-R4 belongs to already-filed T-289 and does not reopen or create another task. The ordinary
 focused correction re-review remains available under `AGENTS.md` section 10.
+
+---
+
+## 2026-08-28 — T-281 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-281`
+**Base:** `b3e0bcecaa916a9a3043f2ff3b096b2dbb581d75`
+**Implementation head:** `bd528ff7fee9e034734fc87c765ada143c4b821e`
+**Platforms verified:** Linux; Windows blocked by `T212-R3`
+**Verdict:** **Changes requested.** Dropping the measured URL-bearing/titleless placeholder is
+correct and its regression is discriminating. The one-line audit record does not cover every
+entry the function drops and can report a false denominator.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T281-R1** | **Medium** | **Yes — acceptance criterion unmet** | `_entries` records a position only after an item is a mapping and has a usable URL (`ytdlp_adapter.py:498-515`). Non-mappings and addressless mappings are still dropped silently. The log denominator is `len(dropped) + len(projected)` rather than the input length (`:525-533`). A deterministic four-entry probe containing `None`, an addressless mapping, a titleless URL and one valid entry projected one and logged **“dropped 1 of 2”**; three of four were actually discarded. This contradicts “Every drop is recorded” and makes the short-playlist diagnostic false on mixed placeholder shapes. | Track every discarded input position, preserve any useful reason internally if needed, and derive the denominator from the sequence being enumerated (or state a different denominator honestly). Add a mixed-shape regression that fails on both silent early `continue` branches and on the current denominator. | **Open** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Measured case | The submitted fixture and URL-bearing/titleless tests pass in the changed-file run. Removing the title guard would fail those tests, so the main fix is load-bearing. |
+| Mixed-drop probe | Four inputs; one projected; `entry_count=4`; log said `dropped 1 of 2 ... position 3`. This directly reproduces T281-R1 without network access. |
+| Unit / integration | Full unit: **2,293 passed, 18 skipped**. Full integration: **445 passed**. |
+| Shared static/platform gates | See T-212 review: Ruff and `mypy src` pass; the all-files mypy scopes are red on T-293, and Windows has not run. |
+
+### Readiness
+
+T-281 remains **In Review**. Correct T281-R1 with a mutation/discriminating mixed-shape test, fold
+the accurate verification wording into T212-R1's synchronization, and include the final tree in
+the Windows run required by T212-R3. No separate follow-up task is warranted.
