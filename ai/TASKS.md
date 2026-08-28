@@ -12003,6 +12003,85 @@ it the way out of a site that has broken.
 - **Whether the application itself should self-update**, which `REL-001` leaves open and which the
   amendment names as the condition for reopening `OPS-002`
 
+### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
+
+**Status:** Proposed — **filed 2026-08-27 on maintainer direction**, from `T-212`'s run:
+*"how are we confident that our program wont break when it gets updated?"* **The detectors already
+exist; nothing ever feeds them a newer version.**
+**Owner:** Implementer
+**Priority:** Medium — it protects nothing today and prevents a class of surprise that currently
+lands on a user rather than on CI
+**Phase:** Phase 4 or later — **the maintainer's to place.** It is infrastructure, not a phase
+deliverable, and nothing in Phase 4's exit depends on it
+**Depends on:** nothing
+**Relevant context:** `OPS-002` and its 2026-08-27 amendment; `OPS-009`, `OPS-010`, `OPS-012` —
+where jobs run and why; `.github/workflows/prose.yml`, which is the model for a workflow with its
+own trigger and its own concurrency group; `ai/TESTING.md` §8 steps 3, 9 and 10
+**Affected surfaces:** a new workflow file, and whatever records what it finds
+**Risk:** **Medium, and the risk is that it is ignored.** A canary that is red every run teaches
+people to stop reading it, which is worse than not having one
+
+#### What already exists, which is most of the work
+
+Three gates fail the suite when yt-dlp's own surface moves:
+
+- `tests/unit/test_post_processing_options.py:97`–`98` — `CONTAINER_FORMATS` **equals**
+  `FFmpegVideoRemuxer.SUPPORTED_EXTS` and `FFmpegVideoConvertor.SUPPORTED_EXTS`
+- `tests/unit/test_option_audit.py` — calls yt-dlp's real `create_parser()` and asserts **every
+  documented option is classified exactly once**, in both directions
+- the same file — the audit states the version it was taken against, and fails when the pin moves
+
+**Every one of them only ever sees `yt-dlp==2026.7.4`**, because every job installs from the pin
+and the nightly reinstalls it. The nightly's own comment says what it is for — a re-resolved
+dependency, a runner OS update, the desktop machine drifting — and that is environment drift, not
+upstream drift.
+
+**So the first thing to run this code against a new yt-dlp is a user pressing Update** — which
+`OPS-002` exists to encourage, and which the same-day amendment reframes but does not remove.
+
+#### The design problem, which is not the YAML
+
+`test_the_audit_names_the_yt_dlp_version_it_was_taken_against` **fails by design on any newer
+version.** A canary that simply installs the latest and runs the suite is therefore red on every
+single run, forever, and will be muted within a month. **The expected failure has to be encoded,
+not tolerated**, so that the job separates:
+
+- *"the audit's version line is stale"* — expected, informational, not a finding
+- *"an option exists that nothing classifies"* — a real finding, and one that already names the
+  new options in its own failure message
+- *"a container appeared or vanished"* — a real finding
+- *anything else failing* — the interesting case, because it means behaviour moved rather than a
+  list
+
+#### Acceptance criteria
+
+- **The canary installs the latest yt-dlp over the pin** and runs the default suite against it,
+  on a schedule of **once a week** — yt-dlp ships roughly monthly, and a job that exists to notice
+  change should not run thirty times per change
+- **It never blocks a push.** Its result is a report; `main` does not gate on it
+- **It does block a baseline bump.** The bump is exactly the moment its answer is the evidence
+  being asked for, and `ai/TESTING.md` §8 gains that step
+- **The expected-failure set is explicit**, so a green-except-the-version-line run reads as green
+  and a genuinely new failure is visible at a glance
+- **What it finds becomes a task**, not a badge. The audit's failure message already lists the
+  unclassified options, which is most of an entry written for whoever files it
+- **It runs on `LINUX_RUNNER`** (`OPS-012`) with its own concurrency group (`prose.yml`'s shape),
+  so it neither cancels nor is cancelled by anything else, and it does not spend hosted minutes
+- **It never writes to the repository** — no pin bump, no commit, no audit regeneration. It reports
+  and stops
+- **The report says which yt-dlp version it ran**, or it evidences nothing later
+
+#### Out of scope
+
+- **Bumping the pin.** That is a decision with a release gate attached (`OPS-002`), and this job
+  informs it rather than taking it
+- **Re-taking the option audit**, which is `T-183`'s procedure and a human's judgement about what
+  each new option means
+- **Testing the version a given user is on.** Unknowable, and not the point: the canary tests the
+  version users are about to walk into
+- **`pytest -m network` against latest.** Defensible and a separate cost decision; the release
+  gate already runs it against the pin
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three

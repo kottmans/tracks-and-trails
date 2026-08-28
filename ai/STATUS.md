@@ -23,10 +23,18 @@ amendment also records the condition for reopening it: if the application itself
 automatically — Flathub, say — the override's argument weakens. `REL-001` leaves the Linux
 packaging choice open, so that is not yet decidable.
 
-**What is not filed:** the yt-dlp canary. Three live drift gates already exist — `CONTAINER_FORMATS`
-against both of yt-dlp's `SUPPORTED_EXTS`, and the option audit calling the real `create_parser()`
-— and **nothing ever points them at a version newer than the pin**, because the nightly reinstalls
-`2026.7.4`. The first thing to run this code against a new yt-dlp is a user pressing Update.
+**`T-291` is filed for the other half of the same question.** Three live drift gates already exist
+— `CONTAINER_FORMATS` against both of yt-dlp's `SUPPORTED_EXTS`, and the option audit calling the
+real `create_parser()` — and **nothing ever points them at a version newer than the pin**, because
+every job installs from it and the nightly reinstalls `2026.7.4`. The first thing to run this code
+against a new yt-dlp is a user pressing Update. Weekly, non-blocking for a push, **blocking for a
+baseline bump**, on `LINUX_RUNNER`.
+
+**The hard part of that task is not the YAML.** The audit's version test fails *by design* on any
+newer yt-dlp, so a naive canary is red every run and gets muted inside a month. The entry requires
+the expected failure to be encoded rather than tolerated, so that "the version line is stale" reads
+as green and "an option exists that nothing classifies" reads as the finding it is — a message that
+already names the new options, which is most of a task entry written for whoever files it.
 
 ---
 
