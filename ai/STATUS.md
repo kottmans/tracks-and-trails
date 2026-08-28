@@ -28,6 +28,17 @@ no verbs of their own"* and cites `T-244` — whose approved criterion is that e
 every verb its `VERBS_ROLE` offers. Run as written it files a task against a fix that works. It is
 **not corrected yet**, and the run should not proceed past §4 until it is.
 
+**Two more from the same sitting, both filed.** `T-283`: the row's painted *Download as* control
+insets its text **2 px where the editor uses 7**, because `_paint_control` draws through the list
+view and `QComboBox`'s padding rule has no combo to match — so the label jumps 5 px at the moment
+of the click, which is the half `T118-R12` did not reach. `T-284`: *Same as all* is not only
+unintuitive, it is **a defect against `UX-004`** — the spec asks for the batch preset *shown
+explicitly as inherited*, and the control shows the inheritance without the preset. Which shape
+replaces it is the maintainer's, because the control is 165 px wide and every honest wording elides.
+
+**Checklist row 4.7 is corrected**, against `T-244`'s approved criterion: an expanded child draws
+every verb its state offers. It is the row's back-reference made to agree with the task it cites.
+
 **Still open from the run, unfiled:** the empty status line in the add dialog taking Tab focus; a
 row verb that is a no-op while another panel is open on that row; the template panel mounting at
 its 26 px minimum when the list viewport is short; a thumbnail flicker on resize that **did not

@@ -11430,6 +11430,120 @@ choice, and their tests
 - **Changing what is redacted.** `T-018`'s empty allowlist stands
 - **Retention or rotation policy** beyond what the handler already does
 
+### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
+
+**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
+*"the drop down for the 'Same as All' is too far left aligned. There should be a bit of space (like
+if you click on it and expand the dropdown)."*
+**Owner:** Implementer
+**Priority:** Low — cosmetic, and it is the state the user looks at almost all of the time: the
+real combo exists only while the row is being edited
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/row_delegate.py` `_paint_control` and `updateEditorGeometry`;
+`T118-R12`, which is the half of this that was already fixed; `ui/theme.py`'s `QComboBox` rule
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`
+**Risk:** Low
+
+#### What is wrong
+
+Measured under the application's own stylesheet, one 165×26 control, both routes:
+
+```
+real editor text field x   : 7      # 1 px border + the sheet's 6 px padding
+painted affordance field x : 2      # the base style's inset; the padding never applies
+jump on click              : 5 px
+```
+
+**`_paint_control` draws through `option.widget`, which is the list view.** `QStyleSheetStyle`
+resolves rules against the widget it is given, so `QComboBox { padding: 3px 6px }` matches nothing
+when the widget is a `QListView` — the painted control gets the unstyled inset while the editor Qt
+creates on click gets the styled one.
+
+**`T118-R12` fixed the outer half of exactly this and stopped at the frame.** Its comment reads
+*"the same rectangle the affordance was painted in … one definition, so the control does not move
+at the moment the user clicks it."* The rectangle does not move; the text inside it moves 5 px.
+
+#### Acceptance criteria
+
+- **The painted label and the editor's label start at the same x**, asserted by measuring both
+  rather than by choosing a constant that happens to match today — a hard-coded 7 becomes wrong the
+  moment the sheet's padding changes
+- **The assertion is driven from the stylesheet's value**, so a change to `QComboBox`'s padding
+  moves both or fails the test
+- The fix does not reintroduce a second definition of the control's rectangle, which is
+  `T118-R12`'s finding
+
+#### Out of scope
+
+- The control's **width** and the `⋮` zone carved from it (`T-203`, `UX-011` option *E*)
+- What the control **says**, which is `T-284`
+
+### T-284 — *Same as all* names the relation and drops the value the spec asks for
+
+**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
+*"'Same as all' doesn't make any intuitive sense here. That needs to be changed."* **It is also a
+defect against `docs/UX_SPEC.md` §2 as written**, which is why this is filed rather than left as a
+wording preference.
+**Owner:** Implementer
+**Priority:** Medium — it is the control `UX-004` exists for, and the run photographed it saying
+*"same as all"* on a dialog holding **one** row, where there is no "all" to be the same as
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing. `T-283` moves the same label 5 px and does not change it
+**Relevant context:** `docs/UX_SPEC.md` §2's `UX-004` line; `ui/row_delegate.py` `INHERITED_TEXT`
+and `_paint_control`; `T118-R4`, which chose a name over a blank; `T126-R4`, which is why the
+queue must **not** inherit whatever this becomes
+**Affected surfaces:** `ui/row_delegate.py`, its tests, `docs/PHASE_4_CHECKLIST.md` row 5.2
+**Risk:** Medium — the control is ~165 px wide with the `⋮` zone carved out of it, so a longer
+label elides; and `T126-R4` is the record of one label leaking onto a surface it was false on
+
+#### What is wrong
+
+`UX-004`, in `docs/UX_SPEC.md` §2:
+
+> every row carries a **visible** *Download as* control showing what it will be downloaded with,
+> and a row that has not been overridden shows the **batch preset explicitly as inherited** —
+> never blank, which reads as *none* rather than *the one above*.
+
+The sentence asks for two things: **the preset**, and **that it is inherited**. `INHERITED_TEXT`
+delivers the second and drops the first. `T118-R4` is why it is not blank, and that reasoning is
+still right — a blank reads as *no format*; it just did not go the rest of the way to the value.
+
+`docs/PHASE_4_CHECKLIST.md` row 5.2 transcribed the spec rather than the code and so states the
+stricter reading: *"an unoverridden row shows the inherited preset **by name**, never blank."*
+Run against today's build that row fails.
+
+**The row already knows how to say it.** The detail line under the title reads *"Download as: Best
+video up to 1080p (MP4) — following the batch"*, so the value and the relation are both on the row
+in words; only the control disagrees.
+
+#### What to decide, and it is the maintainer's
+
+The width is the whole constraint. Three shapes, none free:
+
+- **The preset's name alone**, with the relation left to the detail line that already carries it.
+  Satisfies the spec's first half plainly; the control stops saying it is inherited
+- **The name plus a mark** — a leading `↳`, or the name drawn in the muted role — which keeps both
+  facts in the space one of them fits in
+- **The name plus words** (*"Best video up to 1080p (MP4) — same as all"*) — honest and the first
+  to elide, which turns the value into a truncation of itself
+
+#### Acceptance criteria
+
+- **The unoverridden control names the preset the row would actually use**, satisfying `UX-004`
+- **Whichever shape is ruled, it is recorded in `docs/UX_SPEC.md`** rather than only in the code —
+  the current wording was chosen in a task entry and the spec was never brought to it
+- **The queue keeps its own answer** (`T126-R4`): a durable job has no batch, `PRESET_INHERITABLE_ROLE`
+  is what separates them, and nothing here may make the queue draw an inherited label again
+- **Elision is measured at the control's real width** with the `⋮` zone removed, not at a
+  convenient one
+- **`docs/PHASE_4_CHECKLIST.md` row 5.2 matches whatever is ruled**
+
+#### Out of scope
+
+- The 5 px inset (`T-283`)
+- The control's contents rule — presets and nothing else (`UX-011` option *E*, built by `T-203`)
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
