@@ -21212,3 +21212,37 @@ No T-285-specific finding. Shared blocking finding `T212-R3` applies.
 The implementation satisfies T-285's ruled asymmetric offer set on Linux. It remains **In Review**
 until the final correction tree receives the Windows result required by T212-R3; no T-285 source
 correction or follow-up task is requested.
+
+---
+
+## 2026-08-28 — T-293 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-293`
+**Base:** `fa4544a15db7339c7a89b086fe11f0aefe8062ea`
+**Implementation head:** `c03eae2a9b101cd2b9db8d02bad44c306a1bdf23`
+**Platforms verified:** Linux offscreen; Windows blocked by `T212-R3`
+**Verdict:** **Changes requested.** The verb and single-entry route are correct, but the task's new
+test fails both all-files type gates and would make CI red.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T293-R1** | **Medium** | **Yes — required check fails** | `tests/ui/test_queue_view.py:2365` passes `jobs[0].playlist_id` (`str | None`) to `toggle_group(str)`. Both bare `mypy` and bare `mypy --platform win32` fail on that line. `ai/TESTING.md` requires both scopes when a test changes, and CI's “Types, tests included” step runs bare mypy. The handoff's `mypy src` did not inspect the new test. | Narrow/assert the fixture value before calling `toggle_group`, or use the known playlist id that built the fixture. Run and record both all-files mypy commands after the correction. | **Open** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Verb authority | `QUEUED` and `READY` both add `REMOVE` after `CANCEL`; running states are unchanged. The independent `UX_005_TABLE` now covers `READY`. |
+| Child routing | A child's id does not satisfy `group_jobs`, so `Verb.REMOVE` emits the single-job signal. The group signal remains unused. Existing manager/model wiring refreshes the group after durable removal. |
+| Runtime tests | Changed-file focus: **539 passed, 1 skipped**; full unit/UI and integration are green as recorded in T-212. |
+| Type gates | `mypy src` passes. Bare `mypy` and `mypy --platform win32` each report exactly T293-R1. |
+| Windows | No runtime result; T212-R3 remains independently blocking after the local type fix. |
+
+### Readiness
+
+T-293 remains **In Review**. Correct T293-R1 in the current task, rerun both all-files type gates,
+and include the final tree in T212-R3's Windows run. The functional implementation needs no other
+change and no follow-up task.
