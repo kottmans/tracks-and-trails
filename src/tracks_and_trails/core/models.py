@@ -506,6 +506,59 @@ CONTAINER_FORMATS: Final[tuple[str, ...]] = (
 )
 
 
+#: The eleven of `CONTAINER_FORMATS` that hold no video track (`T-285`).
+#:
+#: **Transcribed here and asserted against yt-dlp in the tests**, which is `CONTAINER_FORMATS`'s
+#: own arrangement one constant over: `core/` may not import `yt_dlp` (`ARCHITECTURE.md` §6), and
+#: `tests/unit/test_post_processing_options.py` derives the same split from
+#: `yt_dlp.utils.MEDIA_EXTENSIONS` so a version that reclassifies one fails the suite.
+#:
+#: **`gif` is deliberately not here.** yt-dlp files it as neither audio nor video, and it is not
+#: one of the *"music only formats"* the report that produced this task named — so it stays with
+#: the video containers, which is the conservative reading of a ruling about audio.
+AUDIO_ONLY_CONTAINERS: Final[tuple[str, ...]] = (
+    "aac",
+    "aiff",
+    "alac",
+    "flac",
+    "m4a",
+    "mka",
+    "mp3",
+    "ogg",
+    "opus",
+    "vorbis",
+    "wav",
+)
+
+
+def containers_for(media_kind: MediaKind) -> tuple[str, ...]:
+    """The containers a preset of `media_kind` may be offered (`T-285`, `UX-005` §5).
+
+    **A download that keeps its video is offered video containers only**, because the audio-only
+    eleven do not merely fail on it — measured with ffmpeg on 2026-08-27, remuxing an `h264 + aac`
+    mp4 into `mp3` **errors after the download has been paid for** (*"Invalid audio stream. Exactly
+    one MP3 audio stream is required."*), and **recoding into it succeeds and discards the video**,
+    8,898 bytes with one audio stream and nothing said. `UX-005` §5 covers the first; the second is
+    worse than a refusal, because the user asked to keep a video and got an audio file.
+
+    **An audio-only download keeps the whole list** — ruled 2026-08-28. An audio stream in `mp4` or
+    `mkv` is legal and occasionally wanted, and neither route fails on it. The symmetry is
+    deliberately not restored: it would refuse combinations that work.
+
+    **Derived by subtraction rather than restated.** A hand-written video list is a second copy of
+    `CONTAINER_FORMATS` that a new yt-dlp container would not reach — `T046-R4`'s shape, which this
+    project has already paid for once.
+
+    **This narrows what is *offered*, never what is *accepted*.** `CONTAINER_FORMATS` stays whole:
+    it is what `_require_container` validates against, and what the drift test holds equal to
+    yt-dlp's `SUPPORTED_EXTS` so a container upstream adds cannot be silently refused. What a
+    picker shows and what a validator permits are different sets.
+    """
+    if media_kind is MediaKind.AUDIO:
+        return CONTAINER_FORMATS
+    return tuple(name for name in CONTAINER_FORMATS if name not in AUDIO_ONLY_CONTAINERS)
+
+
 def _require_container(owner: str, name: str, value: object) -> None:
     """`value` is `None` or a container yt-dlp's remuxer and recoder both accept (`REQ-010`).
 

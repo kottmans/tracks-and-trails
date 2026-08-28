@@ -82,7 +82,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from tracks_and_trails.core.models import CONTAINER_FORMATS, AudioCodec, MediaKind, Preset
+from tracks_and_trails.core.models import AudioCodec, MediaKind, Preset, containers_for
 from tracks_and_trails.core.presets import (
     ALL_SUBTITLE_LANGUAGES,
     MP3_BITRATES,
@@ -423,7 +423,20 @@ class OptionsDialog(QDialog):
         self._container_choice.setObjectName(CONTAINER_CHOICE_NAME)
         self._container_choice.setAccessibleName("Container to convert to")
         container_label.setBuddy(self._container_choice)
-        for container in CONTAINER_FORMATS:
+        # **What this download could honestly be converted into** (`T-285`). A preset that keeps
+        # its video is not offered the audio-only eleven: remuxing into one errors after the
+        # download is paid for, and recoding into one succeeds and throws the video away. The
+        # dialog already knows which this is — `_update_enabled` reads the same `media_kind` to
+        # disable the audio group — and the container list was the one place it did not ask.
+        #
+        # **A container the preset already carries is kept even when it is not offered**
+        # (`T109-R2`): a control the user can neither see nor clear must not decide anything, and
+        # a `findData` miss below would silently move the setting to whatever sits at index 0.
+        offered = list(containers_for(self._preset.media_kind))
+        for carried in (self._preset.remux_container, self._preset.recode_container):
+            if carried and carried not in offered:
+                offered.append(carried)
+        for container in offered:
             self._container_choice.addItem(container, container)
         layout.addWidget(self._container_choice)
 

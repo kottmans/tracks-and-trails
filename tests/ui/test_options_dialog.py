@@ -293,13 +293,75 @@ def test_remux_and_recode_cannot_both_be_chosen(editor: Callable[..., OptionsDia
 def test_every_container_the_editor_offers_is_one_the_model_accepts(
     editor: Callable[..., OptionsDialog],
 ) -> None:
-    """The control's list and the constructor's list are the same list."""
+    """Everything offered is accepted — asserted for both kinds, since they no longer match.
+
+    **This used to assert equality with `CONTAINER_FORMATS`** and passed while a video download
+    was offered `mp3` (`T-285`). Equality was never the property worth holding: what matters is
+    that nothing offered would be refused, and the two directions are now different questions.
+    """
     from tracks_and_trails.core.models import CONTAINER_FORMATS
 
+    for preset in (preset_registry.BEST_VIDEO, preset_registry.AUDIO_MP3):
+        container = combo(editor(preset), CONTAINER_CHOICE_NAME)
+        offered = tuple(container.itemData(index) for index in range(container.count()))
+        assert set(offered) <= set(CONTAINER_FORMATS), (
+            f"{preset.name} is offered containers the model would refuse: "
+            f"{sorted(set(offered) - set(CONTAINER_FORMATS))}"
+        )
+
+
+def test_a_video_preset_is_not_offered_a_container_that_cannot_hold_video(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`T-285`: the picker was filled from the whole list whatever the preset was.
+
+    Measured with ffmpeg on 2026-08-27: remuxing an `h264 + aac` mp4 into `mp3` **fails** after the
+    download has been paid for, and recoding into it **succeeds and discards the video**. The
+    dialog already read `media_kind` forty lines away to disable the audio group; the container
+    list was the one place it did not ask.
+    """
+    from tracks_and_trails.core.models import AUDIO_ONLY_CONTAINERS
+
     container = combo(editor(preset_registry.BEST_VIDEO), CONTAINER_CHOICE_NAME)
+    offered = {container.itemData(index) for index in range(container.count())}
+
+    assert not offered & set(AUDIO_ONLY_CONTAINERS), (
+        f"a download that keeps its video is offered {sorted(offered & set(AUDIO_ONLY_CONTAINERS))}"
+    )
+    assert {"mp4", "mkv", "webm"} <= offered, "the video containers went with them"
+
+
+def test_an_audio_preset_is_still_offered_every_container(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """Ruled 2026-08-28: an audio stream in `mp4` or `mkv` is legal and nothing about it fails."""
+    from tracks_and_trails.core.models import CONTAINER_FORMATS
+
+    container = combo(editor(preset_registry.AUDIO_MP3), CONTAINER_CHOICE_NAME)
     offered = tuple(container.itemData(index) for index in range(container.count()))
 
     assert offered == CONTAINER_FORMATS
+
+
+def test_a_container_the_preset_already_carries_is_not_silently_dropped(
+    editor: Callable[..., OptionsDialog],
+) -> None:
+    """`T109-R2`: a control the user can neither see nor clear must not decide anything.
+
+    A video preset holding `mp3` is a state the model accepts and the dialog no longer offers. If
+    the list simply omitted it, `findData` would miss and the combo would open on whatever sits at
+    index 0 — silently rewriting a setting the user never touched.
+    """
+    from dataclasses import replace
+
+    carried = replace(preset_registry.BEST_VIDEO, remux_container="mp3", recode_container=None)
+
+    container = combo(editor(carried), CONTAINER_CHOICE_NAME)
+
+    assert container.currentData() == "mp3", (
+        f"the editor opened on {container.currentData()!r} for a preset carrying 'mp3', so "
+        "opening the dialog changed the preset"
+    )
 
 
 # --- the keyboard and the screen reader ----------------------------------------------------------

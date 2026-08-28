@@ -12,11 +12,13 @@ import pytest
 
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.models import (
+    AUDIO_ONLY_CONTAINERS,
     CONTAINER_FORMATS,
     AudioCodec,
     DownloadRequest,
     MediaKind,
     Preset,
+    containers_for,
 )
 from tracks_and_trails.downloader.ytdlp_adapter import build_options, build_postprocessors
 from tracks_and_trails.ui.format_text import UNADJUSTED, format_name, unadjusted
@@ -96,6 +98,72 @@ def test_the_container_list_matches_yt_dlp_s_own() -> None:
     convertor = get_postprocessor("FFmpegVideoConvertor")
     assert tuple(remuxer.SUPPORTED_EXTS) == CONTAINER_FORMATS
     assert tuple(convertor.SUPPORTED_EXTS) == CONTAINER_FORMATS
+
+
+def test_the_audio_only_containers_are_the_ones_yt_dlp_calls_audio() -> None:
+    """`T-285`: the eleven are transcribed in `core/`, and this is the other side of that.
+
+    `core/` may not import `yt_dlp` (`ARCHITECTURE.md` §6), so the split is written by hand there
+    and derived here — the same arrangement `CONTAINER_FORMATS` already uses, and the reason a
+    yt-dlp release that reclassifies a container fails the suite rather than quietly changing what
+    a video download is offered.
+
+    **`gif` is asserted to be in neither**, because that is why it stays with the video containers
+    rather than because somebody preferred it there.
+    """
+    from yt_dlp.utils import MEDIA_EXTENSIONS
+
+    audio = set(MEDIA_EXTENSIONS.audio) | set(MEDIA_EXTENSIONS.common_audio)
+    video = set(MEDIA_EXTENSIONS.video) | set(MEDIA_EXTENSIONS.common_video)
+    ours = set(CONTAINER_FORMATS)
+
+    assert set(AUDIO_ONLY_CONTAINERS) == ours & audio - video, (
+        "the hand-written audio-only list and yt-dlp's own classification disagree"
+    )
+    assert "gif" not in audio and "gif" not in video, (
+        "yt-dlp now classifies gif, so the comment saying it belongs to neither is stale"
+    )
+
+
+def test_a_video_preset_is_offered_no_container_that_cannot_hold_video() -> None:
+    """`T-285`: remux to mp3 errors after the download; recode to mp3 discards the video.
+
+    Both measured with ffmpeg on 2026-08-27 against a one-second `h264 + aac` mp4. The second is
+    worse than the first, and neither is something `UX-005` §5 permits offering.
+    """
+    offered = containers_for(MediaKind.VIDEO)
+
+    wrong = sorted(set(offered) & set(AUDIO_ONLY_CONTAINERS))
+    assert not wrong, f"a download that keeps its video is offered {wrong}"
+    assert "mp4" in offered and "mkv" in offered, "the video containers went with them"
+
+
+def test_an_audio_preset_keeps_every_container() -> None:
+    """Ruled 2026-08-28: an audio stream in `mp4` or `mkv` is legal and neither route fails on it.
+
+    The symmetry is deliberately not restored — refusing those would refuse combinations that work.
+    """
+    assert containers_for(MediaKind.AUDIO) == CONTAINER_FORMATS
+
+
+def test_narrowing_what_is_offered_does_not_narrow_what_is_accepted() -> None:
+    """The picker and the validator are different sets, and this is the line between them.
+
+    `CONTAINER_FORMATS` is what `_require_container` refuses against and what the drift test above
+    holds equal to yt-dlp's `SUPPORTED_EXTS`. A fix that narrowed it would make a container yt-dlp
+    adds unreachable rather than merely unoffered.
+    """
+    for container in AUDIO_ONLY_CONTAINERS:
+        preset = Preset(
+            name="v",
+            media_kind=MediaKind.VIDEO,
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+            remux_container=container,
+        )
+        assert preset.remux_container == container, (
+            f"{container} is no longer accepted by the model, only unoffered by the dialog"
+        )
 
 
 # --- what the translation emits ---------------------------------------------------------------
