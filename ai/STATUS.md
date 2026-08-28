@@ -5,6 +5,33 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-27 — **`T-212`'s run found a heap corruption, and the core dump is
+recovered.** Updating yt-dlp from the Settings screen **aborted the process**: `double free or
+corruption (!prev)`, at the run's own head `3d1f427`. `T-289` is filed and it is the highest
+priority thing open; the dump is recorded at
+`ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md` because `systemd-coredump` rotates.
+
+**The two stacks are the whole finding.** The GUI thread was in `sendPostedEvents` →
+`QLabel::setBuddy` → `QObject::disconnectImpl` → `free`. A **pool thread** was simultaneously in
+`PyObject_CallNoArgs` → `_Py_HandlePending` → **`gc_collect_main`** → `_Py_Dealloc` → shiboken →
+`QWidget::~QWidget` → `QObjectPrivate::deleteChildren`, **five levels deep**, blocked on the
+allocator lock the GUI thread held. **CPython's cyclic collector destroyed a Qt widget tree on a
+non-GUI thread.** Nothing scheduled it — the collector runs where an allocation threshold trips,
+which is why it looks random.
+
+**This is `T-273`'s other half.** That task established the window is held by callables Qt objects
+close over across edges `gc` cannot traverse, and fixed the retention. This is what happens when
+such a tree *does* become collectable and the collector is not on the GUI thread. `T-238`'s
+segfault is the same family. Three crashes, one shape — and this is the first with a core dump.
+
+**The update path logged nothing.** The application log's last line is 97 minutes before the abort.
+`T-282` stops being a convenience the moment a crash has no record.
+
+**This is a phase exit question rather than polish.** Whether Phase 4 can exit over it is the
+maintainer's to decide deliberately, not mine to assume either way.
+
+---
+
 **Last updated:** 2026-08-27 — **`T-212`'s checklist run is under way on a real display, and it
 is finding things.** Seven observations so far; **two are filed** — `T-281` and `T-282` — and
 nothing is fixed, which is the rule the run is held to.

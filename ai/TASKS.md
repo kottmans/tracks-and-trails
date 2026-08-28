@@ -11869,6 +11869,84 @@ taken where the report came from.
 - Scroll bar **width** or overlay behaviour — this is about being seen, not about size
 - Any other unstyled platform widget. If the sweep is extended to find them, that is its own task
 
+### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
+
+**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer updated
+yt-dlp from the Settings screen and the process **aborted**: `double free or corruption (!prev)`,
+core dumped. **The core dump was recovered and is recorded at
+`ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md`**, because `systemd-coredump` rotates and
+the evidence had to outlive it.
+**Owner:** Implementer
+**Priority:** **Highest of anything open.** It is a native memory-corruption abort in a released
+code path, on the run's own head, and every other finding in this run is cosmetic beside it
+**Phase:** Phase 4 — **this is a phase exit question**, not polish. A phase cannot exit over a
+reproducible-in-principle heap corruption without the maintainer deciding that deliberately
+**Depends on:** nothing
+**Relevant context:** `ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md`;
+`downloader/ytdlp_service.py`, which runs the update on a `QThreadPool`; **`T-273`**, the window
+retained across C++ and signal edges that `gc` cannot traverse; `T-238`, the segfault under `gw7`;
+`ARC-002`
+**Affected surfaces:** `downloader/ytdlp_service.py`, whatever owns the widget tree that was
+collected, and the tests that would hold the rule
+**Risk:** **High to fix wrongly.** The obvious mitigations — disabling `gc` on pool threads, or
+sprinkling `deleteLater` — treat the symptom and leave the rule unstated
+
+#### What the core dump says
+
+Two threads were inside `free()` on the same Qt object graph.
+
+**The GUI thread**, delivering a posted event:
+`QCoreApplication::exec` → `sendPostedEvents` → `QObject::event` → **`QLabel::setBuddy`** →
+`QObject::disconnectImpl` → `free` → `malloc_printerr` → `abort`. A label is clearing itself
+because its buddy is being destroyed.
+
+**A pool thread**, at the same moment:
+`PyObject_CallNoArgs` (Qt calling this task's Python) → `_PyEval_EvalFrameDefault` →
+`_Py_HandlePending` → **`gc_collect_main`** → `_Py_Dealloc` → **libshiboken6** →
+`QWidget::~QWidget` → `QObjectPrivate::deleteChildren`, **five levels deep**, blocked on the
+allocator lock the GUI thread holds.
+
+**CPython's cyclic collector ran on a pool thread and destroyed a Qt widget tree there.** Qt
+widgets may only be destroyed on the GUI thread. Nothing scheduled this: the collector runs
+wherever an allocation threshold happens to trip, which is exactly why it presents as random.
+
+**The update is the occasion, not the mechanism.** `ytdlp_service.py` runs it on a `QThreadPool`,
+so the update is simply Python executing on a non-GUI thread at a moment when a widget tree had
+become garbage. Any pool work can do this.
+
+#### What this is a second instance of
+
+`T-273` established that this application's windows are held by callables that Qt objects close
+over across C++ parent-child and signal edges — references `gc` cannot traverse. It fixed the
+*retention*. **This is the other half: what happens when such a tree does become collectable and
+the collector is not on the GUI thread.** `T-238`'s segfault belongs to the same family. Three
+crashes, one shape.
+
+#### Acceptance criteria
+
+- **The rule is stated somewhere durable and enforced somewhere mechanical**: no Qt widget is
+  destroyed off the GUI thread. A comment in one file is what this project already had
+- **A widget tree is never left owned by Python alone** where a pool thread can collect it — either
+  it has a Qt parent that owns it in C++, or its disposal goes through the GUI thread explicitly
+- **The fix is not `gc.disable()` on pool threads**, or is that only with the reasoning written
+  down and the leak it trades for measured. Turning off the collector to hide a threading rule is a
+  bigger commitment than it looks
+- **A test that fails on the uncorrected tree exists**, even if it has to force the collector on a
+  pool thread while a tree is collectable — the crash is intermittent by nature and a fix with no
+  failing test is a fix nobody can check
+- **The three `edit: editing failed` lines are accounted for** — explained as part of this, or
+  separated out and filed. They are on the console immediately before the abort
+- **The update path logs what it is doing** (`T-282`), or this entry records why it still does not:
+  the application log's last line is 97 minutes before the crash
+
+#### Out of scope
+
+- **The leaked semaphores.** Three `/mp-*` objects survived, which is what an aborted process
+  leaves; if they survive an *orderly* exit that is `T-268`'s territory, not this
+- **`OPS-003`'s Windows half.** Observed on KDE/Wayland; whether the same collection lands the same
+  way there is unknown and is named rather than assumed
+- Making the update itself faster, or moving it off a pool
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
