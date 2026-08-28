@@ -11273,6 +11273,163 @@ run is the deliverable; the pass is only what it hopefully shows.
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
 
+### T-281 — Unavailable playlist entries are carried into the queue as rows that cannot download
+
+**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run**, which is where it was
+seen: a real 20-item playlist staged 20 rows, two of which showed their own URL where a title
+belongs and *Unknown* where a duration belongs. **The maintainer ruled the disposition the same
+day: drop them, and record the drop in the application log** so a later question about a short
+playlist has something to read.
+**Owner:** Implementer
+**Priority:** Medium — the rows reach the queue and fail there, and the failure says nothing a user
+can act on. Nothing is lost by dropping them: `entry_count` reports what the site says, so a group
+of twenty that materialised eighteen already knows it is short
+**Phase:** Phase 4 (polish; **not** a plan deliverable) — the same placement `T-244` took
+**Depends on:** nothing
+**Relevant context:** `downloader/ytdlp_adapter.py` `_entries`; `T-137`, which wrote the flat
+projection and its recorded playlist fixture; `downloader/worker.py` — the probe's options are
+built without a logger, the download's with one; `core/logging.py` `redact` and `_bare_url`
+**Affected surfaces:** `downloader/ytdlp_adapter.py`, `downloader/worker.py`, their tests, and a
+recorded fixture for a playlist holding unreadable entries
+**Risk:** Low for the drop, **Medium for the log line** — a naive line logs the entry's URL, and
+redaction deletes exactly the part that identifies it (below)
+
+#### What is wrong
+
+**Measured against the live playlist, yt-dlp 2026.x, on 2026-08-27.** The extractor says so itself:
+
+```
+WARNING: [youtube:tab] YouTube said: INFO - 2 unavailable videos are hidden
+```
+
+and the two entries arrive with their slot intact and their metadata gone:
+
+```
+--- entry 18 ---                    --- entry 19 ---
+  id      : 'thuQPFQFQE8'             id      : 'Zg0WtgC80lY'
+  title   : 'Angry Video Game …'      title   : None
+  duration: 10966                     duration: None
+  channel : 'Cinemassacre'            (no channel, no uploader)
+```
+
+`playlist_count` is `20` and `entries` is twenty long.
+
+**`_entries` already means to drop these and tests the wrong field.** Its docstring says an entry
+yt-dlp could not read is *"dropped rather than carried … a deleted or private video keeps its slot
+in the list … a job pointing at nothing would fail at download time with nothing useful to say"* —
+which is this case named exactly. The guard it performs is `if not url: continue`, and a YouTube
+placeholder **has** a URL: yt-dlp composes `watch?v=<id>` from the id it still holds. The marker
+for a placeholder is the **missing title**, not a missing address.
+
+`title = str(item.get("title") or "").strip() or url` then puts the raw address in the title
+column, which is the row the run photographed.
+
+**The one sentence that explains it is discarded at the moment it is produced.** `build_options`
+takes a `logger` and `report_warning` routes through it, but the probe is built at
+`worker.py:1071` without one; only the download path passes `YtdlpLog`. So the extractor's own
+count of hidden videos is emitted during the probe and reaches nothing.
+
+#### The log line has a trap in it, and the criteria below exist because of it
+
+`RedactingFormatter` strips **every** URL's query string — no allowlist, by `T-018`'s decision —
+and a YouTube video id lives in the query. Measured:
+
+```
+'dropped https://www.youtube.com/watch?v=Zg0WtgC80lY'  ->  'dropped https://www.youtube.com/watch'
+'dropped entry id=Zg0WtgC80lY (19 of 20)'              ->  unchanged
+```
+
+A line that logs the entry's URL is therefore a line that cannot identify the entry. The id is a
+bare token and survives; redaction is not the thing to weaken.
+
+#### Acceptance criteria
+
+- **An entry yt-dlp could not read is dropped from the projection**, and the test for it is the
+  missing title rather than the missing address — with a case that carries a URL and no title, so
+  the old guard fails it
+- **`entry_count` still reports the site's count**, unchanged: the group says twenty and offers
+  eighteen, which is `_entry_count`'s existing contract and the reason dropping is safe
+- **Every drop is recorded in the application log**: one line per probed playlist, naming how many
+  entries were dropped and the id of each
+- **That line survives redaction** — asserted by passing it through `redact()` in the test, not by
+  reading it. A line logging the entry URL passes a naive test and loses the id
+- **A recorded fixture reproduces the shape offline**, the way `T-137` recorded its playlist, so
+  the case is testable without the network
+- **The known placeholder spellings are covered**: this playlist produced `title: None`, and
+  yt-dlp also emits `[Private video]` and `[Deleted video]` titles for the same condition on other
+  paths — whichever of those the fixture cannot produce is named in the entry rather than assumed
+
+#### Out of scope
+
+- **Carrying unavailable entries as a visible state** — listed, unchecked, refused at queue time.
+  It is the more honest surface and the maintainer chose the drop; if it is wanted later it is its
+  own task, through `PlaylistEntry`, the picker and the delegate
+- **A debug level for the application log** — `T-282`. This task's line goes to the log that
+  already exists, at a level that is already written
+- **Whether the probe should pass a logger at all.** Surfacing yt-dlp's own warning to the user is
+  a separate question from this application recording what it itself did
+
+### T-282 — A debug level for the application log, reachable without editing code
+
+**Status:** Proposed — **filed 2026-08-27 at the maintainer's request**, during `T-212`'s run and
+prompted by `T-281`: *"if we have a verbose debug log that we can reference, it would be nice to
+print out that the videos were removed in case we ever have to figure out issues with this — that,
+and a debug log could help solve other problems as well."*
+
+**What already exists, so this task is smaller than it sounds.** `configure_logging` installs a
+redacting file handler at `~/.cache/tracksandtrails/tracks-and-trails.log`, one job log per job,
+and a worker queue that feeds both. It **already takes a `level`**. What is missing is any way to
+choose one: `app.py:133` is the only caller and it passes the default, so the application is
+`INFO` and nothing can change it without an edit.
+**Owner:** Implementer
+**Priority:** Medium — it is a diagnostic capability rather than a defect, and every future
+question of the *"why did it do that on the user's machine"* kind is cheaper with it
+**Phase:** **The maintainer's to place.** Filed against Phase 4 because that is where it was asked
+for; it is not a `T-212` finding and not a phase exit criterion, so it is a candidate for deferral
+rather than something the exit waits on
+**Depends on:** nothing. `T-281` writes its line at a level that is already recorded, so neither
+task blocks the other
+**Relevant context:** `core/logging.py` — `configure_logging`, `YtdlpLog` and its `verbose` note;
+`app.py` `USAGE` and its existing flags; `REQ-019`, `REQ-026`, `T-038`
+**Affected surfaces:** `core/logging.py`, `app.py`, whichever of settings or argv carries the
+choice, and their tests
+**Risk:** **Medium, and it is a security risk rather than a functional one** — see below
+
+#### The two things a debug level must not become
+
+- **It must not weaken redaction.** `REQ-026` binds credentials and cookie paths, and
+  `RedactingFormatter` is installed per handler precisely so no call site can opt out. A debug
+  level raises the volume of what is written; it does not change what may be written, and a test
+  should hold that every handler still formats through the redactor at `DEBUG`.
+- **It must not turn on yt-dlp's `verbose`.** `YtdlpLog` records the measurement and the reason:
+  verbose makes yt-dlp dump `params:` and `Proxy map:`, which carry the proxy the user configured.
+  "Debug logging" in this application means *this application's* `DEBUG` records, plus the yt-dlp
+  lines already routed through `YtdlpLog`. Anyone reading this entry as licence to pass
+  `verbose: True` would undo a decision taken deliberately.
+
+#### Acceptance criteria
+
+- **The level is choosable at start-up without editing code**, and the mechanism is proposed by
+  the implementer and ruled by the maintainer rather than chosen here — a flag alongside the
+  existing ones in `USAGE`, a setting on the Settings screen, or an environment variable are all
+  defensible and they differ in who the feature is for
+- **`INFO` remains the default**, so an ordinary run's log is unchanged in volume and content
+- **Every handler still formats through `RedactingFormatter` at `DEBUG`**, asserted rather than
+  assumed
+- **yt-dlp's `verbose` stays off at every level**, asserted by a test that would fail if a later
+  change wired the two together
+- **The log says which level it is at**, once, at the top of a run — a log whose level is unknown
+  makes an absent line ambiguous between "did not happen" and "not recorded"
+- **Whatever the mechanism, it is documented where a user would look for it**, since the point of
+  the feature is that somebody other than the implementer can turn it on
+
+#### Out of scope
+
+- **A log viewer in the application.** `ui/log_view.py` exists for the per-job log; this task is
+  about what gets written, not about a new surface for reading it
+- **Changing what is redacted.** `T-018`'s empty allowlist stands
+- **Retention or rotation policy** beyond what the handler already does
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three

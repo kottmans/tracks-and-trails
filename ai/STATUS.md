@@ -5,6 +5,39 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-27 — **`T-212`'s checklist run is under way on a real display, and it
+is finding things.** Seven observations so far; **two are filed** — `T-281` and `T-282` — and
+nothing is fixed, which is the rule the run is held to.
+
+**`T-281` is the one with an outside cause and a measured one.** A real 20-item playlist staged
+twenty rows, two of them showing their own URL where a title belongs. yt-dlp says why —
+*"2 unavailable videos are hidden"* — and the entries arrive with their slot and id intact and
+every other field `None`. **`_entries`'s docstring already describes dropping exactly these** and
+the guard it performs tests the address, which a YouTube placeholder still has. **The maintainer
+ruled the disposition: drop them, and record the drop.** The recording has a trap that the entry
+carries: `RedactingFormatter` strips every URL's query, and a YouTube video id lives in the query,
+so a line logging the entry's URL is a line that cannot name the entry. Measured both ways.
+
+**`T-282` is the maintainer's ask that came out of it** — a debug level for the application log,
+which `configure_logging` already takes a parameter for and no caller ever passes. Its risk is not
+functional: a debug level must not weaken redaction and must not become yt-dlp's `verbose`, which
+`YtdlpLog` records as a deliberate refusal because verbose dumps the configured proxy.
+
+**One of the 47 checklist rows is itself wrong.** Row 4.7 reads *"expanded playlist children draw
+no verbs of their own"* and cites `T-244` — whose approved criterion is that every child draws
+every verb its `VERBS_ROLE` offers. Run as written it files a task against a fix that works. It is
+**not corrected yet**, and the run should not proceed past §4 until it is.
+
+**Still open from the run, unfiled:** the empty status line in the add dialog taking Tab focus; a
+row verb that is a no-op while another panel is open on that row; the template panel mounting at
+its 26 px minimum when the list viewport is short; a thumbnail flicker on resize that **did not
+reproduce offscreen** and is recorded as an observation rather than a cause; and whether a queued
+playlist child should offer `Remove`, which is a `UX-005` §4 question rather than a defect.
+
+**Held and unpushed:** this commit.
+
+---
+
 **Last updated:** 2026-08-27 — **`T-273` is Complete, Approved at `b6db88d`, with no finding left
 open and no follow-up task.**
 
