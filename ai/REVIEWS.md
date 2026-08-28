@@ -21246,3 +21246,39 @@ test fails both all-files type gates and would make CI red.
 T-293 remains **In Review**. Correct T293-R1 in the current task, rerun both all-files type gates,
 and include the final tree in T212-R3's Windows run. The functional implementation needs no other
 change and no follow-up task.
+
+---
+
+## 2026-08-28 — T-292 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-292`
+**Base:** `c03eae2a9b101cd2b9db8d02bad44c306a1bdf23`
+**Implementation head:** `8c819e1ee226317f8252ebf815274af53b0eacd8`
+**Platforms verified:** Linux offscreen; Windows blocked by `T212-R3`
+**Verdict:** **Changes requested.** The editable control and ordinary refusal paths work, but two
+forms of untrusted path text are not safely settled.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T292-R1** | **Medium** | **Yes — invalid input escapes the refusal path** | `_directory_typed` calls `Path(typed).expanduser()` outside any guard (`settings_dialog.py:669-680`). On POSIX, `~user` for an account that does not exist raises `RuntimeError`. A direct widget probe with `~tracks_and_trails_user_that_cannot_exist_28493/downloads` raised **“Could not determine home directory”**; no refusal was shown and the field was not restored. The settings loader already documents and catches this exact exception in its never-raises path. | Reuse one shared directory-validation result if practical, or catch the filesystem/expansion exceptions here and route them through `_refuse_directory`. Add a real-slot regression that proves the message and restoration, not only `Path.expanduser` in isolation. | **Open** |
+| **T292-R2** | **Medium** | **Yes — destination meaning is unstable** | The task explicitly names relative paths as one of the cases to decide (`ai/TASKS.md:12347-12353`), but no ruling was recorded and the implementation accepts them unchanged. A direct probe typing `.` sent `PosixPath('.')` to composition. That value is persisted and resolved relative to the process working directory, so the same setting may name a different folder on a later launch. | Decide and record the relative-path rule. Either refuse relative input in the field's voice or convert it to a stable absolute spelling before it leaves the UI, then test the stored/callback value and reopened display. | **Open** |
+| **T292-R3** | **Low** | No | `test_a_tilde_is_understood_rather_than_refused` uses the executing account's real home and assumes it is writable. Under the review sandbox, expansion correctly produced `/home/sean`, but the product correctly refused that sandbox-unwritable directory and the test failed. The normal-environment run passes. The test therefore conflates expansion with host writability. | Point `HOME`/the platform home lookup at a writable `tmp_path` for this test, then assert the expanded callback value. Fold into T-292's correction; no follow-up task. | **Open, non-blocking** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Ordinary paths | Existing missing-directory, file, unwritable-directory, accepted-directory and restoration tests pass in the normal environment. |
+| Exception probe | Unknown-user tilde raised `RuntimeError` from `Path.expanduser`; the callback was not reached. |
+| Relative probe | Typing `.` called the composition callback with `PosixPath('.')`, unchanged. |
+| UI evidence | Full UI: **1,071 passed, 3 skipped**; changed-file focus: **539 passed, 1 skipped**. The sandbox-only home test failure disappears under normal host permissions and is recorded as T292-R3 rather than as a product failure. |
+| Platform | No Windows result; T212-R3 remains blocking after these corrections. |
+
+### Readiness
+
+T-292 remains **In Review**. Correct R1-R3 in one batch, move its orphaned task body under the
+proper heading through T212-R2, and include the final tree in T212-R3's Windows run. No new task is
+needed.
