@@ -246,6 +246,71 @@ contents; this preface does not list them.***
 
 ---
 
+### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
+
+**Status:** **In Review — built 2026-08-28, and no review has run.** The painted label now starts
+at **x = 7** where it started at 2, matching the editor exactly. Gates green: `ruff check .`,
+`ruff format --check .`, `mypy src`, 2,377 tests. **Four mutations, all killed** — including the
+one that matters, stopping `_paint_control` from calling the new helper, which **survived a first
+version of the test** that measured the helper's arithmetic instead of the paint. That is `T-244`'s
+shape and it is why the regression now reads pixels.
+
+*(Filed 2026-08-27 by `T-212`'s checklist run. The maintainer's report: *"the drop down for the
+'Same as All' is too far left aligned. There should be a bit of space (like if you click on it and
+expand the dropdown)."*)*
+
+**One thing the fix does not achieve, recorded rather than glossed:** the two routes agree at
+`COMBO_PADDING_X = 6` and are **not obliged to agree at every value**. The painted side recomputes
+its inset as the style's frame width plus the constant; the editor's is whatever the sheet and the
+style settle on together. Measured at `12`: painted 13, editor 7. The regression is therefore a
+**tripwire on the constant** rather than a proof that any padding works, and both the constant and
+the test say so.
+**Owner:** Implementer
+**Priority:** Low — cosmetic, and it is the state the user looks at almost all of the time: the
+real combo exists only while the row is being edited
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/row_delegate.py` `_paint_control` and `updateEditorGeometry`;
+`T118-R12`, which is the half of this that was already fixed; `ui/theme.py`'s `QComboBox` rule
+**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`
+**Risk:** Low
+
+#### What is wrong
+
+Measured under the application's own stylesheet, one 165×26 control, both routes:
+
+```
+real editor text field x   : 7      # 1 px border + the sheet's 6 px padding
+painted affordance field x : 2      # the base style's inset; the padding never applies
+jump on click              : 5 px
+```
+
+**`_paint_control` draws through `option.widget`, which is the list view.** `QStyleSheetStyle`
+resolves rules against the widget it is given, so `QComboBox { padding: 3px 6px }` matches nothing
+when the widget is a `QListView` — the painted control gets the unstyled inset while the editor Qt
+creates on click gets the styled one.
+
+**`T118-R12` fixed the outer half of exactly this and stopped at the frame.** Its comment reads
+*"the same rectangle the affordance was painted in … one definition, so the control does not move
+at the moment the user clicks it."* The rectangle does not move; the text inside it moves 5 px.
+
+#### Acceptance criteria
+
+- **The painted label and the editor's label start at the same x**, asserted by measuring both
+  rather than by choosing a constant that happens to match today — a hard-coded 7 becomes wrong the
+  moment the sheet's padding changes
+- **The assertion is driven from the stylesheet's value**, so a change to `QComboBox`'s padding
+  moves both or fails the test
+- The fix does not reintroduce a second definition of the control's rectangle, which is
+  `T118-R12`'s finding
+
+#### Out of scope
+
+- The control's **width** and the `⋮` zone carved from it (`T-203`, `UX-011` option *E*)
+- What the control **says**, which is `T-284`
+
+---
+
 ### T-281 — Unavailable playlist entries are carried into the queue as rows that cannot download
 
 **Status:** **In Review — built 2026-08-28, and no review has run.** Gates green: `ruff check .`,
@@ -11445,55 +11510,6 @@ choice, and their tests
   about what gets written, not about a new surface for reading it
 - **Changing what is redacted.** `T-018`'s empty allowlist stands
 - **Retention or rotation policy** beyond what the handler already does
-
-### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
-
-**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
-*"the drop down for the 'Same as All' is too far left aligned. There should be a bit of space (like
-if you click on it and expand the dropdown)."*
-**Owner:** Implementer
-**Priority:** Low — cosmetic, and it is the state the user looks at almost all of the time: the
-real combo exists only while the row is being edited
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/row_delegate.py` `_paint_control` and `updateEditorGeometry`;
-`T118-R12`, which is the half of this that was already fixed; `ui/theme.py`'s `QComboBox` rule
-**Affected surfaces:** `ui/row_delegate.py`, `tests/ui/test_row_delegate.py`
-**Risk:** Low
-
-#### What is wrong
-
-Measured under the application's own stylesheet, one 165×26 control, both routes:
-
-```
-real editor text field x   : 7      # 1 px border + the sheet's 6 px padding
-painted affordance field x : 2      # the base style's inset; the padding never applies
-jump on click              : 5 px
-```
-
-**`_paint_control` draws through `option.widget`, which is the list view.** `QStyleSheetStyle`
-resolves rules against the widget it is given, so `QComboBox { padding: 3px 6px }` matches nothing
-when the widget is a `QListView` — the painted control gets the unstyled inset while the editor Qt
-creates on click gets the styled one.
-
-**`T118-R12` fixed the outer half of exactly this and stopped at the frame.** Its comment reads
-*"the same rectangle the affordance was painted in … one definition, so the control does not move
-at the moment the user clicks it."* The rectangle does not move; the text inside it moves 5 px.
-
-#### Acceptance criteria
-
-- **The painted label and the editor's label start at the same x**, asserted by measuring both
-  rather than by choosing a constant that happens to match today — a hard-coded 7 becomes wrong the
-  moment the sheet's padding changes
-- **The assertion is driven from the stylesheet's value**, so a change to `QComboBox`'s padding
-  moves both or fails the test
-- The fix does not reintroduce a second definition of the control's rectangle, which is
-  `T118-R12`'s finding
-
-#### Out of scope
-
-- The control's **width** and the `⋮` zone carved from it (`T-203`, `UX-011` option *E*)
-- What the control **says**, which is `T-284`
 
 ### T-284 — *Same as all* names the relation and drops the value the spec asks for
 

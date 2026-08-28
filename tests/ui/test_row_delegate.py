@@ -39,11 +39,17 @@ from PySide6.QtCore import (
 )
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QMouseEvent, QPainter, QPalette
-from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QStyle,
+    QStyleOptionComboBox,
+    QStyleOptionViewItem,
+)
 
 from tracks_and_trails.core.models import MediaKind
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
-from tracks_and_trails.ui import row_delegate
+from tracks_and_trails.ui import row_delegate, theme
 from tracks_and_trails.ui.row_delegate import (
     ACTION_ROLE,
     BAR_HEIGHT,
@@ -56,6 +62,7 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     INDENT,
+    INHERITED_TEXT,
     JOB_ID_ROLE,
     MEDIA_KIND_ROLE,
     MENU_ZONE_INSET,
@@ -424,6 +431,107 @@ def test_a_row_with_choices_draws_a_control_and_one_without_does_not(
     # And only there: a control must not redraw the rest of the row differently.
     rest = QRect(0, 0, RENDER_WIDTH - PADDING - EDITOR_WIDTH - GAP, ROW_HEIGHT)
     assert drawn.copy(rest) == plain.copy(rest), "painting the control disturbed the row's text"
+
+
+def _first_label_pixel(delegate: RowDelegate, slot_left: int) -> int | None:
+    """The x of the first pixel the control's *label* inks, found by difference.
+
+    Two rows identical but for the label's text, one of which is a space and inks nothing. The
+    frame and the arrow are drawn identically in both, so the leftmost differing column is where
+    the text begins — which no amount of style arithmetic can disagree with, because it is what
+    was painted.
+    """
+
+    def painted(text: str) -> QImage:
+        model = RowsModel(
+            [
+                {
+                    HEADLINE_ROLE: "",
+                    DETAIL_ROLE: "",
+                    STATE_ROLE: "",
+                    HUE_ROLE: 0,
+                    PRESET_CHOICES_ROLE: ("Best video", "Audio only"),
+                    PRESET_ROLE: text,
+                }
+            ]
+        )
+        image = QImage(RENDER_WIDTH, ROW_HEIGHT, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        try:
+            option = QStyleOptionViewItem()
+            option.rect = QRect(0, 0, RENDER_WIDTH, ROW_HEIGHT)
+            option.fontMetrics = QFontMetrics(option.font)
+            delegate.paint(painter, option, model.index(0, 0))
+        finally:
+            painter.end()
+        return image
+
+    inked, blank = painted("XXXXXX"), painted(" ")
+    for x in range(slot_left, RENDER_WIDTH):
+        if any(inked.pixel(x, y) != blank.pixel(x, y) for y in range(ROW_HEIGHT)):
+            return x
+    return None
+
+
+def test_the_painted_control_insets_its_text_where_the_editor_does(qapp: QApplication) -> None:
+    """`T-283`: the label jumped 5 px at the moment of the click.
+
+    **Both routes are measured and neither number is written down here.** A test asserting `7`
+    passes today and lies the first time the sheet's padding changes, which is the drift
+    `COMBO_PADDING_X` exists to prevent.
+
+    **The painted side is measured from pixels, through `paint`.** A first version asserted
+    `_label_box`'s arithmetic directly and a mutation that stopped `_paint_control` calling it
+    **survived** — the same shape as `T-244`, where the model offered verbs the delegate never drew
+    and each half was tested alone.
+
+    **The sheet is applied to the editor and not to the application**, because that is where the
+    defect lives: `QStyleSheetStyle` resolves rules against the widget it is handed, so a
+    `QComboBox` rule never reaches a control painted through a `QListView`.
+
+    **This fails if `COMBO_PADDING_X` changes, and that is the honest behaviour rather than a
+    limitation to work around.** The painted route *recomputes* the inset as frame plus padding;
+    the editor's is whatever the sheet and the style settle on together, and the two agree at `6`
+    without being obliged to at every value — measured at `12`, the painted side moves to 13 and
+    the editor stays at 7. So this test is a tripwire on the constant, not a proof that any value
+    works: changing the padding means re-measuring both routes here, deliberately.
+    """
+    editor = QComboBox()
+    editor.addItem(INHERITED_TEXT)
+    editor.setStyleSheet(theme.stylesheet(theme.DARK))
+    editor.setGeometry(QRect(0, 0, EDITOR_WIDTH, ROW_HEIGHT))
+    editor.show()
+    qapp.processEvents()
+    option = QStyleOptionComboBox()
+    editor.initStyleOption(option)
+    editor_inset = (
+        editor.style()
+        .subControlRect(
+            QStyle.ComplexControl.CC_ComboBox,
+            option,
+            QStyle.SubControl.SC_ComboBoxEditField,
+            editor,
+        )
+        .x()
+        - option.rect.x()
+    )
+    editor.deleteLater()
+    qapp.processEvents()
+
+    slot_left = RENDER_WIDTH - PADDING - EDITOR_WIDTH
+    first = _first_label_pixel(RowDelegate(), slot_left)
+
+    assert first is not None, "the control drew no label at all, so there is nothing to measure"
+    painted_inset = first - slot_left
+    assert painted_inset == editor_inset, (
+        f"the row paints its label {painted_inset} px into the control and the editor it becomes "
+        f"on click puts its own {editor_inset} px in, so the text moves under the pointer"
+    )
+    assert painted_inset >= theme.COMBO_PADDING_X, (
+        "the label sits closer to the control's border than the theme's own padding, which is "
+        "the report this task was filed from"
+    )
 
 
 def test_the_control_shows_the_rows_own_choice(qapp: QApplication) -> None:

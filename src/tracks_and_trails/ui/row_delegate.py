@@ -995,6 +995,27 @@ class RowDelegate(QStyledItemDelegate):
         body, tile = self._body_of(option, index)
         return self._control_rect(body, option.fontMetrics.height(), tile=tile[0])
 
+    @staticmethod
+    def _label_box(
+        box: QStyleOptionComboBox, style: QStyle, widget: QWidget | None
+    ) -> QStyleOptionComboBox:
+        """`box` shifted so `CE_ComboBoxLabel` draws where the real editor would (`T-283`).
+
+        Only the label pass uses this: the frame and the arrow are already drawn from the true
+        rectangle, and moving those would move the control rather than its text.
+        """
+        field = style.subControlRect(
+            QStyle.ComplexControl.CC_ComboBox, box, QStyle.SubControl.SC_ComboBoxEditField, widget
+        )
+        wanted = (
+            box.rect.x()
+            + style.pixelMetric(QStyle.PixelMetric.PM_ComboBoxFrameWidth, box, widget)
+            + theme.COMBO_PADDING_X
+        )
+        shifted = QStyleOptionComboBox(box)
+        shifted.rect = box.rect.adjusted(wanted - field.x(), 0, 0, 0)
+        return shifted
+
     def _menu_zone_of(
         self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
     ) -> QRect:
@@ -1510,7 +1531,22 @@ class RowDelegate(QStyledItemDelegate):
         style.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, box, painter, widget)
         # The label is a separate element: `CC_ComboBox` draws the frame and the arrow, and
         # `CE_ComboBoxLabel` draws the text inside whatever room they left.
-        style.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, box, painter, widget)
+        #
+        # **Inset to where the editor puts its own text** (`T-283`). The style being asked here is
+        # the *list view's*, and `QStyleSheetStyle` resolves rules against the widget it is handed
+        # — so the sheet's `QComboBox { padding }` matches nothing and the painted label came out
+        # 5 px left of the editor Qt creates on click. `T118-R12` made the two agree about the
+        # rectangle; this makes them agree about the text inside it.
+        #
+        # The frame width comes from the style and the padding from `theme`, so neither is a
+        # second opinion: changing the sheet's padding moves this, and the regression measures
+        # both routes rather than asserting a number.
+        style.drawControl(
+            QStyle.ControlElement.CE_ComboBoxLabel,
+            self._label_box(box, style, widget),
+            painter,
+            widget,
+        )
 
         # **The menu's painted door, drawn as a door** (`UX-011`, `UX-012`, `T-224`). Still an
         # affordance with no accessibility node — acceptable on the disclosure triangle's

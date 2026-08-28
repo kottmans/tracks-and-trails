@@ -186,6 +186,24 @@ DARK: Final = Theme(
 
 THEMES: Final = {theme.name: theme for theme in (LIGHT, DARK)}
 
+#: How far a combo box or line edit insets its text from its own border, in pixels.
+#:
+#: **Named because two surfaces have to agree on it** (`T-283`). The sheet below styles the real
+#: `QComboBox`; `RowDelegate._paint_control` draws the *affordance* a row shows when it is not
+#: being edited, through the list view's style — and `QStyleSheetStyle` resolves rules against the
+#: widget it is handed, so a rule written for `QComboBox` matches nothing when the widget is a
+#: `QListView`. Measured before this constant existed: the painted label started at **x = 2** and
+#: the editor's at **x = 7**, so the text jumped 5 px at the moment of the click. `T118-R12` fixed
+#: the same seam one level out — *"the same rectangle the affordance was painted in … so the
+#: control does not move at the moment the user clicks it"* — and stopped at the frame.
+#:
+#: **Changing this number is a measurement, not an edit.** The sheet gives the editor its inset
+#: through `QStyleSheetStyle`; the delegate *recomputes* one as the style's frame width plus this.
+#: They agree at `6` and are not obliged to at every value — at `12` the painted side moves to 13
+#: and the editor stays at 7. `test_the_painted_control_insets_its_text_where_the_editor_does` is
+#: the tripwire that makes that divergence a failure rather than a drift.
+COMBO_PADDING_X: Final = 6
+
 
 def _channels(colour: str) -> tuple[int, int, int]:
     """`#RRGGBB` as three ints. Raises rather than guessing at anything else.
@@ -1088,7 +1106,7 @@ QComboBox, QLineEdit {{
     background-color: {theme.surface};
     border: 1px solid {theme.border};
     border-radius: 4px;
-    padding: 3px 6px;
+    padding: 3px {COMBO_PADDING_X}px;
 }}
 QComboBox:disabled, QLineEdit:disabled {{
     /* **A control that does nothing must not look like one that does** (`T-139`, and `T-129`'s
