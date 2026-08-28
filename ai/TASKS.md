@@ -11569,7 +11569,7 @@ in the dialog without touching the set validation and the drift test depend on
 The container picker is filled from the full list, for every preset:
 
 ```python
-for container in CONTAINER_FORMATS:          # options_dialog.py:426
+for container in CONTAINER_FORMATS:  # options_dialog.py:426
     self._container_choice.addItem(container, container)
 ```
 
@@ -11622,6 +11622,85 @@ by a validator are different sets**, and this task changes only the first.
 - **The remux/recode radio itself** and the one-change rule (`_require_one_container_change`)
 - **Warning about a lossy recode** in general — this is about a list, not about advice
 - Changing what `core/` accepts
+
+### T-286 — The container section says what recode costs and never what it is for
+
+**Status:** Proposed — **filed 2026-08-27 during `T-212`'s run**, from the maintainer's question:
+*"Does re-encoding provide any tangible benefits over remuxing the files? Seems like the option is
+pointless."* **It is not pointless, and the fact that the dialog left that question open is the
+defect** — the note beside the radios states the cost of recoding and never the case that buys it.
+**The option stays**; this task changes what the dialog says about it.
+**Owner:** Implementer
+**Priority:** Medium — a control whose purpose has to be reasoned out from first principles is one
+users either avoid or misuse, and both cost a whole re-encode to discover
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing. `T-285` narrows *which containers* are offered; this changes *what the
+section says* about the two verbs, and neither blocks the other
+**Relevant context:** `ui/options_dialog.py:402`–`:431` — the three radios and the note;
+`REQ-010`; `T-109`; `core/presets.py`, where the mp4 preset's selector already answers the common
+case without any conversion at all
+**Affected surfaces:** `ui/options_dialog.py`, `tests/ui/test_options_dialog.py`
+**Risk:** Low
+
+#### What is wrong
+
+The note reads, in full:
+
+> Remuxing keeps the streams and is quick; recoding re-encodes them and is not.
+
+Both halves are true and the sentence describes only cost. A user reading it learns that one
+option is slower and nothing about when the slower one is the right answer — which is why the
+question this task was filed from is the reasonable conclusion to draw from the dialog as it
+stands.
+
+**Measured with ffmpeg 2026-08-27**, a one-second `vp9 + opus` webm and a one-second `h264 + aac`
+mp4, plus a ten-second 640×480 clip for the cost:
+
+| Operation | Result |
+|---|---|
+| **Remux** webm (vp9/opus) → mp4 | **Succeeds — and the output still contains `vp9 opus`** |
+| **Remux** mp4 (h264/aac) → webm | **Fails**: *"Only VP8 or VP9 or AV1 video and Vorbis or Opus audio … are supported for WebM"* |
+| **Recode** webm (vp9/opus) → mp4 | **Succeeds, producing `h264 aac`** |
+| Cost | remux **0.11 s**, recode **4.86 s** — and the recode's output was **larger** than its source, 221 KB against 158 KB |
+
+**Remux changes the wrapper; recode is the only thing that changes the codecs.** That is recode's
+entire benefit and it is a real one: a source published as VP9 or AV1 only — which YouTube
+increasingly does above 1080p — has no route to a file that plays on hardware speaking h264/aac
+except through a re-encode.
+
+**And it is narrower than it looks in this application**, which the note should not overstate
+either: the mp4 preset already selects `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]`, so
+the common case is answered by *choosing* an h264 stream rather than by making one. Recode earns
+its place only where no such stream exists.
+
+#### Acceptance criteria
+
+- **The section names the case recoding is for**, in the same register as the rest of the dialog —
+  a user's words, not codec names, and one line rather than a paragraph
+- **It does not oversell it**: the note must not read as advice to recode, given that format
+  selection answers the ordinary case without one
+- **The cost stays stated.** The present sentence is not wrong and the slowness is what stops a
+  casual click; this adds the missing half rather than replacing the sentence
+- **The wording is asserted by a test**, the way the dialog's other fixed strings are, so it cannot
+  drift back into cost-only
+
+#### An open question this raises, and does not answer
+
+**A remux to `mp4` that leaves VP9 inside is a success that did not do what the user meant.** The
+first row of the table is exactly the trap the maintainer's question was circling: the mux
+succeeds, the extension changes, and the file still will not play where it was converted to play.
+Whether the application should say anything about that is a real decision and **not part of this
+task** — warning about it means the container section starts reasoning about codecs it does not
+currently touch, and the honest alternative is that this is correct ffmpeg behaviour a
+general-purpose tool need not editorialise. **Filed here so the observation is not lost with the
+conversation; it needs a ruling before it needs a task.**
+
+#### Out of scope
+
+- **Removing recode.** It is the only route to a playable file from an AV1-only or VP9-only source
+- **Which containers are offered** (`T-285`)
+- **Choosing codecs**, or any control over the recode's encoder settings — `REQ-010` does not offer
+  them and this task does not add them
 
 ## Proposed — Phase 4.5
 
