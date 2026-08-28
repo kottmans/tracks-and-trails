@@ -210,6 +210,11 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
    `OPS-002` wheel-extraction update path remains viable
 10. In-app yt-dlp update works **from the frozen artifact** — download, extract, resolve the
     new version, and revert to baseline
+10a. **If the pinned baseline is being bumped in this release**, the `yt-dlp canary` workflow is
+    green at the version being bumped to — `workflow_dispatch` it rather than waiting for Monday.
+    It never blocks a push and it does block this (`T-291`): a bump is the one moment its answer
+    is the evidence being asked for. **A red canary is not a reason to skip the bump**; it is the
+    list of what the bump costs, and each item is its own task before the tag
 11. Qt confirmed dynamically linked in the artifact (`NFR-009`, `LIC-001`)
 12. License texts for Qt, ffmpeg, and yt-dlp present in the distribution
 13. No secrets, cookies, or personal paths in the artifact or the repository

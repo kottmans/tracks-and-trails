@@ -246,6 +246,50 @@ contents; this preface does not list them.***
 
 ---
 
+### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
+
+**Status:** **In Review — built 2026-08-28, and no review has run.**
+`.github/workflows/ytdlp-canary.yml`: weekly plus `workflow_dispatch`, `LINUX_RUNNER`, its own
+concurrency group, no `push:` trigger, and it writes nothing back to the repository.
+`ai/TESTING.md` §8 gained step **10a**, which is where it blocks a bump without ever blocking a
+push.
+
+**Its logic was run by hand before it was committed, and doing so changed the design** —
+`ai/evidence/2026-08-28-T291-canary-dry-run.md`. The entry named **one** test that fails by design
+against a newer yt-dlp; there are **two**. `test_the_installed_baseline_is_the_pinned_one` asserts
+exactly the thing this job deliberately breaks, and a canary that ran it would be red on every
+single run — the failure mode this entry spends most of its length on. Both are now deselected from
+the verdict and reported separately, from one definition in the workflow's `env:` so the two steps
+cannot drift.
+
+**The dry run also answered the question that prompted the task.** Against **yt-dlp 2026.08.19** —
+the version the maintainer had already updated to in-app — the drift gates find **nothing**: 2,291
+unit tests pass with only the expected pair excluded. It is the first time any of those gates has
+been shown a yt-dlp newer than the pin.
+
+**The workflow itself has never executed**, and cannot be from here. What was verified is the logic
+it performs, not the YAML that performs it; its first scheduled run is its own evidence.
+
+*(Filed 2026-08-27 on maintainer direction, from `T-212`'s run: *"how are we confident that our
+program wont break when it gets updated?"* **The detectors already existed; nothing ever fed them a
+newer version.**)*
+**Owner:** Implementer
+**Priority:** Medium — it protects nothing today and prevents a class of surprise that currently
+lands on a user rather than on CI
+**Phase:** Phase 4 or later — **the maintainer's to place.** It is infrastructure, not a phase
+deliverable, and nothing in Phase 4's exit depends on it
+**Depends on:** nothing
+**Relevant context:** `OPS-002` and its 2026-08-27 amendment; `OPS-009`, `OPS-010`, `OPS-012` —
+where jobs run and why; `.github/workflows/prose.yml`, which is the model for a workflow with its
+own trigger and its own concurrency group; `ai/TESTING.md` §8 steps 3, 9 and 10
+**Affected surfaces:** a new workflow file, and whatever records what it finds
+**Risk:** **Medium, and the risk is that it is ignored.** A canary that is red every run teaches
+people to stop reading it, which is worse than not having one
+
+#
+
+---
+
 ### T-288 — The scroll bar is the one control the theme never dressed
 
 **Status:** **In Review — built 2026-08-28, and no review has run.** The bar is drawn by the sheet
@@ -12223,25 +12267,7 @@ it the way out of a site that has broken.
 - **Whether the application itself should self-update**, which `REL-001` leaves open and which the
   amendment names as the condition for reopening `OPS-002`
 
-### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
-
-**Status:** Proposed — **filed 2026-08-27 on maintainer direction**, from `T-212`'s run:
-*"how are we confident that our program wont break when it gets updated?"* **The detectors already
-exist; nothing ever feeds them a newer version.**
-**Owner:** Implementer
-**Priority:** Medium — it protects nothing today and prevents a class of surprise that currently
-lands on a user rather than on CI
-**Phase:** Phase 4 or later — **the maintainer's to place.** It is infrastructure, not a phase
-deliverable, and nothing in Phase 4's exit depends on it
-**Depends on:** nothing
-**Relevant context:** `OPS-002` and its 2026-08-27 amendment; `OPS-009`, `OPS-010`, `OPS-012` —
-where jobs run and why; `.github/workflows/prose.yml`, which is the model for a workflow with its
-own trigger and its own concurrency group; `ai/TESTING.md` §8 steps 3, 9 and 10
-**Affected surfaces:** a new workflow file, and whatever records what it finds
-**Risk:** **Medium, and the risk is that it is ignored.** A canary that is red every run teaches
-people to stop reading it, which is worse than not having one
-
-#### What already exists, which is most of the work
+### What already exists, which is most of the work
 
 Three gates fail the suite when yt-dlp's own surface moves:
 

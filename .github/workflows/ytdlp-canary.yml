@@ -1,0 +1,161 @@
+# yt-dlp canary — `T-291`.
+#
+# **The detectors already existed; nothing ever fed them a newer version.**
+#
+# Three gates in this suite fail when yt-dlp's own surface moves:
+#
+#   - `tests/unit/test_post_processing_options.py` holds `CONTAINER_FORMATS` **equal** to
+#     `FFmpegVideoRemuxer.SUPPORTED_EXTS` and `FFmpegVideoConvertor.SUPPORTED_EXTS`, and
+#     `AUDIO_ONLY_CONTAINERS` equal to yt-dlp's own audio classification.
+#   - `tests/unit/test_option_audit.py` calls the real `create_parser()` and asserts every
+#     documented option is classified exactly once, in both directions.
+#   - the same file asserts the audit records the version it was taken against.
+#
+# Every one of them only ever saw the pin, because every job installs from `pyproject.toml` and
+# `ci.yml`'s nightly reinstalls it. That nightly answers a different question — a re-resolved
+# dependency, a runner OS update, the desktop machine drifting — which is environment drift, not
+# upstream drift. **So the first thing to run this code against a new yt-dlp was a user pressing
+# Update**, which `OPS-002` exists to encourage and its 2026-08-27 amendment reframes but keeps.
+#
+# ## The design problem is not the YAML
+#
+# **Two** tests fail by design on any newer yt-dlp, and both were found by running this against a
+# real one rather than by reading:
+#
+#   - `test_the_audit_names_the_yt_dlp_version_it_was_taken_against` — how a pin bump forces the
+#     audit to be re-taken (`T-183`, `NFR-008`).
+#   - `test_the_installed_baseline_is_the_pinned_one` — which asserts exactly the thing this job
+#     deliberately breaks.
+#
+# A canary that ran them would be red on every single run, forever, and muted within a month. So
+# they are **deselected and reported separately**, and the job's verdict is what remains:
+#
+#   - *the audit's version line is stale*, and *the installed yt-dlp is not the pinned one* —
+#     both expected, both informational, neither a finding
+#   - *an option exists that nothing classifies* — a real finding, and its own failure message
+#     already names the new options
+#   - *a container appeared or vanished* — a real finding
+#   - *anything else* — the interesting case, because behaviour moved rather than a list
+#
+# ## What this job may not do
+#
+# **It never writes to the repository.** No pin bump, no commit, no regenerated audit. Bumping the
+# baseline is a decision with a release gate attached (`OPS-002`), and re-taking the audit is
+# `T-183`'s procedure and a human's judgement about what each new option means. This reports.
+#
+# **It never blocks a push.** It has no `push:` trigger and `main` does not gate on it. It *does*
+# block a baseline bump — `ai/TESTING.md` §8 carries that step — because a bump is exactly the
+# moment its answer is the evidence being asked for.
+
+name: yt-dlp canary
+
+on:
+  # **Weekly, not nightly.** yt-dlp ships roughly monthly; a job whose whole purpose is to notice
+  # change should not run thirty times per change. Monday 07:00 UTC — nothing depends on the hour,
+  # and it is deliberately not `ci.yml`'s 06:00 so the two do not contend for the one Linux box.
+  schedule:
+    - cron: "0 7 * * 1"
+  # So a bump can ask for the answer on the day rather than waiting for Monday.
+  workflow_dispatch:
+  # **No `push:` and no `pull_request:`.** The first would make this a gate, which it is not; the
+  # second is `prose.yml`'s security control, and the reasoning there applies unchanged — every
+  # job here resolves to a self-hosted runner while `LINUX_RUNNER` is set.
+
+# Its own group, so a canary run neither cancels nor is cancelled by `CI` or `Prose`.
+concurrency:
+  group: ytdlp-canary-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # **One definition of the expected-failure set**, so the step that reports it and the step that
+  # excludes it cannot disagree — which is how a canary silently starts hiding a real failure.
+  EXPECTED_STALE: >-
+    tests/unit/test_option_audit.py::test_the_audit_names_the_yt_dlp_version_it_was_taken_against
+    tests/unit/test_environment.py::test_the_installed_baseline_is_the_pinned_one
+  DESELECT_STALE: >-
+    --deselect tests/unit/test_option_audit.py::test_the_audit_names_the_yt_dlp_version_it_was_taken_against
+    --deselect tests/unit/test_environment.py::test_the_installed_baseline_is_the_pinned_one
+
+jobs:
+  canary:
+    name: latest yt-dlp
+    # `OPS-012`: Linux runs on the maintainer's Fedora machine. Unset means hosted.
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Hosted only, matching `ci.yml` and `prose.yml`: a job must never provision its own host.
+      - uses: actions/setup-python@v7
+        if: runner.environment == 'github-hosted'
+        with:
+          python-version: "3.14"
+
+      - name: Check the machine's Python
+        if: runner.environment != 'github-hosted'
+        run: python3 --version
+
+      - name: Install the project, then the yt-dlp we have not pinned
+        run: |
+          python3 -m venv .venv-canary
+          .venv-canary/bin/python -m pip install --upgrade pip
+          .venv-canary/bin/python -m pip install -e ".[dev]"
+          # **After the project, so it overrides the pin.** Installing it first would be undone
+          # by the project's own `yt-dlp==` constraint.
+          .venv-canary/bin/python -m pip install --upgrade yt-dlp
+
+      - name: Record which versions actually ran
+        run: |
+          mkdir -p reports
+          {
+            echo "pinned:    $(grep -oE 'yt-dlp==[0-9.]+' pyproject.toml)"
+            echo "installed: $(.venv-canary/bin/python -c 'import yt_dlp.version; print(yt_dlp.version.__version__)')"
+          } | tee reports/versions.txt
+          # A report that does not say which version it ran evidences nothing later.
+          { echo '### Versions'; echo '```'; cat reports/versions.txt; echo '```'; } \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      # **Informational, and `|| true` is the point.** This test fails on any newer yt-dlp by
+      # design. Its result is reported and never decides the job.
+      - name: The two tests this job breaks on purpose
+        run: |
+          if .venv-canary/bin/python -m pytest ${{ env.EXPECTED_STALE }} \
+              -q > reports/expected-stale.txt 2>&1; then
+            echo '### Version bookkeeping: **current** — this yt-dlp *is* the pinned baseline,' \
+              'so the canary found nothing newer to test against' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '### Version bookkeeping: **stale** — expected, and not a finding on its own' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Everything else. **This step is the verdict.**
+      - name: The suite, against the yt-dlp nobody has pinned
+        run: |
+          .venv-canary/bin/python -m pytest tests/unit tests/ui \
+            ${{ env.DESELECT_STALE }} \
+            -q --junitxml=reports/junit-canary.xml 2>&1 | tee reports/canary.txt
+
+      - name: Say what a failure means
+        if: failure()
+        run: |
+          {
+            echo '### This is a finding, not the expected staleness'
+            echo
+            echo 'The version-line test was deselected above, so what failed here is upstream'
+            echo 'drift in behaviour or in a list. **File it as a task** — the option audit names'
+            echo 'the new options in its own failure message, which is most of an entry written'
+            echo 'for whoever files it. Do not bump the pin from this run: that is a decision with'
+            echo 'a release gate attached (`OPS-002`, `ai/TESTING.md` §8).'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-ytdlp-canary
+          path: reports/
+          retention-days: 90
