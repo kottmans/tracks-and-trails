@@ -21282,3 +21282,37 @@ forms of untrusted path text are not safely settled.
 T-292 remains **In Review**. Correct R1-R3 in one batch, move its orphaned task body under the
 proper heading through T212-R2, and include the final tree in T212-R3's Windows run. No new task is
 needed.
+
+---
+
+## 2026-08-28 — T-288 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-288`
+**Base:** `8c819e1ee226317f8252ebf815274af53b0eacd8`
+**Implementation head:** `5cef103dff8cadcb50e1fcb298d75c918cfc397e`
+**Platforms verified:** Linux offscreen/static only; no real display; Windows blocked by `T212-R3`
+**Verdict:** **Blocked.** The stylesheet and structural regressions satisfy the automatable part,
+but the task deliberately leaves its required real-display observation unperformed.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T288-R1** | **Medium** | **Yes — acceptance evidence absent** | The acceptance criteria require a rendered check on a real display naming platform and style (`ai/TASKS.md:12101-12103`). The implementation record explicitly leaves it open, and this review has only offscreen/static evidence. The task exists because an offscreen attempt previously gave the wrong theme result; the missing check cannot be replaced by another offscreen inference. | On the KDE/Wayland display that produced the report, inspect both themes and both orientations, including hover/pressed behavior and the Settings/Options scrollers, and record platform/style. If the rendering differs from the sheet's intended shape, correct it in T-288 before the focused pass. | **Open** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Sheet structure | Both orientations have explicit bar and handle rules; handle minima are axis-specific; add/sub lines and pages are declared; hover and pressed states are present. |
+| Contrast | The test reads the handle colour from the generated sheet rather than merely checking `theme.border`. Current `border` contrast exceeds 3:1 against window, surface and sunken backgrounds in both themes. |
+| Regression reach | Removing either orientation from the exact handle selector breaks the contrast extraction; removing a sub-control name breaks the inventory test. The original no-rule state fails both. |
+| Unit/UI | Changed focus passed; full unit and UI gates are green as recorded in T-212. |
+| External evidence | No real-display rendering and no Windows run. T212-R2 also owns relocating this task's orphaned body. |
+
+### Readiness
+
+No source correction is requested from static inspection. T-288 remains **Blocked** on T288-R1
+and T212-R3. After the real-display check and final Windows run, a focused evidence re-review can
+approve it if neither exposes a rendering defect.
