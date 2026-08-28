@@ -518,6 +518,43 @@ Detect-and-degrade rather than fail-at-merge-time matters: discovering the probl
 **Status:** Accepted
 **Date:** 2026-07-25
 
+### Amended 2026-08-27 — the override is recovery, not a standing choice
+
+**Status:** **Accepted, on the maintainer's ruling of 2026-08-27**, taken during `T-212`'s
+checklist run. Asked whether users should simply be kept on the packaged baseline — *"we're
+keeping track of two different versions, and if users update yt-dlp and there are issues they
+would have to wait to get it to work again"* — and offered three answers, the maintainer chose the
+middle one: **"lets go with the middle option. I think that makes the most sense."**
+
+**The mechanism is unchanged and nothing below is withdrawn.** The pinned baseline, the
+user-managed copy resolved ahead of it, the visible resolved version and the one-action revert all
+stand exactly as decided. **What changes is where the update is offered and how it is worded.**
+
+**The update stops being a standing button of equal weight on the Settings screen** — which reads
+as something a user is supposed to do — and becomes what it was always for: **the way out of a
+site that has broken.** Surfaced against a failure rather than presented as a routine choice, so
+the baseline is what everybody runs and the override is the exception it was designed to be.
+
+**The concern this answers, and the one it does not.** The maintainer's stated worry — a user
+stranded on a version that does not work — was already answered by revert being one action, and
+that has not changed. The worry the amendment actually addresses is the one underneath it: an
+update offered as a peer of every other setting *invites* a population onto versions this project
+has never tested, which is a support surface rather than a user risk.
+
+**Removing the override outright was rejected, and the reason is stronger than when this entry was
+written.** *"Pin only"* is already in *Alternatives considered* below, refused because a broken
+site would block users until the next release. **There are no release tags in this repository**;
+until a release pipeline exists, "until the next release" means indefinitely. The rejection is
+re-affirmed, not re-argued.
+
+**This is worth revisiting if app updates ever become automatic.** The slower and more manual the
+application's own updates are, the more the in-app yt-dlp update earns its place, because it is the
+only fast path a user has. On a platform that updates the application itself without being asked —
+Flathub, say — the argument for the override genuinely weakens and this entry should be reopened.
+`REL-001` defers the Linux packaging choice, so that is not yet decidable.
+
+`T-290` builds it.
+
 ### Context
 
 yt-dlp breaks constantly, because sites change constantly (`C-002`). A pinned dependency

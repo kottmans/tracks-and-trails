@@ -11947,6 +11947,62 @@ crashes, one shape.
   way there is unknown and is named rather than assumed
 - Making the update itself faster, or moving it off a pool
 
+### T-290 — Offer the yt-dlp update as recovery, not as a setting
+
+**Status:** Proposed — **filed 2026-08-27 to build `OPS-002`'s amendment of the same day**, which
+the maintainer ruled during `T-212`'s run: the override stays, and stops being a standing choice.
+**Owner:** Implementer
+**Priority:** Medium — nothing is broken today; what changes is which version the population runs,
+and that compounds quietly in the other direction
+**Phase:** Phase 4 (polish; **not** a plan deliverable). It is a presentation change to a screen
+this phase built, and the maintainer may prefer it after the exit — that placement is theirs
+**Depends on:** nothing. `T-289` crashes in this screen's update path and is a different defect;
+neither blocks the other, but both touch `show_ytdlp`
+**Relevant context:** `OPS-002` and its 2026-08-27 amendment; `ui/settings_dialog.py:1387` and
+`show_ytdlp`/`show_ytdlp_problem`/`show_ytdlp_busy`; `REQ-025`; `NFR-007` — the update performs an
+outbound download and must stay explicit, never automatic and never silent
+**Affected surfaces:** `ui/settings_dialog.py`, wherever a download failure is presented, and
+their tests
+**Risk:** Medium — the honest version of this needs a route from a *failure* to the update, and a
+failure surface that starts giving advice is how a row's anatomy grows a second voice (`T-243`)
+
+#### What changes, and what does not
+
+**Unchanged:** the pinned baseline, the user-managed copy resolved ahead of it, the version shown
+in the UI, and revert as one action. The mechanism is not what was ruled on.
+
+**Changed:** the update is currently `Update to the latest version` — a button of equal weight
+beside `Use the bundled version`, in a Settings section that reads like every other setting. That
+presentation invites a population onto versions this project has never tested. The amendment makes
+it the way out of a site that has broken.
+
+#### Acceptance criteria
+
+- **The Settings screen no longer presents updating as a routine choice.** What it becomes —
+  reworded, de-emphasised, moved behind a disclosure, or left in place with different words — is
+  the implementer's proposal and the maintainer's ruling. **It must not disappear**: `OPS-002`
+  requires the resolved version to be visible and revert to be one action, and both are still true
+  after this
+- **There is a route from a failed download to the update**, worded as what it is: sites change,
+  and a newer yt-dlp may fix this one. This is the half that makes the reframing honest rather than
+  merely quieter
+- **That route does not turn the failure surface into an advice column.** `T-201`'s error anatomy
+  and `T-243`'s one-voice rule both apply: a failure states what happened, why, and one next step —
+  and a class with no honest next step still gets none
+- **The offer appears only where it could be true.** A refusal that has nothing to do with the
+  extractor — an unwritable folder, a full disk — must not suggest updating yt-dlp. `UX-005` §5
+- **`NFR-007` is untouched**: still explicit, still never automatic, still never silent
+- **The wording is asserted by tests**, the way the screen's other fixed strings are
+
+#### Out of scope
+
+- **Removing the override.** Explicitly rejected in the amendment; `OPS-002`'s *"pin only"*
+  alternative stands refused, and more firmly while no release pipeline exists
+- **Automatic or background update checks.** `NFR-007`
+- **The crash in this path** (`T-289`)
+- **Whether the application itself should self-update**, which `REL-001` leaves open and which the
+  amendment names as the condition for reopening `OPS-002`
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three

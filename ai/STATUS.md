@@ -5,6 +5,31 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-27 — **`OPS-002` is amended on a maintainer ruling: the yt-dlp override
+is recovery, not a standing choice.** Asked whether users should simply be kept on the packaged
+baseline, the maintainer took the middle of three answers — keep the override, stop presenting it
+as a setting. `T-290` builds it.
+
+**Nothing about the mechanism changed.** The pinned baseline, the user-managed copy resolved ahead
+of it, the visible resolved version and the one-action revert all stand. **The presentation is what
+was ruled on**: an update offered as a peer of every other setting invites a population onto
+versions this project has never tested, and that is a support surface rather than a user risk — the
+stranding worry was already answered by revert being one action.
+
+**Removing the override was rejected and the rejection is stronger than when `OPS-002` was
+written.** *"Pin only"* was already refused there because a broken site blocks users until the next
+release; **this repository has no release tags**, so that currently means indefinitely. The
+amendment also records the condition for reopening it: if the application itself ever updates
+automatically — Flathub, say — the override's argument weakens. `REL-001` leaves the Linux
+packaging choice open, so that is not yet decidable.
+
+**What is not filed:** the yt-dlp canary. Three live drift gates already exist — `CONTAINER_FORMATS`
+against both of yt-dlp's `SUPPORTED_EXTS`, and the option audit calling the real `create_parser()`
+— and **nothing ever points them at a version newer than the pin**, because the nightly reinstalls
+`2026.7.4`. The first thing to run this code against a new yt-dlp is a user pressing Update.
+
+---
+
 **Last updated:** 2026-08-27 — **`T-212`'s run found a heap corruption, and the core dump is
 recovered.** Updating yt-dlp from the Settings screen **aborted the process**: `double free or
 corruption (!prev)`, at the run's own head `3d1f427`. `T-289` is filed and it is the highest
