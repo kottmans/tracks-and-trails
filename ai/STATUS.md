@@ -58,6 +58,19 @@ every dialog is already built with the right parent and forwards it, so this is 
 `parent=`. The task's first step is a two-window probe on the same KDE/Wayland session, and it
 explicitly forbids writing the three-line `changeEvent` before that probe exists.
 
+**`T-288` is the run's best argument for itself.** The scroll bar is barely visible in dark, and
+the reason is that **`ui/theme.py` contains no `QScrollBar` rule at all** — the string is not in the
+file. The palette then hands the platform style five shade roles it never set: `Light`, `Midlight`,
+`Mid`, `Dark` and `Shadow`, still at Qt's light-palette greys in both themes. The two roles a style
+reaches for first are `#10201A` on `#0A1712` — **1.09:1**. **`T-202` swept contrast and closed with
+no findings, and could not have caught this**: the sweep derives its subjects from the controls the
+sheet declares, so a widget with no rule contributes no selector. Absence of styling read as
+nothing to check.
+
+**One measurement was discarded rather than reported.** A rendered offscreen probe returned a
+light-theme result contradicting the observation, which means the instrument was wrong, not the
+theme — the entry says so and asks for the rendered check to be taken on a real display.
+
 **Still open from the run, unfiled:** the empty status line in the add dialog taking Tab focus; a
 row verb that is a no-op while another panel is open on that row; the template panel mounting at
 its 26 px minimum when the list viewport is short; a thumbnail flicker on resize that **did not
