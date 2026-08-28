@@ -12082,6 +12082,81 @@ not tolerated**, so that the job separates:
 - **`pytest -m network` against latest.** Defensible and a separate cost decision; the release
   gate already runs it against the pin
 
+### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
+
+**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run**, on the maintainer's
+direction: *"You should able to manually enter in a path to put downloads into. The verbage
+underneath it about the download folder can just be removed I think. That isn't necessary for
+this."*
+**Owner:** Implementer
+**Priority:** Low — nothing is broken; a path that is easy to paste is faster than a chooser walked
+down a deep tree
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/settings_dialog.py:579` (`_directory_label`, a `QLabel`), `:585`
+(`_directory_note`), `_show_directory`, `show_download_directory`; `ARC-007` — `ui/` holds no
+settings writer and no platform paths; `core/paths.py`; `T-034`'s containment check;
+`docs/PHASE_4_CHECKLIST.md` rows 6.1 and 6.2, and 7.1's arranged unwritable folder
+**Affected surfaces:** `ui/settings_dialog.py`, `tests/ui/test_settings_dialog.py`, checklist row 6.1
+**Risk:** **Medium, and none of it is in the widget.** A typed path is untrusted text that becomes
+a filesystem destination, and *when* it takes effect is a genuine question the screen has not had
+to answer before
+
+#### What is there now
+
+`_directory_label` is a `QLabel`. The folder is reachable only through *Choose folder…* or *Use the
+default folder*, so a path the user already has on the clipboard cannot be pasted, and a deep tree
+has to be walked.
+
+`_directory_note` shows `"Your usual downloads folder"` **when the folder is the default and the
+empty string otherwise** — which is why the maintainer's screenshot has a blank strip under the
+path: a label reserving a line to say nothing. Removing the note removes that too.
+
+#### The three questions this has to answer
+
+- **When does a typed path take effect?** Checklist row 6.2 is *"every control applies as it is
+  changed — no OK button hunting"*, and a path applying per keystroke would set `/h`, then `/ho`,
+  then `/hom`. So this control commits on `editingFinished` and `Return` instead. **That is a
+  deliberate exception to 6.2 and has to be written down**, not left for a reader to notice
+- **What happens to a path that is not usable?** Missing, a file rather than a folder, not
+  writable, relative, or containing `~`. The screen must not silently keep a destination downloads
+  will fail against — checklist 7.1 already arranges the unwritable case and expects the refusal
+  *where the user is looking*. Whether a missing folder is refused or offered for creation is a
+  decision, and this entry does not take it
+- **Who writes it?** `ARC-007`: the screen holds no settings writer and no platform paths. A typed
+  path goes out the same way a chosen one does and comes back through `show_download_directory` —
+  it is not applied locally because it was typed locally
+
+#### What removing the note costs, so the removal is deliberate
+
+With the caption gone, **nothing distinguishes *this is the platform default* from *I chose a
+folder that happens to be the default*.** The maintainer has ruled that this is not worth a line,
+and *Use the default folder* is still there as the way back, so the capability is not lost — only
+the statement. Recorded here so a later reader does not restore it as an oversight.
+
+#### Acceptance criteria
+
+- **The folder is editable in place** — a text field carrying the current path, which can be typed
+  into and pasted into. *Choose folder…* stays as the browse route beside it
+- **The value commits on `editingFinished` and `Return`, never per keystroke**, and the exception
+  to row 6.2 is stated in the code and in the checklist row
+- **A path that cannot be used is refused where the user is looking**, in the screen's own voice,
+  and the refused value does not become the setting
+- **The typed path leaves through composition** and returns through `show_download_directory`,
+  exactly as a chosen one does (`ARC-007`)
+- **It is still `PlainText` and still untrusted** (`T016-R6`): a path is the user's own folder
+  names and may contain anything
+- **`_directory_note` and `DEFAULT_DIRECTORY_NOTE` are gone**, along with the blank line the empty
+  label reserved
+- **Checklist row 6.1 is updated** to describe a typed folder rather than a displayed one
+
+#### Out of scope
+
+- **Creating a folder that does not exist**, unless the decision above lands that way
+- The other seven settings' controls. `T-146` built them and this is one control's change
+- **Path containment for *downloads*** (`T-034`), which is the worker's rule about where a template
+  may write and is unaffected by where the root is set
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
