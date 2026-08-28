@@ -21149,3 +21149,34 @@ entry the function drops and can report a false denominator.
 T-281 remains **In Review**. Correct T281-R1 with a mutation/discriminating mixed-shape test, fold
 the accurate verification wording into T212-R1's synchronization, and include the final tree in
 the Windows run required by T212-R3. No separate follow-up task is warranted.
+
+---
+
+## 2026-08-28 — T-283 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-283`
+**Base:** `bd528ff7fee9e034734fc87c765ada143c4b821e`
+**Implementation head:** `294a72dbe56f521534e3793e598b6de9b17d77d0`
+**Platforms verified:** Linux offscreen; Windows blocked by `T212-R3`
+**Verdict:** **Blocked on supported-platform evidence.** No task-specific code or test finding was
+established. Approval still requires the final shared tree to pass Windows under repository policy.
+
+### Findings
+
+No T-283-specific finding. Shared blocking finding `T212-R3` applies.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Production route | `_paint_control` passes the adjusted option to `CE_ComboBoxLabel`; the frame and arrow retain the original rectangle. Removing that call is covered by a pixel-difference regression, not helper arithmetic alone. |
+| Acceptance mapping | The regression measures the editor field and painted ink through their actual routes at the real control width. `COMBO_PADDING_X` is one sheet/delegate input; changing it to a value at which Qt resolves differently fails rather than silently blessing drift. |
+| Focused/full UI | The changed-file set passed (**539 passed, 1 skipped**); full UI passed (**1,071 passed, 3 skipped**). |
+| Static/platform | Ruff and `mypy src` pass on the combined tree. No Windows run exists; see T212-R3. |
+
+### Readiness
+
+The Linux implementation is review-clean. T-283 remains **In Review** solely until the final
+correction tree receives the Windows result required by T212-R3; no source correction or follow-up
+task is requested for T-283 itself.
