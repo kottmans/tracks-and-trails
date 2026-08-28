@@ -5,7 +5,7 @@
 **Owner:** Reviewer (Codex)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-27
+**Last updated:** 2026-08-28
 **Update when:** A review completes, a defect is found, a prior finding is rechecked, or a release review occurs.
 **Does not contain:** The prioritized implementation queue — that lives in `TASKS.md`. Findings
 and their dispositions live here; a finding becomes a new task only when it crosses the threshold
@@ -21073,3 +21073,45 @@ implementation head.
 
 The Reviewer appended and committed only this historical review record. No reviewed source,
 test, task/status text, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-28 — T-212 unattended-session coordination review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-212`; shared records for `T-281`, `T-283`, `T-285`, `T-288`, `T-291`, `T-292`,
+`T-293`
+**Base:** `3d1f4279ad7b1a25feae5aaa455e90c998f8dcb1`
+**Head:** `ec95dae162f2c74d88c92dc237e266b346e8697b`
+**Platforms verified:** Linux/Fedora, offscreen Qt; no Windows and no real-display rendering
+**Verdict:** **Changes requested.** The inclusive boundary and handoff arithmetic are correct:
+22 commits, 24 files, +2,992/-54. The durable verification claim and three task records are not.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T212-R1** | **Medium** | **Yes — required gates are misstated** | `ai/STATUS.md` calls 3,364 unit/UI cases the **full suite** and says the tasks' gates are green. `ai/TESTING.md` makes integration part of the default suite and requires bare `mypy` plus `mypy --platform win32` for changed tests. The submission did not run those scopes; independent review found both all-files mypy commands red on `tests/ui/test_queue_view.py:2365`. The ignored handoff repeats the same “every gate CI runs” claim, and the canary evidence calls its unit-only run “every gate this project has.” | Replace “full suite”/“gates green” with the exact commands and results actually obtained. After correction, record the final all-files mypy results and distinguish unit/UI, integration, Windows and real-display evidence instead of collapsing them. | **Open** |
+| **T212-R2** | **Low** | No | Moving `T-288`, `T-291` and `T-292` to **In Review** moved only their summaries. Their detailed bodies and acceptance criteria remain at `ai/TASKS.md:12044`, `:12270` and `:12331`, where Markdown makes them subsections of `T-287` or `T-290`. The task-placement gate sees the status headings and therefore passes while the task definitions belong to the wrong entries. | Move each orphaned body under its own In Review heading, preserving the text and history. This is completion/current-truth synchronization, not a new task. | **Open, non-blocking** |
+| **T212-R3** | **Medium** | **Yes — supported-platform gate** | None of the six product source/test changes has Windows evidence. `ai/TESTING.md` section 10 requires Windows evidence before review, and all six change shared Python or Qt surfaces. A Linux type simulation is not a Windows runtime result; the current simulation is red in any case. | After the correction batch is final and local gates are green, push that exact executable/test tree and obtain a green `windows desktop` run. Record code head separately from later review-only commits. | **Open** |
+| **T212-R4** | **Medium** | No for these seven tasks; blocks using the claim as T-289's proven cause | `ai/evidence/2026-08-27-T212-ytdlp-update-double-free.md` and `ai/TASKS.md:12160` turn an inference into “the same Qt object graph.” The stacks establish concurrent allocator activity and, critically, a pool-thread collection destroying a QWidget tree. They do not identify object addresses or establish that the GUI thread was freeing that same tree; the evidence itself says the collected tree is unknown. | Preserve the established off-GUI QWidget destruction and the crash, but label graph identity/causation as an inference unless object-address evidence exists. Route the correction to existing `T-289`; create no new task. | **Open, non-blocking for this batch** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Boundary | `06f3890^..ec95dae` is exactly **22 commits, 24 files, +2,992/-54**. `main` was 22 commits ahead of `origin/main`; the worktree was clean before this review record. |
+| Static gates | `ruff check .` passed; `ruff format --check .`: **207 files**; `mypy src`: **56 files**, passed. Bare `mypy` and `mypy --platform win32` each failed only at `tests/ui/test_queue_view.py:2365` with `str | None` passed where `str` is required. |
+| Unit | `pytest -q -n auto tests/unit`: **2,293 passed, 18 skipped**. |
+| UI | `pytest -q -n auto tests/ui`: **1,071 passed, 3 skipped**, exit 0. A first run's captured output stopped before its summary; the explicit-exit rerun is the claimed result. |
+| Integration | `pytest -q tests/integration`: **445 passed** in 8m41s. An initial sandboxed attempt failed only because local loopback sockets were denied; the normal-environment rerun is green. |
+| Changed-test focus | Eight changed unit/UI files: **539 passed, 1 skipped**. |
+| Windows / real display | Not run. No workflow was pushed or dispatched. T-288's required real-display rendering remains open by the submission's own account. |
+| Handoff arithmetic | The handoff uses an inclusive range. The narrower `06f3890..ec95dae` excludes the first filing commit and must not be used to call its published totals wrong. |
+
+### Readiness
+
+This initial pass does not approve the batch. Correct the task-specific findings recorded below
+and T212-R1/R2 in one batch, then obtain the exact-head Windows result required by T212-R3.
+T212-R4 belongs to already-filed T-289 and does not reopen or create another task. The ordinary
+focused correction re-review remains available under `AGENTS.md` section 10.
