@@ -5,6 +5,51 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-28 — **An unattended session built six of `T-212`'s findings. Every one
+of them is `In Review` and none has been reviewed**, which `AGENTS.md` §10 requires before any of
+them is Complete. Read this section first.
+
+**Built, gates green, unreviewed:** `T-281` (unreadable playlist entries dropped on the missing
+*title* — the guard tested the address, which a YouTube placeholder still has), `T-283` (the
+painted control's label inset from 2 px to the editor's 7), `T-285` (video presets offered only
+containers that hold video), `T-288` (the scroll bar drawn at last, every sub-control declared),
+`T-291` (the yt-dlp canary), `T-292` (the download folder typed, its caption gone), `T-293`
+(`Remove` on a queued row). Full suite green at each: **3,364 passed, 21 skipped**.
+
+**`T-284` was deliberately not built, and it is the one decision owed.** `INHERITED_TEXT` is two
+things — the label painted on an unoverridden row, which the maintainer ruled on, and a selectable
+dropdown entry whose `None` data *means* "follow the batch". Building the ruled half alone makes
+the text change at the moment of the click, which is the defect `T-283` was built to close;
+changing both puts two identical-looking entries in the list meaning opposite things. Neither is
+implied by the ruling.
+
+**The same mistake was made twice in one night and caught both times by mutation.** `T-283`'s first
+regression asserted the new helper's own arithmetic, and a mutation stopping the paint from calling
+it **survived**. `T-288`'s first regression measured `contrast_ratio(theme.border, theme.window)`
+from the palette, and a mutation putting the handle back on the invisible pair **survived**. Both
+now read what is actually drawn. **That is a pattern rather than two slips**: a test written
+alongside a fix tends to measure the fix's ingredients instead of its effect, which is `T-244`'s
+shape and this project's most repeated defect.
+
+**Two pre-existing gaps surfaced on the way.** `UX_005_TABLE` never parametrised `READY`, which
+`_BY_STATUS` has mapped identically to `QUEUED` since it was written — a mutation removing a verb
+from `READY` alone survived. And `T-291`'s expected-failure set is **two** tests, not the one its
+entry named; that was found by running the canary's logic by hand, and a canary red on every run
+gets muted.
+
+**One judgment call to check.** `T-281` logs dropped entries by **position, not id**. The id is
+what a human would want, and reading it puts `id` into the fixture allowlist that `capture.py`
+strips today — reversing `T-018` rather than following from the task. Recorded in the entry as an
+available upgrade.
+
+**Untouched, and why:** `T-289` (the double-free — the fix is a threading rule and the obvious
+mitigations are wrong), `T-286` and `T-290` (wording in the maintainer's voice), `T-287`, `T-297`
+and `T-288`'s rendered criterion (all need a real display).
+
+**Held and unpushed:** everything from `06f3890` to here.
+
+---
+
 **Last updated:** 2026-08-27 — **`OPS-002` is amended on a maintainer ruling: the yt-dlp override
 is recovery, not a standing choice.** Asked whether users should simply be kept on the packaged
 baseline, the maintainer took the middle of three answers — keep the override, stop presenting it
