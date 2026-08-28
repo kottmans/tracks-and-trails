@@ -40,6 +40,7 @@ main setting is untestable is a screen whose main setting is untested. The same 
 reasoning, as the manager's `entry_point`.
 """
 
+import os
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
@@ -83,8 +84,8 @@ from tracks_and_trails.ui.keyboard import route_is_elsewhere
 
 __all__ = [
     "COOKIES_EXPLANATION",
-    "DEFAULT_DIRECTORY_NOTE",
     "DEFAULT_RETRIES_LABEL",
+    "DOWNLOAD_DIRECTORY_PROBLEM_NAME",
     "FFMPEG_ON_PATH_NOTE",
     "NETWORK_EXPLANATION",
     "NO_COOKIES_NOTE",
@@ -124,7 +125,8 @@ OUTPUT_TEMPLATE_NOTE_NAME: Final = "settingsOutputTemplateNote"
 
 #: Shown under the folder when no folder has been chosen. **It names the actual path**, because
 #: "the default" is not an answer to *where did my file go*.
-DEFAULT_DIRECTORY_NOTE: Final = "Your usual downloads folder"
+#: Where the Downloads section says why a typed folder was refused (`T-292`).
+DOWNLOAD_DIRECTORY_PROBLEM_NAME: Final = "downloadDirectoryProblem"
 
 #: What the cookies section says it is for, and what it is not for.
 #:
@@ -577,19 +579,38 @@ class SettingsDialog(QDialog):
         box.setObjectName("downloadsSection")
         layout = QVBoxLayout(box)
 
-        self._directory_label = QLabel(box)
-        self._directory_label.setObjectName("downloadDirectoryValue")
-        # `T016-R6`: a label showing text this application did not author is PlainText. A path is
-        # exactly that — the user's own folder names, which may contain anything.
-        self._directory_label.setTextFormat(Qt.TextFormat.PlainText)
-        self._directory_label.setWordWrap(True)
-        self._directory_label.setAccessibleName("Download folder")
-        layout.addWidget(self._directory_label)
+        # **Typed as well as chosen** (`T-292`). This was a `QLabel`, so a path already on the
+        # clipboard could not be pasted and a deep tree had to be walked in the picker.
+        #
+        # **It commits on `editingFinished` and `Return`, never per keystroke** — a deliberate
+        # exception to the screen's *"every control applies as it is changed"* rule
+        # (`docs/PHASE_4_CHECKLIST.md` row 6.2), because applying as typed would set `/h`, then
+        # `/ho`, then `/hom`, each of them a different destination.
+        self._directory_field = QLineEdit(box)
+        self._directory_field.setObjectName("downloadDirectoryValue")
+        self._directory_field.setAccessibleName("Download folder")
+        self._directory_field.setClearButtonEnabled(False)
+        self._directory_field.editingFinished.connect(self._directory_typed)
+        layout.addWidget(self._directory_field)
 
-        self._directory_note = QLabel(box)
-        self._directory_note.setObjectName("downloadDirectoryNote")
-        self._directory_note.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self._directory_note)
+        # **The caption is gone** (`T-292`, maintainer's direction). It read *"Your usual downloads
+        # folder"* when the folder was the platform default and the empty string otherwise — a
+        # label reserving a line to say nothing, which is what the run photographed.
+        #
+        # **What went with it, recorded so it is not restored as an oversight:** nothing now
+        # distinguishes *this is the platform default* from *I chose a folder that happens to be
+        # the default*. `Use the default folder` is still the way back, so the capability survives
+        # and only the statement is gone.
+        #
+        # **This is not that caption returning.** It holds a refusal or nothing at all, which is
+        # the shape `_template_note` already uses for the same job one section down: the message
+        # belongs beside the control it is about, where the user is looking.
+        self._directory_problem = QLabel(box)
+        self._directory_problem.setObjectName(DOWNLOAD_DIRECTORY_PROBLEM_NAME)
+        # The refusal quotes the path, which is the user's own text (`T016-R6`).
+        self._directory_problem.setTextFormat(Qt.TextFormat.PlainText)
+        self._directory_problem.setWordWrap(True)
+        layout.addWidget(self._directory_problem)
 
         row = QHBoxLayout()
         choose = QPushButton("Choose folder...", box)
@@ -610,9 +631,9 @@ class SettingsDialog(QDialog):
         return box
 
     def _show_directory(self) -> None:
-        """Put the folder in force on screen, and say whether it is a choice or the default."""
-        self._directory_label.setText(str(self._directory))
-        self._directory_note.setText(DEFAULT_DIRECTORY_NOTE if self._directory_is_default else "")
+        """Put the folder in force on screen, clearing any refusal it answers."""
+        self._directory_field.setText(str(self._directory))
+        self._directory_problem.setText("")
         # Nothing to clear when nothing was chosen. Disabled rather than hidden, so the row does
         # not change shape under the pointer (`T-060`'s rule for the retry button).
         self._use_default.setEnabled(not self._directory_is_default)
@@ -629,6 +650,45 @@ class SettingsDialog(QDialog):
             # collapsing the two would let a mis-click silently move where files land.
             return
         self._remember(chosen)
+
+    def _directory_typed(self) -> None:
+        """Take a typed folder, or refuse it and put the one in force back (`T-292`).
+
+        **A folder that does not exist is refused** — ruled 2026-08-28. It is not created, and the
+        user is not offered the chance to create it: a typo would otherwise leave a stray folder
+        somewhere in their home directory, silently.
+
+        **The refusal restores the field**, because a screen that keeps showing a path it did not
+        accept is a screen that lies about where files will land. `T109-R2`'s rule, one control
+        over: what the user can see must be what is in force.
+
+        Whitespace and `~` are handled before the check, so *"it does not exist"* is never said
+        about a path the user did not type — `~/Videos` is a folder they can reasonably expect this
+        field to understand.
+        """
+        typed = self._directory_field.text().strip()
+        if not typed:
+            self._show_directory()
+            return
+        candidate = Path(typed).expanduser()
+        if candidate == self._directory:
+            return
+        if not candidate.is_dir():
+            self._refuse_directory(
+                f"{candidate} is not a folder that exists. Nothing was changed."
+                if not candidate.exists()
+                else f"{candidate} is a file, not a folder. Nothing was changed."
+            )
+            return
+        if not os.access(candidate, os.W_OK):
+            self._refuse_directory(f"{candidate} cannot be written to. Nothing was changed.")
+            return
+        self._remember(candidate)
+
+    def _refuse_directory(self, why: str) -> None:
+        """Say why, where the user is looking, and put the folder in force back on screen."""
+        self._show_directory()
+        self._directory_problem.setText(why)
 
     def _remember(self, directory: Path | None) -> None:
         self._on_directory_chosen(directory)

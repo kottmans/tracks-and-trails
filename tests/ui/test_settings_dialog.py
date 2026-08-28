@@ -44,9 +44,9 @@ from tracks_and_trails.ui.preset_manager import (
     PresetManager,
 )
 from tracks_and_trails.ui.settings_dialog import (
-    DEFAULT_DIRECTORY_NOTE,
     DEFAULT_PRESET_NAME,
     DEFAULT_RETRIES_LABEL,
+    DOWNLOAD_DIRECTORY_PROBLEM_NAME,
     NO_COOKIES_NOTE,
     NO_RATE_LIMIT_LABEL,
     OUTPUT_TEMPLATE_NAME,
@@ -168,10 +168,7 @@ def test_choosing_a_folder_reports_it_and_shows_it(
     assert asked.get("directory") == chosen_folder, (
         f"the screen reported {asked.get('directory')!r} to composition, not the chosen folder"
     )
-    assert control(screen, QLabel, "downloadDirectoryValue").text() == str(chosen_folder)
-    assert control(screen, QLabel, "downloadDirectoryNote").text() == "", (
-        "a chosen folder is still described as the default one"
-    )
+    assert control(screen, QLineEdit, "downloadDirectoryValue").text() == str(chosen_folder)
 
 
 def test_cancelling_the_picker_changes_nothing(
@@ -193,7 +190,7 @@ def test_cancelling_the_picker_changes_nothing(
     assert "directory" not in asked, (
         f"a cancelled picker still asked composition for {asked.get('directory')!r}"
     )
-    assert control(screen, QLabel, "downloadDirectoryValue").text() == str(started)
+    assert control(screen, QLineEdit, "downloadDirectoryValue").text() == str(started)
 
 
 def test_the_default_folder_is_offered_only_when_one_was_chosen(
@@ -209,7 +206,6 @@ def test_the_default_folder_is_offered_only_when_one_was_chosen(
     assert not control(default_screen, QPushButton, "useDefaultDownloadDirectory").isEnabled(), (
         "the screen offers to clear a choice that was never made"
     )
-    assert control(default_screen, QLabel, "downloadDirectoryNote").text() == DEFAULT_DIRECTORY_NOTE
 
     chosen_screen, asked = screens(
         download_directory=tmp_path / "chosen", directory_is_default=False
@@ -238,9 +234,158 @@ def test_the_resolved_default_folder_comes_back_from_composition(
 
     screen.show_download_directory(platform_folder, is_default=True)
 
-    assert control(screen, QLabel, "downloadDirectoryValue").text() == str(platform_folder)
-    assert control(screen, QLabel, "downloadDirectoryNote").text() == DEFAULT_DIRECTORY_NOTE
+    assert control(screen, QLineEdit, "downloadDirectoryValue").text() == str(platform_folder)
     assert not control(screen, QPushButton, "useDefaultDownloadDirectory").isEnabled()
+
+
+def test_a_typed_folder_is_taken_when_the_field_is_left(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """`T-292`: the folder was a `QLabel`, so a path on the clipboard could not be pasted."""
+    typed = tmp_path / "Sort"
+    typed.mkdir()
+    screen, asked = screens(download_directory=tmp_path / "downloads")
+
+    field = control(screen, QLineEdit, "downloadDirectoryValue")
+    field.setText(str(typed))
+    field.editingFinished.emit()
+
+    assert asked.get("directory") == typed, (
+        f"the screen reported {asked.get('directory')!r} to composition, not the typed folder"
+    )
+
+
+def test_a_typed_folder_is_not_taken_while_it_is_being_typed(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """A deliberate exception to *"every control applies as it is changed"* (row 6.2).
+
+    Applying per keystroke would set `/h`, then `/ho`, then `/hom` — each a different destination,
+    and each one a write. The value commits when the field is left or `Return` is pressed.
+    """
+    typed = tmp_path / "Sort"
+    typed.mkdir()
+    screen, asked = screens(download_directory=tmp_path / "downloads")
+
+    control(screen, QLineEdit, "downloadDirectoryValue").setText(str(typed))
+
+    assert "directory" not in asked, (
+        f"typing alone reported {asked.get('directory')!r}, so a half-typed path became a setting"
+    )
+
+
+def test_a_folder_that_does_not_exist_is_refused_and_the_field_put_back(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """Ruled 2026-08-28: refused, not created and not offered for creation.
+
+    **The field is restored**, because a screen still showing a path it did not accept is a screen
+    lying about where files will land — `T109-R2`'s rule one control over.
+    """
+    started = tmp_path / "downloads"
+    missing = tmp_path / "nowhere" / "at" / "all"
+    screen, asked = screens(download_directory=started)
+
+    field = control(screen, QLineEdit, "downloadDirectoryValue")
+    field.setText(str(missing))
+    field.editingFinished.emit()
+
+    assert "directory" not in asked, (
+        f"a folder that does not exist was reported to composition: {asked.get('directory')!r}"
+    )
+    assert not missing.exists(), "the folder was created; the ruling was that it is refused"
+    assert field.text() == str(started), (
+        f"the field still shows {field.text()!r}, which is not where downloads will go"
+    )
+    problem = control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text()
+    assert str(missing) in problem and problem, (
+        f"the refusal does not name the folder it refused: {problem!r}"
+    )
+
+
+def test_a_file_where_a_folder_belongs_is_refused_in_its_own_words(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """*"is not a folder that exists"* would be a lie about a path that does exist."""
+    a_file = tmp_path / "notes.txt"
+    a_file.write_text("x")
+    screen, asked = screens(download_directory=tmp_path)
+
+    field = control(screen, QLineEdit, "downloadDirectoryValue")
+    field.setText(str(a_file))
+    field.editingFinished.emit()
+
+    assert "directory" not in asked
+    assert "file" in control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text().lower(), (
+        "a file was refused as though it were a missing folder"
+    )
+
+
+def test_a_folder_that_cannot_be_written_to_is_refused(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """Checklist 7.1 arranges this at download time; refusing it here is cheaper for the user."""
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    try:
+        screen, asked = screens(download_directory=tmp_path)
+
+        field = control(screen, QLineEdit, "downloadDirectoryValue")
+        field.setText(str(locked))
+        field.editingFinished.emit()
+
+        assert "directory" not in asked, "a folder that cannot be written to became the setting"
+        assert control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text()
+    finally:
+        locked.chmod(0o700)
+
+
+def test_a_tilde_is_understood_rather_than_refused(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """`~/…` is a folder a user can reasonably expect this field to understand.
+
+    Refusing it as *"not a folder that exists"* would be true of the literal text and false about
+    what they typed.
+    """
+    screen, asked = screens(download_directory=tmp_path)
+
+    field = control(screen, QLineEdit, "downloadDirectoryValue")
+    field.setText("~")
+    field.editingFinished.emit()
+
+    assert asked.get("directory") == Path("~").expanduser(), (
+        f"a tilde was not expanded before the check: {asked.get('directory')!r}"
+    )
+
+
+def test_the_refusal_clears_once_the_folder_is_settled(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """A message about a path nobody is proposing any more is noise that outlives its cause."""
+    good = tmp_path / "good"
+    good.mkdir()
+    screen, _ = screens(download_directory=tmp_path)
+    field = control(screen, QLineEdit, "downloadDirectoryValue")
+
+    field.setText(str(tmp_path / "missing"))
+    field.editingFinished.emit()
+    assert control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text()
+
+    field.setText(str(good))
+    field.editingFinished.emit()
+
+    assert not control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text(), (
+        "the refusal outlived the path it was about"
+    )
 
 
 def test_picking_a_theme_reports_it_once(

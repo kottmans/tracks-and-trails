@@ -7,7 +7,7 @@
 so that the run executes a list rather than improvises one.
 **Required by:** `IMPLEMENTATION_PLAN.md` §Phase 4 exit criteria (added 2026-08-09 by maintainer
 ruling).
-**Rows:** 47, across seven sections — counted from this file, not estimated.
+**Rows:** **48**, across seven sections — counted from this file, not estimated. *(47 when written; `6.1a` was added 2026-08-28 with `T-292`, which gave the download folder a behaviour the list did not previously describe.)*
 **Derived from:** `docs/UX_SPEC.md` §2, §3, §8, §11, §12; the accepted criteria of the surfaces
 Phase 4 added or reshaped — `T-146`, `T-195`–`T-202`, the `T-203` row chain (`T-204`, `T-207`,
 `T-209`, `T-210`, `T-211`, `T-223`, `T-224`), `T-216`, `T-217`, `T-234`, `T-243`, `T-244`,
@@ -121,7 +121,8 @@ everything else runs offline. §8's arranged failures say how to arrange each on
 | # | What to look for | Task |
 |---|---|---|
 | 6.1 | The screen holds **all eight** settings — download folder, theme, concurrency, ffmpeg location, cookie source, default preset, output template, network (proxy · speed limit · retries) — and **no "still to come" text anywhere** | `T-146`, `T-195`–`T-199` |
-| 6.2 | Every control **applies as it is changed** — no OK button hunting; Esc and `Close` both leave | `T-146` |
+| 6.1a | The download folder can be **typed or pasted into** as well as chosen; a folder that does not exist is **refused in words beside the field**, and the field goes back to the one in force | `T-292` |
+| 6.2 | Every control **applies as it is changed** — no OK button hunting; Esc and `Close` both leave. **The download folder is the one exception**: it commits when you leave the field or press `Return`, because applying a path as it is typed would set every prefix of it | `T-146`, `T-292` |
 | 6.3 | The `−`/`+` steppers look like a matched pair of buttons and **each disables at its end of the range** | `T-236`, `T-141` |
 | 6.4 | **Tab through the whole screen**: the focused control **scrolls into view** — nothing gains focus while invisible below the fold | `T-242` |
 | 6.5 | Cookie source: the three radios switch which controls below are live; the file chooser and browser picker appear only for their own choice; **no cookie path ever appears in the status bar or any visible log** | `T-197` |

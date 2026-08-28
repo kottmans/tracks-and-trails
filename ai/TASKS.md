@@ -246,6 +246,45 @@ contents; this preface does not list them.***
 
 ---
 
+### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
+
+**Status:** **In Review — built 2026-08-28, and no review has run.** The folder is a `QLineEdit`
+committing on `editingFinished`; a path that is missing, is a file, or cannot be written to is
+refused beside the field and the field goes back to the folder in force. The caption and its blank
+line are gone. **Six mutations, all killed.**
+
+*(Filed 2026-08-28 by `T-212`'s checklist run, on the maintainer's direction: *"You should able to
+manually enter in a path to put downloads into. The verbage underneath it about the download folder
+can just be removed I think. That isn't necessary for this."*)*
+
+**A label did come back under the field, and it is not the one that was removed.** The refusal has
+to be said where the user is looking, which is the shape `_template_note` already uses one section
+down. It holds a refusal or nothing; the removed caption held an explanation or nothing.
+
+**`~` is expanded before the check.** Refusing `~/Videos` as *"not a folder that exists"* would be
+true of the literal text and false about what the user typed.
+
+**The checklist grew a row.** `6.1a` describes the typed folder and its refusal; `6.2` now names
+the download folder as its one exception, since a path cannot apply as it is typed. The run's row
+count is **48**, and both `docs/PHASE_4_CHECKLIST.md` and `T-212` say so.
+**Owner:** Implementer
+**Priority:** Low — nothing is broken; a path that is easy to paste is faster than a chooser walked
+down a deep tree
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/settings_dialog.py:579` (`_directory_label`, a `QLabel`), `:585`
+(`_directory_note`), `_show_directory`, `show_download_directory`; `ARC-007` — `ui/` holds no
+settings writer and no platform paths; `core/paths.py`; `T-034`'s containment check;
+`docs/PHASE_4_CHECKLIST.md` rows 6.1 and 6.2, and 7.1's arranged unwritable folder
+**Affected surfaces:** `ui/settings_dialog.py`, `tests/ui/test_settings_dialog.py`, checklist row 6.1
+**Risk:** **Medium, and none of it is in the widget.** A typed path is untrusted text that becomes
+a filesystem destination, and *when* it takes effect is a genuine question the screen has not had
+to answer before
+
+#
+
+---
+
 ### T-293 — A queued row offers *Remove*, so one playlist entry can go without the playlist
 
 **Status:** **In Review — built 2026-08-28, and no review has run.** A queued row offers
@@ -11551,8 +11590,9 @@ kinds, since `T-209`'s audit found both spend that turn at 190×26.
 
 **Status:** Proposed — filed 2026-08-09, owning the exit criterion the maintainer added the same
 day; **the checklist half is written**, 2026-08-16, at `docs/PHASE_4_CHECKLIST.md` — before the
-run, which is this task's first acceptance criterion. **Forty-seven** rows across seven sections
-— counted, after the entry first said forty-one from an estimate — derived from
+run, which is this task's first acceptance criterion. **Forty-eight** rows across seven sections
+— counted; forty-seven when written, after the entry first said forty-one from an estimate, and
+`6.1a` added 2026-08-28 with `T-292` — derived from
 `docs/UX_SPEC.md` §2/§3/§8/§11/§12 and the accepted criteria of every surface Phase 4
 added or reshaped, in `docs/CRITERION_8_CHECKLIST.md`'s shape and under its guards: rows say what
 a user should see, task ids are back-references, and a failed row becomes a task entry rather than
@@ -12239,27 +12279,7 @@ not tolerated**, so that the job separates:
 - **`pytest -m network` against latest.** Defensible and a separate cost decision; the release
   gate already runs it against the pin
 
-### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
-
-**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run**, on the maintainer's
-direction: *"You should able to manually enter in a path to put downloads into. The verbage
-underneath it about the download folder can just be removed I think. That isn't necessary for
-this."*
-**Owner:** Implementer
-**Priority:** Low — nothing is broken; a path that is easy to paste is faster than a chooser walked
-down a deep tree
-**Phase:** Phase 4 (polish; **not** a plan deliverable)
-**Depends on:** nothing
-**Relevant context:** `ui/settings_dialog.py:579` (`_directory_label`, a `QLabel`), `:585`
-(`_directory_note`), `_show_directory`, `show_download_directory`; `ARC-007` — `ui/` holds no
-settings writer and no platform paths; `core/paths.py`; `T-034`'s containment check;
-`docs/PHASE_4_CHECKLIST.md` rows 6.1 and 6.2, and 7.1's arranged unwritable folder
-**Affected surfaces:** `ui/settings_dialog.py`, `tests/ui/test_settings_dialog.py`, checklist row 6.1
-**Risk:** **Medium, and none of it is in the widget.** A typed path is untrusted text that becomes
-a filesystem destination, and *when* it takes effect is a genuine question the screen has not had
-to answer before
-
-#### What is there now
+### What is there now
 
 `_directory_label` is a `QLabel`. The folder is reachable only through *Choose folder…* or *Use the
 default folder*, so a path the user already has on the clipboard cannot be pasted, and a deep tree
