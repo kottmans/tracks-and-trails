@@ -12242,6 +12242,239 @@ offered that would be refused* — is what settles it: removing a queued job is 
 - **The files on disk.** `Remove` on a queued job has none to keep or delete
 - **The header's verbs**, which `group_verbs` decides and `T-140` settled
 
+### T-294 — The add dialog's status line is an empty tab stop that draws a full-width focus ring
+
+**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run**, from the maintainer's
+first report of the sitting: *"on the 'add urls' page, this section gets highlighted even if there
+isn't anything there."*
+**Owner:** Implementer
+**Priority:** Low — nothing misbehaves; a keyboard user pays one Tab press to reach a control that
+says nothing, and sees a ring around it
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py:1444` and `focus_chain()`; `ui/staging.py` `summarise`;
+`T-218`, which emptied the no-rows summary; `T016-R4` and `T-060`, which is why the chain is
+declared; `ui/theme.py`'s `*:focus` rule, which is `T202-R1` working correctly
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low to change, **Medium to change without deciding which rule gives** — each candidate
+fix collides with something `focus_chain()` states in as many words
+
+#### What is wrong
+
+Measured against the built dialog:
+
+```
+text            : ''
+focusPolicy     : 11        # StrongFocus
+in focus_chain  : True
+hasFocus        : True
+height          : 17        # the same empty or full
+```
+
+Two decisions meet here and neither is wrong on its own:
+
+- `add_dialog.py:1444` sets `TextBrowserInteraction` so an extractor's message can be copied into a
+  bug report (`NFR-006`). That flag carries `LinksAccessibleByKeyboard`, and **Qt promotes the
+  label from `NoFocus` to `StrongFocus` as a side effect** — confirmed on a bare `QLabel`
+- **`T-218` made the empty summary the empty string.** Before it, this line always had words in it;
+  the hint moved into the list, where it describes the space it is in
+
+Together: a full-width, 17 px tab stop with nothing in it, which the sheet's `*:focus` rule then
+outlines in accent. **The ring is correct** — for a borderless control it *is* the non-colour
+channel (`T202-R1`) — and the defect is that an empty widget is in the chain at all.
+
+#### The three candidates, and what each costs
+
+`focus_chain()`'s docstring is the obstacle, and it is deliberate:
+
+> **Hidden widgets must not be in the chain** (`T-060`), and nothing here hides: the retry button
+> is disabled rather than removed when nothing has failed, so the chain is the same in every state
+> and the layout does not move under the user.
+
+- **Focus policy follows the text** — `NoFocus` while empty, `StrongFocus` when a message lands.
+  Copy-ability exists exactly when there is something to copy. The chain then differs by state,
+  which is what that paragraph argues against, though the widget never hides and `setTabOrder`
+  still resolves
+- **Hide the label when empty** — cleanest to look at, and the layout moves under the user, which
+  the same paragraph rejects outright for the retry button
+- **Give it back a permanent line of text** — undoes `T-218`'s reasoning that a summary of no rows
+  is not a place to teach
+
+#### Acceptance criteria
+
+- **An empty status line is not a tab stop**, however that is achieved
+- **A status line with text is still reachable and still selectable** — `NFR-006`'s copyable
+  extractor message is the reason this label is focusable at all and must survive
+- **`focus_chain()`'s docstring is updated to whichever rule now holds**, rather than left stating
+  one the code no longer follows
+- **The focus ring itself is untouched.** `T202-R1` decided it and it is doing its job
+
+#### Out of scope
+
+- The `*:focus` rule, and any other widget it rings
+- `T-218`'s decision that an empty summary says nothing
+
+### T-295 — A row's other verbs are dead while one panel is open on it
+
+**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run.** The maintainer's report:
+*"clicking on naming and folders in a playlist that is expanded doesn't seem to do anything at
+all."*
+**Owner:** Implementer
+**Priority:** Medium — the verb is in the menu, the menu is reachable, and choosing it does nothing
+at all. A control that silently declines is what `UX-005` §5 exists against
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py:1877` (`_open_panel`'s first line), `open_format_table`,
+`open_playlist_picker`, `open_template_editor`; `T-108`, `T-110`, `P-19`
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Low — but the guard exists for a reason and removing it outright reopens what it stops
+
+#### What is wrong
+
+Reproduced against the built dialog: with a playlist's entry picker open on a row, choosing
+*Naming and folders…* on that same row leaves the picker in place and creates nothing.
+
+```
+panel after picker open : PlaylistPanel
+panel after 'Naming…'   : PlaylistPanel     # unchanged
+template panel exposed  : None
+```
+
+One line does it:
+
+```python
+if self._expanded is row:  # add_dialog.py:1877
+    return
+```
+
+**The guard keys on the row and not on the panel kind.** It is right that re-choosing the *same*
+verb on an open row should not rebuild the panel — that is idempotence, and `_open_panel`'s
+docstring is about one panel slot. But every *different* verb on that row is swallowed with it, so
+`Choose specific formats…` on an expanded playlist is dead the same way. One guard, three verbs.
+
+#### Acceptance criteria
+
+- **A different verb on an open row swaps the panel**, closing the current one keeping its choice —
+  which is what `_open_panel` already does for a different row, and the docstring's *"any other
+  open panel closes first, keeping its choice"* already promises
+- **The same verb on an open row is still a no-op**, so the idempotence the guard was written for
+  survives
+- **The swap goes through one mechanism.** `P-19` — the format table and the picker are *"one
+  mechanism rather than two"* — and a swap written per panel kind would be three
+- **The deferred mount ordering is preserved** (`T108-R2`): the close and the new mount must not
+  put `setIndexWidget` back inside the editor Qt is using
+- **A test drives each of the three verbs onto a row already open on each of the others**
+
+#### Out of scope
+
+- Two panels open at once, which `_open_panel`'s docstring rules out and this does not revisit
+- The panel geometry defect (`T-296`)
+
+### T-296 — A panel opened in a short list mounts at its 26 px minimum and crushes its contents
+
+**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run.** The maintainer's report:
+*"if the playlist is not expanded the naming and folders screen is crushed."*
+**Owner:** Implementer
+**Priority:** Medium — the panel is unusable at that size, and the size is an ordinary window on a
+laptop
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py` `panel_height_for` and `_mount_panel`; `T-108`, whose
+comment measures **190×26** as the geometry a panel keeps when `setIndexWidget` is not given a
+laid-out rectangle; `T-210`, `T193-R1`
+**Affected surfaces:** `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`
+**Risk:** Medium — the height calculation has three constraints already and `T193-R1` is the record
+of one being fixed by breaking another
+
+#### What is wrong
+
+Reproduced at a 712×500 dialog, opening *Naming and folders…*:
+
+```
+viewport h        : 144
+panel_height_for  : 322     # the floor: never below minimumSizeHint
+panel actual h    : 26      # what was actually mounted
+  wrapped 'The Art of War …'      h=  -1 needs=  85 CLIPPED=True
+  wrapped 'Fields you can use: …' h=  -4 needs= 204 CLIPPED=True
+  wrapped 'The extension is not…' h=  -4 needs=  85 CLIPPED=True
+```
+
+**26 px is the panel's unmounted minimum** — the very number `_mount_panel`'s comment records
+`T-108` fixing from the mounting side: *"Measured: 190x26 inside a row whose `visualRect` was
+already 485x366."* When the wanted height exceeds the viewport, `setGeometry(visualRect(index))`
+does not land it, the widget keeps its own minimum, and the layout drives its children to
+**negative** heights. At 712×762 the same panel opens correctly at 339 px, which is why it reads as
+size-dependent rather than broken.
+
+#### Acceptance criteria
+
+- **A panel opened in a viewport shorter than it is still mounted at the height the row was sized
+  to**, and its children get the heights they ask for
+- **The test asserts the mounted geometry against the row's own `visualRect`** at a window size
+  where the panel does not fit — the case that reproduces, not a comfortable one
+- **A wrapped label never receives a negative height**, which is a cheap assertion and catches the
+  whole family
+- **`T-210`'s way out stays reachable**: whatever the panel does when it is taller than the
+  viewport, the top of it — the disclosure and the summary — must be on screen, because
+  `setIndexWidget` covers the row's own disclosure
+- **`panel_height_for`'s three existing constraints are re-stated in its docstring** if any of them
+  moves: the panel's own hint, what the list can show, and the floor that keeps *Done* reachable
+
+#### Out of scope
+
+- The scroll behaviour of the list itself (`T-210` settled per-pixel scrolling)
+- `T-297`'s flicker, which may or may not be the same mechanism
+
+### T-297 — A thumbnail flickers while the window is resized with a panel open, and the cause is unknown
+
+**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run**, and filed **without a
+cause**, deliberately. The maintainer's report: *"when changing the window size while the naming
+information is up, the thumbnail cuts in and out very rapidly. That shouldn't happen."*
+**Owner:** Implementer
+**Priority:** Low — it is visual noise during a drag, and it is the least understood thing the run
+found
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/add_dialog.py` `panel_height_for`, which reads the **viewport's** height,
+so every resize step changes the row's size hint; `_mount_panel`'s note that `setIndexWidget`
+defers geometry to `updateEditorGeometries`, which runs on paint; `T-296`
+**Affected surfaces:** unknown until it is reproduced
+**Risk:** Low
+
+#### What was measured, and what it does not show
+
+**It did not reproduce offscreen.** Across eight resize steps with the template panel open:
+
+```
+thumbnail loads : 0        # nothing re-fetches
+cancels         : 0
+```
+
+and the panel's geometry matched the row's `visualRect` at **every** step, from 762 px down to
+430 px and back up. So it is neither the thumbnail being reloaded nor the panel losing coverage in
+any way a headless process can see.
+
+**The plausible mechanism is unproven and is recorded as a hypothesis, not a finding.**
+`panel_height_for` reads `self._list.viewport().height()`, so every resize step changes the row's
+size hint; the panel's re-placement is deferred to paint; and the delegate underneath — which draws
+the thumbnail — is what shows in any gap. That is consistent with `T-108`'s comments and with
+`T-296`, and it is not evidence.
+
+#### Acceptance criteria
+
+- **It is reproduced on a real display first**, with a capture, and the reproduction is recorded in
+  `ai/evidence/` before anything is changed. An offscreen process does not do a continuous resize
+  and its style is not necessarily the session's
+- **The cause is named before the fix**, and if the cause turns out to be `T-296`'s, this task is
+  closed against that one rather than fixed twice
+- **If it proves to be Qt or compositor behaviour** this application can only work around, that is
+  recorded as the finding and the workaround is a separate decision
+
+#### Out of scope
+
+- Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
+  merged on the strength of sitting near each other
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three
