@@ -24,6 +24,7 @@ listed explicitly rather than quietly absent, so a reader can tell "not applicab
 "forgotten".
 """
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
@@ -49,6 +50,12 @@ from tracks_and_trails.core.models import (
     PlaylistEntry,
     parse_browser_specification,
 )
+from tracks_and_trails.core.paths import APP_SLUG
+
+#: This module's own log name, under the application's tree so `configure_logging`'s redacting
+#: handler formats it (`T-038`, `REQ-026`). Named for the module rather than shared with the
+#: worker's, so a line about a projection is not read as a line about a download.
+_LOG: Final = logging.getLogger(f"{APP_SLUG}.adapter")
 
 
 class UnsupportedPostProcessorError(ValueError):
@@ -441,20 +448,54 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
     would fetch the whole playlist during a probe — the cost `project_media` has always refused.
     `_entry_count` makes the same refusal for the same reason; this is the pair of it.
 
-    An entry with no usable address is **dropped rather than carried**: yt-dlp emits `None`
-    placeholders for items it could not read — a deleted or private video keeps its slot in the
-    list — and a job pointing at nothing would fail at download time with nothing useful to say.
-    The count still reports the full playlist, so the group knows it is short.
+    An entry yt-dlp could not read is **dropped rather than carried**: a deleted or private video
+    keeps its slot in the list, and a job pointing at nothing would fail at download time with
+    nothing useful to say. The count still reports the full playlist, so the group knows it is
+    short.
+
+    **The marker is the missing title, not a missing address** (`T-281`). This said the same thing
+    and tested `url`, which a YouTube placeholder still has — yt-dlp composes `watch?v=<id>` from
+    the id it holds even for an item it could read nothing else about. Measured against a real
+    playlist on 2026-08-27: the extractor logged *"2 unavailable videos are hidden"* and the two
+    entries arrived with `id` and `url` intact and `title`, `duration`, `channel` and `uploader`
+    all `None`. The old guard passed them through, `title or url` put the raw address in the title
+    column, and both rows reached the queue to fail there — which is the outcome this paragraph
+    already claimed to prevent. The address check stays, because an entry with neither is no more
+    usable than one without a title.
+
+    **A title of `[Private video]` or `[Deleted video]` is *not* matched**, and that is a decision
+    rather than an omission. Those spellings come back from paths that read the item well enough to
+    name it, and matching them means recognising user-supplied titles by their text — the
+    recogniser problem `T-018` refused for query parameters, for the same reason: a real video may
+    be called anything. If such an entry is ever seen reaching the queue, it needs its own evidence
+    and its own decision, not a string added here.
+
+    **Each drop is logged, by position rather than by identity**, and that is a smaller line than it
+    first looks like it should be. Two other spellings were tried and both are refused by a
+    decision this function does not get to overturn:
+
+    - **The entry's URL** is useless. `RedactingFormatter` strips every URL's query string
+      (`T-018`, allowlist empty by design) and a YouTube video id lives in the query — measured,
+      `https://www.youtube.com/watch?v=Zg0WtgC80lY` redacts to `https://www.youtube.com/watch`
+    - **The entry's `id`** survives redaction and is what a human would want, but reading it here
+      puts `id` into the fixture allowlist by construction: `tests/unit/test_fixtures.py` derives
+      that allowlist from this module's AST, and `capture.py` currently strips exactly this value
+      out of committed captures, `ALLOWED_QUERY_PARAMETERS` being empty. Committing entry ids is a
+      reversal of that, not a consequence of this
+
+    So the line names the playlist and which positions went. `T-281` records the id as an available
+    upgrade if the fixture policy is ever widened deliberately.
     """
     entries = info.get("entries")
     if isinstance(entries, str | bytes) or not isinstance(entries, Sequence):
         return ()
     projected: list[PlaylistEntry] = []
+    dropped: list[int] = []
     # **`item`, not `entry`.** `tests/unit/test_fixtures.py` derives what this module reads by
     # walking its AST for `<name>.get("key")`, and `entry` is its name for a *format* — so reading
     # a playlist entry through a variable called `entry` reported these keys as ones the adapter
     # reads off a format, which is a different allowlist and a different fixture shape.
-    for item in entries:
+    for position, item in enumerate(entries, start=1):
         if not isinstance(item, Mapping):
             continue
         # **A public URL first, and `url` last** (`T137-R1`). yt-dlp resolves a flat entry
@@ -466,7 +507,13 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
         url = str(item.get("webpage_url") or item.get("original_url") or item.get("url") or "")
         if not url:
             continue
-        title = str(item.get("title") or "").strip() or url
+        title = str(item.get("title") or "").strip()
+        if not title:
+            # The placeholder case above. `position` counts every item the playlist offered,
+            # including the dropped ones, so it is the number the extractor's own "item N of M"
+            # lines use rather than an index into what survived.
+            dropped.append(position)
+            continue
         projected.append(
             PlaylistEntry(
                 url=url,
@@ -474,6 +521,16 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
                 duration_seconds=_as_optional_float(item.get("duration")),
                 thumbnail_url=_entry_thumbnail(item),
             )
+        )
+    if dropped:
+        # **The playlist first, so the line has a subject.** A count on its own is unreadable in a
+        # log holding several probes.
+        _LOG.info(
+            "playlist %r: dropped %d of %d entries yt-dlp could not read, at %s",
+            str(info.get("title") or "?"),
+            len(dropped),
+            len(dropped) + len(projected),
+            ", ".join(f"position {one}" for one in dropped),
         )
     return tuple(projected)
 

@@ -246,6 +246,118 @@ contents; this preface does not list them.***
 
 ---
 
+### T-281 — Unavailable playlist entries are carried into the queue as rows that cannot download
+
+**Status:** **In Review — built 2026-08-28, and no review has run.** Gates green: `ruff check .`,
+`ruff format --check .`, `mypy src`, and 2,285 unit tests. **Three mutations, all killed** —
+restoring the `title or url` fallback, dropping without logging, and counting the survivors rather
+than the whole playlist. The review `AGENTS.md` §10 requires before Complete is **still owed** —
+this was built unattended, on the maintainer's instruction, with no reviewer available.
+
+*(Filed 2026-08-27 by `T-212`'s checklist run, which is where it was seen: a real 20-item playlist
+staged 20 rows, two of which showed their own URL where a title belongs and *Unknown* where a
+duration belongs. **The maintainer ruled the disposition the same day: drop them, and record the
+drop in the application log** so a later question about a short playlist has something to read.)*
+**Owner:** Implementer
+**Priority:** Medium — the rows reach the queue and fail there, and the failure says nothing a user
+can act on. Nothing is lost by dropping them: `entry_count` reports what the site says, so a group
+of twenty that materialised eighteen already knows it is short
+**Phase:** Phase 4 (polish; **not** a plan deliverable) — the same placement `T-244` took
+**Depends on:** nothing
+**Relevant context:** `downloader/ytdlp_adapter.py` `_entries`; `T-137`, which wrote the flat
+projection and its recorded playlist fixture; `downloader/worker.py` — the probe's options are
+built without a logger, the download's with one; `core/logging.py` `redact` and `_bare_url`
+**Affected surfaces:** `downloader/ytdlp_adapter.py`, `downloader/worker.py`, their tests, and a
+recorded fixture for a playlist holding unreadable entries
+**Risk:** Low for the drop, **Medium for the log line** — a naive line logs the entry's URL, and
+redaction deletes exactly the part that identifies it (below)
+
+#### What is wrong
+
+**Measured against the live playlist, yt-dlp 2026.x, on 2026-08-27.** The extractor says so itself:
+
+```
+WARNING: [youtube:tab] YouTube said: INFO - 2 unavailable videos are hidden
+```
+
+and the two entries arrive with their slot intact and their metadata gone:
+
+```
+--- entry 18 ---                    --- entry 19 ---
+  id      : 'thuQPFQFQE8'             id      : 'Zg0WtgC80lY'
+  title   : 'Angry Video Game …'      title   : None
+  duration: 10966                     duration: None
+  channel : 'Cinemassacre'            (no channel, no uploader)
+```
+
+`playlist_count` is `20` and `entries` is twenty long.
+
+**`_entries` already means to drop these and tests the wrong field.** Its docstring says an entry
+yt-dlp could not read is *"dropped rather than carried … a deleted or private video keeps its slot
+in the list … a job pointing at nothing would fail at download time with nothing useful to say"* —
+which is this case named exactly. The guard it performs is `if not url: continue`, and a YouTube
+placeholder **has** a URL: yt-dlp composes `watch?v=<id>` from the id it still holds. The marker
+for a placeholder is the **missing title**, not a missing address.
+
+`title = str(item.get("title") or "").strip() or url` then puts the raw address in the title
+column, which is the row the run photographed.
+
+**The one sentence that explains it is discarded at the moment it is produced.** `build_options`
+takes a `logger` and `report_warning` routes through it, but the probe is built at
+`worker.py:1071` without one; only the download path passes `YtdlpLog`. So the extractor's own
+count of hidden videos is emitted during the probe and reaches nothing.
+
+#### The log line has a trap in it, and the criteria below exist because of it
+
+`RedactingFormatter` strips **every** URL's query string — no allowlist, by `T-018`'s decision —
+and a YouTube video id lives in the query. Measured:
+
+```
+'dropped https://www.youtube.com/watch?v=Zg0WtgC80lY'  ->  'dropped https://www.youtube.com/watch'
+'dropped entry id=Zg0WtgC80lY (19 of 20)'              ->  unchanged
+```
+
+A line that logs the entry's URL is therefore a line that cannot identify the entry. The id is a
+bare token and survives; redaction is not the thing to weaken.
+
+#### Acceptance criteria
+
+- **An entry yt-dlp could not read is dropped from the projection**, and the test for it is the
+  missing title rather than the missing address — with a case that carries a URL and no title, so
+  the old guard fails it
+- **`entry_count` still reports the site's count**, unchanged: the group says twenty and offers
+  eighteen, which is `_entry_count`'s existing contract and the reason dropping is safe
+- **Every drop is recorded in the application log**: one line per probed playlist, naming how many
+  entries were dropped and **which positions** they held. ~~and the id of each~~ — **the id was the
+  first choice and is refused for now.** Reading `item.get("id")` puts `id` into the fixture
+  allowlist by construction: `tests/unit/test_fixtures.py` derives that allowlist from this
+  module's AST, and `capture.py` strips exactly that value out of committed captures today,
+  `ALLOWED_QUERY_PARAMETERS` being empty. Committing entry ids reverses `T-018`'s decision rather
+  than following from this task. **The id remains an available upgrade** if that policy is ever
+  widened deliberately
+- **That line survives redaction** — asserted by passing it through `redact()` in the test, not by
+  reading it. A line logging the entry URL passes a naive test and loses everything identifying
+- **A recorded fixture reproduces the shape offline**, the way `T-137` recorded its playlist, so
+  the case is testable without the network
+- **The known placeholder spellings are covered**: this playlist produced `title: None`, and
+  yt-dlp also emits `[Private video]` and `[Deleted video]` titles for the same condition on other
+  paths. **Only the missing title is matched, and the bracketed spellings deliberately are not** —
+  matching them means recognising user-supplied titles by their text, which is `T-018`'s recogniser
+  problem one field over: a real video may be called anything. If such an entry is seen reaching
+  the queue it needs its own evidence, not a string added to the guard
+
+#### Out of scope
+
+- **Carrying unavailable entries as a visible state** — listed, unchecked, refused at queue time.
+  It is the more honest surface and the maintainer chose the drop; if it is wanted later it is its
+  own task, through `PlaylistEntry`, the picker and the delegate
+- **A debug level for the application log** — `T-282`. This task's line goes to the log that
+  already exists, at a level that is already written
+- **Whether the probe should pass a logger at all.** Surfacing yt-dlp's own warning to the user is
+  a separate question from this application recording what it itself did
+
+---
+
 ## Complete
 
 ### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
@@ -11272,102 +11384,6 @@ run is the deliverable; the pass is only what it hopefully shows.
 - **The Windows half.** `OPS-003`: there is no Windows machine, so the run is Linux; the
   pre-release Windows session inherits the same checklist, and the gap is named the way the plan's
   screen-reader split names its Narrator gap
-
-### T-281 — Unavailable playlist entries are carried into the queue as rows that cannot download
-
-**Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run**, which is where it was
-seen: a real 20-item playlist staged 20 rows, two of which showed their own URL where a title
-belongs and *Unknown* where a duration belongs. **The maintainer ruled the disposition the same
-day: drop them, and record the drop in the application log** so a later question about a short
-playlist has something to read.
-**Owner:** Implementer
-**Priority:** Medium — the rows reach the queue and fail there, and the failure says nothing a user
-can act on. Nothing is lost by dropping them: `entry_count` reports what the site says, so a group
-of twenty that materialised eighteen already knows it is short
-**Phase:** Phase 4 (polish; **not** a plan deliverable) — the same placement `T-244` took
-**Depends on:** nothing
-**Relevant context:** `downloader/ytdlp_adapter.py` `_entries`; `T-137`, which wrote the flat
-projection and its recorded playlist fixture; `downloader/worker.py` — the probe's options are
-built without a logger, the download's with one; `core/logging.py` `redact` and `_bare_url`
-**Affected surfaces:** `downloader/ytdlp_adapter.py`, `downloader/worker.py`, their tests, and a
-recorded fixture for a playlist holding unreadable entries
-**Risk:** Low for the drop, **Medium for the log line** — a naive line logs the entry's URL, and
-redaction deletes exactly the part that identifies it (below)
-
-#### What is wrong
-
-**Measured against the live playlist, yt-dlp 2026.x, on 2026-08-27.** The extractor says so itself:
-
-```
-WARNING: [youtube:tab] YouTube said: INFO - 2 unavailable videos are hidden
-```
-
-and the two entries arrive with their slot intact and their metadata gone:
-
-```
---- entry 18 ---                    --- entry 19 ---
-  id      : 'thuQPFQFQE8'             id      : 'Zg0WtgC80lY'
-  title   : 'Angry Video Game …'      title   : None
-  duration: 10966                     duration: None
-  channel : 'Cinemassacre'            (no channel, no uploader)
-```
-
-`playlist_count` is `20` and `entries` is twenty long.
-
-**`_entries` already means to drop these and tests the wrong field.** Its docstring says an entry
-yt-dlp could not read is *"dropped rather than carried … a deleted or private video keeps its slot
-in the list … a job pointing at nothing would fail at download time with nothing useful to say"* —
-which is this case named exactly. The guard it performs is `if not url: continue`, and a YouTube
-placeholder **has** a URL: yt-dlp composes `watch?v=<id>` from the id it still holds. The marker
-for a placeholder is the **missing title**, not a missing address.
-
-`title = str(item.get("title") or "").strip() or url` then puts the raw address in the title
-column, which is the row the run photographed.
-
-**The one sentence that explains it is discarded at the moment it is produced.** `build_options`
-takes a `logger` and `report_warning` routes through it, but the probe is built at
-`worker.py:1071` without one; only the download path passes `YtdlpLog`. So the extractor's own
-count of hidden videos is emitted during the probe and reaches nothing.
-
-#### The log line has a trap in it, and the criteria below exist because of it
-
-`RedactingFormatter` strips **every** URL's query string — no allowlist, by `T-018`'s decision —
-and a YouTube video id lives in the query. Measured:
-
-```
-'dropped https://www.youtube.com/watch?v=Zg0WtgC80lY'  ->  'dropped https://www.youtube.com/watch'
-'dropped entry id=Zg0WtgC80lY (19 of 20)'              ->  unchanged
-```
-
-A line that logs the entry's URL is therefore a line that cannot identify the entry. The id is a
-bare token and survives; redaction is not the thing to weaken.
-
-#### Acceptance criteria
-
-- **An entry yt-dlp could not read is dropped from the projection**, and the test for it is the
-  missing title rather than the missing address — with a case that carries a URL and no title, so
-  the old guard fails it
-- **`entry_count` still reports the site's count**, unchanged: the group says twenty and offers
-  eighteen, which is `_entry_count`'s existing contract and the reason dropping is safe
-- **Every drop is recorded in the application log**: one line per probed playlist, naming how many
-  entries were dropped and the id of each
-- **That line survives redaction** — asserted by passing it through `redact()` in the test, not by
-  reading it. A line logging the entry URL passes a naive test and loses the id
-- **A recorded fixture reproduces the shape offline**, the way `T-137` recorded its playlist, so
-  the case is testable without the network
-- **The known placeholder spellings are covered**: this playlist produced `title: None`, and
-  yt-dlp also emits `[Private video]` and `[Deleted video]` titles for the same condition on other
-  paths — whichever of those the fixture cannot produce is named in the entry rather than assumed
-
-#### Out of scope
-
-- **Carrying unavailable entries as a visible state** — listed, unchecked, refused at queue time.
-  It is the more honest surface and the maintainer chose the drop; if it is wanted later it is its
-  own task, through `PlaylistEntry`, the picker and the delegate
-- **A debug level for the application log** — `T-282`. This task's line goes to the log that
-  already exists, at a level that is already written
-- **Whether the probe should pass a logger at all.** Surfacing yt-dlp's own warning to the user is
-  a separate question from this application recording what it itself did
 
 ### T-282 — A debug level for the application log, reachable without editing code
 

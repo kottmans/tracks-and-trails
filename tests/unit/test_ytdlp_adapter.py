@@ -10,6 +10,7 @@ the only reason recording it is worth the maintenance.
 
 import contextlib
 import json
+import logging
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -32,6 +33,7 @@ from yt_dlp.utils import (
 )
 
 from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.logging import redact
 from tracks_and_trails.core.models import (
     AudioCodec,
     DownloadRequest,
@@ -39,6 +41,7 @@ from tracks_and_trails.core.models import (
     MediaInfo,
     MediaKind,
 )
+from tracks_and_trails.core.paths import APP_SLUG
 from tracks_and_trails.downloader import ytdlp_adapter as adapter
 
 FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "infodicts"
@@ -1007,6 +1010,100 @@ def test_an_unreadable_entry_is_dropped_but_still_counted() -> None:
         "the count shrank to what could be read, so the playlist reports itself smaller than the "
         "site says it is"
     )
+
+
+def test_a_placeholder_entry_that_still_has_an_address_is_dropped() -> None:
+    """`T-281`: the guard tested the address, and a YouTube placeholder still has one.
+
+    **This is the case the old guard passed.** Measured on 2026-08-27 against a real playlist:
+    the extractor logged *"2 unavailable videos are hidden"* and the two entries arrived with an
+    address composed from the id they still held, and `title` and `duration` `None`. `if not url`
+    let them through, `title or url` put the raw address in the title column, and both reached the
+    queue to fail there.
+    """
+    info = {
+        "_type": "playlist",
+        "title": "Partly gone",
+        "webpage_url": "https://example.invalid/list",
+        "playlist_count": 3,
+        "entries": [
+            {"url": "https://example.invalid/a", "title": "One"},
+            {"url": "https://example.invalid/watch", "title": None, "duration": None},
+            {"url": "https://example.invalid/watch", "title": "   ", "duration": None},
+        ],
+    }
+
+    media = adapter.project_media(info, reachable=_nothing_answers)
+
+    assert [entry.title for entry in media.entries] == ["One"], (
+        "an entry yt-dlp could not name was projected anyway, so its address became its title "
+        f"and a job pointing at nothing reached the queue: {media.entries}"
+    )
+    assert media.entry_count == 3, "the count shrank to what could be read"
+
+
+def test_the_recorded_playlist_of_unreadable_entries_projects_only_the_readable_ones() -> None:
+    """The same case offline, in the shape a real extraction produces (`T-281`).
+
+    The literal above states the rule; this proves it against a fixture with the surrounding
+    fields a real capture carries, so the rule is not true only of a dict written to satisfy it.
+    """
+    info = load_fixture("derived_playlist_with_unavailable_entries")
+
+    media = adapter.project_media(info, reachable=_nothing_answers)
+
+    assert len(media.entries) == 7, (
+        f"the two unreadable entries were projected: {[e.title for e in media.entries]}"
+    )
+    assert media.entry_count == 9, (
+        "the count shrank to what could be read, so the group reports itself smaller than the "
+        "site says it is"
+    )
+    assert all(entry.title and not entry.title.startswith("http") for entry in media.entries), (
+        "an entry is carrying its own address as its title"
+    )
+
+
+def test_the_dropped_entries_are_logged_with_the_playlist_and_their_positions(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`T-281`: a playlist that comes back short says so somewhere durable.
+
+    **Positions, not ids or URLs, and the reasons are in `_entries`.** A URL loses its query to
+    `RedactingFormatter` — which is where a video id lives — and reading the `id` would put it in
+    the fixture allowlist that `capture.py` currently strips it out of.
+
+    **The line is asserted through `redact` as well as raw**, because a log line that cannot
+    survive redaction is a log line that says nothing in the file it is written to.
+    """
+    info = load_fixture("derived_playlist_with_unavailable_entries")
+
+    with caplog.at_level(logging.INFO, logger=f"{APP_SLUG}.adapter"):
+        adapter.project_media(info, reachable=_nothing_answers)
+
+    lines = [record.getMessage() for record in caplog.records]
+    assert len(lines) == 1, f"expected exactly one line about the drop, got {lines}"
+    line = lines[0]
+    assert "dropped 2 of 9" in line, line
+    assert "position 8" in line and "position 9" in line, (
+        f"the line does not say which entries went, so it cannot be acted on: {line}"
+    )
+    assert redact(line) == line, (
+        f"the line does not survive redaction, so the log file will not carry what it says: "
+        f"{redact(line)!r}"
+    )
+
+
+def test_a_playlist_with_nothing_dropped_says_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A line per probe that reports zero is noise, and noise is what stops a log being read."""
+    info = load_fixture("archive_org_art_of_war_playlist")
+
+    with caplog.at_level(logging.INFO, logger=f"{APP_SLUG}.adapter"):
+        adapter.project_media(info, reachable=_nothing_answers)
+
+    assert not caplog.records, f"a playlist that lost nothing still logged: {caplog.records}"
 
 
 def test_a_lazily_paginated_playlist_is_not_consumed_while_probing() -> None:

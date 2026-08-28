@@ -1,0 +1,79 @@
+{
+  "_fixture": {
+    "capture_method": "derived",
+    "captured": "2026-08-28",
+    "content_licence": "No content: the structure of a real capture with two entries emptied.",
+    "derived_from": "archive_org_art_of_war_playlist",
+    "note": "Derived, not recorded. A playlist holding items the extractor could not read. The shape is measured, not invented: on 2026-08-27 a real 20-item YouTube playlist logged 'YouTube said: INFO - 2 unavailable videos are hidden' and the two entries arrived with an address and an id present and title, duration, channel and uploader all null. The id is not carried here because the projection does not read it and this policy commits nothing it does not read; the address alone reproduces the case, which is that the old guard tested the address and passed. The real playlist is not committed as a capture because it is not a boring source (tests/fixtures/capture.py): it is YouTube, it changes, and the entries would stop being unavailable the day someone restores them.",
+    "policy": "allowlist: only fields ytdlp_adapter reads carry values; each playlist entry keeps exactly url, webpage_url, original_url, title, duration, thumbnail and nothing else; every other key is dropped and nothing about it is kept. URLs lose query, userinfo and fragment; user-directory paths are removed",
+    "what_is_synthetic": [
+      "entries[7]",
+      "entries[8]",
+      "playlist_count"
+    ],
+    "why_this_source": "T-281. The guard that drops unreadable entries tested the address, which a YouTube placeholder still has; the marker is the missing title. This fixture is the case that fails the old guard and passes the new one, offline.",
+    "yt_dlp_version": "2026.07.04"
+  },
+  "info_dict": {
+    "_type": "playlist",
+    "entries": [
+      {
+        "duration": 507.1,
+        "title": "1 Laying Plans - 2 Waging War",
+        "url": "https://archive.org/download/art_of_war_librivox/art_of_war_01-02_sun_tzu.mp3",
+        "webpage_url": "https://archive.org/details/art_of_war_librivox"
+      },
+      {
+        "duration": 465.67,
+        "title": "3 Attack By Stratagem - 4 Tactical Dispositions",
+        "url": "https://archive.org/download/art_of_war_librivox/art_of_war_03-04_sun_tzu.mp3",
+        "webpage_url": "https://archive.org/details/art_of_war_librivox"
+      },
+      {
+        "duration": 636.98,
+        "title": "5 Energy - 6 Weak Points and Strong",
+        "url": "https://archive.org/download/art_of_war_librivox/art_of_war_05-06_sun_tzu.mp3",
+        "webpage_url": "https://archive.org/details/art_of_war_librivox"
+      },
+      {
+        "duration": 531,
+        "title": "7 Maneuvering - 8 Variation in Tactics",
+        "url": "https://archive.org/download/art_of_war_librivox/art_of_war_07-08_sun_tzu.mp3",
+        "webpage_url": "https://archive.org/details/art_of_war_librivox"
+      },
+      {
+        "duration": 882.63,
+        "title": "9 The Army on the March - 10 Terrain",
+        "url": "https://archive.org/download/art_of_war_librivox/art_of_war_09-10_sun_tzu.mp3",
+        "webpage_url": "https://archive.org/details/art_of_war_librivox"
+      },
+      {
+        "duration": 776.58,
+        "title": "11 The Nine Situations",
+        "url": "https://archive.org/download/art_of_war_librivox/art_of_war_11_sun_tzu.mp3",
+        "webpage_url": "https://archive.org/details/art_of_war_librivox"
+      },
+      {
+        "duration": 539.05,
+        "title": "12 The Attack By Fire - 13 The Use of Spies",
+        "url": "https://archive.org/download/art_of_war_librivox/art_of_war_12-13_sun_tzu.mp3",
+        "webpage_url": "https://archive.org/details/art_of_war_librivox"
+      },
+      {
+        "duration": null,
+        "title": null,
+        "url": "https://www.youtube.com/watch"
+      },
+      {
+        "duration": null,
+        "title": null,
+        "url": "https://www.youtube.com/watch"
+      }
+    ],
+    "original_url": "https://archive.org/details/art_of_war_librivox",
+    "playlist_count": 9,
+    "title": "The Art of War",
+    "uploader": "info@librivox.org",
+    "webpage_url": "https://archive.org/details/art_of_war_librivox"
+  }
+}
