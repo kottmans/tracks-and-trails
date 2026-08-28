@@ -11549,7 +11549,25 @@ Run against today's build that row fails.
 video up to 1080p (MP4) — following the batch"*, so the value and the relation are both on the row
 in words; only the control disagrees.
 
-#### Ruled 2026-08-28: the preset's name alone
+#### **Not built 2026-08-28, and the reason is a second decision nobody has taken**
+
+**`INHERITED_TEXT` is two things, and the ruling settles one of them.** It is the label
+`_paint_control` draws on an unoverridden row (`row_delegate.py:1514`) — which is what the
+maintainer was looking at and what the ruling below covers — and it is also a **selectable entry in
+the editor's dropdown**, `choice.addItem(INHERITED_TEXT, None)` at `:2165`, whose `None` data is
+what *means* "follow the batch".
+
+Changing only the painted label leaves the closed editor reading *Same as all* while the affordance
+beside it reads *Best video up to 1080p (MP4)* — **so the text would change at the moment of the
+click**, which is the exact defect class `T-283` was just built to close. Changing both puts two
+entries in the list that read identically and mean opposite things: one overrides the row with that
+preset, the other leaves it following.
+
+**Neither is implied by the ruling, so neither was written.** The dropdown entry has no width
+constraint — the popup is as wide as it needs to be — so the shapes rejected for the *control* are
+all still available to it. What the entry should say is the question this task now waits on.
+
+#### Ruled 2026-08-28: the preset's name alone — for the control
 
 The maintainer chose the first of three shapes offered: **the control shows the preset's name and
 nothing else.** The relation stays where it already is — the row's detail line reads *"Download as:
