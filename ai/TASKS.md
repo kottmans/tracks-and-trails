@@ -11787,7 +11787,10 @@ this is.
 
 **Status:** Proposed — **filed 2026-08-27 by `T-212`'s checklist run.** The maintainer's report:
 *"the scrollbar on the options menu is barely visible in dark mode"*, seen on the Settings screen's
-scroller.
+scroller. **Widened 2026-08-28 on a second report from the same run** — *"the scrollbar looks very
+windows 98. It needs a more modern look"* — because it is the same defect seen from the other side:
+there is no `QScrollBar` rule, so both the contrast and the chrome are the platform's default
+rather than this theme's. Two tasks would have edited the same handful of rules.
 **Owner:** Implementer
 **Priority:** Medium — it is the control that tells a user there is more screen below, on the one
 screen tall enough to need it (`T-242` is the record of focus scrolling below the fold there)
@@ -11862,11 +11865,34 @@ taken where the report came from.
   this is spelled out
 - **The hover and pressed states are drawn**, since a control that never changes under the pointer
   reads as decoration
+- **Every `QScrollBar` sub-control is declared**, not only the ones being drawn — `::handle`,
+  `::add-line`, `::sub-line`, `::add-page`, `::sub-page` — so the stepper arrows are *removed*
+  rather than left to render as the blank blocks `T-133` measured
+- **The result does not read as a decade-old control.** No stepper arrows, a rounded handle with a
+  margin so it floats rather than fills, and both orientations treated alike
+
+#### The look is the same defect, and it has a trap of its own
+
+The bar the maintainer is looking at is **Fusion's**, complete with a stepper arrow at each end —
+the shape desktop scroll bars had before they stopped having buttons. Nothing chose it; it is what
+an unstyled `QScrollBar` renders as.
+
+**Styling it at all switches the widget to `QStyleSheetStyle`, and that is where `T-133` was
+lost.** Its comment in `theme.py` is this project's own record: styling `QSpinBox` moved it to the
+sheet's rendering and *"its up and down arrows stop being drawn"* — measured at **3 distinct
+colours in the button strip against 42 native**. A `QScrollBar` rule that declares `::handle` and
+stops will do the same to `::add-line`, `::sub-line`, `::add-page` and `::sub-page`. **Every
+sub-control has to be declared, including the ones being removed.**
+
+Which is convenient, because a modern bar removes most of them: no stepper arrows, a rounded handle
+with a margin so it floats in its groove rather than filling it, and a hover state. That is the
+shape both reports are asking for, and it is one rule set.
 
 #### Out of scope
 
 - The scroll **area**'s focus ring, which is already styled and was `T202-R1`'s third round
-- Scroll bar **width** or overlay behaviour — this is about being seen, not about size
+- **Overlay or auto-hiding** scroll bars — a bar that disappears is the opposite of the first
+  report, and hiding a control to modernise it would answer one complaint with the other
 - Any other unstyled platform widget. If the sweep is extended to find them, that is its own task
 
 ### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
