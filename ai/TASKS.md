@@ -11517,16 +11517,16 @@ Run against today's build that row fails.
 video up to 1080p (MP4) — following the batch"*, so the value and the relation are both on the row
 in words; only the control disagrees.
 
-#### What to decide, and it is the maintainer's
+#### Ruled 2026-08-28: the preset's name alone
 
-The width is the whole constraint. Three shapes, none free:
+The maintainer chose the first of three shapes offered: **the control shows the preset's name and
+nothing else.** The relation stays where it already is — the row's detail line reads *"Download as:
+Best video up to 1080p (MP4) — following the batch"* — so both facts are on the row and neither is
+crowded into a 165 px box. It is also the only one of the three that never elides.
 
-- **The preset's name alone**, with the relation left to the detail line that already carries it.
-  Satisfies the spec's first half plainly; the control stops saying it is inherited
-- **The name plus a mark** — a leading `↳`, or the name drawn in the muted role — which keeps both
-  facts in the space one of them fits in
-- **The name plus words** (*"Best video up to 1080p (MP4) — same as all"*) — honest and the first
-  to elide, which turns the value into a truncation of itself
+*(The rejected two, recorded so they are not re-proposed as new: the name behind a leading `↳` or in
+the muted role, which keeps both facts in the space one fits in; and the name followed by
+`— same as all`, which is the most explicit and the first to truncate.)*
 
 #### Acceptance criteria
 
@@ -11613,9 +11613,10 @@ by a validator are different sets**, and this task changes only the first.
   still passes
 - **A preset already carrying an audio-only container does not silently lose it** when the dialog
   opens — `T109-R2`'s rule, that a control the user cannot see must not decide anything
-- **The audio case is ruled, not assumed.** An audio-only download in `mp4` or `mkv` is legal, so
-  *"audio presets offer everything"* and *"audio presets offer the audio eleven"* are both
-  defensible; this entry does not choose, and the implementer proposes
+- **An audio-only preset keeps the whole list** — **ruled 2026-08-28**. An audio-only stream in
+  `mp4` or `mkv` is legal and occasionally wanted, and neither route fails on it. **Only the video
+  case narrows**, because only it errors after the download or discards the video. The symmetry is
+  deliberately not restored: it would refuse combinations that work
 
 #### Out of scope
 
@@ -12147,8 +12148,10 @@ path: a label reserving a line to say nothing. Removing the note removes that to
 - **What happens to a path that is not usable?** Missing, a file rather than a folder, not
   writable, relative, or containing `~`. The screen must not silently keep a destination downloads
   will fail against — checklist 7.1 already arranges the unwritable case and expects the refusal
-  *where the user is looking*. Whether a missing folder is refused or offered for creation is a
-  decision, and this entry does not take it
+  *where the user is looking*. **Ruled 2026-08-28: a folder that does not exist is refused.** The
+  screen says so and keeps the previous setting; it does not create it, and it does not offer to.
+  *(Offering to create it, and creating it on commit, were both put and both declined — the second
+  because a typo would silently leave a stray folder in the user's home.)*
 - **Who writes it?** `ARC-007`: the screen holds no settings writer and no platform paths. A typed
   path goes out the same way a chosen one does and comes back through `show_download_directory` —
   it is not applied locally because it was typed locally
@@ -12178,10 +12181,66 @@ the statement. Recorded here so a later reader does not restore it as an oversig
 
 #### Out of scope
 
-- **Creating a folder that does not exist**, unless the decision above lands that way
+- **Creating a folder that does not exist.** Ruled out above, not deferred
 - The other seven settings' controls. `T-146` built them and this is one control's change
 - **Path containment for *downloads*** (`T-034`), which is the worker's rule about where a template
   may write and is unaffected by where the root is set
+
+### T-293 — A queued row offers *Remove*, so one playlist entry can go without the playlist
+
+**Status:** Proposed — **filed 2026-08-28 by `T-212`'s checklist run**, on the maintainer's report:
+*"when looking at the queue, with a playlist expanded out, I'd expect as a user to remove
+individual videos from a playlist with right clicking without having to remove the entire
+playlist."* **`UX-005` §4 is amended the same day** to add `Remove` to the queued row's verbs; this
+builds it.
+**Owner:** Implementer
+**Priority:** Medium — the capability exists today under a name that promises something else and
+costs two steps
+**Phase:** Phase 4 (polish; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `ui/row_verbs.py` `_BY_STATUS` — the transcription of `UX-005` §4;
+`UX-005` §5, which is the rule that decides it; `T-124`, `T-140`, `T-244`
+**Affected surfaces:** `ui/row_verbs.py`, `tests/unit/test_row_verbs.py`, the queue's dispatch,
+`docs/PHASE_4_CHECKLIST.md`
+**Risk:** Low mechanically, **Medium in what it deletes.** `Remove` on a job discards it; on a
+playlist child it must remove **that entry** and leave the group, which is the whole request
+
+#### What is wrong
+
+`_BY_STATUS` gives `QUEUED` and `READY` exactly `MOVE_UP, MOVE_DOWN, CANCEL`, transcribed
+faithfully from `UX-005` §4. So the only way to be rid of one queued entry is:
+
+1. **Cancel** it — which for a never-started job promises to stop something that is not running,
+   and writes a terminal `CANCELLED` row through `manager._stop`
+2. **Remove** the cancelled row, or `Clear finished`, which also clears every other completed and
+   cancelled row
+
+**The capability was always there; the verb table spelled it in two steps.** §5 — *nothing is
+offered that would be refused* — is what settles it: removing a queued job is never refused.
+
+#### Acceptance criteria
+
+- **`QUEUED` and `READY` offer `REMOVE`**, and the test transcribes `UX-005` §4's amended table by
+  hand rather than reading it from production — `row_verbs.py`'s module docstring is explicit that
+  the two lists are independent copies of an external authority
+- **`Cancel` stays on a queued row.** A queued job can start between reading the row and pressing
+  anything, and the verb that stops it must not vanish because it has not started *yet*
+- **On a playlist child, `Remove` removes that entry and leaves the group**, with the group's own
+  count and segment bar following. This is the request, and it is the part a header-level `Remove`
+  already does differently
+- **The overflow rule is unchanged.** A fourth verb on a queued row may push into `⋯`, and that is
+  the existing rule doing its job rather than a regression (`T-244` is the record of verbs that
+  were offered and never drawn)
+- **Removing a running job is still not offered.** `RUNNING`, `PROBING` and `POST_PROCESSING` keep
+  `Cancel` alone; this amendment is about the state that has not started
+- **`docs/PHASE_4_CHECKLIST.md` row 4.7 names the new verb set** for a queued child
+
+#### Out of scope
+
+- **Whether `Remove` confirms.** `DAT-005` §4 makes a group's confirmation name its count; a single
+  queued entry is not a group and this task does not invent a dialog for it
+- **The files on disk.** `Remove` on a queued job has none to keep or delete
+- **The header's verbs**, which `group_verbs` decides and `T-140` settled
 
 ## Proposed — Phase 4.5
 

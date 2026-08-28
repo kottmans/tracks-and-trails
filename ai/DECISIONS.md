@@ -3567,9 +3567,17 @@ without anyone checking the window against the mock.
    in both tabs. History changes what the fields *say*, not what they are: where the queue shows
    progress and speed, history shows the saved path, size and when.
 4. **Every verb the row's state permits is visible on its last line**, right-aligned, sharing that
-   line with the format control. Running — *Cancel*. Queued — *↑*, *↓*, *Cancel*. Failed —
-   *Retry*, *Remove*. Done — *Open*, *Show in folder*. Plus `⋯` for the rest, which is also the
-   keyboard route.
+   line with the format control. Running — *Cancel*. Queued — *↑*, *↓*, *Cancel*, **and *Remove***.
+   Failed — *Retry*, *Remove*. Done — *Open*, *Show in folder*. Plus `⋯` for the rest, which is also
+   the keyboard route.
+   - **Amended 2026-08-28: a queued row offers *Remove*** (`T-293`). The maintainer, looking at an
+     expanded playlist in the queue, expected to remove one entry without removing the playlist —
+     and the row offered *Cancel* instead, which for a job that has never started promises to stop
+     something that is not running, leaves a terminal cancelled row behind, and needs a second verb
+     to clear it. **§5's own rule is what decides this**: nothing is drawn that would be refused,
+     and removing a queued job is never refused. The two-step spelling was an accident of the
+     table, not a policy. *Cancel* stays on queued rows, because a job that is queued may start
+     between reading the row and pressing anything.
    - **On the existing line, not in a gutter.** The third line already exists to say *as Best
      video*; the buttons sit at its right end. This costs no row height and leaves the title and a
      verbatim extractor message the **full** width, which `NFR-006` needs and a reserved gutter
