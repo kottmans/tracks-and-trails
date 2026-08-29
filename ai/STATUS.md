@@ -5,16 +5,59 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-28 — **An unattended session built six of `T-212`'s findings. Every one
-of them is `In Review` and none has been reviewed**, which `AGENTS.md` §10 requires before any of
-them is Complete. Read this section first.
+**Last updated:** 2026-08-28 — **the seven `T-212` tasks have had their initial review, and the
+correction batch answering it is built.** Every one is still `In Review`, now awaiting the single
+focused correction re-review `AGENTS.md` §10 allows. Read this section first.
 
-**Built, gates green, unreviewed:** `T-281` (unreadable playlist entries dropped on the missing
-*title* — the guard tested the address, which a YouTube placeholder still has), `T-283` (the
-painted control's label inset from 2 px to the editor's 7), `T-285` (video presets offered only
-containers that hold video), `T-288` (the scroll bar drawn at last, every sub-control declared),
-`T-291` (the yt-dlp canary), `T-292` (the download folder typed, its caption gone), `T-293`
-(`Remove` on a queued row). Full suite green at each: **3,364 passed, 21 skipped**.
+**Reviewed and corrected:** `T-281` (unreadable playlist entries dropped on the missing *title* —
+the guard tested the address, which a YouTube placeholder still has), `T-283` (the painted
+control's label inset from 2 px to the editor's 7), `T-285` (video presets offered only containers
+that hold video), `T-288` (the scroll bar drawn at last, every sub-control declared), `T-291` (the
+yt-dlp canary), `T-292` (the download folder typed, its caption gone), `T-293` (`Remove` on a
+queued row).
+
+**Ten blocking findings, one High and nine Medium.** `T291-R1` (the canary promised the default
+suite and ran two thirds of it), `T281-R1` (two of three drop paths recorded nothing and the
+denominator was false), `T292-R1` and `R2` (an unknown `~user` escaped the refusal path; a relative
+path was persisted cwd-relative), `T293-R1` (a new test failed both all-files mypy scopes),
+`T291-R2` and `R3`, `T292-R3`, `T288-R1` (the rendered check), and the shared `T212-R1`/`R3`. All
+are corrected here except `T212-R3`, which is a Windows run, and `T291-R4`, which is a dispatched
+workflow run — both are external and are named as outstanding below.
+
+### What was actually run, and what was not
+
+**`T212-R1` found this section claiming a "full suite" it had not run and gates "green" that were
+red.** 3,364 unit and UI cases were called the full suite while `ai/TESTING.md` puts integration in
+the default scope, and both all-files mypy commands were failing on `tests/ui/test_queue_view.py`.
+So the commands and their results are written out here, one line each, rather than summarised into
+a word:
+
+| Command | Result | Where |
+|---|---|---|
+| `ruff check .` | **All checks passed** (208 files in scope) | Linux, this checkout |
+| `ruff format --check .` | **208 files already formatted** | Linux, this checkout |
+| `mypy src` | **Success: no issues found in 56 source files** | Linux |
+| `mypy` | **Success: no issues found in 154 source files** | Linux — the scope that reads `tests/` |
+| `mypy --platform win32` | **Success: no issues found in 154 source files** | Linux, Windows bodies analysed |
+| `pytest -q -n auto tests/unit` | **2,294 passed, 18 skipped** in 12.5 s | Linux, offscreen |
+| `pytest -q -n auto tests/ui` | **1,073 passed, 3 skipped** in 26.4 s | Linux, offscreen |
+| `pytest -q tests/integration` | **445 passed** in 6 m 29 s | Linux, offscreen, serial |
+| Rendered scroll bars, real display | **no defect** — `ai/evidence/2026-08-28-T288-real-display-scrollbars.md` | KDE/Wayland, `wayland` plugin over `fusion`, Qt 6.11.1 |
+
+Unit and UI were also run together as `ci.yml` runs them — `pytest -q -n auto tests/unit tests/ui`,
+**3,367 passed, 21 skipped** — which is the same set and is recorded because it is the invocation
+the board uses, not a second measurement.
+
+**Two required results do not exist yet, and neither is a Linux run's to supply:**
+
+- **Windows** (`T212-R3`). No `windows desktop` job has seen any of this. All six product changes
+  touch shared Python or Qt surfaces, and `ai/TESTING.md` §10 requires Windows evidence before
+  review. A Linux `mypy --platform win32` is a type simulation and is not that run.
+- **The canary's own execution** (`T291-R4`). `.github/workflows/ytdlp-canary.yml` has never been
+  parsed or run by GitHub. What has been verified is its logic and, locally, that its derived
+  deselection removes exactly the two intended node ids from 3,831 collected tests. Action
+  versions, runner routing, shell expansion, artifacts and the summary conditions are unverified
+  until one dispatched run exists.
 
 **`T-284` was deliberately not built, and it is the one decision owed.** `INHERITED_TEXT` is two
 things — the label painted on an unoverridden row, which the maintainer ruled on, and a selectable
@@ -31,6 +74,15 @@ now read what is actually drawn. **That is a pattern rather than two slips**: a 
 alongside a fix tends to measure the fix's ingredients instead of its effect, which is `T-244`'s
 shape and this project's most repeated defect.
 
+**The review found a third instance, and it is the worse kind: a mutation reported as killed that
+could not have failed.** `T-281`'s record listed *"counting the survivors rather than the whole
+playlist"* among three killed mutations, and `T281-R1` then found exactly that denominator wrong in
+the shipped code. Both are true: on the nine-entry fixture the mutation ran against — every entry a
+mapping with an address — the two spellings are arithmetically equal, so flipping one for the other
+changes nothing to observe. **A mutation is killed by the case that separates the two behaviours,
+not by any case that exercises the line.** A mutation report is itself a claim, and this one had
+never been handed an input that could tell the difference.
+
 **Two pre-existing gaps surfaced on the way.** `UX_005_TABLE` never parametrised `READY`, which
 `_BY_STATUS` has mapped identically to `QUEUED` since it was written — a mutation removing a verb
 from `READY` alone survived. And `T-291`'s expected-failure set is **two** tests, not the one its
@@ -43,8 +95,10 @@ strips today — reversing `T-018` rather than following from the task. Recorded
 available upgrade.
 
 **Untouched, and why:** `T-289` (the double-free — the fix is a threading rule and the obvious
-mitigations are wrong), `T-286` and `T-290` (wording in the maintainer's voice), `T-287`, `T-297`
-and `T-288`'s rendered criterion (all need a real display).
+mitigations are wrong, and its *"same Qt object graph"* is now labelled the inference it always
+was), `T-286` and `T-290` (wording in the maintainer's voice), `T-287` and `T-297` (both need a
+real display). **`T-288`'s rendered criterion is no longer among them** — it was taken on the
+KDE/Wayland session on 2026-08-28 and found no defect.
 
 **Held and unpushed:** everything from `06f3890` to here.
 

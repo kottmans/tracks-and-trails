@@ -739,7 +739,7 @@ offered that would be refused* — is what settles it: removing a queued job is 
 
 ### T-285 — The Options dialog offers audio-only containers to a download that keeps its video
 
-**Status:** **In Review — built 2026-08-28, and no review has run.** A video preset is offered the
+**Status:** **In Review — no implementation finding; waiting only on the shared exact-head Windows run (`T212-R3`).** A video preset is offered the
 seven video containers; an audio preset keeps all eighteen, as ruled. **Six mutations, all killed**,
 including restoring the symmetry, restoring the whole list, reclassifying `gif`, and dropping the
 guard that keeps a container the preset already carries.
@@ -832,7 +832,7 @@ by a validator are different sets**, and this task changes only the first.
 
 ### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
 
-**Status:** **In Review — built 2026-08-28, and no review has run.** The painted label now starts
+**Status:** **In Review — no implementation finding; waiting only on the shared exact-head Windows run (`T212-R3`).** The painted label now starts
 at **x = 7** where it started at 2, matching the editor exactly. Gates green: `ruff check .`,
 `ruff format --check .`, `mypy src`, 2,377 tests. **Four mutations, all killed** — including the
 one that matters, stopping `_paint_control` from calling the new helper, which **survived a first
