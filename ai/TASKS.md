@@ -336,7 +336,8 @@ real application must continue resolving the user-managed copy first.
 
 ### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
 
-**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected, and the focused re-review, and `T291-R4` needs a dispatched run.**
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected, and
+`T291-R4` resolved by dispatched run `33231851897`.
 `.github/workflows/ytdlp-canary.yml`: weekly plus `workflow_dispatch`, `LINUX_RUNNER`, its own
 concurrency group, no `push:` trigger, and it writes nothing back to the repository.
 `ai/TESTING.md` §8 gained step **10a**, which is where it blocks a bump without ever blocking a
@@ -355,8 +356,12 @@ the version the maintainer had already updated to in-app — the drift gates fin
 unit tests pass with only the expected pair excluded. It is the first time any of those gates has
 been shown a yt-dlp newer than the pin.
 
-**The workflow itself has never executed**, and cannot be from here. What was verified is the logic
-it performs, not the YAML that performs it; its first scheduled run is its own evidence.
+**The workflow has now executed**, which is what `T291-R4` was open on. Dispatched run
+`33231851897` at `75cd183` installed `2026.08.19` over the `2026.7.4` pin and finished **3,801
+passed, 21 skipped, 14 deselected, 0 failed**; the evidence artifact uploaded and neither
+diagnostic summary fired. *(This said the workflow “has never executed, and cannot be from
+here” — true when it was written, and still standing after the run that made it false.
+`T212-R6`.)*
 
 **Three corrections, 2026-08-28.** The initial review found the job promising a suite it did not
 run and a diagnosis it could not support:
@@ -379,8 +384,12 @@ run and a diagnosis it could not support:
 - **`T291-R3` (Low).** `EXPECTED_STALE` and `DESELECT_STALE` held the same two node ids in two
   spellings under a comment claiming one definition. `DESELECT_STALE` is gone; the verdict step
   builds its own `--deselect` arguments from `EXPECTED_STALE`, so there is nothing left to keep in
-  step. Checked locally: the derived arguments deselect **exactly 2** of 3,831 collected tests, and
-  both node ids still resolve to a real test.
+  step. Checked locally against the committed list: its **eleven** node ids collect **twelve**
+  tests — `test_the_gate_checks_the_bundled_version_against_the_pin` is parametrized — and every
+  one still resolves. The dispatched run deselected **14**: those twelve, plus the two the
+  configuration already deselects. *(This said **“exactly 2 of 3,831”**, the list as it stood
+  before `T291-R1` put `tests/integration` back in scope and brought the freeze-probe and
+  yt-dlp-service node ids with it.)*
 
 *(Filed 2026-08-27 on maintainer direction, from `T-212`'s run: *"how are we confident that our
 program wont break when it gets updated?"* **The detectors already existed; nothing ever fed them a
@@ -463,7 +472,8 @@ not tolerated**, so that the job separates:
 
 ### T-288 — The scroll bar is the one control the theme never dressed
 
-**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** The rendered check `T288-R1` required was taken 2026-08-28 and found no defect; awaiting the focused re-review.** The bar is drawn by the sheet
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** The rendered check `T288-R1`
+required was taken 2026-08-28 and found no defect. The bar is drawn by the sheet
 in both orientations: a rounded handle in `border` with a 2 px margin, hover and pressed states,
 the stepper arrows removed by declaration, and the groove transparent. **Four mutations, all
 killed** — including putting the handle back on `surface`, which **survived a first version of the
@@ -614,7 +624,8 @@ shape both reports are asking for, and it is one rule set.
 
 ### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
 
-**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected; the relative-path rule is ruled, not proposed. The focused re-review.** The folder is a `QLineEdit`
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected, and
+the relative-path rule is ruled rather than proposed. The folder is a `QLineEdit`
 committing on `editingFinished`; a path that is missing, is a file, or cannot be written to is
 refused beside the field and the field goes back to the folder in force. The caption and its blank
 line are gone. **Six mutations, all killed.**
@@ -827,7 +838,9 @@ offered that would be refused* — is what settles it: removing a queued job is 
 
 ### T-285 — The Options dialog offers audio-only containers to a download that keeps its video
 
-**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was ever raised; it waited on the shared exact-head Windows run (`T212-R3`).** A video preset is offered the
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was
+ever raised; it waited on the shared exact-head Windows run, which `T212-R3` resolved at
+`75cd183`. A video preset is offered the
 seven video containers; an audio preset keeps all eighteen, as ruled. **Six mutations, all killed**,
 including restoring the symmetry, restoring the whole list, reclassifying `gif`, and dropping the
 guard that keeps a container the preset already carries.
@@ -920,7 +933,9 @@ by a validator are different sets**, and this task changes only the first.
 
 ### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
 
-**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was ever raised; it waited on the shared exact-head Windows run (`T212-R3`).** The painted label now starts
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was
+ever raised; it waited on the shared exact-head Windows run, which `T212-R3` resolved at
+`75cd183`. The painted label now starts
 at **x = 7** where it started at 2, matching the editor exactly. Gates green: `ruff check .`,
 `ruff format --check .`, `mypy src`, 2,377 tests. **Four mutations, all killed** — including the
 one that matters, stopping `_paint_control` from calling the new helper, which **survived a first

@@ -39,7 +39,9 @@ shared `T212-R1`/`R3`.
 **All are corrected, and the two external results — the Windows run and the canary's own execution
 — are obtained.** Both took two attempts, and the first attempt of each found a defect in the
 correction rather than in the original work; that is recorded below rather than smoothed over.
-Nothing here is approved: what remains is the focused re-review.
+**All seven are approved**, at `0332a68`, by the focused re-review of 2026-08-29. *(This said
+*"Nothing here is approved: what remains is the focused re-review"* — written before the verdict and
+left standing under a header that announced it. `T212-R6`.)*
 
 ### What was actually run, and what was not
 
