@@ -374,7 +374,7 @@ to answer before
 
 ### T-293 — A queued row offers *Remove*, so one playlist entry can go without the playlist
 
-**Status:** **In Review — built 2026-08-28, and no review has run.** A queued row offers
+**Status:** **In Review — corrected 2026-08-28 for `T293-R1`; awaiting the focused re-review.** A queued row offers
 `↑ ↓ Cancel Remove`; one entry's `Remove` goes down the single-job route and the group route is not
 taken. **Four mutations, all killed.**
 
@@ -382,6 +382,14 @@ taken. **Four mutations, all killed.**
 queue, with a playlist expanded out, I'd expect as a user to remove individual videos from a
 playlist with right clicking without having to remove the entire playlist."* **`UX-005` §4 was
 amended the same day** to add `Remove` to the queued row's verbs; this built it.)*
+
+**`T293-R1` (Medium): the new test failed both all-files type gates.** It passed
+`jobs[0].playlist_id` — `str | None` — to `toggle_group(str)`, and bare `mypy` and
+`mypy --platform win32` each failed on that line, which is the pair `ai/TESTING.md` requires
+whenever a test file changes and the shape CI's *Types, tests included* step runs. The submission's
+`mypy src` never reads `tests/`, so nothing local saw it. It now passes the fixture's known
+playlist id, `"pl-1"`, as the file's nine other `toggle_group` call sites already do. Both all-files
+scopes are green; the functional behaviour is unchanged.
 
 **A pre-existing gap was found and closed on the way.** The transcribed `UX_005_TABLE` parametrised
 `RUNNING`, `QUEUED`, `FAILED` and `COMPLETED` — **not `READY`**, which `_BY_STATUS` has mapped

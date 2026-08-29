@@ -2362,7 +2362,7 @@ def test_a_queued_playlist_entry_offers_remove_at_all(
     for job in jobs:
         queue.add(job)
     view = views(jobs=queue, manager=managers())
-    view.model.toggle_group(jobs[0].playlist_id)
+    view.model.toggle_group("pl-1")
 
     rows = view.model.rowCount()
     offered = next(
