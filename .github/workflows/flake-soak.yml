@@ -1,0 +1,166 @@
+# Soak one test to find out whether it is flaky, and at what rate.
+#
+# **A diagnostic, not a gate.** `workflow_dispatch` only: no schedule, no `push:`, nothing gates on
+# it, and it is expected to be deleted or left idle once the question it was raised for is answered.
+#
+# ## The question it was raised for
+#
+# `tests/unit/test_orphan_scan.py::test_the_scanner_sees_a_known_orphan` **failed** on the
+# `windows desktop` job at `0332a68` and **passed** at `75cd183`. Those trees differ by a comment in
+# another workflow and a line in `ai/STATUS.md`; neither is reachable from that test. So either it
+# is flaky or it depends on something about the machine, and **one observation is not a rate.**
+#
+# It matters more than a single red test usually would. That test is the one that proves the orphan
+# scanner *can* see a positive — `find_orphans` reporting nothing is only meaningful because a
+# deliberately orphaned worker is found first. `T-268` is blocked on what that scanner's silence
+# means, so a prove-the-instrument test that intermittently fails to prove the instrument is
+# load-bearing.
+#
+# ## Why both platforms
+#
+# The fixture is explicitly asymmetric: on POSIX it waits for the reparent, and on Windows it does
+# not, because *"Windows does not reparent at all — the parent pid simply stops resolving"*. Two
+# platforms, two mechanisms, and the failure was seen on one of them. Running both is how *"is this
+# Windows-specific?"* gets an answer rather than an assumption.
+#
+# ## What it does about the mess it makes
+#
+# The fixture spawns real orphaned workers and kills them in a `finally`. Several hundred runs of a
+# `finally` that ever misses would leave exactly the processes `Linux orphans` and
+# `STARBASE orphans` exist to find — so this job runs the scanner itself afterwards and reports what
+# it left. An instrument that pollutes the machine it measures, silently, is worse than no
+# instrument.
+
+name: Flake soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      node_id:
+        description: "pytest node id to soak"
+        required: true
+        default: "tests/unit/test_orphan_scan.py::test_the_scanner_sees_a_known_orphan"
+      runs:
+        description: "how many times to run it, per platform"
+        required: true
+        default: "300"
+
+# **`shell: bash`, so `pipefail` is set.** GitHub's default is `bash -e`, under which a piped
+# command exits with its *last* stage's status — which is how `ytdlp-canary.yml` reported success
+# over eleven failures until `22fe66e`. Named here so this file never learns that lesson twice.
+defaults:
+  run:
+    shell: bash
+
+# Its own group, and non-cancelling: a soak must not cancel CI, and two soaks must not cancel each
+# other — the second would be the one you were waiting for.
+concurrency:
+  group: flake-soak-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: soak on ${{ matrix.label }}
+    # **Sized for the arithmetic, not for a guess** (`T118-R10`). 300 runs of a ~2 s test is about
+    # ten minutes; the bound is six times that so a slow machine reports *slow* by finishing late
+    # rather than by being killed at a cliff.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux
+            runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
+          - label: windows
+            runs-on: ${{ fromJSON(vars.WINDOWS_RUNNER || '"windows-latest"') }}
+    runs-on: ${{ matrix.runs-on }}
+
+    env:
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Hosted only. A job must never provision a machine somebody uses (`OPS-009`).
+      - uses: actions/setup-python@v7
+        if: runner.environment == 'github-hosted'
+        with:
+          python-version: "3.14"
+
+      - name: Say which machine this is
+        # A timing-dependent result does not transfer between hosts, and this project has three.
+        # `AGENTS.md` §9 requires the host be recorded with the measurement; the tool records it
+        # too, and this puts it in the log where a reader starts.
+        run: |
+          echo "runner name : $RUNNER_NAME"
+          echo "runner os   : $RUNNER_OS"
+          echo "environment : ${{ runner.environment }}"
+
+      - name: Reuse the persistent virtualenv
+        # Twelve characters of the digest, not sixty-four — the full one pushed pip past Windows'
+        # 260-character MAX_PATH in `ci.yml`, which is where this block comes from.
+        run: |
+          want=$(sha256sum pyproject.toml | cut -c1-12)
+          venv="$RUNNER_TOOL_CACHE/tt-venv-$want"
+          if [ ! -x "$venv/Scripts/python.exe" ] && [ ! -x "$venv/bin/python" ]; then
+            echo "no venv for pyproject $want — building one"
+            python -m venv "$venv"
+          else
+            echo "reusing the venv for pyproject $want"
+          fi
+          if [ -d "$venv/Scripts" ]; then
+            cygpath -w "$venv/Scripts" >> "$GITHUB_PATH"
+          else
+            echo "$venv/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Install the project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Soak
+        # **No `if: failure()` anywhere in this file, and no reliance on this step's status.** The
+        # tool exits 0 whenever the soak ran, whatever the tests did, because the finding is the
+        # report. A soak that failed its own job on finding something could not be read from here.
+        #
+        # **The inputs arrive as environment variables, not as `${{ }}` inside the script.** A
+        # dispatch input interpolated into a `run:` block is substituted before bash sees it, so
+        # its content becomes shell source; through `env:` it is only ever data. Nobody outside the
+        # repository can dispatch this, which makes it a habit rather than a hole — but it is the
+        # habit that stops the hole existing the day some other trigger is added.
+        env:
+          NODE_ID: ${{ inputs.node_id }}
+          RUNS: ${{ inputs.runs }}
+        run: |
+          python tools/soak_a_test.py "$NODE_ID" \
+            --runs "$RUNS" --out "reports/soak" | tee "reports/soak-console.txt"
+
+      - name: Say what it found
+        run: |
+          {
+            echo "### Soak on \`$RUNNER_NAME\` (${{ matrix.label }})"
+            echo
+            echo '```'
+            python -c "import json;d=json.load(open('reports/soak/summary.json'));print('\n'.join(f'{k}: {v}' for k,v in d.items() if k!='outcomes'))"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report any orphans this soak left behind
+        # The fixture spawns real orphaned workers. Running the scanner here means a soak that
+        # leaks says so itself, instead of being found later by the nightly job that exists to
+        # notice leaks and cannot tell whose they were.
+        run: |
+          python tools/orphan_scan.py --minimum-age-seconds 0 \
+            | tee "reports/orphans-after-soak.txt" || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-flake-soak-${{ matrix.label }}
+          path: reports/
+          retention-days: 30
