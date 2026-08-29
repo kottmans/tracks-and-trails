@@ -166,6 +166,26 @@ def main() -> int:
             f"\nREPRODUCED: the C++ destructor ran on {destroyed!r}, which is not the GUI thread "
             f"({gui_thread!r}). That is T-289's established precondition."
         )
+    elif not report["decref_off_the_gui_thread"]:
+        # **Neither of these is the marshalling conclusion, and that was the defect.** Both events
+        # happened on the GUI thread, so nothing crossed a thread and nothing was marshalled;
+        # printing the pool mode's sentence here reported a mechanism the run cannot see
+        # (`T289-R1`). Which of the two it is depends on where the collection was *supposed* to
+        # run, so the mode decides rather than the numbers.
+        if control:
+            print(
+                f"\nCONTROL AS EXPECTED: the collection ran on the GUI thread ({gui_thread!r}), "
+                f"and both the last Python reference and the C++ destructor went there too "
+                f"({finalised!r} / {destroyed!r}). Nothing was marshalled and nothing needed to "
+                f"be. This is the answer the pool mode must NOT give, and it is what makes that "
+                f"mode's split evidence about the pool thread rather than about the instrument."
+            )
+        else:
+            print(
+                f"\nINCONCLUSIVE: the collection was supposed to run on a pool thread, but the "
+                f"last Python reference went on {finalised!r}, which is the GUI thread. This run "
+                f"measured the control's situation, so it says nothing about the pool's."
+            )
     else:
         print(
             f"\nNOT REPRODUCED — and this is the finding, not a null result. The last Python "

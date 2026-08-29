@@ -12554,6 +12554,21 @@ child destroyed through `deleteChildren` rather than a wrapper shiboken tracks, 
 thread being inside `sendPostedEvents` at that moment matters, and whether ownership had already
 passed to C++.
 
+**The `--on-the-gui-thread` control now reports its own conclusion.** It prints that both events
+happened on the GUI thread and that nothing was marshalled, rather than reusing the pool mode's
+marshalling sentence — which claimed a mechanism that run cannot observe (`T289-R1`). The control is
+what makes the pool mode's `Dummy-1` → `MainThread` split evidence about the pool thread rather than
+about the instrument, so it has to be readable as the *other* answer.
+
+**One adjacent crash is recorded here without being fitted to this task.** A local parallel unit/UI
+run lost an xdist worker in
+`test_a_picture_published_while_the_sweep_runs_is_not_counted_as_swept`, with the main thread in
+`settle_deferred_deletions` → `QObject::~QObject` → shiboken `getOverride` and a Qt pooled thread
+live; the same test passed alone and the correctly activated full rerun passed 3,378 / 21 skipped.
+**It is unclassified.** The review that recorded it declined to call it this mechanism, and so does
+this entry — it is written down because it is the nearest live specimen to compare a fix against,
+not because it is evidence for the fix. `ai/REVIEWS.md`, 2026-08-29.
+
 **Criterion 4 is therefore not met.** A test that fails on the uncorrected tree still does not
 exist, and the instrument that would judge a fix does not yet arrange the state a fix would have to
 survive.
