@@ -136,20 +136,40 @@ jobs:
           NODE_ID: ${{ inputs.node_id }}
           RUNS: ${{ inputs.runs }}
         run: |
+          # **`mkdir` first, and this cost a red job to learn.** The shell opens `tee`'s output
+          # file when it builds the pipeline, *before* the tool on the left has run and created
+          # `reports/` — so run `33239854571` died with `tee: reports/soak-console.txt: No such
+          # file or directory` after completing all 300 runs, and `pipefail` correctly turned that
+          # into a failed step. The data survived in the artifact; the summary and the orphan
+          # check did not, because they were skipped. The tool creating its own output directory
+          # is not enough when something else in the pipeline needs a parent it does not own.
+          mkdir -p reports
           python tools/soak_a_test.py "$NODE_ID" \
             --runs "$RUNS" --out "reports/soak" | tee "reports/soak-console.txt"
 
       - name: Say what it found
+        # `always()`, because these two exist to report and a step that only runs when everything
+        # else went well is not a report. Run `33239854571` skipped both over a `tee` typo.
+        if: always()
         run: |
           {
             echo "### Soak on \`$RUNNER_NAME\` (${{ matrix.label }})"
             echo
-            echo '```'
-            python -c "import json;d=json.load(open('reports/soak/summary.json'));print('\n'.join(f'{k}: {v}' for k,v in d.items() if k!='outcomes'))"
-            echo '```'
+            if [ -f reports/soak/summary.json ]; then
+              echo '```'
+              # Tolerant of a summary that is not there: `always()` means this step also runs on
+              # the paths where the soak died before writing one, and a traceback here would
+              # replace the report with a second failure about the report.
+              python -c "import json;d=json.load(open('reports/soak/summary.json'));print(chr(10).join(f'{k}: {v}' for k,v in d.items() if k!='outcomes'))"
+              echo '```'
+            else
+              echo 'No summary was written — the soak did not finish. The per-run logs in the'
+              echo 'artifact say how far it got.'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report any orphans this soak left behind
+        if: always()
         # The fixture spawns real orphaned workers. Running the scanner here means a soak that
         # leaks says so itself, instead of being found later by the nightly job that exists to
         # notice leaks and cannot tell whose they were.
