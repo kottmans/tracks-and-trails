@@ -38,11 +38,22 @@ import threading
 import weakref
 from typing import Any
 
-from PySide6.QtCore import QCoreApplication, QRunnable, QThreadPool, QTimer
+from PySide6.QtCore import QCoreApplication, QRunnable, Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
-#: Filled by the finaliser, from whichever thread performed the last decref.
+#: Filled by the finaliser, from whichever thread performed the last **Python** decref.
 FINALISED_ON: list[str] = []
+
+#: Filled from `QObject::destroyed`, which is emitted inside `~QObject` — so a `DirectConnection`
+#: handler runs on whichever thread is executing the **C++** destructor.
+#:
+#: **These are two different questions and the first version of this probe conflated them.** It
+#: reported the finalisation thread and called it destruction, which is wrong in the way that
+#: matters: `shiboken` can hand the C++ deletion to the main thread through
+#: `BindingManager::runDeletionInMainThread`, and measured here it does exactly that. A probe that
+#: reads only the decref thread cannot tell a marshalled deletion from an unmarshalled one, and
+#: `T-289` is entirely about which of those happened.
+DESTROYED_ON: list[str] = []
 
 
 class _Cycle:
@@ -71,6 +82,12 @@ def _build_a_collectable_tree() -> None:
     label.setBuddy(field)
 
     weakref.finalize(root, lambda: FINALISED_ON.append(threading.current_thread().name))
+    # `DirectConnection` so the handler runs on the destroying thread rather than being queued to
+    # the receiver's. Queued would answer a different question and always say "main".
+    root.destroyed.connect(
+        lambda *_: DESTROYED_ON.append(threading.current_thread().name),
+        Qt.ConnectionType.DirectConnection,
+    )
     _Cycle(root)  # the only reference, and it refers to itself
 
 
@@ -116,29 +133,47 @@ def main() -> int:
         QCoreApplication.processEvents()
     if not control:
         pool.waitForDone(5000)
-    QCoreApplication.processEvents()
+    # **Drain after the collection**, because a marshalled deletion is queued to the main thread
+    # and only runs when the main thread gets to it. Looking before this is how a queued deletion
+    # reads as "never destroyed".
+    for _ in range(50):
+        QCoreApplication.processEvents()
     gc.enable()
 
     finalised = FINALISED_ON[0] if FINALISED_ON else None
+    destroyed = DESTROYED_ON[0] if DESTROYED_ON else None
     report: dict[str, Any] = {
         "mode": "control: collected on the GUI thread" if control else "collected on a pool thread",
         "gui_thread": gui_thread,
         "pool_thread": task.thread_name,
         "objects_collected": task.collected,
-        "widget_finalised_on": finalised,
-        "destroyed_off_the_gui_thread": bool(finalised) and finalised != gui_thread,
+        "python_finalised_on": finalised,
+        "cpp_destructor_ran_on": destroyed,
+        "decref_off_the_gui_thread": bool(finalised) and finalised != gui_thread,
+        "destroyed_off_the_gui_thread": bool(destroyed) and destroyed != gui_thread,
     }
     print(json.dumps(report, indent=2))
 
     if finalised is None:
         print("\nINCONCLUSIVE: the tree was never finalised, so nothing was measured.")
+    elif destroyed is None:
+        print(
+            "\nINCONCLUSIVE: the last Python reference went, but no C++ destructor was observed. "
+            "A queued deletion the main thread never reached looks exactly like this."
+        )
     elif report["destroyed_off_the_gui_thread"]:
         print(
-            f"\nREPRODUCED: a QWidget tree was destroyed on {finalised!r}, which is not the GUI "
-            f"thread ({gui_thread!r}). That is T-289's established precondition."
+            f"\nREPRODUCED: the C++ destructor ran on {destroyed!r}, which is not the GUI thread "
+            f"({gui_thread!r}). That is T-289's established precondition."
         )
     else:
-        print(f"\nNOT REPRODUCED: the tree was destroyed on the GUI thread ({finalised!r}).")
+        print(
+            f"\nNOT REPRODUCED — and this is the finding, not a null result. The last Python "
+            f"reference was dropped on {finalised!r}, but the C++ destructor ran on {destroyed!r}: "
+            f"shiboken marshalled the deletion to the GUI thread. An off-GUI decref is therefore "
+            f"NOT sufficient to destroy a widget off the GUI thread, and a probe that reads only "
+            f"the decref thread cannot tell these apart."
+        )
 
     application.quit()
     return 0

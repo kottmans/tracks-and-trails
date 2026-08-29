@@ -12511,21 +12511,37 @@ release it. `gc` is disabled, then `gc.collect()` is run inside a `QRunnable` on
 exactly where the dump found it. A `weakref.finalize` callback records the thread that performed the
 last decref, which is `T-238`'s probe's method.
 
-**Measured, offscreen on `Spock`:** the tree is finalised on **`Dummy-1`**, a pool thread, not on
-`MainThread`. **`--on-the-gui-thread` runs the identical collection on the GUI thread and reports
-`MainThread`** — same tree, same 14 objects collected, only the thread differs. The control is what
-makes the first reading mean anything; a probe that only ever named a pool thread would look the
-same.
+**The first version of this probe measured the wrong thing and its result is withdrawn.** It
+reported which thread ran the widget's `weakref.finalize` — the last **Python** decref — and called
+that destruction. Those are different events, and the difference is the whole of `T-289`:
+`shiboken` can hand the C++ deletion to the GUI thread through
+`BindingManager::runDeletionInMainThread`, and a probe reading only the decref thread cannot tell a
+marshalled deletion from an unmarshalled one.
 
-So **criterion 4's "even if it has to force the collector on a pool thread while a tree is
-collectable" is achievable**, and the fix has an instrument to be judged against rather than an
-intermittent crash. **The probe deliberately does not try to reproduce the abort** — corrupting the
-heap proves nothing the precondition does not, and an instrument that aborts cannot report.
+**Corrected and re-measured, offscreen on `Spock`.** `QObject::destroyed` is emitted inside
+`~QObject`, so a `DirectConnection` handler names the thread actually running the destructor:
 
-**What it does not establish** is that the *application's* trees reach this state: it builds a cycle
-to guarantee collectability, where `T-273`'s finding is that real windows are held across edges `gc`
-cannot traverse. Whether an actual Settings-screen tree becomes collectable during an update is the
-question a fix has to answer, and this probe does not answer it.
+| | |
+|---|---|
+| Last Python decref | **`Dummy-1`** — a pool thread |
+| C++ `~QObject` | **`MainThread`** |
+
+**So an off-GUI decref is not sufficient to destroy a widget off the GUI thread.** In this
+configuration `shiboken` marshals, and the crash's precondition is **not** reproduced. That is a
+finding rather than a null result, and it means the mechanism is narrower than this entry supposed:
+something about the real crash defeated a marshalling path that works here.
+
+**The dump is not in doubt** — its pool-thread stack goes `_Py_Dealloc` → `libshiboken6` →
+`QWidget::~QWidget` → `QObjectPrivate::deleteChildren`, which is a destructor running on that
+thread. So the open question is now **what makes shiboken destroy in place rather than marshal**,
+and this probe does not reach that state. Candidates worth separating: whether the object was a
+child destroyed through `deleteChildren` rather than a wrapper shiboken tracks, whether the GUI
+thread being inside `sendPostedEvents` at that moment matters, and whether ownership had already
+passed to C++.
+
+**Criterion 4 is therefore not met.** A test that fails on the uncorrected tree still does not
+exist, and the instrument that would judge a fix does not yet arrange the state a fix would have to
+survive.
 
 #### Acceptance criteria
 
