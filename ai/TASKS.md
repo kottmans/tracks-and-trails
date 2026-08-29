@@ -375,7 +375,7 @@ not tolerated**, so that the job separates:
 
 ### T-288 — The scroll bar is the one control the theme never dressed
 
-**Status:** **In Review — built 2026-08-28, and no review has run.** The bar is drawn by the sheet
+**Status:** **In Review — the rendered check `T288-R1` required was taken 2026-08-28 and found no defect; awaiting the focused re-review.** The bar is drawn by the sheet
 in both orientations: a rounded handle in `border` with a 2 px margin, hover and pressed states,
 the stepper arrows removed by declaration, and the groove transparent. **Four mutations, all
 killed** — including putting the handle back on `surface`, which **survived a first version of the
@@ -383,9 +383,27 @@ test** that measured `contrast_ratio(theme.border, theme.window)` from the palet
 reading what the sheet draws. Measuring an ingredient the rule is free to stop using is the same
 mistake `T-283` made three hours earlier.
 
-**The rendered criterion is deliberately left open.** *"A rendered check is taken on a real
-display, not offscreen"* cannot be satisfied by an unattended run, and `T-202`'s own history —
-rendered sweeps that ran both theme cases as light — is why it is not claimed.
+**The rendered criterion is now met** — `ai/evidence/2026-08-28-T288-real-display-scrollbars.md`,
+with the cropped comparison at `ai/evidence/2026-08-28-T288-scrollbars-on-kde-wayland.png`. Taken in
+the KDE/Wayland session the report came from, on the **`wayland`** platform plugin over the
+**`fusion`** base style, Qt 6.11.1: both themes, both orientations, the Settings and Options
+scrollers and a horizontal probe, at rest, hover and pressed.
+
+**Every handle reads the sheet's own value** — `border` at rest, `primary` on hover,
+`primary_hover` pressed, in both themes and on all three bars — the groove reads the window colour
+through the transparent pages, and the stepper strips carry no ink. **No source correction is
+requested**, which is what `T288-R1` said it would depend on.
+
+**The instrument was shown a known positive first**, because a probe reporting a clean result is
+worth nothing until it has reported a dirty one. With the sheet's 15 `QScrollBar` selectors
+stripped, the same run reports the handle as `#525860` **in both themes**, unchanged under the
+pointer, with arrow ink at `#151618` and a 14 px Fusion bar. The dark panel of the comparison image
+is the maintainer's report as a picture: the handle is not faint, it is not locatable.
+
+*(The first reading of this probe was wrong about one sub-control and is recorded in the evidence
+file: `QScrollBar.grab()` renders onto an uninitialised surface, and the sheet gives the bar and
+both pages `background: none`, so the groove came back `#000000` in every theme. Sampling through
+the window the bar is drawn into is the whole question for a transparent groove.)*
 
 *(Filed 2026-08-27 by `T-212`'s checklist run. The maintainer's report: *"the scrollbar on the
 options menu is barely visible in dark mode"*, seen on the Settings screen's scroller. **Widened
@@ -412,7 +430,97 @@ screen tall enough to need it (`T-242` is the record of focus scrolling below th
 **Risk:** Low to fix, **Medium to fix without a gate** — the reason this survived `T-202` is
 structural and a fix that adds colours without extending the sweep leaves the same hole
 
-#
+#### What is wrong
+
+**There is no `QScrollBar` rule in `ui/theme.py`.** Not a weak one — none: the string does not
+appear in the file. Every other control in the application is dressed by the sheet, so the scroll
+bar is drawn by whatever platform style Qt picked, from whichever palette roles that style reads.
+
+**And the palette hands it the wrong ones.** `palette()` sets fourteen roles and leaves five
+untouched, at Qt's defaults, which are greys chosen for a light palette:
+
+| Role | Theme sets | Value in both themes |
+|---|---|---|
+| `Light` | **no** | `#ffffff` |
+| `Midlight` | **no** | `#cacaca` |
+| `Mid` | **no** | `#b8b8b8` |
+| `Dark` | **no** | `#9f9f9f` |
+| `Shadow` | **no** | `#767676` |
+
+Those five are exactly the shade roles a style composes a groove and a handle from. Against the
+dark window `#0A1712` they are light greys on near-black; against the light window `#F5F7F4` they
+are mid greys on near-white, which is roughly what they were designed for. **The theme owns the
+colours a scroll bar is not made of, and none of the ones it is.**
+
+The two roles the theme *does* set, and which a style will reach for first, are near-identical:
+
+```
+dark : Button #10201A on Window #0A1712  ->  1.09:1
+light: Button #FFFFFF on Window #F5F7F4  ->  1.08:1
+```
+
+A handle and a groove drawn from that pair are invisible by construction, in either theme.
+
+#### Why no gate caught it, which is the part worth keeping
+
+`T-202` swept contrast across the application and closed with **no findings**. It could not have
+found this: the sweep derives its subjects from the controls the sheet declares, and a widget with
+no rule contributes no selector to sweep. **The scroll bar was invisible to the pass that exists to
+find invisible things**, because absence of styling reads as nothing to check rather than as
+something unchecked.
+
+#### Honest limits of the measurement
+
+The figures above are **static** — palette roles and arithmetic, reproducible without a display.
+**An attempt to measure the rendered bar offscreen was discarded rather than reported**: it
+returned a light-theme result that contradicts what the maintainer sees, which means the instrument
+was not measuring what is on screen, not that the light theme is also broken. The platform style in
+a headless process is not necessarily the one a KDE session uses, and a rendered claim needs to be
+taken where the report came from.
+
+#### Acceptance criteria
+
+- **The sheet styles `QScrollBar` explicitly**, in both orientations, with a handle that is visible
+  against its groove in both themes — the theme already carries a colour with the right separation
+  from the window (`border`: 3.72:1 dark, 3.43:1 light), so this needs no new palette entry
+- **The five unset shade roles are decided**, either by setting them from the theme or by recording
+  why leaving them at Qt's defaults is right now that the bar does not depend on them
+- **The handle's contrast against the groove is asserted at a stated floor**, in both themes, from
+  the theme's own values — the arithmetic runs without Qt, the way `contrast_ratio` already does
+- **A rendered check is taken on a real display**, not offscreen, and says which platform and style
+  it ran under. `T-202`'s own history — rendered sweeps that ran both theme cases as light — is why
+  this is spelled out
+- **The hover and pressed states are drawn**, since a control that never changes under the pointer
+  reads as decoration
+- **Every `QScrollBar` sub-control is declared**, not only the ones being drawn — `::handle`,
+  `::add-line`, `::sub-line`, `::add-page`, `::sub-page` — so the stepper arrows are *removed*
+  rather than left to render as the blank blocks `T-133` measured
+- **The result does not read as a decade-old control.** No stepper arrows, a rounded handle with a
+  margin so it floats rather than fills, and both orientations treated alike
+
+#### The look is the same defect, and it has a trap of its own
+
+The bar the maintainer is looking at is **Fusion's**, complete with a stepper arrow at each end —
+the shape desktop scroll bars had before they stopped having buttons. Nothing chose it; it is what
+an unstyled `QScrollBar` renders as.
+
+**Styling it at all switches the widget to `QStyleSheetStyle`, and that is where `T-133` was
+lost.** Its comment in `theme.py` is this project's own record: styling `QSpinBox` moved it to the
+sheet's rendering and *"its up and down arrows stop being drawn"* — measured at **3 distinct
+colours in the button strip against 42 native**. A `QScrollBar` rule that declares `::handle` and
+stops will do the same to `::add-line`, `::sub-line`, `::add-page` and `::sub-page`. **Every
+sub-control has to be declared, including the ones being removed.**
+
+Which is convenient, because a modern bar removes most of them: no stepper arrows, a rounded handle
+with a margin so it floats in its groove rather than filling it, and a hover state. That is the
+shape both reports are asking for, and it is one rule set.
+
+#### Out of scope
+
+- The scroll **area**'s focus ring, which is already styled and was `T202-R1`'s third round
+- **Overlay or auto-hiding** scroll bars — a bar that disappears is the opposite of the first
+  report, and hiding a control to modernise it would answer one complaint with the other
+- Any other unstyled platform widget. If the sweep is extended to find them, that is its own task
 
 ---
 
@@ -12249,98 +12357,6 @@ this is.
   report — it should be checked, and if it behaves differently that is worth knowing, but this
   task is not a sweep of every window
 - Session restore, and anything about where windows reopen (`T-027`)
-
-### What is wrong
-
-**There is no `QScrollBar` rule in `ui/theme.py`.** Not a weak one — none: the string does not
-appear in the file. Every other control in the application is dressed by the sheet, so the scroll
-bar is drawn by whatever platform style Qt picked, from whichever palette roles that style reads.
-
-**And the palette hands it the wrong ones.** `palette()` sets fourteen roles and leaves five
-untouched, at Qt's defaults, which are greys chosen for a light palette:
-
-| Role | Theme sets | Value in both themes |
-|---|---|---|
-| `Light` | **no** | `#ffffff` |
-| `Midlight` | **no** | `#cacaca` |
-| `Mid` | **no** | `#b8b8b8` |
-| `Dark` | **no** | `#9f9f9f` |
-| `Shadow` | **no** | `#767676` |
-
-Those five are exactly the shade roles a style composes a groove and a handle from. Against the
-dark window `#0A1712` they are light greys on near-black; against the light window `#F5F7F4` they
-are mid greys on near-white, which is roughly what they were designed for. **The theme owns the
-colours a scroll bar is not made of, and none of the ones it is.**
-
-The two roles the theme *does* set, and which a style will reach for first, are near-identical:
-
-```
-dark : Button #10201A on Window #0A1712  ->  1.09:1
-light: Button #FFFFFF on Window #F5F7F4  ->  1.08:1
-```
-
-A handle and a groove drawn from that pair are invisible by construction, in either theme.
-
-#### Why no gate caught it, which is the part worth keeping
-
-`T-202` swept contrast across the application and closed with **no findings**. It could not have
-found this: the sweep derives its subjects from the controls the sheet declares, and a widget with
-no rule contributes no selector to sweep. **The scroll bar was invisible to the pass that exists to
-find invisible things**, because absence of styling reads as nothing to check rather than as
-something unchecked.
-
-#### Honest limits of the measurement
-
-The figures above are **static** — palette roles and arithmetic, reproducible without a display.
-**An attempt to measure the rendered bar offscreen was discarded rather than reported**: it
-returned a light-theme result that contradicts what the maintainer sees, which means the instrument
-was not measuring what is on screen, not that the light theme is also broken. The platform style in
-a headless process is not necessarily the one a KDE session uses, and a rendered claim needs to be
-taken where the report came from.
-
-#### Acceptance criteria
-
-- **The sheet styles `QScrollBar` explicitly**, in both orientations, with a handle that is visible
-  against its groove in both themes — the theme already carries a colour with the right separation
-  from the window (`border`: 3.72:1 dark, 3.43:1 light), so this needs no new palette entry
-- **The five unset shade roles are decided**, either by setting them from the theme or by recording
-  why leaving them at Qt's defaults is right now that the bar does not depend on them
-- **The handle's contrast against the groove is asserted at a stated floor**, in both themes, from
-  the theme's own values — the arithmetic runs without Qt, the way `contrast_ratio` already does
-- **A rendered check is taken on a real display**, not offscreen, and says which platform and style
-  it ran under. `T-202`'s own history — rendered sweeps that ran both theme cases as light — is why
-  this is spelled out
-- **The hover and pressed states are drawn**, since a control that never changes under the pointer
-  reads as decoration
-- **Every `QScrollBar` sub-control is declared**, not only the ones being drawn — `::handle`,
-  `::add-line`, `::sub-line`, `::add-page`, `::sub-page` — so the stepper arrows are *removed*
-  rather than left to render as the blank blocks `T-133` measured
-- **The result does not read as a decade-old control.** No stepper arrows, a rounded handle with a
-  margin so it floats rather than fills, and both orientations treated alike
-
-#### The look is the same defect, and it has a trap of its own
-
-The bar the maintainer is looking at is **Fusion's**, complete with a stepper arrow at each end —
-the shape desktop scroll bars had before they stopped having buttons. Nothing chose it; it is what
-an unstyled `QScrollBar` renders as.
-
-**Styling it at all switches the widget to `QStyleSheetStyle`, and that is where `T-133` was
-lost.** Its comment in `theme.py` is this project's own record: styling `QSpinBox` moved it to the
-sheet's rendering and *"its up and down arrows stop being drawn"* — measured at **3 distinct
-colours in the button strip against 42 native**. A `QScrollBar` rule that declares `::handle` and
-stops will do the same to `::add-line`, `::sub-line`, `::add-page` and `::sub-page`. **Every
-sub-control has to be declared, including the ones being removed.**
-
-Which is convenient, because a modern bar removes most of them: no stepper arrows, a rounded handle
-with a margin so it floats in its groove rather than filling it, and a hover state. That is the
-shape both reports are asking for, and it is one rule set.
-
-#### Out of scope
-
-- The scroll **area**'s focus ring, which is already styled and was `T202-R1`'s third round
-- **Overlay or auto-hiding** scroll bars — a bar that disappears is the opposite of the first
-  report, and hiding a control to modernise it would answer one complaint with the other
-- Any other unstyled platform widget. If the sweep is extended to find them, that is its own task
 
 ### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
 
