@@ -30,9 +30,14 @@ All seven specimens, without exception:
 
 **1. The suspended-process candidate is refuted.** `T-268`'s answer ends by naming *"something
 outside the interpreter — a suspended process"* as the one candidate its four eliminations leave,
-and by saying that confirming or refuting it needs the machine. **Suspended is `5` in every version
-of this enum, and not one of the seven reports it.** That candidate is now eliminated by
-measurement rather than left standing by absence of evidence.
+and by saying that confirming or refuting it needs the machine. **Suspended is
+`ThreadWaitReason=5` in every version of that enum — the raw one also has `12`, `WrSuspended` — and
+not one of the seven reports either.** That candidate is now eliminated by measurement rather than
+left standing by absence of evidence.
+
+**The state column is not the discriminating one**, and reading it as such is how the first source
+correction went wrong (`T268-R5`). `ThreadState=5` is `Waiting`; every one of the seven reports it,
+and a suspended thread would report it too. The wait *reason* is what separates them.
 
 **2. They are blocked on an in-process synchronisation primitive.** `37` is outside
 `Win32_Thread.ThreadWaitReason`'s documented 0–13, so WMI is surfacing the raw kernel

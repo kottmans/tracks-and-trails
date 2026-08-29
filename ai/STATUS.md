@@ -26,11 +26,12 @@ that gap and is not built.
 
 **`T268-R1` is Resolved, and the answer changed what `T-268` is blocked on.** Read-only run
 `33267794308` on `STARBASE` measured all seven surviving orphans: `ThreadState=5`,
-`ThreadWaitReason=37`. **Suspended is `5`, so the one candidate the task's answer left standing —
-something outside the interpreter — is refuted by measurement.** `37` is `WrAlertByThreadId`, the
-wait behind `WaitOnAddress`, SRW locks and modern critical sections: they are blocked on an
-in-process lock. Which lock, and why it was never released, still needs a stack, which is `T-092`'s
-territory.
+`ThreadWaitReason=37`. **Suspended is wait reason `5`, so the one candidate the task's answer left
+standing — something outside the interpreter — is refuted by measurement.** The *state* does not
+discriminate: `5` there is `Waiting`, which a suspended thread reports too. `37` is
+`WrAlertByThreadId`, the wait behind `WaitOnAddress`, SRW locks and modern critical sections: they
+are blocked on an in-process lock. Which lock, and why it was never released, still needs a stack,
+which is `T-092`'s territory.
 
 **`T268-R2` was that measurement not reaching the source.** `downloader/process_tree.py` still ended
 its orphan account on the refuted candidate two commits after the run refuted it. Corrected: the

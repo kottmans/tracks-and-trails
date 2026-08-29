@@ -109,12 +109,18 @@ The two platforms close it differently, and only one of them closes it for free:
   allocator lock are all consistent with it and this reading separates none of them. A stack would;
   nothing non-destructive produces one, which is what `T-268` is now blocked on and is `T-092`'s
   territory. **None of it changes the containment behaviour below.**
+
+  **The field that refutes the suspended candidate is the wait reason, not the state.**
+  `ThreadState=5` is `Waiting`, which a suspended thread reports too — all seven have it, and it
+  discriminates nothing. **Suspended is `ThreadWaitReason=5`**, in the documented `Win32_Thread`
+  set and in the raw `KWAIT_REASON` alike; the raw enum's other suspended value is `12`,
+  `WrSuspended`. The seven report `37`, which is neither.
   *(This read "five orphans say it did not … no Windows run has looked", which was true until
   one looked; then "whatever did happen to them is unexplained", which was true until `T-268`
   bounded it; then **"a candidate outside the interpreter that needs somebody at the machine"** —
-  a *suspended process*, which is `ThreadState=5` in every version of that enum and which not one
-  of the seven reports. Run `33267794308` refuted it; `T268-R2` found this comment still asserting
-  it two commits later.)*
+  a *suspended process*, refuted by run `33267794308`. `T268-R2` found this comment still asserting
+  that candidate two commits after the run; `T268-R5` found the correction naming `ThreadState`
+  where it meant `ThreadWaitReason`, contradicting this comment's own measured line.)*
 
 ## The rule that keeps this from killing the application
 

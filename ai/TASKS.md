@@ -13208,20 +13208,28 @@ cannot name.
 not because the eliminations weakened but because **there are now live specimens and a candidate
 window** where before there was neither.
 
-**This task's machine-local dependency, named here rather than by widening `T-092`.** `T-092` is
-**precedent** — it proves a task may be Blocked on somebody at `STARBASE` — but its scope is WER
-capture for a different access violation, and the reviewer ruled it is not the owner of this. What
-`T-268` needs is specific and non-destructive:
+**This task's machine-local dependency, named here rather than by widening `T-092`. Three of its
+four parts are discharged; the standing one is preservation.** `T-092` is **precedent** — it proves
+a task may be Blocked on somebody at `STARBASE` — but its scope is WER capture for a different
+access violation, and the reviewer ruled it is not the owner of this. What `T-268` asked for, and
+where each part now stands:
 
 - **Capture what `3400` and `6924` are waiting on** — process and thread wait reason, or suspend
-  count — plus any other non-destructive identity evidence, on the machine.
-- **Record what that establishes, or why it still cannot be established.** Either outcome closes
-  the criterion; a silence does not.
-- **Preserve them until then.** ~156 MB on a 32 GB machine does not justify destroying the first
-  inspectable evidence anybody has had.
+  count — plus any other non-destructive identity evidence, on the machine. **Done, 2026-08-29**:
+  read-only run `33267794308` recorded all seven, wait reason included, and it needed code on the
+  machine rather than hands on it.
+- **Record what that establishes, or why it still cannot be established.** **Done**:
+  `ai/evidence/2026-08-29-T268-orphan-wait-reasons.md`, and *Measured 2026-08-29* below.
+- **Preserve them until then.** **Standing, and now for a reason it did not have before**: the
+  specimens are the only thing a stack could be taken from. ~156 MB on a 32 GB machine does not
+  justify destroying the first inspectable evidence anybody has had.
 - **Revalidate before any termination** — pid, create time, command line and parent — and
   terminate only explicitly selected processes. The scanner does not prove project ownership, so
   none of this is authority for a bulk kill, and no destructive scanner mode is to be added.
+  **Unchanged**, and nothing was terminated, suspended or resumed by the inspection.
+
+*(**This block read as a live request for all four** — *"what `T-268` needs"* — for one commit after
+run `33267794308` satisfied the first two. `T268-R5`.)*
 
 **Their live state is confirmed, and not by the run that found them.** The reviewer recorded that
 they had not independently queried whether the two were still running, so the preservation ruling
@@ -13278,9 +13286,13 @@ be the wrong one. The *fix* is unaffected; the *understanding* is what is missin
 **Phase:** Phase 4 maintenance. **It gates nothing in the centre column** — restated because
 `T-258`'s record sat beside this one for a day and the proximity invited reading it as a
 dependency, which `T258-R10`'s review ruled it is not
-**Depends on:** since 2026-08-19, **a person at `STARBASE`** — see the status above. `T-258`'s seam
-and `T-266`'s instrument both already exist; what does not is anybody able to look at `3400` and
-`6924`, which `OPS-003` is the standing reason for
+**Depends on:** since 2026-08-29, **a stack from one blocked thread** — which needs WER armed or a
+debugger attached, an administrative change to how `STARBASE` behaves, so a person and `T-092`'s
+territory. **Looking at `3400` and `6924` is no longer the dependency**: a self-hosted runner is
+code running on that machine, and read-only run `33267794308` did it. `T-258`'s seam and `T-266`'s
+instrument already existed. *(This said **"a person at `STARBASE`… anybody able to look at `3400`
+and `6924`"** since 2026-08-19, and stood for one commit after the run that looked — `T268-R5`.
+`OPS-003` is still why nobody is there.)*
 **Relevant context:** `T-258` (the five observations, and `threads=1`), `T-266`
 (`driver_holds_a_job`, the run), `tests/integration/_bootstrap_window.py`,
 `downloader/process_tree.py`, `popen_spawn_win32`, `tools/orphan_scan.py`, `T-092` (crash dumps
@@ -13369,9 +13381,12 @@ report `ThreadState=5` and **`ThreadWaitReason=37`**, without exception.
 
 **The candidate this entry leaves standing is refuted.** The answer below ends by naming *"something
 outside the interpreter… a suspended process"* as what survives the eliminations, and says
-confirming or refuting it needs the machine. **Suspended is `5` in every version of that enum and
-not one of the seven reports it.** That is an elimination by measurement rather than a candidate
-left standing by absence of evidence, and it is the first of those this task has had.
+confirming or refuting it needs the machine. **Suspended is `ThreadWaitReason=5` — in the documented
+`Win32_Thread` set and in the raw `KWAIT_REASON` alike, whose other suspended value is `12`,
+`WrSuspended` — and not one of the seven reports either.** `ThreadState=5` is `Waiting` and does not
+discriminate: all seven report it, and so would a suspended thread (`T268-R5`). That is an
+elimination by measurement rather than a candidate left standing by absence of evidence, and it is
+the first of those this task has had.
 
 **What they are doing instead.** `37` is outside `Win32_Thread.ThreadWaitReason`'s documented 0–13,
 so WMI is surfacing the raw kernel `KWAIT_REASON`, in which **37 is `WrAlertByThreadId`** — the wait
@@ -13424,11 +13439,13 @@ synchronous scan-on-process-creation looks like. **Nothing points at it.** It is
 is what the eliminations leave, and confirming or refuting it needs somebody at the machine —
 `T-092`, which is Blocked on exactly that and is the precedent this criterion names.
 
-*(**Refuted 2026-08-29 by the run this asked for.** Suspended is `ThreadState=5` and not one of the
-seven reports it; all seven report a `WrAlertByThreadId` wait instead, which is inside the process.
-Left as written because it is what the eliminations left at the time and because the criterion asks
-for the reasoning to be inspectable — *Measured 2026-08-29* above is the current reading, and
-`process_tree.py` carries the same correction.)*
+*(**Refuted 2026-08-29 by the run this asked for.** Suspended is **`ThreadWaitReason=5`**, and all
+seven report `37` — `WrAlertByThreadId`, a wait inside the process. **Not `ThreadState`**: state `5`
+is `Waiting`, which every one of the seven does report and which a suspended thread reports as well,
+so it separates nothing. Left as written because it is what the eliminations left at the time and
+because the criterion asks for the reasoning to be inspectable — *Measured 2026-08-29* above is the
+current reading, and `process_tree.py` carries the same correction. `T268-R5` found this annotation
+naming the state where it meant the wait reason.)*
 
 **Why this is not left as an open bullet.** `T-258` carried *"which gap they fell through is
 bounded, not identified"* for two days while three separate records asserted three different
@@ -13524,6 +13541,11 @@ remaining candidate that explains the shared second without a mechanism inside t
 because anything points at it, and confirming or refuting it needs the machine — which is
 `T-092`'s territory and `OPS-003`'s constraint.
 
+*(**Refuted 2026-08-29**, by the measurement this paragraph asked for: none of the seven reports
+`ThreadWaitReason=5`, and an in-process `WrAlertByThreadId` wait explains the shared second as lock
+contention between siblings importing at once. Kept as the 2026-08-18 reasoning, not as a live
+candidate — *Measured 2026-08-29* above is current.)*
+
 #### A live orphan on the maintainer's Linux machine — found 2026-08-18, and **not** one of the five
 
 Found by running `tools/orphan_scan.py` while wiring it for `T258-R5`. **The first non-synthetic
@@ -13566,7 +13588,13 @@ one is still running as of the commit that records it.
    `threads=1` bound, and it is a `ctypes` call into `kernel32` that `T-019` has already seen fail
    silently once at this boundary.
 3. **Something outside the application.** Windows Defender, a debugger attach, or a suspended
-   process would all present as one blocked thread and no CPU.
+   process would all present as one blocked thread and no CPU. *(**Weakened by measurement,
+   2026-08-29.** An externally imposed stop presents as a **suspend** — `ThreadWaitReason=5`, or
+   `12` in the raw enum — and none of the seven does; they report `37`, `WrAlertByThreadId`, which
+   is a lock wait inside the process. The suspended half is refuted outright. Defender and a
+   debugger attach are not separately measured, and neither is a plausible source of an in-process
+   alert-by-thread-id wait — reasoned, not measured — so the class as a whole is no longer where
+   the evidence points.)*
 
 #### Acceptance criteria
 
