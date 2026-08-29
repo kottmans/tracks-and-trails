@@ -20,9 +20,11 @@ queued row).
 suite and ran two thirds of it), `T281-R1` (two of three drop paths recorded nothing and the
 denominator was false), `T292-R1` and `R2` (an unknown `~user` escaped the refusal path; a relative
 path was persisted cwd-relative), `T293-R1` (a new test failed both all-files mypy scopes),
-`T291-R2` and `R3`, `T292-R3`, `T288-R1` (the rendered check), and the shared `T212-R1`/`R3`. All
-are corrected here except `T212-R3`, which is a Windows run, and `T291-R4`, which is a dispatched
-workflow run — both are external and are named as outstanding below.
+`T291-R2` and `R3`, `T292-R3`, `T288-R1` (the rendered check), and the shared `T212-R1`/`R3`.
+**All are corrected, and the two external results — the Windows run and the canary's own execution
+— are obtained.** Both took two attempts, and the first attempt of each found a defect in the
+correction rather than in the original work; that is recorded below rather than smoothed over.
+Nothing here is approved: what remains is the focused re-review.
 
 ### What was actually run, and what was not
 
@@ -39,25 +41,57 @@ a word:
 | `mypy src` | **Success: no issues found in 56 source files** | Linux |
 | `mypy` | **Success: no issues found in 154 source files** | Linux — the scope that reads `tests/` |
 | `mypy --platform win32` | **Success: no issues found in 154 source files** | Linux, Windows bodies analysed |
-| `pytest -q -n auto tests/unit` | **2,294 passed, 18 skipped** in 12.5 s | Linux, offscreen |
-| `pytest -q -n auto tests/ui` | **1,073 passed, 3 skipped** in 26.4 s | Linux, offscreen |
+| `pytest -q -n auto tests/unit tests/ui` | **3,368 passed, 21 skipped** | Linux, offscreen — `ci.yml`'s own invocation |
 | `pytest -q tests/integration` | **445 passed** in 6 m 29 s | Linux, offscreen, serial |
+| `windows desktop`, full suite | **3,796 passed, 36 skipped, 35 deselected**, 29 m 35 s | `STARBASE`, run `33231536419` |
+| `yt-dlp canary`, full suite | **3,801 passed, 21 skipped, 14 deselected** | run `33231851897`, against yt-dlp **2026.08.19** |
 | Rendered scroll bars, real display | **no defect** — `ai/evidence/2026-08-28-T288-real-display-scrollbars.md` | KDE/Wayland, `wayland` plugin over `fusion`, Qt 6.11.1 |
 
-Unit and UI were also run together as `ci.yml` runs them — `pytest -q -n auto tests/unit tests/ui`,
-**3,367 passed, 21 skipped** — which is the same set and is recorded because it is the invocation
-the board uses, not a second measurement.
+Unit and UI were measured apart at the earlier head — **2,294 / 18 skipped** and **1,073 / 3
+skipped** — before the Windows correction split one case into two.
 
-**Two required results do not exist yet, and neither is a Linux run's to supply:**
+### The two runs this batch could not produce from Linux, and what they cost
 
-- **Windows** (`T212-R3`). No `windows desktop` job has seen any of this. All six product changes
-  touch shared Python or Qt surfaces, and `ai/TESTING.md` §10 requires Windows evidence before
-  review. A Linux `mypy --platform win32` is a type simulation and is not that run.
-- **The canary's own execution** (`T291-R4`). `.github/workflows/ytdlp-canary.yml` has never been
-  parsed or run by GitHub. What has been verified is its logic and, locally, that its derived
-  deselection removes exactly the two intended node ids from 3,831 collected tests. Action
-  versions, runner routing, shell expansion, artifacts and the summary conditions are unverified
-  until one dispatched run exists.
+**`T212-R3` — Windows, obtained at the second attempt.** The first run, at `cb4a36b`, **failed**:
+`2 failed, 3795 passed, 34 skipped`. Neither failure was a product defect — the screen refused and
+restored correctly both times — and both were `tests/ui/test_settings_dialog.py` asserting POSIX as
+the contract. `chmod(0o500)` does not make a *directory* unwritable on Windows, and `expanduser`
+raises `RuntimeError` for an unknown `~user` only on POSIX, where `ntpath` guesses a sibling of
+`%USERPROFILE%` instead. **This is `T146-R3` one layer up**, and `tests/unit/test_settings.py`'s own
+docstring already records making the identical mistake in the identical place. Corrected in
+`75cd183` with that file's own remedies, and the tallies reconcile exactly: 3,831 → 3,832, the one
+extra being the case split in two, and the two extra skips being the POSIX-only test and the
+`geteuid` guard.
+
+**`T291-R4` — the canary, also obtained at the second attempt, and the first attempt is why the
+second can be believed.** Run `33228602891` reported **success** while its own log said
+`11 failed, 3799 passed`: GitHub's default shell is `bash -e`, not `bash -eo pipefail`, so
+`pytest | tee` exited with tee's status and **the verdict step could not fail**. Fixed in
+`22fe66e`. Run `33231851897` is green with the fix in force, and its arithmetic reconciles against
+the local run: 3,813 passed locally, minus the 12 by-design tests, is the 3,801 the canary reports;
+14 deselected is 2 from `addopts` plus those 12. Steps 9 and 10 — *"say what a failure means"* and
+*"say that this run measured nothing"* — both **skipped**, so neither drift nor infrastructure
+failure was claimed.
+
+**The substantive answer to the question that prompted `T-291`:** against yt-dlp **2026.08.19**,
+newer than the pinned **2026.7.4**, the drift gates find **nothing**. That is now established by a
+real workflow execution rather than by a hand-run of its logic.
+
+### One environmental failure that is not this batch's
+
+**`frozen linux` fails on `Spock` and passes on `kirk`**, and the batch is not the cause — nothing
+in it touches `src/`, `packaging/` or the freeze path. `/home/sean/.local/share/tracksandtrails/`
+`ytdlp/` on `Spock` holds a **user-managed yt-dlp 2026.8.19, dated 2026-08-27 23:13** — the
+maintainer's in-app update during `T-212`'s checklist run, the same action that produced `T-289`.
+The self-hosted runner runs as that user, so a frozen artifact built there resolves the
+user-managed copy ahead of its bundled pin, exactly as `OPS-002` says it should, and the probe
+correctly reports that the frozen baseline is not the tested one.
+
+`Spock` passed this job on 2026-08-27 at 17:29, before that directory existed, and has failed it
+since. **A build gate whose result depends on which of two machines it lands on is not a gate**, so
+the durable fix is to isolate the frozen job's user data directory rather than to clean the
+machine — but that is the maintainer's call, and the copy is their update to remove or keep. Left
+untouched, and recorded here rather than acted on.
 
 **`T-284` was deliberately not built, and it is the one decision owed.** `INHERITED_TEXT` is two
 things — the label painted on an unoverridden row, which the maintainer ruled on, and a selectable
@@ -100,7 +134,16 @@ was), `T-286` and `T-290` (wording in the maintainer's voice), `T-287` and `T-29
 real display). **`T-288`'s rendered criterion is no longer among them** — it was taken on the
 KDE/Wayland session on 2026-08-28 and found no defect.
 
-**Held and unpushed:** everything from `06f3890` to here.
+**Pushed 2026-08-29 (UTC), and the two heads are different on purpose** — `T212-R3` asks for them
+separately. **Code/test head: `37e90ba`**, the last commit touching `src/`, `tests/`, `.github/`,
+`packaging/`, `tools/` or `pyproject.toml`. **Pushed head: `cb4a36b`**, which adds `0b5d14d`,
+`747bf3a` and this commit — records only, verified by an empty
+`git diff 37e90ba..cb4a36b -- src tests .github packaging tools pyproject.toml`. The Windows run
+therefore tests the exact executable tree even though it is triggered from the later head.
+
+**Two further commits followed, and both fix defects the runs found in the corrections themselves**
+— `22fe66e` (the canary's verdict step could not fail) and `75cd183` (two tests asserted Linux as
+the rule). `origin/main` is `75cd183`, which is the head both green runs below were taken at.
 
 ---
 
