@@ -69,6 +69,20 @@ concurrency:
 permissions:
   contents: read
 
+# **`shell: bash`, and it is load-bearing rather than tidiness.** GitHub's *default* shell is
+# `bash -e {0}`; naming `bash` explicitly gets `bash --noprofile --norc -eo pipefail {0}`. Without
+# `pipefail` a pipeline exits with its **last** command's status, so
+# `pytest … | tee reports/canary.txt` exited 0 whatever pytest said — and this job's verdict step
+# could not fail. **Measured on run `33228602891`**, the first real execution: `11 failed, 3799
+# passed` in `canary.txt`, step reported `success`, job reported `success`. Every `if:` condition
+# `T291-R2` added was reading an outcome that could only ever be `success`.
+#
+# `ci.yml` has carried this exact block since it was written and says so at its `Tests` step; this
+# file was authored without it.
+defaults:
+  run:
+    shell: bash
+
 env:
   # **One definition of the expected-failure set**, so the step that reports it and the step that
   # excludes it cannot disagree — which is how a canary silently starts hiding a real failure.
@@ -80,9 +94,46 @@ env:
   # forever, and one in the excluded set but not the reported one vanishes from the job's account
   # of itself. The verdict step builds its own arguments from this list, so there is nothing left
   # to keep in step.
+  #
+  # **It was two node ids and it is eleven** (`T291-R1`'s consequence, measured on run
+  # `33228602891`). The pair was derived from a unit/UI-only run; putting `tests/integration` back
+  # in — which is what that finding required — added **nine** more tests that assert the installed
+  # yt-dlp *is* the pinned baseline, the one thing this job exists to violate. They are not drift:
+  # every one passes against the pin, and each failure message is the freeze probe or the service
+  # correctly reporting `2026.08.19` where `2026.7.4` was pinned.
+  #
+  # **Four of the `test_freeze_probe.py` entries are not version tests at all** — they are named
+  # for a missing extractor module, a lazy table, a lazy placeholder and an extractor that does not
+  # match its own URLs. The probe checks the version *first* and returns that message, so in this
+  # environment those four cannot reach their subject whether they are deselected or not.
+  # Deselecting them loses nothing that was being tested here, and this note is so a reader does
+  # not later mistake it for coverage this job silently dropped.
+  #
+  # **`test_the_gate_checks_the_bundled_version_against_the_pin` is named without its parameter,
+  # deliberately.** Its ids interpolate the pin — `[2026.7.4-0]` and `[2019.1.1-1]` — so a node id
+  # carrying one would stop matching the day the pin moves, silently, and pytest ignores a
+  # `--deselect` that matches nothing. The prefix takes both parametrisations, which costs the
+  # `[2019.1.1-1]` case that would have passed. A stable list is worth one case in a weekly job.
+  #
+  # **What this list cannot do is notice a *new* pin-dependent test.** One added later is not here,
+  # so it fails and the canary goes red — visible, and someone has to act on it. A pytest marker on
+  # the tests themselves would carry the property where it belongs and could not drift at all; that
+  # is the better structure and it is put to the maintainer rather than taken here, because it
+  # spans `pyproject.toml` and three test files, and because a command-line `-m` **replaces**
+  # `addopts`' own marker expression rather than adding to it, so the job would have to restate
+  # `not network and not windows_desktop` and could drift from *that* instead.
   EXPECTED_STALE: >-
     tests/unit/test_option_audit.py::test_the_audit_names_the_yt_dlp_version_it_was_taken_against
     tests/unit/test_environment.py::test_the_installed_baseline_is_the_pinned_one
+    tests/integration/test_freeze_probe.py::test_a_missing_extractor_module_fails_the_gate
+    tests/integration/test_freeze_probe.py::test_an_extractor_that_claims_every_url_fails_the_gate
+    tests/integration/test_freeze_probe.py::test_an_extractor_that_does_not_match_its_own_urls_fails_the_gate
+    tests/integration/test_freeze_probe.py::test_an_extractor_that_stays_lazy_fails_the_gate
+    tests/integration/test_freeze_probe.py::test_the_gate_checks_the_bundled_version_against_the_pin
+    tests/integration/test_freeze_probe.py::test_the_probe_passes_against_a_correctly_installed_ytdlp
+    tests/integration/test_ytdlp_service.py::test_a_broken_installed_copy_falls_back_and_the_rejection_is_reported
+    tests/integration/test_ytdlp_service.py::test_installing_then_reverting_moves_the_reported_version_and_moves_it_back
+    tests/integration/test_ytdlp_service.py::test_the_reported_version_is_the_baseline_a_child_actually_imports
 
 jobs:
   canary:
@@ -117,6 +168,14 @@ jobs:
           # **After the project, so it overrides the pin.** Installing it first would be undone
           # by the project's own `yt-dlp==` constraint.
           .venv-canary/bin/python -m pip install --upgrade yt-dlp
+          # **On `PATH`, not merely installed.** `tests/unit/test_toolchain_versions.py` resolves
+          # `ruff` and `mypy` with `shutil.which` — deliberately, because `T269-R1` found a gate
+          # approving a different binary from the one it gates with. Calling the interpreter by
+          # path leaves the virtualenv off `PATH`, so both cases failed on run `33228602891` with
+          # *"no `ruff` on PATH"*. That is this job's environment, not yt-dlp drift, and it is
+          # indistinguishable from drift in the report — which is the whole thing `T291-R2` is
+          # about. `ci.yml` adds its venv to `GITHUB_PATH` for the same reason.
+          echo "$PWD/.venv-canary/bin" >> "$GITHUB_PATH"
 
       - name: Record which versions actually ran
         run: |
