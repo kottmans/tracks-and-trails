@@ -1075,25 +1075,37 @@ jobs:
     # **This changes no product behaviour.** `OPS-002`'s preference is unchanged; the artifact
     # still resolves a user-managed copy ahead of its baseline. What changes is whose profile the
     # build gate looks in. `tests/unit/test_frozen_isolation.py` pins the wiring.
-    env:
-      FROZEN_PROFILE: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}
-      XDG_DATA_HOME: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/data
-      XDG_CONFIG_HOME: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/config
-      XDG_CACHE_HOME: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/cache
-      WIN_PD_OVERRIDE_APPDATA: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/windows
-      WIN_PD_OVERRIDE_LOCAL_APPDATA: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/windows
-
     steps:
       - uses: actions/checkout@v7
 
       - name: Give this job its own user profile
+        # **Exported here rather than declared in a job-level `env:`, and that is not a style
+        # choice.** The first version of this put all six in `jobs.frozen.env` using
+        # `${{ runner.temp }}`; GitHub rejected the whole file at validation — zero jobs, no logs,
+        # the run named after the path because a workflow that does not parse has no name. The
+        # `runner` context does not exist at job level, because the runner has not been assigned
+        # when that block is evaluated. `yaml.safe_load` cannot catch it; only GitHub's schema can.
+        #
+        # `$GITHUB_ENV` reaches every later step, so this is still one declaration, and
+        # `$RUNNER_TEMP` is the same directory by its environment-variable spelling, which *is*
+        # available once a step is running.
+        #
         # Created explicitly rather than left to the artifact: a probe that fails because a parent
         # directory is missing would read as a packaging defect, which is the class of confusion
-        # `T014-R3` exists to prevent. Also the one place that says out loud which profile the
-        # probes below are about to use, so a run's log answers it without inference.
+        # `T014-R3` exists to prevent. This is also the one place that says out loud which profile
+        # the probes below will use, so a run's log answers it without inference.
         run: |
-          mkdir -p "$FROZEN_PROFILE"/{data,config,cache,windows}
-          echo "frozen profile: $FROZEN_PROFILE"
+          profile="$RUNNER_TEMP/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}"
+          mkdir -p "$profile"/{data,config,cache,windows}
+          {
+            echo "FROZEN_PROFILE=$profile"
+            echo "XDG_DATA_HOME=$profile/data"
+            echo "XDG_CONFIG_HOME=$profile/config"
+            echo "XDG_CACHE_HOME=$profile/cache"
+            echo "WIN_PD_OVERRIDE_APPDATA=$profile/windows"
+            echo "WIN_PD_OVERRIDE_LOCAL_APPDATA=$profile/windows"
+          } >> "$GITHUB_ENV"
+          echo "frozen profile: $profile"
           echo "real profile untouched; see T-298"
 
       # **Hosted runners only.** `OPS-009` moved the Windows leg onto `STARBASE` and left this

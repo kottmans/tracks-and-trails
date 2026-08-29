@@ -53,36 +53,67 @@ def frozen_job() -> dict[str, Any]:
     return job
 
 
+def profile_step() -> str:
+    """The step that exports the profile, by what it does rather than by its name.
+
+    **Exported through `$GITHUB_ENV` rather than declared in a job-level `env:`.** The first
+    version of this workflow used `jobs.frozen.env` with `${{ runner.temp }}`, and GitHub rejected
+    the entire file at validation: zero jobs, no logs, the run named after its path. The `runner`
+    context does not exist at job level, because the runner is not assigned when that block is
+    evaluated — and `yaml.safe_load` parses it happily, which is why this test asserts the shape
+    that actually ran rather than the one that merely parsed.
+    """
+    steps = frozen_job()["steps"]
+    exporting = [step for step in steps if "GITHUB_ENV" in str(step.get("run", ""))]
+    assert exporting, "no step in the frozen job exports anything to GITHUB_ENV"
+    return "\n".join(str(step["run"]) for step in exporting)
+
+
 @pytest.mark.parametrize("variable", REQUIRED_VARIABLES)
 def test_the_frozen_job_redirects_every_per_user_directory(variable: str) -> None:
-    """Both families, at job level, so both matrix legs are covered by one declaration."""
-    environment = frozen_job().get("env") or {}
+    """Both families, exported once, so both matrix legs are covered by one declaration."""
+    exported = profile_step()
 
-    assert variable in environment, (
-        f"the frozen job does not set {variable}, so the artifact resolves the runner account's "
-        f"own directory on the platform that reads it — which is how run 33231536419 measured the "
-        f"maintainer's yt-dlp instead of the one it built"
+    assert f"{variable}=" in exported, (
+        f"the frozen job does not export {variable}, so the artifact resolves the runner "
+        f"account's own directory on the platform that reads it — which is how run "
+        f"33231536419 measured the maintainer's yt-dlp instead of the one it built"
     )
 
 
-@pytest.mark.parametrize("variable", REQUIRED_VARIABLES)
-def test_each_redirect_is_unique_to_the_run(variable: str) -> None:
+def test_the_profile_is_unique_to_the_run() -> None:
     """A stable path is not isolation on a machine that keeps its temp directory.
 
-    `runner.temp` persists between jobs on a self-hosted runner, so a re-run would start from the
+    `RUNNER_TEMP` persists between jobs on a self-hosted runner, so a re-run would start from the
     previous attempt's installed copy — and the update probe would then be measuring a state it did
     not create. `run_id` and `run_attempt` are what make the profile fresh.
     """
-    value = str((frozen_job().get("env") or {})[variable])
+    exported = profile_step()
 
-    assert "runner.temp" in value, (
-        f"{variable} is {value!r}, which is not under the runner's temporary directory"
+    assert "RUNNER_TEMP" in exported, (
+        "the profile is not under the runner's temporary directory, so it is either in the "
+        "checkout or somewhere the cleanup step does not own"
     )
     for marker in ("github.run_id", "github.run_attempt"):
-        assert marker in value, (
-            f"{variable} is {value!r} and does not vary with {marker}, so a second attempt "
-            f"inherits the first one's profile"
+        assert marker in exported, (
+            f"the profile does not vary with {marker}, so a second attempt inherits the first "
+            f"one's installed copy and the update probe measures a state it did not create"
         )
+
+
+def test_no_runner_context_is_used_where_github_will_not_evaluate_it() -> None:
+    """`${{ runner.* }}` at job level is a workflow that does not parse, and this is that record.
+
+    Asserted because the failure mode gives no useful signal: the run has no jobs, no logs and is
+    named after the file path, and every local YAML check passes.
+    """
+    job = frozen_job()
+    declared = str(job.get("env") or {})
+
+    assert "runner." not in declared, (
+        "the frozen job's job-level env uses the runner context, which GitHub does not provide "
+        "there — it rejects the whole file at validation and CI stops running entirely"
+    )
 
 
 def test_the_artifact_probes_run_inside_the_job_that_is_isolated() -> None:
