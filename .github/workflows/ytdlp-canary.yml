@@ -19,13 +19,24 @@
 #
 # ## The design problem is not the YAML
 #
-# **Two** tests fail by design on any newer yt-dlp, and both were found by running this against a
-# real one rather than by reading:
+# **Eleven** node ids fail by design on any newer yt-dlp — twelve tests, one of them parametrised —
+# and **every one of them was found by running this rather than by reading it.** The count has been
+# wrong twice, in the same direction, for the same reason:
 #
-#   - `test_the_audit_names_the_yt_dlp_version_it_was_taken_against` — how a pin bump forces the
-#     audit to be re-taken (`T-183`, `NFR-008`).
-#   - `test_the_installed_baseline_is_the_pinned_one` — which asserts exactly the thing this job
+#   - It was written as **one**. A dry run of the logic found a second.
+#   - It was **two** until `T291-R1` put `tests/integration` back into the suite, which is where the
+#     other nine live. Run `33228602891` is where they appeared.
+#
+# They fall into two groups:
+#
+#   - **The version bookkeeping** — `test_the_audit_names_the_yt_dlp_version_it_was_taken_against`,
+#     how a pin bump forces the audit to be re-taken (`T-183`, `NFR-008`), and
+#     `test_the_installed_baseline_is_the_pinned_one`, which asserts exactly the thing this job
 #     deliberately breaks.
+#   - **The freeze probe and the update service** — nine cases in `tests/integration` that each
+#     require the installed yt-dlp to *be* the pinned baseline. Four of them are not version tests
+#     at all; the probe reports the version mismatch first, so they cannot reach their subject here.
+#     `EXPECTED_STALE` says which, and why, beside the list itself.
 #
 # A canary that ran them would be red on every single run, forever, and muted within a month. So
 # they are **deselected and reported separately**, and the job's verdict is what remains:
@@ -188,9 +199,11 @@ jobs:
           { echo '### Versions'; echo '```'; cat reports/versions.txt; echo '```'; } \
             >> "$GITHUB_STEP_SUMMARY"
 
-      # **Informational, and `|| true` is the point.** This test fails on any newer yt-dlp by
-      # design. Its result is reported and never decides the job.
-      - name: The two tests this job breaks on purpose
+      # **Informational: this step reports and never decides the job.** These tests fail on any
+      # newer yt-dlp by design, and the `if` below is what keeps their result off the verdict — an
+      # earlier version of this comment claimed a `|| true` that was never in the code, which is a
+      # comment describing an implementation the file does not have.
+      - name: The tests this job breaks on purpose
         run: |
           if .venv-canary/bin/python -m pytest ${{ env.EXPECTED_STALE }} \
               -q > reports/expected-stale.txt 2>&1; then
