@@ -1,0 +1,100 @@
+STARBASE orphan inspection - 2026-08-29T13:18:16.5673087-05:00
+read-only: Get-Process and Get-CimInstance only (T-268, T268-R1)
+
+=== pid 3400 ===
+  created        : 08/17/2026 13:07:40
+  parent pid     : 1204
+  threads        : 1
+  working set    : 75.6 MB
+  user ms        : 1406.25
+  kernel ms      : 750
+  handles        : 125
+  command line   : "C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe" "-c" "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=1204, pipe_handle=2504)" "--multiprocessing-fork"
+  thread 8688: state=5 waitReason=37 priority=10
+  .NET threads   :
+    id=8688 state=Wait wait=Unknown cpu=00:00:00.7031250
+  modules (84): python.exe, ntdll.dll, KERNEL32.DLL, KERNELBASE.dll, ucrtbase.dll, python314.dll, VCRUNTIME140.dll, WS2_32.dll, RPCRT4.dll, VERSION.dll, bcrypt.dll, msvcrt.dll, ADVAPI32.dll, sechost.dll, bcryptprimitives.dll, python3.DLL, _socket.pyd, IPHLPAPI.DLL, _decimal.pyd, _bz2.pyd, _lzma.pyd, _zstd.pyd, _uuid.pyd, unicodedata.pyd, _wmi.pyd, OLEAUT32.dll, msvcp_win.dll, combase.dll, PROPSYS.dll, VCRUNTIME140_1.dll, Shiboken.pyd, shiboken6.abi3.dll, MSVCP140.dll, QtCore.pyd, pyside6.abi3.dll, Qt6Core.dll, ole32.dll, GDI32.dll, win32u.dll, gdi32full.dll, USER32.dll, MPR.dll, SHELL32.dll, USERENV.dll, AUTHZ.dll, NETAPI32.dll, WINMM.dll, MSVCP140_1.dll, icuuc.dll, CRYPTBASE.DLL, NETUTILS.DLL, SRVCLI.DLL, icu.DLL, IMM32.DLL, QtGui.pyd, MSVCP140_2.dll, Qt6Gui.dll, d3d12.dll, d3d11.dll, dxgi.dll, kernel.appcore.dll, UxTheme.dll, DWrite.dll, QtTest.pyd, Qt6Widgets.dll, Qt6Test.dll, dwmapi.dll, QtWidgets.pyd, _hashlib.pyd, libcrypto-3.dll, CRYPT32.dll, _ctypes.pyd, libffi-8.dll, _ssl.pyd, libssl-3.dll, _elementtree.pyd, pyexpat.pyd, _sqlite3.pyd, sqlite3.dll, _asyncio.pyd, _overlapped.pyd, mswsock.dll, select.pyd, _queue.pyd
+
+=== pid 6924 ===
+  created        : 08/17/2026 13:07:40
+  parent pid     : 1204
+  threads        : 1
+  working set    : 73.4 MB
+  user ms        : 1437.5
+  kernel ms      : 796.875
+  handles        : 125
+  command line   : "C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe" "-c" "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=1204, pipe_handle=2712)" "--multiprocessing-fork"
+  thread 2168: state=5 waitReason=37 priority=10
+  .NET threads   :
+    id=2168 state=Wait wait=Unknown cpu=00:00:00.7343750
+  modules (84): python.exe, ntdll.dll, KERNEL32.DLL, KERNELBASE.dll, ucrtbase.dll, python314.dll, VCRUNTIME140.dll, WS2_32.dll, RPCRT4.dll, VERSION.dll, bcrypt.dll, msvcrt.dll, ADVAPI32.dll, sechost.dll, bcryptprimitives.dll, python3.DLL, _socket.pyd, IPHLPAPI.DLL, _decimal.pyd, _bz2.pyd, _lzma.pyd, _zstd.pyd, _uuid.pyd, unicodedata.pyd, _wmi.pyd, OLEAUT32.dll, msvcp_win.dll, combase.dll, PROPSYS.dll, VCRUNTIME140_1.dll, Shiboken.pyd, shiboken6.abi3.dll, MSVCP140.dll, QtCore.pyd, Qt6Core.dll, pyside6.abi3.dll, ole32.dll, GDI32.dll, win32u.dll, gdi32full.dll, USER32.dll, MPR.dll, SHELL32.dll, USERENV.dll, AUTHZ.dll, NETAPI32.dll, WINMM.dll, MSVCP140_1.dll, icuuc.dll, CRYPTBASE.DLL, NETUTILS.DLL, SRVCLI.DLL, icu.DLL, IMM32.DLL, QtGui.pyd, Qt6Gui.dll, MSVCP140_2.dll, d3d11.dll, dxgi.dll, d3d12.dll, UxTheme.dll, DWrite.dll, kernel.appcore.dll, QtTest.pyd, Qt6Test.dll, Qt6Widgets.dll, dwmapi.dll, QtWidgets.pyd, _hashlib.pyd, libcrypto-3.dll, CRYPT32.dll, _ctypes.pyd, libffi-8.dll, _ssl.pyd, libssl-3.dll, _elementtree.pyd, pyexpat.pyd, _sqlite3.pyd, sqlite3.dll, _asyncio.pyd, _overlapped.pyd, mswsock.dll, select.pyd, _queue.pyd
+
+=== pid 2432 ===
+  created        : 08/05/2026 12:33:44
+  parent pid     : 9176
+  threads        : 1
+  working set    : 43.2 MB
+  user ms        : 1656.25
+  kernel ms      : 828.125
+  handles        : 123
+  command line   : "C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe" "-c" "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9176, pipe_handle=2980)" "--multiprocessing-fork"
+  thread 3384: state=5 waitReason=37 priority=10
+  .NET threads   :
+    id=3384 state=Wait wait=Unknown cpu=00:00:01.6562500
+  modules (68): python.exe, ntdll.dll, KERNEL32.DLL, KERNELBASE.dll, ucrtbase.dll, python314.dll, VCRUNTIME140.dll, WS2_32.dll, RPCRT4.dll, VERSION.dll, bcrypt.dll, msvcrt.dll, ADVAPI32.dll, sechost.dll, bcryptprimitives.dll, python3.DLL, _socket.pyd, IPHLPAPI.DLL, _decimal.pyd, _bz2.pyd, _lzma.pyd, _zstd.pyd, _uuid.pyd, unicodedata.pyd, _wmi.pyd, OLEAUT32.dll, msvcp_win.dll, combase.dll, PROPSYS.dll, VCRUNTIME140_1.dll, Shiboken.pyd, shiboken6.abi3.dll, MSVCP140.dll, QtCore.pyd, Qt6Core.dll, pyside6.abi3.dll, ole32.dll, GDI32.dll, win32u.dll, MPR.dll, gdi32full.dll, USERENV.dll, USER32.dll, SHELL32.dll, NETAPI32.dll, AUTHZ.dll, MSVCP140_1.dll, WINMM.dll, icuuc.dll, CRYPTBASE.DLL, NETUTILS.DLL, SRVCLI.DLL, icu.DLL, IMM32.DLL, QtGui.pyd, Qt6Gui.dll, MSVCP140_2.dll, d3d11.dll, dxgi.dll, d3d12.dll, UxTheme.dll, DWrite.dll, kernel.appcore.dll, QtTest.pyd, Qt6Widgets.dll, Qt6Test.dll, dwmapi.dll, QtWidgets.pyd
+
+=== pid 3408 ===
+  created        : 08/05/2026 12:33:44
+  parent pid     : 9176
+  threads        : 1
+  working set    : 40.2 MB
+  user ms        : 1640.625
+  kernel ms      : 1000
+  handles        : 121
+  command line   : "C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe" "-c" "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9176, pipe_handle=2724)" "--multiprocessing-fork"
+  thread 7792: state=5 waitReason=37 priority=10
+  .NET threads   :
+    id=7792 state=Wait wait=Unknown cpu=00:00:01.7656250
+  modules (63): python.exe, ntdll.dll, KERNEL32.DLL, KERNELBASE.dll, ucrtbase.dll, python314.dll, VCRUNTIME140.dll, WS2_32.dll, RPCRT4.dll, VERSION.dll, bcrypt.dll, msvcrt.dll, ADVAPI32.dll, sechost.dll, bcryptprimitives.dll, python3.DLL, _socket.pyd, IPHLPAPI.DLL, _decimal.pyd, _bz2.pyd, _lzma.pyd, _zstd.pyd, _uuid.pyd, unicodedata.pyd, _wmi.pyd, OLEAUT32.dll, msvcp_win.dll, combase.dll, PROPSYS.dll, VCRUNTIME140_1.dll, Shiboken.pyd, shiboken6.abi3.dll, MSVCP140.dll, QtCore.pyd, Qt6Core.dll, pyside6.abi3.dll, ole32.dll, GDI32.dll, MPR.dll, win32u.dll, gdi32full.dll, USERENV.dll, USER32.dll, AUTHZ.dll, SHELL32.dll, NETAPI32.dll, MSVCP140_1.dll, WINMM.dll, icuuc.dll, CRYPTBASE.DLL, NETUTILS.DLL, SRVCLI.DLL, icu.DLL, IMM32.DLL, QtGui.pyd, MSVCP140_2.dll, Qt6Gui.dll, d3d11.dll, dxgi.dll, d3d12.dll, UxTheme.dll, DWrite.dll, kernel.appcore.dll
+
+=== pid 11000 ===
+  created        : 08/05/2026 12:33:44
+  parent pid     : 9176
+  threads        : 1
+  working set    : 42.4 MB
+  user ms        : 1812.5
+  kernel ms      : 906.25
+  handles        : 123
+  command line   : "C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe" "-c" "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=9176, pipe_handle=2948)" "--multiprocessing-fork"
+  thread 8248: state=5 waitReason=37 priority=10
+  .NET threads   :
+    id=8248 state=Wait wait=Unknown cpu=00:00:01.9062500
+  modules (68): python.exe, ntdll.dll, KERNEL32.DLL, KERNELBASE.dll, ucrtbase.dll, python314.dll, VCRUNTIME140.dll, WS2_32.dll, RPCRT4.dll, VERSION.dll, bcrypt.dll, msvcrt.dll, ADVAPI32.dll, sechost.dll, bcryptprimitives.dll, python3.DLL, _socket.pyd, IPHLPAPI.DLL, _decimal.pyd, _bz2.pyd, _lzma.pyd, _zstd.pyd, _uuid.pyd, unicodedata.pyd, _wmi.pyd, OLEAUT32.dll, msvcp_win.dll, combase.dll, PROPSYS.dll, VCRUNTIME140_1.dll, Shiboken.pyd, shiboken6.abi3.dll, MSVCP140.dll, QtCore.pyd, Qt6Core.dll, pyside6.abi3.dll, ole32.dll, GDI32.dll, win32u.dll, MPR.dll, gdi32full.dll, USER32.dll, SHELL32.dll, AUTHZ.dll, USERENV.dll, NETAPI32.dll, WINMM.dll, MSVCP140_1.dll, icuuc.dll, CRYPTBASE.DLL, NETUTILS.DLL, SRVCLI.DLL, icu.DLL, IMM32.DLL, QtGui.pyd, MSVCP140_2.dll, Qt6Gui.dll, dxgi.dll, d3d11.dll, d3d12.dll, UxTheme.dll, DWrite.dll, kernel.appcore.dll, QtTest.pyd, Qt6Widgets.dll, Qt6Test.dll, dwmapi.dll, QtWidgets.pyd
+
+=== pid 7028 ===
+  created        : 08/04/2026 20:07:13
+  parent pid     : 1052
+  threads        : 1
+  working set    : 42.9 MB
+  user ms        : 1671.875
+  kernel ms      : 1109.375
+  handles        : 123
+  command line   : "C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe" "-c" "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=1052, pipe_handle=1168)" "--multiprocessing-fork"
+  thread 2792: state=5 waitReason=37 priority=10
+  .NET threads   :
+    id=2792 state=Wait wait=Unknown cpu=00:00:01.9687500
+  modules (68): python.exe, ntdll.dll, KERNEL32.DLL, KERNELBASE.dll, ucrtbase.dll, python314.dll, VCRUNTIME140.dll, WS2_32.dll, RPCRT4.dll, VERSION.dll, bcrypt.dll, msvcrt.dll, ADVAPI32.dll, sechost.dll, bcryptprimitives.dll, python3.DLL, _socket.pyd, IPHLPAPI.DLL, _decimal.pyd, _bz2.pyd, _lzma.pyd, _zstd.pyd, _uuid.pyd, unicodedata.pyd, _wmi.pyd, OLEAUT32.dll, msvcp_win.dll, combase.dll, PROPSYS.dll, VCRUNTIME140_1.dll, Shiboken.pyd, shiboken6.abi3.dll, MSVCP140.dll, QtCore.pyd, Qt6Core.dll, pyside6.abi3.dll, ole32.dll, GDI32.dll, win32u.dll, MPR.dll, gdi32full.dll, USERENV.dll, USER32.dll, SHELL32.dll, AUTHZ.dll, NETAPI32.dll, MSVCP140_1.dll, WINMM.dll, icuuc.dll, CRYPTBASE.DLL, NETUTILS.DLL, SRVCLI.DLL, icu.DLL, IMM32.DLL, QtGui.pyd, MSVCP140_2.dll, Qt6Gui.dll, dxgi.dll, d3d11.dll, d3d12.dll, UxTheme.dll, DWrite.dll, kernel.appcore.dll, QtTest.pyd, Qt6Test.dll, Qt6Widgets.dll, dwmapi.dll, QtWidgets.pyd
+
+=== pid 10524 ===
+  created        : 08/04/2026 19:43:00
+  parent pid     : 12144
+  threads        : 1
+  working set    : 54.7 MB
+  user ms        : 1859.375
+  kernel ms      : 1000
+  handles        : 123
+  command line   : "C:\Users\Admin\AppData\Local\Programs\Python\Python314\python.exe" "-c" "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=12144, pipe_handle=3908)" "--multiprocessing-fork"
+  thread 6484: state=5 waitReason=37 priority=10
+  .NET threads   :
+    id=6484 state=Wait wait=Unknown cpu=00:00:01.8750000
+  modules (74): python.exe, ntdll.dll, KERNEL32.DLL, KERNELBASE.dll, ucrtbase.dll, python314.dll, VCRUNTIME140.dll, WS2_32.dll, RPCRT4.dll, VERSION.dll, bcrypt.dll, msvcrt.dll, ADVAPI32.dll, sechost.dll, bcryptprimitives.dll, python3.DLL, _socket.pyd, IPHLPAPI.DLL, _decimal.pyd, _bz2.pyd, _lzma.pyd, _zstd.pyd, _uuid.pyd, unicodedata.pyd, _wmi.pyd, OLEAUT32.dll, msvcp_win.dll, combase.dll, PROPSYS.dll, VCRUNTIME140_1.dll, Shiboken.pyd, shiboken6.abi3.dll, MSVCP140.dll, QtCore.pyd, pyside6.abi3.dll, Qt6Core.dll, ole32.dll, GDI32.dll, win32u.dll, gdi32full.dll, USER32.dll, MPR.dll, SHELL32.dll, USERENV.dll, AUTHZ.dll, NETAPI32.dll, MSVCP140_1.dll, WINMM.dll, icuuc.dll, CRYPTBASE.DLL, NETUTILS.DLL, SRVCLI.DLL, icu.DLL, IMM32.DLL, QtGui.pyd, Qt6Gui.dll, MSVCP140_2.dll, d3d11.dll, dxgi.dll, d3d12.dll, UxTheme.dll, DWrite.dll, kernel.appcore.dll, QtTest.pyd, Qt6Widgets.dll, Qt6Test.dll, dwmapi.dll, QtWidgets.pyd, _queue.pyd, _ctypes.pyd, libffi-8.dll, _hashlib.pyd, libcrypto-3.dll, CRYPT32.dll

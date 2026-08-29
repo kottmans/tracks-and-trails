@@ -13101,7 +13101,20 @@ any other text this application supplies, because an extractor argument can carr
 
 ### T-268 — The reproduced parent-death path does not explain the five orphans
 
-**Status:** **Blocked — on a person at `STARBASE`, 2026-08-19 (`T268-R1`).**
+**Status:** **Blocked — still on a person at `STARBASE`, but on a narrower question since
+2026-08-29.** The blocking criterion `T268-R1` set — *capture what `3400` and `6924` are waiting
+on, non-destructively, on the machine* — **has been satisfied**, and it did not need hands on the
+machine after all: a self-hosted runner is code running there. Read-only run **`33267794308`**,
+`ai/evidence/2026-08-29-T268-orphan-wait-reasons.md`. All seven are preserved.
+
+**What it is blocked on now is a stack, which is genuinely `T-092`'s territory** — a dump needs WER
+configured or a debugger attached, and both change how the machine behaves in a way a job must not.
+**The question that stack would answer is much narrower than before: which lock, not whether a
+lock.**
+
+**Whether the answer below now satisfies criterion 3 is the maintainer's call.** It is materially
+stronger than it was — a candidate refuted by measurement, a mechanism class established — and the
+criterion asks for the eliminations to be written down rather than for a mechanism to be named.
 
 **The measurement is approved and no source correction is asked for.** The reviewer confirmed run
 `32209108844` at exact head `f987e88`, ruled the three-way discrimination sound, and recorded that
@@ -13260,6 +13273,44 @@ whatever the payload carried, and `contain_this_process()`. ~2 s of CPU is consi
 interpreter start and imports and does not separate them. **Three of the five share a parent and
 one second**, which still looks like a single parent-side event and still has no mechanism behind
 it.
+
+#### Measured 2026-08-29: not suspended, and blocked on a lock
+
+**Run `33267794308` read every surviving specimen's thread wait reason**, read-only —
+`Get-Process` and `Get-CimInstance` only, nothing terminated, suspended or resumed. All seven
+report `ThreadState=5` and **`ThreadWaitReason=37`**, without exception.
+
+**The candidate this entry leaves standing is refuted.** The answer below ends by naming *"something
+outside the interpreter… a suspended process"* as what survives the eliminations, and says
+confirming or refuting it needs the machine. **Suspended is `5` in every version of that enum and
+not one of the seven reports it.** That is an elimination by measurement rather than a candidate
+left standing by absence of evidence, and it is the first of those this task has had.
+
+**What they are doing instead.** `37` is outside `Win32_Thread.ThreadWaitReason`'s documented 0–13,
+so WMI is surfacing the raw kernel `KWAIT_REASON`, in which **37 is `WrAlertByThreadId`** — the wait
+behind `NtWaitForAlertByThreadId`, which `WaitOnAddress`, SRW locks, condition variables and modern
+critical sections are all built on. .NET's `ProcessThread.WaitReason` answering `Unknown`
+corroborates a value outside the documented set. **They are blocked on an in-process synchronisation
+primitive**, which is not a pipe read — so the structural elimination of both payload reads now
+agrees with a positive observation instead of only with an absence.
+
+**They also got much further than this entry supposed.** Every specimen has the **full Qt stack
+resident** — `Qt6Core.dll`, `shiboken6.abi3.dll` and `pyside6.abi3.dll` in all seven, `QtWidgets.pyd`
+and `QtTest.pyd` in six, 63–84 modules each. A child stalled in `prepare()` re-importing a `pytest`
+parent's main module would not have imported PySide6's widget and test bindings. The bounded region
+is the right one and **its far end is much closer to `prepare_this_worker()` than assumed**: these
+processes completed a large import graph and then stopped. `threads=1` still bounds them before the
+watchdog, so the stall sits between finishing those imports and starting that thread.
+
+**And the shared second happened twice, not once.** `2432`/`3408`/`11000` under parent `9176` at
+08/05 12:33:44, and `3400`/`6924` under parent `1204` at 08/17 13:07:40. **Siblings spawned together
+and blocking together on an in-process lock is what import-time lock contention looks like**, and it
+no longer needs a parent-side event outside the interpreter to explain the coincidence.
+
+**What is still not established, and is not guessed at:** *which* lock. `WrAlertByThreadId` names
+the mechanism, not the object — CPython's import lock, a `shiboken` or Qt static initialiser, and an
+allocator lock are all consistent, and this reading separates none of them. Nor why it was never
+released. **A stack would settle it and nothing here produces one.**
 
 #### The answer: no mechanism accounts for the five, and this is what that is based on
 
