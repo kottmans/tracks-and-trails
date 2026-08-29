@@ -1,2 +1,10 @@
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# **Raw machine reports are committed exactly as the machine wrote them**, CRLF included — a
+# `STARBASE` inspection is evidence, and normalising its bytes would make the committed copy
+# something other than the artifact the run produced. Without this, `git diff --check` reports every
+# line of one as trailing whitespace, which is a false positive a reviewer has to re-derive each
+# time (2026-08-29 review of `ai/evidence/2026-08-29-T268-starbase-orphan-wait-reasons.txt`). No
+# `text` attribute is set, so git neither converts nor claims to.
+ai/evidence/*.txt whitespace=-trailing-space

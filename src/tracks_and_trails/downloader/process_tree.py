@@ -89,11 +89,32 @@ The two platforms close it differently, and only one of them closes it for free:
   process holding that handle, which `bInheritHandles=False` makes impossible; this application's
   entry blocking a re-import, whose module level is three lines; and `contain_this_process()`
   hanging, which is three kernel calls that never wait — reasoned, not measured. What is left is a
-  **location** — `spawn.prepare()` and the stretch up to `prepare_this_worker()` — and a candidate
-  outside the interpreter that needs somebody at the machine (`T-092`).
+  **location** — `spawn.prepare()` and the stretch up to `prepare_this_worker()`.
+
+  **What the survivors are waiting on is measured now, and it is inside the interpreter.** Run
+  `33267794308`, read-only on `STARBASE` (`Get-Process` and `Get-CimInstance` only, nothing
+  terminated, suspended or resumed): all seven surviving specimens report `ThreadState=5` and
+  **`ThreadWaitReason=37`**. `37` is outside `Win32_Thread`'s documented 0 to 13, so WMI is
+  surfacing the raw kernel `KWAIT_REASON`, in which it is **`WrAlertByThreadId`** — the wait behind
+  `NtWaitForAlertByThreadId`, which `WaitOnAddress`, SRW locks, condition variables and modern
+  critical sections are all built on. **That is a lock wait inside the process**, and it agrees
+  with the structural elimination of the payload reads instead of merely not contradicting it.
+  Every specimen also has `Qt6Core.dll`, `shiboken6.abi3.dll` and `pyside6.abi3.dll` resident, so
+  the far end of the region above sits much nearer `prepare_this_worker()` than `prepare()`:
+  they finished a large import graph and then stopped.
+
+  **The mechanism class is not the mechanism, and the difference is the whole remaining
+  question.** `WrAlertByThreadId` names how a thread waits, not which lock it waits on or why the
+  lock was never released — CPython's import lock, a `shiboken` or Qt static initialiser and an
+  allocator lock are all consistent with it and this reading separates none of them. A stack would;
+  nothing non-destructive produces one, which is what `T-268` is now blocked on and is `T-092`'s
+  territory. **None of it changes the containment behaviour below.**
   *(This read "five orphans say it did not … no Windows run has looked", which was true until
   one looked; then "whatever did happen to them is unexplained", which was true until `T-268`
-  bounded it.)*
+  bounded it; then **"a candidate outside the interpreter that needs somebody at the machine"** —
+  a *suspended process*, which is `ThreadState=5` in every version of that enum and which not one
+  of the seven reports. Run `33267794308` refuted it; `T268-R2` found this comment still asserting
+  it two commits later.)*
 
 ## The rule that keeps this from killing the application
 

@@ -23,10 +23,14 @@ task entry can be written against.
   the tests did, because a soak that fails its own job when it finds something cannot be put in a
   workflow that is supposed to report the finding.
 
-    tools/soak_a_test.py <node-id> [--runs N] [--out DIR] [--jobs 1]
+    tools/soak_a_test.py <node-id> [--runs N] [--out DIR]
 
-Runs are serial by default and deliberately: the test this was written for spawns and reaps real
-processes, and `AGENTS.md` §9 lists that family as the one that contends with itself.
+**Runs are serial, and there is no option to make them anything else.** The test this was written
+for spawns and reaps real processes, and `AGENTS.md` §9 lists that family as the one that contends
+with itself — a parallel soak of it would measure the contention rather than the flake. *(This
+usage line advertised `[--jobs 1]`, which `argparse` never implemented, so the documented command
+failed if it was copied — `T268-R3`. Removed rather than implemented: the flag's only honest value
+was the one it already has.)*
 """
 
 from __future__ import annotations

@@ -13200,9 +13200,16 @@ and the specimens are intact.
 proved the `workflow_dispatch` half of the trigger; this proves the half that matters
 operationally, since `OPS-003` means nobody is there to dispatch anything.)*
 
-**The answer below stands as written** — the region is bounded, four candidates are eliminated, and
-what survives is outside the interpreter. That is the third acceptance criterion taken
-deliberately, not a shortfall dressed up.
+**The answer below stands as an answer** — the region is bounded, four candidates are eliminated,
+and that is the third acceptance criterion taken deliberately rather than a shortfall dressed up.
+**One clause of it no longer holds**: what survives is *not* outside the interpreter. Run
+`33267794308` measured `WrAlertByThreadId` on all seven and refuted the suspended-process
+candidate, and *Measured 2026-08-29* below is where that reading lives.
+
+**Criterion 4 is met as of 2026-08-29.** `process_tree.py`'s account now carries the measured
+mechanism class, distinguishes it from the unknown lock, and no longer ends on a candidate outside
+the interpreter — `T268-R2`, which found that comment still asserting the refuted candidate two
+commits after the measurement.
 
 **The three-way discrimination, all on `STARBASE`, all in one run:**
 
@@ -13382,6 +13389,12 @@ indifferent to its parent's death; three siblings entering that state in one sec
 synchronous scan-on-process-creation looks like. **Nothing points at it.** It is named because it
 is what the eliminations leave, and confirming or refuting it needs somebody at the machine —
 `T-092`, which is Blocked on exactly that and is the precedent this criterion names.
+
+*(**Refuted 2026-08-29 by the run this asked for.** Suspended is `ThreadState=5` and not one of the
+seven reports it; all seven report a `WrAlertByThreadId` wait instead, which is inside the process.
+Left as written because it is what the eliminations left at the time and because the criterion asks
+for the reasoning to be inspectable — *Measured 2026-08-29* above is the current reading, and
+`process_tree.py` carries the same correction.)*
 
 **Why this is not left as an open bullet.** `T-258` carried *"which gap they fell through is
 bounded, not identified"* for two days while three separate records asserted three different

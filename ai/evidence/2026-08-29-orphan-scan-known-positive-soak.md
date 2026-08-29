@@ -18,10 +18,21 @@ on. Every run's log is in the artifact, passes included.
 
 ## What that rules out, and what it leaves
 
-**It is not a flake of the test run by itself.** At any per-run failure probability `p`, 600 clean
-runs put `p` below roughly 0.5% with 95% confidence. The observed CI rate — one failure in three
-`windows desktop` runs — is nowhere near that interval, so the two populations are not the same
-experiment. **The difference is the context, not the test.**
+**It is not a flake of the test run by itself.** The failure was seen on `windows desktop`, and this
+workflow treats the two platforms as different populations on purpose — Windows does not reparent,
+POSIX does, and `_parent_is_gone` reaches its verdict by a different route on each. **So the sample
+that bears on it is Windows's 300 runs, not the combined 600**: zero events in 300 puts the per-run
+failure probability below about **1%** with 95% confidence (rule of three, `3/n`). Linux's 300 clean
+runs bound the Linux mechanism to the same 1% and are not evidence about the Windows one.
+
+**The conclusion is unchanged and does not need the larger number.** The observed CI rate — one
+failure in three `windows desktop` runs — is two orders of magnitude outside that bound, so the
+isolated test and the full-suite test are not the same experiment. **The difference is the context,
+not the test.**
+
+*(This read **"600 clean runs put `p` below roughly 0.5%"**, pooling two populations the same
+paragraph argues are distinct — `T268-R4`. The pooled figure is not wrong arithmetic; it is the
+wrong sample for the claim it supports.)*
 
 The context is the full suite: hundreds of other tests, many of which spawn and reap real
 processes, running before this one on a busy machine.
