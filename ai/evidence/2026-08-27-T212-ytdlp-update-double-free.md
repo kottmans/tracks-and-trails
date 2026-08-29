@@ -81,11 +81,23 @@ A `QLabel` is dropping a buddy that is being destroyed — `QLabel` connects to 
 #28 (QtCore.abi3.so) PyObject_CallNoArgs   <-- Qt calling Python on this thread
 ```
 
-**Read together: two threads are freeing the same Qt object graph.** The GUI thread is delivering
-a deferred deletion and running `QLabel::setBuddy`'s disconnect; a **pool thread** is at the same
-time running CPython's cyclic collector, which reached an unreferenced widget tree — five nested
-levels of `deleteChildren` — and had shiboken destroy it there. Neither is waiting for the other;
-they are in `free()` together, and the second one is blocked on the allocator lock the first holds.
+**Read together — and the wording below was corrected on 2026-08-28 by `T212-R4`.** It said *"two
+threads are freeing the same Qt object graph"*, which this dump does not show and which the
+*What is not established* section below already contradicted in as many words.
+
+**What the stacks establish.** The GUI thread is delivering a deferred deletion and running
+`QLabel::setBuddy`'s disconnect. A **pool thread** is at the same time running CPython's cyclic
+collector, which reached an unreferenced widget tree — five nested levels of `deleteChildren` — and
+had shiboken destroy it **there**, off the GUI thread. Neither is waiting for the other; they are in
+the allocator together, and the second is blocked on the lock the first holds. That is the finding,
+and it is enough on its own: a `QWidget` tree was destroyed on a thread Qt does not permit it on.
+
+**What is inferred.** That the two threads were freeing *the same* graph — that the tree the
+collector destroyed is the tree whose destruction the GUI thread was reacting to. It is the natural
+reading of a `double free` and of a label disconnecting from a buddy at that instant, but **no
+object address was recovered from either stack**, and the dump names no Python-side type. A
+concurrent unrelated free landing on the same allocator arena would produce these frames too. The
+identity is the hypothesis a fix would confirm, not a measurement this dump supplies.
 
 **The pool thread is where the update runs.** `downloader/ytdlp_service.py` puts the update on a
 `QThreadPool`, and frame 28 is Qt calling that task's Python `run` — so the collector tripped

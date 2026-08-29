@@ -12382,7 +12382,14 @@ sprinkling `deleteLater` — treat the symptom and leave the rule unstated
 
 #### What the core dump says
 
-Two threads were inside `free()` on the same Qt object graph.
+Two threads were inside the allocator at once, and one of them was destroying a `QWidget` tree on a
+thread that may not. **That they were freeing the *same* graph is an inference** — `T212-R4`, which
+found this entry and its evidence file both stating it as measured. No object address was recovered
+from either stack and the dump names no Python-side type; the evidence file's own *What is not
+established* section says the collected tree is unknown. The identity is the natural reading of a
+`double free`, and it is what a fix would confirm rather than what this dump proves. **The off-GUI
+destruction and the abort are established, and they are what the acceptance criteria below turn
+on** — none of them needs the two trees to be one.
 
 **The GUI thread**, delivering a posted event:
 `QCoreApplication::exec` → `sendPostedEvents` → `QObject::event` → **`QLabel::setBuddy`** →
