@@ -244,11 +244,18 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+*(Empty since 2026-08-29, when the `T-212` batch — `T-281`, `T-283`, `T-285`, `T-288`, `T-291`,
+`T-292` and `T-293` — was approved at `0332a68` and moved to `## Complete`. The heading stays
+because the section is part of the map, and one that disappears when it empties is one nobody
+notices coming back — `## Proposed — Phase 0` carries the same note for the same reason.)*
+
 ---
+
+## Complete
 
 ### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
 
-**Status:** **In Review — corrected 2026-08-28 for `T291-R1`, `R2` and `R3`; awaiting the focused re-review, and `T291-R4` needs a dispatched run.**
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected, and the focused re-review, and `T291-R4` needs a dispatched run.**
 `.github/workflows/ytdlp-canary.yml`: weekly plus `workflow_dispatch`, `LINUX_RUNNER`, its own
 concurrency group, no `push:` trigger, and it writes nothing back to the repository.
 `ai/TESTING.md` §8 gained step **10a**, which is where it blocks a bump without ever blocking a
@@ -375,7 +382,7 @@ not tolerated**, so that the job separates:
 
 ### T-288 — The scroll bar is the one control the theme never dressed
 
-**Status:** **In Review — the rendered check `T288-R1` required was taken 2026-08-28 and found no defect; awaiting the focused re-review.** The bar is drawn by the sheet
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** The rendered check `T288-R1` required was taken 2026-08-28 and found no defect; awaiting the focused re-review.** The bar is drawn by the sheet
 in both orientations: a rounded handle in `border` with a 2 px margin, hover and pressed states,
 the stepper arrows removed by declaration, and the groove transparent. **Four mutations, all
 killed** — including putting the handle back on `surface`, which **survived a first version of the
@@ -526,7 +533,7 @@ shape both reports are asking for, and it is one rule set.
 
 ### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
 
-**Status:** **In Review — corrected 2026-08-28 for `T292-R1`, `R2` and `R3`; awaiting the focused re-review.** The folder is a `QLineEdit`
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** Three findings corrected; the relative-path rule is ruled, not proposed. The focused re-review.** The folder is a `QLineEdit`
 committing on `editingFinished`; a path that is missing, is a file, or cannot be written to is
 refused beside the field and the field goes back to the folder in force. The caption and its blank
 line are gone. **Six mutations, all killed.**
@@ -664,7 +671,7 @@ the statement. Recorded here so a later reader does not restore it as an oversig
 
 ### T-293 — A queued row offers *Remove*, so one playlist entry can go without the playlist
 
-**Status:** **In Review — corrected 2026-08-28 for `T293-R1`; awaiting the focused re-review.** A queued row offers
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** A queued row offers
 `↑ ↓ Cancel Remove`; one entry's `Remove` goes down the single-job route and the group route is not
 taken. **Four mutations, all killed.**
 
@@ -739,7 +746,7 @@ offered that would be refused* — is what settles it: removing a queued job is 
 
 ### T-285 — The Options dialog offers audio-only containers to a download that keeps its video
 
-**Status:** **In Review — no implementation finding; waiting only on the shared exact-head Windows run (`T212-R3`).** A video preset is offered the
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was ever raised; it waited on the shared exact-head Windows run (`T212-R3`).** A video preset is offered the
 seven video containers; an audio preset keeps all eighteen, as ruled. **Six mutations, all killed**,
 including restoring the symmetry, restoring the whole list, reclassifying `gif`, and dropping the
 guard that keeps a container the preset already carries.
@@ -832,7 +839,7 @@ by a validator are different sets**, and this task changes only the first.
 
 ### T-283 — The row's painted *Download as* control insets its text 5 px less than the editor
 
-**Status:** **In Review — no implementation finding; waiting only on the shared exact-head Windows run (`T212-R3`).** The painted label now starts
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.** No implementation finding was ever raised; it waited on the shared exact-head Windows run (`T212-R3`).** The painted label now starts
 at **x = 7** where it started at 2, matching the editor exactly. Gates green: `ruff check .`,
 `ruff format --check .`, `mypy src`, 2,377 tests. **Four mutations, all killed** — including the
 one that matters, stopping `_paint_control` from calling the new helper, which **survived a first
@@ -897,7 +904,7 @@ at the moment the user clicks it."* The rectangle does not move; the text inside
 
 ### T-281 — Unavailable playlist entries are carried into the queue as rows that cannot download
 
-**Status:** **In Review — corrected 2026-08-28 for `T281-R1`; awaiting the focused re-review.**
+**Status:** **Complete — Approved at `0332a68` on 2026-08-29.**
 Every discarded input position is recorded now, with the reason it went, and the denominator is the
 number of entries the playlist offered.
 
@@ -1023,10 +1030,6 @@ bare token and survives; redaction is not the thing to weaken.
   already exists, at a level that is already written
 - **Whether the probe should pass a logger at all.** Surfacing yt-dlp's own warning to the user is
   a separate question from this application recording what it itself did
-
----
-
-## Complete
 
 ### T-273 — Every composed window outlives its own shutdown, and `tests/ui` accumulates them
 

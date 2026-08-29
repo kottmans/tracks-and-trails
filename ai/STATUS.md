@@ -5,22 +5,37 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-28 — **the seven `T-212` tasks have had their initial review, and the
-correction batch answering it is built.** Every one is still `In Review`, now awaiting the single
-focused correction re-review `AGENTS.md` §10 allows. Read this section first.
+**Last updated:** 2026-08-29 — **the seven `T-212` tasks are Complete, approved at `0332a68`.**
+The focused correction re-review resolved all ten blocking findings and the four non-blocking ones,
+and `## In Review` is empty for the first time since the batch opened. Read this section first.
 
-**Reviewed and corrected:** `T-281` (unreadable playlist entries dropped on the missing *title* —
+**Three rulings came with the approval**, and they close questions the corrections deliberately left
+open rather than settled:
+
+- **`T292-R2`: accept a relative path and absolutise it.** Refusing would reject a real writable
+  folder the screen can settle safely; `absolute()` anchors the spelling without resolving a symlink
+  the user meant. **This is now the maintainer-authorized rule, not an implementer proposal.**
+- **`T-291`: keep the explicit node ids.** A marker would sit nearer the tests, but selecting with
+  `-m` *replaces* pytest's configured `not network and not windows_desktop`, so the workflow would
+  duplicate that policy and acquire a second and more consequential drift surface. The list fails
+  closed: a new pin-dependent test turns the canary red rather than hiding.
+- **`Spock`: do not clean the user's yt-dlp.** Deleting it would hide the nondeterminism rather
+  than correct it. **`T-298`** is filed to give both frozen matrix legs a fresh per-job user-data
+  root while `OPS-002` keeps working in normal application runs.
+
+**Approved:** `T-281` (unreadable playlist entries dropped on the missing *title* —
 the guard tested the address, which a YouTube placeholder still has), `T-283` (the painted
 control's label inset from 2 px to the editor's 7), `T-285` (video presets offered only containers
 that hold video), `T-288` (the scroll bar drawn at last, every sub-control declared), `T-291` (the
 yt-dlp canary), `T-292` (the download folder typed, its caption gone), `T-293` (`Remove` on a
 queued row).
 
-**Ten blocking findings, one High and nine Medium.** `T291-R1` (the canary promised the default
-suite and ran two thirds of it), `T281-R1` (two of three drop paths recorded nothing and the
-denominator was false), `T292-R1` and `R2` (an unknown `~user` escaped the refusal path; a relative
-path was persisted cwd-relative), `T293-R1` (a new test failed both all-files mypy scopes),
-`T291-R2` and `R3`, `T292-R3`, `T288-R1` (the rendered check), and the shared `T212-R1`/`R3`.
+**The findings, for the record — ten blocking, one High and nine Medium.** `T291-R1` (the
+canary promised the default suite and ran two thirds of it), `T281-R1` (two of three drop paths
+recorded nothing and the denominator was false), `T292-R1` and `R2` (an unknown `~user` escaped
+the refusal path; a relative path was persisted cwd-relative), `T293-R1` (a new test failed both
+all-files mypy scopes), `T291-R2` and `R3`, `T292-R3`, `T288-R1` (the rendered check), and the
+shared `T212-R1`/`R3`.
 **All are corrected, and the two external results — the Windows run and the canary's own execution
 — are obtained.** Both took two attempts, and the first attempt of each found a defect in the
 correction rather than in the original work; that is recorded below rather than smoothed over.
