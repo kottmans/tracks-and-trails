@@ -12732,6 +12732,66 @@ the thumbnail — is what shows in any gap. That is consistent with `T-108`'s co
 - Guessing. `T-296` is filed with a measured cause; this one is not, and the two should not be
   merged on the strength of sitting near each other
 
+### T-298 — Frozen probes must not read a runner's user-managed yt-dlp
+
+**Status:** Proposed — **filed 2026-08-29 by the focused re-review of the `T-212` correction
+batch**, from CI run `33231536419`. `frozen linux` passed on `kirk` and failed on `Spock` at the
+same code head because Spock held the maintainer's real in-app yt-dlp update under its user data
+directory. The artifact correctly resolved that copy ahead of its bundled baseline; the build gate
+was the thing running in the wrong profile.
+**Owner:** Implementer
+**Priority:** Medium — the packaged artifact is not broken, but a required build gate changes
+verdict according to which identically labelled self-hosted runner accepts it
+**Phase:** Phase 4 (infrastructure; **not** a plan deliverable)
+**Depends on:** nothing
+**Relevant context:** `.github/workflows/ci.yml`'s `frozen` job; `T-020`; `T-033`; `OPS-002`;
+`tests/conftest.py`'s `_per_user_directories`, which already states the same isolation rule for the
+test suite; run `33231536419`, job `frozen linux`, on `Spock`
+**Affected surfaces:** `.github/workflows/ci.yml` and a deterministic workflow/configuration gate
+**Risk:** Medium — isolation must preserve the frozen update-and-revert probe rather than making
+the user-managed route unreachable everywhere
+
+#### What failed, and the ruling
+
+The Linux artifact's first probe reported:
+
+```text
+FAIL: the artifact bundles yt-dlp 2026.08.19, but this build pins 2026.7.4.
+ytdlp source    user-managed copy (OPS-002)
+```
+
+That copy was installed deliberately through the application during `T-212`'s checklist run. It
+belongs to the maintainer, and **it is not test debris to delete**. Cleaning Spock would turn the
+next run green while leaving the gate dependent on whichever real profile its runner happened to
+inherit. The ruling is therefore: **keep the user's copy and isolate the job**.
+
+The same job passes on `kirk`, and Spock passed before the update existed. That runner-by-runner
+history establishes the environmental input without changing `OPS-002`: outside a build gate, a
+real application must continue resolving the user-managed copy first.
+
+#### Acceptance criteria
+
+- **Every frozen-artifact probe uses a fresh per-job user-data root on both matrix legs.** On
+  Linux that includes the `XDG_DATA_HOME` input read by `platformdirs`; on Windows it includes the
+  corresponding local-application-data input. Neither leg reads the runner account's real
+  Tracks & Trails directory
+- **The isolation is unique to the job/run**, so an update probe or interrupted prior run cannot
+  become the next run's starting state
+- **`OPS-002` is unchanged in product code.** A normal application still resolves a real
+  user-managed copy ahead of the bundled baseline; only the build gate's environment is isolated
+- **The update-and-revert probe still runs through the isolated directory and passes.** A fix that
+  makes the baseline probe green by disabling the override route fails this criterion
+- **A deterministic check pins the environment wiring**, including both platform variables, so a
+  later workflow edit cannot silently return one matrix leg to the real profile
+- **The corrected `frozen linux` job passes on Spock while its real user-managed copy remains in
+  place**, and `frozen windows` remains green
+
+#### Out of scope
+
+- Deleting, reverting or otherwise modifying the maintainer's installed yt-dlp
+- Changing which yt-dlp a real application prefers (`OPS-002`)
+- The unrelated `STARBASE orphans` scheduled-run failures
+
 ## Proposed — Phase 4.5
 
 *(Section added 2026-08-07 with the phase. `ARC-010`, `REQ-030` and `REQ-031` are what these three

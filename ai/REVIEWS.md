@@ -21355,3 +21355,103 @@ as upstream drift.
 T-291 remains **In Review** with one High and two blocking Medium findings. Correct R1-R3 in one
 batch, restore the task body through T212-R2, then satisfy R4 with the final workflow. This is the
 ordinary correction pass; no follow-up task is warranted.
+
+---
+
+## 2026-08-29 — T-212 batch focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks approved:** `T-281`, `T-283`, `T-285`, `T-288`, `T-291`, `T-292`, `T-293`
+**Correction base:** `e03393948aa454ff236e106094f77ee21875b8cf`
+**Approved head:** `0332a688815b66200dbfbfe2c7967500105972e6`
+**External-evidence head:** `75cd183b267fd49ea8bb51168162cff9182d749c`
+**Platforms verified:** Linux/Fedora offscreen; KDE/Wayland real display over Fusion; Windows 10
+real desktop/offscreen full suite; Linux canary against yt-dlp `2026.08.19`
+**Verdict:** **Approved with follow-up.** All ten blocking findings and the four non-blocking
+findings in the focused scope are resolved. `T-298` records the independently actionable frozen-job
+isolation defect exposed by the evidence run; it does not block these seven implementations.
+
+`75cd183` is the last source/test or executable-workflow correction and is the exact head both
+required external runs used. `c46de5b` changes only workflow comments and one displayed step name;
+`0332a68` changes only `ai/STATUS.md`. Both later diffs were inspected in this pass, so the approval
+head includes them rather than pretending a changed workflow file is outside the boundary.
+
+### Finding dispositions
+
+| ID | Disposition | Verification |
+|---|---|---|
+| **T212-R1** | **Resolved** | `ai/STATUS.md` now names each command and result separately. Ruff, both all-files mypy scopes, unit/UI, integration, real-display, Windows and canary evidence are no longer collapsed into “full suite” or “gates green.” |
+| **T212-R2** | **Resolved** | The `T-288`, `T-291` and `T-292` bodies are beneath their own In Review headings. The task-placement gate passes. |
+| **T212-R3** | **Resolved** | Run `33231536419`, `windows desktop`, is green at exact code/test head `75cd183`: **3,796 passed, 36 skipped, 35 deselected**; Win32 mypy, the real-desktop slice, Ruff, formatting and the Qt baseline also passed. |
+| **T212-R4** | **Resolved** | Both `T-289` and its evidence now distinguish the established off-GUI `QWidget` destruction from the inferred identity of the two object graphs. |
+| **T281-R1** | **Resolved** | All three discarded-entry shapes append a position and reason; the denominator comes from enumeration. The mixed-shape regression projects one of four, reports `dropped 3 of 4`, and names positions 1–3. |
+| **T288-R1** | **Resolved** | The KDE/Wayland/Fusion evidence covers both themes, both axes, both real scrollers plus the horizontal probe, and rest/hover/pressed states. The stripped-selector known positive visibly and numerically returns Fusion's grey handle and stepper arrows. |
+| **T291-R1** | **Resolved** | The verdict invokes pytest with no path, retaining configured `testpaths`; the run includes integration and reconciles against the local default suite. |
+| **T291-R2** | **Resolved** | The verdict has its own step id; drift and infrastructure summaries test its outcome separately. Explicit Bash supplies `pipefail`, independently reproduced as the difference between a masked and propagated failing pipeline. |
+| **T291-R3** | **Resolved** | `EXPECTED_STALE` is the only data definition and produces the verdict's deselection option/value pairs. Its eleven node IDs collect exactly twelve tests. |
+| **T291-R4** | **Resolved** | Dispatched run `33231851897` is green at `75cd183`, pin `2026.7.4`, installed `2026.08.19`: **3,801 passed, 21 skipped, 14 deselected, 0 failed**; the artifact uploaded and neither diagnostic summary fired. |
+| **T292-R1** | **Resolved** | Expansion and absolutisation are inside the `OSError`/`RuntimeError` refusal guard. The real-slot regression proves the callback is untouched, the typed account is named and the field restores. |
+| **T292-R2** | **Resolved by ruling below** | Relative input is converted to an absolute path before composition and the accepted spelling is shown back in the field. Dropping `.absolute()` fails the regression. |
+| **T292-R3** | **Resolved** | The expansion test redirects both home variables into writable test storage. The unknown-user contract is split into a portable refusal/restoration case and a POSIX-only `RuntimeError` branch case; Windows run `33231536419` confirms the split. |
+| **T293-R1** | **Resolved** | The test uses the fixture's known `"pl-1"` rather than passing `str | None`; bare mypy and `--platform win32` are each clean on 154 files. |
+
+### Review judgments and rulings
+
+- **`T292-R2`: accept and absolutise.** Refusing a relative spelling would reject a real writable
+  folder the screen can settle safely. The implemented rule removes the persistence defect before
+  the value leaves the UI and immediately exposes the settled spelling, so there is no hidden
+  cwd-relative state. `absolute()` is the right operation here: it anchors the spelling without
+  resolving a symlink the user intentionally named. This is now the maintainer-authorized rule,
+  not an implementer proposal awaiting one.
+- **`T-291`: retain the explicit node IDs.** A marker carries the property nearer the tests, but
+  selecting or excluding it with `-m` replaces pytest's configured `not network and not
+  windows_desktop` expression. The workflow would then duplicate that policy and acquire a second,
+  more consequential drift surface. The current list fails closed for additions: a new
+  pin-dependent test enters the verdict and turns the canary red. Its one parametrised prefix and
+  the passing case it costs are documented. No marker conversion or follow-up is requested.
+- **Spock: do not clean the user's update.** Run `33231536419` proves the frozen job reads real
+  per-user state: the same code head passed on `kirk`, while Spock selected the intentionally
+  installed user-managed copy and failed the bundled-baseline assertion. Deleting that copy would
+  hide the nondeterminism, not correct it. `T-298` is filed to give both frozen matrix legs a fresh
+  per-job user-data root while preserving `OPS-002` in normal application runs.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Eleven commits from `e033939..0332a68`; `git show --check`/`git diff --check` clean. The post-evidence diff is only `.github/workflows/ytdlp-canary.yml` comments/display name plus `ai/STATUS.md`. |
+| Static/local | `ruff check .`: passed; `ruff format --check .`: **209 files**; bare `mypy`: **154 files**, passed; `mypy --platform win32`: **154 files**, passed. |
+| Focused regressions | The mixed playlist-drop case, four typed-folder cases, queued-playlist offer and task-placement gate: **21 passed**. |
+| Canary structure | Eleven entries resolve to twelve collected tests. Local shell reproduction returns 0 for a failing pipeline under implicit `bash -e` and 1 under explicit `bash -eo pipefail`, matching GitHub's shell contract and the two real runs. |
+| Windows run | GitHub reports head `75cd183`; every `windows desktop` step is green. The full-suite log ends **3,796 passed, 36 skipped, 35 deselected**. |
+| Canary run | GitHub reports head `75cd183`, `workflow_dispatch`, conclusion success. The log records pin/latest versions, the complete deselection list and **3,801 passed, 21 skipped, 14 deselected**. |
+| Rendered evidence | The retained image and report agree: corrected bars carry theme-specific handles with no stepper ink; stripped bars use the same grey in both themes and restore Fusion's arrows. |
+
+### Adjacent finding routed without reopening the batch
+
+| ID | Severity | Blocks approval | Finding | Disposition | Status |
+|---|---|---:|---|---|---|
+| **T212-R5** | **Medium** | **No — pre-existing runner-state dependency, unrelated to the reviewed implementations** | `frozen linux` reads the self-hosted account's real user-data directory. At the same code head it passes on `kirk` and fails on `Spock`, where an intentional user-managed yt-dlp overrides the bundled pin. A required build gate therefore changes verdict by runner state. | Keep the user's installed copy; isolate the frozen job on both platforms. Filed as independently actionable `T-298`. | **Routed to T-298** |
+
+### Completion synchronization still owed
+
+The review is historical truth; the task/status files are current truth. Their ordinary completion
+sync should move the seven approved tasks out of In Review, name approval at `0332a68`, and remove
+the now-stale statements that `T212-R3`/`T291-R4` are still awaited. In particular, `T-291` still
+says the workflow has never executed and still quotes the earlier two-node collection count;
+`T-283` and `T-285` still say they await Windows. Correcting those records does not change the
+approved implementation and needs no further review.
+
+This approval resolves the `T-212` coordination findings over the bounded batch. It does not mark
+the broader `T-212` checklist task complete, approve proposed `T-289`, or disposition the unrelated
+scheduled `STARBASE orphans` failures.
+
+### Readiness
+
+`T-281`, `T-283`, `T-285`, `T-288`, `T-291`, `T-292` and `T-293` are **Approved at `0332a68`**.
+No blocking finding remains. `T-298` is the only scheduled follow-up from this pass and is not a
+condition of these approvals.
+
+The Reviewer changed only this historical review record and the approved follow-up entry in
+`ai/TASKS.md`. No reviewed source, existing task meaning, handoff, external run or remote state was
+changed.
