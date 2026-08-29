@@ -665,13 +665,44 @@ class SettingsDialog(QDialog):
         Whitespace and `~` are handled before the check, so *"it does not exist"* is never said
         about a path the user did not type — `~/Videos` is a folder they can reasonably expect this
         field to understand.
+
+        **Reading the path is itself something that fails, so it is inside the guard** (`T292-R1`).
+        `expanduser()` sat above every refusal, and `~someone-who-left/downloads` raises
+        `RuntimeError` — measured: *"Could not determine home directory."* — so the exception left
+        the slot, no refusal was shown, and the field kept the text that caused it. That is
+        `T146-R1` exactly, one layer up: `core.settings` already documents and catches this in its
+        never-raises loader. `absolute()` raises `FileNotFoundError` when the working directory has
+        been deleted under the process, also measured. `ValueError` is **not** caught, for
+        `core.settings`' reason: `is_dir()` answers False for a path holding a NUL rather than
+        raising, so `os.access` is never reached with one and nothing here can produce it.
+
+        **A relative path is made absolute before it leaves this screen** (`T292-R2`).
+        `PosixPath('.')` went out to composition unchanged, and a stored path with no root is
+        resolved against whatever directory the process was started in — so the same setting names
+        a different folder on the next launch, silently. `absolute()` rather than `resolve()`: a
+        user whose `~/Downloads` is a symlink means the link, and following it would store the
+        target and stop the setting tracking the link. The absolute spelling goes back on screen
+        through `_remember`, so what was accepted is what is shown.
         """
         typed = self._directory_field.text().strip()
         if not typed:
             self._show_directory()
             return
-        candidate = Path(typed).expanduser()
+        try:
+            candidate = Path(typed).expanduser().absolute()
+        except (OSError, RuntimeError) as error:
+            # **Named as written, not as expanded** — when the expansion is what failed there is no
+            # expanded path to name. `core.settings` reaches the same wording the same way.
+            self._refuse_directory(
+                f"{typed} could not be read as a folder. Nothing was changed.\n"
+                f"{type(error).__name__}: {error}"
+            )
+            return
         if candidate == self._directory:
+            # Retyping the folder in force is not a change, but a relative spelling of it is still
+            # text this screen would rather not leave on display: settle it back to the absolute
+            # one, and clear any refusal the retype answers.
+            self._show_directory()
             return
         if not candidate.is_dir():
             self._refuse_directory(

@@ -335,7 +335,7 @@ structural and a fix that adds colours without extending the sweep leaves the sa
 
 ### T-292 — The download folder can be chosen but not typed, and its caption says nothing worth a line
 
-**Status:** **In Review — built 2026-08-28, and no review has run.** The folder is a `QLineEdit`
+**Status:** **In Review — corrected 2026-08-28 for `T292-R1`, `R2` and `R3`; awaiting the focused re-review.** The folder is a `QLineEdit`
 committing on `editingFinished`; a path that is missing, is a file, or cannot be written to is
 refused beside the field and the field goes back to the folder in force. The caption and its blank
 line are gone. **Six mutations, all killed.**
@@ -350,6 +350,31 @@ down. It holds a refusal or nothing; the removed caption held an explanation or 
 
 **`~` is expanded before the check.** Refusing `~/Videos` as *"not a folder that exists"* would be
 true of the literal text and false about what the user typed.
+
+**Three corrections, 2026-08-28.** Two forms of untrusted path text were not safely settled:
+
+- **`T292-R1` (Medium).** `Path(typed).expanduser()` sat above every refusal, and expanding a path
+  is itself a lookup that fails: `~<account-that-does-not-exist>` raises
+  `RuntimeError("Could not determine home directory.")`, so the exception left the slot, no refusal
+  was shown and the field kept the text that caused it. The expansion is now inside a guard that
+  routes `OSError` and `RuntimeError` through `_refuse_directory`, naming the path **as written**
+  because a failed expansion has no expanded path to name. `core.settings` had documented and
+  caught this exact exception since `T146-R1`; this is the same defect one layer up. `ValueError`
+  is deliberately not caught — `is_dir()` answers False for a NUL rather than raising, so nothing
+  here can produce it, and a caught exception nobody can produce is a claim rather than a guard.
+- **`T292-R2` (Medium).** The relative-path rule the entry's own question list named was never
+  ruled, and `.` went out to composition unchanged. It is made absolute now; the reasoning, the
+  alternative and the fact that it is put to the maintainer rather than ruled are with that
+  question below.
+- **`T292-R3` (Low).** `test_a_tilde_is_understood_rather_than_refused` read the executing account's
+  real home and assumed it writable, so it asserted expansion **and** host permissions in one
+  claim; under a sandbox with a read-only `/home/sean` it failed for a reason unrelated to its name.
+  `HOME` now points at a writable `tmp_path`. Checked both ways: with the old shape the test fails
+  under an unwritable home, and with the new one it passes.
+
+**Both new regressions are driven through the real widget slot**, not `Path.expanduser` in
+isolation, and both were mutation-checked: removing the guard makes the unknown-`~user` test error
+out exactly as the product did, and dropping `.absolute()` fails the relative-path test.
 
 **The checklist grew a row.** `6.1a` describes the typed folder and its refusal; `6.2` now names
 the download folder as its one exception, since a path cannot apply as it is typed. The run's row
@@ -368,7 +393,81 @@ settings writer and no platform paths; `core/paths.py`; `T-034`'s containment ch
 a filesystem destination, and *when* it takes effect is a genuine question the screen has not had
 to answer before
 
-#
+#### What is there now
+
+`_directory_label` is a `QLabel`. The folder is reachable only through *Choose folder…* or *Use the
+default folder*, so a path the user already has on the clipboard cannot be pasted, and a deep tree
+has to be walked.
+
+`_directory_note` shows `"Your usual downloads folder"` **when the folder is the default and the
+empty string otherwise** — which is why the maintainer's screenshot has a blank strip under the
+path: a label reserving a line to say nothing. Removing the note removes that too.
+
+#### The three questions this has to answer
+
+- **When does a typed path take effect?** Checklist row 6.2 is *"every control applies as it is
+  changed — no OK button hunting"*, and a path applying per keystroke would set `/h`, then `/ho`,
+  then `/hom`. So this control commits on `editingFinished` and `Return` instead. **That is a
+  deliberate exception to 6.2 and has to be written down**, not left for a reader to notice
+- **What happens to a path that is not usable?** Missing, a file rather than a folder, not
+  writable, relative, or containing `~`. The screen must not silently keep a destination downloads
+  will fail against — checklist 7.1 already arranges the unwritable case and expects the refusal
+  *where the user is looking*. **Ruled 2026-08-28: a folder that does not exist is refused.** The
+  screen says so and keeps the previous setting; it does not create it, and it does not offer to.
+  *(Offering to create it, and creating it on commit, were both put and both declined — the second
+  because a typo would silently leave a stray folder in the user's home.)*
+- **And what happens to a *relative* one?** The list above names relative paths and the ruling did
+  not cover them, so the first implementation accepted `.` unchanged and handed `PosixPath('.')` to
+  composition — `T292-R2`, measured. A stored path with no root is resolved against whatever
+  directory the process was started in, so **the same setting names a different folder on the next
+  launch**, silently and with nothing on screen to show it moved.
+
+  **Implemented 2026-08-28 as: a relative path is accepted and made absolute before it leaves this
+  screen** — `Path(typed).expanduser().absolute()` — and the absolute spelling goes straight back
+  into the field, so what was accepted is what is shown. **This is the Implementer's choice between
+  the two the review offered, and it is put to the maintainer rather than recorded as ruled.** The
+  reasoning: refusing would be the other honest answer, but it refuses input that names a real
+  writable folder, and the user would have to retype what the screen could simply settle. The cost
+  is that the field can change under the user's hands, which is exactly why the absolute spelling
+  is shown rather than kept.
+
+  `absolute()` and not `resolve()`, deliberately: someone whose `~/Downloads` is a symlink means
+  the link, and resolving would store the target and stop the setting tracking it. `..` therefore
+  survives in the stored path — stable, and correct through a symlink in a way lexical
+  normalisation would not be.
+- **Who writes it?** `ARC-007`: the screen holds no settings writer and no platform paths. A typed
+  path goes out the same way a chosen one does and comes back through `show_download_directory` —
+  it is not applied locally because it was typed locally
+
+#### What removing the note costs, so the removal is deliberate
+
+With the caption gone, **nothing distinguishes *this is the platform default* from *I chose a
+folder that happens to be the default*.** The maintainer has ruled that this is not worth a line,
+and *Use the default folder* is still there as the way back, so the capability is not lost — only
+the statement. Recorded here so a later reader does not restore it as an oversight.
+
+#### Acceptance criteria
+
+- **The folder is editable in place** — a text field carrying the current path, which can be typed
+  into and pasted into. *Choose folder…* stays as the browse route beside it
+- **The value commits on `editingFinished` and `Return`, never per keystroke**, and the exception
+  to row 6.2 is stated in the code and in the checklist row
+- **A path that cannot be used is refused where the user is looking**, in the screen's own voice,
+  and the refused value does not become the setting
+- **The typed path leaves through composition** and returns through `show_download_directory`,
+  exactly as a chosen one does (`ARC-007`)
+- **It is still `PlainText` and still untrusted** (`T016-R6`): a path is the user's own folder
+  names and may contain anything
+- **`_directory_note` and `DEFAULT_DIRECTORY_NOTE` are gone**, along with the blank line the empty
+  label reserved
+- **Checklist row 6.1 is updated** to describe a typed folder rather than a displayed one
+
+#### Out of scope
+
+- **Creating a folder that does not exist.** Ruled out above, not deferred
+- The other seven settings' controls. `T-146` built them and this is one control's change
+- **Path containment for *downloads*** (`T-034`), which is the worker's rule about where a template
+  may write and is unaffected by where the root is set
 
 ---
 
@@ -12354,63 +12453,6 @@ not tolerated**, so that the job separates:
   version users are about to walk into
 - **`pytest -m network` against latest.** Defensible and a separate cost decision; the release
   gate already runs it against the pin
-
-### What is there now
-
-`_directory_label` is a `QLabel`. The folder is reachable only through *Choose folder…* or *Use the
-default folder*, so a path the user already has on the clipboard cannot be pasted, and a deep tree
-has to be walked.
-
-`_directory_note` shows `"Your usual downloads folder"` **when the folder is the default and the
-empty string otherwise** — which is why the maintainer's screenshot has a blank strip under the
-path: a label reserving a line to say nothing. Removing the note removes that too.
-
-#### The three questions this has to answer
-
-- **When does a typed path take effect?** Checklist row 6.2 is *"every control applies as it is
-  changed — no OK button hunting"*, and a path applying per keystroke would set `/h`, then `/ho`,
-  then `/hom`. So this control commits on `editingFinished` and `Return` instead. **That is a
-  deliberate exception to 6.2 and has to be written down**, not left for a reader to notice
-- **What happens to a path that is not usable?** Missing, a file rather than a folder, not
-  writable, relative, or containing `~`. The screen must not silently keep a destination downloads
-  will fail against — checklist 7.1 already arranges the unwritable case and expects the refusal
-  *where the user is looking*. **Ruled 2026-08-28: a folder that does not exist is refused.** The
-  screen says so and keeps the previous setting; it does not create it, and it does not offer to.
-  *(Offering to create it, and creating it on commit, were both put and both declined — the second
-  because a typo would silently leave a stray folder in the user's home.)*
-- **Who writes it?** `ARC-007`: the screen holds no settings writer and no platform paths. A typed
-  path goes out the same way a chosen one does and comes back through `show_download_directory` —
-  it is not applied locally because it was typed locally
-
-#### What removing the note costs, so the removal is deliberate
-
-With the caption gone, **nothing distinguishes *this is the platform default* from *I chose a
-folder that happens to be the default*.** The maintainer has ruled that this is not worth a line,
-and *Use the default folder* is still there as the way back, so the capability is not lost — only
-the statement. Recorded here so a later reader does not restore it as an oversight.
-
-#### Acceptance criteria
-
-- **The folder is editable in place** — a text field carrying the current path, which can be typed
-  into and pasted into. *Choose folder…* stays as the browse route beside it
-- **The value commits on `editingFinished` and `Return`, never per keystroke**, and the exception
-  to row 6.2 is stated in the code and in the checklist row
-- **A path that cannot be used is refused where the user is looking**, in the screen's own voice,
-  and the refused value does not become the setting
-- **The typed path leaves through composition** and returns through `show_download_directory`,
-  exactly as a chosen one does (`ARC-007`)
-- **It is still `PlainText` and still untrusted** (`T016-R6`): a path is the user's own folder
-  names and may contain anything
-- **`_directory_note` and `DEFAULT_DIRECTORY_NOTE` are gone**, along with the blank line the empty
-  label reserved
-- **Checklist row 6.1 is updated** to describe a typed folder rather than a displayed one
-
-#### Out of scope
-
-- **Creating a folder that does not exist.** Ruled out above, not deferred
-- The other seven settings' controls. `T-146` built them and this is one control's change
-- **Path containment for *downloads*** (`T-034`), which is the worker's rule about where a template
-  may write and is unaffected by where the root is set
 
 ### T-294 — The add dialog's status line is an empty tab stop that draws a full-width focus ring
 

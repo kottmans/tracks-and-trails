@@ -349,20 +349,99 @@ def test_a_folder_that_cannot_be_written_to_is_refused(
 def test_a_tilde_is_understood_rather_than_refused(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`~/…` is a folder a user can reasonably expect this field to understand.
 
     Refusing it as *"not a folder that exists"* would be true of the literal text and false about
     what they typed.
+
+    **The home directory is a writable `tmp_path`, not the account's own** (`T292-R3`). Reading the
+    real one conflated two claims: that `~` is expanded, and that whatever it expands to happens to
+    be writable by the process running the test. Under a sandbox with a read-only `/home/sean` the
+    expansion was correct and the product correctly refused the folder, and the test failed for a
+    reason that had nothing to do with what it is named after.
     """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     screen, asked = screens(download_directory=tmp_path)
 
     field = control(screen, QLineEdit, "downloadDirectoryValue")
     field.setText("~")
     field.editingFinished.emit()
 
-    assert asked.get("directory") == Path("~").expanduser(), (
+    assert asked.get("directory") == home, (
         f"a tilde was not expanded before the check: {asked.get('directory')!r}"
+    )
+
+
+def test_a_tilde_naming_no_one_is_refused_rather_than_raised(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """`T292-R1`: expanding a path is itself a lookup, and it can fail.
+
+    **Measured through the real slot, not `Path.expanduser` in isolation.** `~<account>` for an
+    account POSIX cannot resolve raises `RuntimeError("Could not determine home directory.")`, and
+    that call sat above every refusal — so the exception left `_directory_typed`, no message was
+    shown, and the field kept the text that caused it. The same defect `T146-R1` fixed in the
+    settings loader, one layer up.
+    """
+    started = tmp_path / "downloads"
+    started.mkdir()
+    screen, asked = screens(download_directory=started)
+    nobody = "~tracks_and_trails_user_that_cannot_exist_28493/downloads"
+
+    field = control(screen, QLineEdit, "downloadDirectoryValue")
+    field.setText(nobody)
+    field.editingFinished.emit()
+
+    assert "directory" not in asked, (
+        f"a path that could not even be expanded reached composition: {asked.get('directory')!r}"
+    )
+    problem = control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text()
+    assert nobody in problem, (
+        f"the screen said nothing the user could act on about the path they typed: {problem!r}"
+    )
+    assert field.text() == str(started), (
+        f"the field kept the text it refused, so it shows {field.text()!r} and downloads go to "
+        f"{started}"
+    )
+
+
+def test_a_relative_folder_is_settled_to_one_that_survives_a_restart(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T292-R2`: `.` is a different folder every time the process starts somewhere else.
+
+    The relative spelling went out to composition unchanged and was persisted that way, so the
+    setting named the launch directory rather than a folder. This types the relative form from a
+    known working directory and asserts the **absolute** value both leaves the screen and comes
+    back onto it — the reopened display, which is what the user checks the setting by.
+    """
+    here = tmp_path / "sorted"
+    here.mkdir()
+    monkeypatch.chdir(here)
+    screen, asked = screens(download_directory=tmp_path / "downloads")
+
+    field = control(screen, QLineEdit, "downloadDirectoryValue")
+    field.setText(".")
+    field.editingFinished.emit()
+
+    assert asked.get("directory") == here, (
+        f"composition was handed {asked.get('directory')!r}, which is resolved against whatever "
+        f"directory the next launch happens to start in"
+    )
+    assert asked["directory"].is_absolute(), (
+        "the stored destination has no root, so it names a different folder on the next launch"
+    )
+    assert field.text() == str(here), (
+        f"the field still shows the relative spelling {field.text()!r}, so reopening Settings "
+        f"from another directory would show a path that means somewhere else"
     )
 
 
