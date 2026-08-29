@@ -10,6 +10,7 @@ cannot be driven headlessly — the same seam, and the same reasoning, as the ma
 line of this application's own behaviour on both answers, chosen and cancelled.
 """
 
+import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -329,7 +330,25 @@ def test_a_folder_that_cannot_be_written_to_is_refused(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
     tmp_path: Path,
 ) -> None:
-    """Checklist 7.1 arranges this at download time; refusing it here is cheaper for the user."""
+    """Checklist 7.1 arranges this at download time; refusing it here is cheaper for the user.
+
+    **POSIX only, and the Windows job is what said so.** `chmod(0o500)` sets the read-only
+    attribute, which Windows applies to files and not to directories — so the folder stayed
+    writable, `os.access` agreed, and the screen accepted it. That is the test failing to build
+    its own precondition, not the screen accepting an unwritable folder: `core/settings.py`
+    already records that `os.access` reads the read-only attribute rather than the ACL there.
+    `tests/unit/test_settings.py` guards its equivalent the same way, and this is the same skip.
+
+    Skipped as root too, which bypasses the permission bits entirely and would leave this
+    asserting that `os.access` agrees with itself.
+    """
+    # Asked of the attribute rather than of `sys.platform`, which mypy narrows under
+    # `--platform win32` until everything after it is unreachable — `test_settings.py`'s note.
+    effective_user = getattr(os, "geteuid", None)
+    if effective_user is None:
+        pytest.skip("POSIX permission bits are not how Windows refuses a write")
+    if effective_user() == 0:
+        pytest.skip("root ignores the permission bits this asserts on")
     locked = tmp_path / "locked"
     locked.mkdir()
     locked.chmod(0o500)
@@ -377,37 +396,97 @@ def test_a_tilde_is_understood_rather_than_refused(
     )
 
 
-def test_a_tilde_naming_no_one_is_refused_rather_than_raised(
+#: The account in the two tests below. Long enough that no host has one, and it is asserted on
+#: rather than the whole typed path — see the portable test's docstring for why.
+NO_SUCH_ACCOUNT = "tracks_and_trails_user_that_cannot_exist_28493"
+
+
+def test_a_tilde_naming_no_one_is_refused_and_the_field_put_back(
     screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
     tmp_path: Path,
 ) -> None:
-    """`T292-R1`: expanding a path is itself a lookup, and it can fail.
+    """`T292-R1`, asserted as the contract rather than as one platform's branch.
 
-    **Measured through the real slot, not `Path.expanduser` in isolation.** `~<account>` for an
-    account POSIX cannot resolve raises `RuntimeError("Could not determine home directory.")`, and
-    that call sat above every refusal — so the exception left `_directory_typed`, no message was
-    shown, and the field kept the text that caused it. The same defect `T146-R1` fixed in the
-    settings loader, one layer up.
+    **The first version of this test asserted the POSIX branch and failed the Windows job**, which
+    runs the whole suite. `Path("~nosuchuser/x").expanduser()` raises `RuntimeError` on POSIX
+    because no `pwd` entry exists, so the screen refuses in the *could not be read* words and
+    names the path **as written**. On Windows `ntpath.expanduser` guesses a sibling of
+    `%USERPROFILE%` instead, nothing raises, and the guessed path simply is not there — so the
+    *missing folder* branch refuses and names the guess. Measured, from run `33228591432`:
+    `C:\\Users\\<account>\\downloads is not a folder that exists.`
+
+    That is `T146-R3` exactly, one layer up: `tests/unit/test_settings.py` had this same test,
+    made this same mistake, and had it caught in review. **The account name is the portable
+    assertion** — verbatim in one message, inside the guessed path in the other — so it is how to
+    ask *"does this name what it refused?"* without asserting a platform.
+
+    What must hold either way: nothing reached composition, a refusal is on screen naming the
+    account, and the field shows the folder still in force.
     """
     started = tmp_path / "downloads"
     started.mkdir()
     screen, asked = screens(download_directory=started)
-    nobody = "~tracks_and_trails_user_that_cannot_exist_28493/downloads"
 
     field = control(screen, QLineEdit, "downloadDirectoryValue")
-    field.setText(nobody)
+    field.setText(f"~{NO_SUCH_ACCOUNT}/downloads")
+    field.editingFinished.emit()
+
+    assert "directory" not in asked, (
+        f"a path naming no one reached composition: {asked.get('directory')!r}"
+    )
+    problem = control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text()
+    assert NO_SUCH_ACCOUNT in problem, (
+        f"the screen said nothing the user could act on about what they typed: {problem!r}"
+    )
+    assert field.text() == str(started), (
+        f"the field kept the text it refused, so it shows {field.text()!r} and downloads go to "
+        f"{started}"
+    )
+
+
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason=(
+        "the RuntimeError branch needs an expansion that cannot resolve a home, which is POSIX's "
+        "answer for an unknown ~user; Windows guesses a path instead and reaches the missing-"
+        "folder branch, which the portable test above covers"
+    ),
+)
+def test_an_expansion_that_cannot_resolve_a_home_is_refused_rather_than_raised(
+    screens: Callable[..., tuple[SettingsDialog, dict[str, Any]]],
+    tmp_path: Path,
+) -> None:
+    """**`T292-R1`'s own branch**, where it can be reached without asserting a guess.
+
+    **Measured through the real slot, not `Path.expanduser` in isolation.**
+    `Path("~nosuchuser/downloads").expanduser()` raises
+    `RuntimeError("Could not determine home directory.")`, and that call sat above every refusal —
+    so the exception left `_directory_typed`, no message was shown at all, and the field kept the
+    text that caused it. Removing the guard fails this by **erroring**, which is the shape the
+    defect had. The same defect `T146-R1` fixed in the settings loader, one layer up.
+
+    This is the test that carries the mutation evidence; the portable one above carries the
+    contract.
+    """
+    started = tmp_path / "downloads"
+    started.mkdir()
+    screen, asked = screens(download_directory=started)
+    typed = f"~{NO_SUCH_ACCOUNT}/downloads"
+
+    field = control(screen, QLineEdit, "downloadDirectoryValue")
+    field.setText(typed)
     field.editingFinished.emit()
 
     assert "directory" not in asked, (
         f"a path that could not even be expanded reached composition: {asked.get('directory')!r}"
     )
     problem = control(screen, QLabel, DOWNLOAD_DIRECTORY_PROBLEM_NAME).text()
-    assert nobody in problem, (
-        f"the screen said nothing the user could act on about the path they typed: {problem!r}"
+    assert typed in problem, (
+        f"the refusal does not name the path as written, which is all there is to name when the "
+        f"expansion is what failed: {problem!r}"
     )
-    assert field.text() == str(started), (
-        f"the field kept the text it refused, so it shows {field.text()!r} and downloads go to "
-        f"{started}"
+    assert "RuntimeError" in problem, (
+        f"the refusal does not say what went wrong, so nobody can tell it from a typo: {problem!r}"
     )
 
 
