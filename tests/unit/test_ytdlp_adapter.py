@@ -1094,6 +1094,65 @@ def test_the_dropped_entries_are_logged_with_the_playlist_and_their_positions(
     )
 
 
+def test_every_shape_of_dropped_entry_is_counted_and_named(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`T281-R1`: the audit line recorded one of the three ways an entry can be discarded.
+
+    **This is the probe that reproduced the defect.** Four inputs — a `None`, a mapping with no
+    usable address, a titleless address, and one good entry — projected exactly one entry and
+    logged *"dropped 1 of 2"*. Two of the three drops left no trace and the denominator was the
+    surviving lists added together, so a playlist that came back a quarter of its size reported
+    itself as having lost half of two.
+
+    **Mutation-checked 2026-08-28, and the result corrected this paragraph.** Restoring any one of
+    the three `continue` branches to its bare form fails this test: the non-mapping loses
+    `position 1`, the addressless mapping `position 2`, the titleless address `position 3`.
+    Restoring `len(dropped) + len(projected)` **on its own does not** — once every discarded slot
+    is appended, that sum equals the enumerated count, so the old arithmetic is wrong only in
+    company with a silent branch. Reverting all three together reproduces the measured
+    *"dropped 1 of 2 ... position 3"* exactly. The denominator is still read off the enumeration
+    rather than off the two result lists, so it stays true of a future branch that discards a slot
+    without recording it — but that is a structural guarantee, not something this line can see.
+    """
+    info = {
+        "_type": "playlist",
+        "title": "Every way to lose one",
+        "webpage_url": "https://example.invalid/list",
+        "playlist_count": 4,
+        "entries": [
+            None,
+            {"title": "Named but nowhere"},
+            {"url": "https://example.invalid/watch", "title": None},
+            {"url": "https://example.invalid/d", "title": "The only readable one"},
+        ],
+    }
+
+    with caplog.at_level(logging.INFO, logger=f"{APP_SLUG}.adapter"):
+        media = adapter.project_media(info, reachable=_nothing_answers)
+
+    assert [entry.title for entry in media.entries] == ["The only readable one"], (
+        f"an unreadable shape was projected anyway: {media.entries}"
+    )
+    lines = [record.getMessage() for record in caplog.records]
+    assert len(lines) == 1, f"expected exactly one line about the drop, got {lines}"
+    line = lines[0]
+    assert "dropped 3 of 4" in line, (
+        f"the audit line does not count every discarded input against the playlist's own "
+        f"length, so a short playlist reports a false fraction of itself: {line}"
+    )
+    for position in ("position 1", "position 2", "position 3"):
+        assert position in line, (
+            f"{position} was discarded without being recorded, so 'every drop is recorded' is "
+            f"false for that shape: {line}"
+        )
+    assert "position 4" not in line, f"the entry that survived was reported as dropped: {line}"
+    assert redact(line) == line, (
+        f"the line does not survive redaction, so the log file will not carry what it says: "
+        f"{redact(line)!r}"
+    )
+
+
 def test_a_playlist_with_nothing_dropped_says_nothing(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

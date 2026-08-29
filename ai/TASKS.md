@@ -607,11 +607,30 @@ at the moment the user clicks it."* The rectangle does not move; the text inside
 
 ### T-281 — Unavailable playlist entries are carried into the queue as rows that cannot download
 
-**Status:** **In Review — built 2026-08-28, and no review has run.** Gates green: `ruff check .`,
-`ruff format --check .`, `mypy src`, and 2,285 unit tests. **Three mutations, all killed** —
-restoring the `title or url` fallback, dropping without logging, and counting the survivors rather
-than the whole playlist. The review `AGENTS.md` §10 requires before Complete is **still owed** —
-this was built unattended, on the maintainer's instruction, with no reviewer available.
+**Status:** **In Review — corrected 2026-08-28 for `T281-R1`; awaiting the focused re-review.**
+Every discarded input position is recorded now, with the reason it went, and the denominator is the
+number of entries the playlist offered.
+
+**`T281-R1` (Medium): "every drop is recorded" was false for two of the three ways an entry can be
+dropped.** `_entries` appended a position only after an item had proved to be a mapping *and* to
+carry a usable address, so a `None` — which is how yt-dlp spells a deleted or private item — and an
+addressless mapping both vanished in silence. The count was `len(dropped) + len(projected)`, which
+is what reached the title guard rather than what arrived. Measured on a deterministic four-entry
+probe holding one of each shape: one entry projected, and the log said **"dropped 1 of 2"** while
+three of four had gone.
+
+**Three named mutations were recorded as killed here, and one of them is why the defect shipped.**
+*"Counting the survivors rather than the whole playlist"* was reported as caught; on the fixture it
+was run against — nine entries, all mappings with addresses, two titleless — the two spellings are
+arithmetically equal, so the mutation could not fail. A mutation is killed by the case that
+separates the two behaviours, not by any case that runs the line. The new mixed-shape regression is
+that case, and its docstring records the measured result of each mutation **including the one that
+still survives alone**: with every branch recording its slot, `len(dropped) + len(projected)` again
+equals the enumerated count, so the old arithmetic is only wrong in company with a silent branch.
+Reverting all three together reproduces `"dropped 1 of 2 ... position 3"` exactly.
+
+The review `AGENTS.md` §10 requires before Complete has now run once; this is the correction batch
+answering it.
 
 *(Filed 2026-08-27 by `T-212`'s checklist run, which is where it was seen: a real 20-item playlist
 staged 20 rows, two of which showed their own URL where a title belongs and *Unknown* where a

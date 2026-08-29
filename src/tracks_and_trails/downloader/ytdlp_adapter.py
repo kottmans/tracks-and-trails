@@ -470,9 +470,16 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
     be called anything. If such an entry is ever seen reaching the queue, it needs its own evidence
     and its own decision, not a string added here.
 
-    **Each drop is logged, by position rather than by identity**, and that is a smaller line than it
-    first looks like it should be. Two other spellings were tried and both are refused by a
-    decision this function does not get to overturn:
+    **Every drop is logged, by position and reason rather than by identity**, and the count is out
+    of what the playlist offered. `T281-R1` found the first spelling recording only the placeholder
+    branch: an item that was not a mapping, or a mapping with no usable address, was discarded in
+    silence, and the denominator was the two surviving lists added together rather than the input's
+    own length. A mixed four-entry list therefore reported *"dropped 1 of 2"* while three of four
+    went. Reasons are three fixed words chosen here, not text read off the entry, so they say why a
+    slot went without naming what was in it.
+
+    The line is a smaller one than it first looks like it should be. Two other spellings were tried
+    and both are refused by a decision this function does not get to overturn:
 
     - **The entry's URL** is useless. `RedactingFormatter` strips every URL's query string
       (`T-018`, allowlist empty by design) and a YouTube video id lives in the query — measured,
@@ -490,13 +497,25 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
     if isinstance(entries, str | bytes) or not isinstance(entries, Sequence):
         return ()
     projected: list[PlaylistEntry] = []
-    dropped: list[int] = []
+    dropped: list[str] = []
+    # **The denominator is what the playlist offered, not what the two lists add up to.**
+    # `len(dropped) + len(projected)` was the arithmetic, and it counted only the entries that
+    # reached the title guard — so a list of four holding a `None`, an addressless mapping, a
+    # titleless address and one good entry projected one and reported "dropped 1 of 2" (`T281-R1`).
+    # Counting here rather than with `len(entries)` keeps the number equal to what was actually
+    # enumerated, which is the fact the line claims. With every branch below recording its slot the
+    # two spellings now agree; this one keeps agreeing if a later branch forgets to.
+    offered = 0
     # **`item`, not `entry`.** `tests/unit/test_fixtures.py` derives what this module reads by
     # walking its AST for `<name>.get("key")`, and `entry` is its name for a *format* — so reading
     # a playlist entry through a variable called `entry` reported these keys as ones the adapter
     # reads off a format, which is a different allowlist and a different fixture shape.
     for position, item in enumerate(entries, start=1):
+        offered = position
         if not isinstance(item, Mapping):
+            # A deleted or private item arrives as `None` in yt-dlp's list. It is a drop like any
+            # other and used to leave no trace at all.
+            dropped.append(f"position {position} (not an entry)")
             continue
         # **A public URL first, and `url` last** (`T137-R1`). yt-dlp resolves a flat entry
         # internally as the pair `url` + `ie_key`, and a number of extractors put only an
@@ -506,13 +525,14 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
         # failed on the extractors that need it most.
         url = str(item.get("webpage_url") or item.get("original_url") or item.get("url") or "")
         if not url:
+            dropped.append(f"position {position} (no address)")
             continue
         title = str(item.get("title") or "").strip()
         if not title:
             # The placeholder case above. `position` counts every item the playlist offered,
             # including the dropped ones, so it is the number the extractor's own "item N of M"
             # lines use rather than an index into what survived.
-            dropped.append(position)
+            dropped.append(f"position {position} (no title)")
             continue
         projected.append(
             PlaylistEntry(
@@ -529,8 +549,8 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
             "playlist %r: dropped %d of %d entries yt-dlp could not read, at %s",
             str(info.get("title") or "?"),
             len(dropped),
-            len(dropped) + len(projected),
-            ", ".join(f"position {one}" for one in dropped),
+            offered,
+            ", ".join(dropped),
         )
     return tuple(projected)
 
