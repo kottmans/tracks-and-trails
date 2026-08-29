@@ -1,0 +1,74 @@
+# T-298 — the frozen gate reading its own profile, proved on the machine that failed
+
+**Taken:** 2026-08-29 on **`Spock`**, the runner whose profile made `frozen linux` red at run
+`33231536419` while `kirk` passed at the same code head.
+
+**Why here rather than in CI.** The acceptance criterion asks that the corrected job pass *on Spock,
+with the real user-managed copy still in place*. Runner assignment is not something a workflow can
+choose, so a CI run proves it only if it happens to land there. Building the artifact on Spock and
+running the probes by hand proves the same thing deliberately, and adds the negative control a CI
+run cannot give: **the same artifact, the same machine, one variable changed.**
+
+The maintainer's copy — `~/.local/share/tracksandtrails/ytdlp/yt_dlp-2026.8.19.dist-info`, installed
+2026-08-27 through the application — was present before, during and after, and is untouched.
+
+## The pair
+
+Artifact built from `packaging/tracks-and-trails.spec`, exactly as the job builds it.
+
+**A — without isolation. The negative control, and today's CI on this machine:**
+
+```text
+FAIL: the artifact bundles yt-dlp 2026.08.19, but this build pins 2026.7.4. The frozen baseline
+is not the tested one (T-033, OPS-002).
+ytdlp version   2026.08.19
+ytdlp source    user-managed copy (OPS-002)
+ytdlp pin       2026.7.4
+exit=1
+```
+
+**B — with the five variables the job now sets:**
+
+```text
+ytdlp version   2026.07.04
+ytdlp source    bundled baseline
+ytdlp pin       2026.7.4
+extractors      1751
+resolved        youtube from yt_dlp.extractor.youtube
+exit=0
+```
+
+That reproduces the CI failure and removes it by changing nothing but the profile, which is what
+establishes the profile as the cause rather than a correlate.
+
+## The override route still works, which is the criterion a lazy fix fails
+
+Deleting the update probe would also turn the baseline probe green. So the same isolated profile was
+made to run it:
+
+```text
+before install  2026.07.04 — bundled baseline
+installed       9000.1.1
+after install   9000.1.1 — user-managed copy (OPS-002)
+after revert    2026.07.04 — bundled baseline
+OK: install, resolve in a child, and revert all work in the frozen artifact
+exit=0
+```
+
+**`OPS-002`'s preference is intact**: the artifact still resolves a user-managed copy ahead of its
+baseline when one exists — it is now one the job installed, in a directory the job owns. Afterwards
+the real profile still holds only `yt_dlp-2026.8.19`, and the isolated profile holds nothing,
+because revert removed what it installed.
+
+## What is asserted mechanically, and what is not
+
+`tests/unit/test_frozen_isolation.py` pins the wiring: all five variables present, each varying with
+`github.run_id` and `github.run_attempt`, the artifact probes still inside the isolated job, the
+update probe still present, and the profile removed on `always()`. Five workflow mutations were run
+against it — dropping the Windows pair, dropping `XDG_DATA_HOME`, making the path stable, deleting
+the update probe, and making cleanup conditional — and each is caught.
+
+**What no test can assert is the runner's own state.** Nothing in the repository can see that Spock
+holds a user-managed copy and kirk does not; that is what made the defect invisible until two
+identically labelled machines disagreed. The isolation removes the dependency rather than detecting
+it, which is why the fix is environmental rather than a check.

@@ -1054,8 +1054,47 @@ jobs:
       run:
         shell: bash
 
+    # **A per-run profile, because this job runs a real application on a machine somebody uses**
+    # (`T-298`). The frozen artifact is a *spawned process*, so the test suite's module patching
+    # cannot reach it and only the environment half of `tests/user_directories.py` applies. Left
+    # alone it resolves the runner account's real Tracks & Trails directory — and on `Spock` that
+    # holds the maintainer's own in-app yt-dlp update, which `OPS-002` says an application should
+    # prefer over its bundled baseline. It duly did, and the bundled-baseline probe failed:
+    # `frozen linux` was green on `kirk` and red on `Spock` at the same code head, run
+    # `33231536419`. The gate was reading a profile, not the artifact.
+    #
+    # **Both families are set on both legs, and neither is redundant.** `platformdirs` consults
+    # `XDG_*` only on POSIX and `WIN_PD_OVERRIDE_*` only on Windows — `T-131` is the round where
+    # setting one of them passed on Linux and failed on the runner. The inapplicable pair is inert,
+    # and a conditional here would be a second thing to keep true.
+    #
+    # **`run_id` and `run_attempt` are what make it fresh**, not `runner.temp`: that is a stable
+    # directory on a self-hosted machine, so without them a re-run would inherit the previous
+    # attempt's installed copy and the update probe would start from a state it did not create.
+    #
+    # **This changes no product behaviour.** `OPS-002`'s preference is unchanged; the artifact
+    # still resolves a user-managed copy ahead of its baseline. What changes is whose profile the
+    # build gate looks in. `tests/unit/test_frozen_isolation.py` pins the wiring.
+    env:
+      FROZEN_PROFILE: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}
+      XDG_DATA_HOME: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/data
+      XDG_CONFIG_HOME: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/config
+      XDG_CACHE_HOME: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/cache
+      WIN_PD_OVERRIDE_APPDATA: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/windows
+      WIN_PD_OVERRIDE_LOCAL_APPDATA: ${{ runner.temp }}/frozen-profile-${{ github.run_id }}-${{ github.run_attempt }}/windows
+
     steps:
       - uses: actions/checkout@v7
+
+      - name: Give this job its own user profile
+        # Created explicitly rather than left to the artifact: a probe that fails because a parent
+        # directory is missing would read as a packaging defect, which is the class of confusion
+        # `T014-R3` exists to prevent. Also the one place that says out loud which profile the
+        # probes below are about to use, so a run's log answers it without inference.
+        run: |
+          mkdir -p "$FROZEN_PROFILE"/{data,config,cache,windows}
+          echo "frozen profile: $FROZEN_PROFILE"
+          echo "real profile untouched; see T-298"
 
       # **Hosted runners only.** `OPS-009` moved the Windows leg onto `STARBASE` and left this
       # action behind, which repeated the incident the desktop job's own comment records: on a
@@ -1221,6 +1260,14 @@ jobs:
           SECONDS=0
           python packaging/frozen_smoke.py dist/tracks-and-trails 2>&1 | tee "reports/frozen-smoke.txt"
           echo "smoke seconds: $SECONDS" | tee -a "reports/frozen-timing.txt"
+
+      - name: Remove this job's profile
+        # `always()`, and on the self-hosted machines this is the point of it: `runner.temp`
+        # survives the job there, so every frozen run would otherwise leave a profile holding a
+        # downloaded yt-dlp behind. A gate that isolates itself by quietly filling a disk has
+        # traded one machine-state problem for another.
+        if: always()
+        run: rm -rf "$FROZEN_PROFILE" || true
 
       - name: Upload frozen evidence
         if: always()
