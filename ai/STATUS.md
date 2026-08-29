@@ -5,9 +5,79 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-29 — **`T-298` is Complete, approved at `a93a53b`, and every remaining
+finding from that review is folded in.** `T-268` stays Blocked and `T-289` stays Proposed; nothing
+else is open from the 2026-08-29 review. Read this section first.
+
+**`T-298`: the frozen gate now runs in a profile it owns, and its first attempt took CI down.**
+`efa0ce5` declared the per-run profile in a job-level `env:` using `${{ runner.temp }}`. That
+context does not exist at job level, so GitHub rejected the **whole workflow file** at validation —
+zero jobs, no logs, the run named after its path — and `yaml.safe_load` parses it happily, so no
+local gate could have caught it. `a93a53b` exports the profile from a runner-assigned step instead,
+and `test_no_runner_context_is_used_where_github_will_not_evaluate_it` is that outage's regression.
+Runs `33264021710` (both frozen legs, `frozen linux` on the machine that failed) and `33264769512`
+(green in every job) are the external evidence.
+
+**The Windows half of that gate is the weaker half, and the approval says so rather than rounding
+it up.** `STARBASE` holds no user-managed yt-dlp, so its green would look identical if the two
+`WIN_PD_OVERRIDE_*` names did nothing. Linux has the real negative control: same artifact, same
+machine, one variable changed. A probe that printed its resolved user-data directory would close
+that gap and is not built.
+
+**`T268-R1` is Resolved, and the answer changed what `T-268` is blocked on.** Read-only run
+`33267794308` on `STARBASE` measured all seven surviving orphans: `ThreadState=5`,
+`ThreadWaitReason=37`. **Suspended is `5`, so the one candidate the task's answer left standing —
+something outside the interpreter — is refuted by measurement.** `37` is `WrAlertByThreadId`, the
+wait behind `WaitOnAddress`, SRW locks and modern critical sections: they are blocked on an
+in-process lock. Which lock, and why it was never released, still needs a stack, which is `T-092`'s
+territory.
+
+**`T268-R2` was that measurement not reaching the source.** `downloader/process_tree.py` still ended
+its orphan account on the refuted candidate two commits after the run refuted it. Corrected: the
+comment now carries the measured mechanism class, separates it from the unknown lock, and says the
+containment behaviour is unchanged. That was `T-268`'s fourth acceptance criterion, and it is now
+met.
+
+**Four Low findings corrected in the same pass.** `T298-R1` — the task and its evidence said
+**five** mutations after the sixth was added; both now say six, name it, and record a re-run at
+`f1b36e9` where the unmutated baseline is `10 passed` and every mutant fails the case named for it.
+`T212-R6` — five completion lines carried malformed or stale clauses and `STATUS.md` said nothing
+was approved under a header saying seven things were. `T268-R3` — `tools/soak_a_test.py` advertised
+a `--jobs` option `argparse` never implemented. `T268-R4` — the soak pooled 300 Linux and 300
+Windows runs into one 0.5% bound for a Windows-specific flake; the honest sample is Windows's 300
+runs and the rule-of-three bound is about **1%**, which does not weaken the conclusion.
+
+**`T289-R1`: the control was reporting the pool mode's conclusion.** In `--on-the-gui-thread` mode
+the probe said shiboken *"marshalled"* a deletion that never left the GUI thread. It now prints its
+own answer — both events on the GUI thread, nothing marshalled — which is the whole point of having
+a control: the pool mode's `Dummy-1` → `MainThread` split only means something if the control gives
+the other answer. **`T-289` remains Proposed and unfixed**; its claimed reproduction stays withdrawn.
+
+**One Qt crash is recorded and deliberately not classified.** The reviewer's local parallel unit/UI
+run lost an xdist worker in `settle_deferred_deletions` → `QObject::~QObject` → shiboken
+`getOverride`; the test passed alone and the correctly activated rerun passed 3,378 / 21 skipped.
+It is the nearest live specimen to compare a `T-289` fix against, and it is **not** evidence that
+`T-289`'s mechanism is what killed it.
+
+**One judgement call, made rather than deferred.** The committed `STARBASE` report keeps its CRLF
+endings — it is evidence, and normalising it would make the committed copy something other than
+what the machine produced. `.gitattributes` now exempts `ai/evidence/*.txt` from the
+trailing-whitespace check instead, so `git diff --check` stops reporting all 100 lines as a
+finding. Verified both ways in a scratch repository: a CRLF file is flagged without the attribute
+and silent with it.
+
+**Gates, this checkout, 2026-08-29:** `ruff check .` **all checks passed**, `ruff format --check .`
+**215 files already formatted**, `mypy src` **56 files**, `mypy` and `mypy --platform win32` **155
+files each**, `pytest -q -n auto tests/unit tests/ui` **3,378 passed, 21 skipped**, and the six
+`T-298` workflow mutations re-run and killed. **Not pushed.** `tools/t287_minimize_probe.py` remains
+untracked and untouched.
+
+---
+
 **Last updated:** 2026-08-29 — **the seven `T-212` tasks are Complete, approved at `0332a68`.**
 The focused correction re-review resolved all ten blocking findings and the four non-blocking ones,
-and `## In Review` is empty for the first time since the batch opened. Read this section first.
+and `## In Review` was empty for the first time since the batch opened. *(“Read this section first”
+stood here until the block above replaced it the same day.)*
 
 **Three rulings came with the approval**, and they close questions the corrections deliberately left
 open rather than settled:

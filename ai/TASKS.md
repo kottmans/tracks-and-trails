@@ -244,11 +244,30 @@ Phase 0 is formally exited (2026-07-26).
 *Implementation is finished and a verdict has not been recorded. **The entries below are the
 contents; this preface does not list them.***
 
+*(Empty since 2026-08-29, when `T-298` was approved at `a93a53b` and moved to `## Complete`. It was
+empty earlier the same day too, after the `T-212` batch — `T-281`, `T-283`, `T-285`, `T-288`,
+`T-291`, `T-292` and `T-293` — was approved at `0332a68`. The heading stays because the section is
+part of the map, and one that disappears when it empties is one nobody notices coming back —
+`## Proposed — Phase 0` carries the same note for the same reason.)*
+
+---
+
+## Complete
+
 ### T-298 — Frozen probes must not read a runner's user-managed yt-dlp
 
-**Status:** **In Review — built 2026-08-29, and no review has run.** The `frozen` job gives itself a
-per-run profile through all five variables `platformdirs` consults, on both matrix legs; the probes
-run inside it and it is removed on `always()`. **No `src/` change** — `OPS-002` is untouched.
+**Status:** **Complete — Approved at `a93a53b` on 2026-08-29**, with external evidence current
+through `53b4d02`. The `frozen` job gives itself a per-run profile through all five variables
+`platformdirs` consults, on both matrix legs; the probes run inside it and it is removed on
+`always()`. **No `src/` change** — `OPS-002` is untouched.
+
+**The first implementation took CI down, and that belongs here rather than only in a commit.**
+`efa0ce5` declared the profile in a job-level `env:` using `${{ runner.temp }}`. The `runner` context
+does not exist at job level — the runner is not assigned when that block is evaluated — so GitHub
+rejected the **whole file** at validation: zero jobs, no logs, the run named after the path.
+`yaml.safe_load` parses it happily, which is why no local gate saw it. `a93a53b` moves the profile
+into a runner-assigned step that exports through `$GITHUB_ENV`, and
+`test_no_runner_context_is_used_where_github_will_not_evaluate_it` is that outage's regression.
 
 **Proved on `Spock` with a negative control**, rather than by hoping CI lands there —
 `ai/evidence/2026-08-29-T298-frozen-profile-isolation.md`. The artifact was built on that machine
@@ -262,15 +281,32 @@ resolves it as a user-managed copy, reverts to the baseline, exit 0. That is the
 fix fails: deleting that probe would also turn the baseline probe green, and would destroy the only
 evidence that `OPS-002`'s route works inside a frozen build at all (`T198-R2`).
 
-**Five workflow mutations, all killed** — dropping the `WIN_PD_OVERRIDE_*` pair, dropping
-`XDG_DATA_HOME`, making the path stable rather than per-run, deleting the update probe, and making
-the cleanup conditional. The variable names are written out in the test rather than read from
-`tests/user_directories.py`, because `test_user_directories.py` records what happened the first time
-a version of this iterated that dict: deleting entries deleted the assertions about them.
+**Six workflow mutations, all killed** — dropping the `WIN_PD_OVERRIDE_*` pair, dropping
+`XDG_DATA_HOME`, making the path stable rather than per-run, deleting the update probe, making the
+cleanup conditional, and **declaring the profile in a job-level `env:` with `${{ runner.temp }}`**,
+which is the outage above put back. Re-run against all six on 2026-08-29 at `f1b36e9`: the
+unmutated baseline is `10 passed`, and every mutant fails the case named for it. The variable names
+are written out in the test rather than read from `tests/user_directories.py`, because
+`test_user_directories.py` records what happened the first time a version of this iterated that
+dict: deleting entries deleted the assertions about them.
+
+*(**This said five for two commits after `a93a53b` added the sixth** — `T298-R1`. It is the one of
+the six worth naming: the others cost this gate its isolation, and that one cost the repository
+every job it runs.)*
 
 **What no test can assert is the runner's own state.** Nothing in the repository can see that
 `Spock` holds a user-managed copy and `kirk` does not. The isolation removes the dependency rather
 than detecting it.
+
+**Confirmed in CI on the machine that failed, twice.** Run `33264021710` at `a93a53b` put `frozen
+linux` on `Spock` — bundled baseline, `2026.07.04`, 1751 extractors — and `frozen windows` on
+`STARBASE`; the maintainer's `yt_dlp-2026.8.19` was still in place afterwards. Run `33264769512` at
+`53b4d02` is green in **every** job. **The Windows leg is the weaker half and the approval says so**:
+`STARBASE` holds no user-managed copy, so its green is not the negative control Linux got. What
+supports it is that the two names are the ones `platformdirs.windows.get_win_folder()` reads, that
+the job log shows their common isolated root, and that the update probe installed and reverted
+through it. A probe printing its resolved user-data directory would close the gap; it is not done
+here, and the approval does not rest on it.
 
 *(Filed 2026-08-29 by the focused re-review of the `T-212` correction batch, from CI run
 `33231536419`. `frozen linux` passed on `kirk` and failed on `Spock` at the same code head because
@@ -331,8 +367,6 @@ real application must continue resolving the user-managed copy first.
 - The unrelated `STARBASE orphans` scheduled-run failures
 
 ---
-
-## Complete
 
 ### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
 

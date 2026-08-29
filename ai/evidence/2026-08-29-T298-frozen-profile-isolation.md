@@ -90,9 +90,20 @@ having been caught being wrong.
 
 `tests/unit/test_frozen_isolation.py` pins the wiring: all five variables present, each varying with
 `github.run_id` and `github.run_attempt`, the artifact probes still inside the isolated job, the
-update probe still present, and the profile removed on `always()`. Five workflow mutations were run
-against it — dropping the Windows pair, dropping `XDG_DATA_HOME`, making the path stable, deleting
-the update probe, and making cleanup conditional — and each is caught.
+update probe still present, the profile removed on `always()`, and **no `runner.*` in a job-level
+`env:`**. **Six workflow mutations were run against it** — dropping the Windows pair, dropping
+`XDG_DATA_HOME`, making the path stable, deleting the update probe, making cleanup conditional, and
+declaring the profile at job level with `${{ runner.temp }}` — and each is caught.
+
+**The sixth is not symmetrical with the other five, which is why it is named.** It is this task's
+own first implementation (`efa0ce5`) put back: `runner` is not a context GitHub provides at job
+level, so the file was rejected at validation and **every job in the repository stopped running** —
+zero jobs, no logs, the run named after its path. `yaml.safe_load` accepts it, so only a test that
+asserts the *shape that ran* can hold the line; `a93a53b` is the correction and
+`test_no_runner_context_is_used_where_github_will_not_evaluate_it` is the regression.
+
+*(**This section said five** for two commits after `a93a53b` added the sixth — `T298-R1`. Re-run at
+`f1b36e9`: unmutated baseline `10 passed`, and all six mutants fail the case named for them.)*
 
 **What no test can assert is the runner's own state.** Nothing in the repository can see that Spock
 holds a user-managed copy and kirk does not; that is what made the defect invisible until two
