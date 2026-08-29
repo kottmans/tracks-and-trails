@@ -1,0 +1,154 @@
+# Ask `STARBASE`'s live orphans what they are waiting on (`T-268`).
+#
+# ## Why this exists, and why it is not `T-092`
+#
+# `T-268` is **Blocked on a person at `STARBASE`**. What it asks for is narrow and named:
+# *"capture what `3400` and `6924` are waiting on — process and thread wait reason, or suspend
+# count — plus any other non-destructive identity evidence, on the machine."*
+#
+# **That needs code running on the machine, not hands on it.** A self-hosted runner is code running
+# on the machine. `T-092` is genuinely different: it needs WER configured, which is an
+# administrative change to how the machine behaves. This changes nothing and asks three questions.
+#
+# **The eliminations `T-268` records leave one candidate**: something outside the interpreter — a
+# suspended process, a debugger attach, a scanner. That candidate has a signature this can read.
+# `Win32_Thread.ThreadWaitReason` distinguishes **`Suspended`** from `UserRequest`, `LpcReceive`,
+# `ExecutionDelay` and the rest, and a suspended process is precisely what *"one thread, CPU
+# accumulated then frozen, alive indefinitely, indifferent to its parent's death"* looks like.
+# Loaded modules answer the other half: an injected scanner DLL would be visible in the list.
+#
+# ## What this may not do
+#
+# **It is read-only, and that is structural rather than a promise.** It calls `Get-Process`,
+# `Get-CimInstance` and nothing else. There is no `Stop-Process`, no `Suspend-Process`, no
+# `Resume-Process`, and no code path that writes to another process. `T268-R1`'s ruling is explicit:
+# **preserve them** — 156 MB on a 32 GB machine does not justify destroying the first inspectable
+# evidence anybody has had, and reaping them destroys the specimen.
+#
+# **It selects nothing by pattern.** Pids are given explicitly, defaulting to the seven the
+# 2026-08-29 nightly reported. The scanner does not prove project ownership, so this is not
+# authority to act on anything it finds — it is authority to *look*.
+#
+# **It does not conclude.** A wait reason is an observation. `T-268`'s standing rule is that the
+# five are matched against a candidate rather than a candidate fitted to the five.
+
+name: STARBASE orphan inspect
+
+on:
+  workflow_dispatch:
+    inputs:
+      pids:
+        description: "comma-separated pids to inspect, read-only"
+        required: true
+        default: "3400,6924,2432,3408,11000,7028,10524"
+
+concurrency:
+  group: starbase-orphan-inspect
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: inspect
+    if: ${{ vars.STARBASE_AVAILABLE == 'true' }}
+    runs-on: [self-hosted, windows, desktop]
+    # Seconds of work. Bounded so a query wedged on an uninspectable process cannot hold the one
+    # Windows slot — the same reasoning `STARBASE orphans` states for its own bound.
+    timeout-minutes: 10
+
+    steps:
+      - name: Ask each pid what it is waiting on
+        shell: powershell
+        env:
+          PIDS: ${{ inputs.pids }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force -Path reports | Out-Null
+          $out = "reports/orphan-inspect.txt"
+          "STARBASE orphan inspection - $(Get-Date -Format o)" | Out-File $out
+          "read-only: Get-Process and Get-CimInstance only (T-268, T268-R1)" | Out-File $out -Append
+
+          foreach ($raw in $env:PIDS.Split(',')) {
+            $target = $raw.Trim()
+            "" | Out-File $out -Append
+            "=== pid $target ===" | Out-File $out -Append
+
+            $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$target" -ErrorAction SilentlyContinue
+            if (-not $proc) {
+              "  GONE: no process with this pid. It exited since the scan that named it." |
+                Out-File $out -Append
+              continue
+            }
+
+            # Identity first, so the reading is provably about the process the scan reported
+            # and not a recycled pid. T268-R1 requires this before anything is acted on.
+            "  created        : $($proc.CreationDate)"        | Out-File $out -Append
+            "  parent pid     : $($proc.ParentProcessId)"     | Out-File $out -Append
+            "  threads        : $($proc.ThreadCount)"         | Out-File $out -Append
+            "  working set    : $([math]::Round($proc.WorkingSetSize/1MB,1)) MB" | Out-File $out -Append
+            "  user ms        : $($proc.UserModeTime/10000)"  | Out-File $out -Append
+            "  kernel ms      : $($proc.KernelModeTime/10000)" | Out-File $out -Append
+            "  handles        : $($proc.HandleCount)"         | Out-File $out -Append
+            "  command line   : $($proc.CommandLine)"         | Out-File $out -Append
+
+            # **The question.** ThreadWaitReason distinguishes Suspended - the candidate the
+            # eliminations leave - from every ordinary reason an interpreter blocks.
+            $threads = Get-CimInstance Win32_Thread -Filter "ProcessHandle='$target'" -ErrorAction SilentlyContinue
+            if (-not $threads) {
+              "  threads        : could not be read" | Out-File $out -Append
+            }
+            foreach ($t in $threads) {
+              "  thread $($t.Handle): state=$($t.ThreadState) waitReason=$($t.ThreadWaitReason) priority=$($t.PriorityBase)" |
+                Out-File $out -Append
+            }
+
+            # The other half of "something outside the interpreter": an injected scanner or
+            # debugger DLL would be visible here.
+            $live = Get-Process -Id $target -ErrorAction SilentlyContinue
+            if ($live) {
+              "  .NET threads   :" | Out-File $out -Append
+              foreach ($t in $live.Threads) {
+                "    id=$($t.Id) state=$($t.ThreadState) wait=$($t.WaitReason) cpu=$($t.TotalProcessorTime)" |
+                  Out-File $out -Append
+              }
+              try {
+                $mods = $live.Modules | ForEach-Object { $_.ModuleName }
+                "  modules ($($mods.Count)): $($mods -join ', ')" | Out-File $out -Append
+              } catch {
+                "  modules        : not readable ($($_.Exception.Message))" | Out-File $out -Append
+              }
+            }
+          }
+          Get-Content $out
+
+      - name: Say what the wait reasons mean
+        shell: powershell
+        if: always()
+        run: |
+          $legend = @(
+            "### STARBASE orphan inspection",
+            "",
+            "``Win32_Thread.ThreadWaitReason``, for reading the report:",
+            "0 Executive - 1 FreePage - 2 PageIn - 3 PoolAllocation - 4 DelayExecution",
+            "**5 Suspended** - 6 UserRequest - 7 EventPairHigh - 8 EventPairLow",
+            "**9 LpcReceive** - 10 LpcReply - 11 VirtualMemory - 12 PageOut",
+            "",
+            "``ThreadState``: 0 Initialized - 1 Ready - 2 Running - 3 Standby",
+            "4 Terminated - 5 Waiting - 6 Transition - 7 Unknown",
+            "",
+            "**5 (Suspended) is the candidate T-268's eliminations leave.** Anything else is a",
+            "new observation and does not confirm it.",
+            "",
+            "Read-only: nothing was terminated, suspended or resumed."
+          )
+          $legend | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-starbase-orphan-inspect
+          path: reports/
+          retention-days: 90
