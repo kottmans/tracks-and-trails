@@ -60,6 +60,32 @@ baseline when one exists — it is now one the job installed, in a directory the
 the real profile still holds only `yt_dlp-2026.8.19`, and the isolated profile holds nothing,
 because revert removed what it installed.
 
+## Confirmed in CI, and the asymmetry in that confirmation
+
+Run **`33264021710`** put `frozen linux` on **`Spock`** — the machine that failed — and it passed:
+`bundled baseline`, `2026.07.04`, 1751 extractors. The update probe installed `9000.1.1`, resolved
+it as a user-managed copy and reverted. Afterwards the maintainer's `yt_dlp-2026.8.19` was still in
+place, so a full frozen job ran on that machine without touching it. `frozen windows` passed on
+`STARBASE`.
+
+**The two legs are not equally proved, and the green does not say so.** On Linux the run is
+discriminating, because Spock holds a user-managed copy: without isolation the probe fails, with it
+the probe passes, same artifact, same machine. **On Windows it is not.** `STARBASE` has no
+user-managed copy to be misled by, so `bundled baseline` is the answer with or without the
+overrides — the leg would look identical if `WIN_PD_OVERRIDE_*` did nothing at all.
+
+What supports the Windows half is weaker and worth naming as such: the variables are read by
+`platformdirs`' own `windows.py`, which builds the name as
+`WIN_PD_OVERRIDE_{csidl_name}`; `tests/ui/test_app_launch.py` has relied on the same pair since
+`T-131`; and the update probe demonstrably installed into *some* user-managed location and reverted
+from it without leaving anything on the machine. None of that is the negative control Linux got.
+
+**What would close it:** a Windows host holding a user-managed copy while the job runs, or a probe
+that prints the user-data directory it resolved so the isolated path can be asserted directly. The
+second is the cheaper one and is a change to the probe rather than to the product. Neither is done
+here, and until one is, the Windows leg rests on the variable names being correct rather than on
+having been caught being wrong.
+
 ## What is asserted mechanically, and what is not
 
 `tests/unit/test_frozen_isolation.py` pins the wiring: all five variables present, each varying with

@@ -12502,6 +12502,31 @@ over across C++ parent-child and signal edges — references `gc` cannot travers
 the collector is not on the GUI thread.** `T-238`'s segfault belongs to the same family. Three
 crashes, one shape.
 
+#### The precondition is now reproducible on demand, measured 2026-08-29
+
+`tools/t289_pool_gc_probe.py` arranges the dump's situation deliberately instead of waiting for it:
+a parented `QWidget` tree — nested children, and a `QLabel` with `setBuddy`, both shaped after the
+stacks — whose only Python reference is inside a reference cycle, so `gc` is the only thing that can
+release it. `gc` is disabled, then `gc.collect()` is run inside a `QRunnable` on a `QThreadPool`,
+exactly where the dump found it. A `weakref.finalize` callback records the thread that performed the
+last decref, which is `T-238`'s probe's method.
+
+**Measured, offscreen on `Spock`:** the tree is finalised on **`Dummy-1`**, a pool thread, not on
+`MainThread`. **`--on-the-gui-thread` runs the identical collection on the GUI thread and reports
+`MainThread`** — same tree, same 14 objects collected, only the thread differs. The control is what
+makes the first reading mean anything; a probe that only ever named a pool thread would look the
+same.
+
+So **criterion 4's "even if it has to force the collector on a pool thread while a tree is
+collectable" is achievable**, and the fix has an instrument to be judged against rather than an
+intermittent crash. **The probe deliberately does not try to reproduce the abort** — corrupting the
+heap proves nothing the precondition does not, and an instrument that aborts cannot report.
+
+**What it does not establish** is that the *application's* trees reach this state: it builds a cycle
+to guarantee collectability, where `T-273`'s finding is that real windows are held across edges `gc`
+cannot traverse. Whether an actual Settings-screen tree becomes collectable during an update is the
+question a fix has to answer, and this probe does not answer it.
+
 #### Acceptance criteria
 
 - **The rule is stated somewhere durable and enforced somewhere mechanical**: no Qt widget is
