@@ -72,19 +72,29 @@ permissions:
 env:
   # **One definition of the expected-failure set**, so the step that reports it and the step that
   # excludes it cannot disagree — which is how a canary silently starts hiding a real failure.
+  #
+  # **It is one definition now; it was two** (`T291-R3`). A second variable held the same two node
+  # ids spelled as `--deselect` arguments, and the comment above claimed the single source the
+  # file did not have. Editing one and not the other recreates exactly what this structure exists
+  # to prevent: a node id in the reported set but not the excluded one is red on every run
+  # forever, and one in the excluded set but not the reported one vanishes from the job's account
+  # of itself. The verdict step builds its own arguments from this list, so there is nothing left
+  # to keep in step.
   EXPECTED_STALE: >-
     tests/unit/test_option_audit.py::test_the_audit_names_the_yt_dlp_version_it_was_taken_against
     tests/unit/test_environment.py::test_the_installed_baseline_is_the_pinned_one
-  DESELECT_STALE: >-
-    --deselect tests/unit/test_option_audit.py::test_the_audit_names_the_yt_dlp_version_it_was_taken_against
-    --deselect tests/unit/test_environment.py::test_the_installed_baseline_is_the_pinned_one
 
 jobs:
   canary:
     name: latest yt-dlp
     # `OPS-012`: Linux runs on the maintainer's Fedora machine. Unset means hosted.
     runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
-    timeout-minutes: 30
+    # **45, raised from 30 when `T291-R1` put `tests/integration` back in.** The 30 was set against
+    # a unit/UI-only, `-n auto`-shaped run; this one is the whole default suite, serial, after a
+    # fresh virtualenv and a full `[dev]` install. Sized as headroom rather than as a measurement,
+    # for `T118-R10`'s reason: a bound with none flaps on how busy the machine is rather than on
+    # the code, and a canary that fails at a cliff nobody was watching is a canary nobody reads.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
@@ -132,15 +142,41 @@ jobs:
               >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # Everything else. **This step is the verdict.**
+      # Everything else. **This step is the verdict**, and `id` is what makes that structural
+      # rather than a claim in a comment — the step below reads this outcome by name.
+      #
+      # **The configured default suite, invoked as `pytest` with no paths at all** (`T291-R1`).
+      # This read `tests/unit tests/ui`, which is two thirds of it: `testpaths = ["tests"]` in
+      # `pyproject.toml` includes `tests/integration`, and integration is not irrelevant to the
+      # question this job asks. `test_worker.py` imports the resolved yt-dlp version and its
+      # ffmpeg tables, and `test_post_processing.py` drives the real `YoutubeDL` and its
+      # postprocessor registry — so a newer yt-dlp could break the paths this product actually
+      # downloads through while the canary stayed green. Naming no path also means the list
+      # cannot drift from the configuration again.
+      #
+      # **Serial, and deliberately.** `ci.yml` splits the suite in two so the unit and UI slice can
+      # take `-n auto`; that split is exactly the second path list this correction removes, and
+      # `T-123` is why `tests/integration` may not be parallelised at all. A weekly job trades a
+      # few minutes for having no path list to keep in step.
+      #
+      # **The deselection is built from `EXPECTED_STALE`**, so `T291-R3`'s two lists are one.
       - name: The suite, against the yt-dlp nobody has pinned
+        id: verdict
         run: |
-          .venv-canary/bin/python -m pytest tests/unit tests/ui \
-            ${{ env.DESELECT_STALE }} \
+          deselect=()
+          for node in ${{ env.EXPECTED_STALE }}; do deselect+=(--deselect "$node"); done
+          echo "deselecting ${#deselect[@]} arguments: ${deselect[*]}"
+          .venv-canary/bin/python -m pytest "${deselect[@]}" \
             -q --junitxml=reports/junit-canary.xml 2>&1 | tee reports/canary.txt
 
+      # **Conditioned on the verdict step, not on `failure()`** (`T291-R2`). Bare `if: failure()`
+      # is true when *any* previous step failed — GitHub documents it that way — so a checkout, a
+      # `setup-python`, a `pip` that could not reach the index, or a machine without a working
+      # `python3` all produced this same "upstream drift, file it as a task" diagnosis for a run
+      # in which the suite never executed. A canary that misattributes its own infrastructure is
+      # worse than one that is merely quiet: it manufactures findings against yt-dlp.
       - name: Say what a failure means
-        if: failure()
+        if: failure() && steps.verdict.outcome == 'failure'
         run: |
           {
             echo '### This is a finding, not the expected staleness'
@@ -150,6 +186,23 @@ jobs:
             echo 'the new options in its own failure message, which is most of an entry written'
             echo 'for whoever files it. Do not bump the pin from this run: that is a decision with'
             echo 'a release gate attached (`OPS-002`, `ai/TESTING.md` §8).'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The other half of `T291-R2`: the run still has to say something when it breaks before it
+      # can measure anything. `outcome` is the empty string for a step that never started, so this
+      # covers both a setup failure and a verdict step that was skipped or cancelled.
+      - name: Say that this run measured nothing
+        if: failure() && steps.verdict.outcome != 'failure'
+        run: |
+          {
+            echo '### No verdict — this run failed before it could test anything'
+            echo
+            echo 'The suite step did not fail; it reports'
+            echo "\`${{ steps.verdict.outcome || 'never started' }}\`. So this is checkout,"
+            echo 'Python, the virtualenv, the package index or the runner itself, **not** yt-dlp.'
+            echo 'Do not file it against upstream and do not read the absence of a finding as'
+            echo 'evidence that the newest yt-dlp is fine — this run never saw it. Re-dispatch'
+            echo 'once the machine is well.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload evidence

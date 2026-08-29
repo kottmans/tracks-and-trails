@@ -248,7 +248,7 @@ contents; this preface does not list them.***
 
 ### T-291 — A canary that runs the suite against the yt-dlp we have not pinned yet
 
-**Status:** **In Review — built 2026-08-28, and no review has run.**
+**Status:** **In Review — corrected 2026-08-28 for `T291-R1`, `R2` and `R3`; awaiting the focused re-review, and `T291-R4` needs a dispatched run.**
 `.github/workflows/ytdlp-canary.yml`: weekly plus `workflow_dispatch`, `LINUX_RUNNER`, its own
 concurrency group, no `push:` trigger, and it writes nothing back to the repository.
 `ai/TESTING.md` §8 gained step **10a**, which is where it blocks a bump without ever blocking a
@@ -270,6 +270,30 @@ been shown a yt-dlp newer than the pin.
 **The workflow itself has never executed**, and cannot be from here. What was verified is the logic
 it performs, not the YAML that performs it; its first scheduled run is its own evidence.
 
+**Three corrections, 2026-08-28.** The initial review found the job promising a suite it did not
+run and a diagnosis it could not support:
+
+- **`T291-R1` (High).** It invoked `tests/unit tests/ui`, which is two thirds of the configured
+  default suite — `testpaths = ["tests"]` includes `tests/integration`, where `test_worker.py`
+  imports the resolved yt-dlp version and its ffmpeg tables and `test_post_processing.py` drives
+  the real `YoutubeDL`. A newer yt-dlp could break what this product downloads through while the
+  canary stayed green. It now invokes `pytest` with **no path argument at all**, so the suite is
+  whatever the configuration says it is and the list cannot drift from it again. Serial, because
+  `T-123` forbids parallelising integration and the two-invocation split `ci.yml` uses is exactly
+  the second path list this removes. `timeout-minutes` went 30 → 45 for the headroom that buys.
+- **`T291-R2` (Medium).** The "this is upstream drift, file it as a task" summary was behind a bare
+  `if: failure()`, which GitHub documents as true when **any** prior step fails — so a checkout, a
+  `pip` that could not reach the index, or a machine without a working `python3` all produced a
+  finding against yt-dlp for a run in which the suite never executed. The verdict step now carries
+  `id: verdict`, the drift summary reads `steps.verdict.outcome == 'failure'`, and a second step
+  says plainly that a run which failed earlier **measured nothing** and must not be read as either
+  a finding or an all-clear.
+- **`T291-R3` (Low).** `EXPECTED_STALE` and `DESELECT_STALE` held the same two node ids in two
+  spellings under a comment claiming one definition. `DESELECT_STALE` is gone; the verdict step
+  builds its own `--deselect` arguments from `EXPECTED_STALE`, so there is nothing left to keep in
+  step. Checked locally: the derived arguments deselect **exactly 2** of 3,831 collected tests, and
+  both node ids still resolve to a real test.
+
 *(Filed 2026-08-27 on maintainer direction, from `T-212`'s run: *"how are we confident that our
 program wont break when it gets updated?"* **The detectors already existed; nothing ever fed them a
 newer version.**)*
@@ -286,7 +310,66 @@ own trigger and its own concurrency group; `ai/TESTING.md` §8 steps 3, 9 and 10
 **Risk:** **Medium, and the risk is that it is ignored.** A canary that is red every run teaches
 people to stop reading it, which is worse than not having one
 
-#
+#### What already exists, which is most of the work
+
+Three gates fail the suite when yt-dlp's own surface moves:
+
+- `tests/unit/test_post_processing_options.py:97`–`98` — `CONTAINER_FORMATS` **equals**
+  `FFmpegVideoRemuxer.SUPPORTED_EXTS` and `FFmpegVideoConvertor.SUPPORTED_EXTS`
+- `tests/unit/test_option_audit.py` — calls yt-dlp's real `create_parser()` and asserts **every
+  documented option is classified exactly once**, in both directions
+- the same file — the audit states the version it was taken against, and fails when the pin moves
+
+**Every one of them only ever sees `yt-dlp==2026.7.4`**, because every job installs from the pin
+and the nightly reinstalls it. The nightly's own comment says what it is for — a re-resolved
+dependency, a runner OS update, the desktop machine drifting — and that is environment drift, not
+upstream drift.
+
+**So the first thing to run this code against a new yt-dlp is a user pressing Update** — which
+`OPS-002` exists to encourage, and which the same-day amendment reframes but does not remove.
+
+#### The design problem, which is not the YAML
+
+`test_the_audit_names_the_yt_dlp_version_it_was_taken_against` **fails by design on any newer
+version.** A canary that simply installs the latest and runs the suite is therefore red on every
+single run, forever, and will be muted within a month. **The expected failure has to be encoded,
+not tolerated**, so that the job separates:
+
+- *"the audit's version line is stale"* — expected, informational, not a finding
+- *"an option exists that nothing classifies"* — a real finding, and one that already names the
+  new options in its own failure message
+- *"a container appeared or vanished"* — a real finding
+- *anything else failing* — the interesting case, because it means behaviour moved rather than a
+  list
+
+#### Acceptance criteria
+
+- **The canary installs the latest yt-dlp over the pin** and runs the default suite against it,
+  on a schedule of **once a week** — yt-dlp ships roughly monthly, and a job that exists to notice
+  change should not run thirty times per change
+- **It never blocks a push.** Its result is a report; `main` does not gate on it
+- **It does block a baseline bump.** The bump is exactly the moment its answer is the evidence
+  being asked for, and `ai/TESTING.md` §8 gains that step
+- **The expected-failure set is explicit**, so a green-except-the-version-line run reads as green
+  and a genuinely new failure is visible at a glance
+- **What it finds becomes a task**, not a badge. The audit's failure message already lists the
+  unclassified options, which is most of an entry written for whoever files it
+- **It runs on `LINUX_RUNNER`** (`OPS-012`) with its own concurrency group (`prose.yml`'s shape),
+  so it neither cancels nor is cancelled by anything else, and it does not spend hosted minutes
+- **It never writes to the repository** — no pin bump, no commit, no audit regeneration. It reports
+  and stops
+- **The report says which yt-dlp version it ran**, or it evidences nothing later
+
+#### Out of scope
+
+- **Bumping the pin.** That is a decision with a release gate attached (`OPS-002`), and this job
+  informs it rather than taking it
+- **Re-taking the option audit**, which is `T-183`'s procedure and a human's judgement about what
+  each new option means
+- **Testing the version a given user is on.** Unknowable, and not the point: the canary tests the
+  version users are about to walk into
+- **`pytest -m network` against latest.** Defensible and a separate cost decision; the release
+  gate already runs it against the pin
 
 ---
 
@@ -12392,67 +12475,6 @@ it the way out of a site that has broken.
 - **The crash in this path** (`T-289`)
 - **Whether the application itself should self-update**, which `REL-001` leaves open and which the
   amendment names as the condition for reopening `OPS-002`
-
-### What already exists, which is most of the work
-
-Three gates fail the suite when yt-dlp's own surface moves:
-
-- `tests/unit/test_post_processing_options.py:97`–`98` — `CONTAINER_FORMATS` **equals**
-  `FFmpegVideoRemuxer.SUPPORTED_EXTS` and `FFmpegVideoConvertor.SUPPORTED_EXTS`
-- `tests/unit/test_option_audit.py` — calls yt-dlp's real `create_parser()` and asserts **every
-  documented option is classified exactly once**, in both directions
-- the same file — the audit states the version it was taken against, and fails when the pin moves
-
-**Every one of them only ever sees `yt-dlp==2026.7.4`**, because every job installs from the pin
-and the nightly reinstalls it. The nightly's own comment says what it is for — a re-resolved
-dependency, a runner OS update, the desktop machine drifting — and that is environment drift, not
-upstream drift.
-
-**So the first thing to run this code against a new yt-dlp is a user pressing Update** — which
-`OPS-002` exists to encourage, and which the same-day amendment reframes but does not remove.
-
-#### The design problem, which is not the YAML
-
-`test_the_audit_names_the_yt_dlp_version_it_was_taken_against` **fails by design on any newer
-version.** A canary that simply installs the latest and runs the suite is therefore red on every
-single run, forever, and will be muted within a month. **The expected failure has to be encoded,
-not tolerated**, so that the job separates:
-
-- *"the audit's version line is stale"* — expected, informational, not a finding
-- *"an option exists that nothing classifies"* — a real finding, and one that already names the
-  new options in its own failure message
-- *"a container appeared or vanished"* — a real finding
-- *anything else failing* — the interesting case, because it means behaviour moved rather than a
-  list
-
-#### Acceptance criteria
-
-- **The canary installs the latest yt-dlp over the pin** and runs the default suite against it,
-  on a schedule of **once a week** — yt-dlp ships roughly monthly, and a job that exists to notice
-  change should not run thirty times per change
-- **It never blocks a push.** Its result is a report; `main` does not gate on it
-- **It does block a baseline bump.** The bump is exactly the moment its answer is the evidence
-  being asked for, and `ai/TESTING.md` §8 gains that step
-- **The expected-failure set is explicit**, so a green-except-the-version-line run reads as green
-  and a genuinely new failure is visible at a glance
-- **What it finds becomes a task**, not a badge. The audit's failure message already lists the
-  unclassified options, which is most of an entry written for whoever files it
-- **It runs on `LINUX_RUNNER`** (`OPS-012`) with its own concurrency group (`prose.yml`'s shape),
-  so it neither cancels nor is cancelled by anything else, and it does not spend hosted minutes
-- **It never writes to the repository** — no pin bump, no commit, no audit regeneration. It reports
-  and stops
-- **The report says which yt-dlp version it ran**, or it evidences nothing later
-
-#### Out of scope
-
-- **Bumping the pin.** That is a decision with a release gate attached (`OPS-002`), and this job
-  informs it rather than taking it
-- **Re-taking the option audit**, which is `T-183`'s procedure and a human's judgement about what
-  each new option means
-- **Testing the version a given user is on.** Unknowable, and not the point: the canary tests the
-  version users are about to walk into
-- **`pytest -m network` against latest.** Defensible and a separate cost decision; the release
-  gate already runs it against the pin
 
 ### T-294 — The add dialog's status line is an empty tab stop that draws a full-width focus ring
 
