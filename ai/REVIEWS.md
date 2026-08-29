@@ -21555,3 +21555,66 @@ Low findings because each belongs to an existing completion or diagnostic pass.
 
 The Reviewer changed only this append-only record. No reviewed source, workflow, task/status file,
 evidence artifact, untracked probe, process, push or remote state was changed.
+
+---
+
+## 2026-08-29 — Post-approval correction focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `f1b36e9cfd4592b60bc8c89cf6cb4bcbae4190b2`
+**Correction head:** `d5f1010044ed28d4476c2d26b8cd949e33252d94`
+**Commits inspected:** `1b89667`, `0de526c`, `2edbfba`, `d5f1010`
+**Verdict:** **Changes requested for T-268 only.** `T298-R1`, `T212-R6`, `T268-R3`,
+`T268-R4`, and `T289-R1` are resolved, and the narrowly scoped CRLF policy is accepted. The
+T268-R2 correction carries the new measurement into source, but its annotation names the wrong
+field and the task's current dependency text still says the completed inspection is outstanding.
+That is significant because the source record is T-268's fourth acceptance criterion. T-298
+remains Approved/Complete and no other task is reopened.
+
+### Finding dispositions
+
+| ID | Disposition | Verification |
+|---|---|---|
+| **T298-R1** | **Resolved** | The task and evidence each say six mutations, name the job-level `runner.*` case, and record the baseline plus six-kill rerun. The unchanged focused test is green: **10 passed**. |
+| **T212-R6** | **Resolved** | The five completion openings are syntactically complete and name the evidence that closed them. T-291 now records dispatched run `33231851897` and reconciles eleven node IDs to twelve collected tests. The contradictory “nothing is approved” sentence is retained only as an explicitly superseded quotation. |
+| **T268-R2** | **Partially corrected; superseded by T268-R5 below** | The source now records `ThreadWaitReason=37`/`WrAlertByThreadId`, distinguishes mechanism class from unknown lock/cause, and says containment behavior is unchanged. Its final annotation nevertheless contradicts the same measurement by naming `ThreadState=5` as the absent suspended value. |
+| **T268-R3** | **Resolved** | The usage block no longer advertises `--jobs`; `python tools/soak_a_test.py --help` lists only the implemented `--runs` and `--out` options. Serial execution remains explicit. |
+| **T268-R4** | **Resolved** | The evidence uses the Windows-only 300-run population and a rule-of-three bound near 1%; Linux's 300 runs are kept as a separate population. The conclusion is no longer supported by pooled cross-platform arithmetic. |
+| **T289-R1** | **Resolved** | The pool run reports `Dummy-1` finalization and `MainThread` destruction with the marshalling conclusion. The GUI control reports both on `MainThread`, explicitly says nothing was marshalled, and exits 0. The separate pool-finalized-on-GUI branch is conservatively INCONCLUSIVE. T-289 remains Proposed and unfixed. |
+
+### Remaining finding
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T268-R5** | **Medium** | **Yes, for T-268's record correction only** | The new source annotation says a suspended process is `ThreadState=5` and “not one” specimen reports it (`process_tree.py:115-116`), but the source's own measured sentence says **all seven** report `ThreadState=5` (`:96`). The discriminating property is `ThreadWaitReason`: suspended is reason 5, while the specimens report reason 37. `ai/TASKS.md:13427-13428` repeats the same field error. The task also says at its top that the inspection is satisfied and it is now blocked on a stack (`:13184-13193`), then retains the old machine-local checklist and `Depends on:` claim that nobody has looked at PIDs 3400/6924 (`:13211-13224`, `:13281-13283`) and still lists a suspended process as a live candidate (`:13568-13569`). | Change both explicit `ThreadState=5` annotations to `ThreadWaitReason=5`. Rewrite or annotate the current dependency/checklist/candidate text so it says the read-only inspection is complete and the remaining optional/blocking work is the stack, with its actual owner. Historical reasoning may remain, but its current disposition must not contradict the run. | **Open; narrow record-only correction** |
+
+### CRLF ruling
+
+Keeping the raw STARBASE report byte-for-byte is acceptable. `.gitattributes` applies
+`whitespace=-trailing-space` only to direct `ai/evidence/*.txt` artifacts; it does not set `text`
+or an EOL conversion. `git check-attr` reports that exact policy for the raw file,
+`git ls-files --eol` reports `i/crlf w/crlf`, and `git diff --check f1b36e9..d5f1010` is clean.
+This resolves the prior review note without normalizing evidence.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary/state | Four commits after the review base; their file scopes agree with the task split. No misplaced T-289 body appears in T-290 and no partial T-268 paragraph survives from the disclosed failed staging attempt. The only worktree item is the disclosed untracked `tools/t287_minimize_probe.py`, which was not read, run or modified. |
+| Diff/static | `git diff --check`: clean; Ruff: passed; format: **215 files**; `mypy src`: **56 files**; bare mypy and Win32 mypy: **155 files** each. |
+| Focused tests | Task placement plus frozen isolation: **25 passed**; frozen isolation alone: **10 passed**. |
+| T-289 probe | Pool and GUI-control modes both executed offscreen and exited 0 with the distinct conclusions described above. |
+| Soak CLI | `--help` accepts and documents only `--runs` and `--out`; no `--jobs` residue. |
+| Commit records | Four correction messages pass `tools/commit_message_check.py --range f1b36e9..HEAD`. |
+| Broader gates | The implementer reports **3,378 passed / 21 skipped** unit+UI and **445 passed** integration at this same correction tree. This focused pass did not repeat those full suites because the only `src/` change is explanatory prose; the executable probe and deterministic gates above were rerun directly. |
+
+### Readiness
+
+Five of the six requested finding corrections are complete, and the CRLF decision is approved.
+T-298 remains Complete at `a93a53b`; T-289 remains Proposed. T-268 remains Blocked and its focused
+record correction is not approved until T268-R5 is fixed. No product behavior change is requested:
+this is a field-name and current-truth synchronization correction over the measurement already
+obtained.
+
+The Reviewer changed only this append-only record. No reviewed source, task/status file, evidence,
+workflow, untracked probe, push or remote state was changed.
