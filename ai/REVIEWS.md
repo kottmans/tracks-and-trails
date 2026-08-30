@@ -21815,3 +21815,67 @@ measurement already named by the task.
 
 The Reviewer changed only this append-only review record. No reviewed source, task/status file,
 evidence, probe, coredump, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-30 — T-284 inherited *Download as* label review
+
+**Reviewer:** Codex (Reviewer)
+**Boundary:** `b2cb084068c05df4ddc98efc70de04006e4ccab9..db9b0e2b16b1f0767a3fd9c8b19ba31065debb21`
+**Verdict:** **Changes requested.** The capability/value role split is sound, the queue remains
+fail-closed, and the documentation records the maintainer's chosen shape. The value role is wrong
+on an overridden row, however, so the new return-to-batch entry can promise one format and select
+another. The elision regression also measures the combo's outer rectangle rather than the label
+field Qt paints into, and a live editor does not perform the recomputation the ruling requires.
+All three findings are blocking; `T-284` remains In Review.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T284-R1** | **Critical** | **Yes** | `StagingModel.data()` answers `PRESET_INHERITED_ROLE` with `effective.name` (`add_dialog.py:1128-1133`). On an overridden row, `effective` is the row's own preset, while the inherited `None` entry means **clear that override and follow the batch** (`row_delegate.py:2206-2217`, `add_dialog.py:1191-1204`). A real-dialog replay set the batch to *Best video up to 1080p (MP4)* and the row override to *Audio only (MP3)*. Reopening the editor offered **“Audio only (MP3) — following the batch”**; selecting it cleared `row.preset`, and `preset_for(row)` became *Best video up to 1080p (MP4)*. This is not cosmetic ambiguity: the control can tell the user Audio and then build the Video request. The new delegate-only test cannot expose it because its synthetic model gives one name without a distinct batch/override state. | Make the value role mean the batch preset the row **would follow**, independently of the row's current override. Add an end-to-end regression with deliberately different batch and override values: open the overridden row, assert the `None` entry names the batch, choose it, and assert the resulting effective/durable request is the same value the entry named. Mutation-check substituting the row's effective preset for the batch. | **Open; blocking** |
+| **T284-R2** | **High** | **Yes** | `test_the_ruled_label_fits_the_control_and_the_rejected_one_does_not` calls 190 px minus the 16 px menu zone “available” and compares text against 174 px (`test_row_delegate.py:634-662`). Qt does not paint the label into that outer rectangle: `_paint_control()` passes the adjusted option through `_label_box()` and `CE_ComboBoxLabel`, whose `SC_ComboBoxEditField` also removes the combo frame/arrow and applies the T-283 inset (`row_delegate.py:1035-1054, 1562-1591`). On the production dark stylesheet's `QStyleSheetStyle`, the same test geometry produced **190 px control / 174 px combo / 148 px actual label field**. The longest built-in name, *Video with embedded subtitles*, measures **174 px**. The regression therefore passes exactly while the shipped name cannot fit. The undressed style was narrower still at 146 px. This fails the explicit acceptance criterion to measure elision at the control's real width and invalidates the “never elides” premise recorded in the task/spec. | Measure the text space Qt actually uses, through the same styled label path or rendered pixels—not `_control_of - _menu_zone_of`. Make the longest built-in name fit that real field, or return for an explicit ruling if the layout cost is not acceptable. Keep the rejected-shape negative control only after the positive half is real, and correct the new 165 px prose to the geometry actually being claimed. | **Open; blocking** |
+| **T284-R3** | **Medium** | **Yes** | The ruling says the inherited entry is recomputed when the batch changes (`ai/TASKS.md:364-365`), but `createEditor()` builds its item text once and `setEditorData()` only changes the selected index (`row_delegate.py:2206-2217, 2297-2314`). `StagingModel.refresh()` deliberately preserves an open editor across value-only `dataChanged` emissions (`add_dialog.py:1213-1241`). In a real dialog, changing the batch from *Best video up to 1080p (MP4)* to *Best video available* updated `selected_preset` while the live first entry stayed **“Best video up to 1080p (MP4) — following the batch.”** | When editor data is refreshed, update the inherited item's text from the current batch-value role (or deliberately close/recreate the editor). Add a real-dialog regression that opens an inherited editor, changes the batch to a different named preset, processes the model refresh, and requires the still-live/reopened `None` entry to carry the new name. | **Open; blocking** |
+
+### Accepted judgments
+
+- **Keep the two roles.** `PRESET_INHERITABLE_ROLE` is a capability gate and
+  `PRESET_INHERITED_ROLE` is the value displayed for that capability. Conflating them would make
+  the queue's absence of a batch and a staging row's batch value one overloaded contract. R1 is a
+  wrong producer for the new value role, not a reason to remove the role.
+- **The queue regression is stronger than the spelling check it replaces.** Requiring every queue
+  entry to have non-`None` data directly gates the value `QueueModel.setData` refuses; checking the
+  suffix independently protects the visible half.
+- **The documentation edits are in scope.** The acceptance criteria explicitly require both
+  `docs/UX_SPEC.md` and checklist row 5.2 to record the ruled shape. They elaborate `UX-004`; they
+  do not change architecture or product scope.
+- **Holding the editor parent is correct.** The local `QWidget` prevents the test from destroying
+  its `QComboBox` before inspection, and the comment records a real Qt ownership constraint rather
+  than incidental test machinery.
+- **The relation-only defensive fallback is not a present product path.** Current staging supplies
+  both roles and the queue supplies neither. No separate finding is raised for the contradictory
+  state `inheritable=True` with no name; the correction should preserve the ruled shape on every
+  valid model path.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Two commits exactly as handed off: the ruling commit `ceed77c` followed by implementation `db9b0e2`; eight files changed. `git diff --check` is clean. |
+| Existing focused suite | `test_row_delegate.py`, `test_add_dialog.py`, and `test_row_verb_wiring.py`: **308 passed** in 255.91 s. This confirms the submitted tests are green, including all five reported mutations' target assertions; it does not cover the three states above. |
+| Overridden-row replay | A temporary real-dialog regression failed with **“the entry said 'Audio only (MP3) — following the batch', but choosing it made the row follow 'Best video up to 1080p (MP4)'.”** Before that failure it proved `row.preset is None` and `preset_for(row).name` is the batch name. The temporary file was removed. |
+| Live-editor replay | A temporary real-dialog regression changed the batch while the editor remained open and failed with old/new/entry values **1080p → available → 1080p**. The temporary file was removed. |
+| Styled geometry | Through the production dark stylesheet and the same `QStyle`/`_label_box` path: **190 px control, 174 px after the menu zone, 148 px label field, 174 px longest-name advance**. The undressed label field was 146 px. |
+| Static/types | Ruff passed on all five changed Python files; format reports all five formatted; `mypy src` passed **56 files**. |
+| Records/gates | Task placement: **15 passed**. Both commit messages pass `tools/commit_message_check.py --range b2cb084..db9b0e2`. |
+| Broader evidence | The implementer reports unit/UI **3,381 passed / 21 skipped**, integration **445 passed**, both mypy platforms, and placement **15** at the review head. CI run `33289637554` is green at the base `b2cb084`; the two local T-284 commits have not run in CI. |
+
+### Readiness
+
+The correction should keep the two-role design and address all three sibling states in one batch:
+an overridden row returning to a different batch preset, a batch change while its editor is open,
+and the actual styled text field. This is the initial comprehensive review, so one focused
+correction re-review remains within the ordinary review budget.
+
+The Reviewer changed only this append-only record. No reviewed source, test, task/status file,
+documentation, handoff, push or remote state was changed.
