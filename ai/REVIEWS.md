@@ -21747,3 +21747,71 @@ reach Shiboken's cross-thread deletion path from this surface.
 
 The Reviewer changed only this append-only record. No reviewed source, task/status file, evidence,
 probe, handoff, push or remote state was changed.
+
+---
+
+## 2026-08-30 — T-238 criterion-4 focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review commit:** `22777cf9cc30131758f505637396e731c5d5ee96`
+**Correction:** `077260013a5ecb915fdd3d40199708efb12aa7ac`
+**Verdict:** **Approved for the requested correction. `T238-R7` and `T238-R8` are Resolved.** The
+probe now distinguishes a live Qt widget from its already-dead Python wrapper at the only point the
+distinction remains observable, its positive control proves that branch, and T-273's owner step
+releases the complete window tree. Arm B additionally demonstrates collector-triggered destruction
+of a live Qt widget on demand, with the helper-ownership/main-thread/offscreen bounds stated. No
+significant issue remains and no further review round is required. `T-238` correctly stays Ready;
+this approval does not satisfy criterion 4's product-reachability branch.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T238-R7** | **Resolved** | `Parked.cpp_was_alive` is populated by `shiboken6.isValid(obj)` while each wrapper is still in `gc.garbage`. The positive control now requires its tagged `QListView` to be both parked and valid. Arm A reproduces **17 parked / 0 live / 95 survivors**; all 17 are correctly described as dead wrappers and no cycle-membership claim remains. |
+| **T238-R8** | **Resolved** | Arm C applies the sequence T-273 assigned to the fixture owner: `window.deleteLater()`, event processing, and a receiver-scoped `sendPostedEvents(window, DeferredDelete)`. It reproduces **67 parked / 0 live / 0 survivors**. The task, evidence and STATUS now call the 95-widget result the expected product-shutdown-only baseline and withdraw the incomplete/second-instance speculation. |
+
+### Arm B judgment
+
+The new arm is useful and accurately bounded. A normal offscreen run reproduced **24 parked
+wrappers whose Qt objects were all valid**, printed and flushed that classification, then exited
+**139** during the release collection. The machine's resulting core independently reports:
+
+```text
+gc_collect_main → _Py_Dealloc → libshiboken6 → QDialog::~QDialog
+  → QWidgetPrivate::hide_helper → libqoffscreen → QCursor::pos → SIGSEGV
+```
+
+That is direct evidence that releasing collector-found wrappers can enter live Qt destruction. It
+does not establish product reachability: all 24 are from the constructed helper inventory, the
+collection is on the main thread, and the proximate fault is in the offscreen platform plugin. The
+probe says each of those things and does not move T-238 to Complete.
+
+### Non-blocking record corrections
+
+| ID | Severity | Blocks approval | Finding | Required action | Status |
+|---|---|---:|---|---|---|
+| **T238-R9** | **Low** | No | The task, evidence and STATUS say the same 64 route-opened widgets go by refcount in every arm. An origin-tag replay shows that this is true only in A/B: Arm C parks **50 route-opened wrappers after their Qt widgets are destroyed**, sends **109** route wrappers by refcount, and leaves zero. The meaningful invariant survives: **zero route-opened wrappers are parked while their Qt widgets are live**. | Replace “the 64 … same in every arm” and “no route widget takes the collector's route” with the live-widget invariant; optionally record A/B's `64 refcount + 95 survivors` and C's `109 refcount + 50 parked-dead`. No instrument change or re-review is required. | **Open; ordinary record correction** |
+| **T238-R10** | **Low** | No | Arm B's `gc_collect_main → _Py_Dealloc → shiboken → QWidget` path is an exact structural match for T-289's pool-thread dump, but not for T-238's retained stack. T-238 begins later at `_Py_HandlePending → BindingManager::runDeletionInMainThread → QAbstractItemView::~`, after Shiboken has queued work from another thread; that dump does not contain `gc_collect_main`. Calling Arm B “the same upper stack as T-238” collapses the direct and queued deletion paths that the record otherwise carefully distinguishes. | Say it exactly matches T-289's collector/deallocation half and demonstrates the hypothesized initiating route relevant to T-238; retain that it does **not** reproduce T-238's queued cross-thread path. No re-review is required. | **Open; ordinary wording correction** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One correction commit after the review: four files, all task/status/evidence/probe records; no `src/` or test file changed. Working branch is two commits ahead of `origin/main`, as disclosed. |
+| Three arms | A: **17 / 0 / 95**, exit 0. B: **24 / 24 / 122**, exit 139 after the flushed release line. C: **67 / 0 / 0**, exit 0. Each census contains **364 = 159 route + 205 constructed** widgets. |
+| Native evidence | The normal Arm B coredump matches the committed eleven-frame stack through `gc_collect_main`, `_Py_Dealloc`, Shiboken, `QDialog::~QDialog`, the offscreen plugin and `QCursor::pos`. |
+| Origin diagnostic | A/B route split: **64 refcount + 95 survivors**. C route split: **109 refcount + 50 parked-dead + 0 survivors**. No route wrapper is parked live. |
+| Static/types | Ruff passed; format **216 files**; `mypy src` **56 files**; bare and Win32 mypy **156 files** each. |
+| Focused tests | The four `every_surface` consumers: **149 passed, 1 skipped**. Task placement: **15 passed**. |
+| Records | `git diff --check` clean; correction commit message passes over `22777cf..0772600`. |
+| Broader suite | Implementer reports unit/UI **3,378 passed, 21 skipped** at the correction. It was not repeated in this focused pass because no product or test implementation changed. |
+| Prior-head CI | Run `33286635518` at `317c469` completed successfully: Linux, Windows desktop, frozen Linux, frozen Windows and STARBASE coverage all green. It predates the local unpushed probe/record correction. |
+
+### Readiness
+
+`0772600` resolves both requested findings and is approved. Fold R9 and R10 into ordinary record
+cleanup without another review cycle. T-238 remains Ready for the real-session/product-owned-widget
+measurement already named by the task.
+
+The Reviewer changed only this append-only review record. No reviewed source, task/status file,
+evidence, probe, coredump, handoff, push or remote state was changed.
