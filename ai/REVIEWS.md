@@ -22210,3 +22210,65 @@ focused correction stays inside the current review under the convergence rule.
 
 The Reviewer changed only this append-only review record. No reviewed source, test, task/status
 text, instrumentation, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-30 — T-289 instrument integrity re-review 2
+
+**Reviewer:** Codex (Reviewer)
+**Boundary:** `aaa48ea3c8f3ee32167136f415f2598c86c53535..71dc2aabc513049c5b40317ff4440015e3935796`
+**Commit:** `71dc2aa` (instrument correction)
+**Verdict:** **Changes requested. `T289-R6` and `T289-R7` remain High and blocking.** The
+authoritative terminal signals, per-instance connection, named pool subject and named genuine GUI
+candidate all work. The candidate classifier still omits ownership and therefore names a
+C++-owned child as the dangerous tree, while an off-GUI destruction outside collection is still
+given T-289's verdict. The normal report also remains unbound to the positive control and records
+no environment/version identity. Do not run the real-display session on this head.
+
+### Finding dispositions
+
+| Finding | Disposition | Independent verification |
+|---|---|---|
+| **T289-R6** | **Partially corrected; remains Open (High, Blocks approval: Yes).** A genuinely parentless Python-defined widget collected on the GUI thread is now named, and the subject-specific pool control is discriminating. The implementation calls every non-`PySide6` type a candidate, however; it never measures `ownedByPython`, despite the task requiring every **Python-owned** widget and the boundary guard using both predicates. A plain `QWidget` parent (`ownedByPython=True`) with a Python-defined child (`ownedByPython=False`) was collected on the GUI thread. The tool named **`Derived(python-typed-cpp-owned-child)`** and asserted that pool collection would run that child's destructor there. That conclusion does not follow: the child is C++-owned and the accepted mechanism says the plain parent is marshalled. Capturing ownership only once would still be stale if a widget is parented after its first event; track the ownership state while the widget is alive and refresh it when parenting can change. The third required arm is also still absent. An unshown, event-filter-discovered `Derived(outside-collection-control)` lost its last reference on `Dummy-1`; the transcript correctly said **“outside any gc collection”**, but the aggregate verdict still said **“That is T-289's precondition in the product.”** Separate in-collection/off-GUI collection events from other off-GUI destruction and add controls that reject both the C++-owned child and the outside-collection misclassification. | The submitted self-test passes both its named pool subject and genuine unparented GUI candidate. The parent/child replay printed ownership **True / False** before collection and nevertheless added the child to `candidates_collected`. The last-reference replay produced three off-GUI events outside GC, including the named subject, and the T-289 verdict. |
+| **T289-R7** | **Partially corrected; remains Open (High, Blocks approval: Yes).** The terminal seam is now correct: `reported` and `failed` are the two outcomes through which `_run_holding_the_tree` releases its hold, and `update_finished` stays false after a scheduling-only return. Connecting on first use works for a second service instance. The pool self-test now requires its own subject's tag, and disconnecting only that handler fails it. Two explicit parts of R7's required correction remain untouched: the normal report contains no proof that the separately run positive controls passed, and it records no application, Python, Qt/PySide, platform or instrument identity. The instructions still rely on a person pairing two independent process outputs, while the normal process can emit a null-route verdict without ever knowing the control ran. Bind a passing control and the relevant identity to the report before allowing a null conclusion. | Scheduler-only calls left `update_finished=False`; emitting `reported` on a second instance and `failed` on another each changed it to true. The subject-handler mutation exited 2 and named only the incidental widgets. Static inspection finds no version/environment identity or control-pass marker in normal mode. |
+| **T289-R8** | **Remains Resolved.** Event-filter discovery is unchanged and no executable live-widget enumeration returned. | The correction changes only classification, route completion, controls and prose. |
+| **T289-R9** | **Remains Resolved.** The honest collection-count/cost record is unchanged. | Direct diff inspection. |
+| **T289-R10** | **Partially corrected; remains Low, Blocks approval: No.** The module-level polling description and TASKS's 250 ms bound now describe the event filter correctly. The duplicated arming comment explicitly included in R10's cleanup remains at `tools/t289_session_watch.py:514-520`. Collapse it in the next correction; it does not independently hold the task. | Direct source inspection. |
+
+### Rulings on the submitted questions
+
+- **`reported` / `failed` is the right terminal seam.** The service routes successful install plus
+  re-resolution through `reported` and all caught/refused outcomes through `failed`; a missing
+  signal fails safe as `NOT A RESULT` rather than manufacturing completion.
+- **Connecting on first update use covers multiple service instances.** The class wrapper executes
+  for each instance, and the per-instance marker installs a connection on the instance actually
+  invoked. A two-instance replay confirmed the second instance's `reported` signal completes the
+  route.
+- **The candidate narrowing is not the same as the boundary guard.** Both exclude PySide-defined
+  types, but the guard additionally requires `shiboken6.ownedByPython(widget)`. Omitting that half
+  is the deterministic false positive above, not merely the already accepted documentation risk.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One commit, two files, no `src/` or tests; `git diff --check aaa48ea..71dc2aa` is clean. |
+| Submitted self-test | Passed offscreen; named `Derived(t289-self-test-subject)` on `Dummy-1` inside collection and `Derived(t289-self-test-near-miss)` on the GUI thread inside collection. |
+| Subject mutation | Leaving the target discovered but disconnecting only its handler made the self-test **fail, exit 2**; incidental plain-widget events no longer satisfy it. |
+| Terminal paths | Scheduling return left finished false. A second instance's `reported` signal and a separate instance's `failed` signal each set it true. |
+| Ownership false positive | Plain parent / Python child were `ownedByPython=True / False`; GUI collection still named the child as T-289's candidate. |
+| Outside-collection replay | Last-reference destruction on `Dummy-1` was logged outside GC, then received the aggregate `OFF-GUI ... T-289's precondition` verdict. |
+| Static/types | Ruff and format pass on the tool; direct mypy passes with `MYPYPATH=src`; the submitted commit-message gate passes. |
+| Broader evidence | The implementer reports ruff/format, host and Win32 mypy, unit+UI **3,389 passed / 21 skipped**, placement **15**. No product code changed; integration remains **445 passed** at the earlier product head. |
+
+### Readiness
+
+Do not run the maintainer's real-display session yet. Complete the remaining R6 classifier arms and
+R7 report binding in one focused correction: ownership-aware candidate tracking, distinct
+in-collection and outside-collection verdicts with controls for both, and a report that carries its
+positive-control result plus environment/instrument identity. Fold R10's duplicate-comment cleanup
+into that correction. These are direct High continuations and remain inside the current review
+under the convergence rule.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, instrumentation, handoff, push, CI run or remote state was changed.
