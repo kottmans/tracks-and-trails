@@ -393,6 +393,12 @@ def watch_the_update_route(watch: Watch) -> None:
     """
     from tracks_and_trails.downloader.ytdlp_service import YtdlpService
 
+    if getattr(YtdlpService.install_latest_version, "_t289_wrapped", False):
+        # **Idempotent, because the self-test arms a second `Watch`** for the outside-collection
+        # direction. Wrapping twice would report the route starting twice and, worse, would leave
+        # the first watch's closure in the chain after this one is done with it.
+        return
+
     original = YtdlpService.install_latest_version
 
     def install_latest_version(self: YtdlpService) -> None:
@@ -416,6 +422,7 @@ def watch_the_update_route(watch: Watch) -> None:
         original(self)
         watch.say("route: the update call returned; its work is on the pool")
 
+    install_latest_version._t289_wrapped = True  # type: ignore[attr-defined]
     YtdlpService.install_latest_version = install_latest_version  # type: ignore[method-assign]
 
 
@@ -553,6 +560,51 @@ def self_test() -> int:
         gc.callbacks.remove(watch.note_a_collection)
     application.removeEventFilter(watch)
 
+    # **The sixth direction, and it needs a `Watch` of its own** (`T289-R12`). It proves the
+    # *verdict*, not a counter: an off-GUI destruction with **no collection running** must classify
+    # as `OFF-GUI DESTRUCTION, BUT NOT T-289`. On the watch above that arm is unreachable, because
+    # the first direction already put a destruction inside a collection and the aggregate reports
+    # the stronger finding.
+    #
+    # **Nothing here calls the collector.** The last Python reference is dropped *on the pool
+    # thread*, so the wrapper's refcount reaches zero there and shiboken destroys the widget with no
+    # `gc` involved — which is the shape this arm exists to tell apart from `T-289`'s.
+    outside = Watch(StringIO(), threading.current_thread().name)
+    arm(outside)
+
+    class DropTheLastReference(QRunnable):
+        def __init__(self, widget: QWidget) -> None:
+            super().__init__()
+            self.widget: QWidget | None = widget
+
+        def run(self) -> None:
+            self.widget = None  # refcount, on this thread, with no collection in progress
+
+    doomed = Derived()
+    doomed.setObjectName("t289-self-test-refcounted")
+    doomed.show()
+    QCoreApplication.processEvents()
+    doomed.hide()
+    QCoreApplication.processEvents()
+
+    dropper = DropTheLastReference(doomed)
+    dropper.setAutoDelete(False)
+    del doomed
+    gc.disable()
+    try:
+        pool = QThreadPool()
+        pool.setMaxThreadCount(1)
+        pool.start(dropper)
+        pool.waitForDone(5000)
+        for _ in range(50):
+            QCoreApplication.processEvents()
+    finally:
+        gc.enable()
+
+    if outside.note_a_collection in gc.callbacks:
+        gc.callbacks.remove(outside.note_a_collection)
+    application.removeEventFilter(outside)
+
     print(transcript.getvalue(), end="")
     if not watch.collections:
         print("SELF-TEST FAILED: the gc callback recorded no collection, so nothing was tracked.")
@@ -598,11 +650,20 @@ def self_test() -> int:
             "which is T289-R6's last shape."
         )
         return 2
+    outside_verdict = outside.verdict()
+    print(f"  outside-collection arm: {outside_verdict}")
+    if not outside_verdict.startswith("OFF-GUI DESTRUCTION, BUT NOT T-289"):
+        print(
+            "SELF-TEST FAILED: a destruction off the GUI thread with no collection running was not "
+            f"classified as a different defect. Verdict was: {outside_verdict}. Calling that "
+            "T-289 would close this task on somebody else's bug."
+        )
+        return 2
     print(
         "SELF-TEST PASSED: the filter discovered the widgets, the callback saw the collections, "
         "the off-GUI destruction was reported by name, the GUI-thread candidate was named, a "
-        "Qt-owned child was not, a widget released by setParent(None) was, and so was one first "
-        "seen during its own reparent."
+        "Qt-owned child was not, a widget released by setParent(None) was, so was one first seen "
+        "during its own reparent, and a refcount drop on a pool thread classified as NOT T-289."
     )
     return 0
 

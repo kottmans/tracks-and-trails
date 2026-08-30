@@ -623,14 +623,22 @@ trap anyone adding a signal handler to a Qt program walks into.
 
 **Its positive control runs offscreen in a second, and must be run first.**
 `--self-test` goes through `arm()` — the real event filter and the real `gc` callback, not a
-hand-wired handler (`T289-R7`) — and drives **five directions**: the measured arm collected on a
+hand-wired handler (`T289-R7`) — and drives **six directions**: the measured arm collected on a
 pool thread, which must be reported **by the subject's own name** rather than by any off-thread
 destruction happening to occur; a second candidate collected on the **GUI** thread, which must be
 **named** as a near miss; and a Python subclass **with a Qt parent**, which must **not** be named,
 because it is owned by C++ and releasing its wrapper destroys nothing; and a child released by
 `setParent(None)` and collected **immediately**, with no event in between, which must be named — the
 case both cached versions lost; and one whose **first** observed event *is* that reparent, which the
-version after those two still lost (`T289-R6`). *A clean session is worth exactly as much as that
+version after those two still lost (`T289-R6`).
+
+**The sixth is the classifier itself** (`T289-R12`). A widget whose last Python reference is dropped
+**on a pool thread by refcount**, with no collection running, must classify as *OFF-GUI DESTRUCTION,
+BUT NOT T-289* — and it runs on a `Watch` of its own, because on the shared one that arm is
+unreachable: an earlier direction already put a destruction inside a collection and the aggregate
+reports the stronger finding. Until this existed, replacing `off_gui_in_a_collection` with
+`off_gui_destructions` — restoring the verdict that called somebody else's bug this task's — passed
+every arm. It is killed now. *A clean session is worth exactly as much as that
 check passing beforehand*, and three instruments in this family have reported confidently about
 nothing.
 
