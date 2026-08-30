@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -94,9 +95,41 @@ def _no_orphaned_timers() -> Iterator[None]:
 # walks a list Qt is about to change. Drain first, then look.
 
 
+#: The **only** node `T-289`'s guard may be skipped for, spelled in full.
+#:
+#: `T-238`'s drain regression leaves a Python-owned cyclic widget on purpose, because the next test
+#: proves the boundary cleared it. That is a real exemption and it is one test.
+EXEMPT_FROM_THE_COLLECTOR_GUARD: Final = (
+    "tests/ui/_carries_a_deletion.py::test_leaves_a_deletion_pending"
+)
+
+
+def _is_the_one_exempt_test(request: pytest.FixtureRequest) -> bool:
+    """Whether this node is the single diagnostic allowed to end owning a collectable widget.
+
+    **Fails closed, because the first version did not** (`T289-R4`). It asked
+    `get_closest_marker`, which is **inherited**: the same marker on a class or a module suppressed
+    the guard for every test underneath, and a real violation in a marked test passed. A bypass for
+    a memory-corruption guard that spreads by inheritance is a bypass nobody notices spreading.
+
+    Two conditions, and both are required: the node id must be the one allowlisted above, **and**
+    the marker must be on the function itself — `own_markers`, not the inherited view. Either alone
+    is weaker than it looks: the id alone would let the file's other tests through if it grew any,
+    and the marker alone is what `T289-R4` broke.
+    """
+    if request.node.nodeid != EXEMPT_FROM_THE_COLLECTOR_GUARD:
+        return False
+    return any(mark.name == "leaves_a_collectable_widget" for mark in request.node.own_markers)
+
+
 @pytest.fixture(autouse=True)
 def _no_orphaned_views(qapp: QApplication, request: pytest.FixtureRequest) -> Iterator[None]:
-    yield
+    # **Armed before the test, not at the boundary** (`T289-R2`). Everything the collector frees
+    # while the test runs is parked rather than released, so a widget that reached the forbidden
+    # state and was collected *inside* the test is still there to be found. Sampling at teardown
+    # asked what was garbage *then*, and any earlier collection had already answered by freeing it.
+    with qt_lifecycle.watch_for_collectable_widgets():
+        yield
     # **`T-289`'s rule, and it must run BEFORE the drain.** A widget owned by Python alone and
     # reachable only through a cycle is destroyed by the collector wherever it next runs — on a
     # `QThreadPool` thread that is a `~QWidget` off the GUI thread and the double free `T-289` was
@@ -109,7 +142,13 @@ def _no_orphaned_views(qapp: QApplication, request: pytest.FixtureRequest) -> It
     # violation written to fail it. The check does its own collection with `DEBUG_SAVEALL`, which
     # parks rather than frees, and clears the garbage afterwards — so the drain below still sees an
     # ordinary interpreter and the tree is still released on this thread.
-    if request.node.get_closest_marker("leaves_a_collectable_widget") is None:
+    # **This one runs before the drain, and the check above it must not** — the two look at
+    # different things. `T238-R1` swapped the *orphan* assertion ahead of the drain and the helper
+    # subprocess died with SIGSEGV, deterministically, because enumerating live widgets while
+    # deletions are queued walks a list Qt is about to change. This walks `gc.garbage`, which is a
+    # list of objects the collector has already set aside and nothing else is touching, and it has
+    # to run first because the drain's own `gc.collect()` would release the evidence.
+    if not _is_the_one_exempt_test(request):
         qt_lifecycle.assert_no_widget_would_be_destroyed_by_the_collector(qapp)
     qt_lifecycle.settle_deferred_deletions(qapp)
     qt_lifecycle.assert_no_orphaned_views(qapp)

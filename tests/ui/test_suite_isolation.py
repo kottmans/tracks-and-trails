@@ -211,6 +211,71 @@ def test_a_test_that_leaves_a_collectable_widget_is_the_test_that_fails() -> Non
     )
 
 
+#: `T289-R2`'s bypass: the same violation, collected inside the test so the evidence is gone.
+COLLECTS_BEFORE_TEARDOWN = (
+    "tests/ui/_collects_before_teardown.py::test_collects_the_dangerous_cycle_before_teardown"
+)
+
+#: `T289-R4`'s bypass: the same violation under a **module-level** exemption marker.
+MARKS_A_SIBLING_EXEMPT = (
+    "tests/ui/_marks_a_sibling_exempt.py::test_a_marked_sibling_still_may_not_leave_one"
+)
+
+
+def test_collecting_the_cycle_inside_the_test_does_not_hide_it() -> None:
+    """`T289-R2`: the guard enforces *never left*, not *left at teardown*.
+
+    **The submitted version passed this exact file.** It armed `DEBUG_SAVEALL` at the boundary and
+    asked what was garbage then — a question any earlier collection had already answered by freeing
+    it. The widget spent the test in the forbidden state, and whether the evidence survived was a
+    race the GUI thread happened to win. Automatic collection reaches the same result with nobody
+    writing `gc.collect()` at all.
+
+    So the fixture now arms the parking **before** the test and reads it after, and this is the
+    regression that says so.
+    """
+    finished = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", COLLECTS_BEFORE_TEARDOWN],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        timeout=600,
+    )
+
+    assert finished.returncode != 0, (
+        "a test that produced T-289's state and collected it itself passed. The guard samples "
+        f"survivors rather than enforcing the rule.\n\n{finished.stdout}"
+    )
+    assert "owned by Python and reachable only through a cycle" in finished.stdout, (
+        f"the run failed for some other reason, so this asserts nothing.\n\n{finished.stdout}"
+    )
+
+
+def test_the_exemption_marker_cannot_be_claimed_by_a_sibling() -> None:
+    """`T289-R4`: the bypass fails closed, including the inherited spellings.
+
+    **`get_closest_marker` is inherited**, so the submitted guard let a class- or module-level
+    marker suppress itself for every test underneath — and a real violation in a marked test
+    passed. The exemption now requires the allowlisted node id **and** a marker on the function
+    itself, and this file claims it the widest way available: `pytestmark` at module level.
+    """
+    finished = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", MARKS_A_SIBLING_EXEMPT],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        timeout=600,
+    )
+
+    assert finished.returncode != 0, (
+        "a test that is not T-238's diagnostic claimed its exemption and left a collectable "
+        f"widget. The bypass is open to anything that spells the marker.\n\n{finished.stdout}"
+    )
+    assert "owned by Python and reachable only through a cycle" in finished.stdout, (
+        f"the run failed for some other reason, so this asserts nothing.\n\n{finished.stdout}"
+    )
+
+
 # --- T238-R1: the drain half, proved without the orphan assertion ------------------------------
 
 #: The ordered pair in `tests/ui/_carries_a_deletion.py`. **Order is the assertion**: the first

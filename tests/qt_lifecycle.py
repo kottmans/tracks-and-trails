@@ -92,7 +92,8 @@ from __future__ import annotations
 
 import gc
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from typing import Any, Final, Protocol
 
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer, qInstallMessageHandler
@@ -333,8 +334,14 @@ def widgets_the_collector_would_destroy(app: QCoreApplication) -> list[str]:
     hazard. A per-test guard that cries wolf is a per-test guard somebody deletes.
 
     `gc.DEBUG_SAVEALL` parks what a collection frees instead of releasing it, which is what makes
-    the question askable at all — the objects are still there to be inspected. It is cleared again
-    before returning, so the caller is left with an ordinary interpreter.
+    the question askable at all — the objects are still there to be inspected.
+
+    **It must be armed before the test runs, not here** (`T289-R2`), and `watch_for_collectable_
+    widgets` is what does that. A version that armed it at the boundary asked *what is garbage
+    now*, which any earlier collection had already answered by freeing it: a test that built the
+    forbidden state and called `gc.collect()` itself **passed**, and automatic collection can do the
+    same without anybody writing a call. This function inspects what that watch parked, plus
+    whatever is still garbage at the end.
     """
     from PySide6.QtWidgets import QApplication, QWidget
 
@@ -344,7 +351,7 @@ def widgets_the_collector_would_destroy(app: QCoreApplication) -> list[str]:
 
     import shiboken6
 
-    gc.set_debug(gc.DEBUG_SAVEALL)
+    gc.set_debug(gc.get_debug() | gc.DEBUG_SAVEALL)
     try:
         gc.collect()
         # `isValid` first: a parked wrapper whose C++ half is already gone destroys nothing when it
@@ -359,13 +366,38 @@ def widgets_the_collector_would_destroy(app: QCoreApplication) -> list[str]:
         ]
     finally:
         gc.garbage.clear()
-        gc.set_debug(0)
+        gc.set_debug(gc.get_debug() & ~gc.DEBUG_SAVEALL)
     # **No third collection here.** Clearing `gc.garbage` drops the references, and the caller's
     # next step is `settle_deferred_deletions`, whose own `gc.collect()` releases whatever that
     # left. Collecting again would make this three full collections per test where the suite used
     # to pay one — measured at roughly a second per hundred UI tests, which is what a guard gets
     # deleted for.
     return dangerous
+
+
+@contextmanager
+def watch_for_collectable_widgets() -> Iterator[None]:
+    """Park everything the collector frees **for the whole test**, then let the boundary read it.
+
+    **`T289-R2`, and it is the difference between sampling and enforcing.** Without this, the guard
+    asks what is garbage at teardown — and any collection that already ran has answered by freeing
+    it. A test that built the forbidden state and collected it itself passed; automatic collection
+    reaches the same result with nobody writing a call. The state existed, a pool thread could have
+    been the one to run it, and the evidence was gone before anything looked.
+
+    `DEBUG_SAVEALL` makes every collection during the test *park* its garbage in `gc.garbage`
+    instead of releasing it, so nothing that happens inside the test can lose the evidence.
+
+    **The previous debug flags are restored rather than zeroed**: a caller that had its own flags
+    set is entitled to keep them, and `gc.set_debug(0)` is how a fixture silently disables somebody
+    else's diagnostic.
+    """
+    previous = gc.get_debug()
+    gc.set_debug(previous | gc.DEBUG_SAVEALL)
+    try:
+        yield
+    finally:
+        gc.set_debug(previous)
 
 
 def assert_no_widget_would_be_destroyed_by_the_collector(app: QCoreApplication) -> None:

@@ -5,10 +5,40 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
+**Last updated:** 2026-08-30 — **`T-289` is scheduled and its guard is built, reviewed and
+corrected; its criterion 2 is deliberately still open.** The rule *no Qt widget is destroyed off the
+GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every `tests/ui` boundary. Read this
+section first.
+
+**What the guard is.** No widget whose type is defined in Python may be owned by Python *and*
+reachable only through a reference cycle — the state that lets the collector run `~QWidget` on
+whichever thread it fires on. A Qt parent turns the property off, which is why the remedy is
+ownership rather than threading discipline. Three deliberate violations prove it fails, each in a
+subprocess and required to fail with the guard's own message.
+
+**The review found two ways past it and both are closed.** `T289-R2`: the first version sampled at
+teardown, so a test that produced the state and collected it itself **passed** — the parking is now
+armed for the whole test. `T289-R4`: the one exemption used an **inherited** marker, so a
+module-level spelling suppressed the guard for everything under it — it now requires the allowlisted
+node id *and* a marker on the function. Both mutations are killed by the regressions that found them.
+
+**Criterion 2 is NOT met, and the claim that it was is withdrawn** (`T289-R3`). `T-238`'s offscreen
+inventory and a passing suite are samplers; the released crash route is still unidentified and
+uncorrected, and the dump names no Python type. **Ruled 2026-08-30: instrument the real route** —
+the application on a real display, driven through Settings → yt-dlp → Update, with a `gc` hook
+naming every Python-owned widget the collector frees and the thread that freed it. The maintainer
+declined the alternative, which was to re-scope this task and accept the released risk elsewhere.
+That measurement is the next work, and it also closes `T-238`'s outstanding real-session step.
+
+**Cost of the guard, measured:** unit+UI **39 s → 58 s**, one extra collection per UI test.
+
+---
+
 **Last updated:** 2026-08-30 — **`T-289`'s mechanism is identified: shiboken destroys a widget in
 place, instead of marshalling it to the GUI thread, when the widget's type is defined in Python.**
 `ai/evidence/2026-08-30-T289-pool-thread-destruction.md`. `T-289` stays **Proposed** — this is a
-diagnosis, not a fix. Read this section first.
+diagnosis, not a fix. *(“Read this section first” stood here until the block above replaced
+it.)*
 
 **The discriminator is one line of code.** Collected on a pool thread, eight runs a subject: a plain
 `QWidget` tree marshalled **8/8**; the same tree rooted in a **one-line Python subclass** — no

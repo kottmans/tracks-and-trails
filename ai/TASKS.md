@@ -246,13 +246,16 @@ contents; this preface does not list them.***
 
 ### T-289 — A pool thread's garbage collection destroys widgets while the GUI thread frees them
 
-**Status:** **In Review — built 2026-08-30, and no review has run.** The rule *no Qt widget is
-destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and **enforced at every `tests/ui`
-boundary**: no widget whose type is defined in Python may be owned by Python *and* reachable only
-through a reference cycle. `tests/ui/_leaks_a_collectable_widget.py` is the deliberate violation
-that proves the guard fails, run in a subprocess and required to fail **with this guard's message**.
+**Status:** **In Review — corrected 2026-08-30 after `T289-R2`…`R5`.** The rule *no Qt widget is
+destroyed off the GUI thread* is stated in `ai/TESTING.md` §7 and enforced at every `tests/ui`
+boundary: no widget whose type is defined in Python may be owned by Python *and* reachable only
+through a reference cycle. **The parking is armed for the whole test rather than sampled at
+teardown** (`T289-R2`), and the one exemption fails closed (`T289-R4`). Three deliberate violations
+prove it, each run in a subprocess and required to fail with this guard's message.
 
-**No product change**, and that is the finding rather than an omission — see *What was built* below.
+**Criterion 2 is NOT met** (`T289-R3`): the released crash route is unidentified and uncorrected,
+and the previous claim that the rule *"holds in the product today"* is withdrawn. **The maintainer's
+ruling is owed** — see *Where each criterion stands*.
 
 *(Filed from this.)* The maintainer updated yt-dlp from the Settings screen and the process
 **aborted**: `double free or corruption (!prev)`,
@@ -492,19 +495,45 @@ the maintainer's to reject.
 | # | Criterion | State |
 |---|---|---|
 | 1 | The rule is stated durably **and enforced mechanically** | **Met.** `ai/TESTING.md` §7, and the boundary guard |
-| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **Met as an enforced property, with no product change** — see below |
+| 2 | No widget tree left owned by Python alone where a pool thread can collect it | **NOT met** (`T289-R3`). Enforced over what the suite exercises; the released crash route is still unidentified and uncorrected — see below |
 | 3 | Not `gc.disable()` on pool threads | **Met.** Not used, and the entry records why it is not needed: the property is ownership, not threading |
 | 4 | A test that fails on the uncorrected tree | **Met.** `_leaks_a_collectable_widget.py`, in a subprocess, required to fail with this guard's message |
 | 5 | The three `edit: editing failed` lines accounted for | **Met — explained**, see below |
 | 6 | The update path logs what it is doing (`T-282`), or this records why not | **Recorded**, see below |
 
-**Criterion 2 has no product change, and that is a finding.** `T-238`'s criterion-4 run measured
-every widget the application's own routes open and found **none** parked by the collector while its
-C++ half was alive; the whole `tests/ui` suite now passes the guard on the first run. So the rule
-holds in the product today and held before this — unenforced, and with no way to tell. **The crash
-proves a real session reached a state the offscreen composition does not**, and the site remains
-unidentified: the dump names no Python type. A repair to a site nobody can name would have been
-fiction; the guard is what makes the next one arrive as a test failure instead of a core dump.
+**Criterion 2 is not met, and the first version of this section claimed otherwise** (`T289-R3`).
+It said *"the rule holds in the product today"*, resting on `T-238`'s criterion-4 run and on the
+suite passing the new guard. **Neither supports that.** `T-238`'s run is a bounded offscreen
+inventory whose own entry stays `Ready` **for the real-session measurement it has not had**, and it
+established something narrower: none of the route-opened wrappers *in those arms* was parked live.
+A passing suite is a sampler over what the tests happen to exercise. **The released native-abort
+route is still unidentified and uncorrected**, and this entry's own text says the dump names no
+Python type — a passing test cannot turn that admitted unknown into product compliance.
+
+**What is actually delivered is enforcement**: the next widget left in this state inside the suite
+arrives as a named test failure instead of a core dump. That is worth having and it is not
+criterion 2.
+
+**Ruled 2026-08-30 by the maintainer: instrument the real route.** Of the two the review offered,
+the re-scope was refused — this task keeps criterion 2 and stays open until a product-representative
+measurement identifies the ownership route and corrects it. What that means concretely:
+
+- **The application on a real display**, not offscreen, driven through the route that actually
+  crashed: Settings → yt-dlp → Update.
+- **A `gc` hook reporting every Python-owned widget the collector frees** and the thread that freed
+  it, so the tree is named rather than inferred. Behind a flag, and removed when it has answered.
+- **Either outcome is evidence**: it names the tree, or it shows this route is clean and moves
+  suspicion somewhere with a measurement behind it.
+
+*(The rejected option is recorded so it is not re-proposed as new: re-scoping this entry to
+diagnostic test hardening and filing the hunt separately. Cheap and honest, and it would have left a
+double free reachable from Settings → Update with no owner until that entry was scheduled. The
+maintainer declined to accept that risk. A blanket ownership pass over every top-level widget was
+also considered and rejected — many files changed on a hypothesis, unfalsifiable while the guard
+already passes, and `T-289`'s own Risk line is "High to fix wrongly".)*
+
+**This also closes `T-238`'s outstanding real-session step**, which is the same measurement from the
+other end.
 
 **Criterion 5: the three lines are Qt refusing to open an editor, and the route is identified.**
 `QAbstractItemView.edit(index)` prints exactly `edit: editing failed` when the index is not
