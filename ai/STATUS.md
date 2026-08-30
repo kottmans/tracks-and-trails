@@ -34,9 +34,9 @@ naming every Python-owned widget the collector frees and the thread that freed i
 declined the alternative, which was to re-scope this task and accept the released risk elsewhere.
 That measurement is the next work, and it also closes `T-238`'s outstanding real-session step.
 
-**Cost of the guard, measured:** unit+UI **35–38 s against a 39 s baseline**. The correction made it
-nearly free — arming the parking for the whole test *replaces* the collections the first version
-added, so what remains is `DEBUG_SAVEALL` bookkeeping.
+**Cost of the guard, measured:** unit+UI **35–38 s against a 39 s baseline**, within run-to-run
+noise. **One extra explicit collection per test remains** — the inspection's, which catches state
+that became garbage at the very end of a test (`T289-R9` corrected a claim that there was none).
 
 ---
 

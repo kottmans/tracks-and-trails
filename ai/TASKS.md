@@ -494,12 +494,15 @@ because `T-238`'s drain is proved by the *next* test finding it gone. It now car
 is exempt from the rule; one file is exempt from being *failed at a boundary* for a state its
 sibling test asserts is cleared a moment later.
 
-**Cost, measured rather than waved at, and the correction made it nearly free**: unit+UI is
-**35–38 s against a 39 s baseline**, two runs. The `T289-R2` rework is why. The submitted version
-armed the parking at the boundary and collected there *in addition to* the drain — three collections
-a test, and 58 s. Arming for the whole test replaces those collections rather than adding to them:
-the collector parks as it goes, and the boundary reads what is already there. **The guard costs
-`DEBUG_SAVEALL` bookkeeping and no extra collection.**
+**Cost: unit+UI is 35–38 s against a 39 s baseline**, two runs — within the noise between runs.
+
+*(The claim attached to that number was wrong twice.* First it was **58 s**, which was the broken
+version collecting at the boundary *in addition to* the drain and once more in a `finally` — three a
+test. Then it was *"no extra collection"*, which `T289-R9` corrected: **there is still one**, the
+inspection's own `gc.collect()`, on top of the drain's. It is there to catch state that became
+garbage at the very end of a test and has not been collected yet, which the parking alone would
+miss. What the rework removed was the third one, and what the wall clock says is that the remaining
+extra is not measurable against run-to-run variation — not that it does not exist.)*
 
 #### Where each criterion stands — 2026-08-30
 
@@ -546,7 +549,8 @@ already passes, and `T-289`'s own Risk line is "High to fix wrongly".)*
 **This also closes `T-238`'s outstanding real-session step**, which is the same measurement from the
 other end.
 
-**The instrument is built and waiting for the maintainer to drive it**: `tools/t289_session_watch.py`.
+**The instrument is built and waiting for the maintainer to drive it**, corrected after
+`T289-R6`…`R8`: `tools/t289_session_watch.py`.
 It runs the real entry point and **changes nothing in the product** — no `src/` file is touched and
 the application reads no flag; the wrapper *is* the flag, so an ordinary `python -m tracks_and_trails`
 is unaffected. It records three things: every widget destroyed on a thread that is not the GUI
@@ -557,9 +561,32 @@ told from a destruction beside one.
 **It observes and does not steer.** No `DEBUG_SAVEALL`, no forced collection: parking every collected
 object for a whole session would change the memory behaviour of the thing being measured.
 
+**Three corrections, and each was a way for it to have lied** (`T289-R6`…`R8`):
+
+- **It discovers widgets through an application-wide event filter, never by enumerating them**
+  (`T289-R8`). The first version polled `QApplication.allWidgets()` every 250 ms — the exact
+  enumeration `T238-R1` recorded killing a process with SIGSEGV when deletions were queued. An
+  instrument built to observe memory corruption must not be a plausible cause of it.
+- **It tracks every collection, both phases, on every thread** (`T289-R6`), so a destruction *inside*
+  a collection can be told from one beside it, and so a null result can be read at all: *no off-GUI
+  destruction* and *no collection that could have caused one* are otherwise the same report.
+  GUI-thread destructions are counted for the same reason.
+- **It refuses to call a session clean unless the route ran** (`T289-R7`). `install_latest_version`
+  is wrapped **in this process** to record the update starting and returning, and the Settings screen
+  is noticed through the same discovery the widgets use. A session that never opened Settings now
+  reports `NOT A RESULT` rather than a clean bill for a route nobody drove.
+
+**Killed sessions say so too.** `SIGTERM` writes the summary and verdict before quitting — and the
+handler needs a heartbeat timer to run at all, because Python executes signal handlers between
+bytecodes and Qt's `exec()` is C. Installing the handler *without* that made the session unkillable
+by anything but `SIGKILL`, which is the opposite of the intent and is recorded here because it is a
+trap anyone adding a signal handler to a Qt program walks into.
+
 **Its positive control runs offscreen in a second, and must be run first.**
-`--self-test` builds the measured arm — Python subclass, unparented, cyclic, collected on a pool
-thread — and requires the watch to report it. *A clean session is worth exactly as much as that
+`--self-test` goes through `arm()` — the real event filter and the real `gc` callback, not a
+hand-wired handler (`T289-R7`) — then builds the measured arm: Python subclass, unparented, cyclic,
+collected on a pool thread. It requires the filter to have discovered the widget, the callback to
+have seen the collection, and the watch to have reported the destruction. *A clean session is worth exactly as much as that
 check passing beforehand*, and three instruments in this family have reported confidently about
 nothing.
 

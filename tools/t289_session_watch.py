@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import signal
 import sys
 import threading
 import traceback
@@ -68,25 +69,35 @@ from typing import TextIO
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from PySide6.QtCore import QObject, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QWidget
 
 #: The attribute marking a widget this watch has already connected to.
 WATCHED = "_t289_watched"
 
-#: How often the scan looks for widgets it has not connected to yet.
-SCAN_MS = 250
 
+class Watch(QObject):
+    """One session's observations, written as they happen.
 
-class Watch:
-    """One session's observations, written as they happen."""
+    A `QObject` because it is installed as the application's event filter — which is how widgets
+    are discovered without ever enumerating them (`T289-R8`).
+    """
 
     def __init__(self, report: TextIO, gui_thread: str) -> None:
+        super().__init__()
         self.report = report
         self.gui_thread = gui_thread
         self.widgets_seen = 0
         self.off_gui_destructions = 0
+        self.gui_destructions = 0
+        self.gui_destructions_in_a_collection = 0
+        self.collected_objects = 0
         self.collections: dict[str, int] = {}
+        self.collecting: set[str] = set()
+        #: The route milestones, which decide whether a null result may be called meaningful.
+        self.settings_opened = False
+        self.update_started = False
+        self.update_finished = False
         self.started = datetime.now(UTC)
 
     def say(self, line: str) -> None:
@@ -96,14 +107,26 @@ class Watch:
         self.report.flush()
 
     def note_a_collection(self, phase: str, info: dict[str, int]) -> None:
-        if phase != "start":
-            return
+        """Track both phases, on every thread (`T289-R6`).
+
+        The first version logged only *starts*, and only off the GUI thread. Two things were then
+        unreadable. **Whether the collector ran at all while widgets were garbage** — without which
+        a null result says nothing, because *no off-GUI destruction* and *no collection that could
+        have caused one* look identical. And **which destructions happened inside a collection**,
+        which needs the start/stop window per thread rather than a count.
+        """
         thread = threading.current_thread().name
-        self.collections[thread] = self.collections.get(thread, 0) + 1
-        if thread != self.gui_thread:
-            # Worth a line of its own: a collection on a pool thread is the loaded gun, whether or
-            # not it finds a widget this time.
-            self.say(f"gc collection started on {thread!r} (generation {info.get('generation')})")
+        if phase == "start":
+            self.collecting.add(thread)
+            self.collections[thread] = self.collections.get(thread, 0) + 1
+            if thread != self.gui_thread:
+                self.say(f"gc collection started on {thread!r} — the loaded gun, widget or not")
+        else:
+            self.collecting.discard(thread)
+            freed = info.get("collected", 0)
+            self.collected_objects += freed
+            if thread != self.gui_thread and freed:
+                self.say(f"gc collection on {thread!r} freed {freed} objects")
 
     def watch(self, widget: QWidget) -> None:
         tag = f"{type(widget).__name__}({widget.objectName() or 'unnamed'})"
@@ -111,10 +134,20 @@ class Watch:
 
         def destroyed(*_args: object) -> None:
             thread = threading.current_thread().name
+            inside = thread in self.collecting
             if thread == self.gui_thread:
+                # **Counted, not ignored** (`T289-R6`). A widget destroyed *by a collection* on the
+                # GUI thread is the safe half of the same event, and it is the evidence that the
+                # route this is hunting is live at all: if no widget is ever collected anywhere, a
+                # null off-GUI result is about the session, not about the application.
+                self.gui_destructions += 1
+                if inside:
+                    self.gui_destructions_in_a_collection += 1
                 return
             self.off_gui_destructions += 1
+            where = "inside a gc collection" if inside else "outside any gc collection"
             self.say(f"!! {tag} from {module} destroyed on {thread!r} — NOT the GUI thread")
+            self.say(f"   {where} on that thread")
             self.say("   Python stack of that thread:")
             for frame in traceback.extract_stack()[:-1][-12:]:
                 self.say(f"     {frame.filename}:{frame.lineno} in {frame.name}")
@@ -122,29 +155,128 @@ class Watch:
         widget.destroyed.connect(destroyed, Qt.ConnectionType.DirectConnection)
         widget.__dict__[WATCHED] = True
         self.widgets_seen += 1
+        self.note_the_settings_screen(widget)
 
-    def scan(self) -> None:
-        for widget in QApplication.allWidgets():
-            if WATCHED not in widget.__dict__:
-                self.watch(widget)
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt's name
+        """Discover widgets as Qt sends them events. **Never enumerates live widgets** (`T289-R8`).
+
+        The first version polled `QApplication.allWidgets()` every 250 ms — the exact enumeration
+        `T238-R1` recorded killing a process with SIGSEGV, deterministically, when deletions were
+        queued. Doing that on a loop, in a real session, in an instrument built to observe a
+        memory-corruption bug, would have made the tool a plausible cause of what it saw.
+
+        An application-wide event filter needs no list: every widget receives events, and the first
+        one it gets is discovery enough. **The bound is different rather than absent** — a widget
+        that receives no event at all is never seen — and it is a narrower miss than a 250 ms
+        window, because a widget that was never polished, shown or laid out is not one a user
+        interacted with.
+        """
+        if isinstance(watched, QWidget) and WATCHED not in watched.__dict__:
+            self.watch(watched)
+        return False
+
+    def note_the_settings_screen(self, widget: QWidget) -> None:
+        """The first route milestone, seen through the same discovery the widgets use."""
+        if not self.settings_opened and type(widget).__name__ == "SettingsDialog":
+            self.settings_opened = True
+            self.say("route: the Settings screen opened")
+
+    def the_route_ran(self) -> bool:
+        """Whether this session actually drove Settings → yt-dlp → Update, start to finish."""
+        return self.settings_opened and self.update_started and self.update_finished
 
     def summary(self) -> str:
         minutes = (datetime.now(UTC) - self.started).total_seconds() / 60
         return (
             f"watched {self.widgets_seen} widgets over {minutes:.1f} minutes; "
-            f"collections by thread: {self.collections or 'none observed'}; "
-            f"off-GUI destructions: {self.off_gui_destructions}"
+            f"collections by thread: {self.collections or 'none observed'}, "
+            f"{self.collected_objects} objects freed; widget destructions: "
+            f"{self.off_gui_destructions} off the GUI thread, {self.gui_destructions} on it "
+            f"({self.gui_destructions_in_a_collection} of those inside a collection); "
+            f"route: settings={self.settings_opened} update_started={self.update_started} "
+            f"update_finished={self.update_finished}"
+        )
+
+    def verdict(self) -> str:
+        """What this session may be said to have shown (`T289-R7`).
+
+        **A null result is only about the route that was driven**, and the first version called one
+        clean without knowing whether Settings had ever been opened. A session that never ran the
+        update proves nothing about the update.
+        """
+        if self.off_gui_destructions:
+            return (
+                f"OFF-GUI DESTRUCTION OBSERVED — {self.off_gui_destructions} of them, each with "
+                "its thread and stack above. That is T-289's precondition in the product."
+            )
+        if not self.the_route_ran():
+            return (
+                "NOT A RESULT. The route was not driven start to finish — see the route flags in "
+                "the summary — so this session says nothing about it. Run it again and complete "
+                "Settings -> yt-dlp -> Update."
+            )
+        if not self.gui_destructions_in_a_collection:
+            return (
+                "INCONCLUSIVE. The route ran, but the collector was never observed destroying a "
+                "widget on any thread, so there was nothing for it to get wrong. A clean answer "
+                "needs the collector to have handled widgets at all."
+            )
+        return (
+            "NOTHING OFF THE GUI THREAD, over a route that ran start to finish while the collector "
+            f"destroyed {self.gui_destructions_in_a_collection} widget(s) on the GUI thread. That "
+            "is evidence about this route in this session; a tree destroyed between events is not "
+            "seen, and the crash is intermittent."
         )
 
 
-def arm(watch: Watch) -> QTimer:
-    """Install the scan on the GUI thread and return the timer that owns it."""
-    timer = QTimer()
-    timer.setInterval(SCAN_MS)
-    timer.timeout.connect(watch.scan)
-    timer.start()
-    watch.scan()
-    return timer
+def arm(watch: Watch) -> None:
+    """Install the event filter and the route probes. **This is the wiring the self-test runs.**
+
+    `T289-R7`: the first self-test built a `Watch` and called `watch.watch(...)` by hand, so it
+    proved the *handler* and skipped everything that finds a widget or hooks a collection. It could
+    have passed with discovery broken.
+    """
+    application = QApplication.instance()
+    assert isinstance(application, QApplication), "arm() runs after the application exists"
+    application.installEventFilter(watch)
+    gc.callbacks.append(watch.note_a_collection)
+    watch_the_update_route(watch)
+
+    # **A heartbeat, so the interpreter gets the floor.** Python runs a pending signal handler only
+    # between bytecodes, and Qt's `exec()` is C: without this, `finish_on_a_signal`'s handler never
+    # runs and installing it turns `SIGTERM` from *kills the session* into *does nothing*. The
+    # callback is deliberately empty; being called is the entire job.
+    heartbeat = QTimer(watch)
+    heartbeat.setInterval(200)
+    heartbeat.timeout.connect(lambda: None)
+    heartbeat.start()
+
+
+def watch_the_update_route(watch: Watch) -> None:
+    """Record when the yt-dlp update starts and finishes, by wrapping the service in this process.
+
+    **`T289-R7`, and the reason a null result needs it.** *No off-GUI destruction* is a statement
+    about a route, and the first version made it without knowing whether the route had been driven:
+    a session where nobody opened Settings reported clean for Settings.
+
+    **Patched here, not in `src/`.** The wrapper owns this process; the application on disk is
+    unchanged, and a normal launch has none of this. `install_latest_version` is the update the
+    crash came from — `T-212`'s checklist run pressed exactly it.
+    """
+    from tracks_and_trails.downloader.ytdlp_service import YtdlpService
+
+    original = YtdlpService.install_latest_version
+
+    def install_latest_version(self: YtdlpService) -> None:
+        watch.update_started = True
+        watch.say(f"route: yt-dlp update started on {threading.current_thread().name!r}")
+        try:
+            original(self)
+        finally:
+            watch.update_finished = True
+            watch.say("route: yt-dlp update call returned (its work runs on the pool)")
+
+    YtdlpService.install_latest_version = install_latest_version  # type: ignore[method-assign]
 
 
 def self_test() -> int:
@@ -181,8 +313,20 @@ def self_test() -> int:
     transcript = StringIO()
     watch = Watch(transcript, threading.current_thread().name)
 
+    # **Through `arm()`, which is the whole point** (`T289-R7`). The first version called
+    # `watch.watch(...)` by hand and so proved the handler while skipping discovery and the `gc`
+    # callback entirely — it would have passed with the event filter never installed.
+    arm(watch)
+
     subject = Derived()
-    watch.watch(subject)
+    subject.show()  # any event will do; this is what the filter discovers it by
+    QCoreApplication.processEvents()
+    if WATCHED not in subject.__dict__:
+        print("SELF-TEST FAILED: the event filter did not discover a shown widget.")
+        return 2
+    subject.hide()
+    QCoreApplication.processEvents()
+
     Cycle(subject)
     del subject
     gc.disable()
@@ -198,16 +342,59 @@ def self_test() -> int:
     finally:
         gc.enable()
 
+    if watch.note_a_collection in gc.callbacks:
+        gc.callbacks.remove(watch.note_a_collection)
+    application.removeEventFilter(watch)
+
     print(transcript.getvalue(), end="")
-    if watch.off_gui_destructions:
-        print("SELF-TEST PASSED: the watch reported a widget destroyed off the GUI thread.")
+    if watch.off_gui_destructions and watch.collections:
+        print(
+            "SELF-TEST PASSED: the event filter discovered the widget, the gc callback saw the "
+            "collection, and the watch reported the destruction off the GUI thread."
+        )
         return 0
+    if not watch.collections:
+        print("SELF-TEST FAILED: the gc callback recorded no collection, so nothing was tracked.")
+        return 2
     print(
         "SELF-TEST FAILED: a widget built to be destroyed on a pool thread was not reported. "
         "A clean session from this instrument would mean nothing — do not run the real route "
         "until this passes."
     )
     return 2
+
+
+def finish_on_a_signal(watch: Watch) -> None:
+    """Write the summary and verdict if the process is killed rather than closed.
+
+    **Because a report that stops mid-session looks like a clean one** (`T289-R7`'s shape, found
+    while checking it): `SIGTERM` skips the `finally`, so a killed run left a header and nothing
+    else, and a reader with the file in front of them has no way to know the session was cut short.
+    The header now says a report without a `VERDICT` line is incomplete, and this makes sure one is
+    written whenever the process is given the chance.
+
+    An abort — which is the outcome this whole instrument exists for — cannot be caught, and that is
+    what the flush-per-line design is for instead.
+
+    **A Python signal handler does not run while Qt owns the loop**, which the first version of this
+    got wrong in the worst direction: installing the handler made `SIGTERM` a no-op and the session
+    unkillable except with `SIGKILL`, where before it had simply died. Python runs pending handlers
+    only between bytecodes, and `exec()` is C. `arm()` starts a heartbeat timer for exactly this —
+    it does nothing except give the interpreter the floor a few times a second.
+
+    **The handler quits the application rather than raising.** An exception raised inside a signal
+    handler under `exec()` has nowhere useful to go; `quit()` unwinds the loop and the `finally` in
+    `main` does the rest.
+    """
+
+    def finish(signum: int, _frame: object) -> None:
+        watch.say(f"session ended by signal {signum}")
+        application = QApplication.instance()
+        if application is not None:
+            application.quit()
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(signum, finish)
 
 
 def main() -> int:
@@ -236,27 +423,31 @@ def main() -> int:
         watch = Watch(report, threading.current_thread().name)
         watch.say(f"T-289 session watch — GUI thread is {watch.gui_thread!r}")
         watch.say("route to drive: Settings -> yt-dlp -> Update")
-        gc.callbacks.append(watch.note_a_collection)
+        watch.say(
+            "a report with no VERDICT line at the end is an incomplete session and says nothing"
+        )
+        finish_on_a_signal(watch)
 
         # **Armed once the application exists, from the GUI thread.** `app.run` constructs the
         # `QApplication` itself, so there is nothing to attach to until it has; a zero-delay timer
         # posted before `exec()` runs as soon as the loop starts, which is the first moment the
         # widgets exist and the first moment a `QTimer` may be created.
-        holder: list[QObject] = []
-        QTimer.singleShot(0, lambda: holder.append(arm(watch)))
+        # **Armed once the application exists, on the GUI thread.** `app.run` constructs the
+        # `QApplication` itself, so there is nothing to install a filter on until it has; a
+        # zero-delay timer posted before `exec()` runs as soon as the loop starts.
+        QTimer.singleShot(0, lambda: arm(watch))
 
         try:
             code = run([sys.argv[0], *rest])
         finally:
-            gc.callbacks.remove(watch.note_a_collection)
+            if watch.note_a_collection in gc.callbacks:
+                gc.callbacks.remove(watch.note_a_collection)
             watch.say(watch.summary())
-            if watch.off_gui_destructions == 0:
-                watch.say(
-                    "NOTHING OFF THE GUI THREAD. That is a result about this session and this "
-                    "route, not about the application: a tree destroyed between two scans is not "
-                    "seen, and the crash is intermittent."
-                )
-        print(f"\nT-289 watch: {watch.summary()}\nreport: {destination}", file=sys.stderr)
+            watch.say(f"VERDICT: {watch.verdict()}")
+        print(
+            f"\nT-289 watch: {watch.summary()}\n\n{watch.verdict()}\n\nreport: {destination}",
+            file=sys.stderr,
+        )
     return code
 
 
