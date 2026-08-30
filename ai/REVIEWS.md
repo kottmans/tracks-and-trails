@@ -21948,3 +21948,67 @@ it. No additional focused re-review is requested.
 
 The Reviewer changed only this append-only review record. No reviewed source, test, task/status
 text, documentation, handoff, push, CI run or remote state was changed.
+
+---
+
+## 2026-08-30 — T-289 widget-destruction guard review
+
+**Reviewer:** Codex (Reviewer)
+**Boundary:** `169adc9cf56bab2853aef281abbae5ea93908d49..403551fe6d8580450735feef8a5d046b2b246113`
+**Verdict:** **Changes requested.** The submitted check correctly detects a Python-defined,
+Python-owned widget cycle when that cycle survives until fixture teardown, and its pre-drain
+ordering is load-bearing. It is not yet a mechanical enforcement of the stated lifetime rule:
+ordinary collection earlier in a test erases the evidence, and an unrestricted inherited marker
+turns the check off. More fundamentally, the controlled T-238 run does not establish that the
+released product no longer reaches the state that already crashed it. `T-289` remains In Review.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T289-R2** | **High** | **Yes** | The guard observes only cycles that survive until `_no_orphaned_views` teardown. A temporary unmarked real-file replay created the submitted `_Leaked(QWidget)` / self-cycle shape, called ordinary `gc.collect()` inside the test body, and **passed**. The widget was in exactly the forbidden Python-owned collectable state; the GUI thread merely won the collection race before `DEBUG_SAVEALL` was armed. Automatic GC remains enabled during every test, so the same loss of evidence can happen without an explicit call. Moving the check before `settle_deferred_deletions()` fixes only that one known collection, not the temporal hole. The task and TESTING rule therefore overstate “enforced at every boundary,” and criterion 1/4's regression cannot detect this bypass. | Preserve the evidence for the full test lifetime—for example, arm `DEBUG_SAVEALL` before the test and inspect everything parked through teardown while restoring prior GC state—or use an equally complete mechanism. Add an unmarked regression that makes the cycle unreachable, collects it **before teardown**, and must still fail with the guard's diagnosis. Mutation-check that arming only at teardown makes it pass. | **Open; blocking** |
+| **T289-R3** | **High** | **Yes** | No product behavior changed, and the evidence cited for criterion 2 does not prove that no product-owned tree can reach the crash state. T-238's controlled offscreen inventory established a narrower result: none of the route-opened wrappers in those arms was parked **live**. T-238 explicitly remains Ready for a real-session/product-owned-widget measurement, while T-289 itself says the real crash proves a session reached a state that composition did not and that the responsible type/site remains unknown. A passing test-suite sampler—especially one with R2's timing hole—cannot turn that admitted unknown into “the rule holds in the product today.” The released native-abort route is therefore still unidentified and uncorrected, so criterion 2 is not met. | Keep criterion 2 and the task's fix state open until product-representative evidence identifies and corrects the ownership/disposal route, or obtain an explicit maintainer ruling that re-scopes this task to diagnostic test hardening and accepts the released crash risk elsewhere. Do not describe the existing T-238 measurement as proof of product compliance; preserve its real-session limitation. | **Open; blocking** |
+| **T289-R4** | **Medium** | **Yes** | `request.node.get_closest_marker("leaves_a_collectable_widget")` is an unrestricted, inherited bypass for the new safety guard. A second real-file replay put the exact dangerous cycle in a marked test and **passed**. A class- or module-level spelling would suppress every descendant, and nothing pins the exemption to T-238's one diagnostic node even though the task says “Nothing is exempt from the rule.” | Make the exception fail closed: allow only the exact T-238 diagnostic node (and require its marker if the marker is retained), or add a mechanical allowlist gate that rejects every other use, including class/module inheritance. Keep a negative control proving that the same marker on any sibling test cannot suppress the guard. | **Open; blocking** |
+| **T289-R5** | **Low** | No | `ai/STATUS.md` still says T-289 is Proposed, unscheduled, unfixed, and missing criterion 4, while the reviewed task says In Review and every criterion is met. The conservative “unfixed” conclusion agrees with R3, but the scheduling and evidence state no longer describe this head. | Reconcile STATUS during the correction/completion sync with the review outcome and the evidence actually retained after R2/R3. | **Open; ordinary current-truth cleanup** |
+
+### Review judgments
+
+- **The pre-drain order is correct but insufficient.** The submitted isolation test proves the
+  intended end-of-test case and fails if the check is moved below the drain. R2 is the sibling
+  case in which a collection happens before either teardown call.
+- **The predicate's PySide-module narrowing is accepted for the reviewed dependency.** The plain
+  `QListView` false positive was measured, and product-defined widget types do not use a
+  `PySide6.*` module. The task/docstring preserve that this is observed Shiboken behavior rather
+  than a documented invariant. No separate finding is raised for a future dependency change.
+- **The two T-238 carry-over tests remain valid.** With the submitted marker they pass in order and
+  prove that the existing drain removes both carry-overs. R4 concerns who may acquire that bypass,
+  not whether this one diagnostic intentionally needs it.
+- **The extra UI-suite collection cost is disclosed and confined.** The guard is scoped to
+  `tests/ui`; the focused isolation suite remains green. Approval is not withheld over the 39 s to
+  58 s reported cost.
+- **Criteria 5 and 6 are adequately recorded.** The `edit: editing failed` path is separated from
+  the abort, and T-282 owns the still-missing update logging. The adjacent invisible edit target is
+  too small and unrelated to create from this review.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | One commit and eight files exactly as stated; no `src/` change. `git diff --check 169adc9..403551f` is clean. |
+| Submitted isolation wiring | `tests/ui/test_suite_isolation.py`: **5 passed**; its child process proves the deliberate cycle fails with this guard's message. |
+| T-238 exception control | Direct run of `tests/ui/_carries_a_deletion.py`: **2 passed**; the next test observes both carry-overs removed. |
+| Early-collection replay | Temporary unmarked `tests/ui/_t289_collects_before_boundary.py` created a Python-defined parentless widget in a self-cycle, called `gc.collect()` in the body, and **passed 1/1**. The temporary file was removed. |
+| Marker replay | Temporary `tests/ui/_t289_marked_violation.py` left the same dangerous cycle under `@pytest.mark.leaves_a_collectable_widget` and **passed 1/1**. The temporary file was removed. |
+| Static/types | Ruff and format passed on all five changed Python files; bare and Win32 mypy each passed **157 files**. |
+| Records/gates | Task placement plus the isolation suite: **20 passed**. The worktree was clean before this review record. |
+| Broader evidence | The implementer reports unit/UI **3,384 passed / 21 skipped**, integration **445 passed**, and base CI green in every job. CI has not seen `403551f`. |
+
+### Readiness
+
+Correct R2 and R4 as one guard-integrity batch, and resolve R3's product/scope question without
+turning T-238's bounded null result into universal evidence. Because R2 and R3 are High, they remain
+eligible for focused correction and independent verification under the convergence rule. R5 can
+be folded into that task/status sync.
+
+The Reviewer changed only this append-only review record. No reviewed source, test, task/status
+text, documentation, handoff, push, CI run or remote state was changed.
