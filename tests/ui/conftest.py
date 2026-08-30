@@ -95,8 +95,22 @@ def _no_orphaned_timers() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _no_orphaned_views(qapp: QApplication) -> Iterator[None]:
+def _no_orphaned_views(qapp: QApplication, request: pytest.FixtureRequest) -> Iterator[None]:
     yield
+    # **`T-289`'s rule, and it must run BEFORE the drain.** A widget owned by Python alone and
+    # reachable only through a cycle is destroyed by the collector wherever it next runs — on a
+    # `QThreadPool` thread that is a `~QWidget` off the GUI thread and the double free `T-289` was
+    # filed from. Checked here rather than at the end of the session so the failure names the test
+    # that produced the state, which is the attribution problem both crashes arrived with.
+    #
+    # **`settle_deferred_deletions` calls `gc.collect()`, which destroys exactly the state this
+    # looks for** — harmlessly, because that happens on the GUI thread, and invisibly, because the
+    # widget is gone before the check runs. Ordered after it, this guard passed the deliberate
+    # violation written to fail it. The check does its own collection with `DEBUG_SAVEALL`, which
+    # parks rather than frees, and clears the garbage afterwards — so the drain below still sees an
+    # ordinary interpreter and the tree is still released on this thread.
+    if request.node.get_closest_marker("leaves_a_collectable_widget") is None:
+        qt_lifecycle.assert_no_widget_would_be_destroyed_by_the_collector(qapp)
     qt_lifecycle.settle_deferred_deletions(qapp)
     qt_lifecycle.assert_no_orphaned_views(qapp)
 

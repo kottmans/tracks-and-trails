@@ -74,10 +74,17 @@ def _post_a_deletion_after_the_test() -> Iterator[None]:
     view.deleteLater()
 
 
+@pytest.mark.leaves_a_collectable_widget
 def test_leaves_a_deletion_pending(
     qapp: QApplication, _post_a_deletion_after_the_test: None
 ) -> None:
-    """Leave both carry-overs behind and assert nothing. The next test is the assertion."""
+    """Leave both carry-overs behind and assert nothing. The next test is the assertion.
+
+    **Marked out of `T-289`'s boundary guard, which would otherwise fail this test for doing its
+    job.** `_Cyclic` is exactly that guard's subject — a Python subclass, unparented, held only by
+    a cycle — and it is here because `T-238`'s drain is proved by `test_the_boundary_left_nothing_
+    behind` finding it *gone*. The state is asserted away one test later rather than tolerated.
+    """
     _KEPT.append(_Cyclic())
     _KEPT.pop()  # the cycle is now the only thing holding it
 

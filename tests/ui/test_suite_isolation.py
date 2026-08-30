@@ -166,6 +166,51 @@ def test_a_test_that_leaks_a_view_is_the_test_that_fails() -> None:
     )
 
 
+#: `T-289`'s deliberate violation. A Python-subclass widget, unparented, held only by a cycle.
+LEAKS_A_COLLECTABLE_WIDGET = (
+    "tests/ui/_leaks_a_collectable_widget.py::test_leaks_a_collectable_widget"
+)
+
+
+def test_a_test_that_leaves_a_collectable_widget_is_the_test_that_fails() -> None:
+    """`T-289`'s guard, proved by producing the state rather than by reading the check.
+
+    **The crash this exists for was a double free, and it named no test at all.** A pool thread ran
+    `gc_collect_main` → `~QWidget` while the GUI thread was inside a deletion for the same graph.
+    Nothing scheduled it: the collector runs wherever an allocation threshold trips, which is why
+    three days of the entry could not say which widget tree was involved. What the guard asserts is
+    therefore not the abort — it is the **state** that makes the abort possible, failing at the test
+    that produced it.
+
+    **The subject is a Python subclass, and that is the finding it encodes.** A plain `QWidget` in
+    the same cycle is marshalled to the GUI thread and destroys nothing dangerous; the subclass is
+    destroyed in place. Every widget this project defines is a subclass, so the leak file's shape is
+    the product's shape rather than a synthetic worst case.
+
+    **Two assertions, because a guard that silently stops guarding is this file's own subject**
+    (`T-225`, `T214-R1`): the run must fail, *and* it must fail with this guard's message. A renamed
+    node id or a check reduced to a no-op would otherwise leave a collection error looking like a
+    pass.
+    """
+    finished = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", LEAKS_A_COLLECTABLE_WIDGET],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        timeout=600,
+    )
+
+    assert finished.returncode != 0, (
+        "a test that left a Python-owned widget reachable only through a cycle passed. The guard "
+        "that names it is gone, so the next one is found by a pool thread instead — which is "
+        f"T-289's double free.\n\n{finished.stdout}"
+    )
+    assert "owned by Python and reachable only through a cycle" in finished.stdout, (
+        "the run failed for some other reason than the collectable widget, so this asserts nothing "
+        f"about the guard.\n\n{finished.stdout}\n{finished.stderr}"
+    )
+
+
 # --- T238-R1: the drain half, proved without the orphan assertion ------------------------------
 
 #: The ordered pair in `tests/ui/_carries_a_deletion.py`. **Order is the assertion**: the first

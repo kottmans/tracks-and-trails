@@ -166,6 +166,29 @@ failure mode is silent, destructive, or both.
 | DRM | `DRM_PROTECTED` is never auto-retried and has no bypass path (`REQ-EXCL-001`, `SEC-001`) |
 | Migrations | Every migration runs forward from every prior schema version with data intact — **except data a maintainer has ruled must be removed**, which is proven gone from every table instead (see below) |
 | Settings freeze | A settings change mid-flight does not alter a running job's `DownloadRequest` |
+| Widget destruction | **No Qt widget is destroyed off the GUI thread.** Enforced at every `tests/ui` boundary: no widget whose type is defined in Python may be owned by Python *and* reachable only through a reference cycle (`T-289`) |
+
+**The widget-destruction rule is one boolean, and it is worth knowing which** (`T-289`, measured
+2026-08-30). `shiboken6.ownedByPython(widget)` is `True` when Python owns the C++ object — and a
+wrapper the collector frees then runs `~QWidget` **on whichever thread the collector happened to
+run on**. On a `QThreadPool` thread that is a Qt widget destroyed off the GUI thread, and it is
+where `T-289`'s `double free or corruption (!prev)` came from: the pool thread destroyed the object
+in place while shiboken had also queued a main-thread deletion for it.
+
+**A Qt parent turns the property off**, which is why the rule's remedy is ownership rather than
+threading discipline: with a parent, the C++ object belongs to the parent and a collected wrapper
+destroys nothing, on any thread.
+
+**Two narrowings, both measured rather than assumed.** A *plain* `QWidget` is marshalled to the GUI
+thread and is therefore not the hazard — only a type **defined in Python** is destroyed in place,
+which is every widget this project owns. And only a widget reachable *solely through a cycle* is
+collected at all. `tests/qt_lifecycle.assert_no_widget_would_be_destroyed_by_the_collector` is the
+check; `tests/ui/_leaks_a_collectable_widget.py` is the deliberate violation that proves it fails.
+
+**Order matters and cost it something to learn**: the check must run **before**
+`settle_deferred_deletions`, whose own `gc.collect()` destroys exactly the state it looks for —
+harmlessly, on the GUI thread, and invisibly. Wired after it, the guard passed the violation written
+to fail it.
 
 **The migrations rule gained its first exception on 2026-08-06**, and the shape of the exception is
 the part to copy. `0009` deletes a user's completion records on an explicit maintainer ruling

@@ -300,3 +300,91 @@ def assert_no_orphaned_views(app: QCoreApplication) -> None:
         "shape of T-238's SIGSEGV (~QAbstractItemView under runDeletionInMainThread). Give it a "
         "parent, or delete it before the test ends. See tests/qt_lifecycle.py."
     )
+
+
+def widgets_the_collector_would_destroy(app: QCoreApplication) -> list[str]:
+    """Every live widget whose collection would run `~QWidget` on the collecting thread (`T-289`).
+
+    **The rule this enforces: no Qt widget is destroyed off the GUI thread**, and the way this
+    application breaks it is not a thread bug at all. It is ownership.
+
+    `T-289`'s crash is `gc_collect_main` on a `QThreadPool` thread taking `~QWidget` down with it.
+    Measured 2026-08-30, the discriminator is one boolean:
+
+    - `shiboken6.ownedByPython(widget)` is `True` — Python owns the C++ object, and the wrapper's
+      dealloc destroys it **wherever that dealloc happens**. On a pool thread that is the crash.
+    - `False` — a Qt parent owns it, and a wrapper freed on any thread destroys nothing.
+
+    **A plain `QWidget` is marshalled to the GUI thread and a Python subclass is not**, which is why
+    reading PySide's general behaviour is misleading here: every widget this project defines is a
+    subclass, so the protection applies to none of them.
+
+    **So the dangerous state is precise**: a widget whose **type is defined in Python**, owned by
+    Python, and unreachable except through a cycle. All three, because each excludes a state that
+    is not the hazard — a Qt-owned widget is destroyed by its parent, a reachable one is never
+    collected, and a *plain* `QWidget` or `QListView` is marshalled to the GUI thread and destroys
+    nothing dangerous wherever its wrapper is freed.
+
+    **The type test is the narrowing, and it is the one that could go wrong.** It follows the
+    measurement rather than shiboken's documentation, and if shiboken ever stops marshalling for
+    built-in types this guard will miss that silently. It is here because the alternative was worse:
+    the first version reported every Python-owned collectable widget and immediately failed
+    `tests/ui/test_file_actions.py` over a plain `QListView` in a cycle — a real leak, and not this
+    hazard. A per-test guard that cries wolf is a per-test guard somebody deletes.
+
+    `gc.DEBUG_SAVEALL` parks what a collection frees instead of releasing it, which is what makes
+    the question askable at all — the objects are still there to be inspected. It is cleared again
+    before returning, so the caller is left with an ordinary interpreter.
+    """
+    from PySide6.QtWidgets import QApplication, QWidget
+
+    if not isinstance(app, QApplication):
+        # A `QCoreApplication` process has no widgets; `tests/integration` shares this module.
+        return []
+
+    import shiboken6
+
+    gc.set_debug(gc.DEBUG_SAVEALL)
+    try:
+        gc.collect()
+        # `isValid` first: a parked wrapper whose C++ half is already gone destroys nothing when it
+        # is cleared, and counting it would report Python catching up with Qt as a hazard.
+        dangerous = [
+            f"{type(obj).__name__}({obj.objectName() or 'unnamed'})"
+            for obj in gc.garbage
+            if isinstance(obj, QWidget)
+            and shiboken6.isValid(obj)
+            and shiboken6.ownedByPython(obj)
+            and not type(obj).__module__.startswith("PySide6")
+        ]
+    finally:
+        gc.garbage.clear()
+        gc.set_debug(0)
+    # **No third collection here.** Clearing `gc.garbage` drops the references, and the caller's
+    # next step is `settle_deferred_deletions`, whose own `gc.collect()` releases whatever that
+    # left. Collecting again would make this three full collections per test where the suite used
+    # to pay one — measured at roughly a second per hundred UI tests, which is what a guard gets
+    # deleted for.
+    return dangerous
+
+
+def assert_no_widget_would_be_destroyed_by_the_collector(app: QCoreApplication) -> None:
+    """Fail where a widget tree is left owned by Python alone and collectable (`T-289`).
+
+    **This is the rule stated as a check rather than as a comment**, which is the difference the
+    entry was filed over: *"a comment in one file is what this project already had."* What it
+    catches is the state, not the crash — the crash needs the collector to fire on a pool thread at
+    that moment, which is why waiting for it is not a method and why `T-289` went unexplained for
+    three days.
+    """
+    dangerous = widgets_the_collector_would_destroy(app)
+    if not dangerous:
+        return
+    raise AssertionError(
+        f"{len(dangerous)} widget(s) are owned by Python and reachable only through a cycle, so "
+        f"the collector would destroy them wherever it next runs: {dangerous}. On a QThreadPool "
+        "thread that is T-289's double free — the C++ destructor runs there while shiboken has "
+        "also queued a main-thread deletion for the same object. Give the tree a Qt parent, which "
+        "moves ownership to C++ and makes a collected wrapper harmless, or dispose of it "
+        "explicitly on the GUI thread."
+    )
