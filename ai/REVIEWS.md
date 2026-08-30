@@ -21687,3 +21687,63 @@ stated in the handoff. The discrepancy is only in the gitignored handoff/current
 does not alter the reviewed boundary. The Reviewer changed only this append-only record and did not
 read or modify `tools/t287_minimize_probe.py`, modify either untracked item, push, or change remote
 state.
+
+---
+
+## 2026-08-30 — T-238 criterion-4 measurement review
+
+**Reviewer:** Codex (Reviewer)
+**Boundary:** `c5a5292a534e99242b15a14cb30a7f4d58114f3b..317c469c38552081e41235b18507b6a9181e5121`
+**Verdict:** **Changes requested.** The identity census is sound, the self-test residue guard is
+real, and the shared surface inventory is accepted. The reported 17-object result nevertheless
+does not measure the crash precondition it claims to measure: Qt had already destroyed every one
+of those widgets before Python's collector parked their wrappers. `T-238` correctly remains Ready,
+and this pass does not approve the new criterion-4 account.
+
+### Findings
+
+| ID | Severity | Blocks this measurement | Finding | Required correction | Status |
+|---|---|---:|---|---|---|
+| **T238-R7** | **Medium** | **Yes** | `_build_drive_and_tear_down()` calls `deleteLater()` for all five constructed roots and flushes `DeferredDelete` before `_collect_and_read_the_garbage()` runs (`tools/t238_widget_cycle_probe.py:331-341, 380-389`). The probe then calls every tagged wrapper in `gc.garbage` “freed by the cyclic collector,” but checks `shiboken6.isValid()` only for the separate `still_alive` set (`:393-409`). An instrumented replay checked validity while `gc.garbage` was still populated: the self-test's positive `QListView` was **valid**, while the `OptionsDialog` and all 16 reported descendants were **invalid**. The collector found Python wrappers after Qt's deferred-delete path had already destroyed their C++ objects; clearing those wrappers cannot run the `QWidget` destructor shown in the retained crash stack. The task/evidence claims that these are 17 collector-freed widgets, that their destruction was measured, and that they establish the crash precondition are therefore false. “They are in cycles” is also stronger than the predicate: an object may merely be reachable from unreachable cyclic garbage. | Record C++ validity for every parked censused wrapper before clearing `gc.garbage`, and distinguish a **valid wrapper whose collection can destroy a live C++ widget** from an **invalid wrapper whose C++ widget was already destroyed**. If the intended claim is destruction ordering, observe the validity transition or `QObject.destroyed` at the collection boundary without first forcing Qt deletion. Rewrite the task, evidence and probe verdict from that classification; do not count invalid parked wrappers as collector-freed widgets or as the crash precondition. | **Open; blocking** |
+| **T238-R8** | **Low** | No, independently | The 95-widget `MainWindow` result is real, but its interpretation is stale. The task/evidence call it “`T-273`'s mechanism, on a tree that task was meant to have released” and leave open whether T-273 is incomplete or this is a second instance. T-273 explicitly ruled the opposite: product `shutdown.begin()` does not own the window lifetime; the `composed` fixture owns it and performs the additional `window.deleteLater()` plus receiver-scoped `DeferredDelete` flush. This probe omits that already-documented owner action, so 95 survivors reproduce T-273's expected pre-fix/bare-product baseline. | Describe the 95 as the known T-273 baseline under product shutdown alone. Remove the incomplete/second-instance speculation and the claim that an unidentified release is still needed; any follow-up classification must state whether it deliberately applies T-273's explicit owner deletion and what that does to C++ validity. | **Open; fold into R7 correction** |
+
+### Accepted judgments
+
+- **The false-positive guard works.** A deliberately retained parentless `QListView` makes
+  `_the_self_tests_widgets_are_gone()` return false, and the unmodified probe's positive and
+  negative controls both pass. The positive control is also valid at the collection boundary,
+  which makes it a useful control for the distinction R7 requires.
+- **Disabling automatic collection is acceptable for this bounded instrument.** It intentionally
+  moves collection to an observed point and prevents a generational collection from erasing the
+  classification before `DEBUG_SAVEALL` is armed. The run no longer represents natural teardown
+  timing, but it can still answer the route question if C++ validity/destruction is classified.
+- **The fixture extraction is accepted.** `tests/ui/surfaces.py` reproduces the five constructions
+  formerly embedded in `every_surface`; its imports are lazy and its caller retains the same show,
+  close and `deleteLater` ownership. The four-file consumer set passes **149 / 1 skipped**.
+- **Identity tracking is adequate.** UUID tags plus weak references distinguish the censused
+  wrappers without retaining them. The unused address map is unnecessary, but it does not alter
+  the verdict.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary/state | One commit, five files, exactly as handed off. `HEAD` and `origin/main` are both `317c469`. No product source changed. |
+| Shipped probe | Offscreen run reproduced **364 / 17 / 252 / 95 / 35** and the named 17-object `OptionsDialog` tree. |
+| Validity replay | Both positive-control collections parked a valid `QListView`; the application collection parked the `OptionsDialog` plus 16 descendants, **all 17 with `shiboken6.isValid(obj) == False`**. |
+| Residue control | A live parentless `QListView` forces the residue predicate to false. |
+| Surface consumers | `test_accessibility.py`, `test_colour_is_never_alone.py`, `test_format_text.py`, and `test_options_dialog.py`: **149 passed, 1 skipped**. |
+| Static/types | Ruff passed; format **216 files**; `mypy src` **56 files**; bare and Win32 mypy **156 files** each. |
+| Records/gates | `git diff --check` clean; task placement **15 passed**; one commit message checked clean. |
+| CI at review time | Run `33286635518` is at the exact head. Linux, frozen Linux, frozen Windows and STARBASE coverage are green. Windows desktop has passed its dedicated desktop suite, lint, format and Qt baseline and is still executing the full-suite step. |
+
+### Readiness
+
+The shared test-fixture move needs no correction and the controls do not need another redesign.
+The focused correction is to make the probe distinguish Python-wrapper collection from live Qt
+widget destruction, then rewrite only the claims that depend on that distinction. The 17 current
+objects are useful evidence about Python garbage, but not evidence that a `QWidget` destructor can
+reach Shiboken's cross-thread deletion path from this surface.
+
+The Reviewer changed only this append-only record. No reviewed source, task/status file, evidence,
+probe, handoff, push or remote state was changed.
